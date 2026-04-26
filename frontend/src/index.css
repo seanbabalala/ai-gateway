@@ -1,0 +1,252 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Light theme (default) ── */
+:root {
+  /* Backgrounds */
+  --background: #F8FAFC;
+  --background-secondary: #FFFFFF;
+  --background-tertiary: #F1F5F9;
+
+  /* Background — flat solid, no gradient */
+  --bg-gradient: #F8FAFC;
+
+  /* Card surfaces — solid white */
+  --glass-bg: #FFFFFF;
+  --glass-border: #E2E8F0;
+  --glass-blur: 0px;
+
+  /* Foregrounds */
+  --foreground: #0F172A;
+  --foreground-muted: #475569;
+  --foreground-dim: #94A3B8;
+
+  /* Borders */
+  --border: #E2E8F0;
+  --border-hover: #CBD5E1;
+
+  /* Accent — blue primary */
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-muted: rgba(59, 130, 246, 0.08);
+
+  /* Semantic */
+  --destructive: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --ring: #3B82F6;
+  --radius: 0.75rem;
+
+  /* Sidebar — dark navy solid */
+  --sidebar-bg: #0F172A;
+  --sidebar-border: #1E293B;
+  --sidebar-active-bg: rgba(255, 255, 255, 0.1);
+  --sidebar-active-text: #FFFFFF;
+  --sidebar-group-label: #64748B;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+
+  /* Charts & Gauges */
+  --chart-tooltip-bg: #FFFFFF;
+  --chart-tooltip-border: #E2E8F0;
+  --chart-tooltip-text: #475569;
+  --chart-axis-tick: #94A3B8;
+  --chart-axis-line: #E2E8F0;
+  --gauge-bg: #E2E8F0;
+  --gauge-text: #0F172A;
+  --gauge-subtext: #64748B;
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.2);
+
+  /* Card shadow — clean, minimal */
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --card-hover-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+
+  /* Header shadow */
+  --header-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+
+  /* Inset / embedded bg */
+  --inset-bg: #F8FAFC;
+
+  /* SSE banner */
+  --sse-bg: rgba(59, 130, 246, 0.06);
+  --sse-border: rgba(59, 130, 246, 0.15);
+  --sse-text: #2563EB;
+
+  /* Progress bar track */
+  --progress-track: #E2E8F0;
+
+  /* Arrow / divider dim color */
+  --divider-dim: #CBD5E1;
+
+  /* Font families */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ── Dark theme ── */
+.dark {
+  --background: #0F172A;
+  --background-secondary: #1E293B;
+  --background-tertiary: #334155;
+
+  --bg-gradient: #0F172A;
+
+  --glass-bg: #1E293B;
+  --glass-border: #334155;
+  --glass-blur: 0px;
+
+  --foreground: #F8FAFC;
+  --foreground-muted: #94A3B8;
+  --foreground-dim: #64748B;
+
+  --border: #334155;
+  --border-hover: #475569;
+
+  --accent: #60A5FA;
+  --accent-hover: #3B82F6;
+  --accent-muted: rgba(96, 165, 250, 0.12);
+
+  --destructive: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --ring: #60A5FA;
+
+  --sidebar-bg: #020617;
+  --sidebar-border: #1E293B;
+  --sidebar-active-bg: rgba(255, 255, 255, 0.1);
+  --sidebar-active-text: #FFFFFF;
+  --sidebar-group-label: #64748B;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+
+  --chart-tooltip-bg: #1E293B;
+  --chart-tooltip-border: #334155;
+  --chart-tooltip-text: #94A3B8;
+  --chart-axis-tick: #64748B;
+  --chart-axis-line: #334155;
+  --gauge-bg: #334155;
+  --gauge-text: #F8FAFC;
+  --gauge-subtext: #64748B;
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.15);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+  --card-hover-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+
+  --header-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+
+  --inset-bg: rgba(0, 0, 0, 0.15);
+
+  --sse-bg: rgba(96, 165, 250, 0.08);
+  --sse-border: rgba(96, 165, 250, 0.2);
+  --sse-text: #93C5FD;
+
+  --progress-track: #334155;
+
+  --divider-dim: #475569;
+}
+
+/* ── Base styles ── */
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-gradient);
+  color: var(--foreground);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ── Glass Card — clean solid card (no backdrop-filter, no hover lift) ── */
+.glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease;
+}
+
+/* ── Glass Card Static — same as glass-card, no hover effects ── */
+.glass-card-static {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease;
+}
+
+/* ── Sidebar active indicator — simple solid bar ── */
+.sidebar-active {
+  position: relative;
+}
+
+.sidebar-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #3B82F6;
+}
+
+.dark .sidebar-active::before {
+  background: #60A5FA;
+}
+
+/* ── Pulse animation for status dots ── */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.5);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ── Row slide-in animation ── */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* ── Monospace code ── */
+.font-mono {
+  font-family: var(--font-mono);
+}

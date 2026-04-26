@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Data
+data/
+
+# Configuration (contains API keys — only track the example)
+gateway.config.yaml
+!gateway.config.example.yaml
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test
+coverage/
+
+# Frontend build
+frontend/dist/
+frontend/node_modules/

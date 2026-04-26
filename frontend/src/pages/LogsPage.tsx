@@ -1,0 +1,279 @@
+import { useState } from 'react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio } from 'lucide-react'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { TierBadge } from '@/components/shared/TierBadge'
+import { Card, CardStatic } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
+import { useLogs } from '@/hooks/use-logs'
+import { useSSELogs } from '@/hooks/use-sse-logs'
+import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
+import type { CallLog } from '@/types/api'
+
+const LIMIT = 20
+
+const tierOptions = [
+  { value: '', label: 'All Tiers' },
+  { value: 'simple', label: 'Simple' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'complex', label: 'Complex' },
+  { value: 'reasoning', label: 'Reasoning' },
+]
+
+const statusOptions = [
+  { value: '', label: 'All Status' },
+  { value: '200', label: '200 OK' },
+  { value: '500', label: '500 Error' },
+  { value: '429', label: '429 Rate Limit' },
+]
+
+function LogDetailRow({ log }: { log: CallLog }) {
+  return (
+    <TableRow>
+      <TableCell colSpan={8} className="bg-[var(--background-secondary)] px-6 py-3">
+        <div className="grid grid-cols-3 gap-4 text-xs">
+          <div>
+            <span className="text-[var(--foreground-dim)]">Request ID: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.request_id}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">Score: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.score?.toFixed(3) ?? 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">Source Format: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.source_format}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">Session Key: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.session_key ?? 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">Fallback: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.is_fallback ? 'Yes' : 'No'}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">Tokens: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.input_tokens} in / {log.output_tokens} out
+            </span>
+          </div>
+          {log.error && (
+            <div className="col-span-3">
+              <span className="text-[var(--foreground-dim)]">Error: </span>
+              <span className="font-mono text-red-600 dark:text-red-400">{log.error}</span>
+            </div>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+export function LogsPage() {
+  const [page, setPage] = useState(1)
+  const [tierFilter, setTierFilter] = useState('')
+  const [nodeFilter, setNodeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  const { data: logsData, isLoading, refetch } = useLogs(page, LIMIT, {
+    tier: tierFilter || undefined,
+    node: nodeFilter || undefined,
+    status: statusFilter || undefined,
+  })
+
+  const { newCount, clearNewCount } = useSSELogs(100)
+
+  const handleRefresh = () => {
+    clearNewCount()
+    refetch()
+  }
+
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        title="Logs"
+        description="Browse and filter call logs with real-time updates"
+      />
+
+      {/* SSE New Logs Banner */}
+      {newCount > 0 && (
+        <button
+          onClick={handleRefresh}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--sse-bg)] border border-[var(--sse-border)] px-4 py-2 text-sm text-[var(--sse-text)] transition-colors hover:opacity-80 cursor-pointer"
+        >
+          <Radio className="h-3.5 w-3.5 animate-pulse" />
+          {newCount} new log{newCount !== 1 ? 's' : ''} received — click to refresh
+        </button>
+      )}
+
+      {/* Filters */}
+      <CardStatic className="p-4">
+        <div className="flex items-center gap-3">
+          <Select
+            options={tierOptions}
+            value={tierFilter}
+            onChange={(e) => {
+              setTierFilter(e.target.value)
+              setPage(1)
+            }}
+            className="w-36"
+          />
+          <Input
+            placeholder="Filter by node..."
+            value={nodeFilter}
+            onChange={(e) => {
+              setNodeFilter(e.target.value)
+              setPage(1)
+            }}
+            className="w-40"
+          />
+          <Select
+            options={statusOptions}
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              setPage(1)
+            }}
+            className="w-36"
+          />
+          <div className="ml-auto text-xs text-[var(--foreground-dim)]">
+            {logsData?.pagination
+              ? `${logsData.pagination.total} total logs`
+              : '...'}
+          </div>
+        </div>
+      </CardStatic>
+
+      {/* Table */}
+      <CardStatic>
+        {isLoading ? (
+          <div className="flex h-48 items-center justify-center text-sm text-[var(--foreground-dim)]">
+            Loading logs...
+          </div>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8" />
+                  <TableHead>Time</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead>Node</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="text-right">Tokens</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Latency</TableHead>
+                  <TableHead className="text-right">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logsData?.data.map((log) => (
+                  <>
+                    <TableRow
+                      key={log.id}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        setExpandedId(expandedId === log.id ? null : log.id)
+                      }
+                    >
+                      <TableCell>
+                        {expandedId === log.id ? (
+                          <ChevronUp className="h-3.5 w-3.5 text-[var(--foreground-dim)]" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 text-[var(--foreground-dim)]" />
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-[var(--foreground-muted)]">
+                        {formatTimestamp(log.timestamp)}
+                      </TableCell>
+                      <TableCell>
+                        <TierBadge tier={log.tier} />
+                      </TableCell>
+                      <TableCell className="text-[var(--foreground)]">
+                        {log.node_id}
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate font-mono text-xs text-[var(--foreground-dim)]">
+                        {log.model}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                        {formatTokens(log.input_tokens + log.output_tokens)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                        {formatCost(log.cost_usd)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                        {formatLatency(log.latency_ms)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span
+                          className={`font-mono text-xs ${
+                            log.status_code === 200
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}
+                        >
+                          {log.status_code}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                    {expandedId === log.id && (
+                      <LogDetailRow key={`detail-${log.id}`} log={log} />
+                    )}
+                  </>
+                ))}
+                {(!logsData?.data || logsData.data.length === 0) && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-24 text-center text-[var(--foreground-dim)]">
+                      No logs found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+
+            {/* Pagination */}
+            {logsData?.pagination && logsData.pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3">
+                <div className="text-xs text-[var(--foreground-dim)]">
+                  Page {logsData.pagination.page} of{' '}
+                  {logsData.pagination.totalPages}
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Prev
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={page >= logsData.pagination.totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardStatic>
+    </div>
+  )
+}

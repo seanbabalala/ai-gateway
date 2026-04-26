@@ -1,0 +1,165 @@
+# ============================================================
+# AI Gateway — Example Configuration
+# ============================================================
+# Copy this file to gateway.config.yaml and customize:
+#   cp gateway.config.example.yaml gateway.config.yaml
+#
+# Environment variables can be referenced as:
+#   ${VAR}            — required, fails if not set
+#   ${VAR:-default}   — optional, uses default if not set
+# ============================================================
+
+server:
+  port: 2099
+  host: 0.0.0.0
+
+database:
+  type: sqlite
+  path: ./data/gateway.db
+  # For PostgreSQL:
+  # type: postgres
+  # url: "postgresql://user:pass@localhost:5432/ai_gateway"
+
+auth:
+  api_keys:
+    - key: "${GATEWAY_API_KEY:-gw_sk_dev_default}"
+      name: "default"
+    # Add more keys for different users/services:
+    # - key: "${TEAM_API_KEY}"
+    #   name: "team-backend"
+
+# ============================================================
+# Nodes — AI provider endpoints
+# ============================================================
+# Each node represents one AI provider or model endpoint.
+# Supported protocols:
+#   - chat_completions  (OpenAI /v1/chat/completions)
+#   - responses         (OpenAI /v1/responses)
+#   - messages          (Anthropic /v1/messages)
+# ============================================================
+nodes:
+  # ── OpenAI ──
+  - id: openai
+    name: "GPT-4o"
+    protocol: chat_completions
+    base_url: "https://api.openai.com"
+    endpoint: "/v1/chat/completions"
+    api_key: "${OPENAI_API_KEY}"
+    models: ["gpt-4o", "gpt-4o-mini"]
+    timeout_ms: 60000
+    tags: ["code", "reasoning", "creative"]
+    model_aliases:
+      gpt4: gpt-4o
+      gpt4-mini: gpt-4o-mini
+
+  # ── Anthropic ──
+  - id: claude
+    name: "Claude Sonnet 4"
+    protocol: messages
+    base_url: "https://api.anthropic.com"
+    endpoint: "/v1/messages"
+    api_key: "${ANTHROPIC_API_KEY}"
+    auth_type: x-api-key              # Anthropic uses x-api-key header
+    models: ["claude-sonnet-4-20250514"]
+    timeout_ms: 120000
+    tags: ["code", "backend", "reasoning", "math"]
+    model_aliases:
+      claude: claude-sonnet-4-20250514
+      sonnet: claude-sonnet-4-20250514
+    headers:
+      anthropic-version: "2023-06-01"
+
+  # ── Google Gemini (via OpenAI-compatible endpoint) ──
+  # - id: gemini
+  #   name: "Gemini 2.5 Pro"
+  #   protocol: chat_completions
+  #   base_url: "https://generativelanguage.googleapis.com"
+  #   endpoint: "/v1beta/chat/completions"
+  #   api_key: "${GOOGLE_API_KEY}"
+  #   models: ["gemini-2.5-pro"]
+  #   timeout_ms: 60000
+  #   tags: ["code", "frontend", "fast", "long-context"]
+  #   model_aliases:
+  #     gemini-pro: gemini-2.5-pro
+
+  # ── Azure OpenAI ──
+  # - id: azure
+  #   name: "Azure GPT-4o"
+  #   protocol: chat_completions
+  #   base_url: "${AZURE_OPENAI_ENDPOINT}"
+  #   endpoint: "/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-01"
+  #   api_key: "${AZURE_OPENAI_API_KEY}"
+  #   auth_type: x-api-key             # Azure uses api-key header
+  #   models: ["gpt-4o"]
+  #   timeout_ms: 60000
+
+  # ── Any OpenAI-compatible API (Ollama, LM Studio, vLLM, etc.) ──
+  # - id: local
+  #   name: "Local LLM"
+  #   protocol: chat_completions
+  #   base_url: "http://localhost:11434"
+  #   endpoint: "/v1/chat/completions"
+  #   api_key: "not-needed"
+  #   models: ["llama3"]
+  #   timeout_ms: 120000
+  #   tags: ["fast", "cheap", "private"]
+
+# ============================================================
+# Routing — How requests are assigned to nodes
+# ============================================================
+# The scoring engine analyzes each request and assigns a
+# complexity tier: simple → standard → complex → reasoning.
+# Each tier has a primary node and a fallback chain.
+# ============================================================
+routing:
+  tiers:
+    simple:
+      primary: { node: openai, model: gpt-4o-mini }
+      fallbacks:
+        - { node: claude, model: claude-sonnet-4-20250514 }
+    standard:
+      primary: { node: openai, model: gpt-4o }
+      fallbacks:
+        - { node: claude, model: claude-sonnet-4-20250514 }
+    complex:
+      primary: { node: claude, model: claude-sonnet-4-20250514 }
+      fallbacks:
+        - { node: openai, model: gpt-4o }
+    reasoning:
+      primary: { node: claude, model: claude-sonnet-4-20250514 }
+      fallbacks:
+        - { node: openai, model: gpt-4o }
+
+  # Scoring thresholds — tune these to adjust routing sensitivity
+  scoring:
+    simple_max: -0.1       # Score ≤ -0.1  → simple
+    standard_max: 0.08     # Score ≤ 0.08  → standard
+    complex_max: 0.35      # Score ≤ 0.35  → complex
+                           # Score > 0.35  → reasoning
+
+  # Domain-based node preference (optional)
+  # When the scoring engine detects a domain hint in the request,
+  # these nodes are promoted in the routing order.
+  domain_preferences:
+    frontend: [openai]
+    backend: [claude, openai]
+    math: [claude]
+
+# ============================================================
+# Budget — Daily usage limits
+# ============================================================
+budget:
+  daily_token_limit: 5000000     # 5M tokens per day
+  daily_cost_limit: 50.00        # $50 per day
+  alert_threshold: 0.8           # Alert at 80% usage
+
+# ============================================================
+# Model Pricing — Cost per 1M tokens (USD)
+# ============================================================
+# Used to calculate per-request costs and enforce budget limits.
+# Add entries for every model ID listed in your nodes above.
+models_pricing:
+  gpt-4o:                    { input: 2.50, output: 10.00 }
+  gpt-4o-mini:               { input: 0.15, output: 0.60 }
+  claude-sonnet-4-20250514:  { input: 3.00, output: 15.00 }
+  # gemini-2.5-pro:          { input: 1.25, output: 10.00 }

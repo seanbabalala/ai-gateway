@@ -1,0 +1,170 @@
+import { CanonicalStreamEvent } from '../../canonical/canonical.types';
+
+/**
+ * Parses SSE stream from an Anthropic Messages API provider → CanonicalStreamEvent.
+ *
+ * SSE format:
+ *   event: message_start
+ *   data: {"type":"message_start","message":{"id":"msg_...","model":"claude-...",...}}
+ *
+ *   event: content_block_start
+ *   data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+ *
+ *   event: content_block_delta
+ *   data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+ *
+ *   event: content_block_delta (tool_use)
+ *   data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"..."}}
+ *
+ *   event: message_stop
+ *   data: {"type":"message_stop"}
+ *
+ *   event: message_delta
+ *   data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}
+ */
+export class MessagesStreamParser {
+  private buffer = '';
+  private currentEvent = '';
+
+  // Track content block types by index
+  private blockTypes: Map<number, { type: string; id?: string; name?: string }> =
+    new Map();
+
+  *parse(chunk: string): Generator<CanonicalStreamEvent> {
+    this.buffer += chunk;
+
+    const lines = this.buffer.split('\n');
+    this.buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed.startsWith(':')) continue;
+
+      if (trimmed.startsWith('event: ')) {
+        this.currentEvent = trimmed.slice(7).trim();
+        continue;
+      }
+
+      if (trimmed.startsWith('data: ')) {
+        const data = trimmed.slice(6).trim();
+
+        try {
+          const parsed = JSON.parse(data);
+          yield* this.processEvent(this.currentEvent, parsed);
+        } catch {
+          // Skip unparseable
+        }
+
+        this.currentEvent = '';
+      }
+    }
+  }
+
+  private *processEvent(
+    eventType: string,
+    data: Record<string, unknown>,
+  ): Generator<CanonicalStreamEvent> {
+    switch (eventType) {
+      case 'message_start': {
+        const message = (data.message || {}) as Record<string, unknown>;
+        yield {
+          type: 'start',
+          id: (message.id as string) || '',
+          model: (message.model as string) || '',
+        };
+        break;
+      }
+
+      case 'content_block_start': {
+        const index = data.index as number;
+        const block = (data.content_block || {}) as Record<string, unknown>;
+
+        this.blockTypes.set(index, {
+          type: block.type as string,
+          id: block.id as string | undefined,
+          name: block.name as string | undefined,
+        });
+
+        // For tool_use blocks, emit an initial delta with the name
+        if (block.type === 'tool_use') {
+          yield {
+            type: 'delta',
+            content: {
+              type: 'tool_use',
+              id: (block.id as string) || '',
+              name: (block.name as string) || undefined,
+              input_delta: undefined,
+            },
+          };
+        }
+        break;
+      }
+
+      case 'content_block_delta': {
+        const index = data.index as number;
+        const delta = (data.delta || {}) as Record<string, unknown>;
+        const blockInfo = this.blockTypes.get(index);
+
+        if (delta.type === 'text_delta') {
+          yield {
+            type: 'delta',
+            content: { type: 'text', text: (delta.text as string) || '' },
+          };
+        } else if (delta.type === 'input_json_delta') {
+          yield {
+            type: 'delta',
+            content: {
+              type: 'tool_use',
+              id: blockInfo?.id || '',
+              input_delta: (delta.partial_json as string) || '',
+            },
+          };
+        }
+        break;
+      }
+
+      case 'content_block_stop':
+        // Block complete — no action needed
+        break;
+
+      case 'message_delta': {
+        const delta = (data.delta || {}) as Record<string, unknown>;
+        const usage = (data.usage || {}) as Record<string, unknown>;
+
+        yield {
+          type: 'stop',
+          stop_reason: (delta.stop_reason as string) || 'end_turn',
+          usage: {
+            input_tokens: (usage.input_tokens as number) || 0,
+            output_tokens: (usage.output_tokens as number) || 0,
+          },
+        };
+        break;
+      }
+
+      case 'message_stop':
+        // Final confirmation — we already emitted stop on message_delta
+        break;
+
+      case 'ping':
+        // Keep-alive — skip
+        break;
+
+      case 'error': {
+        const error = (data.error || data) as Record<string, unknown>;
+        yield {
+          type: 'error',
+          error: {
+            message: (error.message as string) || 'Unknown stream error',
+            code: (error.type as string) || undefined,
+          },
+        };
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+}

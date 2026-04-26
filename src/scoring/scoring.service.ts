@@ -1,0 +1,167 @@
+// ===================================================================
+// ScoringService — 12-Dimension Request Complexity Scoring Engine
+// ===================================================================
+// Scores a CanonicalRequest to determine its complexity tier:
+//   simple → standard → complex → reasoning
+//
+// Features:
+//   - 12 weighted dimensions (keyword, structural, tool-based)
+//   - Fast-path short-circuits for obvious cases
+//   - Configurable thresholds from gateway.config.yaml
+// ===================================================================
+
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '../config/config.service';
+import { CanonicalRequest, Tier } from '../canonical/canonical.types';
+
+// Keyword dimensions
+import {
+  scoreSimpleIndicators,
+  scoreCodeGeneration,
+  scoreCodeFrontend,
+  scoreCodeBackend,
+  scoreFormalLogic,
+  scoreTechnicalTerms,
+  scoreAnalyticalReasoning,
+  detectCodeDomain,
+  extractLastUserText,
+  extractAllText,
+} from './dimensions/keyword.dimension';
+
+// Structural dimensions
+import {
+  scoreTokenCount,
+  scoreConversationDepth,
+  scoreConstraintDensity,
+  scoreExpectedOutputLength,
+  scoreCodeToProse,
+  scoreMultiStep,
+} from './dimensions/structural.dimension';
+
+// Tool dimension
+import { scoreToolCount } from './dimensions/tool.dimension';
+
+// ─── Dimension Weights (from PLAN.md) ─────────────────────
+
+interface DimensionWeight {
+  name: string;
+  weight: number;
+  scorer: (req: CanonicalRequest) => number;
+}
+
+const DIMENSIONS: DimensionWeight[] = [
+  { name: 'simpleIndicators',    weight: 0.10, scorer: scoreSimpleIndicators },
+  { name: 'codeGeneration',      weight: 0.08, scorer: scoreCodeGeneration },
+  { name: 'codeFrontend',        weight: 0.04, scorer: scoreCodeFrontend },
+  { name: 'codeBackend',         weight: 0.04, scorer: scoreCodeBackend },
+  { name: 'formalLogic',         weight: 0.10, scorer: scoreFormalLogic },
+  { name: 'technicalTerms',      weight: 0.08, scorer: scoreTechnicalTerms },
+  { name: 'multiStep',           weight: 0.08, scorer: scoreMultiStep },
+  { name: 'analyticalReasoning', weight: 0.08, scorer: scoreAnalyticalReasoning },
+  { name: 'tokenCount',          weight: 0.08, scorer: scoreTokenCount },
+  { name: 'toolCount',           weight: 0.10, scorer: scoreToolCount },
+  { name: 'conversationDepth',   weight: 0.06, scorer: scoreConversationDepth },
+  { name: 'constraintDensity',   weight: 0.06, scorer: scoreConstraintDensity },
+  { name: 'expectedOutputLength', weight: 0.06, scorer: scoreExpectedOutputLength },
+  { name: 'codeToProse',         weight: 0.04, scorer: scoreCodeToProse },
+];
+
+// ─── Scoring Result ───────────────────────────────────────
+
+export interface ScoringResult {
+  tier: Tier;
+  score: number;
+  dimensions: Record<string, number>;
+  domainHint: 'frontend' | 'backend' | null; // code domain signal for routing
+  fastPath?: string; // which fast-path was triggered (if any)
+}
+
+// ─── Service ──────────────────────────────────────────────
+
+@Injectable()
+export class ScoringService {
+  private readonly logger = new Logger(ScoringService.name);
+
+  constructor(private readonly config: ConfigService) {}
+
+  /**
+   * Score a canonical request and return its complexity tier + score.
+   */
+  score(req: CanonicalRequest): ScoringResult {
+    // ── Fast Path 1: Very short + simple ──
+    const lastUserText = extractLastUserText(req);
+    if (
+      lastUserText.length < 50 &&
+      !req.tools?.length &&
+      req.messages.length <= 2
+    ) {
+      const simpleScore = scoreSimpleIndicators(req);
+      if (simpleScore < -0.2) {
+        this.logger.debug(`Fast-path: simple (short message + simple indicator)`);
+        return {
+          tier: 'simple',
+          score: simpleScore * 0.10,
+          dimensions: { simpleIndicators: simpleScore },
+          domainHint: null,
+          fastPath: 'short_simple',
+        };
+      }
+    }
+
+    // ── Fast Path 2: Formal logic detected → reasoning ──
+    const logicScore = scoreFormalLogic(req);
+    if (logicScore >= 0.7) {
+      this.logger.debug(`Fast-path: reasoning (strong formal logic signals)`);
+      return {
+        tier: 'reasoning',
+        score: logicScore * 0.10,
+        dimensions: { formalLogic: logicScore },
+        domainHint: null,
+        fastPath: 'formal_logic',
+      };
+    }
+
+    // ── Fast Path 3: Has tools → at least standard ──
+    const hasTools = (req.tools?.length || 0) > 0;
+
+    // ── Full scoring ──
+    const dimensions: Record<string, number> = {};
+    let weightedSum = 0;
+
+    for (const dim of DIMENSIONS) {
+      const rawScore = dim.scorer(req);
+      dimensions[dim.name] = rawScore;
+      weightedSum += rawScore * dim.weight;
+    }
+
+    // Apply tool floor: if tools exist, ensure at least standard
+    let tier = this.scoreToTier(weightedSum);
+    if (hasTools && tier === 'simple') {
+      tier = 'standard';
+    }
+
+    // ── Detect code domain hint ──
+    const domainHint = detectCodeDomain(req);
+
+    this.logger.debug(
+      `Scored request: ${weightedSum.toFixed(4)} → ${tier}${domainHint ? ` [${domainHint}]` : ''} | dims: ${JSON.stringify(dimensions)}`,
+    );
+
+    return { tier, score: weightedSum, dimensions, domainHint };
+  }
+
+  /**
+   * Map a numeric score to a Tier using config thresholds.
+   */
+  private scoreToTier(score: number): Tier {
+    const scoring = this.config.routing.scoring;
+    const simpleMax = scoring?.simple_max ?? -0.1;
+    const standardMax = scoring?.standard_max ?? 0.08;
+    const complexMax = scoring?.complex_max ?? 0.35;
+
+    if (score <= simpleMax) return 'simple';
+    if (score <= standardMax) return 'standard';
+    if (score <= complexMax) return 'complex';
+    return 'reasoning';
+  }
+}

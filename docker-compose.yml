@@ -1,0 +1,31 @@
+# ============================================================
+# AI Gateway — Docker Compose
+# ============================================================
+# Quick start:
+#   1. cp gateway.config.example.yaml gateway.config.yaml
+#   2. cp .env.example .env
+#   3. Edit both files with your settings
+#   4. docker compose up -d
+#   5. Open http://localhost:2099
+# ============================================================
+
+services:
+  ai-gateway:
+    build: .
+    container_name: ai-gateway
+    restart: unless-stopped
+    ports:
+      - "2099:2099"
+    volumes:
+      # Mount your config file (required)
+      - ./gateway.config.yaml:/app/gateway.config.yaml:ro
+      # Persist SQLite database across restarts
+      - ./data:/app/data
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:2099/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
