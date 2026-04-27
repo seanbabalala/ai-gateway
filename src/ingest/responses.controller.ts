@@ -1,10 +1,12 @@
-import { Controller, Post, Req, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Req, Res, Logger, UseGuards } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ResponsesNormalizer } from '../canonical/normalizers/responses.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 
 @Controller('v1')
+@UseGuards(ApiKeyGuard)
 export class ResponsesController {
   private readonly logger = new Logger(ResponsesController.name);
   private readonly normalizer = new ResponsesNormalizer();
@@ -16,6 +18,7 @@ export class ResponsesController {
     try {
       const headers = this.extractHeaders(req);
       const canonical = this.normalizer.normalize(req.body, headers);
+      canonical.metadata.api_key_name = (req as unknown as Record<string, unknown>).apiKeyName as string | undefined;
 
       this.logger.log(
         `[responses] ${canonical.messages.length} msg, stream=${canonical.stream}`,

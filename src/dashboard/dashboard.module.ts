@@ -6,6 +6,7 @@ import { LogEventBus } from './log-event-bus';
 import { ConfigModule } from '../config/config.module';
 import { RoutingModule } from '../routing/routing.module';
 import { BudgetModule } from '../budget/budget.module';
+import { AuthModule } from '../auth/auth.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
 @Module({
@@ -13,6 +14,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     ConfigModule,
     RoutingModule,
     BudgetModule,
+    AuthModule,
     TypeOrmModule.forFeature([CallLog]),
   ],
   controllers: [HealthController, DashboardController],

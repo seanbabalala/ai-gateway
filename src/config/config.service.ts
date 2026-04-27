@@ -6,11 +6,13 @@ import {
   GatewayConfig,
   NodeConfig,
   RoutingConfig,
+  RetryConfig,
   BudgetConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
   AuthConfig,
+  DashboardConfig,
 } from './gateway.config';
 
 @Injectable()
@@ -101,12 +103,42 @@ export class ConfigService {
     return this.config.auth;
   }
 
+  get dashboard(): DashboardConfig | undefined {
+    return this.config.dashboard;
+  }
+
+  /** Get the dashboard password hash (if set) */
+  get dashboardPasswordHash(): string | undefined {
+    return this.config.dashboard?.password;
+  }
+
+  /** Update the dashboard password hash and persist to YAML */
+  setDashboardPasswordHash(hash: string): void {
+    if (!this.config.dashboard) {
+      this.config.dashboard = {};
+    }
+    this.config.dashboard.password = hash;
+    this.saveConfig();
+    this.logger.log('Dashboard password hash updated');
+  }
+
   get nodes(): NodeConfig[] {
     return this.config.nodes;
   }
 
   get routing(): RoutingConfig {
     return this.config.routing;
+  }
+
+  /** Get retry config with defaults */
+  get retry(): RetryConfig {
+    const r = this.config.routing.retry;
+    return {
+      max_retries: r?.max_retries ?? 0,
+      backoff_base_ms: r?.backoff_base_ms ?? 500,
+      backoff_max_ms: r?.backoff_max_ms ?? 5000,
+      retryable_status: r?.retryable_status ?? [429, 502, 503],
+    };
   }
 
   get budget(): BudgetConfig {
@@ -379,5 +411,42 @@ export class ConfigService {
     delete this.config.models_pricing[model];
     this.saveConfig();
     this.logger.log(`Pricing deleted for model "${model}"`);
+  }
+
+  // ===== Routing Update =====
+
+  /** Update routing configuration (tiers, scoring thresholds, domain preferences). */
+  updateRouting(updates: {
+    tiers?: Record<string, { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] }>;
+    scoring?: { simple_max: number; standard_max: number; complex_max: number };
+    domain_preferences?: Record<string, string[]>;
+  }): void {
+    if (updates.tiers) {
+      // Validate all referenced nodes exist
+      for (const [tierName, tier] of Object.entries(updates.tiers)) {
+        this.validateRouteTarget(tier.primary, tierName, 'primary');
+        tier.fallbacks.forEach((fb, i) => this.validateRouteTarget(fb, tierName, `fallback[${i}]`));
+      }
+      this.config.routing.tiers = updates.tiers;
+    }
+    if (updates.scoring) {
+      this.config.routing.scoring = updates.scoring;
+    }
+    if (updates.domain_preferences !== undefined) {
+      this.config.routing.domain_preferences = updates.domain_preferences;
+    }
+    this.saveConfig();
+    this.logger.log('Routing configuration updated');
+  }
+
+  private validateRouteTarget(
+    target: { node: string; model: string },
+    tierName: string,
+    label: string,
+  ): void {
+    const node = this.config.nodes.find((n) => n.id === target.node);
+    if (!node) {
+      throw new Error(`Tier "${tierName}" ${label}: node "${target.node}" not found`);
+    }
   }
 }

@@ -59,4 +59,10 @@ export class CallLog {
 
   @Column({ type: 'text', nullable: true })
   error!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  api_key_name!: string | null;
+
+  @Column({ type: 'integer', default: 0 })
+  retry_count!: number;
 }

@@ -83,6 +83,7 @@ export interface CanonicalRequest {
     session_key?: string;
     raw_headers: Record<string, string>;
     raw_body?: unknown;
+    api_key_name?: string;
   };
 }
 

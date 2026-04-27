@@ -8,10 +8,16 @@ export interface GatewayConfig {
   server: ServerConfig;
   database: DatabaseConfig;
   auth: AuthConfig;
+  dashboard?: DashboardConfig;
   nodes: NodeConfig[];
   routing: RoutingConfig;
   budget: BudgetConfig;
   models_pricing: Record<string, ModelPricing>;
+}
+
+// ===== Dashboard =====
+export interface DashboardConfig {
+  password?: string;
 }
 
 // ===== Server =====
@@ -99,6 +105,7 @@ export interface NodeConfig {
 export interface RoutingConfig {
   tiers: Record<string, TierConfig>;
   scoring: ScoringThresholds;
+  retry?: RetryConfig;
 
   /**
    * Domain-based node preference.
@@ -117,6 +124,21 @@ export interface RoutingConfig {
    * If not configured, nodes with matching tags are auto-preferred.
    */
   domain_preferences?: Record<string, string[]>;
+}
+
+/**
+ * Retry configuration for upstream provider calls.
+ * Controls how the gateway retries failed requests before moving to the next fallback.
+ */
+export interface RetryConfig {
+  /** Max retries per node (default: 0 = no retry, only fallback) */
+  max_retries: number;
+  /** Initial backoff delay in ms (default: 500) */
+  backoff_base_ms: number;
+  /** Maximum backoff delay in ms (default: 5000) */
+  backoff_max_ms: number;
+  /** HTTP status codes eligible for retry (default: [429, 502, 503]) */
+  retryable_status: number[];
 }
 
 export interface TierConfig {

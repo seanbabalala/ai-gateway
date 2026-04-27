@@ -5,9 +5,10 @@ import { MessagesController } from './messages.controller';
 import { ModelsController } from './models.controller';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ConfigModule } from '../config/config.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PipelineModule, ConfigModule],
+  imports: [PipelineModule, ConfigModule, AuthModule],
   controllers: [
     ChatCompletionsController,
     ResponsesController,

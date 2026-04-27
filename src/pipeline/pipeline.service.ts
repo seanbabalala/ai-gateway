@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Response as ExpressResponse } from 'express';
 import { ConfigService } from '../config/config.service';
+import { RetryConfig } from '../config/gateway.config';
 import {
   CanonicalRequest,
   CanonicalResponse,
@@ -78,48 +79,47 @@ export class PipelineService {
     }
 
     // ── Route Resolution ──
-    // Priority: direct model match > scoring-based tier routing
     const { route, tier, score } = this.resolveSmartRoute(canonical);
+    const retryConfig = this.config.retry;
 
-    let canonicalResponse: CanonicalResponse;
+    let canonicalResponse: CanonicalResponse | null = null;
     let usedNodeId = route.primary.node;
     let usedModel = route.primary.model;
     let isFallback = false;
     let lastError: Error | null = null;
+    let totalRetries = 0;
 
-    // Try primary
-    try {
-      canonicalResponse = await this.providerClient.forward(
-        canonical, route.primary.node, route.primary.model,
-        { tier, score, is_fallback: false },
-      );
-      this.circuitBreaker.recordSuccess(route.primary.node);
-    } catch (err) {
-      lastError = err as Error;
-      this.logger.warn(`Primary node ${route.primary.node} failed: ${lastError.message}`);
-      this.circuitBreaker.recordFailure(route.primary.node);
-      canonicalResponse = null as unknown as CanonicalResponse;
+    // Try primary with retries
+    const primaryResult = await this.tryNodeWithRetry(
+      canonical, route.primary.node, route.primary.model,
+      { tier, score, is_fallback: false }, retryConfig,
+    );
+    totalRetries += primaryResult.retries;
+
+    if (primaryResult.response) {
+      canonicalResponse = primaryResult.response;
+    } else {
+      lastError = primaryResult.lastError;
     }
 
-    // Try fallbacks
+    // Try fallbacks with retries
     if (!canonicalResponse && route.fallbacks.length > 0) {
       for (const fb of route.fallbacks) {
-        try {
-          this.logger.log(`Trying fallback: ${fb.node} (${fb.model})`);
-          canonicalResponse = await this.providerClient.forward(
-            canonical, fb.node, fb.model,
-            { tier, score, is_fallback: true },
-          );
-          this.circuitBreaker.recordSuccess(fb.node);
+        this.logger.log(`Trying fallback: ${fb.node} (${fb.model})`);
+        const fbResult = await this.tryNodeWithRetry(
+          canonical, fb.node, fb.model,
+          { tier, score, is_fallback: true }, retryConfig,
+        );
+        totalRetries += fbResult.retries;
+
+        if (fbResult.response) {
+          canonicalResponse = fbResult.response;
           usedNodeId = fb.node;
           usedModel = fb.model;
           isFallback = true;
           break;
-        } catch (err) {
-          lastError = err as Error;
-          this.logger.warn(`Fallback node ${fb.node} failed: ${lastError.message}`);
-          this.circuitBreaker.recordFailure(fb.node);
         }
+        lastError = fbResult.lastError;
       }
     }
 
@@ -127,7 +127,8 @@ export class PipelineService {
       const errorMsg = lastError?.message || 'All nodes failed';
       await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
         statusCode: lastError instanceof ProviderError ? lastError.statusCode : 502,
-        isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg });
+        isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
+        retryCount: totalRetries });
       return { body: this.formatError(canonical.metadata.source_format, 502, errorMsg), statusCode: 502 };
     }
 
@@ -144,9 +145,90 @@ export class PipelineService {
 
     await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
       statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
-      usage: canonicalResponse.usage, error: null });
+      usage: canonicalResponse.usage, error: null, retryCount: totalRetries });
 
     return { body: responseBody, statusCode: 200 };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Retry Helper — try a single node with retries + backoff
+  // ══════════════════════════════════════════════════════
+
+  private async tryNodeWithRetry(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    retryConfig: RetryConfig,
+  ): Promise<{ response: CanonicalResponse | null; lastError: Error | null; retries: number }> {
+    const maxAttempts = 1 + retryConfig.max_retries; // 1 initial + N retries
+    let lastError: Error | null = null;
+    let retries = 0;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await this.providerClient.forward(
+          canonical, nodeId, model, routingMeta,
+        );
+        this.circuitBreaker.recordSuccess(nodeId);
+        return { response, lastError: null, retries };
+      } catch (err) {
+        lastError = err as Error;
+        const statusCode = err instanceof ProviderError ? err.statusCode : 0;
+        const isRetryable = retryConfig.retryable_status.includes(statusCode);
+        const isLastAttempt = attempt >= maxAttempts - 1;
+
+        if (!isRetryable || isLastAttempt) {
+          // Not retryable or exhausted retries — record failure and give up
+          this.logger.warn(
+            `Node ${nodeId} failed (attempt ${attempt + 1}/${maxAttempts}): ${lastError.message}` +
+            (isLastAttempt && attempt > 0 ? ' — retries exhausted' : ''),
+          );
+          this.circuitBreaker.recordFailure(nodeId);
+          return { response: null, lastError, retries };
+        }
+
+        // Retryable — backoff and retry
+        retries++;
+        const delay = this.calculateBackoff(attempt, retryConfig, statusCode === 429 ? lastError : undefined);
+        this.logger.warn(
+          `Node ${nodeId} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
+          `retrying in ${delay}ms...`,
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    return { response: null, lastError, retries };
+  }
+
+  /**
+   * Calculate exponential backoff delay.
+   * For 429: respects Retry-After header if present in the error message.
+   * Otherwise: base * 2^attempt, capped at max, with ±25% jitter.
+   */
+  private calculateBackoff(attempt: number, retryConfig: RetryConfig, retryAfterError?: Error): number {
+    // Try to extract Retry-After from error message for 429s
+    if (retryAfterError) {
+      const match = retryAfterError.message.match(/retry-after:\s*(\d+)/i);
+      if (match) {
+        const retryAfterSec = parseInt(match[1], 10);
+        if (retryAfterSec > 0 && retryAfterSec <= 60) {
+          return retryAfterSec * 1000;
+        }
+      }
+    }
+
+    // Exponential backoff: base * 2^attempt
+    const exponential = retryConfig.backoff_base_ms * Math.pow(2, attempt);
+    const capped = Math.min(exponential, retryConfig.backoff_max_ms);
+    // ±25% jitter to avoid thundering herd
+    const jitter = capped * (0.75 + Math.random() * 0.5);
+    return Math.round(jitter);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // ══════════════════════════════════════════════════════
@@ -165,7 +247,6 @@ export class PipelineService {
     } catch (err) {
       if (err instanceof BudgetExceededError) {
         this.logger.warn(`Budget exceeded (stream): ${err.message}`);
-        // Send 429 as JSON before switching to SSE
         res.status(429).json(
           this.formatError(canonical.metadata.source_format, 429, err.message),
         );
@@ -175,6 +256,7 @@ export class PipelineService {
     }
 
     const { route, tier, score } = this.resolveSmartRoute(canonical);
+    const retryConfig = this.config.retry;
 
     const startTime = Date.now();
 
@@ -188,88 +270,111 @@ export class PipelineService {
     // Create serializer for client's source format
     const serializer = this.createSerializer(canonical.metadata.source_format);
 
-    // Try primary + fallbacks (connection-phase fallback only)
+    // Try primary + fallbacks (connection-phase fallback + retry)
     const targets = [route.primary, ...route.fallbacks];
     let streamConnected = false;
     let usedNodeId = route.primary.node;
     let usedModel = route.primary.model;
     let isFallback = false;
     let lastError: Error | null = null;
+    let totalRetries = 0;
 
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
       const isFirstTarget = i === 0;
 
-      try {
-        const stream = this.providerClient.forwardStream(
-          canonical, target.node, target.model,
-        );
+      // Connection-phase retry loop for this target
+      const maxAttempts = 1 + retryConfig.max_retries;
+      let connected = false;
 
-        // Stream events to client
-        const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const stream = this.providerClient.forwardStream(
+            canonical, target.node, target.model,
+          );
 
-        for await (const event of stream) {
-          streamConnected = true;
-          usedNodeId = target.node;
-          usedModel = target.model;
-          isFallback = !isFirstTarget;
+          // Stream events to client
+          const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
 
-          // Collect usage from stop event
-          if (event.type === 'stop') {
-            usage.input_tokens = event.usage.input_tokens;
-            usage.output_tokens = event.usage.output_tokens;
+          for await (const event of stream) {
+            streamConnected = true;
+            connected = true;
+            usedNodeId = target.node;
+            usedModel = target.model;
+            isFallback = !isFirstTarget;
+
+            if (event.type === 'stop') {
+              usage.input_tokens = event.usage.input_tokens;
+              usage.output_tokens = event.usage.output_tokens;
+            }
+
+            const sseText = serializer.serialize(event);
+            if (sseText) {
+              res.write(sseText);
+            }
           }
 
-          // Serialize and send
-          const sseText = serializer.serialize(event);
-          if (sseText) {
-            res.write(sseText);
-          }
-        }
+          // Stream completed successfully
+          const latencyMs = Date.now() - startTime;
+          this.circuitBreaker.recordSuccess(target.node);
 
-        // Stream completed successfully — log and return
-        const latencyMs = Date.now() - startTime;
-        this.circuitBreaker.recordSuccess(target.node);
+          const pricing = this.config.getModelPricing(usedModel);
+          const costUsd = pricing
+            ? (usage.input_tokens / 1_000_000) * pricing.input +
+              (usage.output_tokens / 1_000_000) * pricing.output
+            : 0;
+          const totalTokens = usage.input_tokens + usage.output_tokens;
+          await this.budgetService.record(totalTokens, costUsd);
 
-        // ── Budget Record ──
-        const pricing = this.config.getModelPricing(usedModel);
-        const costUsd = pricing
-          ? (usage.input_tokens / 1_000_000) * pricing.input +
-            (usage.output_tokens / 1_000_000) * pricing.output
-          : 0;
-        const totalTokens = usage.input_tokens + usage.output_tokens;
-        await this.budgetService.record(totalTokens, costUsd);
+          await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+            statusCode: 200, isFallback, latencyMs, usage, error: null, retryCount: totalRetries });
 
-        await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-          statusCode: 200, isFallback, latencyMs, usage, error: null });
-
-        res.end();
-        return;
-      } catch (err) {
-        lastError = err as Error;
-
-        if (streamConnected) {
-          // Transmission phase — don't fallback, send error event
-          this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
-          this.circuitBreaker.recordFailure(target.node);
-          const errorEvent: CanonicalStreamEvent = {
-            type: 'error',
-            error: { message: lastError.message, code: 'stream_error' },
-          };
-          res.write(serializer.serialize(errorEvent));
           res.end();
-
-          await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
-            statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
-            usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message });
           return;
-        }
+        } catch (err) {
+          lastError = err as Error;
 
-        // Connection phase — try next fallback
-        this.logger.warn(
-          `${isFirstTarget ? 'Primary' : 'Fallback'} node ${target.node} stream failed: ${lastError.message}`,
-        );
-        this.circuitBreaker.recordFailure(target.node);
+          if (connected || streamConnected) {
+            // Transmission phase — don't retry, send error event
+            this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
+            this.circuitBreaker.recordFailure(target.node);
+            const errorEvent: CanonicalStreamEvent = {
+              type: 'error',
+              error: { message: lastError.message, code: 'stream_error' },
+            };
+            res.write(serializer.serialize(errorEvent));
+            res.end();
+
+            await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
+              statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
+              usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message, retryCount: totalRetries });
+            return;
+          }
+
+          // Connection phase failure — check if retryable
+          const statusCode = lastError instanceof ProviderError ? lastError.statusCode : 0;
+          const isRetryable = retryConfig.retryable_status.includes(statusCode);
+          const isLastAttempt = attempt >= maxAttempts - 1;
+
+          if (isRetryable && !isLastAttempt) {
+            totalRetries++;
+            const delay = this.calculateBackoff(attempt, retryConfig, statusCode === 429 ? lastError : undefined);
+            this.logger.warn(
+              `Stream ${target.node} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
+              `retrying in ${delay}ms...`,
+            );
+            await this.sleep(delay);
+            continue;
+          }
+
+          // Not retryable or exhausted — move to next fallback
+          this.logger.warn(
+            `${isFirstTarget ? 'Primary' : 'Fallback'} node ${target.node} stream failed: ${lastError.message}` +
+            (attempt > 0 ? ` (after ${attempt + 1} attempts)` : ''),
+          );
+          this.circuitBreaker.recordFailure(target.node);
+          break; // break retry loop, continue to next target
+        }
       }
     }
 
@@ -284,7 +389,7 @@ export class PipelineService {
 
     await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
       statusCode: 502, isFallback: false, latencyMs: Date.now() - startTime,
-      usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg });
+      usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg, retryCount: totalRetries });
   }
 
   // ══════════════════════════════════════════════════════
@@ -482,6 +587,7 @@ export class PipelineService {
     requestId: string; canonical: CanonicalRequest; tier: Tier; score: number;
     nodeId: string; model: string; statusCode: number; isFallback: boolean;
     latencyMs: number; usage: TokenUsage; error: string | null;
+    retryCount?: number;
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model);
@@ -500,6 +606,8 @@ export class PipelineService {
         status_code: params.statusCode, is_fallback: params.isFallback,
         session_key: params.canonical.metadata.session_key || null,
         error: params.error,
+        api_key_name: params.canonical.metadata.api_key_name || null,
+        retry_count: params.retryCount || 0,
       });
       const saved = await this.callLogRepo.save(log);
 

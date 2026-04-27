@@ -1,3 +1,5 @@
+import { getAuthToken, clearAuthToken } from '@/contexts/AuthContext'
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -8,7 +10,21 @@ export class ApiError extends Error {
   }
 }
 
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken()
+  if (token) {
+    return { Authorization: `Bearer ${token}` }
+  }
+  return {}
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    // Token expired or invalid — clear and redirect to login
+    clearAuthToken()
+    window.location.href = '/login'
+    throw new ApiError(401, 'Unauthorized')
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => 'Unknown error')
     throw new ApiError(res.status, text)
@@ -25,14 +41,16 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
       }
     }
   }
-  const res = await fetch(url.toString())
+  const res = await fetch(url.toString(), {
+    headers: { ...authHeaders() },
+  })
   return handleResponse<T>(res)
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
@@ -41,7 +59,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
@@ -50,6 +68,7 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, {
     method: 'DELETE',
+    headers: { ...authHeaders() },
   })
   return handleResponse<T>(res)
 }

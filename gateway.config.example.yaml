@@ -28,6 +28,14 @@ auth:
     # - key: "${TEAM_API_KEY}"
     #   name: "team-backend"
 
+# Dashboard authentication (optional)
+# If set, the dashboard UI requires a password to access.
+# On first startup the plain-text password is auto-hashed with bcrypt
+# and the hash is written back to this file.
+# If omitted, the dashboard is open to everyone (backwards-compatible).
+# dashboard:
+#   password: "my-secret-password"
+
 # ============================================================
 # Nodes — AI provider endpoints
 # ============================================================
@@ -136,6 +144,15 @@ routing:
     standard_max: 0.08     # Score ≤ 0.08  → standard
     complex_max: 0.35      # Score ≤ 0.35  → complex
                            # Score > 0.35  → reasoning
+
+  # Retry configuration (optional)
+  # Controls per-node retry behavior before falling back to the next node.
+  # If omitted, no retries are performed (only fallback).
+  # retry:
+  #   max_retries: 2                     # Max retries per node (default: 0)
+  #   backoff_base_ms: 500               # Initial backoff delay (default: 500)
+  #   backoff_max_ms: 5000               # Max backoff delay (default: 5000)
+  #   retryable_status: [429, 502, 503]  # HTTP codes to retry (default: [429, 502, 503])
 
   # Domain-based node preference (optional)
   # When the scoring engine detects a domain hint in the request,

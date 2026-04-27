@@ -20,6 +20,7 @@
 import {
   Controller, Get, Post, Put, Delete, Param, Query, Body, Sse, Logger,
   MessageEvent, ParseIntPipe, DefaultValuePipe, HttpException, HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -31,8 +32,10 @@ import { BudgetService } from '../budget/budget.service';
 import { CallLog } from '../database/entities/call-log.entity';
 import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
+import { DashboardGuard } from '../auth/dashboard.guard';
 
 @Controller('api/dashboard')
+@UseGuards(DashboardGuard)
 export class DashboardController {
   private readonly logger = new Logger(DashboardController.name);
 
@@ -277,6 +280,24 @@ export class DashboardController {
   @Post('routing/recommend')
   recommendRouting() {
     return { recommendations: this.capabilityService.recommendRouting() };
+  }
+
+  /** Update routing configuration (tiers, scoring, domain preferences) */
+  @Put('routing')
+  updateRouting(@Body() body: {
+    tiers?: Record<string, { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] }>;
+    scoring?: { simple_max: number; standard_max: number; complex_max: number };
+    domain_preferences?: Record<string, string[]>;
+  }) {
+    try {
+      this.config.updateRouting(body);
+      return { success: true, message: 'Routing configuration updated' };
+    } catch (err) {
+      throw new HttpException(
+        { success: false, message: (err as Error).message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   // ══════════════════════════════════════════════════════

@@ -1,11 +1,20 @@
 import type { SSEEvent } from '@/types/api'
+import { getAuthToken } from '@/contexts/AuthContext'
 
 export function createSSEConnection(
   url: string,
   onEvent: (event: SSEEvent) => void,
   onError?: (error: Event) => void,
 ): () => void {
-  const eventSource = new EventSource(url)
+  // Append JWT token as query param (EventSource doesn't support custom headers)
+  let sseUrl = url
+  const token = getAuthToken()
+  if (token) {
+    const separator = url.includes('?') ? '&' : '?'
+    sseUrl = `${url}${separator}token=${encodeURIComponent(token)}`
+  }
+
+  const eventSource = new EventSource(sseUrl)
 
   eventSource.onmessage = (e) => {
     try {

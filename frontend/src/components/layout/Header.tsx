@@ -1,10 +1,12 @@
-import { Search, Bell } from 'lucide-react'
+import { Search, Bell, LogOut } from 'lucide-react'
 import { useHealth } from '@/hooks/use-health'
+import { useAuth } from '@/contexts/AuthContext'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 export function Header() {
   const { data: health } = useHealth()
+  const { authRequired, logout } = useAuth()
 
   return (
     <header
@@ -60,16 +62,27 @@ export function Header() {
           </span>
         </div>
 
-        {/* User avatar */}
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-xl text-[11px] font-bold text-white"
-          style={{
-            background: 'linear-gradient(135deg, #D4A947 0%, #B8860B 100%)',
-            boxShadow: '0 0 16px rgba(212, 169, 71, 0.2)',
-          }}
-        >
-          A
-        </div>
+        {/* Logout / User avatar */}
+        {authRequired ? (
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--foreground-dim)] transition-all duration-200 hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)] cursor-pointer"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </button>
+        ) : (
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-[11px] font-bold text-white"
+            style={{
+              background: 'linear-gradient(135deg, #D4A947 0%, #B8860B 100%)',
+              boxShadow: '0 0 16px rgba(212, 169, 71, 0.2)',
+            }}
+          >
+            A
+          </div>
+        )}
       </div>
     </header>
   )
