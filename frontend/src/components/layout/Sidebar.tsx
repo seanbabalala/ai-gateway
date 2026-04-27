@@ -13,7 +13,7 @@ import { StatusDot } from '@/components/shared/StatusDot'
 
 const navGroups = [
   {
-    label: 'MONITORING',
+    label: 'MONITOR',
     items: [
       { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/logs', icon: ScrollText, label: 'Logs' },
@@ -35,27 +35,51 @@ export function Sidebar() {
 
   return (
     <aside
-      className="relative z-10 flex h-screen w-[220px] shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]"
+      className="relative z-10 flex h-screen w-[240px] shrink-0 flex-col overflow-hidden"
+      style={{ background: 'var(--sidebar-mesh)' }}
     >
+      {/* Ambient orbs */}
+      <div
+        className="sidebar-orb absolute -top-20 -left-20 h-40 w-40 opacity-20"
+        style={{ background: 'var(--accent)' }}
+      />
+      <div
+        className="sidebar-orb absolute bottom-20 -right-16 h-32 w-32 opacity-10"
+        style={{ background: 'var(--accent)' }}
+      />
+
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent)]">
-          <Zap className="h-4 w-4 text-white" />
+      <div className="relative z-10 flex items-center gap-3 px-6 py-6">
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-xl"
+          style={{
+            background: 'linear-gradient(135deg, #D4A947 0%, #B8860B 100%)',
+            boxShadow: '0 0 24px rgba(212, 169, 71, 0.3)',
+          }}
+        >
+          <Zap className="h-4.5 w-4.5 text-white" />
         </div>
         <div>
-          <div className="text-sm font-semibold text-white">AI Gateway</div>
-          <div className="text-[10px] text-slate-400">Dashboard</div>
+          <div className="text-[15px] font-semibold tracking-tight text-white/95">
+            AI Gateway
+          </div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.15em] text-[var(--accent)]">
+            Command Center
+          </div>
         </div>
       </div>
 
+      {/* Divider */}
+      <div className="mx-5 h-px bg-gradient-to-r from-transparent via-[var(--sidebar-border)] to-transparent" />
+
       {/* Navigation */}
-      <nav className="flex-1 space-y-6 px-3 py-4">
+      <nav className="relative z-10 flex-1 space-y-6 px-4 py-5">
         {navGroups.map((group) => (
           <div key={group.label}>
-            <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--sidebar-group-label)]">
+            <div className="mb-2.5 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--sidebar-group-label)]">
               {group.label}
             </div>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {group.items.map((item) => {
                 const isActive =
                   item.to === '/'
@@ -66,13 +90,20 @@ export function Sidebar() {
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors duration-150',
+                      'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200',
                       isActive
                         ? 'sidebar-active bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]'
-                        : 'text-slate-400 hover:bg-[var(--sidebar-hover-bg)] hover:text-slate-200'
+                        : 'text-stone-500 hover:bg-[var(--sidebar-hover-bg)] hover:text-stone-300'
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <item.icon
+                      className={cn(
+                        'h-[18px] w-[18px] transition-colors',
+                        isActive
+                          ? 'text-[var(--accent)]'
+                          : 'text-stone-600 group-hover:text-stone-400'
+                      )}
+                    />
                     {item.label}
                   </NavLink>
                 )
@@ -82,9 +113,12 @@ export function Sidebar() {
         ))}
       </nav>
 
+      {/* Divider */}
+      <div className="mx-5 h-px bg-gradient-to-r from-transparent via-[var(--sidebar-border)] to-transparent" />
+
       {/* Health status footer */}
-      <div className="border-t border-[var(--sidebar-border)] px-4 py-3">
-        <div className="flex items-center gap-2">
+      <div className="relative z-10 px-5 py-4">
+        <div className="flex items-center gap-2.5">
           <StatusDot
             status={
               health?.status === 'healthy'
@@ -95,16 +129,16 @@ export function Sidebar() {
             }
           />
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-medium text-slate-300">
+            <div className="text-[11px] font-medium text-stone-400">
               {health?.status === 'healthy'
-                ? 'All Systems OK'
+                ? 'All Systems Online'
                 : health?.status === 'degraded'
                   ? 'Degraded'
                   : 'Connecting...'}
             </div>
             {health?.uptime_human && (
-              <div className="text-[10px] text-slate-500">
-                Uptime: {health.uptime_human}
+              <div className="font-mono text-[9px] text-stone-600">
+                {health.uptime_human}
               </div>
             )}
           </div>

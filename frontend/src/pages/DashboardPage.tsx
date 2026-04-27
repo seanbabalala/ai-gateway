@@ -35,8 +35,8 @@ export function DashboardPage() {
 
   if (isLoading || !stats) {
     return (
-      <div className="flex h-64 items-center justify-center text-[var(--foreground-dim)]">
-        Loading dashboard...
+      <div className="flex h-64 items-center justify-center">
+        <div className="animate-shimmer h-6 w-48 rounded-lg" />
       </div>
     )
   }
@@ -51,7 +51,7 @@ export function DashboardPage() {
       />
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-4 gap-5">
+      <div className="stagger-children grid grid-cols-4 gap-5">
         <MetricCard
           label="Total Calls"
           value={formatNumber(total.calls)}
@@ -81,7 +81,7 @@ export function DashboardPage() {
       {/* Charts */}
       <div className="grid grid-cols-2 gap-5">
         {/* Tier Distribution Pie Chart */}
-        <Card>
+        <Card className="animate-fade-up" style={{ animationDelay: '200ms' }}>
           <CardHeader>
             <CardTitle>Tier Distribution</CardTitle>
           </CardHeader>
@@ -98,16 +98,17 @@ export function DashboardPage() {
                       data={tierDistribution}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
+                      innerRadius={55}
+                      outerRadius={85}
                       dataKey="count"
                       nameKey="tier"
                       stroke="none"
+                      paddingAngle={2}
                     >
                       {tierDistribution.map((entry) => (
                         <Cell
                           key={entry.tier}
-                          fill={TIER_CHART_COLORS[entry.tier] ?? '#71717a'}
+                          fill={TIER_CHART_COLORS[entry.tier] ?? '#78716C'}
                         />
                       ))}
                     </Pie>
@@ -115,26 +116,29 @@ export function DashboardPage() {
                       contentStyle={{
                         background: colors.chartTooltipBg,
                         border: `1px solid ${colors.chartTooltipBorder}`,
-                        borderRadius: '8px',
+                        borderRadius: '12px',
                         fontSize: '12px',
+                        padding: '8px 12px',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
                       }}
                       itemStyle={{ color: colors.chartTooltipText }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {tierDistribution.map((entry) => (
-                    <div key={entry.tier} className="flex items-center gap-2">
+                    <div key={entry.tier} className="flex items-center gap-2.5">
                       <div
                         className="h-2.5 w-2.5 rounded-full"
                         style={{
-                          background: TIER_CHART_COLORS[entry.tier] ?? '#71717a',
+                          background: TIER_CHART_COLORS[entry.tier] ?? '#78716C',
+                          boxShadow: `0 0 8px ${TIER_CHART_COLORS[entry.tier] ?? '#78716C'}40`,
                         }}
                       />
                       <span className="text-xs text-[var(--foreground-muted)] capitalize">
                         {entry.tier}
                       </span>
-                      <span className="text-xs font-medium text-[var(--foreground)]">
+                      <span className="font-mono text-xs font-semibold text-[var(--foreground)]">
                         {entry.count}
                       </span>
                     </div>
@@ -146,7 +150,7 @@ export function DashboardPage() {
         </Card>
 
         {/* Node Distribution Bar Chart */}
-        <Card>
+        <Card className="animate-fade-up" style={{ animationDelay: '260ms' }}>
           <CardHeader>
             <CardTitle>Node Distribution</CardTitle>
           </CardHeader>
@@ -160,12 +164,12 @@ export function DashboardPage() {
                 <BarChart data={nodeDistribution}>
                   <XAxis
                     dataKey="nodeId"
-                    tick={{ fill: colors.chartAxisTick, fontSize: 12 }}
+                    tick={{ fill: colors.chartAxisTick, fontSize: 11, fontFamily: 'Space Mono' }}
                     axisLine={{ stroke: colors.chartAxisLine }}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fill: colors.chartAxisTick, fontSize: 11 }}
+                    tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
                     axisLine={false}
                     tickLine={false}
                     width={40}
@@ -174,8 +178,10 @@ export function DashboardPage() {
                     contentStyle={{
                       background: colors.chartTooltipBg,
                       border: `1px solid ${colors.chartTooltipBorder}`,
-                      borderRadius: '8px',
+                      borderRadius: '12px',
                       fontSize: '12px',
+                      padding: '8px 12px',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
                     }}
                     itemStyle={{ color: colors.chartTooltipText }}
                     formatter={(value: number, name: string) => {
@@ -185,7 +191,7 @@ export function DashboardPage() {
                       return [value, name]
                     }}
                   />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                     {nodeDistribution.map((entry) => (
                       <Cell
                         key={entry.nodeId}
@@ -201,9 +207,16 @@ export function DashboardPage() {
       </div>
 
       {/* Recent Calls (SSE) */}
-      <Card>
+      <Card className="animate-fade-up" style={{ animationDelay: '320ms' }}>
         <CardHeader>
-          <CardTitle>Recent Calls (Live)</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Recent Calls</CardTitle>
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-40" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]" />
+            </span>
+            <span className="text-[10px] font-medium text-[var(--accent)]">LIVE</span>
+          </div>
         </CardHeader>
         <CardContent>
           {recentLogs.length === 0 ? (
@@ -211,22 +224,22 @@ export function DashboardPage() {
               Waiting for incoming requests...
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <AnimatePresence mode="popLayout">
                 {recentLogs.map((log) => (
                   <motion.div
                     key={log.id}
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex items-center gap-3 rounded-lg bg-[var(--inset-bg)] px-3 py-2 text-xs"
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                    transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                    className="flex items-center gap-3 rounded-xl bg-[var(--inset-bg)] px-4 py-2.5 text-xs"
                   >
                     <span className="font-mono text-[var(--foreground-dim)]">
                       {formatTimestamp(log.timestamp)}
                     </span>
                     <TierBadge tier={log.tier} />
-                    <span className="text-[var(--foreground-muted)]">{log.node_id}</span>
+                    <span className="font-medium text-[var(--foreground-muted)]">{log.node_id}</span>
                     <span className="font-mono text-[var(--foreground-dim)]">{log.model}</span>
                     <span className="ml-auto font-mono text-[var(--foreground-dim)]">
                       {formatTokens(log.input_tokens + log.output_tokens)} tok
@@ -237,8 +250,8 @@ export function DashboardPage() {
                     <span
                       className={
                         log.status_code === 200
-                          ? 'font-mono text-emerald-600 dark:text-emerald-400'
-                          : 'font-mono text-red-600 dark:text-red-400'
+                          ? 'font-mono font-semibold text-emerald-600 dark:text-emerald-400'
+                          : 'font-mono font-semibold text-red-600 dark:text-red-400'
                       }
                     >
                       {log.status_code}

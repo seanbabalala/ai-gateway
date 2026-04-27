@@ -16,7 +16,7 @@ import { useResetBudget } from '@/hooks/use-mutations'
 import { useThemeColors } from '@/lib/theme'
 import { formatNumber, formatCost, formatPercent, cn } from '@/lib/utils'
 
-// SVG Ring Gauge Component
+// SVG Ring Gauge Component — cinematic styling
 function RingGauge({
   label,
   value,
@@ -44,14 +44,21 @@ function RingGauge({
   // Dynamic color based on percentage
   const gaugeColor =
     percentage >= 90
-      ? '#ef4444'
+      ? '#E55B50'
       : percentage >= 80
-        ? '#f59e0b'
+        ? '#F0B429'
         : color
 
   return (
     <div className="flex flex-col items-center">
       <svg width="180" height="180" viewBox="0 0 180 180">
+        {/* Subtle glow behind the arc */}
+        <defs>
+          <filter id={`glow-${label}`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
         {/* Background circle */}
         <circle
           cx="90"
@@ -59,7 +66,8 @@ function RingGauge({
           r={radius}
           fill="none"
           stroke={gaugeBg}
-          strokeWidth="12"
+          strokeWidth="10"
+          opacity="0.6"
         />
         {/* Progress arc */}
         <circle
@@ -68,38 +76,39 @@ function RingGauge({
           r={radius}
           fill="none"
           stroke={gaugeColor}
-          strokeWidth="12"
+          strokeWidth="10"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
           transform="rotate(-90 90 90)"
-          className="transition-all duration-500"
+          className="transition-all duration-700 ease-out"
+          filter={`url(#glow-${label})`}
         />
         {/* Center text */}
         <text
           x="90"
           y="82"
           textAnchor="middle"
-          className="text-2xl font-bold"
           fill={gaugeText}
-          fontSize="24"
-          fontFamily="Inter, sans-serif"
+          fontSize="26"
+          fontFamily="Outfit, sans-serif"
           fontWeight="700"
+          letterSpacing="-0.02em"
         >
           {formatPercent(percentage)}
         </text>
         <text
           x="90"
-          y="102"
+          y="104"
           textAnchor="middle"
           fill={gaugeSubtext}
-          fontSize="11"
-          fontFamily="Inter, sans-serif"
+          fontSize="10"
+          fontFamily="Space Mono, monospace"
         >
           {format(value)} / {format(max)}
         </text>
       </svg>
-      <div className="mt-2 text-xs font-medium text-[var(--foreground-muted)]">{label}</div>
+      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">{label}</div>
     </div>
   )
 }
@@ -107,8 +116,15 @@ function RingGauge({
 function progressColor(pct: number): string {
   if (pct >= 90) return 'bg-red-500'
   if (pct >= 80) return 'bg-amber-500'
-  if (pct >= 50) return 'bg-blue-500'
+  if (pct >= 50) return 'bg-sky-500'
   return 'bg-emerald-500'
+}
+
+function progressGlow(pct: number): string {
+  if (pct >= 90) return 'shadow-[0_0_12px_rgba(229,91,80,0.4)]'
+  if (pct >= 80) return 'shadow-[0_0_12px_rgba(240,180,41,0.3)]'
+  if (pct >= 50) return 'shadow-[0_0_12px_rgba(2,132,199,0.3)]'
+  return 'shadow-[0_0_12px_rgba(45,134,89,0.3)]'
 }
 
 export function BudgetPage() {
@@ -119,8 +135,8 @@ export function BudgetPage() {
 
   if (budgetLoading || configLoading || !budgetData) {
     return (
-      <div className="flex h-64 items-center justify-center text-[var(--foreground-dim)]">
-        Loading budget...
+      <div className="flex h-64 items-center justify-center">
+        <div className="animate-shimmer h-6 w-48 rounded-lg" />
       </div>
     )
   }
@@ -129,22 +145,22 @@ export function BudgetPage() {
   const costRule = budgetData.rules.find((r) => r.type === 'daily_cost')
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Budget"
         description="Track token usage, costs, and budget limits"
       />
 
       {/* Ring Gauges */}
-      <div className="grid grid-cols-2 gap-5">
-        <Card className="flex items-center justify-center py-8">
+      <div className="stagger-children grid grid-cols-2 gap-5">
+        <Card className="animate-fade-up flex items-center justify-center py-10">
           {tokenRule ? (
             <RingGauge
               label="Daily Tokens"
               value={tokenRule.current}
               max={tokenRule.limit}
               format={formatNumber}
-              color="#3B82F6"
+              color="#D4A947"
               gaugeBg={colors.gaugeBg}
               gaugeText={colors.gaugeText}
               gaugeSubtext={colors.gaugeSubtext}
@@ -153,14 +169,14 @@ export function BudgetPage() {
             <div className="text-sm text-[var(--foreground-dim)]">No token budget rule</div>
           )}
         </Card>
-        <Card className="flex items-center justify-center py-8">
+        <Card className="animate-fade-up flex items-center justify-center py-10">
           {costRule ? (
             <RingGauge
               label="Daily Cost"
               value={costRule.current}
               max={costRule.limit}
               format={formatCost}
-              color="#6366F1"
+              color="#7C3AED"
               gaugeBg={colors.gaugeBg}
               gaugeText={colors.gaugeText}
               gaugeSubtext={colors.gaugeSubtext}
@@ -173,7 +189,7 @@ export function BudgetPage() {
 
       {/* Model Pricing Table */}
       {config?.models_pricing && (
-        <CardStatic>
+        <CardStatic className="animate-fade-up" style={{ animationDelay: '160ms' }}>
           <CardHeader>
             <CardTitle>Model Pricing (per 1M tokens)</CardTitle>
           </CardHeader>
@@ -190,13 +206,13 @@ export function BudgetPage() {
                 {Object.entries(config.models_pricing).map(
                   ([model, pricing]) => (
                     <TableRow key={model}>
-                      <TableCell className="font-mono text-xs text-[var(--foreground)]">
+                      <TableCell className="font-mono text-[11px] font-medium text-[var(--foreground)]">
                         {model}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
                         ${pricing.input.toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
                         ${pricing.output.toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -209,7 +225,7 @@ export function BudgetPage() {
       )}
 
       {/* Budget Rules */}
-      <CardStatic>
+      <CardStatic className="animate-fade-up" style={{ animationDelay: '240ms' }}>
         <CardHeader>
           <CardTitle>Budget Rules</CardTitle>
         </CardHeader>
@@ -218,20 +234,20 @@ export function BudgetPage() {
             {budgetData.rules.map((rule) => (
               <div
                 key={rule.type}
-                className="rounded-lg bg-[var(--inset-bg)] p-4"
+                className="rounded-xl bg-[var(--inset-bg)] p-4"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <span className="text-sm font-medium text-[var(--foreground)] capitalize">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-[var(--foreground)] capitalize">
                       {rule.type.replace(/_/g, ' ')}
                     </span>
                     {rule.exceeded && (
-                      <span className="ml-2 text-[10px] font-semibold text-red-600 dark:text-red-400 uppercase">
+                      <span className="rounded-lg bg-red-500/10 px-2 py-0.5 text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">
                         Exceeded
                       </span>
                     )}
                     {rule.alert && !rule.exceeded && (
-                      <span className="ml-2 text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase">
+                      <span className="rounded-lg bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
                         Warning
                       </span>
                     )}
@@ -247,7 +263,7 @@ export function BudgetPage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-[var(--foreground-dim)] mb-1.5">
+                <div className="flex items-center justify-between font-mono text-[10px] text-[var(--foreground-dim)] mb-2">
                   <span>
                     {rule.type.includes('cost')
                       ? formatCost(rule.current)
@@ -264,14 +280,15 @@ export function BudgetPage() {
                 <div className="h-2 rounded-full bg-[var(--progress-track)] overflow-hidden">
                   <div
                     className={cn(
-                      'h-full rounded-full transition-all duration-500',
-                      progressColor(rule.percentage)
+                      'h-full rounded-full transition-all duration-700 ease-out',
+                      progressColor(rule.percentage),
+                      progressGlow(rule.percentage)
                     )}
                     style={{ width: `${Math.min(rule.percentage, 100)}%` }}
                   />
                 </div>
 
-                <div className="mt-1 text-right text-[11px] text-[var(--foreground-dim)]">
+                <div className="mt-1.5 text-right font-mono text-[10px] text-[var(--foreground-dim)]">
                   {formatPercent(rule.percentage)} used
                 </div>
               </div>

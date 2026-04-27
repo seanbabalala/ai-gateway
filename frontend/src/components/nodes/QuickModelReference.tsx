@@ -22,18 +22,18 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
   }, [])
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--background-secondary)]">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--glass-bg)] backdrop-blur-sm">
       {/* Toggle Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-[var(--inset-bg)] rounded-2xl"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Sparkles className="h-4 w-4 text-[var(--accent)]" />
-          <span className="text-sm font-medium text-[var(--foreground)]">
+          <span className="text-[13px] font-semibold text-[var(--foreground)]">
             Quick Model Reference
           </span>
-          <span className="text-xs text-[var(--foreground-dim)]">
+          <span className="text-[11px] text-[var(--foreground-dim)]">
             &mdash; Click any model ID to copy
           </span>
         </div>
@@ -46,7 +46,7 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
 
       {/* Content */}
       {expanded && (
-        <div className="border-t border-[var(--border)] px-4 pb-4 pt-3">
+        <div className="border-t border-[var(--border)] px-5 pb-4 pt-3">
           {/* Auto (Smart Routing) */}
           <div className="mb-3">
             <CopyableId
@@ -65,9 +65,9 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
                 {/* Node header */}
                 <div className="mb-1.5 flex items-center gap-2">
                   <div
-                    className="flex h-5 w-5 items-center justify-center rounded"
+                    className="flex h-5 w-5 items-center justify-center rounded-md"
                     style={{
-                      backgroundColor: colorWithOpacity(getNodeColor(node.id), '20'),
+                      backgroundColor: colorWithOpacity(getNodeColor(node.id), '15'),
                     }}
                   >
                     <NodeIcon
@@ -77,7 +77,7 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
                       style={{ color: getNodeColor(node.id) }}
                     />
                   </div>
-                  <span className="text-xs font-medium text-[var(--foreground-muted)]">
+                  <span className="text-[11px] font-semibold text-[var(--foreground-muted)]">
                     {node.name}
                   </span>
                 </div>
@@ -136,12 +136,12 @@ function CopyableId({
   return (
     <button
       onClick={() => onCopy(text)}
-      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-mono transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-[10px] transition-all duration-200 ${
         accent
-          ? 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
+          ? 'bg-[var(--accent-muted)] text-[var(--accent)] hover:shadow-[0_0_12px_var(--accent-glow)]'
           : muted
-            ? 'bg-[var(--background-tertiary)] text-[var(--foreground-dim)] hover:text-[var(--foreground-muted)] hover:bg-[var(--border)]'
-            : 'bg-[var(--background-tertiary)] text-[var(--foreground-muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+            ? 'bg-[var(--inset-bg)] text-[var(--foreground-dim)] hover:text-[var(--foreground-muted)] hover:bg-[var(--background-tertiary)]'
+            : 'bg-[var(--inset-bg)] text-[var(--foreground-muted)] hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)]'
       }`}
       title={`Click to copy: ${text}`}
     >
@@ -152,10 +152,10 @@ function CopyableId({
       )}
       <span>{label || text}</span>
       {suffix && (
-        <span className="text-[var(--foreground-dim)] text-[10px]">{suffix}</span>
+        <span className="text-[var(--foreground-dim)] text-[9px]">{suffix}</span>
       )}
       {isCopied && (
-        <Badge variant="default" className="ml-1 text-[9px] px-1 py-0">
+        <Badge variant="gold" className="ml-1 text-[9px] px-1.5 py-0">
           Copied!
         </Badge>
       )}

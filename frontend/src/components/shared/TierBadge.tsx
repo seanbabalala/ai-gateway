@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge'
-import { TIER_COLORS } from '@/lib/utils'
 
 interface TierBadgeProps {
   tier: string
@@ -15,10 +14,9 @@ const tierVariantMap: Record<string, 'emerald' | 'blue' | 'purple' | 'pink' | 'z
 
 export function TierBadge({ tier }: TierBadgeProps) {
   const variant = tierVariantMap[tier] ?? 'zinc'
-  const colors = TIER_COLORS[tier]
 
   return (
-    <Badge variant={variant} className={colors ? undefined : undefined}>
+    <Badge variant={variant}>
       {tier}
     </Badge>
   )

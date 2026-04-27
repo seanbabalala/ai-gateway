@@ -39,7 +39,7 @@ const statusOptions = [
 function LogDetailRow({ log }: { log: CallLog }) {
   return (
     <TableRow>
-      <TableCell colSpan={8} className="bg-[var(--background-secondary)] px-6 py-3">
+      <TableCell colSpan={8} className="bg-[var(--inset-bg)] px-6 py-4">
         <div className="grid grid-cols-3 gap-4 text-xs">
           <div>
             <span className="text-[var(--foreground-dim)]">Request ID: </span>
@@ -100,7 +100,7 @@ export function LogsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Logs"
         description="Browse and filter call logs with real-time updates"
@@ -110,7 +110,8 @@ export function LogsPage() {
       {newCount > 0 && (
         <button
           onClick={handleRefresh}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--sse-bg)] border border-[var(--sse-border)] px-4 py-2 text-sm text-[var(--sse-text)] transition-colors hover:opacity-80 cursor-pointer"
+          className="flex w-full items-center justify-center gap-2.5 rounded-2xl border border-[var(--sse-border)] bg-[var(--sse-bg)] px-4 py-2.5 text-[13px] font-medium text-[var(--sse-text)] transition-all duration-300 hover:opacity-80 cursor-pointer"
+          style={{ boxShadow: '0 0 24px var(--accent-glow)' }}
         >
           <Radio className="h-3.5 w-3.5 animate-pulse" />
           {newCount} new log{newCount !== 1 ? 's' : ''} received — click to refresh
@@ -118,7 +119,7 @@ export function LogsPage() {
       )}
 
       {/* Filters */}
-      <CardStatic className="p-4">
+      <CardStatic className="animate-fade-up p-4">
         <div className="flex items-center gap-3">
           <Select
             options={tierOptions}
@@ -147,7 +148,7 @@ export function LogsPage() {
             }}
             className="w-36"
           />
-          <div className="ml-auto text-xs text-[var(--foreground-dim)]">
+          <div className="ml-auto font-mono text-[11px] text-[var(--foreground-dim)]">
             {logsData?.pagination
               ? `${logsData.pagination.total} total logs`
               : '...'}
@@ -156,10 +157,10 @@ export function LogsPage() {
       </CardStatic>
 
       {/* Table */}
-      <CardStatic>
+      <CardStatic className="animate-fade-up" style={{ animationDelay: '80ms' }}>
         {isLoading ? (
-          <div className="flex h-48 items-center justify-center text-sm text-[var(--foreground-dim)]">
-            Loading logs...
+          <div className="flex h-48 items-center justify-center">
+            <div className="animate-shimmer h-4 w-32 rounded-lg" />
           </div>
         ) : (
           <>
@@ -194,30 +195,30 @@ export function LogsPage() {
                           <ChevronDown className="h-3.5 w-3.5 text-[var(--foreground-dim)]" />
                         )}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-[var(--foreground-muted)]">
+                      <TableCell className="font-mono text-[11px] text-[var(--foreground-muted)]">
                         {formatTimestamp(log.timestamp)}
                       </TableCell>
                       <TableCell>
                         <TierBadge tier={log.tier} />
                       </TableCell>
-                      <TableCell className="text-[var(--foreground)]">
+                      <TableCell className="font-medium text-[var(--foreground)]">
                         {log.node_id}
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate font-mono text-xs text-[var(--foreground-dim)]">
+                      <TableCell className="max-w-[180px] truncate font-mono text-[11px] text-[var(--foreground-dim)]">
                         {log.model}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
                         {formatTokens(log.input_tokens + log.output_tokens)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
                         {formatCost(log.cost_usd)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-[var(--foreground-muted)]">
+                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
                         {formatLatency(log.latency_ms)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span
-                          className={`font-mono text-xs ${
+                          className={`font-mono text-[11px] font-semibold ${
                             log.status_code === 200
                               ? 'text-emerald-600 dark:text-emerald-400'
                               : 'text-red-600 dark:text-red-400'
@@ -245,11 +246,11 @@ export function LogsPage() {
             {/* Pagination */}
             {logsData?.pagination && logsData.pagination.totalPages > 1 && (
               <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3">
-                <div className="text-xs text-[var(--foreground-dim)]">
+                <div className="font-mono text-[11px] text-[var(--foreground-dim)]">
                   Page {logsData.pagination.page} of{' '}
                   {logsData.pagination.totalPages}
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1.5">
                   <Button
                     variant="ghost"
                     size="sm"

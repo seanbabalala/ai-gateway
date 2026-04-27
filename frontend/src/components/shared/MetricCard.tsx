@@ -12,21 +12,27 @@ interface MetricCardProps {
 
 export function MetricCard({ label, value, subtitle, icon: Icon, className }: MetricCardProps) {
   return (
-    <Card className={cn('p-6', className)}>
+    <Card className={cn('animate-fade-up p-6', className)}>
       <div className="flex items-start justify-between">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
+        <div className="space-y-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
             {label}
           </div>
-          <div className="mt-2 text-3xl font-bold text-[var(--foreground)] leading-none">
+          <div className="text-3xl font-bold tracking-tight text-[var(--foreground)] leading-none">
             {value}
           </div>
           {subtitle && (
-            <div className="mt-1.5 text-xs text-[var(--foreground-dim)]">{subtitle}</div>
+            <div className="text-[11px] text-[var(--foreground-dim)]">{subtitle}</div>
           )}
         </div>
         {Icon && (
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-muted)]">
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-xl"
+            style={{
+              background: 'var(--accent-muted)',
+              boxShadow: '0 0 24px var(--accent-glow)',
+            }}
+          >
             <Icon className="h-5 w-5 text-[var(--accent)]" />
           </div>
         )}

@@ -3,21 +3,22 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium transition-colors',
+  'inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-semibold tracking-wide transition-colors',
   {
     variants: {
       variant: {
         default: 'bg-[var(--background-tertiary)] text-[var(--foreground-muted)]',
         emerald:
-          'bg-emerald-500/10 text-emerald-600 border border-emerald-500/15 dark:text-emerald-400',
-        blue: 'bg-blue-500/10 text-blue-600 border border-blue-500/15 dark:text-blue-400',
+          'bg-emerald-500/10 text-emerald-700 border border-emerald-500/12 dark:text-emerald-400',
+        blue: 'bg-sky-500/10 text-sky-700 border border-sky-500/12 dark:text-sky-400',
         purple:
-          'bg-purple-500/10 text-purple-600 border border-purple-500/15 dark:text-purple-400',
-        pink: 'bg-pink-500/10 text-pink-600 border border-pink-500/15 dark:text-pink-400',
+          'bg-violet-500/10 text-violet-700 border border-violet-500/12 dark:text-violet-400',
+        pink: 'bg-rose-500/10 text-rose-700 border border-rose-500/12 dark:text-rose-400',
         amber:
-          'bg-amber-500/10 text-amber-600 border border-amber-500/15 dark:text-amber-400',
-        red: 'bg-red-500/10 text-red-600 border border-red-500/15 dark:text-red-400',
-        zinc: 'bg-zinc-500/8 text-zinc-600 border border-zinc-500/12 dark:bg-zinc-500/12 dark:text-zinc-400',
+          'bg-amber-500/10 text-amber-700 border border-amber-500/12 dark:text-amber-400',
+        red: 'bg-red-500/10 text-red-700 border border-red-500/12 dark:text-red-400',
+        zinc: 'bg-stone-500/8 text-stone-600 border border-stone-500/10 dark:bg-stone-500/12 dark:text-stone-400',
+        gold: 'bg-[var(--accent-muted)] text-[var(--accent)] border border-[var(--accent)]/15',
       },
     },
     defaultVariants: {

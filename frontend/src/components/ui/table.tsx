@@ -33,7 +33,7 @@ const TableRow = forwardRef<HTMLTableRowElement, HTMLAttributes<HTMLTableRowElem
     <tr
       ref={ref}
       className={cn(
-        'border-b border-[var(--border)] transition-all duration-200 hover:bg-[var(--inset-bg)] data-[state=selected]:bg-[var(--background-tertiary)]',
+        'border-b border-[var(--border)] transition-all duration-300 hover:bg-[var(--inset-bg)] data-[state=selected]:bg-[var(--background-tertiary)]',
         className
       )}
       {...props}
@@ -47,7 +47,7 @@ const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCel
     <th
       ref={ref}
       className={cn(
-        'h-10 px-3 text-left align-middle font-medium text-[var(--foreground-dim)] [&:has([role=checkbox])]:pr-0',
+        'h-11 px-4 text-left align-middle text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)] [&:has([role=checkbox])]:pr-0',
         className
       )}
       {...props}
@@ -60,7 +60,7 @@ const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCel
   ({ className, ...props }, ref) => (
     <td
       ref={ref}
-      className={cn('px-3 py-2.5 align-middle [&:has([role=checkbox])]:pr-0', className)}
+      className={cn('px-4 py-3 align-middle [&:has([role=checkbox])]:pr-0', className)}
       {...props}
     />
   )

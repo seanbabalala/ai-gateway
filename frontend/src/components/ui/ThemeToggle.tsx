@@ -12,16 +12,16 @@ export function ThemeToggle() {
   const { mode, setMode } = useTheme()
 
   return (
-    <div className="flex items-center rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] p-0.5">
+    <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] p-0.5">
       {modes.map(({ mode: m, icon: Icon, label }) => (
         <button
           key={m}
           onClick={() => setMode(m)}
           title={label}
           className={cn(
-            'flex items-center justify-center rounded-md p-1.5 transition-colors duration-150 cursor-pointer',
+            'flex items-center justify-center rounded-lg p-1.5 transition-all duration-200 cursor-pointer',
             mode === m
-              ? 'bg-[var(--accent)] text-white shadow-sm'
+              ? 'bg-[var(--accent)] text-white shadow-[0_0_12px_var(--accent-glow)]'
               : 'text-[var(--foreground-dim)] hover:text-[var(--foreground-muted)]'
           )}
         >

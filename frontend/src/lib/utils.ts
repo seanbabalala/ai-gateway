@@ -55,31 +55,41 @@ export function formatDate(iso: string): string {
   })
 }
 
-// ── Color constants ──
+// ── Color constants — Noir Command Center palette ──
 
 export const TIER_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  simple: { bg: 'bg-emerald-500/15', text: 'text-emerald-600 dark:text-emerald-400', dot: '#10b981' },
-  standard: { bg: 'bg-blue-500/15', text: 'text-blue-600 dark:text-blue-400', dot: '#3b82f6' },
-  complex: { bg: 'bg-purple-500/15', text: 'text-purple-600 dark:text-purple-400', dot: '#a855f7' },
-  reasoning: { bg: 'bg-pink-500/15', text: 'text-pink-600 dark:text-pink-400', dot: '#ec4899' },
-  direct: { bg: 'bg-zinc-500/10 dark:bg-zinc-500/15', text: 'text-zinc-600 dark:text-zinc-400', dot: '#71717a' },
+  simple: { bg: 'bg-emerald-500/12', text: 'text-emerald-700 dark:text-emerald-400', dot: '#2D8659' },
+  standard: { bg: 'bg-sky-500/12', text: 'text-sky-700 dark:text-sky-400', dot: '#0284C7' },
+  complex: { bg: 'bg-violet-500/12', text: 'text-violet-700 dark:text-violet-400', dot: '#7C3AED' },
+  reasoning: { bg: 'bg-rose-500/12', text: 'text-rose-700 dark:text-rose-400', dot: '#E11D48' },
+  direct: { bg: 'bg-stone-500/10 dark:bg-stone-500/12', text: 'text-stone-600 dark:text-stone-400', dot: '#78716C' },
 }
 
 export const TIER_CHART_COLORS: Record<string, string> = {
-  simple: '#10b981',
-  standard: '#3b82f6',
-  complex: '#a855f7',
-  reasoning: '#ec4899',
-  direct: '#71717a',
+  simple: '#2D8659',
+  standard: '#0284C7',
+  complex: '#7C3AED',
+  reasoning: '#E11D48',
+  direct: '#78716C',
 }
 
 export const NODE_COLORS: Record<string, string> = {
-  gpt: '#10b981',
-  claude: '#a855f7',
-  gemini: '#3b82f6',
-  minimax: '#f59e0b',
+  gpt: '#2D8659',
+  claude: '#7C3AED',
+  gemini: '#0284C7',
+  minimax: '#D4A947',
+  deepseek: '#0891B2',
+  grok: '#A78BFA',
+  mistral: '#F97316',
+  groq: '#22D3EE',
+  openrouter: '#E879F9',
+  ollama: '#6B7280',
 }
 
 export function getNodeColor(nodeId: string): string {
-  return NODE_COLORS[nodeId] ?? '#71717a'
+  const lower = nodeId.toLowerCase()
+  for (const [key, color] of Object.entries(NODE_COLORS)) {
+    if (lower.includes(key)) return color
+  }
+  return '#78716C'
 }
