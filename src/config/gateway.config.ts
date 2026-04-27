@@ -55,8 +55,21 @@ export interface NodeConfig {
   headers?: Record<string, string>;
 
   /**
-   * Capability tags — describe what this node is good at.
+   * Structured capability tags — describe what this node is good at.
+   * Used for tier recommendation and routing suggestions.
+   *
+   * Valid capability IDs:
+   *   coding, coding_frontend, coding_backend, reasoning, analysis,
+   *   creative, long_context, tool_use, fast, multilingual
+   *
+   * Example: capabilities: ["coding", "coding_backend", "reasoning"]
+   */
+  capabilities?: string[];
+
+  /**
+   * Free-text tags — describe what this node is good at.
    * Used by domain-hint routing to prefer nodes matching the request domain.
+   * If `capabilities` is not set, capabilities are inferred from tags.
    *
    * Common tags:
    *   frontend, backend, reasoning, creative, fast, cheap,

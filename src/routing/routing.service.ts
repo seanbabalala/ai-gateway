@@ -143,6 +143,7 @@ export class RoutingService {
    * Priority:
    *   1. Explicit config: routing.domain_preferences.{domain}
    *   2. Tag-based: all nodes with the domain as a tag, sorted by tier cost (cheap → expensive)
+   *   3. Capability-based: nodes whose capabilities include the domain hint
    */
   private resolvePreferredNodes(domain: string): string[] {
     // 1. Check explicit config
@@ -160,9 +161,21 @@ export class RoutingService {
       this.logger.debug(
         `Domain "${domain}": no explicit preference, using tag match: [${tagged.join(', ')}]`,
       );
+      return tagged;
     }
 
-    return tagged;
+    // 3. Fallback to capability matching — find nodes with matching capability
+    const capabilityMatched = this.config.nodes
+      .filter((n) => n.capabilities?.includes(domain))
+      .map((n) => n.id);
+
+    if (capabilityMatched.length > 0) {
+      this.logger.debug(
+        `Domain "${domain}": no tag match, using capability match: [${capabilityMatched.join(', ')}]`,
+      );
+    }
+
+    return capabilityMatched;
   }
 
   /**

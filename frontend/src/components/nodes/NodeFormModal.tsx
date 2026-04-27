@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { NodeIcon } from '@/components/shared/NodeIcon'
+import { CapabilityPicker } from '@/components/shared/CapabilityPicker'
+import { TierRecommendation } from '@/components/shared/TierRecommendation'
 import { useTestNode, useTestExistingNode } from '@/hooks/use-mutations'
 import type { NodeInfo, CreateNodeRequest, UpdateNodeRequest, TestNodeResponse } from '@/types/api'
 
@@ -17,15 +19,16 @@ const PROTOCOL_ENDPOINTS: Record<string, string> = {
 // ── Provider Presets ─────────────────────────────────────
 
 interface ProviderPreset {
-  id: string          // suggested node ID
-  name: string        // display name
+  id: string
+  name: string
   protocol: 'chat_completions' | 'responses' | 'messages'
   base_url: string
   endpoint: string
   auth_type?: 'bearer' | 'x-api-key'
-  models: string[]    // popular models pre-filled
+  models: string[]
+  capabilities: string[]
   tags: string[]
-  keyPlaceholder: string  // e.g. "sk-..." or "AIza..."
+  keyPlaceholder: string
 }
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -36,6 +39,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.openai.com',
     endpoint: '/v1/chat/completions',
     models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
+    capabilities: ['coding', 'reasoning', 'tool_use'],
     tags: ['code', 'reasoning'],
     keyPlaceholder: 'sk-...',
   },
@@ -46,6 +50,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.openai.com',
     endpoint: '/v1/responses',
     models: ['gpt-4.1', 'gpt-4.1-mini', 'o3', 'o4-mini'],
+    capabilities: ['coding', 'reasoning', 'tool_use'],
     tags: ['code', 'reasoning'],
     keyPlaceholder: 'sk-...',
   },
@@ -57,6 +62,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     endpoint: '/v1/messages',
     auth_type: 'x-api-key',
     models: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-20250414'],
+    capabilities: ['coding', 'coding_backend', 'reasoning', 'analysis'],
     tags: ['code', 'reasoning'],
     keyPlaceholder: 'sk-ant-...',
   },
@@ -67,6 +73,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://generativelanguage.googleapis.com',
     endpoint: '/v1beta/openai/chat/completions',
     models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+    capabilities: ['multilingual', 'long_context', 'coding'],
     tags: ['multilingual', 'long-context'],
     keyPlaceholder: 'AIza...',
   },
@@ -77,6 +84,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.deepseek.com',
     endpoint: '/v1/chat/completions',
     models: ['deepseek-chat', 'deepseek-reasoner'],
+    capabilities: ['coding', 'reasoning', 'fast'],
     tags: ['code', 'reasoning', 'cheap'],
     keyPlaceholder: 'sk-...',
   },
@@ -87,6 +95,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.x.ai',
     endpoint: '/v1/chat/completions',
     models: ['grok-3', 'grok-3-mini', 'grok-3-fast'],
+    capabilities: ['reasoning', 'fast'],
     tags: ['reasoning', 'fast'],
     keyPlaceholder: 'xai-...',
   },
@@ -97,6 +106,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.mistral.ai',
     endpoint: '/v1/chat/completions',
     models: ['mistral-large-latest', 'mistral-medium-latest', 'codestral-latest', 'mistral-small-latest'],
+    capabilities: ['coding', 'multilingual'],
     tags: ['code', 'multilingual'],
     keyPlaceholder: 'Bearer token...',
   },
@@ -107,6 +117,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.groq.com',
     endpoint: '/openai/v1/chat/completions',
     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    capabilities: ['fast'],
     tags: ['fast', 'cheap'],
     keyPlaceholder: 'gsk_...',
   },
@@ -117,6 +128,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://openrouter.ai',
     endpoint: '/api/v1/chat/completions',
     models: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-20250514', 'google/gemini-2.5-pro'],
+    capabilities: [],
     tags: ['multi-provider'],
     keyPlaceholder: 'sk-or-...',
   },
@@ -127,6 +139,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'http://localhost:11434',
     endpoint: '/v1/chat/completions',
     models: ['llama3.1', 'qwen2.5-coder', 'deepseek-r1'],
+    capabilities: ['fast', 'coding'],
     tags: ['local', 'free'],
     keyPlaceholder: 'ollama (any value)',
   },
@@ -137,6 +150,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://YOUR_RESOURCE.openai.azure.com',
     endpoint: '/openai/deployments/YOUR_DEPLOYMENT/chat/completions?api-version=2024-10-21',
     models: ['gpt-4o'],
+    capabilities: ['coding', 'tool_use'],
     tags: ['enterprise'],
     keyPlaceholder: 'Azure API key...',
   },
@@ -147,6 +161,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.minimax.chat',
     endpoint: '/v1/text/chatcompletion_v2',
     models: ['MiniMax-M1', 'MiniMax-Text-01'],
+    capabilities: ['multilingual'],
     tags: ['multilingual'],
     keyPlaceholder: 'Bearer token...',
   },
@@ -172,6 +187,7 @@ interface FormState {
   api_key: string
   timeout_ms: string
   models: string[]
+  capabilities: string[]
   tags: string[]
   aliases: { key: string; value: string }[]
   auth_type: string
@@ -186,6 +202,7 @@ const EMPTY_FORM: FormState = {
   api_key: '',
   timeout_ms: '30000',
   models: [''],
+  capabilities: [],
   tags: [],
   aliases: [],
   auth_type: '',
@@ -217,10 +234,8 @@ export function NodeFormModal({
     setTestResult(null)
     setUseCustomEndpoint(false)
     if (editNode) {
-      // Edit mode → skip picker, go straight to form
       setStep('form')
       setSelectedPreset(null)
-      // Check if the node uses a non-standard endpoint
       const defaultEp = PROTOCOL_ENDPOINTS[editNode.protocol] || ''
       const isCustomEp = editNode.endpoint !== defaultEp
       setUseCustomEndpoint(isCustomEp)
@@ -233,12 +248,12 @@ export function NodeFormModal({
         api_key: '',
         timeout_ms: '30000',
         models: editNode.models.length > 0 ? editNode.models : [''],
+        capabilities: editNode.capabilities || [],
         tags: editNode.tags || [],
         aliases: Object.entries(editNode.aliases || {}).map(([key, value]) => ({ key, value })),
         auth_type: '',
       })
     } else {
-      // Create mode → show picker first
       setStep('pick')
       setSelectedPreset(null)
       setForm(EMPTY_FORM)
@@ -246,10 +261,7 @@ export function NodeFormModal({
     setErrors({})
   }, [open, editNode])
 
-  // ── Pick a preset ──
-
   const pickPreset = (preset: ProviderPreset) => {
-    // Auto-generate a unique ID
     let candidateId = preset.id
     let suffix = 2
     while (existingIds.includes(candidateId)) {
@@ -266,12 +278,12 @@ export function NodeFormModal({
       api_key: '',
       timeout_ms: '30000',
       models: [...preset.models],
+      capabilities: [...preset.capabilities],
       tags: [...preset.tags],
       aliases: [],
       auth_type: preset.auth_type || '',
     })
     setSelectedPreset(preset.id)
-    // Check if preset uses non-standard endpoint for its protocol
     const defaultEp = PROTOCOL_ENDPOINTS[preset.protocol] || ''
     setUseCustomEndpoint(preset.endpoint !== defaultEp)
     setErrors({})
@@ -285,8 +297,6 @@ export function NodeFormModal({
     setErrors({})
     setStep('form')
   }
-
-  // ── Form helpers ──
 
   const setField = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -327,8 +337,7 @@ export function NodeFormModal({
   const updateAlias = (idx: number, field: 'key' | 'value', val: string) =>
     setField('aliases', form.aliases.map((a, i) => (i === idx ? { ...a, [field]: val } : a)))
 
-  // ── Test Connection ──
-
+  // Test Connection
   const handleTestConnection = () => {
     setTestResult(null)
     const onResult = (result: TestNodeResponse) => setTestResult(result)
@@ -340,7 +349,6 @@ export function NodeFormModal({
         message: err.message || 'Request failed',
       })
 
-    // Edit mode: use existing node's saved config (no API key needed)
     if (isEdit && !form.api_key.trim()) {
       testExisting.mutate(editNode!.id, {
         onSuccess: onResult,
@@ -349,7 +357,6 @@ export function NodeFormModal({
       return
     }
 
-    // Create mode (or edit with new key): need all fields
     const errs: Record<string, string> = {}
     if (!form.base_url.trim()) errs.base_url = 'Required for test'
     if (!form.endpoint.trim()) errs.endpoint = 'Required for test'
@@ -380,8 +387,7 @@ export function NodeFormModal({
 
   const isTestPending = testNode.isPending || testExisting.isPending
 
-  // ── Validation ──
-
+  // Validation
   const validate = (): boolean => {
     const errs: Record<string, string> = {}
 
@@ -409,8 +415,7 @@ export function NodeFormModal({
     return Object.keys(errs).length === 0
   }
 
-  // ── Submit ──
-
+  // Submit
   const handleSubmit = () => {
     if (!validate()) return
 
@@ -429,6 +434,7 @@ export function NodeFormModal({
         base_url: form.base_url.trim(),
         models,
         timeout_ms: Number(form.timeout_ms),
+        capabilities: form.capabilities.length > 0 ? form.capabilities : undefined,
         tags: form.tags,
         model_aliases: Object.keys(aliasMap).length > 0 ? aliasMap : undefined,
       }
@@ -446,6 +452,7 @@ export function NodeFormModal({
         api_key: form.api_key.trim(),
         models,
         timeout_ms: Number(form.timeout_ms),
+        capabilities: form.capabilities.length > 0 ? form.capabilities : undefined,
         tags: form.tags.length > 0 ? form.tags : undefined,
         model_aliases: Object.keys(aliasMap).length > 0 ? aliasMap : undefined,
         auth_type: form.auth_type ? (form.auth_type as 'bearer' | 'x-api-key') : undefined,
@@ -456,46 +463,48 @@ export function NodeFormModal({
 
   if (!open) return null
 
-  // Find the key placeholder from preset
   const presetInfo = selectedPreset
     ? PROVIDER_PRESETS.find((p) => p.id === selectedPreset)
     : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-md"
+        onClick={onClose}
+      />
 
-      <div className="relative z-10 w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl">
+      <div className="relative z-10 w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--glass-border)] bg-[var(--background)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
         {/* ─── Step 1: Provider Picker ─── */}
         {step === 'pick' && (
           <>
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
+              <h2 className="text-lg font-bold tracking-tight text-[var(--foreground)]">
                 Add Node &mdash; Choose Provider
               </h2>
               <button
                 onClick={onClose}
-                className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)]"
+                className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2.5">
               {PROVIDER_PRESETS.map((preset) => {
                 const alreadyExists = existingIds.includes(preset.id)
                 return (
                   <button
                     key={preset.id}
                     onClick={() => pickPreset(preset)}
-                    className="flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-3.5 transition-all hover:border-[var(--accent)] hover:bg-[var(--background-tertiary)]"
+                    className="flex flex-col items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--glass-bg)] px-3 py-4 transition-all duration-200 hover:border-[var(--accent)] hover:bg-[var(--inset-bg)] hover:shadow-[0_0_20px_var(--accent-glow)]"
                   >
                     <NodeIcon
                       nodeId={preset.id}
                       protocol={preset.protocol}
                       className="h-7 w-7"
                     />
-                    <span className="text-xs font-medium text-[var(--foreground)]">
+                    <span className="text-xs font-semibold text-[var(--foreground)]">
                       {preset.name}
                     </span>
                     {alreadyExists && (
@@ -510,10 +519,10 @@ export function NodeFormModal({
               {/* Custom */}
               <button
                 onClick={pickCustom}
-                className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--background-secondary)] px-3 py-3.5 transition-all hover:border-[var(--accent)] hover:bg-[var(--background-tertiary)]"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--glass-bg)] px-3 py-4 transition-all duration-200 hover:border-[var(--accent)] hover:bg-[var(--inset-bg)]"
               >
                 <Settings2 className="h-7 w-7 text-[var(--foreground-dim)]" />
-                <span className="text-xs font-medium text-[var(--foreground-muted)]">
+                <span className="text-xs font-semibold text-[var(--foreground-muted)]">
                   Custom
                 </span>
               </button>
@@ -530,13 +539,13 @@ export function NodeFormModal({
                 {!isEdit && (
                   <button
                     onClick={() => setStep('pick')}
-                    className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)]"
+                    className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
                     title="Back to provider list"
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                 )}
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                <h2 className="text-lg font-bold tracking-tight text-[var(--foreground)]">
                   {isEdit
                     ? `Edit: ${editNode!.name}`
                     : presetInfo
@@ -546,7 +555,7 @@ export function NodeFormModal({
               </div>
               <button
                 onClick={onClose}
-                className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)]"
+                className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -573,7 +582,7 @@ export function NodeFormModal({
                 />
               </FieldGroup>
 
-              {/* API Key — moved up since it's the most important thing to fill */}
+              {/* API Key */}
               <FieldGroup
                 label={isEdit ? 'API Key (blank = keep current, test uses saved key)' : 'API Key'}
                 error={errors.api_key}
@@ -598,7 +607,6 @@ export function NodeFormModal({
                     onChange={(e) => {
                       const proto = e.target.value
                       setField('protocol', proto)
-                      // Auto-update endpoint unless user opted for custom
                       if (!useCustomEndpoint) {
                         setField('endpoint', PROTOCOL_ENDPOINTS[proto] || '')
                       }
@@ -641,16 +649,15 @@ export function NodeFormModal({
                     value={form.endpoint}
                     onChange={(e) => setField('endpoint', e.target.value)}
                     disabled={!useCustomEndpoint}
-                    className={!useCustomEndpoint ? 'opacity-60' : ''}
+                    className={!useCustomEndpoint ? 'opacity-50' : ''}
                   />
-                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[10px] text-[var(--foreground-dim)]">
+                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[10px] font-medium text-[var(--foreground-dim)]">
                     <input
                       type="checkbox"
                       checked={useCustomEndpoint}
                       onChange={(e) => {
                         setUseCustomEndpoint(e.target.checked)
                         if (!e.target.checked) {
-                          // Reset to default endpoint for current protocol
                           setField('endpoint', PROTOCOL_ENDPOINTS[form.protocol] || '')
                         }
                       }}
@@ -701,19 +708,32 @@ export function NodeFormModal({
                 </div>
               </FieldGroup>
 
-              {/* Tags */}
-              <FieldGroup label="Tags (optional)">
+              {/* Capabilities */}
+              <FieldGroup label="Capabilities">
+                <CapabilityPicker
+                  selected={form.capabilities}
+                  onChange={(caps) => setField('capabilities', caps)}
+                />
+              </FieldGroup>
+
+              {/* Tier Recommendation */}
+              {form.capabilities.length > 0 && (
+                <TierRecommendation capabilities={form.capabilities} />
+              )}
+
+              {/* Tags (custom, optional) */}
+              <FieldGroup label="Custom Tags (optional)">
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-1.5">
                     {form.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded-md bg-[var(--background-tertiary)] px-2 py-0.5 text-xs text-[var(--foreground-muted)]"
+                        className="inline-flex items-center gap-1 rounded-lg bg-[var(--inset-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground-muted)]"
                       >
                         {tag}
                         <button
                           onClick={() => removeTag(tag)}
-                          className="text-[var(--foreground-dim)] hover:text-red-500"
+                          className="text-[var(--foreground-dim)] hover:text-red-500 transition-colors"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -772,10 +792,10 @@ export function NodeFormModal({
             </div>
 
             {/* Test Connection + Result */}
-            <div className="mt-5 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
+            <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-medium text-[var(--foreground-muted)]">
+                  <span className="text-[11px] font-semibold text-[var(--foreground-muted)]">
                     Connectivity Test
                   </span>
                   {isEdit && !form.api_key.trim() && (
@@ -801,10 +821,10 @@ export function NodeFormModal({
 
               {testResult && (
                 <div
-                  className={`mt-2.5 flex items-start gap-2 rounded-md px-2.5 py-2 text-xs ${
+                  className={`mt-3 flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ${
                     testResult.success
-                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                      : 'bg-red-500/10 text-red-700 dark:text-red-400'
+                      ? 'bg-emerald-500/8 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-red-500/8 text-red-700 dark:text-red-400'
                   }`}
                 >
                   {testResult.success ? (
@@ -813,9 +833,9 @@ export function NodeFormModal({
                     <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   )}
                   <div>
-                    <div className="font-medium">{testResult.message}</div>
+                    <div className="font-semibold">{testResult.message}</div>
                     {testResult.latency_ms > 0 && (
-                      <div className="mt-0.5 opacity-70">
+                      <div className="mt-0.5 font-mono opacity-70">
                         HTTP {testResult.status} &middot; {testResult.latency_ms}ms
                       </div>
                     )}
@@ -855,11 +875,11 @@ function FieldGroup({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-[var(--foreground-muted)]">
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--foreground-dim)]">
         {label}
       </label>
       {children}
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-[11px] font-medium text-red-500">{error}</p>}
     </div>
   )
 }

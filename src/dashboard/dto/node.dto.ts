@@ -50,6 +50,11 @@ export class CreateNodeDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  capabilities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   tags?: string[];
 
   @IsOptional()
@@ -133,6 +138,11 @@ export class UpdateNodeDto {
   @Min(1)
   @Type(() => Number)
   timeout_ms?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  capabilities?: string[];
 
   @IsOptional()
   @IsArray()

@@ -25,6 +25,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
+import { CapabilityService } from '../config/capability.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { BudgetService } from '../budget/budget.service';
 import { CallLog } from '../database/entities/call-log.entity';
@@ -37,6 +38,7 @@ export class DashboardController {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly capabilityService: CapabilityService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly budgetService: BudgetService,
     private readonly logEventBus: LogEventBus,
@@ -255,6 +257,29 @@ export class DashboardController {
   }
 
   // ══════════════════════════════════════════════════════
+  // Capabilities
+  // ══════════════════════════════════════════════════════
+
+  /** Get all capability definitions */
+  @Get('capabilities')
+  getCapabilities() {
+    return { capabilities: this.capabilityService.getRegistry() };
+  }
+
+  /** Recommend tier suitability given a set of capabilities */
+  @Post('capabilities/recommend-tiers')
+  recommendTiers(@Body() body: { capabilities: string[] }) {
+    const capabilities = body.capabilities || [];
+    return { recommendations: this.capabilityService.recommendTiers(capabilities) };
+  }
+
+  /** Recommend full routing config based on all nodes' capabilities */
+  @Post('routing/recommend')
+  recommendRouting() {
+    return { recommendations: this.capabilityService.recommendRouting() };
+  }
+
+  // ══════════════════════════════════════════════════════
   // Nodes
   // ══════════════════════════════════════════════════════
 
@@ -269,6 +294,7 @@ export class DashboardController {
         base_url: node.base_url,
         endpoint: node.endpoint,
         models: node.models,
+        capabilities: this.capabilityService.getNodeCapabilities(node.id),
         tags: node.tags || [],
         aliases: node.model_aliases || {},
         circuit: {
@@ -500,6 +526,7 @@ export class DashboardController {
         api_key: dto.api_key,
         models: dto.models,
         timeout_ms: dto.timeout_ms,
+        capabilities: dto.capabilities,
         tags: dto.tags,
         model_aliases: dto.model_aliases,
         headers: dto.headers,

@@ -99,6 +99,7 @@ export interface NodeInfo {
   base_url: string
   endpoint: string
   models: string[]
+  capabilities: string[]
   tags: string[]
   aliases: Record<string, string>
   circuit: CircuitBreaker
@@ -208,6 +209,7 @@ export interface CreateNodeRequest {
   api_key: string
   models: string[]
   timeout_ms: number
+  capabilities?: string[]
   tags?: string[]
   model_aliases?: Record<string, string>
   headers?: Record<string, string>
@@ -222,6 +224,7 @@ export interface UpdateNodeRequest {
   api_key?: string
   models?: string[]
   timeout_ms?: number
+  capabilities?: string[]
   tags?: string[]
   model_aliases?: Record<string, string>
   headers?: Record<string, string>
@@ -243,4 +246,45 @@ export interface TestNodeResponse {
   status: number
   latency_ms: number
   message: string
+}
+
+// ── Capabilities ──
+
+export interface CapabilityDefinition {
+  id: string
+  label: { en: string; cn: string }
+  icon: string
+  description: { en: string; cn: string }
+  tierAffinity: {
+    simple: number
+    standard: number
+    complex: number
+    reasoning: number
+  }
+}
+
+export interface CapabilitiesResponse {
+  capabilities: CapabilityDefinition[]
+}
+
+export interface TierRecommendationItem {
+  tier: string
+  score: number
+  suitable: boolean
+  label: string
+}
+
+export interface TierRecommendationResponse {
+  recommendations: TierRecommendationItem[]
+}
+
+export interface RoutingRecommendationItem {
+  tier: string
+  primary: { node: string; model: string } | null
+  fallbacks: { node: string; model: string }[]
+  score: number
+}
+
+export interface RoutingRecommendationResponse {
+  recommendations: RoutingRecommendationItem[]
 }

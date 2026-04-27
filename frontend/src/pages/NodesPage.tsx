@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { CircuitBadge } from '@/components/shared/CircuitBadge'
 import { NodeIcon } from '@/components/shared/NodeIcon'
+import { CapabilityBadge } from '@/components/shared/CapabilityBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CardStatic } from '@/components/ui/card'
@@ -67,8 +68,8 @@ export function NodesPage() {
 
   if (isLoading || !nodesData) {
     return (
-      <div className="flex h-64 items-center justify-center text-[var(--foreground-dim)]">
-        Loading nodes...
+      <div className="flex h-64 items-center justify-center">
+        <div className="animate-shimmer h-6 w-48 rounded-lg" />
       </div>
     )
   }
@@ -76,13 +77,13 @@ export function NodesPage() {
   const existingIds = nodesData.nodes.map((n) => n.id)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <PageHeader
           title="Nodes"
           description="AI provider nodes and circuit breaker status"
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
@@ -102,29 +103,34 @@ export function NodesPage() {
       </div>
 
       {/* Quick Model Reference */}
-      <QuickModelReference nodes={nodesData.nodes} />
+      <div className="animate-fade-up">
+        <QuickModelReference nodes={nodesData.nodes} />
+      </div>
 
       {/* Node Cards Grid */}
-      <div className="grid grid-cols-2 gap-5">
+      <div className="stagger-children grid grid-cols-2 gap-5">
         {nodesData.nodes.map((node) => (
-          <CardStatic key={node.id} className="p-5">
+          <CardStatic key={node.id} className="animate-fade-up p-5">
             {/* Header */}
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div
-                  className="flex h-9 w-9 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: colorWithOpacity(getNodeColor(node.id), '20') }}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl"
+                  style={{
+                    backgroundColor: colorWithOpacity(getNodeColor(node.id), '15'),
+                    boxShadow: `0 0 20px ${colorWithOpacity(getNodeColor(node.id), '10')}`,
+                  }}
                 >
                   <NodeIcon
                     nodeId={node.id}
                     protocol={node.protocol}
-                    className="h-4 w-4"
+                    className="h-5 w-5"
                     style={{ color: getNodeColor(node.id) }}
                   />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-[var(--foreground)]">
+                    <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
                       {node.name}
                     </span>
                     <StatusDot
@@ -132,7 +138,7 @@ export function NodesPage() {
                       size="sm"
                     />
                   </div>
-                  <div className="text-[11px] text-[var(--foreground-dim)]">
+                  <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
                     {node.id} &middot; {node.protocol}
                   </div>
                 </div>
@@ -140,27 +146,24 @@ export function NodesPage() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => handleOpenEdit(node)}
-                  className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)]"
+                  className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all duration-200 hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
                   title="Edit node"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => setDeleteTarget(node)}
-                  className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:bg-red-500/10 hover:text-red-500"
+                  className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all duration-200 hover:bg-red-500/10 hover:text-red-500"
                   title="Delete node"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
-                <Badge variant="default" className="ml-1 text-[10px]">
-                  {node.protocol.replace('_', ' ')}
-                </Badge>
               </div>
             </div>
 
             {/* Models */}
             <div className="mt-4">
-              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
+              <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
                 Models
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -172,10 +175,24 @@ export function NodesPage() {
               </div>
             </div>
 
+            {/* Capabilities */}
+            {node.capabilities && node.capabilities.length > 0 && (
+              <div className="mt-3">
+                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
+                  Capabilities
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {node.capabilities.map((cap) => (
+                    <CapabilityBadge key={cap} capabilityId={cap} />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Tags */}
             {node.tags.length > 0 && (
               <div className="mt-3">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
+                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
                   Tags
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -191,7 +208,7 @@ export function NodesPage() {
             {/* Aliases */}
             {Object.keys(node.aliases).length > 0 && (
               <div className="mt-3">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
+                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
                   Aliases
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -210,12 +227,12 @@ export function NodesPage() {
             )}
 
             {/* Circuit Breaker */}
-            <div className="mt-4 flex items-center justify-between rounded-lg bg-[var(--inset-bg)] px-3 py-2.5">
+            <div className="mt-4 flex items-center justify-between rounded-xl bg-[var(--inset-bg)] px-3.5 py-2.5">
               <div className="flex items-center gap-2.5">
                 <CircuitBadge state={node.circuit.state} />
                 {node.circuit.consecutiveFailures > 0 && (
-                  <span className="text-[11px] text-[var(--foreground-dim)]">
-                    {node.circuit.consecutiveFailures} consecutive failures
+                  <span className="font-mono text-[10px] text-[var(--foreground-dim)]">
+                    {node.circuit.consecutiveFailures} failures
                   </span>
                 )}
               </div>
