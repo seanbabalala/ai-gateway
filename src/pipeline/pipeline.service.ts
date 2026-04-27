@@ -308,6 +308,29 @@ export class PipelineService {
   } {
     const requestedModel = canonical.metadata.original_model;
 
+    if (this.shouldPinMessagesRequestToClaude(canonical)) {
+      const claudeNode = this.config.getNode('claude');
+      if (claudeNode) {
+        const pinnedModel =
+          requestedModel && requestedModel !== 'auto'
+            ? this.resolvePinnedClaudeModel(requestedModel)
+            : claudeNode.models[0];
+
+        this.logger.log(
+          `Pinned messages route: "${requestedModel || 'auto'}" → node "claude" (model: ${pinnedModel})`,
+        );
+
+        return {
+          route: {
+            primary: { node: 'claude', model: pinnedModel },
+            fallbacks: [],
+          },
+          tier: 'direct',
+          score: 0,
+        };
+      }
+    }
+
     // ── 1. Direct model specification ──
     if (requestedModel && requestedModel !== 'auto') {
       const resolved = this.config.resolveModel(requestedModel);
@@ -318,9 +341,7 @@ export class PipelineService {
         );
 
         // Build fallbacks from other nodes
-        const fallbacks = this.config.nodes
-          .filter((n) => n.id !== resolved.nodeId)
-          .map((n) => ({ node: n.id, model: n.models[0] }));
+        const fallbacks = this.buildDirectFallbacks(canonical, resolved.nodeId);
 
         return {
           route: {
@@ -363,6 +384,55 @@ export class PipelineService {
       tier: routeDecision.tier,
       score: scoringResult.score,
     };
+  }
+
+  private buildDirectFallbacks(
+    canonical: CanonicalRequest,
+    primaryNodeId: string,
+  ): { node: string; model: string }[] {
+    if (this.shouldStayOnPrimaryNode(canonical, primaryNodeId)) {
+      return [];
+    }
+
+    return this.config.nodes
+      .filter((n) => n.id !== primaryNodeId)
+      .map((n) => ({ node: n.id, model: n.models[0] }));
+  }
+
+  private shouldStayOnPrimaryNode(
+    canonical: CanonicalRequest,
+    primaryNodeId: string,
+  ): boolean {
+    return primaryNodeId === 'claude' && this.shouldPinMessagesRequestToClaude(canonical);
+  }
+
+  private shouldPinMessagesRequestToClaude(canonical: CanonicalRequest): boolean {
+    if (canonical.metadata.source_format !== 'messages') {
+      return false;
+    }
+
+    const headers = canonical.metadata.raw_headers || {};
+    const userAgent = (headers['user-agent'] || '').toLowerCase();
+    const betas = (headers['anthropic-beta'] || '').toLowerCase();
+    const model = (canonical.metadata.original_model || '').toLowerCase();
+
+    if (userAgent.includes('claude')) {
+      return true;
+    }
+
+    if (betas.includes('claude-code')) {
+      return true;
+    }
+
+    return ['claude', 'opus', 'sonnet', 'haiku'].includes(model) || model.startsWith('claude-');
+  }
+
+  private resolvePinnedClaudeModel(requestedModel: string): string {
+    const resolved = this.config.resolveModel(requestedModel);
+    if (resolved?.nodeId === 'claude') {
+      return resolved.model;
+    }
+    return requestedModel;
   }
 
   // ══════════════════════════════════════════════════════

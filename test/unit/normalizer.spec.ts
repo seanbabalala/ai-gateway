@@ -533,4 +533,17 @@ describe('MessagesNormalizer', () => {
     const result = normalizer.normalize(body, headers);
     expect(result.max_tokens).toBe(4096);
   });
+
+  it('should preserve the raw messages body for native passthrough', () => {
+    const body = {
+      model: 'claude-opus-4-6',
+      system: [{ type: 'text', text: 'You are helpful.' }],
+      messages: [{ role: 'user', content: 'Hello!' }],
+      stream: true,
+    };
+
+    const result = normalizer.normalize(body, headers);
+
+    expect(result.metadata.raw_body).toEqual(body);
+  });
 });

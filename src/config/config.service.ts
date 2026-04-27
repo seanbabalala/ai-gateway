@@ -143,7 +143,9 @@ export class ConfigService {
    *   3. Node ID shortcut: model name matches a node's `id` → use that node's first model
    *   4. Prefix match: model name starts with a node's `id` + separator (e.g. "claude/my-custom")
    *      → route to that node, pass-through the model name as-is
-   *   5. null: truly unknown — will fall through to auto routing
+   *   5. Protocol prefix match: model name starts with a node's ID followed by "-"
+   *      (e.g. "claude-opus-4-6") → route to that node, pass model through as-is
+   *   6. null: truly unknown — will fall through to auto routing
    *
    * This design allows users to send ANY model name. If it can be associated
    * with a node, it gets routed there with the model name passed through
@@ -187,7 +189,14 @@ export class ConfigService {
       }
     }
 
-    // 5. Not found
+    // 5. Protocol prefix match — "claude-opus-4-6" → claude node, pass model through
+    for (const node of this.config.nodes) {
+      if (name.startsWith(`${node.id}-`)) {
+        return { nodeId: node.id, model: name };
+      }
+    }
+
+    // 6. Not found
     return null;
   }
 

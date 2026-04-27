@@ -19,6 +19,12 @@ import { MessagesStreamParser } from './stream/messages.stream';
 @Injectable()
 export class ProviderClientService {
   private readonly logger = new Logger(ProviderClientService.name);
+  private readonly allowedAnthropicBetas = new Set([
+    'claude-code-20250219',
+    'interleaved-thinking-2025-05-14',
+    'context-management-2025-06-27',
+    'context-1m-2025-08-07',
+  ]);
 
   private readonly chatDenorm = new ChatCompletionsDenormalizer();
   private readonly respDenorm = new ResponsesDenormalizer();
@@ -43,7 +49,7 @@ export class ProviderClientService {
     const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
     (requestBody as Record<string, unknown>).stream = false;
 
-    const response = await this.sendRequest(node, requestBody);
+    const response = await this.sendRequest(node, requestBody, canonical);
     const latencyMs = Date.now() - startTime;
 
     const responseBody = await response.json();
@@ -72,7 +78,7 @@ export class ProviderClientService {
     const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
     (requestBody as Record<string, unknown>).stream = true;
 
-    const response = await this.sendRequest(node, requestBody);
+    const response = await this.sendRequest(node, requestBody, canonical);
 
     if (!response.body) {
       throw new ProviderError(`No response body from ${node.id}`, 502, nodeId);
@@ -114,6 +120,7 @@ export class ProviderClientService {
   private async sendRequest(
     node: NodeConfig,
     requestBody: Record<string, unknown>,
+    canonical?: CanonicalRequest,
   ): Promise<Response> {
     const url = `${node.base_url}${node.endpoint}`;
     const headers: Record<string, string> = {
@@ -132,6 +139,11 @@ export class ProviderClientService {
 
     // Custom headers
     if (node.headers) Object.assign(headers, node.headers);
+
+    // Preserve Anthropic-native request headers for messages → messages passthrough.
+    if (canonical && this.shouldPassthroughNativeMessages(canonical, node.protocol)) {
+      Object.assign(headers, this.extractNativeMessageHeaders(canonical));
+    }
 
     this.logger.debug(
       `Forwarding to ${node.id} (${node.protocol}) → ${url} model=${requestBody.model} stream=${requestBody.stream}`,
@@ -159,6 +171,11 @@ export class ProviderClientService {
     if (!response.ok) {
       let errorBody: string;
       try { errorBody = await response.text(); } catch { errorBody = 'Unable to read error body'; }
+      if (process.env.GATEWAY_DEBUG_MESSAGES_BODY === '1' && node.protocol === 'messages') {
+        this.logger.debug(
+          `Failed messages request body preview: ${JSON.stringify(requestBody).substring(0, 2000)}`,
+        );
+      }
       this.logger.warn(`Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 200)}`);
       throw new ProviderError(
         `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}`,
@@ -196,6 +213,10 @@ export class ProviderClientService {
     protocol: NodeProtocol,
     targetModel: string,
   ): Record<string, unknown> {
+    if (this.shouldPassthroughNativeMessages(canonical, protocol)) {
+      return this.buildNativeMessagesRequest(canonical, targetModel);
+    }
+
     switch (protocol) {
       case 'chat_completions':
         return this.chatDenorm.denormalize(canonical, targetModel);
@@ -206,6 +227,97 @@ export class ProviderClientService {
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
     }
+  }
+
+  private shouldPassthroughNativeMessages(
+    canonical: CanonicalRequest,
+    protocol: NodeProtocol,
+  ): boolean {
+    return protocol === 'messages' && canonical.metadata.source_format === 'messages';
+  }
+
+  private buildNativeMessagesRequest(
+    canonical: CanonicalRequest,
+    targetModel: string,
+  ): Record<string, unknown> {
+    const rawBody =
+      canonical.metadata.raw_body &&
+      typeof canonical.metadata.raw_body === 'object' &&
+      !Array.isArray(canonical.metadata.raw_body)
+        ? (canonical.metadata.raw_body as Record<string, unknown>)
+        : {};
+
+    const cloned = JSON.parse(JSON.stringify(rawBody)) as Record<string, unknown>;
+    cloned.model = targetModel;
+    cloned.stream = canonical.stream;
+    return this.sanitizeNativeMessagesRequest(cloned);
+  }
+
+  private sanitizeNativeMessagesRequest(
+    body: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const sanitizeBlocks = (value: unknown): unknown => {
+      if (!Array.isArray(value)) {
+        return value;
+      }
+
+      return value.filter((block) => {
+        if (!block || typeof block !== 'object') {
+          return true;
+        }
+
+        const typedBlock = block as Record<string, unknown>;
+        if (typedBlock.type !== 'text') {
+          return true;
+        }
+
+        return typeof typedBlock.text !== 'string' || typedBlock.text.length > 0;
+      });
+    };
+
+    if (Array.isArray(body.messages)) {
+      body.messages = (body.messages as unknown[]).map((message) => {
+        if (!message || typeof message !== 'object') {
+          return message;
+        }
+
+        const typedMessage = { ...(message as Record<string, unknown>) };
+        typedMessage.content = sanitizeBlocks(typedMessage.content);
+        return typedMessage;
+      });
+    }
+
+    if (Array.isArray(body.system)) {
+      body.system = sanitizeBlocks(body.system);
+    }
+
+    return body;
+  }
+
+  private extractNativeMessageHeaders(
+    canonical: CanonicalRequest,
+  ): Record<string, string> {
+    const rawHeaders = canonical.metadata.raw_headers || {};
+    const forwarded: Record<string, string> = {};
+
+    const anthropicVersion = rawHeaders['anthropic-version'];
+    if (anthropicVersion) {
+      forwarded['anthropic-version'] = anthropicVersion;
+    }
+
+    const anthropicBeta = rawHeaders['anthropic-beta'];
+    if (anthropicBeta) {
+      const filteredBetas = anthropicBeta
+        .split(',')
+        .map((beta) => beta.trim())
+        .filter((beta) => beta && this.allowedAnthropicBetas.has(beta));
+
+      if (filteredBetas.length > 0) {
+        forwarded['anthropic-beta'] = filteredBetas.join(',');
+      }
+    }
+
+    return forwarded;
   }
 
   // ══════════════════════════════════════════════════════
