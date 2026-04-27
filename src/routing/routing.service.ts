@@ -80,10 +80,10 @@ export class RoutingService {
       };
     }
 
-    // ── Step 3: Filter by circuit breaker ──
+    // ── Step 3: Filter by circuit breaker (model-level) ──
     const allTargets = [tierConfig.primary, ...(tierConfig.fallbacks || [])];
     const availableTargets = allTargets.filter((t) =>
-      this.circuitBreaker.isAvailable(t.node),
+      this.circuitBreaker.isAvailable(t.node, t.model),
     );
 
     if (availableTargets.length === 0) {

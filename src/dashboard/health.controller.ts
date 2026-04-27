@@ -28,6 +28,24 @@ export class HealthController {
   async check() {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
+      const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
+
+      // Build per-model circuit info
+      const models: Record<string, {
+        state: string;
+        consecutiveFailures: number;
+        lastFailureAt: string | null;
+      }> = {};
+      for (const [model, ms] of Object.entries(modelStatuses)) {
+        models[model] = {
+          state: ms.state,
+          consecutiveFailures: ms.consecutiveFailures,
+          lastFailureAt: ms.lastFailureAt
+            ? new Date(ms.lastFailureAt).toISOString()
+            : null,
+        };
+      }
+
       return {
         id: node.id,
         name: node.name,
@@ -38,6 +56,7 @@ export class HealthController {
           ? new Date(cbStatus.lastFailureAt).toISOString()
           : null,
         healthy: cbStatus.state !== CircuitState.OPEN,
+        models,
       };
     });
 

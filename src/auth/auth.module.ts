@@ -4,11 +4,12 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { DashboardGuard } from './dashboard.guard';
 import { ApiKeyGuard } from './api-key.guard';
+import { RateLimitGuard } from './rate-limit.guard';
 
 @Module({
   imports: [ConfigModule],
   controllers: [AuthController],
-  providers: [AuthService, DashboardGuard, ApiKeyGuard],
-  exports: [AuthService, DashboardGuard, ApiKeyGuard],
+  providers: [AuthService, DashboardGuard, ApiKeyGuard, RateLimitGuard],
+  exports: [AuthService, DashboardGuard, ApiKeyGuard, RateLimitGuard],
 })
 export class AuthModule {}

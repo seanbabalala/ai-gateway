@@ -161,17 +161,54 @@ export function NodesPage() {
               </div>
             </div>
 
-            {/* Models */}
+            {/* Models + Per-Model Circuit Breakers */}
             <div className="mt-4">
               <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
                 Models
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {node.models.map((model) => (
-                  <Badge key={model} variant="blue" className="text-[10px]">
-                    {model}
-                  </Badge>
-                ))}
+              <div className="flex flex-col gap-1.5">
+                {node.models.map((model) => {
+                  const mc = node.modelCircuits?.[model]
+                  const hasIssue = mc && mc.state !== 'CLOSED'
+                  return (
+                    <div
+                      key={model}
+                      className="flex items-center justify-between rounded-lg bg-[var(--inset-bg)] px-2.5 py-1.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="blue" className="text-[10px]">
+                          {model}
+                        </Badge>
+                        {mc && mc.state !== 'CLOSED' && (
+                          <>
+                            <CircuitBadge state={mc.state} />
+                            {mc.consecutiveFailures > 0 && (
+                              <span className="font-mono text-[9px] text-[var(--foreground-dim)]">
+                                {mc.consecutiveFailures} failures
+                              </span>
+                            )}
+                          </>
+                        )}
+                        {(!mc || mc.state === 'CLOSED') && (
+                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400">●</span>
+                        )}
+                      </div>
+                      {hasIssue && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            resetCircuit.mutate({ nodeId: node.id, model })
+                          }}
+                          disabled={resetCircuit.isPending}
+                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium text-[var(--foreground-dim)] transition-colors hover:bg-[var(--hover-bg)] hover:text-[var(--foreground)]"
+                        >
+                          <RotateCcw className="h-2.5 w-2.5" />
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
@@ -226,7 +263,7 @@ export function NodesPage() {
               </div>
             )}
 
-            {/* Circuit Breaker */}
+            {/* Node-Level Circuit Breaker (Aggregated) */}
             <div className="mt-4 flex items-center justify-between rounded-xl bg-[var(--inset-bg)] px-3.5 py-2.5">
               <div className="flex items-center gap-2.5">
                 <CircuitBadge state={node.circuit.state} />
@@ -240,11 +277,11 @@ export function NodesPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => resetCircuit.mutate(node.id)}
+                  onClick={() => resetCircuit.mutate({ nodeId: node.id })}
                   disabled={resetCircuit.isPending}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Reset
+                  Reset All
                 </Button>
               )}
             </div>

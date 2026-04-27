@@ -16,9 +16,13 @@ export function useResetBudget() {
 
 export function useResetCircuit() {
   const queryClient = useQueryClient()
-  return useMutation<ActionResponse, Error, string>({
-    mutationFn: (nodeId: string) =>
-      apiPost<ActionResponse>(`/api/dashboard/nodes/${nodeId}/reset`),
+  return useMutation<ActionResponse, Error, { nodeId: string; model?: string }>({
+    mutationFn: ({ nodeId, model }) => {
+      const url = model
+        ? `/api/dashboard/nodes/${nodeId}/reset?model=${encodeURIComponent(model)}`
+        : `/api/dashboard/nodes/${nodeId}/reset`
+      return apiPost<ActionResponse>(url)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nodes'] })
       queryClient.invalidateQueries({ queryKey: ['health'] })

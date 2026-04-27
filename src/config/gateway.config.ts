@@ -31,16 +31,29 @@ export interface DatabaseConfig {
   type: 'sqlite' | 'postgres';
   path?: string; // SQLite file path
   url?: string; // PostgreSQL connection URL
+  log_retention_days?: number; // Auto-delete logs older than N days (default: 30)
 }
 
 // ===== Auth =====
 export interface AuthConfig {
   api_keys: ApiKeyEntry[];
+  rate_limit?: RateLimitConfig;
 }
 
 export interface ApiKeyEntry {
   key: string;
   name: string;
+}
+
+/**
+ * Rate limiting configuration.
+ * Uses in-memory sliding window counters.
+ */
+export interface RateLimitConfig {
+  /** Max requests per minute per API key (default: 60) */
+  requests_per_minute: number;
+  /** Max requests per minute per IP when no API key (default: 30) */
+  requests_per_minute_ip: number;
 }
 
 // ===== Node (AI Provider) =====
@@ -156,6 +169,40 @@ export interface ScoringThresholds {
   standard_max: number;
   complex_max: number;
   // anything above complex_max → reasoning
+
+  /**
+   * Override default dimension weights.
+   * Keys match dimension names: simpleIndicators, codeGeneration, codeFrontend,
+   * codeBackend, formalLogic, technicalTerms, multiStep, analyticalReasoning,
+   * tokenCount, toolCount, conversationDepth, constraintDensity, expectedOutputLength, codeToProse.
+   *
+   * Example: { formalLogic: 0.15, codeGeneration: 0.12 }
+   */
+  weights?: Record<string, number>;
+
+  /**
+   * Custom keywords to inject into existing dimension tries.
+   * Each entry adds keywords to the specified dimension's trie.
+   *
+   * Example:
+   *   custom_keywords:
+   *     - pattern: "kubernetes|k8s|helm"
+   *       dimension: codeBackend
+   *       weight: 1.0
+   *     - pattern: "legal|contract|compliance"
+   *       dimension: analyticalReasoning
+   *       weight: 1.0
+   */
+  custom_keywords?: CustomKeywordEntry[];
+}
+
+export interface CustomKeywordEntry {
+  /** Pipe-separated keywords: "keyword1|keyword2|keyword3" */
+  pattern: string;
+  /** Target dimension name */
+  dimension: string;
+  /** Weight for these keywords (default: 1.0) */
+  weight?: number;
 }
 
 // ===== Budget =====

@@ -1,0 +1,104 @@
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
+import { ConfigService } from '../config/config.service';
+
+interface WindowEntry {
+  timestamps: number[];
+}
+
+/**
+ * Sliding-window rate limiter.
+ * Rate limits by API key name (if authenticated) or by IP (if open).
+ * Runs AFTER ApiKeyGuard so req.apiKeyName is available.
+ */
+@Injectable()
+export class RateLimitGuard implements CanActivate {
+  // key → sliding window timestamps
+  private readonly windows = new Map<string, WindowEntry>();
+  private lastCleanup = Date.now();
+
+  constructor(private readonly config: ConfigService) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const rateLimit = this.config.auth?.rate_limit;
+    if (!rateLimit) return true; // Not configured → no limit
+
+    const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
+
+    const apiKeyName: string | undefined = request.apiKeyName;
+    const ip: string = request.ip || request.connection?.remoteAddress || 'unknown';
+
+    const key = apiKeyName ? `key:${apiKeyName}` : `ip:${ip}`;
+    const limit = apiKeyName
+      ? rateLimit.requests_per_minute
+      : rateLimit.requests_per_minute_ip;
+
+    const now = Date.now();
+    const windowMs = 60_000; // 1 minute
+    const windowStart = now - windowMs;
+
+    // Periodic cleanup of stale entries (every 5 minutes)
+    if (now - this.lastCleanup > 300_000) {
+      this.cleanup(windowStart);
+      this.lastCleanup = now;
+    }
+
+    // Get or create window
+    let entry = this.windows.get(key);
+    if (!entry) {
+      entry = { timestamps: [] };
+      this.windows.set(key, entry);
+    }
+
+    // Trim timestamps outside the window
+    entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
+
+    // Check limit
+    const remaining = Math.max(0, limit - entry.timestamps.length);
+    const resetAt = entry.timestamps.length > 0
+      ? Math.ceil((entry.timestamps[0] + windowMs) / 1000)
+      : Math.ceil((now + windowMs) / 1000);
+
+    // Set standard rate limit headers
+    response.setHeader('X-RateLimit-Limit', String(limit));
+    response.setHeader('X-RateLimit-Remaining', String(remaining));
+    response.setHeader('X-RateLimit-Reset', String(resetAt));
+
+    if (entry.timestamps.length >= limit) {
+      const retryAfterSec = Math.ceil((entry.timestamps[0] + windowMs - now) / 1000);
+      response.setHeader('Retry-After', String(Math.max(1, retryAfterSec)));
+      throw new HttpException(
+        {
+          error: {
+            message: `Rate limit exceeded. Max ${limit} requests per minute.`,
+            type: 'rate_limit_exceeded',
+          },
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Record this request
+    entry.timestamps.push(now);
+    // Update remaining after recording
+    response.setHeader('X-RateLimit-Remaining', String(remaining - 1));
+
+    return true;
+  }
+
+  /** Remove entries that have no recent timestamps */
+  private cleanup(windowStart: number): void {
+    for (const [key, entry] of this.windows) {
+      entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
+      if (entry.timestamps.length === 0) {
+        this.windows.delete(key);
+      }
+    }
+  }
+}

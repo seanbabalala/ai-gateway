@@ -1,13 +1,14 @@
 import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
+import { RateLimitGuard } from '../auth/rate-limit.guard';
 
 /**
  * GET /v1/models — OpenAI-compatible model listing endpoint.
  * Returns all available models, aliases, and the special "auto" model.
  */
 @Controller('v1')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, RateLimitGuard)
 export class ModelsController {
   private readonly logger = new Logger(ModelsController.name);
 

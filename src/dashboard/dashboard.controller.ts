@@ -18,10 +18,11 @@
 // ===================================================================
 
 import {
-  Controller, Get, Post, Put, Delete, Param, Query, Body, Sse, Logger,
+  Controller, Get, Post, Put, Delete, Param, Query, Body, Sse, Logger, Res,
   MessageEvent, ParseIntPipe, DefaultValuePipe, HttpException, HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
@@ -47,7 +48,153 @@ export class DashboardController {
     private readonly logEventBus: LogEventBus,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
-  ) {}
+  ) {
+    // Run log cleanup on startup
+    this.cleanupOldLogs().catch(() => {});
+  }
+
+  /** Delete logs older than log_retention_days (default: 30) */
+  private async cleanupOldLogs(): Promise<void> {
+    const retentionDays = this.config.database.log_retention_days ?? 30;
+    if (retentionDays <= 0) return;
+
+    const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+    const result = await this.callLogRepo
+      .createQueryBuilder()
+      .delete()
+      .where('timestamp < :cutoff', { cutoff })
+      .execute();
+
+    if (result.affected && result.affected > 0) {
+      this.logger.log(`Log cleanup: deleted ${result.affected} logs older than ${retentionDays} days`);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Cost Analytics
+  // ══════════════════════════════════════════════════════
+
+  @Get('analytics/cost')
+  async getCostAnalytics(
+    @Query('period') period: string = '7d',
+    @Query('groupBy') groupBy: string = 'model',
+  ) {
+    // Parse period
+    const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
+    const since = new Date(Date.now() - periodDays * 86_400_000).toISOString();
+
+    // Daily cost trend
+    const dailyTrend = await this.callLogRepo
+      .createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .select("strftime('%Y-%m-%d', log.timestamp)", 'date')
+      .addSelect('COUNT(*)', 'calls')
+      .addSelect('SUM(log.cost_usd)', 'cost')
+      .addSelect('SUM(log.input_tokens)', 'inputTokens')
+      .addSelect('SUM(log.output_tokens)', 'outputTokens')
+      .groupBy('date')
+      .orderBy('date', 'ASC')
+      .getRawMany();
+
+    // Group by model
+    const byModel = await this.callLogRepo
+      .createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .select('log.model', 'model')
+      .addSelect('COUNT(*)', 'calls')
+      .addSelect('SUM(log.cost_usd)', 'cost')
+      .addSelect('SUM(log.input_tokens)', 'inputTokens')
+      .addSelect('SUM(log.output_tokens)', 'outputTokens')
+      .addSelect('AVG(log.latency_ms)', 'avgLatency')
+      .groupBy('log.model')
+      .orderBy('cost', 'DESC')
+      .getRawMany();
+
+    // Group by node
+    const byNode = await this.callLogRepo
+      .createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .select('log.node_id', 'nodeId')
+      .addSelect('COUNT(*)', 'calls')
+      .addSelect('SUM(log.cost_usd)', 'cost')
+      .addSelect('SUM(log.input_tokens)', 'inputTokens')
+      .addSelect('SUM(log.output_tokens)', 'outputTokens')
+      .addSelect('AVG(log.latency_ms)', 'avgLatency')
+      .groupBy('log.node_id')
+      .orderBy('cost', 'DESC')
+      .getRawMany();
+
+    // Group by tier
+    const byTier = await this.callLogRepo
+      .createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .select('log.tier', 'tier')
+      .addSelect('COUNT(*)', 'calls')
+      .addSelect('SUM(log.cost_usd)', 'cost')
+      .addSelect('SUM(log.input_tokens)', 'inputTokens')
+      .addSelect('SUM(log.output_tokens)', 'outputTokens')
+      .groupBy('log.tier')
+      .orderBy('cost', 'DESC')
+      .getRawMany();
+
+    // Total for the period
+    const totalAgg = await this.callLogRepo
+      .createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .select('COUNT(*)', 'calls')
+      .addSelect('SUM(log.cost_usd)', 'cost')
+      .addSelect('SUM(log.input_tokens)', 'inputTokens')
+      .addSelect('SUM(log.output_tokens)', 'outputTokens')
+      .addSelect('AVG(log.cost_usd)', 'avgCostPerCall')
+      .getRawOne();
+
+    return {
+      period: periodDays,
+      total: {
+        calls: Number(totalAgg?.calls || 0),
+        cost: Number(Number(totalAgg?.cost || 0).toFixed(6)),
+        inputTokens: Number(totalAgg?.inputTokens || 0),
+        outputTokens: Number(totalAgg?.outputTokens || 0),
+        avgCostPerCall: Number(Number(totalAgg?.avgCostPerCall || 0).toFixed(6)),
+      },
+      dailyTrend: dailyTrend.map((d) => ({
+        date: d.date,
+        calls: Number(d.calls),
+        cost: Number(Number(d.cost || 0).toFixed(6)),
+        inputTokens: Number(d.inputTokens || 0),
+        outputTokens: Number(d.outputTokens || 0),
+      })),
+      byModel: byModel.map((m) => ({
+        model: m.model,
+        calls: Number(m.calls),
+        cost: Number(Number(m.cost || 0).toFixed(6)),
+        inputTokens: Number(m.inputTokens || 0),
+        outputTokens: Number(m.outputTokens || 0),
+        avgLatency: Number(Number(m.avgLatency || 0).toFixed(0)),
+        avgCostPerCall: Number(m.calls) > 0
+          ? Number((Number(m.cost || 0) / Number(m.calls)).toFixed(6))
+          : 0,
+      })),
+      byNode: byNode.map((n) => ({
+        nodeId: n.nodeId,
+        calls: Number(n.calls),
+        cost: Number(Number(n.cost || 0).toFixed(6)),
+        inputTokens: Number(n.inputTokens || 0),
+        outputTokens: Number(n.outputTokens || 0),
+        avgLatency: Number(Number(n.avgLatency || 0).toFixed(0)),
+        avgCostPerCall: Number(n.calls) > 0
+          ? Number((Number(n.cost || 0) / Number(n.calls)).toFixed(6))
+          : 0,
+      })),
+      byTier: byTier.map((t) => ({
+        tier: t.tier,
+        calls: Number(t.calls),
+        cost: Number(Number(t.cost || 0).toFixed(6)),
+        inputTokens: Number(t.inputTokens || 0),
+        outputTokens: Number(t.outputTokens || 0),
+      })),
+    };
+  }
 
   // ══════════════════════════════════════════════════════
   // Stats
@@ -163,6 +310,58 @@ export class DashboardController {
         totalPages: Math.ceil(total / safeLimit),
       },
     };
+  }
+
+  // ── Log Export ──────────────────────────────────────────
+
+  @Get('logs/export')
+  async exportLogs(
+    @Query('format') format: string = 'csv',
+    @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
+    @Res() res: Response,
+  ) {
+    const safeDays = Math.min(Math.max(days, 1), 365);
+    const since = new Date(Date.now() - safeDays * 86_400_000).toISOString();
+
+    const logs = await this.callLogRepo
+      .createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .orderBy('log.timestamp', 'DESC')
+      .getMany();
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="logs-${safeDays}d.json"`);
+      res.send(JSON.stringify(logs, null, 2));
+      return;
+    }
+
+    // CSV
+    const headers = [
+      'timestamp', 'request_id', 'tier', 'score', 'node_id', 'model',
+      'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
+      'latency_ms', 'status_code', 'is_fallback', 'session_key',
+      'api_key_name', 'retry_count', 'error',
+    ];
+    const csvRows = [headers.join(',')];
+
+    for (const log of logs) {
+      const row = headers.map((h) => {
+        const val = (log as unknown as Record<string, unknown>)[h];
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        // Escape CSV fields containing commas/quotes/newlines
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      });
+      csvRows.push(row.join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="logs-${safeDays}d.csv"`);
+    res.send(csvRows.join('\n'));
   }
 
   // ══════════════════════════════════════════════════════
@@ -308,6 +507,24 @@ export class DashboardController {
   getNodes() {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
+      const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
+
+      // Build per-model circuit info
+      const modelCircuits: Record<string, {
+        state: string;
+        consecutiveFailures: number;
+        lastFailureAt: string | null;
+      }> = {};
+      for (const [model, ms] of Object.entries(modelStatuses)) {
+        modelCircuits[model] = {
+          state: ms.state,
+          consecutiveFailures: ms.consecutiveFailures,
+          lastFailureAt: ms.lastFailureAt
+            ? new Date(ms.lastFailureAt).toISOString()
+            : null,
+        };
+      }
+
       return {
         id: node.id,
         name: node.name,
@@ -325,6 +542,7 @@ export class DashboardController {
             ? new Date(cbStatus.lastFailureAt).toISOString()
             : null,
         },
+        modelCircuits,
         healthy: cbStatus.state !== CircuitState.OPEN,
       };
     });
@@ -370,7 +588,11 @@ export class DashboardController {
   }
 
   @Post('nodes/:id/reset')
-  resetNodeCircuit(@Param('id') nodeId: string) {
+  resetNodeCircuit(@Param('id') nodeId: string, @Query('model') model?: string) {
+    if (model) {
+      this.circuitBreaker.reset(nodeId, model);
+      return { success: true, message: `Circuit breaker reset for "${nodeId}:${model}"` };
+    }
     this.circuitBreaker.reset(nodeId);
     return { success: true, message: `Circuit breaker reset for node "${nodeId}"` };
   }

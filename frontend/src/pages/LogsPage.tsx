@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardStatic } from '@/components/ui/card'
@@ -17,6 +17,7 @@ import {
 import { useLogs } from '@/hooks/use-logs'
 import { useSSELogs } from '@/hooks/use-sse-logs'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
+import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
 const LIMIT = 20
@@ -34,6 +35,17 @@ const statusOptions = [
   { value: '200', label: '200 OK' },
   { value: '500', label: '500 Error' },
   { value: '429', label: '429 Rate Limit' },
+]
+
+const exportFormatOptions = [
+  { value: 'csv', label: 'CSV' },
+  { value: 'json', label: 'JSON' },
+]
+
+const exportDaysOptions = [
+  { value: '7', label: '7 days' },
+  { value: '30', label: '30 days' },
+  { value: '90', label: '90 days' },
 ]
 
 function LogDetailRow({ log }: { log: CallLog }) {
@@ -85,6 +97,8 @@ export function LogsPage() {
   const [nodeFilter, setNodeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [exportFormat, setExportFormat] = useState('csv')
+  const [exportDays, setExportDays] = useState('7')
 
   const { data: logsData, isLoading, refetch } = useLogs(page, LIMIT, {
     tier: tierFilter || undefined,
@@ -99,12 +113,50 @@ export function LogsPage() {
     refetch()
   }
 
+  const handleExport = () => {
+    const token = getAuthToken()
+    const params = new URLSearchParams({ format: exportFormat, days: exportDays })
+    const url = `/api/dashboard/logs/export?${params.toString()}`
+    // Use a hidden link with auth header via fetch + blob download
+    fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `logs-${exportDays}d.${exportFormat}`
+        a.click()
+        URL.revokeObjectURL(a.href)
+      })
+      .catch(() => {})
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Logs"
         description="Browse and filter call logs with real-time updates"
-      />
+      >
+        <div className="flex items-center gap-2">
+          <Select
+            options={exportDaysOptions}
+            value={exportDays}
+            onChange={(e) => setExportDays(e.target.value)}
+            className="w-24 h-8 text-[11px]"
+          />
+          <Select
+            options={exportFormatOptions}
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value)}
+            className="w-20 h-8 text-[11px]"
+          />
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </Button>
+        </div>
+      </PageHeader>
 
       {/* SSE New Logs Banner */}
       {newCount > 0 && (

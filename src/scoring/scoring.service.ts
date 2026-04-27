@@ -1,16 +1,18 @@
 // ===================================================================
-// ScoringService — 12-Dimension Request Complexity Scoring Engine
+// ScoringService — 14-Dimension Request Complexity Scoring Engine
 // ===================================================================
 // Scores a CanonicalRequest to determine its complexity tier:
 //   simple → standard → complex → reasoning
 //
 // Features:
-//   - 12 weighted dimensions (keyword, structural, tool-based)
+//   - 14 weighted dimensions (keyword, structural, tool-based)
 //   - Fast-path short-circuits for obvious cases
 //   - Configurable thresholds from gateway.config.yaml
+//   - Custom dimension weights via config (routing.scoring.weights)
+//   - Custom keywords injected into tries (routing.scoring.custom_keywords)
 // ===================================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { CanonicalRequest, Tier } from '../canonical/canonical.types';
 
@@ -26,6 +28,8 @@ import {
   detectCodeDomain,
   extractLastUserText,
   extractAllText,
+  resetTries,
+  injectCustomKeywords,
 } from './dimensions/keyword.dimension';
 
 // Structural dimensions
@@ -41,7 +45,7 @@ import {
 // Tool dimension
 import { scoreToolCount } from './dimensions/tool.dimension';
 
-// ─── Dimension Weights (from PLAN.md) ─────────────────────
+// ─── Dimension Weights (defaults) ─────────────────────────
 
 interface DimensionWeight {
   name: string;
@@ -49,7 +53,7 @@ interface DimensionWeight {
   scorer: (req: CanonicalRequest) => number;
 }
 
-const DIMENSIONS: DimensionWeight[] = [
+const DEFAULT_DIMENSIONS: DimensionWeight[] = [
   { name: 'simpleIndicators',    weight: 0.10, scorer: scoreSimpleIndicators },
   { name: 'codeGeneration',      weight: 0.08, scorer: scoreCodeGeneration },
   { name: 'codeFrontend',        weight: 0.04, scorer: scoreCodeFrontend },
@@ -79,10 +83,49 @@ export interface ScoringResult {
 // ─── Service ──────────────────────────────────────────────
 
 @Injectable()
-export class ScoringService {
+export class ScoringService implements OnModuleInit {
   private readonly logger = new Logger(ScoringService.name);
+  private dimensions: DimensionWeight[] = [];
 
   constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    this.initDimensions();
+  }
+
+  /**
+   * Build the effective dimension list by merging defaults with config overrides.
+   * Also injects custom keywords into the tries.
+   */
+  private initDimensions(): void {
+    const scoring = this.config.routing?.scoring;
+    const weightOverrides = scoring?.weights;
+    const customKeywords = scoring?.custom_keywords;
+
+    // Merge weights
+    this.dimensions = DEFAULT_DIMENSIONS.map((dim) => {
+      const override = weightOverrides?.[dim.name];
+      return override !== undefined
+        ? { ...dim, weight: override }
+        : { ...dim };
+    });
+
+    // Log overrides
+    if (weightOverrides && Object.keys(weightOverrides).length > 0) {
+      this.logger.log(
+        `Custom dimension weights: ${JSON.stringify(weightOverrides)}`,
+      );
+    }
+
+    // Reset and rebuild tries with custom keywords
+    if (customKeywords && customKeywords.length > 0) {
+      resetTries(); // Clear singletons so they rebuild fresh
+      injectCustomKeywords(customKeywords);
+      this.logger.log(
+        `Injected ${customKeywords.length} custom keyword rule(s) into scoring tries`,
+      );
+    }
+  }
 
   /**
    * Score a canonical request and return its complexity tier + score.
@@ -128,7 +171,7 @@ export class ScoringService {
     const dimensions: Record<string, number> = {};
     let weightedSum = 0;
 
-    for (const dim of DIMENSIONS) {
+    for (const dim of this.dimensions) {
       const rawScore = dim.scorer(req);
       dimensions[dim.name] = rawScore;
       weightedSum += rawScore * dim.weight;

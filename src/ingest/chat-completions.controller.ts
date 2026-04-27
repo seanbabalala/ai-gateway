@@ -4,9 +4,10 @@ import { ChatCompletionsNormalizer } from '../canonical/normalizers/chat-complet
 import { PipelineService } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
+import { RateLimitGuard } from '../auth/rate-limit.guard';
 
 @Controller('v1')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, RateLimitGuard)
 export class ChatCompletionsController {
   private readonly logger = new Logger(ChatCompletionsController.name);
   private readonly normalizer = new ChatCompletionsNormalizer();

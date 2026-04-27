@@ -150,6 +150,49 @@ let _logicTrie: KeywordTrie | null = null;
 let _technicalTrie: KeywordTrie | null = null;
 let _analyticalTrie: KeywordTrie | null = null;
 
+/** Reset all trie singletons (called when config changes). */
+export function resetTries(): void {
+  _simpleTrie = null;
+  _codeTrie = null;
+  _codeFrontendTrie = null;
+  _codeBackendTrie = null;
+  _logicTrie = null;
+  _technicalTrie = null;
+  _analyticalTrie = null;
+}
+
+/** Dimension name → trie getter mapping (for custom keyword injection). */
+const DIMENSION_TRIE_MAP: Record<string, () => KeywordTrie> = {
+  simpleIndicators: () => getSimpleTrie(),
+  codeGeneration: () => getCodeTrie(),
+  codeFrontend: () => getCodeFrontendTrie(),
+  codeBackend: () => getCodeBackendTrie(),
+  formalLogic: () => getLogicTrie(),
+  technicalTerms: () => getTechnicalTrie(),
+  analyticalReasoning: () => getAnalyticalTrie(),
+};
+
+/**
+ * Inject custom keywords from config into the appropriate tries.
+ * Call after resetTries() to ensure tries are rebuilt with customs.
+ */
+export function injectCustomKeywords(
+  entries: { pattern: string; dimension: string; weight?: number }[],
+): void {
+  for (const entry of entries) {
+    const getTrieFn = DIMENSION_TRIE_MAP[entry.dimension];
+    if (!getTrieFn) continue; // Unknown dimension — skip silently
+
+    const trie = getTrieFn();
+    const keywords = entry.pattern.split('|').map((k) => k.trim()).filter(Boolean);
+    const weight = entry.weight ?? 1.0;
+
+    for (const kw of keywords) {
+      trie.insert(kw, weight);
+    }
+  }
+}
+
 function getSimpleTrie(): KeywordTrie {
   if (!_simpleTrie) {
     _simpleTrie = new KeywordTrie();

@@ -170,7 +170,7 @@ export class PipelineService {
         const response = await this.providerClient.forward(
           canonical, nodeId, model, routingMeta,
         );
-        this.circuitBreaker.recordSuccess(nodeId);
+        this.circuitBreaker.recordSuccess(nodeId, model);
         return { response, lastError: null, retries };
       } catch (err) {
         lastError = err as Error;
@@ -184,7 +184,7 @@ export class PipelineService {
             `Node ${nodeId} failed (attempt ${attempt + 1}/${maxAttempts}): ${lastError.message}` +
             (isLastAttempt && attempt > 0 ? ' — retries exhausted' : ''),
           );
-          this.circuitBreaker.recordFailure(nodeId);
+          this.circuitBreaker.recordFailure(nodeId, model);
           return { response: null, lastError, retries };
         }
 
@@ -316,7 +316,7 @@ export class PipelineService {
 
           // Stream completed successfully
           const latencyMs = Date.now() - startTime;
-          this.circuitBreaker.recordSuccess(target.node);
+          this.circuitBreaker.recordSuccess(target.node, target.model);
 
           const pricing = this.config.getModelPricing(usedModel);
           const costUsd = pricing
@@ -337,7 +337,7 @@ export class PipelineService {
           if (connected || streamConnected) {
             // Transmission phase — don't retry, send error event
             this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
-            this.circuitBreaker.recordFailure(target.node);
+            this.circuitBreaker.recordFailure(target.node, target.model);
             const errorEvent: CanonicalStreamEvent = {
               type: 'error',
               error: { message: lastError.message, code: 'stream_error' },
@@ -372,7 +372,7 @@ export class PipelineService {
             `${isFirstTarget ? 'Primary' : 'Fallback'} node ${target.node} stream failed: ${lastError.message}` +
             (attempt > 0 ? ` (after ${attempt + 1} attempts)` : ''),
           );
-          this.circuitBreaker.recordFailure(target.node);
+          this.circuitBreaker.recordFailure(target.node, target.model);
           break; // break retry loop, continue to next target
         }
       }

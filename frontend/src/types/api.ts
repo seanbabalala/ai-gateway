@@ -103,6 +103,7 @@ export interface NodeInfo {
   tags: string[]
   aliases: Record<string, string>
   circuit: CircuitBreaker
+  modelCircuits: Record<string, CircuitBreaker>
   healthy: boolean
 }
 
@@ -190,6 +191,43 @@ export type SSEEvent =
   | { type: 'connected'; timestamp: string }
   | { type: 'log'; log: CallLog }
   | { type: 'heartbeat'; timestamp: string }
+
+// ── Cost Analytics ──
+
+export interface CostAnalyticsDailyTrend {
+  date: string
+  calls: number
+  cost: number
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface CostAnalyticsGroupItem {
+  model?: string
+  nodeId?: string
+  tier?: string
+  calls: number
+  cost: number
+  inputTokens: number
+  outputTokens: number
+  avgLatency?: number
+  avgCostPerCall?: number
+}
+
+export interface CostAnalyticsResponse {
+  period: number
+  total: {
+    calls: number
+    cost: number
+    inputTokens: number
+    outputTokens: number
+    avgCostPerCall: number
+  }
+  dailyTrend: CostAnalyticsDailyTrend[]
+  byModel: CostAnalyticsGroupItem[]
+  byNode: CostAnalyticsGroupItem[]
+  byTier: CostAnalyticsGroupItem[]
+}
 
 // ── Mutation Responses ──
 

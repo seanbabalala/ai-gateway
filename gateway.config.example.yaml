@@ -16,6 +16,7 @@ server:
 database:
   type: sqlite
   path: ./data/gateway.db
+  # log_retention_days: 30    # Auto-delete logs older than N days (default: 30, 0 = keep forever)
   # For PostgreSQL:
   # type: postgres
   # url: "postgresql://user:pass@localhost:5432/ai_gateway"
@@ -27,6 +28,13 @@ auth:
     # Add more keys for different users/services:
     # - key: "${TEAM_API_KEY}"
     #   name: "team-backend"
+
+  # Rate limiting (optional)
+  # Sliding-window counters per API key / per IP.
+  # If omitted, no rate limiting is applied.
+  # rate_limit:
+  #   requests_per_minute: 60       # Per API key per minute
+  #   requests_per_minute_ip: 30    # Per IP per minute (when no API key)
 
 # Dashboard authentication (optional)
 # If set, the dashboard UI requires a password to access.
@@ -144,6 +152,23 @@ routing:
     standard_max: 0.08     # Score ≤ 0.08  → standard
     complex_max: 0.35      # Score ≤ 0.35  → complex
                            # Score > 0.35  → reasoning
+
+    # Custom dimension weights (optional) — override default weights
+    # Valid dimensions: simpleIndicators, codeGeneration, codeFrontend, codeBackend,
+    # formalLogic, technicalTerms, multiStep, analyticalReasoning, tokenCount,
+    # toolCount, conversationDepth, constraintDensity, expectedOutputLength, codeToProse
+    # weights:
+    #   formalLogic: 0.15        # Increase logic weight
+    #   codeGeneration: 0.12    # Increase code weight
+
+    # Custom keywords (optional) — inject additional keywords into scoring dimensions
+    # custom_keywords:
+    #   - pattern: "kubernetes|k8s|helm|istio"
+    #     dimension: codeBackend
+    #     weight: 1.0
+    #   - pattern: "legal|contract|compliance|regulatory"
+    #     dimension: analyticalReasoning
+    #     weight: 1.0
 
   # Retry configuration (optional)
   # Controls per-node retry behavior before falling back to the next node.

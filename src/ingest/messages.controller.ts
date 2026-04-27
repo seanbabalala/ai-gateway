@@ -4,9 +4,10 @@ import { MessagesNormalizer } from '../canonical/normalizers/messages.normalizer
 import { PipelineService } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
+import { RateLimitGuard } from '../auth/rate-limit.guard';
 
 @Controller('v1')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, RateLimitGuard)
 export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
   private readonly normalizer = new MessagesNormalizer();

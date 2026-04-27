@@ -6,6 +6,7 @@ import { LogsPage } from '@/pages/LogsPage'
 import { NodesPage } from '@/pages/NodesPage'
 import { RoutingPage } from '@/pages/RoutingPage'
 import { BudgetPage } from '@/pages/BudgetPage'
+import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { LoginPage } from '@/pages/LoginPage'
 
 export function App() {
@@ -24,6 +25,7 @@ export function App() {
         <Route path="/nodes" element={<NodesPage />} />
         <Route path="/routing" element={<RoutingPage />} />
         <Route path="/budget" element={<BudgetPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
       </Route>
     </Routes>
   )
