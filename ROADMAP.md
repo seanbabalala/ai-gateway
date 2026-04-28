@@ -1,7 +1,7 @@
 # AI Gateway — Roadmap（待做事项总览）
 
 > 最后更新: 2026-04-28
-> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11), Per-Key 预算 + Dashboard 按 Key 筛选 (#9), 安全加固 (#15)
+> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11), Per-Key 预算 + Dashboard 按 Key 筛选 (#9), 安全加固 (#15), E2E 测试套件 (#16)
 
 ---
 
@@ -16,6 +16,7 @@
 | 预算 | ✅ 日 Token + 日费用双限额 + Per-Key 独立预算 |
 | 流式 | ✅ 3 协议完整 SSE |
 | 安全 | ✅ Helmet + Timing-safe API Key + Body Limit + CORS 配置 + Login 限流 + Graceful Shutdown |
+| 测试 | ✅ 674 单元测试 + 52 E2E 测试 (8 files) — 覆盖完整请求链路 |
 | Docker | ✅ 多阶段构建 |
 
 ---
@@ -344,6 +345,29 @@ telemetry:
 
 **复杂度**: 中
 
+---
+
+## P4 — 质量保障 ✅ 全部完成
+
+### 16. E2E 测试套件 ✅
+**已完成**: 52 tests across 8 files, 覆盖 33 个 HTTP 端点的完整请求链路。
+
+**原始问题**: 674 个 unit tests 但 E2E 覆盖极薄（1 个文件 4 个测试，仅覆盖 health 和 models list）。
+
+#### 已实现
+- **测试基础设施**: `FetchMock` 类 (auto-detect protocol, streaming SSE support) + `createE2EHarness()` 复制 main.ts 完整中间件 + SQLite `:memory:` 隔离
+- **health.e2e-spec.ts** (3 tests): shape 验证, nodes shape, helmet 安全头
+- **models.e2e-spec.ts** (3 tests): models list, 包含所有 mock 模型, 401 无 key
+- **guards.e2e-spec.ts** (8 tests): API Key 认证 (valid/invalid/missing), rate limit headers, body size 413, helmet
+- **ingest.e2e-spec.ts** (13 tests): chat/completions + messages + responses (non-streaming + streaming SSE), fetch 调用验证, model alias 解析
+- **auth.e2e-spec.ts** (5 tests): status, login, dashboard 开放访问, login 暴力破解限流
+- **dashboard.e2e-spec.ts** (13 tests): stats/logs/budget/nodes CRUD/config/routing/cache/analytics
+- **edge-cases.e2e-spec.ts** (6 tests): primary 500 fallback, all-fail 502, log 写入验证, alias routing, unknown model fallthrough
+- **自包含测试配置**: `gateway.e2e.yaml` — 2 mock nodes, 2 API keys, 高 rate limit, 无 dashboard password
+- **~5.6s 运行时间** (8 文件并行)
+
+**复杂度**: 中
+
 ```
 Phase A (P0 — 生产必备) ✅ 全部完成
   ├── #3 API Key 守卫        ✅
@@ -367,6 +391,9 @@ Phase C (P2 — 长期) ✅ 全部完成
 
 Phase D (P3 — 安全加固) ✅ 全部完成
   └── #15 Security Hardening   ✅
+
+Phase E (P4 — 质量保障) ✅ 全部完成
+  └── #16 E2E 测试套件          ✅
 ```
 
 ---
@@ -389,3 +416,4 @@ Phase D (P3 — 安全加固) ✅ 全部完成
 - [x] ~~OpenTelemetry 可观测性~~ — 分布式 Tracing (gateway.request → scoring → routing spans) + Prometheus Metrics (请求计数/延迟/token/成本/缓存/上游错误) + OTLP Exporter + 配置驱动 enabled/disabled + Dashboard telemetry-status 端点 (2026-04-28)
 - [x] ~~Per-Key 预算 + Dashboard 按 Key 筛选~~ — ApiKeyBudgetOverride 配置 + BudgetRule api_key_name 列 + 双层 check/record + 启动自动同步/清理 per-key 规则 + Dashboard 全端点 api_key 筛选 + GET /budget/keys + GET /api-keys + 前端 4 页面 API Key 选择器 + BudgetPage per-key 环形仪表对比视图 (2026-04-28)
 - [x] ~~Security Hardening~~ — Timing-safe API Key (SHA-256 + timingSafeEqual) + helmet 安全头 + 可配置 CORS (origin/credentials) + body 大小限制 (1mb default) + trust proxy + graceful shutdown (5s timeout) + login brute-force per-IP 限流 (5/min) + rate limiter max_entries FIFO 淘汰 (10000 default) + 全部配置驱动且向后兼容 (2026-04-28)
+- [x] ~~E2E 测试套件~~ — 52 tests across 8 files, 覆盖完整请求链路 (HTTP → Guard → Normalize → Score → Route → Provider mock → Denormalize → Response): health + models + guards (API key/rate limit/body size/helmet) + ingest (chat_completions/messages/responses, streaming SSE, model aliases) + auth (login/status/rate limit) + dashboard (stats/logs/budget/nodes CRUD/config/routing/cache/analytics) + edge cases (fallback/502/log verification) + supertest + FetchMock + SQLite :memory: 隔离 (2026-04-28)
