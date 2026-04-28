@@ -24,7 +24,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
@@ -49,6 +49,7 @@ export class DashboardController {
     private readonly budgetService: BudgetService,
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
+    private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
   ) {
@@ -61,7 +62,7 @@ export class DashboardController {
     const retentionDays = this.config.database.log_retention_days ?? 30;
     if (retentionDays <= 0) return;
 
-    const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+    const cutoff = new Date(Date.now() - retentionDays * 86_400_000);
     const result = await this.callLogRepo
       .createQueryBuilder()
       .delete()
@@ -71,6 +72,14 @@ export class DashboardController {
     if (result.affected && result.affected > 0) {
       this.logger.log(`Log cleanup: deleted ${result.affected} logs older than ${retentionDays} days`);
     }
+  }
+
+  /** Return a SQL expression that truncates a timestamp column to YYYY-MM-DD string */
+  private dateTruncDay(column: string): string {
+    if (this.dataSource.options.type === 'postgres') {
+      return `TO_CHAR(${column}, 'YYYY-MM-DD')`;
+    }
+    return `strftime('%Y-%m-%d', ${column})`;
   }
 
   // ══════════════════════════════════════════════════════
@@ -84,13 +93,13 @@ export class DashboardController {
   ) {
     // Parse period
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
-    const since = new Date(Date.now() - periodDays * 86_400_000).toISOString();
+    const since = new Date(Date.now() - periodDays * 86_400_000);
 
     // Daily cost trend
     const dailyTrend = await this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
-      .select("strftime('%Y-%m-%d', log.timestamp)", 'date')
+      .select(this.dateTruncDay('log.timestamp'), 'date')
       .addSelect('COUNT(*)', 'calls')
       .addSelect('SUM(log.cost_usd)', 'cost')
       .addSelect('SUM(log.input_tokens)', 'inputTokens')
@@ -237,7 +246,7 @@ export class DashboardController {
       .getRawMany();
 
     // Last 24h stats
-    const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString();
+    const oneDayAgo = new Date(Date.now() - 86_400_000);
     const recentAgg = await this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since: oneDayAgo })
@@ -324,7 +333,7 @@ export class DashboardController {
     @Res() res: Response,
   ) {
     const safeDays = Math.min(Math.max(days, 1), 365);
-    const since = new Date(Date.now() - safeDays * 86_400_000).toISOString();
+    const since = new Date(Date.now() - safeDays * 86_400_000);
 
     const logs = await this.callLogRepo
       .createQueryBuilder('log')

@@ -62,6 +62,8 @@ describe('Claude routing compatibility', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
     );
 
     const route = (service as any).resolveSmartRoute(makeMessagesRequest());

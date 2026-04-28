@@ -1,0 +1,110 @@
+import { AuthService } from '../../src/auth/auth.service';
+import { mockConfigService } from '../helpers';
+
+describe('AuthService', () => {
+  // ── isAuthRequired ───────────────────────────────────────
+
+  describe('isAuthRequired', () => {
+    it('should return false when no password is configured', () => {
+      const config = mockConfigService({ dashboardPasswordHash: undefined });
+      const svc = new AuthService(config);
+      expect(svc.isAuthRequired).toBe(false);
+    });
+
+    it('should return true when a password hash is configured', () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$somehash' });
+      const svc = new AuthService(config);
+      expect(svc.isAuthRequired).toBe(true);
+    });
+  });
+
+  // ── hashPassword + verifyPassword ────────────────────────
+
+  describe('hash + verify roundtrip', () => {
+    it('should hash and verify a password correctly', async () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$placeholder' });
+      const svc = new AuthService(config);
+
+      const plain = 'my-secret-password';
+      const hash = await svc.hashPassword(plain);
+
+      // Hash should be bcrypt format
+      expect(hash).toMatch(/^\$2[ab]\$/);
+
+      // Verification should succeed
+      expect(await svc.verifyPassword(plain, hash)).toBe(true);
+    });
+
+    it('should reject wrong password', async () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$placeholder' });
+      const svc = new AuthService(config);
+
+      const hash = await svc.hashPassword('correct');
+      expect(await svc.verifyPassword('wrong', hash)).toBe(false);
+    });
+  });
+
+  // ── generateToken + verifyToken ──────────────────────────
+
+  describe('token roundtrip', () => {
+    it('should generate and verify a JWT token', () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$somefakehashvalue123456' });
+      const svc = new AuthService(config);
+
+      const token = svc.generateToken();
+      expect(typeof token).toBe('string');
+      expect(token.split('.')).toHaveLength(3); // JWT has 3 parts
+
+      const payload = svc.verifyToken(token);
+      expect(payload).not.toBeNull();
+      expect(payload!.sub).toBe('dashboard');
+    });
+
+    it('should return null for tampered token', () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$somefakehashvalue123456' });
+      const svc = new AuthService(config);
+
+      const token = svc.generateToken();
+      const tampered = token.slice(0, -5) + 'XXXXX';
+
+      expect(svc.verifyToken(tampered)).toBeNull();
+    });
+
+    it('should return null for completely invalid token', () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$somefakehashvalue123456' });
+      const svc = new AuthService(config);
+      expect(svc.verifyToken('not.a.real.token')).toBeNull();
+    });
+  });
+
+  // ── ensurePasswordHashed ─────────────────────────────────
+
+  describe('ensurePasswordHashed', () => {
+    it('should do nothing when no password is set', async () => {
+      const config = mockConfigService({ dashboardPasswordHash: undefined });
+      const svc = new AuthService(config);
+
+      await svc.ensurePasswordHashed();
+      expect(config.setDashboardPasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when password is already hashed', async () => {
+      const config = mockConfigService({ dashboardPasswordHash: '$2a$10$alreadyhashed' });
+      const svc = new AuthService(config);
+
+      await svc.ensurePasswordHashed();
+      expect(config.setDashboardPasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('should hash a plain-text password and write it back', async () => {
+      const config = mockConfigService({ dashboardPasswordHash: 'plain-password' });
+      const svc = new AuthService(config);
+
+      await svc.ensurePasswordHashed();
+      expect(config.setDashboardPasswordHash).toHaveBeenCalledTimes(1);
+
+      const savedHash = config.setDashboardPasswordHash.mock.calls[0][0];
+      expect(savedHash).toMatch(/^\$2[ab]\$/);
+    });
+  });
+});
