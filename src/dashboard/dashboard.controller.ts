@@ -92,13 +92,14 @@ export class DashboardController {
   async getCostAnalytics(
     @Query('period') period: string = '7d',
     @Query('groupBy') groupBy: string = 'model',
+    @Query('api_key') apiKey?: string,
   ) {
     // Parse period
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
     const since = new Date(Date.now() - periodDays * 86_400_000);
 
     // Daily cost trend
-    const dailyTrend = await this.callLogRepo
+    const dailyTrendQb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .select(this.dateTruncDay('log.timestamp'), 'date')
@@ -107,11 +108,12 @@ export class DashboardController {
       .addSelect('SUM(log.input_tokens)', 'inputTokens')
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .groupBy('date')
-      .orderBy('date', 'ASC')
-      .getRawMany();
+      .orderBy('date', 'ASC');
+    if (apiKey) dailyTrendQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const dailyTrend = await dailyTrendQb.getRawMany();
 
     // Group by model
-    const byModel = await this.callLogRepo
+    const byModelQb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .select('log.model', 'model')
@@ -121,11 +123,12 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.model')
-      .orderBy('cost', 'DESC')
-      .getRawMany();
+      .orderBy('cost', 'DESC');
+    if (apiKey) byModelQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const byModel = await byModelQb.getRawMany();
 
     // Group by node
-    const byNode = await this.callLogRepo
+    const byNodeQb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .select('log.node_id', 'nodeId')
@@ -135,11 +138,12 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.node_id')
-      .orderBy('cost', 'DESC')
-      .getRawMany();
+      .orderBy('cost', 'DESC');
+    if (apiKey) byNodeQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const byNode = await byNodeQb.getRawMany();
 
     // Group by tier
-    const byTier = await this.callLogRepo
+    const byTierQb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .select('log.tier', 'tier')
@@ -148,11 +152,12 @@ export class DashboardController {
       .addSelect('SUM(log.input_tokens)', 'inputTokens')
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .groupBy('log.tier')
-      .orderBy('cost', 'DESC')
-      .getRawMany();
+      .orderBy('cost', 'DESC');
+    if (apiKey) byTierQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const byTier = await byTierQb.getRawMany();
 
     // Total for the period
-    const totalAgg = await this.callLogRepo
+    const totalQb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .select('COUNT(*)', 'calls')
@@ -161,8 +166,9 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .addSelect('AVG(log.cost_usd)', 'avgCostPerCall')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
-      .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens')
-      .getRawOne();
+      .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
+    if (apiKey) totalQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const totalAgg = await totalQb.getRawOne();
 
     return {
       period: periodDays,
@@ -222,6 +228,7 @@ export class DashboardController {
   async getExperimentAnalytics(
     @Query('period') period: string = '7d',
     @Query('tier') tier?: string,
+    @Query('api_key') apiKey?: string,
   ) {
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
     const since = new Date(Date.now() - periodDays * 86_400_000);
@@ -232,6 +239,9 @@ export class DashboardController {
       .andWhere('log.experiment_group IS NOT NULL');
     if (tier) {
       qb = qb.andWhere('log.tier = :tier', { tier });
+    }
+    if (apiKey) {
+      qb = qb.andWhere('log.api_key_name = :apiKey', { apiKey });
     }
 
     const byGroup = await qb
@@ -251,6 +261,9 @@ export class DashboardController {
       .andWhere('log.experiment_group IS NOT NULL');
     if (tier) {
       trendQb = trendQb.andWhere('log.tier = :tier', { tier });
+    }
+    if (apiKey) {
+      trendQb = trendQb.andWhere('log.api_key_name = :apiKey', { apiKey });
     }
 
     const dailyTrend = await trendQb
@@ -302,13 +315,17 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('stats')
-  async getStats() {
-    const totalCalls = await this.callLogRepo.count();
-    const successCalls = await this.callLogRepo.count({ where: { status_code: 200 } });
+  async getStats(@Query('api_key') apiKey?: string) {
+    const totalCalls = apiKey
+      ? await this.callLogRepo.count({ where: { api_key_name: apiKey } })
+      : await this.callLogRepo.count();
+    const successCalls = apiKey
+      ? await this.callLogRepo.count({ where: { status_code: 200, api_key_name: apiKey } })
+      : await this.callLogRepo.count({ where: { status_code: 200 } });
     const failedCalls = totalCalls - successCalls;
 
     // Aggregations via raw query (works for both SQLite and Postgres)
-    const agg = await this.callLogRepo
+    const aggQb = this.callLogRepo
       .createQueryBuilder('log')
       .select('SUM(log.input_tokens)', 'totalInputTokens')
       .addSelect('SUM(log.output_tokens)', 'totalOutputTokens')
@@ -316,35 +333,39 @@ export class DashboardController {
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .addSelect('COUNT(DISTINCT log.session_key)', 'uniqueSessions')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
-      .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens')
-      .getRawOne();
+      .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
+    if (apiKey) aggQb.where('log.api_key_name = :apiKey', { apiKey });
+    const agg = await aggQb.getRawOne();
 
     // Tier distribution
-    const tierDist = await this.callLogRepo
+    const tierQb = this.callLogRepo
       .createQueryBuilder('log')
       .select('log.tier', 'tier')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('log.tier')
-      .getRawMany();
+      .groupBy('log.tier');
+    if (apiKey) tierQb.where('log.api_key_name = :apiKey', { apiKey });
+    const tierDist = await tierQb.getRawMany();
 
     // Node distribution
-    const nodeDist = await this.callLogRepo
+    const nodeQb = this.callLogRepo
       .createQueryBuilder('log')
       .select('log.node_id', 'nodeId')
       .addSelect('COUNT(*)', 'count')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
-      .groupBy('log.node_id')
-      .getRawMany();
+      .groupBy('log.node_id');
+    if (apiKey) nodeQb.where('log.api_key_name = :apiKey', { apiKey });
+    const nodeDist = await nodeQb.getRawMany();
 
     // Last 24h stats
     const oneDayAgo = new Date(Date.now() - 86_400_000);
-    const recentAgg = await this.callLogRepo
+    const recentQb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since: oneDayAgo })
       .select('COUNT(*)', 'calls')
       .addSelect('SUM(log.cost_usd)', 'cost')
-      .addSelect('SUM(log.input_tokens + log.output_tokens)', 'tokens')
-      .getRawOne();
+      .addSelect('SUM(log.input_tokens + log.output_tokens)', 'tokens');
+    if (apiKey) recentQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const recentAgg = await recentQb.getRawOne();
 
     return {
       total: {
@@ -389,6 +410,7 @@ export class DashboardController {
     @Query('tier') tier?: string,
     @Query('node') node?: string,
     @Query('status') status?: string,
+    @Query('api_key') apiKey?: string,
   ) {
     const qb = this.callLogRepo
       .createQueryBuilder('log')
@@ -397,6 +419,7 @@ export class DashboardController {
     if (tier) qb.andWhere('log.tier = :tier', { tier });
     if (node) qb.andWhere('log.node_id = :node', { node });
     if (status) qb.andWhere('log.status_code = :status', { status: Number(status) });
+    if (apiKey) qb.andWhere('log.api_key_name = :apiKey', { apiKey });
 
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     const safePage = Math.max(page, 1);
@@ -423,16 +446,18 @@ export class DashboardController {
   async exportLogs(
     @Query('format') format: string = 'csv',
     @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
+    @Query('api_key') apiKey: string | undefined,
     @Res() res: Response,
   ) {
     const safeDays = Math.min(Math.max(days, 1), 365);
     const since = new Date(Date.now() - safeDays * 86_400_000);
 
-    const logs = await this.callLogRepo
+    const qb = this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
-      .orderBy('log.timestamp', 'DESC')
-      .getMany();
+      .orderBy('log.timestamp', 'DESC');
+    if (apiKey) qb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    const logs = await qb.getMany();
 
     if (format === 'json') {
       res.setHeader('Content-Type', 'application/json');
@@ -500,7 +525,33 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('budget')
-  async getBudget() {
+  async getBudget(@Query('api_key') apiKey?: string) {
+    if (apiKey) {
+      const globalStatus = await this.budgetService.getStatus();
+      const keyStatus = await this.budgetService.getStatus(apiKey);
+      return {
+        rules: globalStatus.map((s) => ({
+          type: s.type,
+          limit: s.limit,
+          current: Number(s.current.toFixed(4)),
+          percentage: Number((s.percentage * 100).toFixed(1)),
+          exceeded: s.isExceeded,
+          alert: s.isAlert,
+          periodStart: s.periodStart,
+        })),
+        perKeyRules: keyStatus.map((s) => ({
+          type: s.type,
+          limit: s.limit,
+          current: Number(s.current.toFixed(4)),
+          percentage: Number((s.percentage * 100).toFixed(1)),
+          exceeded: s.isExceeded,
+          alert: s.isAlert,
+          periodStart: s.periodStart,
+        })),
+        apiKeyName: apiKey,
+      };
+    }
+    // Backward-compatible: no api_key → global rules only
     const status = await this.budgetService.getStatus();
     return {
       rules: status.map((s) => ({
@@ -513,6 +564,21 @@ export class DashboardController {
         periodStart: s.periodStart,
       })),
     };
+  }
+
+  @Get('budget/keys')
+  async getBudgetKeys() {
+    return { keys: await this.budgetService.getKeysWithBudgets() };
+  }
+
+  @Get('api-keys')
+  async getApiKeyNames() {
+    const results = await this.callLogRepo
+      .createQueryBuilder('log')
+      .select('DISTINCT log.api_key_name', 'api_key_name')
+      .where('log.api_key_name IS NOT NULL')
+      .getRawMany();
+    return { keys: results.map((r: any) => r.api_key_name) };
   }
 
   @Post('budget/:id/reset')

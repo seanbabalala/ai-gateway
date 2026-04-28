@@ -12,6 +12,7 @@ import {
 @Index(['node_id'])
 @Index(['session_key'])
 @Index(['experiment_group'])
+@Index(['api_key_name'])
 export class CallLog {
   @PrimaryGeneratedColumn()
   id!: number;

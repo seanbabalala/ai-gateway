@@ -1,7 +1,7 @@
 # AI Gateway — Roadmap（待做事项总览）
 
 > 最后更新: 2026-04-28
-> 已完成: Dashboard 认证 (JWT 登录 + Guard + 自动 hash), 多模态路由 (#11)
+> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11)
 
 ---
 
@@ -343,3 +343,4 @@ Phase C (P2 — 长期)
 - [x] ~~Prompt 缓存~~ — SHA-256 cache key + 内存 LRU + TTL + temperature=0 缓存 + 流式回放/累积 + Dashboard 缓存状态卡片 + 清空按钮 (2026-04-27)
 - [x] ~~Vision / 多模态路由~~ — 三层模态检测 (显式声明 + 模型名推断 + Capability 回退) + 请求模态扫描 + vision tier floor + 路由模态过滤 + 降级 fallback + Dashboard modality badges (2026-04-28)
 - [x] ~~Plugin 系统~~ — 7 个管道钩子 (preRequest/postScoring/preUpstream/postUpstream/preResponse/streamEvent/onError) + waterfall 执行 + 短路返回 + 自定义评分维度注册 + 多主题 EventBus + plugins/ 目录自动发现 + ajv 配置校验 + 零插件零开销 + 2 个示例插件 (request-logger, pii-filter) (2026-04-28)
+- [x] ~~A/B 测试框架~~ — SplitVariant 配置 + FNV-1a 32-bit hash session 粘性 + 加权分流 + experimentGroup 透传 CallLog + ConfigService split 校验/节点删除清理 + Dashboard experiment analytics API + ExperimentPage 对比卡片/趋势图/胜者分析 + RoutingPage split 编辑 UI (2026-04-28)

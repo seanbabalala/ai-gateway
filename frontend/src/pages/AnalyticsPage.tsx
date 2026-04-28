@@ -17,7 +17,9 @@ import { DollarSign, TrendingUp, Coins, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { useCostAnalytics } from '@/hooks/use-analytics'
+import { useApiKeys } from '@/hooks/use-api-keys'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatCost,
@@ -41,8 +43,15 @@ const MODEL_COLORS = [
 
 export function AnalyticsPage() {
   const [period, setPeriod] = useState('7d')
-  const { data, isLoading } = useCostAnalytics(period)
+  const [apiKeyFilter, setApiKeyFilter] = useState('')
+  const { data, isLoading } = useCostAnalytics(period, apiKeyFilter || undefined)
+  const { data: apiKeysData } = useApiKeys()
   const colors = useThemeColors()
+
+  const apiKeyOptions = [
+    { value: '', label: 'All API Keys' },
+    ...(apiKeysData?.keys || []).map((k) => ({ value: k, label: k })),
+  ]
 
   if (isLoading || !data) {
     return (
@@ -67,20 +76,28 @@ export function AnalyticsPage() {
         title="Cost Analytics"
         description="Cost trends, breakdown by model and node"
       >
-        <div className="flex items-center gap-1 rounded-xl bg-[var(--inset-bg)] p-1">
-          {periodOptions.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setPeriod(opt.value)}
-              className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all ${
-                period === opt.value
-                  ? 'bg-[var(--accent)] text-white shadow-sm'
-                  : 'text-[var(--foreground-dim)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <Select
+            options={apiKeyOptions}
+            value={apiKeyFilter}
+            onChange={(e) => setApiKeyFilter(e.target.value)}
+            className="w-40"
+          />
+          <div className="flex items-center gap-1 rounded-xl bg-[var(--inset-bg)] p-1">
+            {periodOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setPeriod(opt.value)}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all ${
+                  period === opt.value
+                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                    : 'text-[var(--foreground-dim)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </PageHeader>
 

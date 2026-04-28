@@ -50,9 +50,16 @@ export interface AuthConfig {
   rate_limit?: RateLimitConfig;
 }
 
+export interface ApiKeyBudgetOverride {
+  daily_token_limit?: number;   // per-key token limit (unset = no per-key token limit)
+  daily_cost_limit?: number;    // per-key cost limit (unset = no per-key cost limit)
+  alert_threshold?: number;     // defaults to global alert_threshold
+}
+
 export interface ApiKeyEntry {
   key: string;
   name: string;
+  budget?: ApiKeyBudgetOverride;  // optional per-key budget limits
 }
 
 /**

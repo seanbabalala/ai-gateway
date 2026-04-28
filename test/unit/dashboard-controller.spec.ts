@@ -85,6 +85,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
   const budgetService = {
     getStatus: jest.fn().mockResolvedValue([]),
     resetRule: jest.fn().mockResolvedValue(undefined),
+    getKeysWithBudgets: jest.fn().mockResolvedValue([]),
     ...overrides.budgetService,
   };
 
@@ -247,7 +248,7 @@ describe('DashboardController — exportLogs', () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs('json', 7, res);
+    await controller.exportLogs('json', 7, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json');
     expect(res.send).toHaveBeenCalled();
@@ -260,7 +261,7 @@ describe('DashboardController — exportLogs', () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs('csv', 7, res);
+    await controller.exportLogs('csv', 7, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv');
     const csv = res.send.mock.calls[0][0] as string;
@@ -475,5 +476,110 @@ describe('DashboardController — capabilities & routing', () => {
       config: { updateRouting: jest.fn().mockImplementation(() => { throw new Error('Invalid node reference'); }) },
     });
     expect(() => controller.updateRouting({ tiers: {} as any })).toThrow(HttpException);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Per-Key Budget + API Key Filtering
+// ═══════════════════════════════════════════════════════════
+
+describe('DashboardController — per-key budget', () => {
+  it('should return global + perKey rules when api_key query provided', async () => {
+    const { controller } = makeDashboard({
+      budgetService: {
+        getStatus: jest.fn().mockImplementation((keyName?: string) => {
+          if (keyName === 'intern') {
+            return Promise.resolve([
+              { type: 'daily_cost', current: 3, limit: 5, percentage: 0.6, isExceeded: false, isAlert: false, periodStart: new Date() },
+            ]);
+          }
+          return Promise.resolve([
+            { type: 'daily_cost', current: 10, limit: 100, percentage: 0.1, isExceeded: false, isAlert: false, periodStart: new Date() },
+          ]);
+        }),
+        resetRule: jest.fn(),
+        getKeysWithBudgets: jest.fn().mockResolvedValue(['intern', 'sean']),
+      },
+    });
+
+    const result = await controller.getBudget('intern');
+    expect(result.rules).toHaveLength(1);
+    expect((result as any).perKeyRules).toHaveLength(1);
+    expect((result as any).apiKeyName).toBe('intern');
+    expect((result as any).perKeyRules[0].limit).toBe(5);
+  });
+
+  it('should return only global rules when no api_key query', async () => {
+    const { controller } = makeDashboard({
+      budgetService: {
+        getStatus: jest.fn().mockResolvedValue([
+          { type: 'daily_tokens', current: 50000, limit: 100000, percentage: 0.5, isExceeded: false, isAlert: false, periodStart: new Date() },
+        ]),
+        resetRule: jest.fn(),
+        getKeysWithBudgets: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await controller.getBudget();
+    expect(result.rules).toHaveLength(1);
+    expect((result as any).perKeyRules).toBeUndefined();
+  });
+
+  it('should return budget keys via GET /budget/keys', async () => {
+    const { controller } = makeDashboard({
+      budgetService: {
+        getStatus: jest.fn().mockResolvedValue([]),
+        resetRule: jest.fn(),
+        getKeysWithBudgets: jest.fn().mockResolvedValue(['intern', 'sean']),
+      },
+    });
+
+    const result = await controller.getBudgetKeys();
+    expect(result.keys).toEqual(['intern', 'sean']);
+  });
+});
+
+describe('DashboardController — api-keys', () => {
+  it('should return distinct api key names from logs', async () => {
+    const qb = mockQueryBuilder();
+    qb.getRawMany.mockResolvedValue([
+      { api_key_name: 'sean' },
+      { api_key_name: 'intern' },
+    ]);
+    const repo = mockRepo(qb);
+
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    const result = await controller.getApiKeyNames();
+    expect(result.keys).toEqual(['sean', 'intern']);
+  });
+});
+
+describe('DashboardController — api_key filtering on logs', () => {
+  it('should apply api_key filter on getLogs', async () => {
+    const qb = mockQueryBuilder();
+    qb.getManyAndCount.mockResolvedValue([[], 0]);
+    const repo = mockRepo(qb);
+
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    await controller.getLogs(1, 50, undefined, undefined, undefined, 'sean');
+
+    // Should have been called with api_key filter
+    expect(qb.andWhere).toHaveBeenCalledWith('log.api_key_name = :apiKey', { apiKey: 'sean' });
+  });
+});
+
+describe('DashboardController — api_key filtering on stats', () => {
+  it('should accept api_key param on getStats', async () => {
+    const qb = mockQueryBuilder(
+      { totalInputTokens: '500', totalOutputTokens: '200', totalCost: '0.1', avgLatency: '100', uniqueSessions: '1' },
+      [{ tier: 'simple', count: '2' }],
+    );
+    const repo = mockRepo(qb);
+    repo.count.mockResolvedValueOnce(5).mockResolvedValueOnce(4);
+
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    const result = await controller.getStats('sean');
+
+    expect(result.total.calls).toBe(5);
   });
 });

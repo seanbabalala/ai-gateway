@@ -107,7 +107,7 @@ export class PipelineService {
 
     // ── Budget Check ──
     try {
-      await this.budgetService.check();
+      await this.budgetService.check(canonical.metadata.api_key_name || undefined);
     } catch (err) {
       if (err instanceof BudgetExceededError) {
         this.logger.warn(`Budget exceeded: ${err.message}`);
@@ -224,7 +224,7 @@ export class PipelineService {
     const pricing = this.config.getModelPricing(usedModel);
     const costUsd = this.calculateCost(canonicalResponse.usage, pricing);
     const totalTokens = canonicalResponse.usage.input_tokens + canonicalResponse.usage.output_tokens;
-    await this.budgetService.record(totalTokens, costUsd);
+    await this.budgetService.record(totalTokens, costUsd, canonical.metadata.api_key_name || undefined);
 
     // ── Telemetry Metrics ──
     const durationMs = Date.now() - startTime;
@@ -377,7 +377,7 @@ export class PipelineService {
 
     // ── Budget Check ──
     try {
-      await this.budgetService.check();
+      await this.budgetService.check(canonical.metadata.api_key_name || undefined);
     } catch (err) {
       if (err instanceof BudgetExceededError) {
         this.logger.warn(`Budget exceeded (stream): ${err.message}`);
@@ -551,7 +551,7 @@ export class PipelineService {
           const pricing = this.config.getModelPricing(usedModel);
           const costUsd = this.calculateCost(usage, pricing);
           const totalTokens = usage.input_tokens + usage.output_tokens;
-          await this.budgetService.record(totalTokens, costUsd);
+          await this.budgetService.record(totalTokens, costUsd, canonical.metadata.api_key_name || undefined);
 
           await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
             statusCode: 200, isFallback, latencyMs, usage, error: null, retryCount: totalRetries, experimentGroup });

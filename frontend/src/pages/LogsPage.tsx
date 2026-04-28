@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table'
 import { useLogs } from '@/hooks/use-logs'
 import { useSSELogs } from '@/hooks/use-sse-logs'
+import { useApiKeys } from '@/hooks/use-api-keys'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
 import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
@@ -66,6 +67,10 @@ function LogDetailRow({ log }: { log: CallLog }) {
             <span className="font-mono text-[var(--foreground-muted)]">{log.source_format}</span>
           </div>
           <div>
+            <span className="text-[var(--foreground-dim)]">API Key: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.api_key_name ?? 'N/A'}</span>
+          </div>
+          <div>
             <span className="text-[var(--foreground-dim)]">Session Key: </span>
             <span className="font-mono text-[var(--foreground-muted)]">{log.session_key ?? 'N/A'}</span>
           </div>
@@ -96,14 +101,22 @@ export function LogsPage() {
   const [tierFilter, setTierFilter] = useState('')
   const [nodeFilter, setNodeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [apiKeyFilter, setApiKeyFilter] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [exportFormat, setExportFormat] = useState('csv')
   const [exportDays, setExportDays] = useState('7')
+
+  const { data: apiKeysData } = useApiKeys()
+  const apiKeyOptions = [
+    { value: '', label: 'All API Keys' },
+    ...(apiKeysData?.keys || []).map((k) => ({ value: k, label: k })),
+  ]
 
   const { data: logsData, isLoading, refetch } = useLogs(page, LIMIT, {
     tier: tierFilter || undefined,
     node: nodeFilter || undefined,
     status: statusFilter || undefined,
+    api_key: apiKeyFilter || undefined,
   })
 
   const { newCount, clearNewCount } = useSSELogs(100)
@@ -116,6 +129,7 @@ export function LogsPage() {
   const handleExport = () => {
     const token = getAuthToken()
     const params = new URLSearchParams({ format: exportFormat, days: exportDays })
+    if (apiKeyFilter) params.set('api_key', apiKeyFilter)
     const url = `/api/dashboard/logs/export?${params.toString()}`
     // Use a hidden link with auth header via fetch + blob download
     fetch(url, {
@@ -196,6 +210,15 @@ export function LogsPage() {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value)
+              setPage(1)
+            }}
+            className="w-36"
+          />
+          <Select
+            options={apiKeyOptions}
+            value={apiKeyFilter}
+            onChange={(e) => {
+              setApiKeyFilter(e.target.value)
               setPage(1)
             }}
             className="w-36"

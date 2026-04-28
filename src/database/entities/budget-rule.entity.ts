@@ -27,4 +27,7 @@ export class BudgetRule {
 
   @Column({ type: 'boolean', default: true })
   is_active!: boolean;
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  api_key_name!: string | null;  // NULL = global rule, non-null = per-key rule
 }

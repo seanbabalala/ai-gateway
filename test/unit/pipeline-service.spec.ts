@@ -211,6 +211,45 @@ describe('PipelineService — budget enforcement', () => {
     expect(mocks.budgetService.record).toHaveBeenCalledWith(
       150, // total tokens
       expect.any(Number), // cost
+      undefined, // no api_key_name in default request
+    );
+  });
+
+  it('should pass api_key_name to budget check and record', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const response = makeCanonicalResponse({
+      usage: { input_tokens: 100, output_tokens: 50 },
+    });
+    mocks.providerClient.forward.mockResolvedValue(response);
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.api_key_name = 'sean';
+    await pipeline.process(request);
+
+    expect(mocks.budgetService.check).toHaveBeenCalledWith('sean');
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      150,
+      expect.any(Number),
+      'sean',
+    );
+  });
+
+  it('should not pass apiKeyName when api_key_name is undefined', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const response = makeCanonicalResponse({
+      usage: { input_tokens: 100, output_tokens: 50 },
+    });
+    mocks.providerClient.forward.mockResolvedValue(response);
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.api_key_name = undefined;
+    await pipeline.process(request);
+
+    expect(mocks.budgetService.check).toHaveBeenCalledWith(undefined);
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      150,
+      expect.any(Number),
+      undefined,
     );
   });
 });

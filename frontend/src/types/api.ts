@@ -54,6 +54,7 @@ export interface CallLog {
   is_fallback: boolean
   session_key: string | null
   error: string | null
+  api_key_name?: string | null
 }
 
 export interface LogsPagination {
@@ -377,4 +378,20 @@ export interface ExperimentAnalyticsResponse {
   dailyTrend: ExperimentDailyTrend[]
   activeSplits: Record<string, SplitVariant[]>
   period: number
+}
+
+// ── Per-Key Budget ──
+
+export interface BudgetPerKeyResponse {
+  rules: BudgetRule[]
+  perKeyRules: BudgetRule[]
+  apiKeyName: string
+}
+
+export interface BudgetKeysResponse {
+  keys: string[]
+}
+
+export interface ApiKeysResponse {
+  keys: string[]
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   PieChart,
   Pie,
@@ -15,9 +16,11 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { useStats } from '@/hooks/use-stats'
 import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useCacheStats, useClearCache } from '@/hooks/use-cache'
+import { useApiKeys } from '@/hooks/use-api-keys'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -30,11 +33,18 @@ import {
 } from '@/lib/utils'
 
 export function DashboardPage() {
-  const { data: stats, isLoading } = useStats()
+  const [apiKeyFilter, setApiKeyFilter] = useState('')
+  const { data: stats, isLoading } = useStats(apiKeyFilter || undefined)
   const { logs: recentLogs } = useSSELogs(5)
   const { data: cacheStats } = useCacheStats()
   const clearCache = useClearCache()
+  const { data: apiKeysData } = useApiKeys()
   const colors = useThemeColors()
+
+  const apiKeyOptions = [
+    { value: '', label: 'All API Keys' },
+    ...(apiKeysData?.keys || []).map((k) => ({ value: k, label: k })),
+  ]
 
   if (isLoading || !stats) {
     return (
@@ -51,7 +61,14 @@ export function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description="Real-time overview of your AI Gateway"
-      />
+      >
+        <Select
+          options={apiKeyOptions}
+          value={apiKeyFilter}
+          onChange={(e) => setApiKeyFilter(e.target.value)}
+          className="w-40"
+        />
+      </PageHeader>
 
       {/* Metric Cards */}
       <div className="stagger-children grid grid-cols-4 gap-5">
