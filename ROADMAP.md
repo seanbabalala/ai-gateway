@@ -1,7 +1,7 @@
 # AI Gateway — Roadmap（待做事项总览）
 
 > 最后更新: 2026-04-28
-> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11)
+> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11), Per-Key 预算 + Dashboard 按 Key 筛选 (#9)
 
 ---
 
@@ -12,16 +12,16 @@
 | 协议 | ✅ 3 协议互转 |
 | 评分 | ✅ 14 维度 + 快速路径 |
 | 路由 | ✅ Tier 路由 + Circuit Breaker + Momentum 平滑 |
-| Dashboard | ✅ 5 页面 + SSE 实时 + CRUD + JWT 认证 |
-| 预算 | ✅ 日 Token + 日费用双限额 |
+| Dashboard | ✅ 5 页面 + SSE 实时 + CRUD + JWT 认证 + 按 Key 筛选 |
+| 预算 | ✅ 日 Token + 日费用双限额 + Per-Key 独立预算 |
 | 流式 | ✅ 3 协议完整 SSE |
 | Docker | ✅ 多阶段构建 |
 
 ---
 
-## P0 — 高优先级（直接影响生产可用性）
+## P0 — 高优先级（直接影响生产可用性） ✅ 全部完成
 
-### 1. 路由配置 UI
+### 1. 路由配置 UI ✅
 **现状**: `RoutingPage` 纯只读展示 tier/primary/fallbacks，改路由必须手编 YAML。
 **目标**: 在前端直接编辑路由配置，所见即所得。
 
@@ -41,7 +41,7 @@
 
 ---
 
-### 2. 请求重试策略
+### 2. 请求重试策略 ✅
 **现状**: Pipeline 中 fallback 是顺序尝试下一个节点，没有重试同一节点的能力，也没有退避策略。
 **目标**: 支持可配置的重试 + 指数退避。
 
@@ -70,7 +70,7 @@ routing:
 
 ---
 
-### 3. API Key 认证守卫
+### 3. API Key 认证守卫 ✅
 **现状**: `auth.api_keys` 配置存在但 `/v1/*` 入口完全没有校验！任何人都能调用代理。
 **目标**: 对 `/v1/*` 端点强制 API Key 认证。
 
@@ -88,9 +88,9 @@ routing:
 
 ---
 
-## P1 — 增强竞争力
+## P1 — 增强竞争力 ✅ 全部完成
 
-### 4. Rate Limiting
+### 4. Rate Limiting ✅
 **现状**: 无任何限流，API Key 被泄露后无法防御。
 **目标**: 按 API Key / IP 限流。
 
@@ -111,7 +111,7 @@ auth:
 
 ---
 
-### 5. 模型级 Circuit Breaker
+### 5. 模型级 Circuit Breaker ✅
 **现状**: Circuit Breaker 是节点级别，节点 A 的模型 X 故障会导致节点 A 的所有模型都被熔断。
 **目标**: 细化到 `nodeId:model` 粒度。
 
@@ -129,7 +129,7 @@ auth:
 
 ---
 
-### 6. 成本分析仪表板
+### 6. 成本分析仪表板 ✅
 **现状**: DashboardPage 有总成本和 24h 成本，但没有趋势和明细。
 **目标**: 新增 Cost Analytics 页面。
 
@@ -149,7 +149,7 @@ auth:
 
 ---
 
-### 7. 请求日志导出
+### 7. 请求日志导出 ✅
 **现状**: Logs 页面只有浏览，没有导出。
 **目标**: 支持 CSV/JSON 导出 + 日志自动清理。
 
@@ -166,7 +166,7 @@ auth:
 
 ---
 
-### 8. 自定义评分维度
+### 8. 自定义评分维度 ✅
 **现状**: 14 维度硬编码，用户无法调整权重或加关键词。
 **目标**: 允许通过配置调整权重 + 添加自定义关键词。
 
@@ -199,34 +199,35 @@ routing:
 
 ---
 
-## P2 — 长期方向
+## P2 — 长期方向 ✅ 全部完成
 
-### 9. 多租户支持
-**现状**: 单一配置空间，所有 API Key 共享节点/路由/预算。
-**目标**: 每个 API Key（或 Key Group）有独立的预算、路由策略、日志隔离。
+### 9. ~~多租户支持~~ → Per-Key 预算 + Dashboard 按 Key 筛选 ✅
+**已完成**: Per-Key 独立预算限额 + Dashboard 全面按 API Key 筛选。
 
-#### 设计
-- `auth.api_keys` 扩展:
-```yaml
-auth:
-  api_keys:
-    - key: "${KEY_A}"
-      name: "team-frontend"
-      group: "frontend"
-      budget: { daily_cost_limit: 20 }
-      routing_override: { ... }
-```
-- BudgetService 按 group 隔离计量
-- CallLog 加 `api_key_group` 字段
-- Dashboard 按 group 筛选
+~~**现状**: 单一配置空间，所有 API Key 共享节点/路由/预算。~~
+~~**目标**: 每个 API Key（或 Key Group）有独立的预算、路由策略、日志隔离。~~
 
-**复杂度**: 大
+#### 已实现
+- `ApiKeyEntry.budget` 可选配置: `daily_cost_limit`, `daily_token_limit`, `alert_threshold`
+- BudgetService 双层检查: 全局 + per-key，先到先触发 429
+- BudgetRule entity 新增 `api_key_name` 列 (NULL=全局, string=per-key)
+- 启动时自动从 config 同步 per-key 规则，移除的 key 自动 deactivate
+- Dashboard 所有端点 (stats/logs/analytics/budget) 支持 `?api_key=` 筛选
+- 新增 `GET /api/dashboard/budget/keys` 和 `GET /api/dashboard/api-keys`
+- 前端 4 个页面均有 API Key 选择器，BudgetPage 展示 per-key + global 对比
+- 不配 `budget` 的 key 行为完全不变（向后兼容）
+
+#### 未来可扩展
+- Per-key 路由策略覆盖 (`routing_override`)
+- Key Group 抽象（多个 key 共享配额）
 
 ---
 
-### 10. A/B 测试框架
-**现状**: 每个 tier 只有固定的 primary + fallback 链。
-**目标**: 同一 tier 按百分比分流到不同模型，对比质量和成本。
+### 10. A/B 测试框架 ✅
+**已完成**: 加权分流 + session 粘性 + experiment analytics + ExperimentPage。
+
+~~**现状**: 每个 tier 只有固定的 primary + fallback 链。~~
+~~**目标**: 同一 tier 按百分比分流到不同模型，对比质量和成本。~~
 
 #### 设计
 ```yaml
@@ -246,9 +247,11 @@ routing:
 
 ---
 
-### 11. Vision / 多模态路由
-**现状**: 评分引擎只分析文本内容，不感知图片/音频。
-**目标**: 检测请求中的多模态内容，自动路由到支持该模态的节点。
+### 11. Vision / 多模态路由 ✅
+**已完成**: 三层模态检测 + 请求模态扫描 + 路由模态过滤 + Dashboard modality badges。
+
+~~**现状**: 评分引擎只分析文本内容，不感知图片/音频。~~
+~~**目标**: 检测请求中的多模态内容，自动路由到支持该模态的节点。~~
 
 #### 设计
 - Normalizer 阶段检测 `content` 中是否含 `image_url` / `image` 类型 block
@@ -260,9 +263,11 @@ routing:
 
 ---
 
-### 12. Plugin / 中间件系统
-**现状**: Pipeline 流程硬编码。
-**目标**: 允许在请求/响应链中插入自定义处理逻辑。
+### 12. Plugin / 中间件系统 ✅
+**已完成**: 7 个管道钩子 + waterfall 执行 + 短路返回 + 自定义评分维度 + EventBus + 自动发现。
+
+~~**现状**: Pipeline 流程硬编码。~~
+~~**目标**: 允许在请求/响应链中插入自定义处理逻辑。~~
 
 #### 设计
 - 请求生命周期钩子: `beforeScoring` → `afterRouting` → `beforeUpstream` → `afterUpstream`
@@ -273,9 +278,11 @@ routing:
 
 ---
 
-### 13. OpenTelemetry 可观测性
-**现状**: 日志写 DB + SSE，没有标准 Traces/Metrics。
-**目标**: 集成 OpenTelemetry，支持 Jaeger/Prometheus/Grafana。
+### 13. OpenTelemetry 可观测性 ✅
+**已完成**: 分布式 Tracing + Prometheus Metrics + OTLP Exporter。
+
+~~**现状**: 日志写 DB + SSE，没有标准 Traces/Metrics。~~
+~~**目标**: 集成 OpenTelemetry，支持 Jaeger/Prometheus/Grafana。~~
 
 #### 设计
 - 每个请求创建 Span: `gateway.request` → `scoring` → `routing` → `upstream.call`
@@ -291,9 +298,11 @@ telemetry:
 
 ---
 
-### 14. Prompt 缓存
-**现状**: 每次请求都打上游，相同的简单问题也会重复消耗 token。
-**目标**: 对相似请求缓存响应，降低成本和延迟。
+### 14. Prompt 缓存 ✅
+**已完成**: SHA-256 cache key + 内存 LRU + TTL + 流式回放 + Dashboard 缓存卡片。
+
+~~**现状**: 每次请求都打上游，相同的简单问题也会重复消耗 token。~~
+~~**目标**: 对相似请求缓存响应，降低成本和延迟。~~
 
 #### 设计
 - 缓存 key: `SHA-256(model + messages[-1].content + temperature)`（仅 temperature=0 时缓存）
@@ -309,22 +318,25 @@ telemetry:
 ## 实施顺序建议
 
 ```
-Phase A (P0 — 生产必备)
-  ├── #3 API Key 守卫        ← 最小改动，立即堵住安全漏洞
-  ├── #2 请求重试策略         ← 小改动，大幅提升稳定性
-  └── #1 路由配置 UI          ← 前端为主，提升日常使用体验
+Phase A (P0 — 生产必备) ✅ 全部完成
+  ├── #3 API Key 守卫        ✅
+  ├── #2 请求重试策略         ✅
+  └── #1 路由配置 UI          ✅
 
-Phase B (P1 — 竞争力)
-  ├── #4 Rate Limiting        ← 配合 API Key 守卫
-  ├── #5 模型级 Circuit Breaker
-  ├── #7 日志导出             ← 小改动
-  ├── #6 成本分析仪表板
-  └── #8 自定义评分维度
+Phase B (P1 — 竞争力) ✅ 全部完成
+  ├── #4 Rate Limiting        ✅
+  ├── #5 模型级 Circuit Breaker ✅
+  ├── #7 日志导出             ✅
+  ├── #6 成本分析仪表板        ✅
+  └── #8 自定义评分维度        ✅
 
-Phase C (P2 — 长期)
-  ├── #9  多租户
-  ├── #10 A/B 测试
-  └── #13 OpenTelemetry
+Phase C (P2 — 长期) ✅ 全部完成
+  ├── #9  Per-Key 预算 + Dashboard 按 Key 筛选  ✅
+  ├── #10 A/B 测试            ✅
+  ├── #11 多模态路由           ✅
+  ├── #12 Plugin 系统          ✅
+  ├── #13 OpenTelemetry        ✅
+  └── #14 Prompt 缓存          ✅
 ```
 
 ---
@@ -344,3 +356,5 @@ Phase C (P2 — 长期)
 - [x] ~~Vision / 多模态路由~~ — 三层模态检测 (显式声明 + 模型名推断 + Capability 回退) + 请求模态扫描 + vision tier floor + 路由模态过滤 + 降级 fallback + Dashboard modality badges (2026-04-28)
 - [x] ~~Plugin 系统~~ — 7 个管道钩子 (preRequest/postScoring/preUpstream/postUpstream/preResponse/streamEvent/onError) + waterfall 执行 + 短路返回 + 自定义评分维度注册 + 多主题 EventBus + plugins/ 目录自动发现 + ajv 配置校验 + 零插件零开销 + 2 个示例插件 (request-logger, pii-filter) (2026-04-28)
 - [x] ~~A/B 测试框架~~ — SplitVariant 配置 + FNV-1a 32-bit hash session 粘性 + 加权分流 + experimentGroup 透传 CallLog + ConfigService split 校验/节点删除清理 + Dashboard experiment analytics API + ExperimentPage 对比卡片/趋势图/胜者分析 + RoutingPage split 编辑 UI (2026-04-28)
+- [x] ~~OpenTelemetry 可观测性~~ — 分布式 Tracing (gateway.request → scoring → routing spans) + Prometheus Metrics (请求计数/延迟/token/成本/缓存/上游错误) + OTLP Exporter + 配置驱动 enabled/disabled + Dashboard telemetry-status 端点 (2026-04-28)
+- [x] ~~Per-Key 预算 + Dashboard 按 Key 筛选~~ — ApiKeyBudgetOverride 配置 + BudgetRule api_key_name 列 + 双层 check/record + 启动自动同步/清理 per-key 规则 + Dashboard 全端点 api_key 筛选 + GET /budget/keys + GET /api-keys + 前端 4 页面 API Key 选择器 + BudgetPage per-key 环形仪表对比视图 (2026-04-28)
