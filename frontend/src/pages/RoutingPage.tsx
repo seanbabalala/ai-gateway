@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Pencil, Save, X, Plus, Trash2, GripVertical } from 'lucide-react'
+import { ArrowRight, Pencil, Save, X, Plus, Trash2, GripVertical, FlaskConical } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,7 @@ import { useNodes } from '@/hooks/use-nodes'
 import { apiPut } from '@/lib/api'
 import { TIER_CHART_COLORS, getNodeColor } from '@/lib/utils'
 import { colorWithOpacity } from '@/lib/theme'
-import type { TierRoute, RoutingConfig, ActionResponse } from '@/types/api'
+import type { TierRoute, RoutingConfig, ActionResponse, SplitVariant } from '@/types/api'
 
 // ── Types ──
 
@@ -173,6 +173,76 @@ export function RoutingPage() {
       tier.fallbacks = fb
       return { ...prev, [tierName]: tier }
     })
+  }
+
+  // ── Split editing helpers ──
+
+  function toggleSplit(tierName: string, enabled: boolean) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      if (enabled) {
+        // Initialize split from primary + fallbacks
+        const variants: SplitVariant[] = [
+          { node: tier.primary.node, model: tier.primary.model, weight: 70, name: 'control' },
+        ]
+        if (tier.fallbacks.length > 0) {
+          const remaining = Math.floor(30 / tier.fallbacks.length)
+          tier.fallbacks.forEach((fb, i) => {
+            variants.push({
+              node: fb.node, model: fb.model,
+              weight: i === tier.fallbacks.length - 1 ? 30 - remaining * (tier.fallbacks.length - 1) : remaining,
+              name: `variant-${i + 1}`,
+            })
+          })
+        } else {
+          variants[0].weight = 100
+        }
+        tier.split = variants
+      } else {
+        delete tier.split
+      }
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function updateSplitVariant(tierName: string, index: number, field: keyof SplitVariant, value: string | number) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      const split = [...(tier.split || [])]
+      split[index] = { ...split[index], [field]: value }
+      if (field === 'node' && typeof value === 'string' && nodeModels[value]?.length) {
+        split[index].model = nodeModels[value][0]
+      }
+      tier.split = split
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function addSplitVariant(tierName: string) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      const firstNode = allNodes[0]
+      tier.split = [...(tier.split || []), {
+        node: firstNode?.id ?? '', model: firstNode?.models[0] ?? '',
+        weight: 0, name: '',
+      }]
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function removeSplitVariant(tierName: string, index: number) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      tier.split = (tier.split || []).filter((_, i) => i !== index)
+      if (tier.split.length === 0) delete tier.split
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function getSplitWeightTotal(tierName: string): number {
+    const tier = editing ? editTiers[tierName] : displayTiers[tierName]
+    if (!tier?.split) return 0
+    return tier.split.reduce((sum, v) => sum + v.weight, 0)
   }
 
   function updateScoringField(field: keyof EditableScoring, value: string) {
@@ -454,6 +524,123 @@ export function RoutingPage() {
                     <span className="text-[11px] text-[var(--foreground-dim)] italic">No fallbacks</span>
                   )}
                 </div>
+              </div>
+
+              {/* A/B Split */}
+              <div className="mt-4 border-t border-[var(--border)] pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <FlaskConical className="h-3.5 w-3.5 text-purple-500" />
+                    <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
+                      A/B Split
+                    </span>
+                  </div>
+                  {editing && (
+                    <button
+                      onClick={() => toggleSplit(tierName, !tier.split)}
+                      className={`rounded-lg px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
+                        tier.split
+                          ? 'text-red-500 hover:bg-red-500/10'
+                          : 'text-purple-500 hover:bg-purple-500/10'
+                      }`}
+                    >
+                      {tier.split ? 'Disable' : 'Enable'}
+                    </button>
+                  )}
+                </div>
+
+                {tier.split ? (
+                  <div className="space-y-2">
+                    {/* Weight progress bar (read-only visualization) */}
+                    <div className="flex h-5 rounded-full overflow-hidden">
+                      {tier.split.map((v, i) => (
+                        <div
+                          key={i}
+                          className="h-full flex items-center justify-center text-[8px] font-bold text-white"
+                          style={{
+                            width: `${v.weight}%`,
+                            backgroundColor: getNodeColor(v.node),
+                            minWidth: v.weight > 0 ? '20px' : '0',
+                          }}
+                        >
+                          {v.weight > 10 ? `${v.weight}%` : ''}
+                        </div>
+                      ))}
+                    </div>
+
+                    {editing ? (
+                      <>
+                        {tier.split.map((v, i) => (
+                          <div key={i} className="flex items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-2">
+                            <div className="flex items-center gap-2 flex-1">
+                              <Select
+                                className="w-24"
+                                options={nodeOptions}
+                                value={v.node}
+                                onChange={(e) => updateSplitVariant(tierName, i, 'node', e.target.value)}
+                              />
+                              <Select
+                                className="flex-1 font-mono text-[11px]"
+                                options={modelOptionsForNode(v.node)}
+                                value={v.model}
+                                onChange={(e) => updateSplitVariant(tierName, i, 'model', e.target.value)}
+                              />
+                            </div>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              className="w-16 text-center font-mono text-[11px]"
+                              value={v.weight}
+                              onChange={(e) => updateSplitVariant(tierName, i, 'weight', parseInt(e.target.value) || 0)}
+                            />
+                            <span className="text-[10px] text-[var(--foreground-dim)]">%</span>
+                            <Input
+                              className="w-24 text-[11px]"
+                              placeholder="name"
+                              value={v.name || ''}
+                              onChange={(e) => updateSplitVariant(tierName, i, 'name', e.target.value)}
+                            />
+                            <button
+                              onClick={() => removeSplitVariant(tierName, i)}
+                              className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between">
+                          <button
+                            onClick={() => addSplitVariant(tierName)}
+                            className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-purple-500 hover:bg-purple-500/10 transition-colors cursor-pointer"
+                          >
+                            <Plus className="h-3 w-3" /> Add Variant
+                          </button>
+                          {getSplitWeightTotal(tierName) !== 100 && (
+                            <span className="text-[10px] font-medium text-red-500">
+                              Weights sum to {getSplitWeightTotal(tierName)} (must be 100)
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-1">
+                        {tier.split.map((v, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[11px]">
+                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: getNodeColor(v.node) }} />
+                            <span className="text-[var(--foreground-muted)]">{v.name || `${v.node}:${v.model}`}</span>
+                            <span className="font-mono text-[var(--foreground-dim)]">{v.node}/{v.model}</span>
+                            <Badge variant="default" className="text-[9px] ml-auto">{v.weight}%</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-[var(--foreground-dim)] italic">
+                    Not configured — using standard primary + fallback routing
+                  </span>
+                )}
               </div>
             </CardStatic>
           )

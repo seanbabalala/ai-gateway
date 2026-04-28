@@ -6,6 +6,7 @@ import {
   GitFork,
   Wallet,
   BarChart3,
+  FlaskConical,
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -19,6 +20,7 @@ const navGroups = [
       { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/logs', icon: ScrollText, label: 'Logs' },
       { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+      { to: '/experiments', icon: FlaskConical, label: 'Experiments' },
     ],
   },
   {

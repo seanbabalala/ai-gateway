@@ -174,9 +174,17 @@ export interface RetryConfig {
   retryable_status: number[];
 }
 
+export interface SplitVariant {
+  node: string;
+  model: string;
+  weight: number;      // 1-100, all variants in a tier must sum to 100
+  name?: string;       // optional alias (e.g. "control", "challenger"), defaults to "node:model"
+}
+
 export interface TierConfig {
   primary: RouteTarget;
   fallbacks: RouteTarget[];
+  split?: SplitVariant[];  // A/B testing: when set, overrides primary/fallbacks with weighted routing
 }
 
 export interface RouteTarget {

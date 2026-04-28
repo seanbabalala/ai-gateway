@@ -11,6 +11,7 @@ import {
 @Index(['tier'])
 @Index(['node_id'])
 @Index(['session_key'])
+@Index(['experiment_group'])
 export class CallLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -71,4 +72,7 @@ export class CallLog {
 
   @Column({ type: 'integer', default: 0 })
   cache_read_input_tokens!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  experiment_group!: string | null;
 }

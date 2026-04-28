@@ -18,8 +18,9 @@ import { CapabilityService } from '../config/capability.service';
 import { Tier } from '../canonical/canonical.types';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
-import { RouteTarget } from '../config/gateway.config';
+import { RouteTarget, SplitVariant } from '../config/gateway.config';
 import { Modality } from '../config/modality';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface RouteDecision {
   primary: RouteTarget;
@@ -28,6 +29,20 @@ export interface RouteDecision {
   score: number;
   momentumAdjusted: boolean;
   domainHint: 'frontend' | 'backend' | null;
+  experimentGroup: string | null;  // A/B split: "tier:variantName" format, null when no split
+}
+
+/**
+ * FNV-1a 32-bit hash — deterministic, fast, no dependencies.
+ * Used for A/B split bucket assignment (session stickiness).
+ */
+function fnv1a32(str: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
 }
 
 @Injectable()
@@ -82,6 +97,62 @@ export class RoutingService {
         score,
         momentumAdjusted: adjusted,
         domainHint: hint,
+        experimentGroup: null,
+      };
+    }
+
+    // ── Step 2.5: A/B split — override targets if split is configured ──
+    let experimentGroup: string | null = null;
+
+    if (tierConfig.split && tierConfig.split.length > 0) {
+      const splitResult = this.resolveABSplit(
+        tierConfig.split, effectiveTier, sessionKey,
+      );
+      // Use split-derived targets for Steps 3+
+      const splitAllTargets = splitResult.orderedTargets;
+      experimentGroup = splitResult.experimentGroup;
+
+      // Filter by circuit breaker
+      let splitAvailable = splitAllTargets.filter((t) =>
+        this.circuitBreaker.isAvailable(t.node, t.model),
+      );
+
+      if (splitAvailable.length === 0) {
+        this.logger.warn(
+          `All split variants for tier "${effectiveTier}" have open circuits. Using all variants as last resort.`,
+        );
+        splitAvailable = splitAllTargets;
+      }
+
+      // Modality-aware reordering on split targets
+      if (modalityHints && modalityHints.length > 0) {
+        const compatible: RouteTarget[] = [];
+        const incompatible: RouteTarget[] = [];
+        for (const target of splitAvailable) {
+          const targetModalities = this.capabilityService.resolveModelModalities(target.node, target.model);
+          const supported = modalityHints.every((m) => targetModalities.includes(m));
+          (supported ? compatible : incompatible).push(target);
+        }
+        splitAvailable = [...compatible, ...incompatible];
+      }
+
+      // Domain hint reordering on split targets
+      let splitOrdered = [...splitAvailable];
+      if (hint && splitAvailable.length > 1) {
+        const preferredNodes = this.resolvePreferredNodes(hint);
+        if (preferredNodes.length > 0) {
+          splitOrdered = this.reorderByPreference(splitAvailable, preferredNodes);
+        }
+      }
+
+      return {
+        primary: splitOrdered[0],
+        fallbacks: splitOrdered.slice(1),
+        tier: effectiveTier,
+        score,
+        momentumAdjusted: adjusted,
+        domainHint: hint,
+        experimentGroup,
       };
     }
 
@@ -102,6 +173,7 @@ export class RoutingService {
         score,
         momentumAdjusted: adjusted,
         domainHint: hint,
+        experimentGroup: null,
       };
     }
 
@@ -175,6 +247,47 @@ export class RoutingService {
       score,
       momentumAdjusted: adjusted,
       domainHint: hint,
+      experimentGroup: null,
+    };
+  }
+
+  /**
+   * Resolve A/B split: hash the session key into a bucket and select a variant.
+   * The selected variant becomes primary; remaining variants become fallbacks.
+   * Uses FNV-1a 32-bit hash for deterministic, sticky routing.
+   */
+  private resolveABSplit(
+    variants: SplitVariant[],
+    tier: string,
+    sessionKey?: string,
+  ): { orderedTargets: RouteTarget[]; experimentGroup: string } {
+    const hash = fnv1a32(sessionKey || uuidv4());
+    const bucket = hash % 100;
+
+    let cumulative = 0;
+    let selectedIdx = 0;
+    for (let i = 0; i < variants.length; i++) {
+      cumulative += variants[i].weight;
+      if (bucket < cumulative) {
+        selectedIdx = i;
+        break;
+      }
+    }
+
+    const selected = variants[selectedIdx];
+    const name = selected.name || `${selected.node}:${selected.model}`;
+    const primary: RouteTarget = { node: selected.node, model: selected.model };
+    const fallbacks = variants
+      .filter((_, i) => i !== selectedIdx)
+      .map(v => ({ node: v.node, model: v.model }));
+
+    this.logger.log(
+      `A/B split tier="${tier}": bucket=${bucket} → variant="${name}" (weight=${selected.weight})`,
+    );
+
+    return {
+      orderedTargets: [primary, ...fallbacks],
+      experimentGroup: `${tier}:${name}`,
     };
   }
 

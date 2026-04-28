@@ -213,6 +213,89 @@ export class DashboardController {
   }
 
   // ══════════════════════════════════════════════════════
+  // Experiment Analytics (A/B Split)
+  // ══════════════════════════════════════════════════════
+
+  @Get('analytics/experiment')
+  async getExperimentAnalytics(
+    @Query('period') period: string = '7d',
+    @Query('tier') tier?: string,
+  ) {
+    const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
+    const since = new Date(Date.now() - periodDays * 86_400_000);
+
+    // 1. Aggregate by experiment_group
+    let qb = this.callLogRepo.createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .andWhere('log.experiment_group IS NOT NULL');
+    if (tier) {
+      qb = qb.andWhere('log.tier = :tier', { tier });
+    }
+
+    const byGroup = await qb
+      .select('log.experiment_group', 'experimentGroup')
+      .addSelect('COUNT(*)', 'calls')
+      .addSelect('SUM(log.cost_usd)', 'totalCost')
+      .addSelect('AVG(log.cost_usd)', 'avgCost')
+      .addSelect('AVG(log.latency_ms)', 'avgLatency')
+      .addSelect('SUM(log.input_tokens + log.output_tokens)', 'totalTokens')
+      .addSelect(`SUM(CASE WHEN log.status_code < 400 THEN 1 ELSE 0 END)`, 'successCount')
+      .groupBy('log.experiment_group')
+      .getRawMany();
+
+    // 2. Daily trend by experiment_group × date
+    let trendQb = this.callLogRepo.createQueryBuilder('log')
+      .where('log.timestamp >= :since', { since })
+      .andWhere('log.experiment_group IS NOT NULL');
+    if (tier) {
+      trendQb = trendQb.andWhere('log.tier = :tier', { tier });
+    }
+
+    const dailyTrend = await trendQb
+      .select(this.dateTruncDay('log.timestamp'), 'date')
+      .addSelect('log.experiment_group', 'experimentGroup')
+      .addSelect('COUNT(*)', 'calls')
+      .addSelect('AVG(log.latency_ms)', 'avgLatency')
+      .addSelect('AVG(log.cost_usd)', 'avgCost')
+      .groupBy('date')
+      .addGroupBy('log.experiment_group')
+      .orderBy('date', 'ASC')
+      .getRawMany();
+
+    // 3. Active split configurations
+    const activeSplits: Record<string, unknown> = {};
+    for (const [t, tc] of Object.entries(this.config.routing.tiers)) {
+      if ((tc as any).split) {
+        activeSplits[t] = (tc as any).split;
+      }
+    }
+
+    return {
+      byGroup: byGroup.map((g) => ({
+        experimentGroup: g.experimentGroup,
+        calls: Number(g.calls),
+        totalCost: Number(Number(g.totalCost || 0).toFixed(6)),
+        avgCost: Number(Number(g.avgCost || 0).toFixed(6)),
+        avgLatency: Number(Number(g.avgLatency || 0).toFixed(0)),
+        totalTokens: Number(g.totalTokens || 0),
+        successCount: Number(g.successCount || 0),
+        successRate: Number(g.calls) > 0
+          ? Number(((Number(g.successCount || 0) / Number(g.calls)) * 100).toFixed(1))
+          : 0,
+      })),
+      dailyTrend: dailyTrend.map((d) => ({
+        date: d.date,
+        experimentGroup: d.experimentGroup,
+        calls: Number(d.calls),
+        avgLatency: Number(Number(d.avgLatency || 0).toFixed(0)),
+        avgCost: Number(Number(d.avgCost || 0).toFixed(6)),
+      })),
+      activeSplits,
+      period: periodDays,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════
   // Stats
   // ══════════════════════════════════════════════════════
 

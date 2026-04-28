@@ -119,8 +119,7 @@ export class PipelineService {
     }
 
     // ── Route Resolution ──
-    const { route, tier, score } = await this.resolveSmartRoute(canonical, store);
-    const retryConfig = this.config.retry;
+    const { route, tier, score, experimentGroup } = await this.resolveSmartRoute(canonical, store);    const retryConfig = this.config.retry;
 
     let canonicalResponse: CanonicalResponse | null = null;
     let usedNodeId = route.primary.node;
@@ -168,7 +167,7 @@ export class PipelineService {
       await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
         statusCode: lastError instanceof ProviderError ? lastError.statusCode : 502,
         isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
-        retryCount: totalRetries });
+        retryCount: totalRetries, experimentGroup });
       return { body: this.formatError(canonical.metadata.source_format, 502, errorMsg), statusCode: 502 };
     }
 
@@ -207,7 +206,7 @@ export class PipelineService {
 
     await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
       statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
-      usage: canonicalResponse.usage, error: null, retryCount: totalRetries });
+      usage: canonicalResponse.usage, error: null, retryCount: totalRetries, experimentGroup });
 
     return { body: responseBody, statusCode: 200 };
   }
@@ -386,8 +385,7 @@ export class PipelineService {
       }
     }
 
-    const { route, tier, score } = await this.resolveSmartRoute(canonical, store);
-    const retryConfig = this.config.retry;
+    const { route, tier, score, experimentGroup } = await this.resolveSmartRoute(canonical, store);    const retryConfig = this.config.retry;
 
     const startTime = Date.now();
 
@@ -496,7 +494,7 @@ export class PipelineService {
           await this.budgetService.record(totalTokens, costUsd);
 
           await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-            statusCode: 200, isFallback, latencyMs, usage, error: null, retryCount: totalRetries });
+            statusCode: 200, isFallback, latencyMs, usage, error: null, retryCount: totalRetries, experimentGroup });
 
           res.end();
           return;
@@ -516,7 +514,7 @@ export class PipelineService {
 
             await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
               statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
-              usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message, retryCount: totalRetries });
+              usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message, retryCount: totalRetries, experimentGroup });
             return;
           }
 
@@ -558,7 +556,7 @@ export class PipelineService {
 
     await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
       statusCode: 502, isFallback: false, latencyMs: Date.now() - startTime,
-      usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg, retryCount: totalRetries });
+      usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg, retryCount: totalRetries, experimentGroup });
   }
 
   // ══════════════════════════════════════════════════════
@@ -582,6 +580,7 @@ export class PipelineService {
     route: { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] };
     tier: Tier;
     score: number;
+    experimentGroup: string | null;
   }> {
     const requestedModel = canonical.metadata.original_model;
 
@@ -604,6 +603,7 @@ export class PipelineService {
           },
           tier: 'direct',
           score: 0,
+          experimentGroup: null,
         };
       }
     }
@@ -641,6 +641,7 @@ export class PipelineService {
           },
           tier: 'direct',
           score: 0,
+          experimentGroup: null,
         };
       }
 
@@ -697,6 +698,7 @@ export class PipelineService {
       },
       tier: routeDecision.tier,
       score: scoringResult.score,
+      experimentGroup: routeDecision.experimentGroup,
     };
   }
 
@@ -837,6 +839,7 @@ export class PipelineService {
     nodeId: string; model: string; statusCode: number; isFallback: boolean;
     latencyMs: number; usage: TokenUsage; error: string | null;
     retryCount?: number;
+    experimentGroup?: string | null;
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model);
@@ -856,6 +859,7 @@ export class PipelineService {
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
         retry_count: params.retryCount || 0,
+        experiment_group: params.experimentGroup || null,
       });
       const saved = await this.callLogRepo.save(log);
 

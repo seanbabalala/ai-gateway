@@ -392,6 +392,20 @@ export class ConfigService {
           `Tier "${tierName}": primary was deleted node "${deletedNodeId}", promoted new primary`,
         );
       }
+
+      // Clean up split variants referencing the deleted node
+      if (tierConfig.split) {
+        tierConfig.split = tierConfig.split.filter(v => v.node !== deletedNodeId);
+        if (tierConfig.split.length === 0) {
+          delete tierConfig.split;  // All variants removed, disable split
+        } else {
+          // Renormalize weights to sum to 100
+          const total = tierConfig.split.reduce((s, v) => s + v.weight, 0);
+          if (total !== 100 && total > 0) {
+            tierConfig.split.forEach(v => { v.weight = Math.round(v.weight * 100 / total); });
+          }
+        }
+      }
     }
 
     // Clean up domain_preferences
@@ -429,7 +443,11 @@ export class ConfigService {
 
   /** Update routing configuration (tiers, scoring thresholds, domain preferences). */
   updateRouting(updates: {
-    tiers?: Record<string, { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] }>;
+    tiers?: Record<string, {
+      primary: { node: string; model: string };
+      fallbacks: { node: string; model: string }[];
+      split?: { node: string; model: string; weight: number; name?: string }[];
+    }>;
     scoring?: { simple_max: number; standard_max: number; complex_max: number };
     domain_preferences?: Record<string, string[]>;
   }): void {
@@ -438,6 +456,17 @@ export class ConfigService {
       for (const [tierName, tier] of Object.entries(updates.tiers)) {
         this.validateRouteTarget(tier.primary, tierName, 'primary');
         tier.fallbacks.forEach((fb, i) => this.validateRouteTarget(fb, tierName, `fallback[${i}]`));
+
+        // Validate split variants if present
+        if (tier.split) {
+          const totalWeight = tier.split.reduce((sum, v) => sum + v.weight, 0);
+          if (totalWeight !== 100) {
+            throw new Error(`Tier "${tierName}" split weights must sum to 100, got ${totalWeight}`);
+          }
+          for (const v of tier.split) {
+            this.validateRouteTarget({ node: v.node, model: v.model }, tierName, 'split variant');
+          }
+        }
       }
       this.config.routing.tiers = updates.tiers;
     }

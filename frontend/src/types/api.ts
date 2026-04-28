@@ -144,9 +144,17 @@ export interface HealthResponse {
 
 // ── Config ──
 
+export interface SplitVariant {
+  node: string
+  model: string
+  weight: number
+  name?: string
+}
+
 export interface TierRoute {
   primary: { node: string; model: string }
   fallbacks: { node: string; model: string }[]
+  split?: SplitVariant[]
 }
 
 export interface RoutingConfig {
@@ -341,4 +349,32 @@ export interface RoutingRecommendationItem {
 
 export interface RoutingRecommendationResponse {
   recommendations: RoutingRecommendationItem[]
+}
+
+// ── Experiment Analytics ──
+
+export interface ExperimentGroupStats {
+  experimentGroup: string
+  calls: number
+  totalCost: number
+  avgCost: number
+  avgLatency: number
+  totalTokens: number
+  successCount: number
+  successRate: number
+}
+
+export interface ExperimentDailyTrend {
+  date: string
+  experimentGroup: string
+  calls: number
+  avgLatency: number
+  avgCost: number
+}
+
+export interface ExperimentAnalyticsResponse {
+  byGroup: ExperimentGroupStats[]
+  dailyTrend: ExperimentDailyTrend[]
+  activeSplits: Record<string, SplitVariant[]>
+  period: number
 }
