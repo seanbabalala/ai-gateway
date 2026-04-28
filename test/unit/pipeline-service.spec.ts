@@ -456,3 +456,186 @@ describe('PipelineService — messages pinning', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// processStream
+// ═══════════════════════════════════════════════════════════
+
+function mockResponse(): any {
+  const chunks: string[] = [];
+  return {
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn(),
+    setHeader: jest.fn(),
+    flushHeaders: jest.fn(),
+    write: jest.fn((chunk: string) => chunks.push(chunk)),
+    end: jest.fn(),
+    headersSent: false,
+    _chunks: chunks,
+  };
+}
+
+describe('PipelineService — processStream', () => {
+  it('should return 429 when budget exceeded in stream mode', async () => {
+    const { pipeline } = makePipeline({
+      budgetService: {
+        check: jest.fn().mockRejectedValue(new BudgetExceededError('tokens', 1_500_000, 1_000_000)),
+        record: jest.fn(),
+        getStatus: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello');
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.json).toHaveBeenCalled();
+  });
+
+  it('should replay cached response as synthetic SSE stream', async () => {
+    const cachedResponse = makeCanonicalResponse({
+      id: 'cached-1',
+      model: 'gpt-4o',
+      content: [{ type: 'text', text: 'Cached answer' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const { pipeline } = makePipeline({
+      cacheService: {
+        shouldCache: jest.fn().mockReturnValue(true),
+        lookup: jest.fn().mockReturnValue(cachedResponse),
+        store: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    // Should set SSE headers
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
+    expect(res.flushHeaders).toHaveBeenCalled();
+    // Should write start + delta + stop events
+    expect(res.write).toHaveBeenCalled();
+    expect(res.end).toHaveBeenCalled();
+    // Should NOT call provider
+    expect(res._chunks.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should stream events from provider to response', async () => {
+    async function* mockStream() {
+      yield { type: 'start' as const, id: 'stream-1', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Hello' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
+    expect(res.write).toHaveBeenCalled();
+    expect(res.end).toHaveBeenCalled();
+    expect(mocks.circuitBreaker.recordSuccess).toHaveBeenCalled();
+    expect(mocks.budgetService.record).toHaveBeenCalled();
+  });
+
+  it('should try fallback in stream mode when primary connection fails', async () => {
+    let callCount = 0;
+    async function* fallbackStream() {
+      yield { type: 'start' as const, id: 'fb-1', model: 'claude-3-opus' };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 5, output_tokens: 3 } };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockImplementation(() => {
+          callCount++;
+          if (callCount <= 3) throw new ProviderError('Connection refused', 502, 'openai');
+          return fallbackStream();
+        }),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res.end).toHaveBeenCalled();
+    // After primary exhausts retries (3 attempts for 502), recordFailure is called
+    expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalled();
+  });
+
+  it('should send error event when all stream nodes fail', async () => {
+    const { pipeline } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockImplementation(() => {
+          throw new ProviderError('Server Error', 500, 'openai');
+        }),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res.end).toHaveBeenCalled();
+    // Should have written error event
+    const allChunks = res._chunks.join('');
+    expect(allChunks).toContain('error');
+  });
+
+  it('should store stream result in cache when caching enabled', async () => {
+    async function* mockStream() {
+      yield { type: 'start' as const, id: 'cache-stream', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Cached ' } };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'text' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 3 } };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+      cacheService: {
+        shouldCache: jest.fn().mockReturnValue(true),
+        lookup: jest.fn().mockReturnValue(null),
+        store: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(mocks.cacheService.store).toHaveBeenCalledWith(
+      request,
+      expect.objectContaining({
+        content: [{ type: 'text', text: 'Cached text' }],
+      }),
+    );
+  });
+});
