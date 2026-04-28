@@ -322,12 +322,9 @@ Phase B (P1 — 竞争力)
   └── #8 自定义评分维度
 
 Phase C (P2 — 长期)
-  ├── #11 多模态路由           ← 中等复杂度，市场差异化
-  ├── #13 OpenTelemetry
   ├── #9  多租户
   ├── #10 A/B 测试
-  ├── #14 Prompt 缓存
-  └── #12 Plugin 系统
+  └── #13 OpenTelemetry
 ```
 
 ---
@@ -345,3 +342,4 @@ Phase C (P2 — 长期)
 - [x] ~~自定义评分维度~~ — ScoringThresholds 扩展 weights + custom_keywords + ScoringService 合并用户权重 + 自定义关键词注入 Trie (2026-04-27)
 - [x] ~~Prompt 缓存~~ — SHA-256 cache key + 内存 LRU + TTL + temperature=0 缓存 + 流式回放/累积 + Dashboard 缓存状态卡片 + 清空按钮 (2026-04-27)
 - [x] ~~Vision / 多模态路由~~ — 三层模态检测 (显式声明 + 模型名推断 + Capability 回退) + 请求模态扫描 + vision tier floor + 路由模态过滤 + 降级 fallback + Dashboard modality badges (2026-04-28)
+- [x] ~~Plugin 系统~~ — 7 个管道钩子 (preRequest/postScoring/preUpstream/postUpstream/preResponse/streamEvent/onError) + waterfall 执行 + 短路返回 + 自定义评分维度注册 + 多主题 EventBus + plugins/ 目录自动发现 + ajv 配置校验 + 零插件零开销 + 2 个示例插件 (request-logger, pii-filter) (2026-04-28)
