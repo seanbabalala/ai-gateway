@@ -31,9 +31,19 @@ export interface DashboardConfig {
 }
 
 // ===== Server =====
+export interface CorsConfig {
+  origin: boolean | string | string[];  // true = all origins, string[] = whitelist
+  credentials?: boolean;                // default: true
+}
+
 export interface ServerConfig {
   port: number;
   host: string;
+  cors?: CorsConfig;              // default: { origin: true }
+  trust_proxy?: boolean | string; // default: false
+  body_limit?: string;            // default: '1mb'
+  shutdown_timeout_ms?: number;   // default: 5000
+  helmet?: boolean;               // default: true
 }
 
 // ===== Database =====
@@ -71,6 +81,10 @@ export interface RateLimitConfig {
   requests_per_minute: number;
   /** Max requests per minute per IP when no API key (default: 30) */
   requests_per_minute_ip: number;
+  /** Max tracked IPs/keys in sliding-window map (default: 10000, FIFO eviction) */
+  max_entries?: number;
+  /** Max login attempts per IP per minute (default: 5) */
+  login_requests_per_minute?: number;
 }
 
 // ===== Node (AI Provider) =====

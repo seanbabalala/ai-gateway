@@ -27,33 +27,41 @@ describe('AuthController', () => {
     };
   }
 
+  function makeReq(ip = '127.0.0.1'): any {
+    return { ip, connection: { remoteAddress: ip } };
+  }
+
   it('should return empty token when auth is not required', async () => {
     const authService = makeAuthService({ isAuthRequired: false });
-    const controller = new AuthController(authService);
-    const result = await controller.login({ password: 'anything' });
+    const config = mockConfigService();
+    const controller = new AuthController(authService, config);
+    const result = await controller.login(makeReq(), { password: 'anything' });
     expect(result).toEqual({ token: '' });
   });
 
   it('should throw UnauthorizedException when password is missing', async () => {
     const authService = makeAuthService();
-    const controller = new AuthController(authService);
-    await expect(controller.login({})).rejects.toThrow(UnauthorizedException);
+    const config = mockConfigService();
+    const controller = new AuthController(authService, config);
+    await expect(controller.login(makeReq(), {})).rejects.toThrow(UnauthorizedException);
   });
 
   it('should throw UnauthorizedException for invalid password', async () => {
     const authService = makeAuthService({
       verifyPassword: jest.fn().mockResolvedValue(false),
     });
-    const controller = new AuthController(authService);
-    await expect(controller.login({ password: 'wrong' })).rejects.toThrow(
+    const config = mockConfigService();
+    const controller = new AuthController(authService, config);
+    await expect(controller.login(makeReq(), { password: 'wrong' })).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
   it('should return JWT token for valid password', async () => {
     const authService = makeAuthService();
-    const controller = new AuthController(authService);
-    const result = await controller.login({ password: 'correct' });
+    const config = mockConfigService();
+    const controller = new AuthController(authService, config);
+    const result = await controller.login(makeReq(), { password: 'correct' });
     expect(result.token).toBe('jwt-token-123');
     expect(authService.verifyPassword).toHaveBeenCalledWith(
       'correct',
@@ -64,13 +72,15 @@ describe('AuthController', () => {
 
   it('GET /api/auth/status should return authRequired status', () => {
     const authService = makeAuthService({ isAuthRequired: true });
-    const controller = new AuthController(authService);
+    const config = mockConfigService();
+    const controller = new AuthController(authService, config);
     expect(controller.getStatus()).toEqual({ authRequired: true });
   });
 
   it('GET /api/auth/status should reflect no-auth config', () => {
     const authService = makeAuthService({ isAuthRequired: false });
-    const controller = new AuthController(authService);
+    const config = mockConfigService();
+    const controller = new AuthController(authService, config);
     expect(controller.getStatus()).toEqual({ authRequired: false });
   });
 });

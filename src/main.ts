@@ -2,6 +2,8 @@ import './telemetry/instrumentation'; // OTel SDK — must be first import
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 
@@ -18,11 +20,28 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS for frontend dashboard
+  // Helmet — standard security response headers
+  if (config.server.helmet !== false) {
+    app.use(helmet());
+  }
+
+  // Configurable CORS
+  const corsConfig = config.server.cors ?? { origin: true };
   app.enableCors({
-    origin: true,
-    credentials: true,
+    origin: corsConfig.origin,
+    credentials: corsConfig.credentials ?? true,
   });
+
+  // Body size limit
+  const bodyLimit = config.server.body_limit ?? '1mb';
+  app.use(json({ limit: bodyLimit }));
+  app.use(urlencoded({ extended: true, limit: bodyLimit }));
+
+  // Trust proxy — required to get real client IP behind reverse proxies
+  if (config.server.trust_proxy) {
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp.set('trust proxy', config.server.trust_proxy);
+  }
 
   // SPA fallback: for any GET that doesn't match API/v1/health/static-asset,
   // serve index.html so client-side routing works on page refresh
@@ -48,6 +67,17 @@ async function bootstrap() {
   );
 
   const { port, host } = config.server;
+
+  // Graceful shutdown
+  app.enableShutdownHooks();
+  const shutdownTimeout = config.server.shutdown_timeout_ms ?? 5000;
+  process.on('SIGTERM', async () => {
+    logger.log(`Graceful shutdown initiated (timeout: ${shutdownTimeout}ms)...`);
+    setTimeout(() => process.exit(1), shutdownTimeout);
+    await app.close();
+    process.exit(0);
+  });
+
   await app.listen(port, host);
 
   logger.log(`AI Gateway running on http://${host}:${port}`);

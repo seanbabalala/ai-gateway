@@ -131,4 +131,87 @@ describe('RateLimitGuard', () => {
       expect(e).toBeInstanceOf(HttpException);
     }
   });
+
+  // ===== max_entries cap tests =====
+
+  it('should evict oldest entry when max_entries is reached', () => {
+    const config = mockConfigService({
+      auth: {
+        api_keys: [],
+        rate_limit: {
+          requests_per_minute: 60,
+          requests_per_minute_ip: 10,
+          max_entries: 3,
+        },
+      },
+    });
+    const guard = new RateLimitGuard(config);
+
+    // Fill up 3 entries (the max)
+    guard.canActivate(makeContext({ ip: '10.0.0.1' }));
+    guard.canActivate(makeContext({ ip: '10.0.0.2' }));
+    guard.canActivate(makeContext({ ip: '10.0.0.3' }));
+
+    // 4th unique IP should work — evicts '10.0.0.1'
+    expect(guard.canActivate(makeContext({ ip: '10.0.0.4' }))).toBe(true);
+
+    // Access the internal windows map to verify eviction
+    const windows = (guard as any).windows as Map<string, unknown>;
+    expect(windows.has('ip:10.0.0.1')).toBe(false);
+    expect(windows.has('ip:10.0.0.4')).toBe(true);
+    expect(windows.size).toBeLessThanOrEqual(3);
+  });
+
+  it('should still work correctly after eviction', () => {
+    const config = mockConfigService({
+      auth: {
+        api_keys: [],
+        rate_limit: {
+          requests_per_minute: 60,
+          requests_per_minute_ip: 2,
+          max_entries: 2,
+        },
+      },
+    });
+    const guard = new RateLimitGuard(config);
+
+    // Fill both entries
+    guard.canActivate(makeContext({ ip: '10.0.0.1' }));
+    guard.canActivate(makeContext({ ip: '10.0.0.2' }));
+
+    // New IP evicts oldest, then should track correctly
+    guard.canActivate(makeContext({ ip: '10.0.0.3' }));
+    guard.canActivate(makeContext({ ip: '10.0.0.3' })); // 2nd request for this IP
+
+    // 3rd request for 10.0.0.3 should be rate-limited
+    try {
+      guard.canActivate(makeContext({ ip: '10.0.0.3' }));
+      fail('Expected HttpException');
+    } catch (e) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+    }
+  });
+
+  it('should default to 10000 max_entries when not configured', () => {
+    const config = mockConfigService({
+      auth: {
+        api_keys: [],
+        rate_limit: {
+          requests_per_minute: 60,
+          requests_per_minute_ip: 10,
+          // no max_entries — should default to 10000
+        },
+      },
+    });
+    const guard = new RateLimitGuard(config);
+
+    // Just verify it doesn't evict with a small number of entries
+    for (let i = 0; i < 50; i++) {
+      guard.canActivate(makeContext({ ip: `10.0.${Math.floor(i / 256)}.${i % 256}` }));
+    }
+
+    const windows = (guard as any).windows as Map<string, unknown>;
+    expect(windows.size).toBe(50);
+  });
 });

@@ -12,6 +12,13 @@
 server:
   port: 2099
   host: 0.0.0.0
+  # helmet: true                 # Security headers via helmet (default: true)
+  # body_limit: '1mb'            # Max request body size (default: '1mb')
+  # trust_proxy: false           # Set to true when behind a reverse proxy
+  # shutdown_timeout_ms: 5000    # Graceful shutdown timeout (default: 5000)
+  # cors:
+  #   origin: true               # true = all origins, or ["https://example.com"]
+  #   credentials: true
 
 database:
   type: sqlite
@@ -35,6 +42,8 @@ auth:
   # rate_limit:
   #   requests_per_minute: 60       # Per API key per minute
   #   requests_per_minute_ip: 30    # Per IP per minute (when no API key)
+  #   max_entries: 10000            # Max tracked IPs/keys (default: 10000, FIFO eviction)
+  #   login_requests_per_minute: 5  # Login endpoint rate limit per IP (default: 5)
 
 # Dashboard authentication (optional)
 # If set, the dashboard UI requires a password to access.

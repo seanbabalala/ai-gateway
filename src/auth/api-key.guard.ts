@@ -5,11 +5,22 @@ import {
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
+import { createHash, timingSafeEqual } from 'crypto';
 import { ConfigService } from '../config/config.service';
+import { ApiKeyEntry } from '../config/gateway.config';
+
+interface HashedKeyEntry {
+  hash: Buffer;
+  entry: ApiKeyEntry;
+}
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);
+
+  /** Pre-computed SHA-256 hashes for each configured API key */
+  private keyHashes: HashedKeyEntry[] = [];
+  private lastKeys: ApiKeyEntry[] | undefined;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -21,6 +32,15 @@ export class ApiKeyGuard implements CanActivate {
       return true;
     }
 
+    // Re-compute hashes if keys changed (config reload)
+    if (apiKeys !== this.lastKeys) {
+      this.keyHashes = apiKeys.map((entry) => ({
+        hash: createHash('sha256').update(entry.key).digest(),
+        entry,
+      }));
+      this.lastKeys = apiKeys;
+    }
+
     const request = context.switchToHttp().getRequest();
     const authHeader: string | undefined = request.headers?.authorization;
 
@@ -29,7 +49,7 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     const key = authHeader.slice(7);
-    const match = apiKeys.find((k) => k.key === key);
+    const match = this.findKey(key);
 
     if (!match) {
       throw new UnauthorizedException('Invalid API key');
@@ -38,5 +58,22 @@ export class ApiKeyGuard implements CanActivate {
     // Attach key name to request for logging/auditing
     request.apiKeyName = match.name;
     return true;
+  }
+
+  /**
+   * Timing-safe key lookup using SHA-256 hashes.
+   * Prevents timing attacks that could leak key bytes via response-time analysis.
+   */
+  private findKey(candidateKey: string): ApiKeyEntry | undefined {
+    const candidateHash = createHash('sha256').update(candidateKey).digest();
+    for (const { hash, entry } of this.keyHashes) {
+      if (
+        candidateHash.length === hash.length &&
+        timingSafeEqual(candidateHash, hash)
+      ) {
+        return entry;
+      }
+    }
+    return undefined;
   }
 }

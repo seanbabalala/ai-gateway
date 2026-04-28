@@ -43,8 +43,8 @@ export class RateLimitGuard implements CanActivate {
     const windowMs = 60_000; // 1 minute
     const windowStart = now - windowMs;
 
-    // Periodic cleanup of stale entries (every 5 minutes)
-    if (now - this.lastCleanup > 300_000) {
+    // Periodic cleanup of stale entries (every 2 minutes)
+    if (now - this.lastCleanup > 120_000) {
       this.cleanup(windowStart);
       this.lastCleanup = now;
     }
@@ -52,6 +52,14 @@ export class RateLimitGuard implements CanActivate {
     // Get or create window
     let entry = this.windows.get(key);
     if (!entry) {
+      // Enforce max_entries cap with FIFO eviction
+      const maxEntries = rateLimit.max_entries ?? 10_000;
+      if (this.windows.size >= maxEntries) {
+        const oldest = this.windows.keys().next().value;
+        if (oldest !== undefined) {
+          this.windows.delete(oldest);
+        }
+      }
       entry = { timestamps: [] };
       this.windows.set(key, entry);
     }

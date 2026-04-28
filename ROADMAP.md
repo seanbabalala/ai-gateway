@@ -1,7 +1,7 @@
 # AI Gateway — Roadmap（待做事项总览）
 
 > 最后更新: 2026-04-28
-> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11), Per-Key 预算 + Dashboard 按 Key 筛选 (#9)
+> 已完成: A/B 测试框架 (#10), Plugin 系统 (#12), 多模态路由 (#11), Per-Key 预算 + Dashboard 按 Key 筛选 (#9), 安全加固 (#15)
 
 ---
 
@@ -15,6 +15,7 @@
 | Dashboard | ✅ 5 页面 + SSE 实时 + CRUD + JWT 认证 + 按 Key 筛选 |
 | 预算 | ✅ 日 Token + 日费用双限额 + Per-Key 独立预算 |
 | 流式 | ✅ 3 协议完整 SSE |
+| 安全 | ✅ Helmet + Timing-safe API Key + Body Limit + CORS 配置 + Login 限流 + Graceful Shutdown |
 | Docker | ✅ 多阶段构建 |
 
 ---
@@ -315,7 +316,33 @@ telemetry:
 
 ---
 
-## 实施顺序建议
+## P3 — 安全加固 ✅ 全部完成
+
+### 15. Security Hardening（安全加固） ✅
+**已完成**: Timing-safe API Key 比较 + Helmet 安全头 + 可配置 CORS + Body 大小限制 + Trust Proxy + Graceful Shutdown + Login 暴力破解保护 + Rate Limiter Map 内存上限。
+
+**原始问题**:
+1. API Key `===` 比较存在 timing attack 风险
+2. CORS `origin: true` 接受所有来源
+3. 缺少标准安全响应头（X-Content-Type-Options, X-Frame-Options 等）
+4. 无 Body 大小限制，恶意请求可耗尽内存
+5. 无 Graceful Shutdown，进程被杀时不等待进行中请求
+6. 无 Trust Proxy，反向代理后取不到真实 IP
+7. `/api/auth/login` 无暴力破解保护
+8. Rate Limiter Map 无上限，大量不同 IP 可撑爆内存
+
+#### 已实现
+- `api-key.guard.ts`: SHA-256 hash + `crypto.timingSafeEqual` 替代 `===` 直接比较
+- `main.ts`: helmet 安全响应头（默认启用, `server.helmet: false` 可关闭）
+- `main.ts`: 可配置 CORS（`server.cors.origin` 支持 `true` / 字符串 / 白名单数组）
+- `main.ts`: Body 大小限制（`server.body_limit` 默认 `'1mb'`）
+- `main.ts`: Trust Proxy（`server.trust_proxy` 默认 `false`）
+- `main.ts`: Graceful Shutdown（`server.shutdown_timeout_ms` 默认 5000ms）
+- `auth.controller.ts`: Login per-IP 滑动窗口限流（`rate_limit.login_requests_per_minute` 默认 5/min）
+- `rate-limit.guard.ts`: Map max_entries 上限 + FIFO 淘汰（`rate_limit.max_entries` 默认 10000）
+- 所有改动通过配置控制，默认值安全且向后兼容
+
+**复杂度**: 中
 
 ```
 Phase A (P0 — 生产必备) ✅ 全部完成
@@ -337,6 +364,9 @@ Phase C (P2 — 长期) ✅ 全部完成
   ├── #12 Plugin 系统          ✅
   ├── #13 OpenTelemetry        ✅
   └── #14 Prompt 缓存          ✅
+
+Phase D (P3 — 安全加固) ✅ 全部完成
+  └── #15 Security Hardening   ✅
 ```
 
 ---
@@ -358,3 +388,4 @@ Phase C (P2 — 长期) ✅ 全部完成
 - [x] ~~A/B 测试框架~~ — SplitVariant 配置 + FNV-1a 32-bit hash session 粘性 + 加权分流 + experimentGroup 透传 CallLog + ConfigService split 校验/节点删除清理 + Dashboard experiment analytics API + ExperimentPage 对比卡片/趋势图/胜者分析 + RoutingPage split 编辑 UI (2026-04-28)
 - [x] ~~OpenTelemetry 可观测性~~ — 分布式 Tracing (gateway.request → scoring → routing spans) + Prometheus Metrics (请求计数/延迟/token/成本/缓存/上游错误) + OTLP Exporter + 配置驱动 enabled/disabled + Dashboard telemetry-status 端点 (2026-04-28)
 - [x] ~~Per-Key 预算 + Dashboard 按 Key 筛选~~ — ApiKeyBudgetOverride 配置 + BudgetRule api_key_name 列 + 双层 check/record + 启动自动同步/清理 per-key 规则 + Dashboard 全端点 api_key 筛选 + GET /budget/keys + GET /api-keys + 前端 4 页面 API Key 选择器 + BudgetPage per-key 环形仪表对比视图 (2026-04-28)
+- [x] ~~Security Hardening~~ — Timing-safe API Key (SHA-256 + timingSafeEqual) + helmet 安全头 + 可配置 CORS (origin/credentials) + body 大小限制 (1mb default) + trust proxy + graceful shutdown (5s timeout) + login brute-force per-IP 限流 (5/min) + rate limiter max_entries FIFO 淘汰 (10000 default) + 全部配置驱动且向后兼容 (2026-04-28)
