@@ -1,0 +1,99 @@
+server:
+  port: 0
+  host: 127.0.0.1
+  helmet: true
+  body_limit: 1mb
+database:
+  type: sqlite
+  path: ':memory:'
+  log_retention_days: 1
+auth:
+  api_keys:
+    - key: e2e-test-key-1
+      name: test-default
+    - key: e2e-test-key-2
+      name: test-secondary
+  rate_limit:
+    requests_per_minute: 1000
+    requests_per_minute_ip: 1000
+    max_entries: 10000
+    login_requests_per_minute: 5
+nodes:
+  - id: mock-openai
+    name: Mock OpenAI
+    api_key: mock-openai-key
+  - id: mock-claude
+    name: Mock Claude
+    protocol: messages
+    base_url: http://mock-upstream.test
+    endpoint: /v1/messages
+    api_key: mock-claude-key
+    auth_type: x-api-key
+    models:
+      - claude-sonnet-4-20250514
+    timeout_ms: 10000
+    tags:
+      - code
+      - reasoning
+      - math
+    model_aliases:
+      claude: claude-sonnet-4-20250514
+      sonnet: claude-sonnet-4-20250514
+    headers:
+      anthropic-version: '2023-06-01'
+routing:
+  tiers:
+    simple:
+      primary:
+        node: mock-openai
+        model: gpt-4o-mini
+      fallbacks:
+        - node: mock-claude
+          model: claude-sonnet-4-20250514
+    standard:
+      primary:
+        node: mock-openai
+        model: gpt-4o
+      fallbacks:
+        - node: mock-claude
+          model: claude-sonnet-4-20250514
+    complex:
+      primary:
+        node: mock-claude
+        model: claude-sonnet-4-20250514
+      fallbacks:
+        - node: mock-openai
+          model: gpt-4o
+    reasoning:
+      primary:
+        node: mock-claude
+        model: claude-sonnet-4-20250514
+      fallbacks:
+        - node: mock-openai
+          model: gpt-4o
+  scoring:
+    simple_max: -0.1
+    standard_max: 0.08
+    complex_max: 0.35
+  domain_preferences:
+    frontend:
+      - mock-openai
+    backend:
+      - mock-claude
+      - mock-openai
+    math:
+      - mock-claude
+budget:
+  daily_token_limit: 5000000
+  daily_cost_limit: 50
+  alert_threshold: 0.8
+models_pricing:
+  gpt-4o:
+    input: 2.5
+    output: 10
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.6
+  claude-sonnet-4-20250514:
+    input: 3
+    output: 15

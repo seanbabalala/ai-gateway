@@ -1,0 +1,285 @@
+/**
+ * E2E test infrastructure — shared setup for all E2E test files.
+ *
+ * Core strategy: boot the real AppModule, mock only `global.fetch`
+ * (the single exit point in ProviderClientService.sendRequest()),
+ * use SQLite :memory: for a clean DB each test file.
+ */
+
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { json, urlencoded } from 'express';
+import helmet from 'helmet';
+import * as path from 'path';
+import * as request from 'supertest';
+
+// ── Constants ──────────────────────────────────────────────
+
+export const API_KEY = 'e2e-test-key-1';
+export const API_KEY_2 = 'e2e-test-key-2';
+export const FIXTURE_PATH = path.resolve(__dirname, 'fixtures', 'gateway.e2e.yaml');
+
+// ── FetchMock ──────────────────────────────────────────────
+
+export interface FetchCall {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+}
+
+type FetchHandler = (url: string, init: RequestInit) => Promise<Response>;
+
+export class FetchMock {
+  private originalFetch: typeof globalThis.fetch | null = null;
+  private handler: FetchHandler | null = null;
+  calls: FetchCall[] = [];
+
+  install(): void {
+    this.originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = init?.method || 'GET';
+      const headers: Record<string, string> = {};
+      if (init?.headers) {
+        const h = init.headers as Record<string, string>;
+        for (const [k, v] of Object.entries(h)) {
+          headers[k] = v;
+        }
+      }
+      let body: Record<string, unknown> = {};
+      if (init?.body && typeof init.body === 'string') {
+        try {
+          body = JSON.parse(init.body);
+        } catch {
+          body = { _raw: init.body };
+        }
+      }
+
+      this.calls.push({ url, method, headers, body });
+
+      if (this.handler) {
+        return this.handler(url, init!);
+      }
+
+      // Default handler — auto-detect protocol from URL
+      return this.defaultHandler(url, body);
+    };
+  }
+
+  reset(): void {
+    this.calls = [];
+    this.handler = null;
+  }
+
+  restore(): void {
+    if (this.originalFetch) {
+      globalThis.fetch = this.originalFetch;
+      this.originalFetch = null;
+    }
+  }
+
+  setHandler(fn: FetchHandler): void {
+    this.handler = fn;
+  }
+
+  /** Return a specific HTTP error status for all requests */
+  setError(status: number, message = 'Mock error'): void {
+    this.handler = async () =>
+      new Response(JSON.stringify({ error: { message, type: 'error' } }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+  }
+
+  /** Return an SSE stream for chat_completions format */
+  setStreamingChatResponse(chunks: string[]): void {
+    this.handler = async () => {
+      const encoder = new TextEncoder();
+      const lines: string[] = [];
+
+      for (const chunk of chunks) {
+        const data = {
+          id: 'chatcmpl-test',
+          object: 'chat.completion.chunk',
+          model: 'gpt-4o',
+          choices: [{
+            index: 0,
+            delta: { content: chunk },
+            finish_reason: null,
+          }],
+        };
+        lines.push(`data: ${JSON.stringify(data)}\n\n`);
+      }
+
+      // Final chunk with finish_reason + usage
+      lines.push(`data: ${JSON.stringify({
+        id: 'chatcmpl-test',
+        object: 'chat.completion.chunk',
+        model: 'gpt-4o',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      })}\n\n`);
+      lines.push('data: [DONE]\n\n');
+
+      const body = new ReadableStream({
+        start(controller) {
+          for (const line of lines) {
+            controller.enqueue(encoder.encode(line));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    };
+  }
+
+  /** Return an SSE stream for messages (Anthropic) format */
+  setStreamingMessagesResponse(text: string): void {
+    this.handler = async () => {
+      const encoder = new TextEncoder();
+      const lines: string[] = [];
+
+      lines.push(`event: message_start\ndata: ${JSON.stringify({
+        type: 'message_start',
+        message: { id: 'msg-test', type: 'message', role: 'assistant', model: 'claude-sonnet-4-20250514', content: [], usage: { input_tokens: 10, output_tokens: 0 } },
+      })}\n\n`);
+
+      lines.push(`event: content_block_start\ndata: ${JSON.stringify({
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      })}\n\n`);
+
+      lines.push(`event: content_block_delta\ndata: ${JSON.stringify({
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text },
+      })}\n\n`);
+
+      lines.push(`event: content_block_stop\ndata: ${JSON.stringify({
+        type: 'content_block_stop',
+        index: 0,
+      })}\n\n`);
+
+      lines.push(`event: message_delta\ndata: ${JSON.stringify({
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { output_tokens: 5 },
+      })}\n\n`);
+
+      lines.push(`event: message_stop\ndata: ${JSON.stringify({
+        type: 'message_stop',
+      })}\n\n`);
+
+      const body = new ReadableStream({
+        start(controller) {
+          for (const line of lines) {
+            controller.enqueue(encoder.encode(line));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    };
+  }
+
+  // ── Default Handler ──
+
+  private defaultHandler(url: string, body: Record<string, unknown>): Response {
+    if (url.includes('/v1/messages')) {
+      return new Response(JSON.stringify({
+        id: 'msg-e2e-test',
+        type: 'message',
+        role: 'assistant',
+        model: (body.model as string) || 'claude-sonnet-4-20250514',
+        content: [{ type: 'text', text: 'Mock Claude response' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Default: chat_completions format (also covers /v1/responses-like URLs)
+    return new Response(JSON.stringify({
+      id: 'chatcmpl-e2e-test',
+      object: 'chat.completion',
+      model: (body.model as string) || 'gpt-4o',
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: 'Mock OpenAI response' },
+        finish_reason: 'stop',
+      }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+// ── Harness ────────────────────────────────────────────────
+
+export interface E2EHarness {
+  app: INestApplication;
+  agent: request.Agent;
+  fetchMock: FetchMock;
+  close: () => Promise<void>;
+}
+
+export async function createE2EHarness(): Promise<E2EHarness> {
+  // Set config path BEFORE module resolution
+  process.env.GATEWAY_CONFIG_PATH = FIXTURE_PATH;
+
+  // Lazy-import AppModule so the config path is read at require time
+  const { AppModule } = await import('../../src/app.module');
+  const { PluginLoaderService } = await import('../../src/plugins/plugin-loader.service');
+
+  const fetchMock = new FetchMock();
+  fetchMock.install();
+
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    imports: [AppModule],
+  })
+    // Override PluginLoaderService to skip auto-discovery of plugins/
+    .overrideProvider(PluginLoaderService)
+    .useValue({ onModuleInit: () => {} })
+    .compile();
+
+  const app = moduleFixture.createNestApplication();
+
+  // Replicate main.ts middleware exactly
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true }),
+  );
+  app.use(helmet());
+  app.enableCors({ origin: true, credentials: true });
+  app.use(json({ limit: '1mb' }));
+  app.use(urlencoded({ extended: true, limit: '1mb' }));
+
+  await app.init();
+  await app.listen(0);
+
+  const server = app.getHttpServer();
+  const agent = request.agent(server);
+
+  return {
+    app,
+    agent,
+    fetchMock,
+    close: async () => {
+      fetchMock.restore();
+      await app.close();
+    },
+  };
+}
