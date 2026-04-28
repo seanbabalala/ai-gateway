@@ -5,6 +5,7 @@
 // ===================================================================
 
 import type { Modality } from './modality';
+import type { PluginConfigEntry } from '../plugins/types';
 
 export interface GatewayConfig {
   server: ServerConfig;
@@ -16,6 +17,9 @@ export interface GatewayConfig {
   budget: BudgetConfig;
   cache?: CacheConfig;
   models_pricing: Record<string, ModelPricing>;
+
+  /** Plugin declarations — loaded at startup in order */
+  plugins?: PluginConfigEntry[];
 }
 
 // ===== Dashboard =====

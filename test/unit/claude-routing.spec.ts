@@ -4,6 +4,7 @@ import { PipelineService } from '../../src/pipeline/pipeline.service';
 import { ProviderClientService } from '../../src/providers/provider-client.service';
 import { CanonicalRequest } from '../../src/canonical/canonical.types';
 import { NodeConfig } from '../../src/config/gateway.config';
+import { createNoOpHookExecutor } from '../../src/plugins/testing';
 
 function makeMessagesRequest(
   overrides: Partial<CanonicalRequest> = {},
@@ -51,7 +52,7 @@ describe('Claude routing compatibility', () => {
     });
   });
 
-  it('pins Claude Code messages requests to claude with no cross-provider fallbacks', () => {
+  it('pins Claude Code messages requests to claude with no cross-provider fallbacks', async () => {
     const config = new ConfigService();
     const service = new PipelineService(
       config,
@@ -63,10 +64,11 @@ describe('Claude routing compatibility', () => {
       {} as never,
       {} as never,
       {} as never,
+      createNoOpHookExecutor() as never,
       {} as never,
     );
 
-    const route = (service as any).resolveSmartRoute(makeMessagesRequest());
+    const route = await (service as any).resolveSmartRoute(makeMessagesRequest());
 
     expect(route.route.primary).toEqual({
       node: 'claude',

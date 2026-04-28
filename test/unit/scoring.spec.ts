@@ -369,7 +369,7 @@ describe('ScoringService', () => {
     },
   } as any;
 
-  const service = new ScoringService(mockConfig);
+  const service = new ScoringService(mockConfig, { getDimensions: () => [] } as any);
   service.onModuleInit();
 
   it('should classify a greeting as simple', () => {

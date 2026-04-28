@@ -25,6 +25,7 @@ import { CircuitBreakerService } from '../routing/circuit-breaker.service';
 import { BudgetService, BudgetExceededError } from '../budget/budget.service';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { LogEventBus } from '../dashboard/log-event-bus';
+import { HookExecutorService } from '../plugins/hook-executor.service';
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
@@ -58,6 +59,7 @@ export class PipelineService {
     private readonly budgetService: BudgetService,
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
+    private readonly hooks: HookExecutorService,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
   ) {}
@@ -68,6 +70,25 @@ export class PipelineService {
 
   async process(canonical: CanonicalRequest): Promise<PipelineResult> {
     const requestId = uuidv4();
+    const store = new Map<string, unknown>();
+
+    // ── preRequest Hook ──
+    if (!this.hooks.isEmpty()) {
+      const hookResult = await this.hooks.run(
+        'preRequest',
+        { request: canonical } as Record<string, unknown>,
+        store,
+        this.config.getFullConfig(),
+      );
+      if (hookResult.shortCircuit) {
+        const scResponse = hookResult.shortCircuit as CanonicalResponse;
+        return {
+          body: this.denormalizeForClient(scResponse, canonical.metadata.source_format),
+          statusCode: 200,
+        };
+      }
+      canonical = (hookResult.data as { request: CanonicalRequest }).request;
+    }
 
     // ── Budget Check ──
     try {
@@ -98,7 +119,7 @@ export class PipelineService {
     }
 
     // ── Route Resolution ──
-    const { route, tier, score } = this.resolveSmartRoute(canonical);
+    const { route, tier, score } = await this.resolveSmartRoute(canonical, store);
     const retryConfig = this.config.retry;
 
     let canonicalResponse: CanonicalResponse | null = null;
@@ -151,7 +172,29 @@ export class PipelineService {
       return { body: this.formatError(canonical.metadata.source_format, 502, errorMsg), statusCode: 502 };
     }
 
-    const responseBody = this.denormalizeForClient(canonicalResponse, canonical.metadata.source_format);
+    // ── postUpstream Hook ──
+    if (!this.hooks.isEmpty()) {
+      const hookResult = await this.hooks.run(
+        'postUpstream',
+        { request: canonical, response: canonicalResponse } as Record<string, unknown>,
+        store,
+        this.config.getFullConfig(),
+      );
+      canonicalResponse = (hookResult.data as { response: CanonicalResponse }).response;
+    }
+
+    let responseBody = this.denormalizeForClient(canonicalResponse, canonical.metadata.source_format);
+
+    // ── preResponse Hook ──
+    if (!this.hooks.isEmpty()) {
+      const hookResult = await this.hooks.run(
+        'preResponse',
+        { request: canonical, body: responseBody } as Record<string, unknown>,
+        store,
+        this.config.getFullConfig(),
+      );
+      responseBody = (hookResult.data as { body: Record<string, unknown> }).body;
+    }
 
     // ── Cache Store ──
     this.cacheService.store(canonical, canonicalResponse);
@@ -259,6 +302,23 @@ export class PipelineService {
     res: ExpressResponse,
   ): Promise<void> {
     const requestId = uuidv4();
+    const store = new Map<string, unknown>();
+
+    // ── preRequest Hook (stream) ──
+    if (!this.hooks.isEmpty()) {
+      const hookResult = await this.hooks.run(
+        'preRequest',
+        { request: canonical } as Record<string, unknown>,
+        store,
+        this.config.getFullConfig(),
+      );
+      if (hookResult.shortCircuit) {
+        const scResponse = hookResult.shortCircuit as CanonicalResponse;
+        res.json(this.denormalizeForClient(scResponse, canonical.metadata.source_format));
+        return;
+      }
+      canonical = (hookResult.data as { request: CanonicalRequest }).request;
+    }
 
     // ── Budget Check ──
     try {
@@ -326,7 +386,7 @@ export class PipelineService {
       }
     }
 
-    const { route, tier, score } = this.resolveSmartRoute(canonical);
+    const { route, tier, score } = await this.resolveSmartRoute(canonical, store);
     const retryConfig = this.config.retry;
 
     const startTime = Date.now();
@@ -392,7 +452,22 @@ export class PipelineService {
               streamStopReason = event.stop_reason;
             }
 
-            const sseText = serializer.serialize(event);
+            // ── streamEvent Hook ──
+            let outputEvent = event;
+            if (!this.hooks.isEmpty()) {
+              const hookResult = await this.hooks.run(
+                'streamEvent',
+                { request: canonical, event } as Record<string, unknown>,
+                store,
+                this.config.getFullConfig(),
+              );
+              if (hookResult.shortCircuit && (hookResult.shortCircuit as Record<string, unknown>).__drop) {
+                continue; // Drop this event
+              }
+              outputEvent = (hookResult.data as { event: CanonicalStreamEvent }).event;
+            }
+
+            const sseText = serializer.serialize(outputEvent);
             if (sseText) {
               res.write(sseText);
             }
@@ -500,11 +575,14 @@ export class PipelineService {
    * which node you mean, it routes directly. Otherwise it uses smart routing.
    * The upstream API is the final authority on whether a model name is valid.
    */
-  private resolveSmartRoute(canonical: CanonicalRequest): {
+  private async resolveSmartRoute(
+    canonical: CanonicalRequest,
+    store?: Map<string, unknown>,
+  ): Promise<{
     route: { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] };
     tier: Tier;
     score: number;
-  } {
+  }> {
     const requestedModel = canonical.metadata.original_model;
 
     if (this.shouldPinMessagesRequestToClaude(canonical)) {
@@ -574,9 +652,30 @@ export class PipelineService {
 
     // ── 2. Score-based routing (model = "auto" or unspecified) ──
     const scoringResult = this.scoringService.score(canonical);
+    let effectiveTier = scoringResult.tier;
+    let effectiveScore = scoringResult.score;
+
+    // ── postScoring Hook ──
+    if (store && !this.hooks.isEmpty()) {
+      const hookResult = await this.hooks.run(
+        'postScoring',
+        {
+          request: canonical,
+          tier: scoringResult.tier,
+          score: scoringResult.score,
+          dimensions: scoringResult.dimensions,
+        } as Record<string, unknown>,
+        store,
+        this.config.getFullConfig(),
+      );
+      const hookData = hookResult.data as { tier: Tier; score: number };
+      effectiveTier = hookData.tier;
+      effectiveScore = hookData.score;
+    }
+
     const routeDecision = this.routingService.resolve(
-      scoringResult.tier,
-      scoringResult.score,
+      effectiveTier,
+      effectiveScore,
       canonical.metadata.session_key,
       scoringResult.domainHint,
       scoringResult.modalityHints,

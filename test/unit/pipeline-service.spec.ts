@@ -11,6 +11,7 @@ import { PipelineService } from '../../src/pipeline/pipeline.service';
 import { ProviderError } from '../../src/providers/provider-client.service';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 import { makeRequest, makeCanonicalResponse, mockConfigService } from '../helpers';
+import { createNoOpHookExecutor } from '../../src/plugins/testing';
 
 function makePipeline(overrides: Record<string, any> = {}): {
   pipeline: PipelineService;
@@ -100,6 +101,8 @@ function makePipeline(overrides: Record<string, any> = {}): {
     ...overrides.logEventBus,
   };
 
+  const hooks = overrides.hooks || createNoOpHookExecutor();
+
   const callLogRepo = {
     create: jest.fn().mockImplementation((data: any) => data),
     save: jest.fn().mockImplementation((data: any) => Promise.resolve({ id: 1, ...data })),
@@ -116,6 +119,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     budgetService as any,
     cacheService as any,
     logEventBus as any,
+    hooks as any,
     callLogRepo as any,
   );
 
@@ -124,7 +128,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     mocks: {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, budgetService, cacheService,
-      logEventBus, callLogRepo,
+      logEventBus, hooks, callLogRepo,
     },
   };
 }

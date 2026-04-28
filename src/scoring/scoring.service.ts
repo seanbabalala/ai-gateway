@@ -17,6 +17,7 @@ import { ConfigService } from '../config/config.service';
 import { CanonicalRequest, Tier } from '../canonical/canonical.types';
 import { detectRequestModalities } from '../canonical/modality-detection';
 import { Modality } from '../config/modality';
+import { PluginRegistryService } from '../plugins/plugin-registry.service';
 
 // Keyword dimensions
 import {
@@ -90,7 +91,10 @@ export class ScoringService implements OnModuleInit {
   private readonly logger = new Logger(ScoringService.name);
   private dimensions: DimensionWeight[] = [];
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly pluginRegistry: PluginRegistryService,
+  ) {}
 
   onModuleInit(): void {
     this.initDimensions();
@@ -126,6 +130,21 @@ export class ScoringService implements OnModuleInit {
       injectCustomKeywords(customKeywords);
       this.logger.log(
         `Injected ${customKeywords.length} custom keyword rule(s) into scoring tries`,
+      );
+    }
+
+    // Merge plugin-registered scoring dimensions
+    const pluginDims = this.pluginRegistry.getDimensions();
+    for (const pd of pluginDims) {
+      this.dimensions.push({
+        name: pd.name,
+        weight: weightOverrides?.[pd.name] ?? pd.defaultWeight,
+        scorer: pd.scorer,
+      });
+    }
+    if (pluginDims.length) {
+      this.logger.log(
+        `Merged ${pluginDims.length} plugin scoring dimension(s)`,
       );
     }
   }

@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { IngestModule } from './ingest/ingest.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
+import { PluginModule } from './plugins/plugin.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuthModule } from './auth/auth.module';
     }),
     ConfigModule,
     DatabaseModule,
+    PluginModule,
     AuthModule,
     IngestModule,
     DashboardModule,
