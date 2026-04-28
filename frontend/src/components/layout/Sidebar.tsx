@@ -8,9 +8,11 @@ import {
   BarChart3,
   FlaskConical,
   Zap,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
+import { useTelemetryStatus } from '@/hooks/use-telemetry-status'
 import { StatusDot } from '@/components/shared/StatusDot'
 
 const navGroups = [
@@ -36,6 +38,7 @@ const navGroups = [
 export function Sidebar() {
   const location = useLocation()
   const { data: health } = useHealth()
+  const { data: telemetry } = useTelemetryStatus()
 
   return (
     <aside
@@ -146,6 +149,18 @@ export function Sidebar() {
               </div>
             )}
           </div>
+        </div>
+        {/* Telemetry status indicator */}
+        <div className="mt-2 flex items-center gap-2">
+          <Activity
+            className={cn(
+              'h-3 w-3',
+              telemetry?.active ? 'text-emerald-400' : 'text-stone-600'
+            )}
+          />
+          <span className="text-[9px] font-medium text-stone-500">
+            {telemetry?.active ? 'Telemetry Active' : 'Telemetry Off'}
+          </span>
         </div>
       </div>
     </aside>

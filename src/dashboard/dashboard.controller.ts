@@ -35,6 +35,7 @@ import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
 import { DashboardGuard } from '../auth/dashboard.guard';
 import { PromptCacheService } from '../cache/prompt-cache.service';
+import { TelemetryService } from '../telemetry/telemetry.service';
 import type { Modality } from '../config/modality';
 
 @Controller('api/dashboard')
@@ -49,6 +50,7 @@ export class DashboardController {
     private readonly budgetService: BudgetService,
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
+    private readonly telemetry: TelemetryService,
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
@@ -532,6 +534,31 @@ export class DashboardController {
   clearCache() {
     this.cacheService.clear();
     return { success: true, message: 'Cache cleared' };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Telemetry Status
+  // ══════════════════════════════════════════════════════
+
+  @Get('telemetry-status')
+  getTelemetryStatus() {
+    const fullConfig = this.config.getFullConfig();
+    const telemetryCfg = fullConfig.telemetry;
+    const enabled = telemetryCfg?.enabled === true;
+
+    return {
+      enabled,
+      active: enabled, // active = SDK was initialized (enabled at boot time)
+      config: enabled
+        ? {
+            service_name: telemetryCfg?.service_name || 'ai-gateway',
+            traces_endpoint: telemetryCfg?.traces?.endpoint || 'http://localhost:4318/v1/traces',
+            sample_rate: telemetryCfg?.traces?.sample_rate ?? 1.0,
+            prometheus_port: telemetryCfg?.metrics?.prometheus_port || 9464,
+            otlp_metrics_endpoint: telemetryCfg?.metrics?.otlp_endpoint || null,
+          }
+        : null,
+    };
   }
 
   // ══════════════════════════════════════════════════════

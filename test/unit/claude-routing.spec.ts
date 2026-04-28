@@ -5,6 +5,7 @@ import { ProviderClientService } from '../../src/providers/provider-client.servi
 import { CanonicalRequest } from '../../src/canonical/canonical.types';
 import { NodeConfig } from '../../src/config/gateway.config';
 import { createNoOpHookExecutor } from '../../src/plugins/testing';
+import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 function makeMessagesRequest(
   overrides: Partial<CanonicalRequest> = {},
@@ -65,6 +66,7 @@ describe('Claude routing compatibility', () => {
       {} as never,
       {} as never,
       createNoOpHookExecutor() as never,
+      new TelemetryService(),
       {} as never,
     );
 
@@ -79,7 +81,7 @@ describe('Claude routing compatibility', () => {
   });
 
   it('preserves native Anthropic headers and request shape for messages passthrough', async () => {
-    const service = new ProviderClientService({} as never);
+    const service = new ProviderClientService({} as never, new TelemetryService());
     const canonical = makeMessagesRequest({
       stream: true,
       metadata: {
@@ -155,7 +157,7 @@ describe('Claude routing compatibility', () => {
   });
 
   it('removes empty assistant text blocks from native messages passthrough', () => {
-    const service = new ProviderClientService({} as never);
+    const service = new ProviderClientService({} as never, new TelemetryService());
     const canonical = makeMessagesRequest({
       metadata: {
         source_format: 'messages',

@@ -9,6 +9,7 @@
  */
 
 import { DashboardController } from '../../src/dashboard/dashboard.controller';
+import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 // ── Minimal mock for DashboardController dependencies ──
 
@@ -36,7 +37,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
 
   return new DashboardController(
     config as any, capabilityService, circuitBreaker, budgetService,
-    cacheService, logEventBus, dataSource, callLogRepo,
+    cacheService, logEventBus, new TelemetryService(), dataSource, callLogRepo,
   );
 }
 

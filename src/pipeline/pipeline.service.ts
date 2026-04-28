@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Response as ExpressResponse } from 'express';
+import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
 import { RetryConfig, ModelPricing } from '../config/gateway.config';
@@ -35,6 +36,7 @@ import {
   MessagesStreamSerializer,
 } from '../providers/stream/stream-serializers';
 import { CallLog } from '../database/entities/call-log.entity';
+import { TelemetryService } from '../telemetry/telemetry.service';
 
 export interface PipelineResult {
   body: Record<string, unknown>;
@@ -60,6 +62,7 @@ export class PipelineService {
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
     private readonly hooks: HookExecutorService,
+    private readonly telemetry: TelemetryService,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
   ) {}
@@ -70,6 +73,18 @@ export class PipelineService {
 
   async process(canonical: CanonicalRequest): Promise<PipelineResult> {
     const requestId = uuidv4();
+    const startTime = Date.now();
+
+    return this.telemetry.withSpan(
+      'gateway.request',
+      {
+        'gateway.request_id': requestId,
+        'gateway.source_format': canonical.metadata.source_format,
+        'gateway.model': canonical.metadata.original_model || 'auto',
+        'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.stream': false,
+      },
+      async (rootSpan) => {
     const store = new Map<string, unknown>();
 
     // ── preRequest Hook ──
@@ -110,16 +125,21 @@ export class PipelineService {
       const cached = this.cacheService.lookup(canonical);
       if (cached) {
         const cacheLatency = Date.now() - cacheStart;
+        this.telemetry.cacheOperations.add(1, { operation: 'hit' });
+        rootSpan.setAttribute('gateway.cache', 'hit');
         const responseBody = this.denormalizeForClient(cached, canonical.metadata.source_format);
         await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
           model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
           usage: cached.usage, error: null, retryCount: 0 });
         return { body: responseBody, statusCode: 200 };
       }
+      this.telemetry.cacheOperations.add(1, { operation: 'miss' });
     }
 
     // ── Route Resolution ──
-    const { route, tier, score, experimentGroup } = await this.resolveSmartRoute(canonical, store);    const retryConfig = this.config.retry;
+    const { route, tier, score, experimentGroup } = await this.resolveSmartRoute(canonical, store);
+    rootSpan.setAttributes({ 'gateway.tier': tier, 'gateway.score': score });
+    const retryConfig = this.config.retry;
 
     let canonicalResponse: CanonicalResponse | null = null;
     let usedNodeId = route.primary.node;
@@ -164,6 +184,7 @@ export class PipelineService {
 
     if (!canonicalResponse) {
       const errorMsg = lastError?.message || 'All nodes failed';
+      this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
       await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
         statusCode: lastError instanceof ProviderError ? lastError.statusCode : 502,
         isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
@@ -197,6 +218,7 @@ export class PipelineService {
 
     // ── Cache Store ──
     this.cacheService.store(canonical, canonicalResponse);
+    this.telemetry.cacheOperations.add(1, { operation: 'store' });
 
     // ── Budget Record ──
     const pricing = this.config.getModelPricing(usedModel);
@@ -204,11 +226,31 @@ export class PipelineService {
     const totalTokens = canonicalResponse.usage.input_tokens + canonicalResponse.usage.output_tokens;
     await this.budgetService.record(totalTokens, costUsd);
 
+    // ── Telemetry Metrics ──
+    const durationMs = Date.now() - startTime;
+    rootSpan.setAttributes({
+      'gateway.node': usedNodeId,
+      'gateway.model': usedModel,
+      'gateway.is_fallback': isFallback,
+      'gen_ai.request.model': usedModel,
+      'gen_ai.usage.input_tokens': canonicalResponse.usage.input_tokens,
+      'gen_ai.usage.output_tokens': canonicalResponse.usage.output_tokens,
+    });
+    this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+    this.telemetry.requestDuration.record(durationMs, { tier, node: usedNodeId });
+    this.telemetry.tokensUsage.add(totalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+    if (costUsd > 0) {
+      this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+    }
+
     await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
       statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
       usage: canonicalResponse.usage, error: null, retryCount: totalRetries, experimentGroup });
 
     return { body: responseBody, statusCode: 200 };
+      }, // end of async (rootSpan)
+      SpanKind.SERVER,
+    ); // end of withSpan
   }
 
   // ══════════════════════════════════════════════════════
@@ -301,7 +343,20 @@ export class PipelineService {
     res: ExpressResponse,
   ): Promise<void> {
     const requestId = uuidv4();
+    const streamStartTime = Date.now();
     const store = new Map<string, unknown>();
+
+    // Manual span for streaming (can't use withSpan with generators)
+    const rootSpan = this.telemetry.tracer.startSpan('gateway.request', {
+      kind: SpanKind.SERVER,
+      attributes: {
+        'gateway.request_id': requestId,
+        'gateway.source_format': canonical.metadata.source_format,
+        'gateway.model': canonical.metadata.original_model || 'auto',
+        'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.stream': true,
+      },
+    });
 
     // ── preRequest Hook (stream) ──
     if (!this.hooks.isEmpty()) {
@@ -314,6 +369,7 @@ export class PipelineService {
       if (hookResult.shortCircuit) {
         const scResponse = hookResult.shortCircuit as CanonicalResponse;
         res.json(this.denormalizeForClient(scResponse, canonical.metadata.source_format));
+        rootSpan.end();
         return;
       }
       canonical = (hookResult.data as { request: CanonicalRequest }).request;
@@ -328,6 +384,7 @@ export class PipelineService {
         res.status(429).json(
           this.formatError(canonical.metadata.source_format, 429, err.message),
         );
+        rootSpan.end();
         return;
       }
       throw err;
@@ -381,6 +438,9 @@ export class PipelineService {
         await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
           model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
           usage: cached.usage, error: null, retryCount: 0 });
+        this.telemetry.cacheOperations.add(1, { operation: 'hit' });
+        rootSpan.setAttribute('gateway.cache', 'hit');
+        rootSpan.end();
         return;
       }
     }
@@ -496,7 +556,26 @@ export class PipelineService {
           await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
             statusCode: 200, isFallback, latencyMs, usage, error: null, retryCount: totalRetries, experimentGroup });
 
+          // ── Telemetry Metrics (stream success) ──
+          const streamTotalTokens = usage.input_tokens + usage.output_tokens;
+          rootSpan.setAttributes({
+            'gateway.tier': tier,
+            'gateway.node': usedNodeId,
+            'gateway.model': usedModel,
+            'gateway.is_fallback': isFallback,
+            'gen_ai.request.model': usedModel,
+            'gen_ai.usage.input_tokens': usage.input_tokens,
+            'gen_ai.usage.output_tokens': usage.output_tokens,
+          });
+          this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+          this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
+          this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+          if (costUsd > 0) {
+            this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+          }
+
           res.end();
+          rootSpan.end();
           return;
         } catch (err) {
           lastError = err as Error;
@@ -515,6 +594,8 @@ export class PipelineService {
             await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
               statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
               usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message, retryCount: totalRetries, experimentGroup });
+            this.telemetry.upstreamErrors.add(1, { node: target.node, reason: 'stream_error' });
+            rootSpan.end();
             return;
           }
 
@@ -557,6 +638,8 @@ export class PipelineService {
     await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
       statusCode: 502, isFallback: false, latencyMs: Date.now() - startTime,
       usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg, retryCount: totalRetries, experimentGroup });
+    this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
+    rootSpan.end();
   }
 
   // ══════════════════════════════════════════════════════
@@ -652,7 +735,20 @@ export class PipelineService {
     }
 
     // ── 2. Score-based routing (model = "auto" or unspecified) ──
-    const scoringResult = this.scoringService.score(canonical);
+    const scoringResult = this.telemetry.withSpanSync(
+      'gateway.scoring',
+      { 'gateway.requested_model': requestedModel || 'auto' },
+      (span) => {
+        const result = this.scoringService.score(canonical);
+        span.setAttributes({
+          'gateway.scoring.tier': result.tier,
+          'gateway.scoring.score': result.score,
+          'gateway.scoring.fast_path': result.fastPath || '',
+          'gateway.scoring.domain_hint': result.domainHint || '',
+        });
+        return result;
+      },
+    );
     let effectiveTier = scoringResult.tier;
     let effectiveScore = scoringResult.score;
 
@@ -674,12 +770,24 @@ export class PipelineService {
       effectiveScore = hookData.score;
     }
 
-    const routeDecision = this.routingService.resolve(
-      effectiveTier,
-      effectiveScore,
-      canonical.metadata.session_key,
-      scoringResult.domainHint,
-      scoringResult.modalityHints,
+    const routeDecision = this.telemetry.withSpanSync(
+      'gateway.routing',
+      { 'gateway.tier': effectiveTier, 'gateway.score': effectiveScore },
+      (span) => {
+        const decision = this.routingService.resolve(
+          effectiveTier,
+          effectiveScore,
+          canonical.metadata.session_key,
+          scoringResult.domainHint,
+          scoringResult.modalityHints,
+        );
+        span.setAttributes({
+          'gateway.routing.primary_node': decision.primary.node,
+          'gateway.routing.fallback_count': decision.fallbacks.length,
+          'gateway.routing.experiment_group': decision.experimentGroup || '',
+        });
+        return decision;
+      },
     );
 
     this.logger.log(

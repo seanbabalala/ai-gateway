@@ -7,6 +7,7 @@ import { IngestModule } from './ingest/ingest.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
 import { PluginModule } from './plugins/plugin.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PluginModule } from './plugins/plugin.module';
     }),
     ConfigModule,
     DatabaseModule,
+    TelemetryModule,
     PluginModule,
     AuthModule,
     IngestModule,

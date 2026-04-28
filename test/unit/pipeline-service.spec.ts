@@ -12,6 +12,7 @@ import { ProviderError } from '../../src/providers/provider-client.service';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 import { makeRequest, makeCanonicalResponse, mockConfigService } from '../helpers';
 import { createNoOpHookExecutor } from '../../src/plugins/testing';
+import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 function makePipeline(overrides: Record<string, any> = {}): {
   pipeline: PipelineService;
@@ -120,6 +121,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     cacheService as any,
     logEventBus as any,
     hooks as any,
+    new TelemetryService(),
     callLogRepo as any,
   );
 

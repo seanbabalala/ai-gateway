@@ -20,6 +20,9 @@ export interface GatewayConfig {
 
   /** Plugin declarations — loaded at startup in order */
   plugins?: PluginConfigEntry[];
+
+  /** OpenTelemetry observability — disabled by default */
+  telemetry?: TelemetryConfig;
 }
 
 // ===== Dashboard =====
@@ -258,4 +261,26 @@ export interface ModelPricing {
   output: number; // cost per 1M output tokens (USD)
   cache_creation_input?: number; // cost per 1M cache-write tokens (e.g. Anthropic: 1.25x input)
   cache_read_input?: number;     // cost per 1M cache-read tokens (e.g. Anthropic: 0.1x input; OpenAI: 0.5x)
+}
+
+// ===== Telemetry (OpenTelemetry) =====
+export interface TelemetryConfig {
+  /** Master switch — when false (default), SDK is not initialized, all calls are no-op */
+  enabled: boolean;
+  /** OTel service name (default: 'ai-gateway') */
+  service_name?: string;
+  /** Trace export configuration */
+  traces?: {
+    /** OTLP endpoint for traces (default: 'http://localhost:4318/v1/traces') */
+    endpoint?: string;
+    /** Sampling rate 0.0–1.0 (default: 1.0 = sample everything) */
+    sample_rate?: number;
+  };
+  /** Metrics export configuration */
+  metrics?: {
+    /** Port for Prometheus scrape endpoint (default: 9464) */
+    prometheus_port?: number;
+    /** Optional OTLP endpoint for metrics push */
+    otlp_endpoint?: string;
+  };
 }

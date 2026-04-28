@@ -1,10 +1,11 @@
 import { ProviderClientService, ProviderError } from '../../src/providers/provider-client.service';
 import { Tier, CanonicalRequest } from '../../src/canonical/canonical.types';
+import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 const routingMeta = { tier: 'standard' as Tier, score: 0.1, is_fallback: false };
 
 function makeService(): ProviderClientService {
-  return new ProviderClientService({} as any);
+  return new ProviderClientService({} as any, new TelemetryService());
 }
 
 function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderClientService {
@@ -17,7 +18,7 @@ function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderC
   };
   return new ProviderClientService({
     getNode: jest.fn().mockReturnValue(node),
-  } as any);
+  } as any, new TelemetryService());
 }
 
 function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequest {
@@ -407,7 +408,7 @@ describe('ProviderClientService', () => {
     it('should throw for unknown node', async () => {
       const svc = new ProviderClientService({
         getNode: jest.fn().mockReturnValue(undefined),
-      } as any);
+      } as any, new TelemetryService());
       await expect(svc.forward(makeCanonical(), 'unknown', 'model', routingMeta))
         .rejects.toThrow('Node not found');
     });

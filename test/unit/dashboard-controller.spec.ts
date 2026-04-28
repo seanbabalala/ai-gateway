@@ -9,6 +9,7 @@ import { HttpException } from '@nestjs/common';
 import { DashboardController } from '../../src/dashboard/dashboard.controller';
 import { CircuitState } from '../../src/routing/circuit-breaker.service';
 import { mockConfigService } from '../helpers';
+import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 // ── Mock Query Builder Factory ──────────────────────────
 
@@ -113,6 +114,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     budgetService as any,
     cacheService as any,
     logEventBus as any,
+    new TelemetryService(),
     dataSource as any,
     callLogRepo as any,
   );

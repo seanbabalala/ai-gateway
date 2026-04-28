@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig, NodeProtocol } from '../config/gateway.config';
 import {
@@ -15,6 +16,7 @@ import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denorm
 import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
+import { TelemetryService } from '../telemetry/telemetry.service';
 
 @Injectable()
 export class ProviderClientService {
@@ -30,7 +32,10 @@ export class ProviderClientService {
   private readonly respDenorm = new ResponsesDenormalizer();
   private readonly msgDenorm = new MessagesDenormalizer();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly telemetry: TelemetryService,
+  ) {}
 
   // ══════════════════════════════════════════════════════
   // Non-Streaming Forward
@@ -42,18 +47,42 @@ export class ProviderClientService {
     targetModel: string,
     routingMeta: { tier: Tier; score: number; is_fallback: boolean },
   ): Promise<CanonicalResponse> {
-    const node = this.config.getNode(nodeId);
-    if (!node) throw new Error(`Node not found: ${nodeId}`);
+    return this.telemetry.withSpan(
+      'gateway.upstream',
+      {
+        'gateway.upstream.node': nodeId,
+        'gateway.upstream.model': targetModel,
+        'gateway.upstream.is_fallback': routingMeta.is_fallback,
+        'gen_ai.system': canonical.metadata.source_format,
+        'gen_ai.request.model': targetModel,
+      },
+      async (span) => {
+        const node = this.config.getNode(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
 
-    const startTime = Date.now();
-    const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
-    (requestBody as Record<string, unknown>).stream = false;
+        const startTime = Date.now();
+        const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
+        (requestBody as Record<string, unknown>).stream = false;
 
-    const response = await this.sendRequest(node, requestBody, canonical);
-    const latencyMs = Date.now() - startTime;
+        const response = await this.sendRequest(node, requestBody, canonical);
+        const latencyMs = Date.now() - startTime;
 
-    const responseBody = await response.json();
-    return this.normalizeResponse(responseBody, node.protocol, routingMeta, nodeId, targetModel, latencyMs);
+        this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
+
+        const responseBody = await response.json();
+        const canonical_resp = this.normalizeResponse(responseBody, node.protocol, routingMeta, nodeId, targetModel, latencyMs);
+
+        // GenAI semantic attributes
+        span.setAttributes({
+          'gen_ai.usage.input_tokens': canonical_resp.usage.input_tokens,
+          'gen_ai.usage.output_tokens': canonical_resp.usage.output_tokens,
+          'gateway.upstream.latency_ms': latencyMs,
+        });
+
+        return canonical_resp;
+      },
+      SpanKind.CLIENT,
+    );
   }
 
   // ══════════════════════════════════════════════════════
