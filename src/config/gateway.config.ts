@@ -12,6 +12,7 @@ export interface GatewayConfig {
   nodes: NodeConfig[];
   routing: RoutingConfig;
   budget: BudgetConfig;
+  cache?: CacheConfig;
   models_pricing: Record<string, ModelPricing>;
 }
 
@@ -210,6 +211,18 @@ export interface BudgetConfig {
   daily_token_limit: number;
   daily_cost_limit: number;
   alert_threshold: number;
+}
+
+// ===== Cache =====
+export interface CacheConfig {
+  /** Master switch (default: false) */
+  enabled: boolean;
+  /** Cache TTL in seconds (default: 300 = 5 minutes) */
+  ttl_seconds: number;
+  /** Max cache entries, LRU eviction (default: 1000) */
+  max_entries: number;
+  /** Skip caching responses with tool_use stop reason (default: true) */
+  exclude_tool_use: boolean;
 }
 
 // ===== Model Pricing =====

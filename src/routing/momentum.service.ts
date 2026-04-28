@@ -16,6 +16,7 @@ const TIER_VALUES: Record<Tier, number> = {
   complex: 2,
   reasoning: 3,
   direct: 1, // direct routes treated as "standard" for momentum purposes
+  cached: 1, // cached responses don't affect momentum
 };
 
 const VALUE_TO_TIER: Tier[] = ['simple', 'standard', 'complex', 'reasoning'];

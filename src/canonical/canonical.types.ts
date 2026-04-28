@@ -95,7 +95,7 @@ export type StopReason =
   | 'stop_sequence';
 
 // ===== Tier =====
-export type Tier = 'simple' | 'standard' | 'complex' | 'reasoning' | 'direct';
+export type Tier = 'simple' | 'standard' | 'complex' | 'reasoning' | 'direct' | 'cached';
 
 // ===== Response =====
 export interface CanonicalResponse {

@@ -8,6 +8,7 @@ import {
   RoutingConfig,
   RetryConfig,
   BudgetConfig,
+  CacheConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
@@ -143,6 +144,17 @@ export class ConfigService {
 
   get budget(): BudgetConfig {
     return this.config.budget;
+  }
+
+  /** Get cache config with defaults */
+  get cache(): CacheConfig {
+    const c = this.config.cache;
+    return {
+      enabled: c?.enabled ?? false,
+      ttl_seconds: c?.ttl_seconds ?? 300,
+      max_entries: c?.max_entries ?? 1000,
+      exclude_tool_use: c?.exclude_tool_use ?? true,
+    };
   }
 
   get modelsPricing(): Record<string, ModelPricing> {

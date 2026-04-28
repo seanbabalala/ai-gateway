@@ -6,6 +6,7 @@ import { LogEventBus } from './log-event-bus';
 import { ConfigModule } from '../config/config.module';
 import { RoutingModule } from '../routing/routing.module';
 import { BudgetModule } from '../budget/budget.module';
+import { CacheModule } from '../cache/cache.module';
 import { AuthModule } from '../auth/auth.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
@@ -14,6 +15,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     ConfigModule,
     RoutingModule,
     BudgetModule,
+    CacheModule,
     AuthModule,
     TypeOrmModule.forFeature([CallLog]),
   ],

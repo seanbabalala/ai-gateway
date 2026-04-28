@@ -205,3 +205,16 @@ models_pricing:
   gpt-4o-mini:               { input: 0.15, output: 0.60 }
   claude-sonnet-4-20250514:  { input: 3.00, output: 15.00 }
   # gemini-2.5-pro:          { input: 1.25, output: 10.00 }
+
+# ============================================================
+# Cache — Prompt response caching
+# ============================================================
+# Caches deterministic responses (temperature=0) in memory.
+# Identical requests return instantly from cache without hitting
+# the upstream provider, saving tokens and reducing latency.
+# ============================================================
+# cache:
+#   enabled: true              # Master switch (default: false)
+#   ttl_seconds: 300           # Cache TTL in seconds (default: 300 = 5 min)
+#   max_entries: 1000          # Max cached responses, LRU eviction (default: 1000)
+#   exclude_tool_use: true     # Don't cache tool_use responses (default: true)

@@ -34,6 +34,7 @@ import { CallLog } from '../database/entities/call-log.entity';
 import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
 import { DashboardGuard } from '../auth/dashboard.guard';
+import { PromptCacheService } from '../cache/prompt-cache.service';
 
 @Controller('api/dashboard')
 @UseGuards(DashboardGuard)
@@ -45,6 +46,7 @@ export class DashboardController {
     private readonly capabilityService: CapabilityService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly budgetService: BudgetService,
+    private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
@@ -414,6 +416,21 @@ export class DashboardController {
   async resetBudget(@Param('id', ParseIntPipe) id: number) {
     await this.budgetService.resetRule(id);
     return { success: true, message: `Budget rule ${id} reset` };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Cache
+  // ══════════════════════════════════════════════════════
+
+  @Get('cache')
+  getCacheStats() {
+    return this.cacheService.getStats();
+  }
+
+  @Post('cache/clear')
+  clearCache() {
+    this.cacheService.clear();
+    return { success: true, message: 'Cache cleared' };
   }
 
   // ══════════════════════════════════════════════════════

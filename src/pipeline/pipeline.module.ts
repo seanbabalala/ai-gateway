@@ -5,6 +5,7 @@ import { ProvidersModule } from '../providers/providers.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { RoutingModule } from '../routing/routing.module';
 import { BudgetModule } from '../budget/budget.module';
+import { CacheModule } from '../cache/cache.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
@@ -14,6 +15,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     ScoringModule,
     RoutingModule,
     BudgetModule,
+    CacheModule,
     DashboardModule,
     TypeOrmModule.forFeature([CallLog]),
   ],

@@ -229,6 +229,19 @@ export interface CostAnalyticsResponse {
   byTier: CostAnalyticsGroupItem[]
 }
 
+// ── Cache ──
+
+export interface CacheStats {
+  enabled: boolean
+  entries: number
+  maxEntries: number
+  hits: number
+  misses: number
+  hitRate: number
+  totalSizeBytes: number
+  memoryMb: number
+}
+
 // ── Mutation Responses ──
 
 export interface ActionResponse {

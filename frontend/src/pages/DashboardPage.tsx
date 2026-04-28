@@ -10,13 +10,14 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, Coins, DollarSign, Clock } from 'lucide-react'
+import { Activity, Coins, DollarSign, Clock, Database, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { useStats } from '@/hooks/use-stats'
 import { useSSELogs } from '@/hooks/use-sse-logs'
+import { useCacheStats, useClearCache } from '@/hooks/use-cache'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -31,6 +32,8 @@ import {
 export function DashboardPage() {
   const { data: stats, isLoading } = useStats()
   const { logs: recentLogs } = useSSELogs(5)
+  const { data: cacheStats } = useCacheStats()
+  const clearCache = useClearCache()
   const colors = useThemeColors()
 
   if (isLoading || !stats) {
@@ -77,6 +80,84 @@ export function DashboardPage() {
           icon={Clock}
         />
       </div>
+
+      {/* Cache Status */}
+      {cacheStats?.enabled && (
+        <Card className="animate-fade-up" style={{ animationDelay: '160ms' }}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-[var(--accent)]" />
+                <CardTitle>Prompt Cache</CardTitle>
+              </div>
+              <button
+                onClick={() => clearCache.mutate()}
+                disabled={clearCache.isPending || cacheStats.entries === 0}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground-muted)] transition-colors hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-3 w-3" />
+                Clear
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-5 gap-4">
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--foreground-dim)]">
+                  Hit Rate
+                </p>
+                <p className="font-mono text-xl font-bold text-[var(--foreground)]">
+                  {cacheStats.hitRate}%
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--foreground-dim)]">
+                  Hits
+                </p>
+                <p className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {formatNumber(cacheStats.hits)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--foreground-dim)]">
+                  Misses
+                </p>
+                <p className="font-mono text-xl font-bold text-[var(--foreground-muted)]">
+                  {formatNumber(cacheStats.misses)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--foreground-dim)]">
+                  Entries
+                </p>
+                <p className="font-mono text-xl font-bold text-[var(--foreground)]">
+                  {cacheStats.entries}
+                  <span className="text-xs font-normal text-[var(--foreground-dim)]">
+                    {' '}/ {cacheStats.maxEntries}
+                  </span>
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--foreground-dim)]">
+                  Memory
+                </p>
+                <p className="font-mono text-xl font-bold text-[var(--foreground)]">
+                  {cacheStats.memoryMb} MB
+                </p>
+              </div>
+            </div>
+            {/* Hit rate progress bar */}
+            <div className="mt-4">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--inset-bg)]">
+                <div
+                  className="h-full rounded-full bg-[var(--accent)] transition-all duration-500"
+                  style={{ width: `${Math.min(cacheStats.hitRate, 100)}%` }}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-2 gap-5">

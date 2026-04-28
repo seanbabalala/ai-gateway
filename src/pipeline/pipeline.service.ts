@@ -21,6 +21,7 @@ import { ScoringService } from '../scoring/scoring.service';
 import { RoutingService } from '../routing/routing.service';
 import { CircuitBreakerService } from '../routing/circuit-breaker.service';
 import { BudgetService, BudgetExceededError } from '../budget/budget.service';
+import { PromptCacheService } from '../cache/prompt-cache.service';
 import { LogEventBus } from '../dashboard/log-event-bus';
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
@@ -52,6 +53,7 @@ export class PipelineService {
     private readonly routingService: RoutingService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly budgetService: BudgetService,
+    private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
@@ -76,6 +78,20 @@ export class PipelineService {
         };
       }
       throw err;
+    }
+
+    // ── Cache Lookup ──
+    const cacheStart = Date.now();
+    if (this.cacheService.shouldCache(canonical)) {
+      const cached = this.cacheService.lookup(canonical);
+      if (cached) {
+        const cacheLatency = Date.now() - cacheStart;
+        const responseBody = this.denormalizeForClient(cached, canonical.metadata.source_format);
+        await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
+          model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
+          usage: cached.usage, error: null, retryCount: 0 });
+        return { body: responseBody, statusCode: 200 };
+      }
     }
 
     // ── Route Resolution ──
@@ -133,6 +149,9 @@ export class PipelineService {
     }
 
     const responseBody = this.denormalizeForClient(canonicalResponse, canonical.metadata.source_format);
+
+    // ── Cache Store ──
+    this.cacheService.store(canonical, canonicalResponse);
 
     // ── Budget Record ──
     const pricing = this.config.getModelPricing(usedModel);
@@ -255,6 +274,58 @@ export class PipelineService {
       throw err;
     }
 
+    // ── Cache Lookup (stream) ──
+    if (this.cacheService.shouldCache(canonical)) {
+      const cacheStart = Date.now();
+      const cached = this.cacheService.lookup(canonical);
+      if (cached) {
+        const cacheLatency = Date.now() - cacheStart;
+
+        // Set up SSE headers
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders();
+
+        // Create serializer and replay cached response as synthetic stream
+        const serializer = this.createSerializer(canonical.metadata.source_format);
+
+        // start event
+        const startEvt: CanonicalStreamEvent = { type: 'start', id: cached.id, model: cached.model };
+        const startText = serializer.serialize(startEvt);
+        if (startText) res.write(startText);
+
+        // delta events for each text content block
+        for (const block of cached.content) {
+          if (block.type === 'text') {
+            const deltaEvt: CanonicalStreamEvent = {
+              type: 'delta',
+              content: { type: 'text', text: block.text },
+            };
+            const deltaText = serializer.serialize(deltaEvt);
+            if (deltaText) res.write(deltaText);
+          }
+        }
+
+        // stop event
+        const stopEvt: CanonicalStreamEvent = {
+          type: 'stop',
+          stop_reason: cached.stop_reason,
+          usage: cached.usage,
+        };
+        const stopText = serializer.serialize(stopEvt);
+        if (stopText) res.write(stopText);
+
+        res.end();
+
+        await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
+          model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
+          usage: cached.usage, error: null, retryCount: 0 });
+        return;
+      }
+    }
+
     const { route, tier, score } = this.resolveSmartRoute(canonical);
     const retryConfig = this.config.retry;
 
@@ -295,6 +366,10 @@ export class PipelineService {
 
           // Stream events to client
           const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
+          const accumulatedText: string[] = []; // For cache store
+          let streamModel = '';
+          let streamId = '';
+          let streamStopReason = '';
 
           for await (const event of stream) {
             streamConnected = true;
@@ -303,9 +378,16 @@ export class PipelineService {
             usedModel = target.model;
             isFallback = !isFirstTarget;
 
-            if (event.type === 'stop') {
+            // Accumulate for cache
+            if (event.type === 'start') {
+              streamModel = event.model;
+              streamId = event.id;
+            } else if (event.type === 'delta' && event.content.type === 'text') {
+              accumulatedText.push(event.content.text);
+            } else if (event.type === 'stop') {
               usage.input_tokens = event.usage.input_tokens;
               usage.output_tokens = event.usage.output_tokens;
+              streamStopReason = event.stop_reason;
             }
 
             const sseText = serializer.serialize(event);
@@ -317,6 +399,19 @@ export class PipelineService {
           // Stream completed successfully
           const latencyMs = Date.now() - startTime;
           this.circuitBreaker.recordSuccess(target.node, target.model);
+
+          // ── Cache Store (from stream accumulation) ──
+          if (this.cacheService.shouldCache(canonical) && accumulatedText.length > 0) {
+            const assembledResponse: CanonicalResponse = {
+              id: streamId || `cache-${requestId}`,
+              content: [{ type: 'text', text: accumulatedText.join('') }],
+              stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
+              usage: { ...usage },
+              model: streamModel || usedModel,
+              routing: { tier, node: usedNodeId, latency_ms: latencyMs, score, is_fallback: isFallback },
+            };
+            this.cacheService.store(canonical, assembledResponse);
+          }
 
           const pricing = this.config.getModelPricing(usedModel);
           const costUsd = pricing
