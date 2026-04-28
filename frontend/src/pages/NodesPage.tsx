@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, RotateCcw, Plus, Pencil, Trash2 } from 'lucide-react'
+import { RefreshCw, RotateCcw, Plus, Pencil, Trash2, Eye, Type, Volume2 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { CircuitBadge } from '@/components/shared/CircuitBadge'
@@ -22,6 +22,37 @@ import {
 import { getNodeColor } from '@/lib/utils'
 import { colorWithOpacity } from '@/lib/theme'
 import type { NodeInfo, CreateNodeRequest, UpdateNodeRequest } from '@/types/api'
+
+// ── Modality display configuration ──
+const MODALITY_DISPLAY: Record<string, {
+  label: string
+  icon: typeof Eye
+  bgClass: string
+  borderClass: string
+  textClass: string
+}> = {
+  text: {
+    label: 'Text',
+    icon: Type,
+    bgClass: 'bg-stone-500/10',
+    borderClass: 'border-stone-500/20',
+    textClass: 'text-stone-600 dark:text-stone-400',
+  },
+  vision: {
+    label: 'Vision',
+    icon: Eye,
+    bgClass: 'bg-purple-500/10',
+    borderClass: 'border-purple-500/30',
+    textClass: 'text-purple-700 dark:text-purple-400',
+  },
+  audio: {
+    label: 'Audio',
+    icon: Volume2,
+    bgClass: 'bg-rose-500/10',
+    borderClass: 'border-rose-500/30',
+    textClass: 'text-rose-700 dark:text-rose-400',
+  },
+}
 
 export function NodesPage() {
   const { data: nodesData, isLoading } = useNodes()
@@ -222,6 +253,30 @@ export function NodesPage() {
                   {node.capabilities.map((cap) => (
                     <CapabilityBadge key={cap} capabilityId={cap} />
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Modalities */}
+            {node.modalities && node.modalities.length > 0 && (
+              <div className="mt-3">
+                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
+                  Modalities
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {node.modalities.map((modality) => {
+                    const config = MODALITY_DISPLAY[modality] || MODALITY_DISPLAY.text
+                    const Icon = config.icon
+                    return (
+                      <span
+                        key={modality}
+                        className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold border transition-colors ${config.bgClass} ${config.borderClass} ${config.textClass}`}
+                      >
+                        <Icon className="h-3 w-3" />
+                        {config.label}
+                      </span>
+                    )
+                  })}
                 </div>
               </div>
             )}

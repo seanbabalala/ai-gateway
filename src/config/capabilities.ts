@@ -127,6 +127,16 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     },
     tierAffinity: { simple: 0.3, standard: 0.6, complex: 0.5, reasoning: 0.3 },
   },
+  {
+    id: 'vision',
+    label: { en: 'Vision', cn: '视觉理解' },
+    icon: 'Eye',
+    description: {
+      en: 'Image understanding, visual analysis',
+      cn: '图片理解、视觉分析',
+    },
+    tierAffinity: { simple: 0, standard: 0.6, complex: 0.9, reasoning: 0.7 },
+  },
 ];
 
 // ── Quick lookup map ────────────────────────────────────────────────
@@ -184,4 +194,8 @@ export const TAG_TO_CAPABILITY_MAP: Record<string, string> = {
   // multilingual
   multilingual: 'multilingual',
   'multi-language': 'multilingual',
+  // vision
+  vision: 'vision',
+  image: 'vision',
+  multimodal: 'vision',
 };

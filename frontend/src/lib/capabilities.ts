@@ -6,7 +6,7 @@
 
 import {
   Code2, Layout, Server, Brain, BarChart3,
-  Sparkles, FileText, Wrench, Zap, Globe,
+  Sparkles, FileText, Wrench, Zap, Globe, Eye,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -110,6 +110,15 @@ export const CAPABILITIES: CapabilityDef[] = [
     bgClass: 'bg-teal-500/10',
     borderClass: 'border-teal-500/30',
     textClass: 'text-teal-700 dark:text-teal-400',
+  },
+  {
+    id: 'vision',
+    label: { en: 'Vision', cn: '视觉理解' },
+    icon: Eye,
+    color: '#a855f7',
+    bgClass: 'bg-purple-500/10',
+    borderClass: 'border-purple-500/30',
+    textClass: 'text-purple-700 dark:text-purple-400',
   },
 ]
 

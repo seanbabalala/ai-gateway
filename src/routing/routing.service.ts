@@ -14,10 +14,12 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
+import { CapabilityService } from '../config/capability.service';
 import { Tier } from '../canonical/canonical.types';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
 import { RouteTarget } from '../config/gateway.config';
+import { Modality } from '../config/modality';
 
 export interface RouteDecision {
   primary: RouteTarget;
@@ -34,6 +36,7 @@ export class RoutingService {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly capabilityService: CapabilityService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly momentum: MomentumService,
   ) {}
@@ -44,6 +47,7 @@ export class RoutingService {
    * 1. Apply momentum smoothing (if session key provided)
    * 2. Look up tier config for primary + fallbacks
    * 3. Filter out nodes with OPEN circuit breaker
+   * 3.5. Modality-aware reordering (compatible nodes first)
    * 4. Apply domain hint adjustments (config preference → tag fallback)
    * 5. Build final route
    */
@@ -52,6 +56,7 @@ export class RoutingService {
     score: number,
     sessionKey?: string,
     domainHint?: 'frontend' | 'backend' | null,
+    modalityHints?: Modality[],
   ): RouteDecision {
     const hint = domainHint || null;
 
@@ -82,7 +87,7 @@ export class RoutingService {
 
     // ── Step 3: Filter by circuit breaker (model-level) ──
     const allTargets = [tierConfig.primary, ...(tierConfig.fallbacks || [])];
-    const availableTargets = allTargets.filter((t) =>
+    let availableTargets = allTargets.filter((t) =>
       this.circuitBreaker.isAvailable(t.node, t.model),
     );
 
@@ -98,6 +103,42 @@ export class RoutingService {
         momentumAdjusted: adjusted,
         domainHint: hint,
       };
+    }
+
+    // ── Step 3.5: Modality-aware reordering ──
+    // Compatible nodes (support all required modalities) go first.
+    // Incompatible nodes are pushed to the end as last resort (not removed).
+    if (modalityHints && modalityHints.length > 0) {
+      const compatible: RouteTarget[] = [];
+      const incompatible: RouteTarget[] = [];
+
+      for (const target of availableTargets) {
+        const targetModalities = this.capabilityService.resolveModelModalities(
+          target.node,
+          target.model,
+        );
+        const supported = modalityHints.every((m) =>
+          targetModalities.includes(m),
+        );
+        if (supported) {
+          compatible.push(target);
+        } else {
+          incompatible.push(target);
+        }
+      }
+
+      // Reorder: compatible first, then incompatible as fallback
+      availableTargets = [...compatible, ...incompatible];
+
+      if (compatible.length === 0) {
+        this.logger.warn(
+          `No nodes support modalities [${modalityHints.join(', ')}] for tier "${effectiveTier}". Using all targets as last resort.`,
+        );
+      } else if (incompatible.length > 0) {
+        this.logger.debug(
+          `Modality filter: ${compatible.length} compatible, ${incompatible.length} demoted to fallback end`,
+        );
+      }
     }
 
     // ── Step 4: Apply domain hint reordering ──

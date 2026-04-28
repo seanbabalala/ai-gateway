@@ -4,6 +4,8 @@
 // Types matching the structure of gateway.config.yaml
 // ===================================================================
 
+import type { Modality } from './modality';
+
 export interface GatewayConfig {
   server: ServerConfig;
   database: DatabaseConfig;
@@ -80,11 +82,24 @@ export interface NodeConfig {
    *
    * Valid capability IDs:
    *   coding, coding_frontend, coding_backend, reasoning, analysis,
-   *   creative, long_context, tool_use, fast, multilingual
+   *   creative, long_context, tool_use, fast, multilingual, vision
    *
    * Example: capabilities: ["coding", "coding_backend", "reasoning"]
    */
   capabilities?: string[];
+
+  /**
+   * Explicitly declare which modalities this node supports.
+   * When set, this takes highest priority over model-name inference and capability fallback.
+   *
+   * Valid modalities: "text", "vision", "audio"
+   *
+   * If omitted, modalities are inferred from model names or capabilities.
+   * Unknown models default to ["text"] (text-only).
+   *
+   * Example: modalities: ["text", "vision"]
+   */
+  modalities?: Modality[];
 
   /**
    * Free-text tags — describe what this node is good at.

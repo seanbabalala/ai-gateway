@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Response as ExpressResponse } from 'express';
 import { ConfigService } from '../config/config.service';
+import { CapabilityService } from '../config/capability.service';
 import { RetryConfig } from '../config/gateway.config';
 import {
   CanonicalRequest,
@@ -13,6 +14,7 @@ import {
   Tier,
   TokenUsage,
 } from '../canonical/canonical.types';
+import { detectRequestModalities } from '../canonical/modality-detection';
 import {
   ProviderClientService,
   ProviderError,
@@ -48,6 +50,7 @@ export class PipelineService {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly capabilityService: CapabilityService,
     private readonly providerClient: ProviderClientService,
     private readonly scoringService: ScoringService,
     private readonly routingService: RoutingService,
@@ -540,7 +543,21 @@ export class PipelineService {
           `Direct route: "${requestedModel}" → node "${resolved.nodeId}" (model: ${resolved.model})`,
         );
 
-        // Build fallbacks from other nodes
+        // ── Vision mismatch warning for direct routes ──
+        const reqModalities = detectRequestModalities(canonical);
+        if (reqModalities.has('vision')) {
+          const modelModalities = this.capabilityService.resolveModelModalities(
+            resolved.nodeId,
+            resolved.model,
+          );
+          if (!modelModalities.includes('vision')) {
+            this.logger.warn(
+              `Direct route: model "${resolved.model}" on node "${resolved.nodeId}" may not support vision, but proceeding as requested`,
+            );
+          }
+        }
+
+        // Build fallbacks from other nodes (modality-aware)
         const fallbacks = this.buildDirectFallbacks(canonical, resolved.nodeId);
 
         return {
@@ -566,12 +583,14 @@ export class PipelineService {
       scoringResult.score,
       canonical.metadata.session_key,
       scoringResult.domainHint,
+      scoringResult.modalityHints,
     );
 
     this.logger.log(
       `Scored route: score=${scoringResult.score.toFixed(4)} → tier="${routeDecision.tier}"` +
       `${routeDecision.momentumAdjusted ? ' (momentum-adjusted)' : ''}` +
       `${routeDecision.domainHint ? ` [domain: ${routeDecision.domainHint}]` : ''}` +
+      `${scoringResult.modalityHints ? ` [modalities: ${scoringResult.modalityHints.join(',')}]` : ''}` +
       ` → primary="${routeDecision.primary.node}"` +
       `${scoringResult.fastPath ? ` [fast-path: ${scoringResult.fastPath}]` : ''}`,
     );
@@ -594,9 +613,32 @@ export class PipelineService {
       return [];
     }
 
-    return this.config.nodes
+    const otherNodes = this.config.nodes
       .filter((n) => n.id !== primaryNodeId)
       .map((n) => ({ node: n.id, model: n.models[0] }));
+
+    // If the request requires vision, sort vision-capable nodes first
+    const reqModalities = detectRequestModalities(canonical);
+    if (reqModalities.has('vision') && otherNodes.length > 1) {
+      const compatible: { node: string; model: string }[] = [];
+      const incompatible: { node: string; model: string }[] = [];
+
+      for (const target of otherNodes) {
+        const modalities = this.capabilityService.resolveModelModalities(
+          target.node,
+          target.model,
+        );
+        if (modalities.includes('vision')) {
+          compatible.push(target);
+        } else {
+          incompatible.push(target);
+        }
+      }
+
+      return [...compatible, ...incompatible];
+    }
+
+    return otherNodes;
   }
 
   private shouldStayOnPrimaryNode(

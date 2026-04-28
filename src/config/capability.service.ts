@@ -15,6 +15,11 @@ import {
   CapabilityDefinition,
 } from './capabilities';
 import { NodeConfig, RouteTarget } from './gateway.config';
+import {
+  Modality,
+  inferModelModalities,
+  DEFAULT_MODALITIES,
+} from './modality';
 
 export interface TierRecommendation {
   tier: string;
@@ -165,6 +170,90 @@ export class CapabilityService {
     }
 
     return recommendations;
+  }
+
+  // ── Modality Resolution ────────────────────────────────────────
+
+  /**
+   * Resolve supported modalities for a node.
+   *
+   * Three-layer resolution (in priority order):
+   *   1. Explicit `node.modalities` config — direct return
+   *   2. Model-name inference — merge modalities from all models in the node
+   *   3. Capability fallback — node has 'vision' capability → add vision
+   *   4. Default — ['text']
+   */
+  resolveNodeModalities(nodeId: string): Modality[] {
+    const node = this.config.getNode(nodeId);
+    if (!node) return [...DEFAULT_MODALITIES];
+
+    // 1. Explicit modalities config (highest priority)
+    if (node.modalities && node.modalities.length > 0) {
+      return node.modalities;
+    }
+
+    // 2. Model-name inference — union of all models' inferred modalities
+    const modalities = new Set<Modality>(['text']);
+    let anyInferred = false;
+
+    for (const model of node.models) {
+      const inferred = inferModelModalities(model);
+      if (inferred) {
+        anyInferred = true;
+        for (const m of inferred) {
+          modalities.add(m);
+        }
+      }
+    }
+
+    if (anyInferred) {
+      return Array.from(modalities);
+    }
+
+    // 3. Capability fallback — check if node has 'vision' capability
+    const caps = this.getNodeCapabilities(nodeId);
+    if (caps.includes('vision')) {
+      modalities.add('vision');
+      return Array.from(modalities);
+    }
+
+    // 4. Default: text-only
+    return [...DEFAULT_MODALITIES];
+  }
+
+  /**
+   * Resolve modalities for a specific node + model combination.
+   * More precise than resolveNodeModalities — checks the specific model.
+   *
+   * Resolution:
+   *   1. Explicit `node.modalities` — direct return
+   *   2. Specific model-name inference
+   *   3. Capability fallback
+   *   4. Default — ['text']
+   */
+  resolveModelModalities(nodeId: string, model: string): Modality[] {
+    const node = this.config.getNode(nodeId);
+    if (!node) return [...DEFAULT_MODALITIES];
+
+    // 1. Explicit modalities config (highest priority)
+    if (node.modalities && node.modalities.length > 0) {
+      return node.modalities;
+    }
+
+    // 2. Specific model-name inference
+    const inferred = inferModelModalities(model);
+    if (inferred) {
+      return inferred;
+    }
+
+    // 3. Capability fallback
+    const caps = this.getNodeCapabilities(nodeId);
+    if (caps.includes('vision')) {
+      return ['text', 'vision'];
+    }
+
+    // 4. Default: text-only
+    return [...DEFAULT_MODALITIES];
   }
 
   // ── Private Helpers ──────────────────────────────────────────────

@@ -63,6 +63,9 @@ nodes:
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     timeout_ms: 60000
+    # modalities: ["text", "vision"]    # Explicit modality declaration (optional)
+    #   If omitted, modalities are inferred from model names.
+    #   Valid values: "text", "vision", "audio"
     tags: ["code", "reasoning", "creative"]
     model_aliases:
       gpt4: gpt-4o

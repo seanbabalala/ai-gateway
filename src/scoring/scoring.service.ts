@@ -15,6 +15,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { CanonicalRequest, Tier } from '../canonical/canonical.types';
+import { detectRequestModalities } from '../canonical/modality-detection';
+import { Modality } from '../config/modality';
 
 // Keyword dimensions
 import {
@@ -77,6 +79,7 @@ export interface ScoringResult {
   score: number;
   dimensions: Record<string, number>;
   domainHint: 'frontend' | 'backend' | null; // code domain signal for routing
+  modalityHints?: Modality[]; // modalities required by the request (e.g. ['text', 'vision'])
   fastPath?: string; // which fast-path was triggered (if any)
 }
 
@@ -131,12 +134,21 @@ export class ScoringService implements OnModuleInit {
    * Score a canonical request and return its complexity tier + score.
    */
   score(req: CanonicalRequest): ScoringResult {
+    // ── Detect request modalities (vision, audio, etc.) ──
+    const requestModalities = detectRequestModalities(req);
+    const hasVision = requestModalities.has('vision');
+    const modalityHints: Modality[] = requestModalities.size > 1
+      ? Array.from(requestModalities)
+      : undefined as unknown as Modality[];
+
     // ── Fast Path 1: Very short + simple ──
+    // Skip if request contains images (vision requests need at least standard)
     const lastUserText = extractLastUserText(req);
     if (
       lastUserText.length < 50 &&
       !req.tools?.length &&
-      req.messages.length <= 2
+      req.messages.length <= 2 &&
+      !hasVision
     ) {
       const simpleScore = scoreSimpleIndicators(req);
       if (simpleScore < -0.2) {
@@ -146,6 +158,7 @@ export class ScoringService implements OnModuleInit {
           score: simpleScore * 0.10,
           dimensions: { simpleIndicators: simpleScore },
           domainHint: null,
+          modalityHints: modalityHints || undefined,
           fastPath: 'short_simple',
         };
       }
@@ -160,6 +173,7 @@ export class ScoringService implements OnModuleInit {
         score: logicScore * 0.10,
         dimensions: { formalLogic: logicScore },
         domainHint: null,
+        modalityHints: modalityHints || undefined,
         fastPath: 'formal_logic',
       };
     }
@@ -183,14 +197,19 @@ export class ScoringService implements OnModuleInit {
       tier = 'standard';
     }
 
+    // Apply vision floor: if images exist, ensure at least standard
+    if (hasVision && tier === 'simple') {
+      tier = 'standard';
+    }
+
     // ── Detect code domain hint ──
     const domainHint = detectCodeDomain(req);
 
     this.logger.debug(
-      `Scored request: ${weightedSum.toFixed(4)} → ${tier}${domainHint ? ` [${domainHint}]` : ''} | dims: ${JSON.stringify(dimensions)}`,
+      `Scored request: ${weightedSum.toFixed(4)} → ${tier}${domainHint ? ` [${domainHint}]` : ''}${hasVision ? ' [vision]' : ''} | dims: ${JSON.stringify(dimensions)}`,
     );
 
-    return { tier, score: weightedSum, dimensions, domainHint };
+    return { tier, score: weightedSum, dimensions, domainHint, modalityHints: modalityHints || undefined };
   }
 
   /**

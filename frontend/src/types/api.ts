@@ -100,6 +100,7 @@ export interface NodeInfo {
   endpoint: string
   models: string[]
   capabilities: string[]
+  modalities: string[]
   tags: string[]
   aliases: Record<string, string>
   circuit: CircuitBreaker
@@ -261,6 +262,7 @@ export interface CreateNodeRequest {
   models: string[]
   timeout_ms: number
   capabilities?: string[]
+  modalities?: string[]
   tags?: string[]
   model_aliases?: Record<string, string>
   headers?: Record<string, string>
@@ -276,6 +278,7 @@ export interface UpdateNodeRequest {
   models?: string[]
   timeout_ms?: number
   capabilities?: string[]
+  modalities?: string[]
   tags?: string[]
   model_aliases?: Record<string, string>
   headers?: Record<string, string>

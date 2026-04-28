@@ -55,6 +55,11 @@ export class CreateNodeDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  modalities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   tags?: string[];
 
   @IsOptional()
@@ -143,6 +148,11 @@ export class UpdateNodeDto {
   @IsArray()
   @IsString({ each: true })
   capabilities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  modalities?: string[];
 
   @IsOptional()
   @IsArray()

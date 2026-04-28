@@ -1,7 +1,7 @@
 # AI Gateway — Roadmap（待做事项总览）
 
-> 最后更新: 2026-04-27
-> 已完成: Dashboard 认证 (JWT 登录 + Guard + 自动 hash)
+> 最后更新: 2026-04-28
+> 已完成: Dashboard 认证 (JWT 登录 + Guard + 自动 hash), 多模态路由 (#11)
 
 ---
 
@@ -344,3 +344,4 @@ Phase C (P2 — 长期)
 - [x] ~~成本分析仪表板~~ — GET /api/dashboard/analytics/cost 多维度聚合 + AnalyticsPage 折线图/饼图/柱状图/表格 + 7d/30d/90d 切换 (2026-04-27)
 - [x] ~~自定义评分维度~~ — ScoringThresholds 扩展 weights + custom_keywords + ScoringService 合并用户权重 + 自定义关键词注入 Trie (2026-04-27)
 - [x] ~~Prompt 缓存~~ — SHA-256 cache key + 内存 LRU + TTL + temperature=0 缓存 + 流式回放/累积 + Dashboard 缓存状态卡片 + 清空按钮 (2026-04-27)
+- [x] ~~Vision / 多模态路由~~ — 三层模态检测 (显式声明 + 模型名推断 + Capability 回退) + 请求模态扫描 + vision tier floor + 路由模态过滤 + 降级 fallback + Dashboard modality badges (2026-04-28)

@@ -35,6 +35,7 @@ import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
 import { DashboardGuard } from '../auth/dashboard.guard';
 import { PromptCacheService } from '../cache/prompt-cache.service';
+import type { Modality } from '../config/modality';
 
 @Controller('api/dashboard')
 @UseGuards(DashboardGuard)
@@ -550,6 +551,7 @@ export class DashboardController {
         endpoint: node.endpoint,
         models: node.models,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
+        modalities: this.capabilityService.resolveNodeModalities(node.id),
         tags: node.tags || [],
         aliases: node.model_aliases || {},
         circuit: {
@@ -787,6 +789,7 @@ export class DashboardController {
         models: dto.models,
         timeout_ms: dto.timeout_ms,
         capabilities: dto.capabilities,
+        modalities: dto.modalities as Modality[] | undefined,
         tags: dto.tags,
         model_aliases: dto.model_aliases,
         headers: dto.headers,
@@ -809,7 +812,7 @@ export class DashboardController {
       if (!updates.api_key) {
         delete updates.api_key;
       }
-      this.config.updateNode(nodeId, updates);
+      this.config.updateNode(nodeId, updates as Parameters<typeof this.config.updateNode>[1]);
       return { success: true, message: `Node "${nodeId}" updated` };
     } catch (err) {
       throw new HttpException(
