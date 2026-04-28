@@ -110,11 +110,71 @@ describe('ChatCompletionsNormalizer — edge cases', () => {
     const result = normalizer.normalize(body, headers);
     expect(result.stop).toEqual(['END', 'STOP']);
   });
-});
 
-// ═══════════════════════════════════════════════════════════
-// Responses Normalizer — edge cases
-// ═══════════════════════════════════════════════════════════
+  it('should normalize assistant with tool_calls AND text content', () => {
+    const body = {
+      model: 'gpt-4',
+      messages: [{
+        role: 'assistant',
+        content: 'Let me search for that.',
+        tool_calls: [
+          { id: 'call_1', function: { name: 'search', arguments: '{"q":"test"}' } },
+        ],
+      }],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0]).toEqual({ type: 'text', text: 'Let me search for that.' });
+    expect(blocks[1].type).toBe('tool_use');
+    expect(blocks[1].name).toBe('search');
+  });
+
+  it('should normalize content array with unknown type as JSON text', () => {
+    const body = {
+      model: 'gpt-4',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'custom_widget', data: { foo: 'bar' } },
+        ],
+      }],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('text');
+    expect(blocks[0].text).toContain('custom_widget');
+  });
+
+  it('should normalize content array with image_url as URL', () => {
+    const body = {
+      model: 'gpt-4',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: 'https://example.com/photo.jpg' } },
+        ],
+      }],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('image');
+    expect(blocks[0].source.type).toBe('url');
+    expect(blocks[0].source.data).toBe('https://example.com/photo.jpg');
+  });
+
+  it('should handle numeric content as String conversion', () => {
+    const body = {
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: 42 }],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    expect(result.messages[0].content).toBe('42');
+  });
+});
 
 describe('ResponsesNormalizer — edge cases', () => {
   const normalizer = new ResponsesNormalizer();
@@ -194,11 +254,120 @@ describe('ResponsesNormalizer — edge cases', () => {
     const result = normalizer.normalize(body, headers);
     expect(result.tool_choice).toBe('required');
   });
-});
 
-// ═══════════════════════════════════════════════════════════
-// Messages Normalizer — edge cases
-// ═══════════════════════════════════════════════════════════
+  it('should normalize message with non-array content as string', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        { type: 'message', role: 'user', content: 'Plain string content' },
+      ],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    expect(result.messages[0].content).toBe('Plain string content');
+  });
+
+  it('should normalize function_call_output in input array', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        { type: 'function_call_output', call_id: 'call_1', output: 'Result text' },
+      ],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('tool_result');
+    expect(blocks[0].tool_use_id).toBe('call_1');
+    expect(blocks[0].content).toBe('Result text');
+  });
+
+  it('should normalize function_call in content array', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        {
+          type: 'message', role: 'assistant',
+          content: [
+            { type: 'function_call', call_id: 'call_1', name: 'search', arguments: '{"q":"test"}' },
+          ],
+        },
+      ],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('tool_use');
+    expect(blocks[0].name).toBe('search');
+  });
+
+  it('should normalize function_call_output in content array', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        {
+          type: 'message', role: 'user',
+          content: [
+            { type: 'function_call_output', call_id: 'call_1', output: 'Tool result' },
+          ],
+        },
+      ],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('tool_result');
+  });
+
+  it('should normalize image_url as string in content array', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        {
+          type: 'message', role: 'user',
+          content: [
+            { type: 'input_image', image_url: 'data:image/jpeg;base64,def456' },
+          ],
+        },
+      ],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('image');
+    expect(blocks[0].source.type).toBe('base64');
+    expect(blocks[0].source.data).toBe('def456');
+  });
+
+  it('should handle default content type with text property', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        {
+          type: 'message', role: 'user',
+          content: [
+            { type: 'unknown_type', text: 'Fallback text' },
+          ],
+        },
+      ],
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0].type).toBe('text');
+    expect(blocks[0].text).toBe('Fallback text');
+  });
+
+  it('should normalize string input as simple user message', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: 'Simple string input',
+      stream: false,
+    };
+    const result = normalizer.normalize(body, headers);
+    expect(result.messages[0].content).toBe('Simple string input');
+  });
+});
 
 describe('MessagesNormalizer — edge cases', () => {
   const normalizer = new MessagesNormalizer();
@@ -516,5 +685,303 @@ describe('ChatCompletionsDenormalizer — edge cases', () => {
     const canonical = makeCanonicalResponse({ stop_reason: 'stop_sequence' });
     const result = denorm.denormalizeResponse(canonical);
     expect((result.choices as any[])[0].finish_reason).toBe('stop');
+  });
+
+  it('should denormalize tool_choice object with name', () => {
+    const canonical = makeCanonicalRequest({ tool_choice: { name: 'get_weather' } });
+    const result = denorm.denormalize(canonical, 'gpt-4');
+    expect(result.tool_choice).toEqual({ type: 'function', function: { name: 'get_weather' } });
+  });
+
+  it('should JSON.stringify unknown content block types in denormalizeContentBlock', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{
+        role: 'user',
+        content: [{ type: 'audio', data: 'base64audio' } as any],
+      }],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4');
+    const content = (result.messages as any[])[0].content;
+    expect(content[0].type).toBe('text');
+    expect(content[0].text).toContain('audio');
+  });
+
+  it('should map unknown stop_reason to stop', () => {
+    const canonical = makeCanonicalResponse({ stop_reason: 'some_unknown_reason' as any });
+    const result = denorm.denormalizeResponse(canonical);
+    expect((result.choices as any[])[0].finish_reason).toBe('stop');
+  });
+
+  it('should map max_tokens to length in response', () => {
+    const canonical = makeCanonicalResponse({ stop_reason: 'max_tokens' });
+    const result = denorm.denormalizeResponse(canonical);
+    expect((result.choices as any[])[0].finish_reason).toBe('length');
+  });
+
+  it('should map tool_use to tool_calls in response', () => {
+    const canonical = makeCanonicalResponse({ stop_reason: 'tool_use' });
+    const result = denorm.denormalizeResponse(canonical);
+    expect((result.choices as any[])[0].finish_reason).toBe('tool_calls');
+  });
+
+  it('should pass through temperature/top_p/stop', () => {
+    const canonical = makeCanonicalRequest({
+      temperature: 0.7,
+      top_p: 0.9,
+      stop: ['END', 'STOP'],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4');
+    expect(result.temperature).toBe(0.7);
+    expect(result.top_p).toBe(0.9);
+    expect(result.stop).toEqual(['END', 'STOP']);
+  });
+
+  it('should handle tool_result with array content → blocksToText', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{
+        role: 'tool',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'call_1',
+          content: [
+            { type: 'text', text: 'Result line 1' },
+            { type: 'text', text: 'Result line 2' },
+          ],
+        }],
+      }],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4');
+    const msg = (result.messages as any[])[0];
+    expect(msg.role).toBe('tool');
+    expect(msg.content).toBe('Result line 1Result line 2');
+  });
+
+  it('should denormalize assistant with string content', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{ role: 'assistant', content: 'I am a string' }],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4');
+    const msg = (result.messages as any[])[0];
+    expect(msg.role).toBe('assistant');
+    expect(msg.content).toBe('I am a string');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// MessagesDenormalizer — additional edge cases
+// ═══════════════════════════════════════════════════════════
+
+describe('MessagesDenormalizer — additional edge cases', () => {
+  const denorm = new MessagesDenormalizer();
+
+  it('should denormalize tool_choice "auto" → { type: "auto" }', () => {
+    const canonical = makeCanonicalRequest({ tool_choice: 'auto' });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    expect(result.tool_choice).toEqual({ type: 'auto' });
+  });
+
+  it('should denormalize tool_choice "required" → { type: "any" }', () => {
+    const canonical = makeCanonicalRequest({ tool_choice: 'required' });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    expect(result.tool_choice).toEqual({ type: 'any' });
+  });
+
+  it('should denormalize unknown tool_choice string → { type: "auto" }', () => {
+    const canonical = makeCanonicalRequest({ tool_choice: 'something_weird' as any });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    expect(result.tool_choice).toEqual({ type: 'auto' });
+  });
+
+  it('should JSON.stringify unknown block types in denormalizeContentBlocks', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{
+        role: 'assistant',
+        content: [{ type: 'custom_block', data: 'test' } as any],
+      }],
+    });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    const msgs = result.messages as any[];
+    expect(msgs[0].content[0].type).toBe('text');
+    expect(msgs[0].content[0].text).toContain('custom_block');
+  });
+
+  it('should join multiple system messages with newline', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [
+        { role: 'system', content: 'System 1' },
+        { role: 'system', content: 'System 2' },
+        { role: 'user', content: 'Hello' },
+      ],
+    });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    expect(result.system).toBe('System 1\nSystem 2');
+  });
+
+  it('should handle response with mixed text + tool_use content', () => {
+    const canonical = makeCanonicalResponse({
+      content: [
+        { type: 'text', text: 'Let me search...' },
+        { type: 'tool_use', id: 'toolu_1', name: 'search', input: { q: 'test' } },
+      ],
+    });
+    const result = denorm.denormalizeResponse(canonical);
+    const content = result.content as any[];
+    expect(content).toHaveLength(2);
+    expect(content[0].type).toBe('text');
+    expect(content[1].type).toBe('tool_use');
+  });
+
+  it('should map max_tokens stop reason', () => {
+    const canonical = makeCanonicalResponse({ stop_reason: 'max_tokens' });
+    const result = denorm.denormalizeResponse(canonical);
+    expect(result.stop_reason).toBe('max_tokens');
+  });
+
+  it('should map stop_sequence stop reason', () => {
+    const canonical = makeCanonicalResponse({ stop_reason: 'stop_sequence' });
+    const result = denorm.denormalizeResponse(canonical);
+    expect(result.stop_reason).toBe('stop_sequence');
+  });
+
+  it('should map unknown stop reason to end_turn', () => {
+    const canonical = makeCanonicalResponse({ stop_reason: 'unknown_reason' as any });
+    const result = denorm.denormalizeResponse(canonical);
+    expect(result.stop_reason).toBe('end_turn');
+  });
+
+  it('should recursively denormalize tool_result with nested content blocks', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{
+        role: 'assistant',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'toolu_1',
+          content: [
+            { type: 'text', text: 'Nested result' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc' } },
+          ],
+        }],
+      }],
+    });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    const msgs = result.messages as any[];
+    const toolResult = msgs[0].content[0];
+    expect(toolResult.type).toBe('tool_result');
+    expect(Array.isArray(toolResult.content)).toBe(true);
+    expect(toolResult.content[0].type).toBe('text');
+    expect(toolResult.content[1].type).toBe('image');
+  });
+
+  it('should pass through temperature and top_p', () => {
+    const canonical = makeCanonicalRequest({
+      temperature: 0.5,
+      top_p: 0.8,
+      stop: ['STOP'],
+    });
+    const result = denorm.denormalize(canonical, 'claude-3-opus');
+    expect(result.temperature).toBe(0.5);
+    expect(result.top_p).toBe(0.8);
+    expect(result.stop_sequences).toEqual(['STOP']);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// ResponsesDenormalizer — additional edge cases
+// ═══════════════════════════════════════════════════════════
+
+describe('ResponsesDenormalizer — additional edge cases', () => {
+  const denorm = new ResponsesDenormalizer();
+
+  it('should JSON.stringify unknown content block type in denormalizeContent', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{
+        role: 'user',
+        content: [{ type: 'audio', data: 'base64audio' } as any],
+      }],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    const input = result.input as any[];
+    expect(input[0].content[0].type).toBe('input_text');
+    expect(input[0].content[0].text).toContain('audio');
+  });
+
+  it('should denormalize system message with content blocks via blocksToText', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [
+        { role: 'system', content: [{ type: 'text', text: 'You are' }, { type: 'text', text: ' helpful.' }] },
+        { role: 'user', content: 'Hi' },
+      ],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    expect(result.instructions).toBe('You are helpful.');
+  });
+
+  it('should pass tool_choice string through as-is', () => {
+    const canonical = makeCanonicalRequest({ tool_choice: 'required' });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    expect(result.tool_choice).toBe('required');
+  });
+
+  it('should denormalize assistant string content as input_text', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{ role: 'assistant', content: 'Plain string' }],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    const input = result.input as any[];
+    expect(input[0].type).toBe('message');
+    expect(input[0].role).toBe('assistant');
+    expect(input[0].content[0].type).toBe('input_text');
+    expect(input[0].content[0].text).toBe('Plain string');
+  });
+
+  it('should pass through temperature, top_p, and max_output_tokens', () => {
+    const canonical = makeCanonicalRequest({
+      temperature: 0.3,
+      top_p: 0.95,
+      max_tokens: 500,
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    expect(result.temperature).toBe(0.3);
+    expect(result.top_p).toBe(0.95);
+    expect(result.max_output_tokens).toBe(500);
+  });
+
+  it('should denormalize tool_choice object with name', () => {
+    const canonical = makeCanonicalRequest({ tool_choice: { name: 'search' } });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    expect(result.tool_choice).toEqual({ type: 'function', name: 'search' });
+  });
+
+  it('should denormalize tool_result blocks → function_call_output items', () => {
+    const canonical = makeCanonicalRequest({
+      messages: [{
+        role: 'tool',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'call_1',
+          content: [{ type: 'text', text: 'Result text' }],
+        }],
+      }],
+    });
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    const input = result.input as any[];
+    expect(input[0].type).toBe('function_call_output');
+    expect(input[0].call_id).toBe('call_1');
+    expect(input[0].output).toBe('Result text');
+  });
+
+  it('should handle response with only function calls (no text)', () => {
+    const canonical = makeCanonicalResponse({
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'search', input: { q: 'test' } },
+        { type: 'tool_use', id: 'call_2', name: 'fetch', input: { url: 'http://example.com' } },
+      ],
+    });
+    const result = denorm.denormalizeResponse(canonical);
+    const output = result.output as any[];
+    // No message item, just 2 function_calls
+    expect(output).toHaveLength(2);
+    expect(output[0].type).toBe('function_call');
+    expect(output[1].type).toBe('function_call');
   });
 });

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Response as ExpressResponse } from 'express';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
-import { RetryConfig } from '../config/gateway.config';
+import { RetryConfig, ModelPricing } from '../config/gateway.config';
 import {
   CanonicalRequest,
   CanonicalResponse,
@@ -158,10 +158,7 @@ export class PipelineService {
 
     // ── Budget Record ──
     const pricing = this.config.getModelPricing(usedModel);
-    const costUsd = pricing
-      ? (canonicalResponse.usage.input_tokens / 1_000_000) * pricing.input +
-        (canonicalResponse.usage.output_tokens / 1_000_000) * pricing.output
-      : 0;
+    const costUsd = this.calculateCost(canonicalResponse.usage, pricing);
     const totalTokens = canonicalResponse.usage.input_tokens + canonicalResponse.usage.output_tokens;
     await this.budgetService.record(totalTokens, costUsd);
 
@@ -390,6 +387,8 @@ export class PipelineService {
             } else if (event.type === 'stop') {
               usage.input_tokens = event.usage.input_tokens;
               usage.output_tokens = event.usage.output_tokens;
+              if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
+              if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
               streamStopReason = event.stop_reason;
             }
 
@@ -417,10 +416,7 @@ export class PipelineService {
           }
 
           const pricing = this.config.getModelPricing(usedModel);
-          const costUsd = pricing
-            ? (usage.input_tokens / 1_000_000) * pricing.input +
-              (usage.output_tokens / 1_000_000) * pricing.output
-            : 0;
+          const costUsd = this.calculateCost(usage, pricing);
           const totalTokens = usage.input_tokens + usage.output_tokens;
           await this.budgetService.record(totalTokens, costUsd);
 
@@ -717,6 +713,23 @@ export class PipelineService {
   }
 
   // ══════════════════════════════════════════════════════
+  // Cost Calculation (cache-aware)
+  // ══════════════════════════════════════════════════════
+
+  private calculateCost(usage: TokenUsage, pricing?: ModelPricing): number {
+    if (!pricing) return 0;
+    const cacheCreate = usage.cache_creation_input_tokens || 0;
+    const cacheRead = usage.cache_read_input_tokens || 0;
+    const normalInput = Math.max(0, usage.input_tokens - cacheCreate - cacheRead);
+    return (
+      (normalInput / 1_000_000) * pricing.input +
+      (cacheCreate / 1_000_000) * (pricing.cache_creation_input ?? pricing.input) +
+      (cacheRead / 1_000_000) * (pricing.cache_read_input ?? pricing.input) +
+      (usage.output_tokens / 1_000_000) * pricing.output
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
   // Call Logging
   // ══════════════════════════════════════════════════════
 
@@ -728,10 +741,7 @@ export class PipelineService {
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model);
-      const costUsd = pricing
-        ? (params.usage.input_tokens / 1_000_000) * pricing.input +
-          (params.usage.output_tokens / 1_000_000) * pricing.output
-        : 0;
+      const costUsd = this.calculateCost(params.usage, pricing);
 
       const log = this.callLogRepo.create({
         request_id: params.requestId,
@@ -739,6 +749,8 @@ export class PipelineService {
         tier: params.tier, score: params.score,
         node_id: params.nodeId, model: params.model,
         input_tokens: params.usage.input_tokens, output_tokens: params.usage.output_tokens,
+        cache_creation_input_tokens: params.usage.cache_creation_input_tokens || 0,
+        cache_read_input_tokens: params.usage.cache_read_input_tokens || 0,
         cost_usd: costUsd, latency_ms: params.latencyMs,
         status_code: params.statusCode, is_fallback: params.isFallback,
         session_key: params.canonical.metadata.session_key || null,

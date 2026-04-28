@@ -363,3 +363,75 @@ describe('ResponsesStreamParser', () => {
     expect(events[0].type).toBe('start');
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// Cache Token Extraction in Stream Parsers
+// ═══════════════════════════════════════════════════════════
+
+describe('Stream Parsers — cache token extraction', () => {
+  it('MessagesStreamParser should extract cache tokens from message_start usage', () => {
+    const parser = new MessagesStreamParser();
+    const events = collect(parser,
+      'event: message_start\n' +
+      'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-3-sonnet","usage":{"input_tokens":500,"cache_creation_input_tokens":200,"cache_read_input_tokens":100}}}\n\n' +
+      'event: content_block_start\n' +
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n' +
+      'event: content_block_delta\n' +
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}\n\n' +
+      'event: message_delta\n' +
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":10}}\n\n',
+    );
+    const stop = events.find(e => e.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.input_tokens).toBe(500);
+      expect(stop.usage.output_tokens).toBe(10);
+      expect(stop.usage.cache_creation_input_tokens).toBe(200);
+      expect(stop.usage.cache_read_input_tokens).toBe(100);
+    }
+  });
+
+  it('ChatCompletionsStreamParser should extract cached_tokens from usage chunk', () => {
+    const parser = new ChatCompletionsStreamParser();
+    const events = collect(parser,
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":500,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":300}}}\n\n',
+    );
+    const stop = events.find(e => e.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.input_tokens).toBe(500);
+      expect(stop.usage.cache_read_input_tokens).toBe(300);
+    }
+  });
+
+  it('ChatCompletionsStreamParser should extract cached_tokens from finish_reason chunk', () => {
+    const parser = new ChatCompletionsStreamParser();
+    const events = collect(parser,
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-1","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":50}}}\n\n',
+    );
+    const stop = events.find(e => e.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.cache_read_input_tokens).toBe(50);
+    }
+  });
+
+  it('ResponsesStreamParser should extract cached_tokens from response.completed', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(parser,
+      'event: response.created\n' +
+      'data: {"id":"resp_1","model":"gpt-4.1"}\n\n' +
+      'event: response.completed\n' +
+      'data: {"id":"resp_1","status":"completed","usage":{"input_tokens":800,"output_tokens":100,"input_token_details":{"cached_tokens":400}}}\n\n',
+    );
+    const stop = events.find(e => e.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.input_tokens).toBe(800);
+      expect(stop.usage.cache_read_input_tokens).toBe(400);
+    }
+  });
+});

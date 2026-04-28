@@ -77,6 +77,17 @@ export class ChatCompletionsStreamSerializer {
 
       case 'stop': {
         const finishReason = this.mapStopReason(event.stop_reason);
+        const hasUsage = event.usage.input_tokens > 0 || event.usage.output_tokens > 0;
+        const usageObj: Record<string, unknown> = hasUsage
+          ? {
+              prompt_tokens: event.usage.input_tokens,
+              completion_tokens: event.usage.output_tokens,
+              total_tokens: event.usage.input_tokens + event.usage.output_tokens,
+            }
+          : {};
+        if (hasUsage && event.usage.cache_read_input_tokens) {
+          usageObj.prompt_tokens_details = { cached_tokens: event.usage.cache_read_input_tokens };
+        }
         let result = this.sse({
           id: this.id,
           object: 'chat.completion.chunk',
@@ -85,16 +96,7 @@ export class ChatCompletionsStreamSerializer {
           choices: [
             { index: 0, delta: {}, finish_reason: finishReason },
           ],
-          ...(event.usage.input_tokens > 0 || event.usage.output_tokens > 0
-            ? {
-                usage: {
-                  prompt_tokens: event.usage.input_tokens,
-                  completion_tokens: event.usage.output_tokens,
-                  total_tokens:
-                    event.usage.input_tokens + event.usage.output_tokens,
-                },
-              }
-            : {}),
+          ...(hasUsage ? { usage: usageObj } : {}),
         });
         result += 'data: [DONE]\n\n';
         return result;
@@ -235,6 +237,9 @@ export class ResponsesStreamSerializer {
             output_tokens: event.usage.output_tokens,
             total_tokens:
               event.usage.input_tokens + event.usage.output_tokens,
+            ...(event.usage.cache_read_input_tokens
+              ? { input_token_details: { cached_tokens: event.usage.cache_read_input_tokens } }
+              : {}),
           },
         });
         return result;
@@ -340,11 +345,18 @@ export class MessagesStreamSerializer {
           type: 'content_block_stop',
           index: this.blockIndex,
         });
-        // Message delta with stop reason and usage
+        // Message delta with stop reason and usage (including cache tokens)
+        const deltaUsage: Record<string, unknown> = { output_tokens: event.usage.output_tokens };
+        if (event.usage.cache_creation_input_tokens) {
+          deltaUsage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
+        }
+        if (event.usage.cache_read_input_tokens) {
+          deltaUsage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
+        }
         result += this.sseEvent('message_delta', {
           type: 'message_delta',
           delta: { stop_reason: event.stop_reason || 'end_turn' },
-          usage: { output_tokens: event.usage.output_tokens },
+          usage: deltaUsage,
         });
         // Message stop
         result += this.sseEvent('message_stop', {

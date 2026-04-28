@@ -158,6 +158,8 @@ export class DashboardController {
       .addSelect('SUM(log.input_tokens)', 'inputTokens')
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .addSelect('AVG(log.cost_usd)', 'avgCostPerCall')
+      .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
+      .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens')
       .getRawOne();
 
     return {
@@ -168,6 +170,8 @@ export class DashboardController {
         inputTokens: Number(totalAgg?.inputTokens || 0),
         outputTokens: Number(totalAgg?.outputTokens || 0),
         avgCostPerCall: Number(Number(totalAgg?.avgCostPerCall || 0).toFixed(6)),
+        cacheCreationTokens: Number(totalAgg?.cacheCreationTokens || 0),
+        cacheReadTokens: Number(totalAgg?.cacheReadTokens || 0),
       },
       dailyTrend: dailyTrend.map((d) => ({
         date: d.date,
@@ -226,6 +230,8 @@ export class DashboardController {
       .addSelect('SUM(log.cost_usd)', 'totalCost')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .addSelect('COUNT(DISTINCT log.session_key)', 'uniqueSessions')
+      .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
+      .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens')
       .getRawOne();
 
     // Tier distribution
@@ -267,6 +273,8 @@ export class DashboardController {
         costUsd: Number(Number(agg?.totalCost || 0).toFixed(6)),
         avgLatencyMs: Number(Number(agg?.avgLatency || 0).toFixed(0)),
         uniqueSessions: Number(agg?.uniqueSessions || 0),
+        cacheCreationTokens: Number(agg?.cacheCreationTokens || 0),
+        cacheReadTokens: Number(agg?.cacheReadTokens || 0),
       },
       last24h: {
         calls: Number(recentAgg?.calls || 0),

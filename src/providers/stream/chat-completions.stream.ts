@@ -63,12 +63,14 @@ export class ChatCompletionsStreamParser {
       // Could be a usage-only chunk at the end
       if (data.usage) {
         const usage = data.usage as Record<string, unknown>;
+        const promptDetails = (usage.prompt_tokens_details || {}) as Record<string, unknown>;
         yield {
           type: 'stop',
           stop_reason: 'end_turn',
           usage: {
             input_tokens: (usage.prompt_tokens as number) || 0,
             output_tokens: (usage.completion_tokens as number) || 0,
+            cache_read_input_tokens: (promptDetails.cached_tokens as number) || undefined,
           },
         };
       }
@@ -117,12 +119,14 @@ export class ChatCompletionsStreamParser {
     if (finishReason) {
       this.hasSentStop = true;
       const usage = (data.usage || {}) as Record<string, unknown>;
+      const promptDetails = (usage.prompt_tokens_details || {}) as Record<string, unknown>;
       yield {
         type: 'stop',
         stop_reason: this.mapFinishReason(finishReason),
         usage: {
           input_tokens: (usage.prompt_tokens as number) || 0,
           output_tokens: (usage.completion_tokens as number) || 0,
+          cache_read_input_tokens: (promptDetails.cached_tokens as number) || undefined,
         },
       };
     }

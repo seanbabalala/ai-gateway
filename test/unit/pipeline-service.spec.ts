@@ -639,3 +639,219 @@ describe('PipelineService — processStream', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// processStream — transmission-phase errors
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — processStream transmission-phase errors', () => {
+  it('should send stream_error event when stream breaks mid-transmission', async () => {
+    async function* breakingStream() {
+      yield { type: 'start' as const, id: 'break-1', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Hello' } };
+      throw new Error('Connection reset by peer');
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(breakingStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    // Should write error event and end
+    const allChunks = res._chunks.join('');
+    expect(allChunks).toContain('stream_error');
+    expect(res.end).toHaveBeenCalled();
+    // Should NOT try fallback — transmission errors don't fallback
+    expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalled();
+  });
+
+  it('should call circuitBreaker.recordFailure on transmission error', async () => {
+    async function* breakingStream() {
+      yield { type: 'start' as const, id: 'break-2', model: 'gpt-4o' };
+      throw new Error('Stream reset');
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(breakingStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalledWith('openai', 'gpt-4o');
+  });
+
+  it('should log statusCode 502 for transmission-phase errors', async () => {
+    async function* breakingStream() {
+      yield { type: 'start' as const, id: 'break-3', model: 'gpt-4o' };
+      throw new Error('Broken pipe');
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(breakingStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.status_code).toBe(502);
+    expect(savedLog.error).toContain('Broken pipe');
+  });
+
+  it('should mark isFallback correctly for transmission errors on fallback node', async () => {
+    // First call (primary) fails at connection phase (non-retryable 400)
+    let callCount = 0;
+    async function* fallbackBreakingStream() {
+      yield { type: 'start' as const, id: 'fb-break', model: 'claude-3-opus' };
+      throw new Error('Fallback stream broke');
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockImplementation(() => {
+          callCount++;
+          if (callCount <= 1) throw new ProviderError('Bad Request', 400, 'openai');
+          return fallbackBreakingStream();
+        }),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.is_fallback).toBe(true);
+    expect(savedLog.status_code).toBe(502);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Cache-Aware Cost Calculation
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — cache-aware cost calculation', () => {
+  it('should apply cache pricing when cache tokens are present', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        getModelPricing: jest.fn().mockReturnValue({
+          input: 3.0,    // $3/MTok normal input
+          output: 15.0,   // $15/MTok output
+          cache_creation_input: 3.75, // $3.75/MTok (1.25x for cache writes)
+          cache_read_input: 0.30,     // $0.30/MTok (0.1x for cache reads)
+        }),
+      },
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(
+          makeCanonicalResponse({
+            model: 'claude-3-sonnet',
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 200,
+              cache_creation_input_tokens: 300,
+              cache_read_input_tokens: 200,
+            },
+          }),
+        ),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'claude-3-sonnet' });
+    await pipeline.process(request);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    // Normal input: 1000 - 300 - 200 = 500 → (500/1M) * 3.0
+    // Cache create: 300 → (300/1M) * 3.75
+    // Cache read: 200 → (200/1M) * 0.30
+    // Output: 200 → (200/1M) * 15.0
+    const expectedCost =
+      (500 / 1_000_000) * 3.0 +
+      (300 / 1_000_000) * 3.75 +
+      (200 / 1_000_000) * 0.30 +
+      (200 / 1_000_000) * 15.0;
+    expect(savedLog.cost_usd).toBeCloseTo(expectedCost, 10);
+  });
+
+  it('should persist cache tokens in call log', async () => {
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(
+          makeCanonicalResponse({
+            model: 'gpt-4o',
+            usage: {
+              input_tokens: 500,
+              output_tokens: 100,
+              cache_read_input_tokens: 200,
+            },
+          }),
+        ),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    await pipeline.process(request);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.cache_read_input_tokens).toBe(200);
+    expect(savedLog.cache_creation_input_tokens).toBe(0);
+  });
+
+  it('should use default input pricing when cache pricing not specified', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        getModelPricing: jest.fn().mockReturnValue({
+          input: 5.0, output: 15.0,
+          // No cache_creation_input or cache_read_input specified
+        }),
+      },
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(
+          makeCanonicalResponse({
+            model: 'gpt-4o',
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 100,
+              cache_read_input_tokens: 500,
+            },
+          }),
+        ),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    await pipeline.process(request);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    // Without cache pricing, falls back to normal input rate
+    // Normal: (1000 - 500) / 1M * 5 + 500/1M * 5 + 100/1M * 15 = 1000/1M * 5 + 100/1M * 15
+    const expectedCost = (1000 / 1_000_000) * 5.0 + (100 / 1_000_000) * 15.0;
+    expect(savedLog.cost_usd).toBeCloseTo(expectedCost, 10);
+  });
+});

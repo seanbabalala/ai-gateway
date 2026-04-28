@@ -371,7 +371,11 @@ export class ProviderClientService {
     return {
       id: (body.id as string) || `gen_${Date.now()}`, content,
       stop_reason: this.mapChatFinishReason(choice.finish_reason as string),
-      usage: { input_tokens: (usage.prompt_tokens as number) || 0, output_tokens: (usage.completion_tokens as number) || 0 },
+      usage: {
+        input_tokens: (usage.prompt_tokens as number) || 0,
+        output_tokens: (usage.completion_tokens as number) || 0,
+        cache_read_input_tokens: ((usage.prompt_tokens_details as Record<string, unknown>)?.cached_tokens as number) || 0,
+      },
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };
@@ -405,7 +409,11 @@ export class ProviderClientService {
     return {
       id: (body.id as string) || `gen_${Date.now()}`, content,
       stop_reason: this.mapResponsesStatus(body.status as string),
-      usage: { input_tokens: (usage.input_tokens as number) || 0, output_tokens: (usage.output_tokens as number) || 0 },
+      usage: {
+        input_tokens: (usage.input_tokens as number) || 0,
+        output_tokens: (usage.output_tokens as number) || 0,
+        cache_read_input_tokens: ((usage.input_token_details as Record<string, unknown>)?.cached_tokens as number) || 0,
+      },
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };
@@ -433,7 +441,12 @@ export class ProviderClientService {
     return {
       id: (body.id as string) || `gen_${Date.now()}`, content,
       stop_reason: (body.stop_reason as StopReason) || 'end_turn',
-      usage: { input_tokens: (usage.input_tokens as number) || 0, output_tokens: (usage.output_tokens as number) || 0 },
+      usage: {
+        input_tokens: (usage.input_tokens as number) || 0,
+        output_tokens: (usage.output_tokens as number) || 0,
+        cache_creation_input_tokens: (usage.cache_creation_input_tokens as number) || 0,
+        cache_read_input_tokens: (usage.cache_read_input_tokens as number) || 0,
+      },
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };

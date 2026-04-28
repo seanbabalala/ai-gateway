@@ -244,4 +244,6 @@ export interface CacheConfig {
 export interface ModelPricing {
   input: number; // cost per 1M input tokens (USD)
   output: number; // cost per 1M output tokens (USD)
+  cache_creation_input?: number; // cost per 1M cache-write tokens (e.g. Anthropic: 1.25x input)
+  cache_read_input?: number;     // cost per 1M cache-read tokens (e.g. Anthropic: 0.1x input; OpenAI: 0.5x)
 }

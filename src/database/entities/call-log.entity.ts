@@ -65,4 +65,10 @@ export class CallLog {
 
   @Column({ type: 'integer', default: 0 })
   retry_count!: number;
+
+  @Column({ type: 'integer', default: 0 })
+  cache_creation_input_tokens!: number;
+
+  @Column({ type: 'integer', default: 0 })
+  cache_read_input_tokens!: number;
 }

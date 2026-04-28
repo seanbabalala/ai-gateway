@@ -119,6 +119,8 @@ export interface CanonicalResponse {
 export interface TokenUsage {
   input_tokens: number;
   output_tokens: number;
+  cache_creation_input_tokens?: number;  // Anthropic: tokens written to cache
+  cache_read_input_tokens?: number;      // Anthropic: cache read; OpenAI: cached_tokens
 }
 
 // ===== Stream Events =====

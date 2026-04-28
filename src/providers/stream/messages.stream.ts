@@ -30,6 +30,11 @@ export class MessagesStreamParser {
   private blockTypes: Map<number, { type: string; id?: string; name?: string }> =
     new Map();
 
+  // Track cache tokens from message_start (Anthropic sends them there)
+  private cacheCreationInputTokens = 0;
+  private cacheReadInputTokens = 0;
+  private inputTokens = 0;
+
   *parse(chunk: string): Generator<CanonicalStreamEvent> {
     this.buffer += chunk;
 
@@ -68,6 +73,10 @@ export class MessagesStreamParser {
     switch (eventType) {
       case 'message_start': {
         const message = (data.message || {}) as Record<string, unknown>;
+        const startUsage = (message.usage || {}) as Record<string, unknown>;
+        this.inputTokens = (startUsage.input_tokens as number) || 0;
+        this.cacheCreationInputTokens = (startUsage.cache_creation_input_tokens as number) || 0;
+        this.cacheReadInputTokens = (startUsage.cache_read_input_tokens as number) || 0;
         yield {
           type: 'start',
           id: (message.id as string) || '',
@@ -136,8 +145,10 @@ export class MessagesStreamParser {
           type: 'stop',
           stop_reason: (delta.stop_reason as string) || 'end_turn',
           usage: {
-            input_tokens: (usage.input_tokens as number) || 0,
+            input_tokens: this.inputTokens || (usage.input_tokens as number) || 0,
             output_tokens: (usage.output_tokens as number) || 0,
+            cache_creation_input_tokens: this.cacheCreationInputTokens || undefined,
+            cache_read_input_tokens: this.cacheReadInputTokens || undefined,
           },
         };
         break;

@@ -101,12 +101,14 @@ export class ResponsesStreamParser {
 
       case 'response.completed': {
         const usage = (data.usage || {}) as Record<string, unknown>;
+        const inputDetails = (usage.input_token_details || {}) as Record<string, unknown>;
         yield {
           type: 'stop',
           stop_reason: this.mapStatus(data.status as string),
           usage: {
             input_tokens: (usage.input_tokens as number) || 0,
             output_tokens: (usage.output_tokens as number) || 0,
+            cache_read_input_tokens: (inputDetails.cached_tokens as number) || undefined,
           },
         };
         break;

@@ -1,10 +1,32 @@
 import { ProviderClientService, ProviderError } from '../../src/providers/provider-client.service';
-import { Tier } from '../../src/canonical/canonical.types';
+import { Tier, CanonicalRequest } from '../../src/canonical/canonical.types';
 
 const routingMeta = { tier: 'standard' as Tier, score: 0.1, is_fallback: false };
 
 function makeService(): ProviderClientService {
   return new ProviderClientService({} as any);
+}
+
+function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderClientService {
+  const node = {
+    id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
+    base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
+    api_key: 'sk-test', models: ['gpt-4o'], model_aliases: {},
+    timeout_ms: 5000,
+    ...nodeOverrides,
+  };
+  return new ProviderClientService({
+    getNode: jest.fn().mockReturnValue(node),
+  } as any);
+}
+
+function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequest {
+  return {
+    messages: [{ role: 'user', content: 'Hi' }],
+    stream: false,
+    metadata: { source_format: 'chat_completions', raw_headers: {} },
+    ...overrides,
+  };
 }
 
 describe('ProviderClientService', () => {
@@ -25,7 +47,7 @@ describe('ProviderClientService', () => {
       expect(result.id).toBe('chatcmpl-1');
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello!' });
       expect(result.stop_reason).toBe('end_turn');
-      expect(result.usage).toEqual({ input_tokens: 10, output_tokens: 5 });
+      expect(result.usage).toEqual(expect.objectContaining({ input_tokens: 10, output_tokens: 5 }));
       expect(result.model).toBe('gpt-4o');
       expect(result.routing.node).toBe('openai');
       expect(result.routing.latency_ms).toBe(150);
@@ -88,7 +110,7 @@ describe('ProviderClientService', () => {
       expect(result.id).toBe('msg_1');
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello from Claude' });
       expect(result.stop_reason).toBe('end_turn');
-      expect(result.usage).toEqual({ input_tokens: 100, output_tokens: 50 });
+      expect(result.usage).toEqual(expect.objectContaining({ input_tokens: 100, output_tokens: 50 }));
     });
 
     it('should handle tool_use blocks', () => {
@@ -274,6 +296,229 @@ describe('ProviderClientService', () => {
       };
       const headers = (svc as any).extractNativeMessageHeaders(canonical);
       expect(headers['anthropic-beta']).toBeUndefined();
+    });
+  });
+
+  // ── Cache Token Extraction ──────────────────────────────
+
+  describe('normalizeResponse — cache token extraction', () => {
+    it('should extract cache tokens from Anthropic Messages response', () => {
+      const svc = makeService();
+      const body = {
+        id: 'msg_cache', model: 'claude-3-sonnet',
+        content: [{ type: 'text', text: 'Cached response' }],
+        stop_reason: 'end_turn',
+        usage: {
+          input_tokens: 1000, output_tokens: 200,
+          cache_creation_input_tokens: 500,
+          cache_read_input_tokens: 300,
+        },
+      };
+      const result = svc.normalizeResponse(body, 'messages', routingMeta, 'claude', 'claude-3-sonnet', 100);
+      expect(result.usage.cache_creation_input_tokens).toBe(500);
+      expect(result.usage.cache_read_input_tokens).toBe(300);
+    });
+
+    it('should extract cached_tokens from OpenAI Chat Completions response', () => {
+      const svc = makeService();
+      const body = {
+        id: 'chatcmpl-cache', model: 'gpt-4o',
+        choices: [{ message: { content: 'Hello' }, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 500, completion_tokens: 50,
+          prompt_tokens_details: { cached_tokens: 200 },
+        },
+      };
+      const result = svc.normalizeResponse(body, 'chat_completions', routingMeta, 'openai', 'gpt-4o', 100);
+      expect(result.usage.cache_read_input_tokens).toBe(200);
+    });
+
+    it('should extract cached_tokens from OpenAI Responses API response', () => {
+      const svc = makeService();
+      const body = {
+        id: 'resp_cache', model: 'gpt-4.1', status: 'completed',
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'Answer' }] }],
+        usage: {
+          input_tokens: 800, output_tokens: 100,
+          input_token_details: { cached_tokens: 400 },
+        },
+      };
+      const result = svc.normalizeResponse(body, 'responses', routingMeta, 'openai', 'gpt-4.1', 100);
+      expect(result.usage.cache_read_input_tokens).toBe(400);
+    });
+
+    it('should default cache tokens to 0 when not present', () => {
+      const svc = makeService();
+      const body = {
+        id: 'msg_no_cache', model: 'claude-3-opus',
+        content: [{ type: 'text', text: 'No cache' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 100, output_tokens: 50 },
+      };
+      const result = svc.normalizeResponse(body, 'messages', routingMeta, 'claude', 'claude-3-opus', 100);
+      expect(result.usage.cache_creation_input_tokens).toBe(0);
+      expect(result.usage.cache_read_input_tokens).toBe(0);
+    });
+  });
+
+  // ── Forward (end-to-end with mocked fetch) ────────────────
+
+  describe('forward — with mocked fetch', () => {
+    const originalFetch = global.fetch;
+    afterEach(() => { global.fetch = originalFetch; });
+
+    it('should forward request and return normalized response', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl-test', model: 'gpt-4o',
+          choices: [{ message: { content: 'Hello!' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      const result = await svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta);
+      expect(result.id).toBe('chatcmpl-test');
+      expect(result.content[0]).toEqual({ type: 'text', text: 'Hello!' });
+    });
+
+    it('should throw ProviderError for non-OK response', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        text: jest.fn().mockResolvedValue('Rate limited'),
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      await expect(svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta))
+        .rejects.toThrow(ProviderError);
+    });
+
+    it('should throw ProviderError for network errors', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('fetch failed')) as any;
+
+      const svc = makeServiceWithNode();
+      await expect(svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta))
+        .rejects.toThrow(ProviderError);
+    });
+
+    it('should throw for unknown node', async () => {
+      const svc = new ProviderClientService({
+        getNode: jest.fn().mockReturnValue(undefined),
+      } as any);
+      await expect(svc.forward(makeCanonical(), 'unknown', 'model', routingMeta))
+        .rejects.toThrow('Node not found');
+    });
+
+    it('should use x-api-key auth for messages protocol', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'msg_1', model: 'claude-3-opus',
+          content: [{ type: 'text', text: 'Hi' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        protocol: 'messages',
+        base_url: 'https://api.anthropic.com',
+        endpoint: '/v1/messages',
+        api_key: 'sk-ant-test',
+      });
+      const canonical = makeCanonical();
+      canonical.metadata.source_format = 'messages';
+      await svc.forward(canonical, 'openai', 'claude-3-opus', routingMeta);
+
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(opts.headers['x-api-key']).toBe('sk-ant-test');
+    });
+
+    it('should send debug message body when GATEWAY_DEBUG_MESSAGES_BODY is set', async () => {
+      process.env.GATEWAY_DEBUG_MESSAGES_BODY = '1';
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 400,
+        text: jest.fn().mockResolvedValue('Bad request'),
+      }) as any;
+
+      const svc = makeServiceWithNode({ protocol: 'messages' });
+      try {
+        await svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta);
+      } catch { /* expected */ }
+      delete process.env.GATEWAY_DEBUG_MESSAGES_BODY;
+    });
+  });
+
+  // ── ForwardStream (with mocked fetch returning ReadableStream) ──
+
+  describe('forwardStream — with mocked fetch', () => {
+    const originalFetch = global.fetch;
+    afterEach(() => { global.fetch = originalFetch; });
+
+    it('should stream events from provider', async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n' +
+            'data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}\n\n' +
+            'data: {"id":"chatcmpl-1","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n' +
+            'data: [DONE]\n\n',
+          ));
+          controller.close();
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      const events = [];
+      for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+        events.push(event);
+      }
+      expect(events.length).toBeGreaterThanOrEqual(3);
+      expect(events[0].type).toBe('start');
+    });
+
+    it('should throw for missing response body', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: null,
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      await expect(async () => {
+        for await (const _ of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+          // should throw before yielding
+        }
+      }).rejects.toThrow('No response body');
+    });
+
+    it('should emit error event on stream read failure', async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.error(new Error('Stream read failed'));
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      const events = [];
+      for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+        events.push(event);
+      }
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const errorEvent = events.find(e => e.type === 'error');
+      expect(errorEvent).toBeDefined();
     });
   });
 });

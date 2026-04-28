@@ -256,3 +256,87 @@ describe('MessagesStreamSerializer', () => {
     expect(data.error.message).toBe('Something broke');
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// Cache Token Passthrough in Stream Serializers
+// ═══════════════════════════════════════════════════════════
+
+describe('Stream Serializers — cache token passthrough', () => {
+  it('ChatCompletions serializer should include prompt_tokens_details in stop event', () => {
+    const ser = new ChatCompletionsStreamSerializer();
+    ser.serialize(startEvent);
+    const result = ser.serialize({
+      type: 'stop',
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 500, output_tokens: 20, cache_read_input_tokens: 200 },
+    });
+    const lines = result.split('\n').filter((l) => l.startsWith('data: ') && l !== 'data: [DONE]');
+    const data = JSON.parse(lines[0].replace('data: ', ''));
+    expect(data.usage.prompt_tokens).toBe(500);
+    expect(data.usage.prompt_tokens_details).toEqual({ cached_tokens: 200 });
+  });
+
+  it('ChatCompletions serializer should NOT include prompt_tokens_details when no cache', () => {
+    const ser = new ChatCompletionsStreamSerializer();
+    ser.serialize(startEvent);
+    const result = ser.serialize({
+      type: 'stop',
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 100, output_tokens: 10 },
+    });
+    const lines = result.split('\n').filter((l) => l.startsWith('data: ') && l !== 'data: [DONE]');
+    const data = JSON.parse(lines[0].replace('data: ', ''));
+    expect(data.usage.prompt_tokens_details).toBeUndefined();
+  });
+
+  it('Responses serializer should include input_token_details in response.completed', () => {
+    const ser = new ResponsesStreamSerializer();
+    ser.serialize(startEvent);
+    const result = ser.serialize({
+      type: 'stop',
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 800, output_tokens: 100, cache_read_input_tokens: 400 },
+    });
+    const completedLine = result.split('\n').find((l) => l.startsWith('data: ') && l.includes('response.completed'));
+    // Actually, the event name is on a separate line
+    const allLines = result.split('\n');
+    const completedIdx = allLines.findIndex((l) => l.includes('response.completed'));
+    const dataLine = allLines[completedIdx + 1];
+    const data = JSON.parse(dataLine.replace('data: ', ''));
+    expect(data.usage.input_token_details).toEqual({ cached_tokens: 400 });
+  });
+
+  it('Messages serializer should include cache tokens in message_delta usage', () => {
+    const ser = new MessagesStreamSerializer();
+    ser.serialize(startEvent);
+    const result = ser.serialize({
+      type: 'stop',
+      stop_reason: 'end_turn',
+      usage: {
+        input_tokens: 500, output_tokens: 20,
+        cache_creation_input_tokens: 100, cache_read_input_tokens: 50,
+      },
+    });
+    // Find message_delta event
+    const allLines = result.split('\n');
+    const deltaIdx = allLines.findIndex((l) => l.includes('event: message_delta'));
+    const deltaData = JSON.parse(allLines[deltaIdx + 1].replace('data: ', ''));
+    expect(deltaData.usage.cache_creation_input_tokens).toBe(100);
+    expect(deltaData.usage.cache_read_input_tokens).toBe(50);
+  });
+
+  it('Messages serializer should NOT include cache tokens when absent', () => {
+    const ser = new MessagesStreamSerializer();
+    ser.serialize(startEvent);
+    const result = ser.serialize({
+      type: 'stop',
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 100, output_tokens: 10 },
+    });
+    const allLines = result.split('\n');
+    const deltaIdx = allLines.findIndex((l) => l.includes('event: message_delta'));
+    const deltaData = JSON.parse(allLines[deltaIdx + 1].replace('data: ', ''));
+    expect(deltaData.usage.cache_creation_input_tokens).toBeUndefined();
+    expect(deltaData.usage.cache_read_input_tokens).toBeUndefined();
+  });
+});
