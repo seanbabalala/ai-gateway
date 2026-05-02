@@ -27,6 +27,9 @@ export interface GatewayConfig {
   /** Runtime config reload behavior — watcher disabled by default */
   hot_reload?: HotReloadConfig;
 
+  /** Optional OSS-local embeddings request batching — disabled by default */
+  embedding_batching?: EmbeddingBatchingConfig;
+
   /** Optional OSS-local alerting channels — disabled by default */
   alerts?: AlertsConfig;
 
@@ -557,6 +560,13 @@ export interface CacheConfig {
   max_entries: number;
   /** Skip caching responses with tool_use stop reason (default: true) */
   exclude_tool_use: boolean;
+  /** Explicit stream-cache controls. Disabled by default even when cache.enabled=true. */
+  stream_cache?: StreamCacheConfig;
+}
+
+export interface StreamCacheConfig {
+  /** Cache and replay completed stream responses as SSE (default: false). */
+  enabled?: boolean;
 }
 
 // ===== Model Pricing =====
@@ -565,6 +575,22 @@ export interface ModelPricing {
   output: number; // cost per 1M output tokens (USD)
   cache_creation_input?: number; // cost per 1M cache-write tokens (e.g. Anthropic: 1.25x input)
   cache_read_input?: number;     // cost per 1M cache-read tokens (e.g. Anthropic: 0.1x input; OpenAI: 0.5x)
+}
+
+// ===== Embedding Batching =====
+export interface EmbeddingBatchingConfig {
+  /** Master switch (default: false). */
+  enabled?: boolean;
+  /** Short collection window before dispatching a merged upstream batch. */
+  window_ms?: number;
+  /** Maximum upstream input items per merged batch. */
+  max_batch_size?: number;
+  /** Only requests with this many input items or fewer are batched. */
+  max_input_items?: number;
+  /** Maximum queued embedding requests across local in-memory batches. */
+  max_queue?: number;
+  /** Per-request queue/dispatch timeout. */
+  timeout_ms?: number;
 }
 
 // ===== Telemetry (OpenTelemetry) =====

@@ -613,6 +613,36 @@ curl http://localhost:2099/v1/embeddings \
   }'
 ```
 
+### Stream Cache and Embedding Batching
+
+Both features are local OSS data-plane optimizations and are disabled by default.
+
+Stream cache requires the normal prompt cache plus explicit stream opt-in:
+
+```yaml
+cache:
+  enabled: true
+  ttl_seconds: 300
+  stream_cache:
+    enabled: true
+```
+
+The first deterministic streaming request is forwarded normally while SiftGate buffers the completed response. Later hits are replayed as SSE in the caller's protocol. Interrupted, canceled, or partial streams are not stored. Cache keys include request content, source protocol, routing-relevant headers, and Gateway API key identity where available, so different tenants do not share stream cache entries.
+
+Embedding batching collects small same-target `/v1/embeddings` requests for a short local window, sends one upstream batch, and splits the response back to each caller:
+
+```yaml
+embedding_batching:
+  enabled: true
+  window_ms: 10
+  max_batch_size: 64
+  max_input_items: 8
+  max_queue: 1000
+  timeout_ms: 10000
+```
+
+Batch groups are isolated by node, model, dimensions, encoding format, user, input shape, and Gateway API key identity. Batching can reduce provider round trips for many tiny embedding calls, but it intentionally adds up to `window_ms` of local wait time and should be tuned below your latency budget. See [Stream Cache and Embedding Batching](docs/STREAM_CACHE_BATCHING.md) for cancellation, timeout, partial failure, and cache safety notes.
+
 ### Fallback Policies
 
 SiftGate still supports the normal primary/fallback chain, and v0.3 adds optional local policies for cases where waiting for retries is the wrong move:

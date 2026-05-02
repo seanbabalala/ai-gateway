@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.5 stream cache controls via `cache.stream_cache.enabled`, disabled by default and only storing fully completed deterministic streams for later SSE replay.
+- v0.5 local embedding batching via `embedding_batching`, disabled by default, with per-node/model safe grouping, queue limits, cancellation, timeout, and partial-response handling.
+- Config validation, unit coverage, and documentation for stream cache and embedding batching safety defaults.
 
 ## 0.4.0 - 2026-05-02
 

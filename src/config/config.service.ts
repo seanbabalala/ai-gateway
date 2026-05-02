@@ -19,6 +19,7 @@ import {
   LogSinkConfig,
   ControlPlaneConfig,
   HotReloadConfig,
+  EmbeddingBatchingConfig,
   AlertsConfig,
   AlertSpikeRuleConfig,
   AlertLatencySpikeRuleConfig,
@@ -562,6 +563,21 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       ttl_seconds: c?.ttl_seconds ?? 300,
       max_entries: c?.max_entries ?? 1000,
       exclude_tool_use: c?.exclude_tool_use ?? true,
+      stream_cache: {
+        enabled: c?.stream_cache?.enabled ?? false,
+      },
+    };
+  }
+
+  get embeddingBatching(): Required<EmbeddingBatchingConfig> {
+    const batching = this.config.embedding_batching;
+    return {
+      enabled: batching?.enabled ?? false,
+      window_ms: batching?.window_ms ?? 10,
+      max_batch_size: batching?.max_batch_size ?? 64,
+      max_input_items: batching?.max_input_items ?? 8,
+      max_queue: batching?.max_queue ?? 1000,
+      timeout_ms: batching?.timeout_ms ?? 10000,
     };
   }
 

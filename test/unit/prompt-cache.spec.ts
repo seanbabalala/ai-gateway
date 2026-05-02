@@ -49,6 +49,21 @@ describe('PromptCacheService', () => {
     });
   });
 
+  describe('shouldCacheStream', () => {
+    it('should keep stream cache disabled by default even when prompt cache is enabled', () => {
+      const svc = makeService();
+      const req = makeRequest('hello', { temperature: 0 });
+      expect(svc.shouldCache(req)).toBe(true);
+      expect(svc.shouldCacheStream(req)).toBe(false);
+    });
+
+    it('should allow deterministic streams when explicitly enabled', () => {
+      const svc = makeService({ stream_cache: { enabled: true } });
+      const req = makeRequest('hello', { temperature: 0 });
+      expect(svc.shouldCacheStream(req)).toBe(true);
+    });
+  });
+
   // ── lookup ───────────────────────────────────────────────
 
   describe('lookup', () => {
@@ -229,6 +244,16 @@ describe('PromptCacheService', () => {
       const req2 = makeRequest('hello');
       req1.metadata.api_key_name = 'team-a';
       req2.metadata.api_key_name = 'team-b';
+
+      expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
+    });
+
+    it('should isolate keys by api_key_id', () => {
+      const svc = makeService();
+      const req1 = makeRequest('hello');
+      const req2 = makeRequest('hello');
+      req1.metadata.api_key_id = 'key-a';
+      req2.metadata.api_key_id = 'key-b';
 
       expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
     });
