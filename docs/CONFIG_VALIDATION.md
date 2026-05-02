@@ -66,6 +66,11 @@ hardening visible without blocking local development.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional
   per-model `pricing` overrides.
+- v0.6 multimodal capability metadata at both node and model level, including
+  valid `modalities`, endpoint maps for `chat_completions`, `responses`,
+  `messages`, `embeddings`, `image`, `audio`, `rerank`, and `realtime`,
+  non-empty `input_types` / `output_types`, positive `max_file_size`, and
+  boolean `supports_streaming`, `supports_realtime`, and `supports_rerank`.
 - `cache` shape, including positive TTL/entry limits and explicit
   `cache.stream_cache.enabled` boolean validation.
 - Optional `embedding_batching` shape, including boolean enablement and

@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,6 +15,7 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 进行中 — 协议广度 + 可解释路由 | 🚧 In Progress |
 
 ---
 
@@ -695,6 +696,82 @@
 
 ---
 
+## v0.6 — Protocol + Explainability（协议广度 + 可解释路由）
+
+**v0.6 当前状态**：进行中。目标是补齐生产协议能力，并把 “为什么选择这个 node/model” 做成 SiftGate 的核心产品亮点。所有能力继续保持开源 Data Plane 单机可用，Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：协议能力铺底
+
+#### 37. 统一多模态 capability schema
+
+- **状态**：🚧 v0.6 开发中
+- **现状**：v0.5 已有 `models`、`embedding_models`、`max_context_tokens`、`structured_output`、`pricing` 等分散能力字段
+- **目标**：为 Image、Audio、Rerank、Realtime 等入口建立统一能力矩阵，避免后续每个端点单独设计一套 schema
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: openai
+      models: [gpt-4o]
+      embedding_models: [text-embedding-3-small]
+      modalities: [text, vision]
+      endpoints:
+        image: /v1/images/generations
+        audio: /v1/audio/transcriptions
+        rerank: /v1/rerank
+        realtime: wss://api.openai.com/v1/realtime
+      input_types: [text, image, audio]
+      output_types: [text, image, events]
+      max_file_size: 20000000
+      supports_streaming: true
+      supports_realtime: false
+      supports_rerank: false
+      model_capabilities:
+        gpt-4o:
+          modalities: [text, image, audio]
+          pricing: { input: 2.5, output: 10 }
+        text-embedding-3-small:
+          modalities: [text, embedding]
+          dimensions: [512, 1536]
+  ```
+
+  - 兼容旧字段：`nodes[].models`、`embedding_models`、`modalities: [text, vision]` 继续有效
+  - `vision` 作为旧图像输入别名保留，并在路由匹配时兼容 `image`
+  - Config validation 校验 modality、endpoint map、input/output types、file-size、support flags 和 pricing warning
+  - RoutingService 对自动路由按请求 modality 严格过滤候选 node:model
+  - Dashboard Nodes/Routing 页面只读展示模型能力，不自动改配置
+
+#### 38. 结构化输出完整透传
+
+- **状态**：v0.6 P0
+- **目标**：完整支持 OpenAI Chat Completions `response_format`、OpenAI Responses `text.format`，并对 Anthropic Messages 做明确降级/透传策略
+- **实现方案**：
+  - CanonicalRequest 保留统一 response format 与原始请求意图
+  - provider 转发和跨协议转换不丢失 JSON mode / JSON schema
+  - 与 fallback policy 联动：非流式 parse/schema failure 可触发 fallback；stream 已开始后不破坏 SSE
+  - Dashboard call log 展示结构化输出意图、支持状态、降级/透传原因
+
+#### 39. Image / Audio / Rerank / Realtime 入口
+
+- **状态**：v0.6 P0
+- **目标**：补齐 New API/LiteLLM 类项目常见协议广度短板
+- **实现方案**：
+  - 复用统一 capability schema 做节点筛选
+  - 分阶段实现：优先 Image、Audio、Rerank 的 OpenAI-compatible 请求入口；Realtime 可先做明确 experimental 能力与文档
+  - 默认不保存 prompt、response、raw headers 或 provider key
+
+### P0：可解释路由
+
+#### 40. 路由选择解释页
+
+- **状态**：v0.6 P0
+- **目标**：让用户看到为什么选中当前 node/model，以及哪些候选被过滤或降级
+- **实现方案**：
+  - 路由决策记录候选集合、过滤条件、成本/延迟/质量/context/modality/structured-output 原因
+  - Dashboard 提供只读 explain 页面和 call log drill-down
+  - 不自动修改 routing 配置；推荐和解释分离
+
+---
+
 ## 功能优先级矩阵
 
 ### 按用户价值 × 实现难度排序
@@ -727,6 +804,10 @@
 | 33  | Embedding Batching |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    | ✅ v0.5 OSS |
 | 36  | 影子流量           |  ⭐⭐⭐⭐  |    中    | ✅ v0.5 OSS |
+| 37  | 多模态能力 Schema  | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
+| 38  | 结构化输出完整透传 | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
+| 39  | Image/Audio/Rerank/Realtime | ⭐⭐⭐⭐⭐ |    大    | 🔴 v0.6 P0 |
+| 40  | 路由选择解释页     | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
 
 ---
 

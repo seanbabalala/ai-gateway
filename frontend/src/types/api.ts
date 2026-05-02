@@ -118,9 +118,12 @@ export interface NodeInfo {
   protocol: 'chat_completions' | 'responses' | 'messages'
   base_url: string
   endpoint: string
+  endpoints?: Record<string, string>
   models: string[]
+  embedding_models?: string[]
   capabilities: string[]
   modalities: string[]
+  model_capabilities?: Record<string, ModelCapabilityInfo>
   tags: string[]
   aliases: Record<string, string>
   model_prefixes: string[]
@@ -128,6 +131,22 @@ export interface NodeInfo {
   modelCircuits: Record<string, CircuitBreaker>
   concurrency: ConcurrencySnapshot
   healthy: boolean
+}
+
+export interface ModelCapabilityInfo {
+  modalities: string[]
+  endpoints?: Record<string, string>
+  input_types?: string[]
+  output_types?: string[]
+  max_file_size?: number
+  supports_streaming?: boolean
+  supports_realtime?: boolean
+  supports_rerank?: boolean
+  max_context_tokens?: number
+  structured_output: boolean | null
+  dimensions?: number | number[]
+  pricing?: ModelPricing
+  quality_score?: number
 }
 
 export type ConfigDiagnosticCode =
@@ -245,6 +264,7 @@ export interface SplitVariant {
 }
 
 export type LoadBalancingStrategy = 'weighted' | 'round_robin' | 'least_latency' | 'random'
+export type RoutingOptimization = 'cost' | 'latency' | 'balanced' | 'quality'
 
 export interface WeightedRouteTarget {
   node: string
@@ -273,14 +293,14 @@ export interface RoutingTargetMetrics {
 }
 
 export interface RoutingTierStatus {
-  strategy: LoadBalancingStrategy | 'primary_fallback' | 'split'
+  strategy: LoadBalancingStrategy | RoutingOptimization | 'primary_fallback' | 'split'
   source: 'primary_fallback' | 'targets' | 'split'
   targets: RoutingTargetMetrics[]
   last_selected: {
     node: string
     model: string
     selected_at: string
-    strategy: LoadBalancingStrategy | 'primary_fallback' | 'split'
+    strategy: LoadBalancingStrategy | RoutingOptimization | 'primary_fallback' | 'split'
     reason: string
   } | null
 }
@@ -310,6 +330,8 @@ export interface ConfigResponse {
     protocol: string
     base_url: string
     models: string[]
+    embedding_models?: string[]
+    model_capabilities?: Record<string, ModelCapabilityInfo>
     tags: string[]
     api_key: string
   }[]

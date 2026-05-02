@@ -184,6 +184,24 @@ describe('CapabilityService', () => {
       const svc = new CapabilityService(config);
       expect(svc.resolveNodeModalities('n1')).toEqual(['text']);
     });
+
+    it('should union model-level v0.6 modality declarations for node summaries', () => {
+      const config = mockConfigService();
+      config.getNode.mockReturnValue({
+        id: 'n1',
+        modalities: ['text'],
+        models: ['gpt-4o', 'rerank-v1'],
+        embedding_models: ['text-embedding-3-small'],
+        model_capabilities: {
+          'gpt-4o': { modalities: ['text', 'image'] },
+          'rerank-v1': { supports_rerank: true },
+          'text-embedding-3-small': { dimensions: [512, 1536] },
+        },
+      });
+      const svc = new CapabilityService(config);
+      const mods = svc.resolveNodeModalities('n1');
+      expect(mods).toEqual(expect.arrayContaining(['text', 'image', 'rerank', 'embedding']));
+    });
   });
 
   // ── resolveModelModalities ────────────────────────────────
@@ -213,6 +231,85 @@ describe('CapabilityService', () => {
     it('should return default for unknown node', () => {
       const svc = makeService();
       expect(svc.resolveModelModalities('nope', 'gpt-4o')).toEqual(['text']);
+    });
+
+    it('should prefer model-level modalities over node defaults', () => {
+      const config = mockConfigService();
+      config.getNode.mockReturnValue({
+        id: 'n1',
+        modalities: ['text'],
+        models: ['image-model'],
+        model_capabilities: {
+          'image-model': { modalities: ['text', 'image'] },
+        },
+      });
+      const svc = new CapabilityService(config);
+      expect(svc.resolveModelModalities('n1', 'image-model')).toEqual(['text', 'image']);
+    });
+
+    it('should infer embedding, rerank, and realtime modalities from v0.6 capability fields', () => {
+      const config = mockConfigService();
+      config.getNode.mockReturnValue({
+        id: 'n1',
+        models: ['realtime-model', 'rerank-model'],
+        embedding_models: ['embed-model'],
+        model_capabilities: {
+          'realtime-model': { supports_realtime: true },
+          'rerank-model': { endpoints: { rerank: '/v1/rerank' } },
+          'embed-model': { dimensions: 1536 },
+        },
+      });
+      const svc = new CapabilityService(config);
+      expect(svc.resolveModelModalities('n1', 'realtime-model')).toContain('realtime');
+      expect(svc.resolveModelModalities('n1', 'rerank-model')).toContain('rerank');
+      expect(svc.resolveModelModalities('n1', 'embed-model')).toEqual(
+        expect.arrayContaining(['text', 'embedding']),
+      );
+    });
+  });
+
+  describe('resolveModelRoutingCapabilities', () => {
+    it('should merge node defaults with model-specific v0.6 capability metadata', () => {
+      const config = mockConfigService();
+      config.getModelPricing.mockReturnValue({ input: 1, output: 2 });
+      config.getNode.mockReturnValue({
+        id: 'n1',
+        models: ['gpt-4o'],
+        endpoints: { image: '/v1/images/generations' },
+        input_types: ['text'],
+        output_types: ['text'],
+        max_file_size: 10_000,
+        supports_streaming: true,
+        model_capabilities: {
+          'gpt-4o': {
+            modalities: ['text', 'image'],
+            endpoints: { responses: '/v1/responses' },
+            input_types: ['text', 'image'],
+            supports_realtime: true,
+            max_context_tokens: 128000,
+            structured_output: true,
+            pricing: { input: 2.5, output: 10 },
+          },
+        },
+      });
+      const svc = new CapabilityService(config);
+      expect(svc.resolveModelRoutingCapabilities('n1', 'gpt-4o')).toEqual(
+        expect.objectContaining({
+          modalities: expect.arrayContaining(['text', 'image', 'realtime']),
+          endpoints: {
+            image: '/v1/images/generations',
+            responses: '/v1/responses',
+          },
+          input_types: ['text', 'image'],
+          output_types: ['text'],
+          max_file_size: 10_000,
+          supports_streaming: true,
+          supports_realtime: true,
+          max_context_tokens: 128000,
+          structured_output: true,
+          pricing: { input: 2.5, output: 10 },
+        }),
+      );
     });
   });
 

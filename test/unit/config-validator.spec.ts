@@ -422,6 +422,150 @@ describe('config validator', () => {
     expect(codes(result.warnings)).not.toContain('missing_model_pricing');
   });
 
+  it('accepts v0.6 multimodal capability schema on nodes and models', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o', 'dall-e-3', 'rerank-v1', 'realtime-model'],
+            timeout_ms: 60000,
+            modalities: ['text', 'image'],
+            endpoints: {
+              image: '/v1/images/generations',
+              audio: '/v1/audio/transcriptions',
+              rerank: '/v1/rerank',
+              realtime: 'wss://api.openai.com/v1/realtime',
+            },
+            input_types: ['text', 'image', 'audio', 'documents'],
+            output_types: ['text', 'image', 'ranked_documents', 'events'],
+            max_file_size: 20_000_000,
+            supports_streaming: true,
+            supports_realtime: false,
+            supports_rerank: false,
+            model_capabilities: {
+              'gpt-4o': {
+                modalities: ['text', 'image', 'audio'],
+                supports_streaming: true,
+                pricing: { input: 2.5, output: 10 },
+              },
+              'dall-e-3': {
+                modalities: ['image'],
+                output_types: ['image'],
+                max_file_size: 10_000_000,
+                pricing: { input: 0.04, output: 0 },
+              },
+              'rerank-v1': {
+                modalities: ['rerank'],
+                supports_rerank: true,
+                endpoints: { rerank: '/v1/rerank' },
+                input_types: ['documents'],
+                output_types: ['ranked_documents'],
+                pricing: { input: 0.01, output: 0 },
+              },
+              'realtime-model': {
+                modalities: ['realtime', 'audio', 'text'],
+                supports_realtime: true,
+                endpoints: { realtime: 'wss://api.openai.com/v1/realtime' },
+                output_types: ['events'],
+                pricing: { input: 1, output: 2 },
+              },
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).toHaveLength(0);
+    expect(codes(result.warnings)).not.toContain('missing_model_pricing');
+  });
+
+  it('rejects invalid v0.6 capability schema fields', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+            modalities: ['telepathy'],
+            endpoints: { image: 'v1/images', unknown: '/v1/custom' },
+            input_types: ['text', ''],
+            output_types: 'json',
+            max_file_size: 0,
+            supports_streaming: 'yes',
+            model_capabilities: {
+              'gpt-4o': {
+                modalities: [],
+                endpoints: { realtime: 'ftp://example.com/realtime' },
+                input_types: ['text', 'telepathy'],
+                supports_realtime: 'true',
+              },
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_capability_modalities',
+        'invalid_capability_endpoints',
+        'invalid_capability_io_types',
+        'invalid_max_file_size',
+        'invalid_capability_support_flag',
+      ]),
+    );
+  });
+
   it('rejects invalid v0.3 routing optimization and capability metadata', () => {
     const result = validateConfigObject(
       {

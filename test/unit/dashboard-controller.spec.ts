@@ -43,7 +43,20 @@ function mockRepo(qb: any) {
 function makeDashboard(overrides: Record<string, any> = {}) {
   const config = mockConfigService({
     nodes: [
-      { id: 'openai', name: 'OpenAI', protocol: 'chat_completions', base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions', models: ['gpt-4o'], api_key: 'sk-test12345678rest', tags: [], model_aliases: {} },
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        protocol: 'chat_completions',
+        base_url: 'https://api.openai.com',
+        endpoint: '/v1/chat/completions',
+        embeddings_endpoint: '/v1/embeddings',
+        endpoints: { image: '/v1/images/generations' },
+        models: ['gpt-4o'],
+        embedding_models: ['text-embedding-3-small'],
+        api_key: 'sk-test12345678rest',
+        tags: [],
+        model_aliases: {},
+      },
       { id: 'claude', name: 'Claude', protocol: 'messages', base_url: 'https://api.anthropic.com', endpoint: '/v1/messages', models: ['claude-3-opus'], api_key: 'sk-ant-12345678rest', tags: [], model_aliases: {} },
     ],
     database: { type: 'sqlite', path: ':memory:', log_retention_days: 30 },
@@ -78,6 +91,15 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     getRegistry: jest.fn().mockReturnValue([]),
     getNodeCapabilities: jest.fn().mockReturnValue([]),
     resolveNodeModalities: jest.fn().mockReturnValue(['text']),
+    resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+      modalities: model.includes('embedding') ? ['text', 'embedding'] : ['text', 'image'],
+      structured_output: model.includes('embedding') ? null : true,
+      dimensions: model.includes('embedding') ? [512, 1536] : undefined,
+      supports_streaming: !model.includes('embedding'),
+      pricing: model.includes('embedding')
+        ? { input: 0.02, output: 0 }
+        : { input: 2.5, output: 10 },
+    })),
     recommendTiers: jest.fn().mockReturnValue({}),
     recommendRouting: jest.fn().mockReturnValue({}),
     ...overrides.capabilityService,
@@ -476,6 +498,26 @@ describe('DashboardController — nodes', () => {
     expect(result.nodes[0].healthy).toBe(true);
     expect(result.nodes[0].capabilities).toBeDefined();
     expect(result.nodes[0].modalities).toBeDefined();
+    expect(result.nodes[0].embedding_models).toEqual(['text-embedding-3-small']);
+    expect(result.nodes[0].endpoints).toEqual(
+      expect.objectContaining({
+        default: '/v1/chat/completions',
+        embeddings: '/v1/embeddings',
+        image: '/v1/images/generations',
+      }),
+    );
+    expect(result.nodes[0].model_capabilities['gpt-4o']).toEqual(
+      expect.objectContaining({
+        modalities: ['text', 'image'],
+        supports_streaming: true,
+      }),
+    );
+    expect(result.nodes[0].model_capabilities['text-embedding-3-small']).toEqual(
+      expect.objectContaining({
+        modalities: ['text', 'embedding'],
+        dimensions: [512, 1536],
+      }),
+    );
     expect(result.nodes[0].concurrency).toEqual(
       expect.objectContaining({ active: 0, queued: 0 }),
     );

@@ -14,8 +14,15 @@ import {
   VALID_CAPABILITY_IDS,
   CapabilityDefinition,
 } from './capabilities';
-import { ModelPricing, NodeConfig, RouteTarget } from './gateway.config';
 import {
+  ModelCapabilityConfig,
+  ModelPricing,
+  NodeConfig,
+  RouteTarget,
+} from './gateway.config';
+import {
+  CapabilityEndpoint,
+  CapabilityIOType,
   Modality,
   inferModelModalities,
   DEFAULT_MODALITIES,
@@ -36,6 +43,14 @@ export interface RoutingRecommendation {
 }
 
 export interface ResolvedModelRoutingCapabilities {
+  modalities: Modality[];
+  endpoints?: Partial<Record<CapabilityEndpoint, string>>;
+  input_types?: (CapabilityIOType | string)[];
+  output_types?: (CapabilityIOType | string)[];
+  max_file_size?: number;
+  supports_streaming?: boolean;
+  supports_realtime?: boolean;
+  supports_rerank?: boolean;
   max_context_tokens?: number;
   structured_output: boolean | null;
   dimensions?: number | number[];
@@ -185,30 +200,30 @@ export class CapabilityService {
   /**
    * Resolve supported modalities for a node.
    *
-   * Three-layer resolution (in priority order):
-   *   1. Explicit `node.modalities` config — direct return
-   *   2. Model-name inference — merge modalities from all models in the node
-   *   3. Capability fallback — node has 'vision' capability → add vision
-   *   4. Default — ['text']
+   * Resolution merges node-level declarations, model-level overrides, embedding
+   * model declarations, model-name inference, and legacy capability fallback.
    */
   resolveNodeModalities(nodeId: string): Modality[] {
     const node = this.config.getNode(nodeId);
     if (!node) return [...DEFAULT_MODALITIES];
 
-    // 1. Explicit modalities config (highest priority)
+    const modalities = new Set<Modality>();
+
     if (node.modalities && node.modalities.length > 0) {
-      return node.modalities;
+      for (const modality of node.modalities) modalities.add(modality);
     }
 
-    // 2. Model-name inference — union of all models' inferred modalities
-    const modalities = new Set<Modality>(['text']);
-    let anyInferred = false;
+    const modelIds = [
+      ...(node.models || []),
+      ...(node.embedding_models || []),
+    ];
+    let anyInferred = modalities.size > 0;
 
-    for (const model of node.models) {
-      const inferred = inferModelModalities(model);
-      if (inferred) {
+    for (const model of modelIds) {
+      const modelModalities = this.resolveModelModalities(nodeId, model);
+      if (modelModalities.length > 0) {
         anyInferred = true;
-        for (const m of inferred) {
+        for (const m of modelModalities) {
           modalities.add(m);
         }
       }
@@ -218,14 +233,12 @@ export class CapabilityService {
       return Array.from(modalities);
     }
 
-    // 3. Capability fallback — check if node has 'vision' capability
     const caps = this.getNodeCapabilities(nodeId);
     if (caps.includes('vision')) {
       modalities.add('vision');
       return Array.from(modalities);
     }
 
-    // 4. Default: text-only
     return [...DEFAULT_MODALITIES];
   }
 
@@ -234,34 +247,72 @@ export class CapabilityService {
    * More precise than resolveNodeModalities — checks the specific model.
    *
    * Resolution:
-   *   1. Explicit `node.modalities` — direct return
-   *   2. Specific model-name inference
-   *   3. Capability fallback
-   *   4. Default — ['text']
+   *   1. Explicit model_capabilities[model].modalities
+   *   2. Explicit node.modalities
+   *   3. Endpoint/support flags that imply embedding/rerank/realtime
+   *   4. Specific model-name inference
+   *   5. Capability fallback
+   *   6. Default — ['text']
    */
   resolveModelModalities(nodeId: string, model: string): Modality[] {
     const node = this.config.getNode(nodeId);
     if (!node) return [...DEFAULT_MODALITIES];
+    const modelCapability = node.model_capabilities?.[model];
 
-    // 1. Explicit modalities config (highest priority)
-    if (node.modalities && node.modalities.length > 0) {
-      return node.modalities;
+    if (modelCapability?.modalities && modelCapability.modalities.length > 0) {
+      return this.withImpliedModalities(
+        modelCapability.modalities,
+        node,
+        model,
+        modelCapability,
+        false,
+      );
     }
 
-    // 2. Specific model-name inference
+    if (node.modalities && node.modalities.length > 0) {
+      return this.withImpliedModalities(
+        node.modalities,
+        node,
+        model,
+        modelCapability,
+        false,
+      );
+    }
+
+    const implied = this.impliedModalities(node, model, modelCapability, true);
+    if (implied.length > 0) {
+      return implied;
+    }
+
     const inferred = inferModelModalities(model);
     if (inferred) {
-      return inferred;
+      return this.withImpliedModalities(
+        inferred,
+        node,
+        model,
+        modelCapability,
+        false,
+      );
     }
 
-    // 3. Capability fallback
     const caps = this.getNodeCapabilities(nodeId);
     if (caps.includes('vision')) {
-      return ['text', 'vision'];
+      return this.withImpliedModalities(
+        ['text', 'vision'],
+        node,
+        model,
+        modelCapability,
+        false,
+      );
     }
 
-    // 4. Default: text-only
-    return [...DEFAULT_MODALITIES];
+    return this.withImpliedModalities(
+      DEFAULT_MODALITIES,
+      node,
+      model,
+      modelCapability,
+      false,
+    );
   }
 
   /** Resolve v0.3 routing metadata for a node/model target. */
@@ -271,8 +322,30 @@ export class CapabilityService {
   ): ResolvedModelRoutingCapabilities {
     const node = this.config.getNode(nodeId);
     const modelCapability = node?.model_capabilities?.[model];
+    const endpoints =
+      node || modelCapability
+        ? {
+            ...(node?.endpoints || {}),
+            ...(modelCapability?.endpoints || {}),
+          }
+        : {};
+    const resolvedEndpoints = Object.keys(endpoints).length > 0
+      ? endpoints
+      : undefined;
 
     return {
+      modalities: this.resolveModelModalities(nodeId, model),
+      endpoints: resolvedEndpoints,
+      input_types: modelCapability?.input_types ?? node?.input_types,
+      output_types: modelCapability?.output_types ?? node?.output_types,
+      max_file_size:
+        modelCapability?.max_file_size ?? node?.max_file_size,
+      supports_streaming:
+        modelCapability?.supports_streaming ?? node?.supports_streaming,
+      supports_realtime:
+        modelCapability?.supports_realtime ?? node?.supports_realtime,
+      supports_rerank:
+        modelCapability?.supports_rerank ?? node?.supports_rerank,
       max_context_tokens:
         modelCapability?.max_context_tokens ?? node?.max_context_tokens,
       structured_output:
@@ -333,5 +406,78 @@ export class CapabilityService {
       { tier: 'complex', score: 0.5, suitable: true, label: 'Good fit' },
       { tier: 'reasoning', score: 0.25, suitable: false, label: 'Not recommended' },
     ];
+  }
+
+  private withImpliedModalities(
+    configured: readonly Modality[],
+    node: NodeConfig,
+    model: string,
+    modelCapability?: ModelCapabilityConfig,
+    includeNodeDefaults = false,
+  ): Modality[] {
+    const modalities = new Set<Modality>(configured);
+    for (const modality of this.impliedModalities(
+      node,
+      model,
+      modelCapability,
+      includeNodeDefaults,
+    )) {
+      modalities.add(modality);
+    }
+    return Array.from(modalities);
+  }
+
+  private impliedModalities(
+    node: NodeConfig,
+    model: string,
+    modelCapability?: ModelCapabilityConfig,
+    includeNodeDefaults = false,
+  ): Modality[] {
+    const modalities = new Set<Modality>();
+    if (
+      node.embedding_models?.includes(model) ||
+      modelCapability?.dimensions !== undefined
+    ) {
+      modalities.add('text');
+      modalities.add('embedding');
+    }
+
+    const inputTypes = [
+      ...(includeNodeDefaults ? (node.input_types || []) : []),
+      ...(modelCapability?.input_types || []),
+    ];
+    const outputTypes = [
+      ...(includeNodeDefaults ? (node.output_types || []) : []),
+      ...(modelCapability?.output_types || []),
+    ];
+    if (inputTypes.includes('image') || outputTypes.includes('image')) {
+      modalities.add('image');
+    }
+    if (inputTypes.includes('audio') || outputTypes.includes('audio')) {
+      modalities.add('audio');
+    }
+    if (inputTypes.includes('embedding') || outputTypes.includes('embedding')) {
+      modalities.add('embedding');
+    }
+
+    const endpoints = modelCapability?.endpoints || {};
+    if (endpoints.image) modalities.add('image');
+    if (endpoints.audio) modalities.add('audio');
+    if (
+      endpoints.rerank ||
+      modelCapability?.supports_rerank ||
+      (includeNodeDefaults && node.supports_rerank)
+    ) {
+      modalities.add('rerank');
+    }
+    if (
+      endpoints.realtime ||
+      modelCapability?.supports_realtime ||
+      (includeNodeDefaults && node.supports_realtime)
+    ) {
+      modalities.add('realtime');
+    }
+
+    return Array.from(modalities);
   }
 }

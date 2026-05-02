@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.6 unified multimodal capability schema for node/model declarations, covering modalities, endpoint maps, input/output types, file-size limits, streaming, realtime, rerank, and pricing metadata.
+- Smart-routing modality filtering that removes incompatible node:model targets for image/audio-style requests while preserving legacy `vision` compatibility.
+- Read-only Dashboard Nodes and Routing capability summaries for per-model modalities, streaming/realtime/rerank flags, context windows, dimensions, file-size limits, and pricing hints.
+- Config validation and docs for v0.6 capability fields, endpoint maps, and multimodal model metadata.
 
 ## 0.5.0 - 2026-05-02
 

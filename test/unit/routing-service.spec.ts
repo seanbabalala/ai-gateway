@@ -116,9 +116,9 @@ describe('RoutingService', () => {
     expect(decision.fallbacks).toHaveLength(1);
   });
 
-  // ── Modality reordering ──────────────────────────────────
+  // ── Modality filtering ───────────────────────────────────
 
-  it('should reorder targets based on modality compatibility', () => {
+  it('should filter targets based on modality compatibility', () => {
     const capabilityService = {
       resolveModelModalities: jest.fn().mockImplementation((_nodeId: string, model: string) => {
         if (model === 'fast-model') return ['text']; // n1 doesn't support vision
@@ -128,8 +128,34 @@ describe('RoutingService', () => {
     const svc = makeRoutingService({ capabilityService });
     const decision = svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'vision']);
 
-    // n2 supports vision, should be promoted over n1
+    // n2 supports vision, n1 is removed rather than kept as a fallback
     expect(decision.primary.node).toBe('n2');
+    expect(decision.fallbacks).toHaveLength(0);
+  });
+
+  it('should treat configured image modality as compatible with legacy vision hints', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockImplementation((_nodeId: string, model: string) => {
+        if (model === 'fast-model') return ['text'];
+        return ['text', 'image'];
+      }),
+    };
+    const svc = makeRoutingService({ capabilityService });
+    const decision = svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'vision']);
+
+    expect(decision.primary.node).toBe('n2');
+    expect(decision.fallbacks).toHaveLength(0);
+  });
+
+  it('should reject automatic routes when no target supports required modalities', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+    };
+    const svc = makeRoutingService({ capabilityService });
+
+    expect(() =>
+      svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'audio']),
+    ).toThrow('No route targets for tier "simple" support required modalities');
   });
 
   // ── Domain hint (explicit config) ────────────────────────
