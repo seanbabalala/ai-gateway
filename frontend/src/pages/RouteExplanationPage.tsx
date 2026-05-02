@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -40,35 +42,60 @@ import type {
 
 const LIMIT = 15
 
-const tierOptions = [
-  { value: '', label: 'All tiers' },
-  { value: 'simple', label: 'Simple' },
-  { value: 'standard', label: 'Standard' },
-  { value: 'complex', label: 'Complex' },
-  { value: 'reasoning', label: 'Reasoning' },
-  { value: 'direct', label: 'Direct' },
-]
+function tierOptions(t: TFunction) {
+  return [
+    { value: '', label: t('routeExplanation.filters.allTiers') },
+    { value: 'simple', label: t('tiers.simple') },
+    { value: 'standard', label: t('tiers.standard') },
+    { value: 'complex', label: t('tiers.complex') },
+    { value: 'reasoning', label: t('tiers.reasoning') },
+    { value: 'direct', label: t('routeExplanation.tiers.direct') },
+  ]
+}
 
-const sourceOptions = [
-  { value: '', label: 'All sources' },
-  { value: 'chat_completions', label: 'Chat Completions' },
-  { value: 'responses', label: 'Responses' },
-  { value: 'messages', label: 'Messages' },
-  { value: 'embeddings', label: 'Embeddings' },
-]
+function sourceOptions(t: TFunction) {
+  return [
+    { value: '', label: t('routeExplanation.filters.allSources') },
+    { value: 'chat_completions', label: t('routeExplanation.sources.chat_completions') },
+    { value: 'responses', label: t('routeExplanation.sources.responses') },
+    { value: 'messages', label: t('routeExplanation.sources.messages') },
+    { value: 'embeddings', label: t('routeExplanation.sources.embeddings') },
+    { value: 'rerank', label: t('routeExplanation.sources.rerank') },
+    { value: 'images', label: t('routeExplanation.sources.images') },
+    { value: 'audio', label: t('routeExplanation.sources.audio') },
+  ]
+}
 
 function formatScore(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return '-'
   return value.toFixed(3)
 }
 
-function formatTarget(target?: RouteDecisionTarget | null) {
-  if (!target?.node && !target?.model) return 'none'
-  return `${target.node || 'unknown'} / ${target.model || 'unknown'}`
+function formatTarget(target: RouteDecisionTarget | null | undefined, t: TFunction) {
+  if (!target?.node && !target?.model) return t('routeExplanation.values.none')
+  return `${target.node || t('routeExplanation.values.unknown')} / ${target.model || t('routeExplanation.values.unknown')}`
 }
 
-function formatReason(reason?: string | null) {
-  return reason ? reason.replaceAll('_', ' ') : 'none'
+function formatReason(reason: string | null | undefined, t: TFunction) {
+  if (!reason) return t('routeExplanation.values.none')
+  const normalized = reason.replaceAll('-', '_')
+  return t(`routeExplanation.reasons.${normalized}`, {
+    defaultValue: reason.replaceAll('_', ' '),
+  })
+}
+
+function formatSourceFormat(source: string | null | undefined, t: TFunction) {
+  if (!source) return t('routeExplanation.values.unknown')
+  const normalized = source.replaceAll('-', '_')
+  return t(`routeExplanation.sources.${normalized}`, {
+    defaultValue: source.replaceAll('_', ' '),
+  })
+}
+
+function formatContextFit(fit: RouteDecisionCandidate['metrics']['context_fit'], t: TFunction) {
+  return t(`routeExplanation.contextFit.${fit}`, {
+    defaultValue: fit.replaceAll('_', ' '),
+  })
 }
 
 function contextBadge(fit: RouteDecisionCandidate['metrics']['context_fit']) {
@@ -137,6 +164,7 @@ function SummaryTile({
 }
 
 function PrivacyBadge({ trace }: { trace: RouteDecisionTrace }) {
+  const { t } = useTranslation('logs')
   const safe =
     trace.privacy.prompt === false &&
     trace.privacy.response === false &&
@@ -146,18 +174,20 @@ function PrivacyBadge({ trace }: { trace: RouteDecisionTrace }) {
   return (
     <Badge variant={safe ? 'emerald' : 'amber'} className="gap-1.5">
       <ShieldCheck className="h-3 w-3" />
-      {safe ? 'Metadata only' : 'Review privacy flags'}
+      {safe ? t('routeExplanation.privacy.metadataOnly') : t('routeExplanation.privacy.reviewFlags')}
     </Badge>
   )
 }
 
 function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }) {
+  const { t } = useTranslation('logs')
+
   if (candidates.length === 0) {
     return (
       <EmptyState
         icon={GitFork}
-        title="No candidates recorded"
-        description="The request was logged before route trace details were available."
+        title={t('routeExplanation.empty.noCandidatesTitle')}
+        description={t('routeExplanation.empty.noCandidatesDescription')}
       />
     )
   }
@@ -166,13 +196,13 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Candidate</TableHead>
-          <TableHead>Circuit</TableHead>
-          <TableHead>Decision</TableHead>
-          <TableHead>Tradeoff scores</TableHead>
-          <TableHead className="text-right">Cost</TableHead>
-          <TableHead className="text-right">Latency</TableHead>
-          <TableHead>Context</TableHead>
+          <TableHead>{t('routeExplanation.table.candidate')}</TableHead>
+          <TableHead>{t('routeExplanation.table.circuit')}</TableHead>
+          <TableHead>{t('routeExplanation.table.decision')}</TableHead>
+          <TableHead>{t('routeExplanation.table.tradeoffScores')}</TableHead>
+          <TableHead className="text-right">{t('routeExplanation.table.cost')}</TableHead>
+          <TableHead className="text-right">{t('routeExplanation.table.latency')}</TableHead>
+          <TableHead>{t('routeExplanation.table.context')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -189,7 +219,7 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
               </div>
               {candidate.weight !== null && (
                 <div className="mt-1 text-[10px] font-medium text-[var(--foreground-dim)]">
-                  weight {candidate.weight}
+                  {t('routeExplanation.table.weight', { value: candidate.weight })}
                 </div>
               )}
             </TableCell>
@@ -200,17 +230,17 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap gap-1.5">
-                {candidate.selected && <Badge variant="emerald">selected</Badge>}
-                {candidate.fallback && <Badge variant="blue">fallback</Badge>}
+                {candidate.selected && <Badge variant="emerald">{t('routeExplanation.badges.selected')}</Badge>}
+                {candidate.fallback && <Badge variant="blue">{t('routeExplanation.badges.fallback')}</Badge>}
                 {!candidate.selected && !candidate.fallback && (
-                  <Badge variant="zinc">filtered</Badge>
+                  <Badge variant="zinc">{t('routeExplanation.badges.filtered')}</Badge>
                 )}
               </div>
               {candidate.filter_reasons.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {candidate.filter_reasons.map((reason) => (
                     <Badge key={reason} variant="amber">
-                      {formatReason(reason)}
+                      {formatReason(reason, t)}
                     </Badge>
                   ))}
                 </div>
@@ -218,9 +248,9 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
             </TableCell>
             <TableCell>
               <div className="grid gap-2 sm:grid-cols-3">
-                <ScoreMeter label="cost" value={candidate.scores.cost} />
-                <ScoreMeter label="latency" value={candidate.scores.latency} />
-                <ScoreMeter label="context" value={candidate.scores.context} />
+                <ScoreMeter label={t('routeExplanation.scores.cost')} value={candidate.scores.cost} />
+                <ScoreMeter label={t('routeExplanation.scores.latency')} value={candidate.scores.latency} />
+                <ScoreMeter label={t('routeExplanation.scores.context')} value={candidate.scores.context} />
               </div>
             </TableCell>
             <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
@@ -234,17 +264,17 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                 : formatLatency(candidate.metrics.avg_latency_ms)}
               {candidate.metrics.p95_latency_ms !== null && (
                 <div className="text-[10px] text-[var(--foreground-dim)]">
-                  p95 {formatLatency(candidate.metrics.p95_latency_ms)}
+                  {t('routeExplanation.table.p95', { value: formatLatency(candidate.metrics.p95_latency_ms) })}
                 </div>
               )}
             </TableCell>
             <TableCell>
               <Badge variant={contextBadge(candidate.metrics.context_fit)}>
-                {candidate.metrics.context_fit.replaceAll('_', ' ')}
+                {formatContextFit(candidate.metrics.context_fit, t)}
               </Badge>
               {candidate.metrics.max_context_tokens !== null && (
                 <div className="mt-1 font-mono text-[10px] text-[var(--foreground-dim)]">
-                  max {candidate.metrics.max_context_tokens.toLocaleString()}
+                  {t('routeExplanation.table.maxContext', { value: candidate.metrics.max_context_tokens.toLocaleString() })}
                 </div>
               )}
             </TableCell>
@@ -256,10 +286,12 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
 }
 
 function FilterList({ filters }: { filters: RouteDecisionFilter[] }) {
+  const { t } = useTranslation('logs')
+
   if (filters.length === 0) {
     return (
       <div className="rounded-lg bg-[var(--inset-bg)] px-4 py-3 text-[12px] font-medium text-[var(--foreground-dim)]">
-        No target was removed by routing constraints.
+        {t('routeExplanation.empty.noFilteredTargets')}
       </div>
     )
   }
@@ -278,7 +310,7 @@ function FilterList({ filters }: { filters: RouteDecisionFilter[] }) {
             <Badge variant="zinc">{filter.stage}</Badge>
           </div>
           <div className="mt-1 text-[12px] text-[var(--foreground-muted)]">
-            {filter.reason}
+            {formatReason(filter.reason, t)}
           </div>
         </div>
       ))}
@@ -287,6 +319,7 @@ function FilterList({ filters }: { filters: RouteDecisionFilter[] }) {
 }
 
 function RouteDecisionDetail({ requestId }: { requestId: string }) {
+  const { t } = useTranslation('logs')
   const { data, isLoading, isError, error, refetch } = useRouteDecision(requestId)
 
   if (isError) {
@@ -296,7 +329,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Route Explanation" description={requestId} icon={Route} />
+        <PageHeader title={t('routeExplanation.title')} description={requestId} icon={Route} />
         <SkeletonTable rows={6} cols={5} />
       </div>
     )
@@ -306,8 +339,8 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
     return (
       <EmptyState
         icon={Route}
-        title="Route decision not found"
-        description="The request id has no route decision row."
+        title={t('routeExplanation.empty.notFoundTitle')}
+        description={t('routeExplanation.empty.notFoundDescription')}
       />
     )
   }
@@ -317,15 +350,15 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Route Explanation"
+        title={t('routeExplanation.title')}
         description={data.request_id}
         icon={Route}
-        badge={<Badge variant="gold">Read only</Badge>}
+        badge={<Badge variant="gold">{t('routeExplanation.readOnly')}</Badge>}
       >
         <Link to="/route-decisions">
           <Button variant="outline" size="sm">
             <ArrowLeft className="h-3.5 w-3.5" />
-            All decisions
+            {t('routeExplanation.actions.allDecisions')}
           </Button>
         </Link>
       </PageHeader>
@@ -335,8 +368,8 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
           <CardContent className="pt-5">
             <EmptyState
               icon={Info}
-              title="No trace body available"
-              description="This row has summary metadata but no detailed trace JSON."
+              title={t('routeExplanation.empty.noTraceTitle')}
+              description={t('routeExplanation.empty.noTraceDescription')}
             />
           </CardContent>
         </CardStatic>
@@ -344,25 +377,27 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <SummaryTile
-              label="Final selection"
+              label={t('routeExplanation.summary.finalSelection')}
               value={formatTarget({
                 node: trace.final_selection.node || data.selected.node,
                 model: trace.final_selection.model || data.selected.model,
-              })}
-              detail={trace.final_selection.reason}
+              }, t)}
+              detail={formatReason(trace.final_selection.reason, t)}
             />
             <SummaryTile
-              label="Strategy"
+              label={t('routeExplanation.summary.strategy')}
               value={trace.load_balancing.strategy}
-              detail={`${trace.load_balancing.source} source`}
+              detail={t('routeExplanation.summary.strategySource', { source: trace.load_balancing.source })}
             />
             <SummaryTile
-              label="Score"
+              label={t('routeExplanation.summary.score')}
               value={formatScore(trace.score)}
-              detail={`${trace.tier} tier`}
+              detail={t('routeExplanation.summary.tierDetail', {
+                tier: t(`tiers.${trace.tier}`, { defaultValue: trace.tier }),
+              })}
             />
             <SummaryTile
-              label="Outcome"
+              label={t('routeExplanation.summary.outcome')}
               value={String(trace.outcome?.status_code ?? data.status_code)}
               detail={trace.outcome?.error || data.fallback_reason}
             />
@@ -371,9 +406,11 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
           <CardStatic>
             <CardHeader className="flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle>Decision Path</CardTitle>
+                <CardTitle>{t('routeExplanation.sections.decisionPath')}</CardTitle>
                 <div className="mt-1 text-[12px] text-[var(--foreground-dim)]">
-                  {trace.load_balancing.reason || data.summary.reason || 'No route reason recorded.'}
+                  {trace.load_balancing.reason || data.summary.reason
+                    ? formatReason(trace.load_balancing.reason || data.summary.reason, t)
+                    : t('routeExplanation.empty.noRouteReason')}
                 </div>
               </div>
               <PrivacyBadge trace={trace} />
@@ -382,32 +419,36 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg bg-[var(--inset-bg)] p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
-                    Source
+                    {t('routeExplanation.detail.source')}
                   </div>
                   <div className="mt-1 font-mono text-[12px] text-[var(--foreground)]">
-                    {trace.source_format || data.source_format}
+                    {formatSourceFormat(trace.source_format || data.source_format, t)}
                   </div>
                 </div>
                 <div className="rounded-lg bg-[var(--inset-bg)] p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
-                    Domain hints
+                    {t('routeExplanation.detail.domainHints')}
                   </div>
                   <div className="mt-1 font-mono text-[12px] text-[var(--foreground)]">
-                    {trace.domain_hints.domain || 'none'}
+                    {trace.domain_hints.domain || t('routeExplanation.values.none')}
                   </div>
                   <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
-                    {trace.domain_hints.modalities.join(', ') || 'no modalities'}
+                    {trace.domain_hints.modalities.join(', ') || t('routeExplanation.values.noModalities')}
                   </div>
                 </div>
                 <div className="rounded-lg bg-[var(--inset-bg)] p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
-                    Constraints
+                    {t('routeExplanation.detail.constraints')}
                   </div>
                   <div className="mt-1 font-mono text-[12px] text-[var(--foreground)]">
-                    context {trace.constraints.estimated_context_tokens?.toLocaleString() || 'unknown'}
+                    {t('routeExplanation.detail.contextTokens', {
+                      value: trace.constraints.estimated_context_tokens?.toLocaleString() || t('routeExplanation.values.unknown'),
+                    })}
                   </div>
                   <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
-                    structured output {trace.constraints.requires_structured_output ? 'required' : 'not required'}
+                    {trace.constraints.requires_structured_output
+                      ? t('routeExplanation.detail.structuredOutputRequired')
+                      : t('routeExplanation.detail.structuredOutputNotRequired')}
                   </div>
                 </div>
               </div>
@@ -416,7 +457,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
 
           <CardStatic>
             <CardHeader>
-              <CardTitle>Candidate Models</CardTitle>
+              <CardTitle>{t('routeExplanation.sections.candidateModels')}</CardTitle>
             </CardHeader>
             <CardContent>
               <CandidateTable candidates={trace.candidate_targets} />
@@ -427,7 +468,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
             <CardStatic>
               <CardHeader className="flex-row items-center gap-2">
                 <Filter className="h-4 w-4 text-[var(--accent)]" />
-                <CardTitle>Filtered Targets</CardTitle>
+                <CardTitle>{t('routeExplanation.sections.filteredTargets')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <FilterList filters={trace.filters} />
@@ -436,16 +477,18 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
 
             <CardStatic>
               <CardHeader>
-                <CardTitle>Fallback Chain</CardTitle>
+                <CardTitle>{t('routeExplanation.sections.fallbackChain')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-1.5">
                   <Badge variant={trace.final_selection.is_fallback ? 'amber' : 'emerald'}>
-                    {trace.final_selection.is_fallback ? 'fallback used' : 'primary selected'}
+                    {trace.final_selection.is_fallback
+                      ? t('routeExplanation.badges.fallbackUsed')
+                      : t('routeExplanation.badges.primarySelected')}
                   </Badge>
                   {trace.final_selection.fallback_reason && (
                     <Badge variant="amber">
-                      {formatReason(trace.final_selection.fallback_reason)}
+                      {formatReason(trace.final_selection.fallback_reason, t)}
                     </Badge>
                   )}
                 </div>
@@ -453,17 +496,20 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
                 {trace.cost_downgrade?.applied && (
                   <div className="rounded-lg border border-amber-500/15 bg-amber-500/8 px-3 py-2.5">
                     <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                      Cost downgrade
+                      {t('routeExplanation.costDowngrade.title')}
                     </div>
                     <div className="mt-1 font-mono text-[11px] text-[var(--foreground-muted)]">
-                      {formatTarget(trace.cost_downgrade.from)} to {formatTarget(trace.cost_downgrade.to)}
+                      {t('routeExplanation.costDowngrade.path', {
+                        from: formatTarget(trace.cost_downgrade.from, t),
+                        to: formatTarget(trace.cost_downgrade.to, t),
+                      })}
                     </div>
                   </div>
                 )}
 
                 {trace.fallback_chain.length === 0 ? (
                   <div className="rounded-lg bg-[var(--inset-bg)] px-3 py-2.5 text-[12px] text-[var(--foreground-dim)]">
-                    No fallback target was kept after routing constraints.
+                    {t('routeExplanation.empty.noFallbackTarget')}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -472,7 +518,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
                         key={`${target.node}:${target.model}`}
                         className="rounded-lg bg-[var(--inset-bg)] px-3 py-2.5 font-mono text-[11px] text-[var(--foreground-muted)]"
                       >
-                        {formatTarget(target)}
+                        {formatTarget(target, t)}
                       </div>
                     ))}
                   </div>
@@ -487,6 +533,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
 }
 
 function RouteDecisionList() {
+  const { t } = useTranslation('logs')
   const [page, setPage] = useState(1)
   const [tierFilter, setTierFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
@@ -500,16 +547,16 @@ function RouteDecisionList() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Route Explanation"
-        description="Read-only routing decisions"
+        title={t('routeExplanation.title')}
+        description={t('routeExplanation.description')}
         icon={Route}
-        badge={<Badge variant="gold">Read only</Badge>}
+        badge={<Badge variant="gold">{t('routeExplanation.readOnly')}</Badge>}
       />
 
       <CardStatic className="animate-fade-up p-4">
         <div className="flex flex-wrap items-center gap-3">
           <Select
-            options={tierOptions}
+            options={tierOptions(t)}
             value={tierFilter}
             onChange={(value) => {
               setTierFilter(value)
@@ -518,7 +565,7 @@ function RouteDecisionList() {
             className="w-36"
           />
           <Select
-            options={sourceOptions}
+            options={sourceOptions(t)}
             value={sourceFilter}
             onChange={(value) => {
               setSourceFilter(value)
@@ -527,7 +574,7 @@ function RouteDecisionList() {
             className="w-44"
           />
           <Input
-            placeholder="Filter by selected node..."
+            placeholder={t('routeExplanation.filters.nodePlaceholder')}
             value={nodeFilter}
             onChange={(event) => {
               setNodeFilter(event.target.value)
@@ -536,7 +583,7 @@ function RouteDecisionList() {
             className="w-56"
           />
           <div className="ml-auto font-mono text-[11px] text-[var(--foreground-dim)]">
-            {data?.pagination ? `${data.pagination.total} decisions` : '...'}
+            {data?.pagination ? t('routeExplanation.pagination.totalDecisions', { count: data.pagination.total }) : '...'}
           </div>
         </div>
       </CardStatic>
@@ -549,22 +596,22 @@ function RouteDecisionList() {
         ) : !data?.data.length ? (
           <EmptyState
             icon={Route}
-            title="No route decisions"
-            description="Route decision rows appear after requests complete."
+            title={t('routeExplanation.empty.noDecisionsTitle')}
+            description={t('routeExplanation.empty.noDecisionsDescription')}
           />
         ) : (
           <>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Tier</TableHead>
-                  <TableHead>Selected</TableHead>
-                  <TableHead>Evidence</TableHead>
-                  <TableHead>Fallback</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead>{t('routeExplanation.table.time')}</TableHead>
+                  <TableHead>{t('routeExplanation.table.source')}</TableHead>
+                  <TableHead>{t('routeExplanation.table.tier')}</TableHead>
+                  <TableHead>{t('routeExplanation.table.selectedTarget')}</TableHead>
+                  <TableHead>{t('routeExplanation.table.evidence')}</TableHead>
+                  <TableHead>{t('routeExplanation.table.fallback')}</TableHead>
+                  <TableHead>{t('routeExplanation.table.status')}</TableHead>
+                  <TableHead className="text-right">{t('routeExplanation.table.action')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -574,7 +621,7 @@ function RouteDecisionList() {
                       {formatTimestamp(decision.timestamp)}
                     </TableCell>
                     <TableCell className="font-mono text-[11px] text-[var(--foreground-muted)]">
-                      {decision.source_format}
+                      {formatSourceFormat(decision.source_format, t)}
                     </TableCell>
                     <TableCell>
                       <TierBadge tier={decision.tier} />
@@ -591,24 +638,24 @@ function RouteDecisionList() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1.5">
-                        <Badge variant="blue">{decision.candidate_count} candidates</Badge>
+                        <Badge variant="blue">{t('routeExplanation.count.candidates', { count: decision.candidate_count })}</Badge>
                         <Badge variant={decision.filtered_count > 0 ? 'amber' : 'zinc'}>
-                          {decision.filtered_count} filtered
+                          {t('routeExplanation.count.filtered', { count: decision.filtered_count })}
                         </Badge>
                       </div>
                       {decision.summary.reason && (
                         <div className="mt-1 max-w-[300px] truncate text-[11px] text-[var(--foreground-dim)]">
-                          {decision.summary.reason}
+                          {formatReason(decision.summary.reason, t)}
                         </div>
                       )}
                     </TableCell>
                     <TableCell>
                       <Badge variant={decision.is_fallback ? 'amber' : 'emerald'}>
-                        {decision.is_fallback ? 'yes' : 'no'}
+                        {decision.is_fallback ? t('common.yes') : t('common.no')}
                       </Badge>
                       {decision.fallback_reason && (
                         <div className="mt-1 text-[10px] text-[var(--foreground-dim)]">
-                          {formatReason(decision.fallback_reason)}
+                          {formatReason(decision.fallback_reason, t)}
                         </div>
                       )}
                     </TableCell>
@@ -627,7 +674,7 @@ function RouteDecisionList() {
                     <TableCell className="text-right">
                       <Link to={`/route-decisions/${encodeURIComponent(decision.request_id)}`}>
                         <Button variant="ghost" size="sm">
-                          Explain
+                          {t('routeExplanation.actions.explain')}
                         </Button>
                       </Link>
                     </TableCell>
@@ -639,7 +686,10 @@ function RouteDecisionList() {
             {data.pagination.totalPages > 1 && (
               <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3">
                 <div className="font-mono text-[11px] text-[var(--foreground-dim)]">
-                  Page {data.pagination.page} of {data.pagination.totalPages}
+                  {t('routeExplanation.pagination.pageOf', {
+                    page: data.pagination.page,
+                    totalPages: data.pagination.totalPages,
+                  })}
                 </div>
                 <div className="flex gap-1.5">
                   <Button
@@ -648,7 +698,7 @@ function RouteDecisionList() {
                     disabled={page <= 1}
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                   >
-                    Previous
+                    {t('pagination.prev')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -656,7 +706,7 @@ function RouteDecisionList() {
                     disabled={page >= data.pagination.totalPages}
                     onClick={() => setPage((current) => current + 1)}
                   >
-                    Next
+                    {t('pagination.next')}
                   </Button>
                 </div>
               </div>
@@ -667,7 +717,7 @@ function RouteDecisionList() {
 
       <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--inset-bg)] px-4 py-3 text-[12px] text-[var(--foreground-dim)]">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--accent)]" />
-        Route explanations are read-only and never expose prompts, responses, raw headers, or provider keys.
+        {t('routeExplanation.privacy.footer')}
       </div>
     </div>
   )

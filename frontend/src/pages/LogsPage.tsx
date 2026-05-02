@@ -53,7 +53,7 @@ function LogDetailRow({ log }: { log: CallLog }) {
             <span className="font-mono text-[var(--foreground-muted)]">{log.api_key_name ?? t('common.na')}</span>
           </div>
           <div>
-            <span className="text-[var(--foreground-dim)]">Namespace: </span>
+            <span className="text-[var(--foreground-dim)]">{t('detail.namespace')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">{log.namespace_id ?? t('common.na')}</span>
           </div>
           <div>
@@ -151,7 +151,7 @@ export function LogsPage() {
     ...(apiKeysData?.items || []).map((key) => ({ value: key.id, label: key.name })),
   ]
   const namespaceOptions = [
-    { value: '', label: 'All namespaces' },
+    { value: '', label: t('filters.allNamespaces') },
     ...(namespacesData?.namespaces || []).map((namespace) => ({
       value: namespace.id,
       label: namespace.name || namespace.id,

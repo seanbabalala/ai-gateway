@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   RefreshCw,
   RotateCcw,
@@ -124,21 +125,23 @@ function formatFileSize(bytes: number): string {
   return `${bytes}B`
 }
 
-function dimensionsLabel(dimensions: number | number[]): string {
+function dimensionsLabel(dimensions: number | number[], t: TFunction): string {
   return Array.isArray(dimensions)
-    ? `dim ${dimensions.slice(0, 3).join('/')}${dimensions.length > 3 ? '+' : ''}`
-    : `dim ${dimensions}`
+    ? t('capabilityTokens.dimensions', {
+        value: `${dimensions.slice(0, 3).join('/')}${dimensions.length > 3 ? '+' : ''}`,
+      })
+    : t('capabilityTokens.dimensions', { value: dimensions })
 }
 
-function capabilityTokens(capability?: ModelCapabilityInfo): string[] {
+function capabilityTokens(capability: ModelCapabilityInfo | undefined, t: TFunction): string[] {
   if (!capability) return []
   const tokens: string[] = []
-  if (capability.supports_streaming) tokens.push('stream')
-  if (capability.supports_realtime) tokens.push('realtime')
-  if (capability.supports_rerank) tokens.push('rerank')
-  if (capability.max_context_tokens) tokens.push(`${formatLargeNumber(capability.max_context_tokens)} ctx`)
-  if (capability.max_file_size) tokens.push(`${formatFileSize(capability.max_file_size)} file`)
-  if (capability.dimensions) tokens.push(dimensionsLabel(capability.dimensions))
+  if (capability.supports_streaming) tokens.push(t('capabilityTokens.streaming'))
+  if (capability.supports_realtime) tokens.push(t('capabilityTokens.realtime'))
+  if (capability.supports_rerank) tokens.push(t('capabilityTokens.rerank'))
+  if (capability.max_context_tokens) tokens.push(t('capabilityTokens.context', { value: formatLargeNumber(capability.max_context_tokens) }))
+  if (capability.max_file_size) tokens.push(t('capabilityTokens.file', { value: formatFileSize(capability.max_file_size) }))
+  if (capability.dimensions) tokens.push(dimensionsLabel(capability.dimensions, t))
   if (capability.pricing) tokens.push(`$${capability.pricing.input}/${capability.pricing.output}`)
   return tokens
 }
@@ -397,7 +400,7 @@ export function NodesPage() {
                                 style={{ backgroundColor: hasIssue ? 'var(--warning)' : color }}
                               />
                               <span className="truncate font-mono">{model}</span>
-                              {isEmbedding && <Badge variant="blue" className="px-1.5 py-0 text-[8px]">emb</Badge>}
+                              {isEmbedding && <Badge variant="blue" className="px-1.5 py-0 text-[8px]">{t('capabilityTokens.embeddingShort')}</Badge>}
                               {hasIssue && (
                                 <button
                                   onClick={(e) => {
@@ -425,7 +428,7 @@ export function NodesPage() {
                                     </span>
                                   )
                                 })}
-                                {capabilityTokens(capability).slice(0, 3).map((token) => (
+                                {capabilityTokens(capability, t).slice(0, 3).map((token) => (
                                   <span
                                     key={token}
                                     className="rounded bg-[var(--background-tertiary)] px-1.5 py-0.5 text-[8px] font-bold text-[var(--foreground-dim)]"
@@ -514,7 +517,7 @@ export function NodesPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-1 truncate text-[10px] font-semibold text-[var(--foreground-dim)]">
                             <RadioTower className="h-3 w-3" />
-                            Realtime
+                            {t('realtime.label')}
                           </span>
                           <span className="font-mono text-[10px] font-bold text-[var(--foreground)]">
                             {node.realtime.active_connections}

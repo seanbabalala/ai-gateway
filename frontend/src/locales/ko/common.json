@@ -15,6 +15,7 @@
   "error.generic": "문제가 발생했습니다. 다시 시도해 주세요.",
   "error.unauthorized": "인증되지 않았습니다",
   "error.unknown": "알 수 없는 오류",
+  "form.selectPlaceholder": "선택...",
   "header.gateway": "게이트웨이",
   "header.notificationsComingSoon": "알림은 곧 제공됩니다",
   "header.searchPlaceholder": "로그, 노드, 모델 검색...",

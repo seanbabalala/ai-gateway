@@ -37,8 +37,13 @@ for (const forbidden of ['apiPost', 'apiPut', 'apiDelete', 'updateRouting', 'con
   }
 }
 
-if (!page.includes('No trace body available') || !page.includes('No route decisions')) {
-  throw new Error('Route Explanation page must keep empty/no-trace compatibility states.')
+for (const key of [
+  "t('routeExplanation.empty.noTraceTitle')",
+  "t('routeExplanation.empty.noDecisionsTitle')",
+]) {
+  if (!page.includes(key)) {
+    throw new Error(`Route Explanation page must keep localized empty/no-trace compatibility state: ${key}`)
+  }
 }
 
 console.log('Open-source Dashboard route explanation validated: routes, hooks, log deep link, and read-only page are present.')

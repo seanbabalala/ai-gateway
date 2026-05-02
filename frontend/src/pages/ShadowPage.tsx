@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { GitCompareArrows, ShieldCheck } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,11 +21,12 @@ import { useShadowTraffic } from '@/hooks/use-shadow'
 import { formatLatency, formatTimestamp, formatTokens } from '@/lib/utils'
 
 export function ShadowPage() {
+  const { t } = useTranslation('dashboard')
   const [namespaceFilter, setNamespaceFilter] = useState('')
   const { data: namespacesData } = useNamespaces()
   const { data, isLoading, isError, error, refetch } = useShadowTraffic(namespaceFilter || undefined)
   const namespaceOptions = [
-    { value: '', label: 'All namespaces' },
+    { value: '', label: t('filters.allNamespaces') },
     ...(namespacesData?.namespaces || []).map((namespace) => ({
       value: namespace.id,
       label: namespace.name || namespace.id,
@@ -41,8 +43,8 @@ export function ShadowPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Shadow Traffic"
-        description="Read-only mirror results"
+        title={t('shadow.title')}
+        description={t('shadow.description')}
         icon={GitCompareArrows}
       >
         <Select
@@ -57,11 +59,11 @@ export function ShadowPage() {
         <CardStatic>
           <CardContent className="pt-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
-              Status
+              {t('shadow.status')}
             </div>
             <div className="mt-2">
               <Badge variant={status?.enabled ? 'emerald' : 'zinc'}>
-                {status?.enabled ? 'Enabled' : 'Disabled'}
+                {status?.enabled ? t('shadow.enabled') : t('shadow.disabled')}
               </Badge>
             </div>
           </CardContent>
@@ -69,7 +71,7 @@ export function ShadowPage() {
         <CardStatic>
           <CardContent className="pt-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
-              Sample Rate
+              {t('shadow.sampleRate')}
             </div>
             <div className="mt-2 font-mono text-2xl font-bold text-[var(--foreground)]">
               {Math.round((status?.sample_rate || 0) * 100)}%
@@ -79,10 +81,10 @@ export function ShadowPage() {
         <CardStatic>
           <CardContent className="pt-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
-              Target
+              {t('shadow.target')}
             </div>
             <div className="mt-2 truncate font-mono text-[13px] font-semibold text-[var(--foreground)]">
-              {status?.target_node || 'none'}
+              {status?.target_node || t('shadow.none')}
               {status?.target_model ? ` / ${status.target_model}` : ''}
             </div>
           </CardContent>
@@ -91,14 +93,18 @@ export function ShadowPage() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Storage
+              {t('shadow.storage')}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Badge variant={status?.privacy.stores_prompts ? 'amber' : 'emerald'}>
-                Prompts {status?.privacy.stores_prompts ? 'on' : 'off'}
+                {t('shadow.promptsStorage', {
+                  state: status?.privacy.stores_prompts ? t('shadow.on') : t('shadow.off'),
+                })}
               </Badge>
               <Badge variant={status?.privacy.stores_responses ? 'amber' : 'emerald'}>
-                Responses {status?.privacy.stores_responses ? 'on' : 'off'}
+                {t('shadow.responsesStorage', {
+                  state: status?.privacy.stores_responses ? t('shadow.on') : t('shadow.off'),
+                })}
               </Badge>
             </div>
           </CardContent>
@@ -107,7 +113,7 @@ export function ShadowPage() {
 
       <CardStatic>
         <CardHeader>
-          <CardTitle>Recent Results</CardTitle>
+          <CardTitle>{t('shadow.recentResults')}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -115,21 +121,21 @@ export function ShadowPage() {
           ) : recent.length === 0 ? (
             <EmptyState
               icon={GitCompareArrows}
-              title="No shadow results"
-              description="Results appear here after sampled requests complete."
+              title={t('shadow.emptyTitle')}
+              description={t('shadow.emptyDescription')}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Namespace</TableHead>
-                  <TableHead>Kind</TableHead>
-                  <TableHead>Primary</TableHead>
-                  <TableHead>Shadow</TableHead>
-                  <TableHead className="text-right">Tokens</TableHead>
-                  <TableHead className="text-right">Latency</TableHead>
+                  <TableHead>{t('shadow.table.time')}</TableHead>
+                  <TableHead>{t('shadow.table.status')}</TableHead>
+                  <TableHead>{t('shadow.table.namespace')}</TableHead>
+                  <TableHead>{t('shadow.table.kind')}</TableHead>
+                  <TableHead>{t('shadow.table.primary')}</TableHead>
+                  <TableHead>{t('shadow.table.shadow')}</TableHead>
+                  <TableHead className="text-right">{t('shadow.table.tokens')}</TableHead>
+                  <TableHead className="text-right">{t('shadow.table.latency')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -148,7 +154,7 @@ export function ShadowPage() {
                               : 'zinc'
                         }
                       >
-                        {item.status}
+                        {t(`shadow.resultStatus.${item.status}`, { defaultValue: item.status })}
                       </Badge>
                       {item.error && (
                         <div className="mt-1 max-w-[260px] truncate text-[10px] text-red-500">
@@ -157,10 +163,10 @@ export function ShadowPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-[11px] text-[var(--foreground-muted)]">
-                      {item.namespace_id || 'all'}
+                      {item.namespace_id || t('shadow.allNamespacesShort')}
                     </TableCell>
                     <TableCell className="text-[12px] text-[var(--foreground-muted)]">
-                      {item.kind}
+                      {t(`shadow.kind.${item.kind}`, { defaultValue: item.kind })}
                     </TableCell>
                     <TableCell className="font-mono text-[11px] text-[var(--foreground-muted)]">
                       {item.primary_node} / {item.primary_model}

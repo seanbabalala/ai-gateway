@@ -1,4 +1,6 @@
 import { Activity, ArrowRight, BadgeDollarSign, Gauge, LockKeyhole, ShieldAlert, TrendingDown, type LucideIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/error-state'
@@ -16,14 +18,14 @@ function money(value: number): string {
   return `$${value.toFixed(value >= 1 ? 2 : 4)}`
 }
 
-function typeLabel(type: AdaptiveRoutingRecommendation['type']): string {
+function typeLabel(type: AdaptiveRoutingRecommendation['type'], t: TFunction): string {
   switch (type) {
     case 'promote_primary':
-      return 'Promote candidate'
+      return t('adaptiveRecommendations.types.promotePrimary')
     case 'investigate_primary':
-      return 'Investigate primary'
+      return t('adaptiveRecommendations.types.investigatePrimary')
     case 'collect_more_data':
-      return 'Collect more data'
+      return t('adaptiveRecommendations.types.collectMoreData')
   }
 }
 
@@ -72,6 +74,7 @@ function Metric({
 }
 
 function RecommendationRow({ recommendation }: { recommendation: AdaptiveRoutingRecommendation }) {
+  const { t } = useTranslation('routing')
   const savings = recommendation.potential_savings
   const confidenceWidth = `${Math.round(recommendation.confidence * 100)}%`
 
@@ -81,11 +84,11 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
         <div className="space-y-2">
           <TierBadge tier={recommendation.tier} />
           <Badge variant={typeVariant(recommendation.type)} className="w-fit text-[9px]">
-            {typeLabel(recommendation.type)}
+            {typeLabel(recommendation.type, t)}
           </Badge>
           <div className="pt-1">
             <div className="mb-1 flex items-center justify-between text-[10px] text-[var(--foreground-dim)]">
-              <span>Confidence</span>
+              <span>{t('adaptiveRecommendations.confidence')}</span>
               <span className="font-mono">{percent(recommendation.confidence)}</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]">
@@ -102,7 +105,7 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
               <TargetPill target={recommendation.suggested_primary} />
             ) : (
               <span className="rounded-md bg-[var(--inset-bg)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground-dim)]">
-                No route change suggested
+                {t('adaptiveRecommendations.noRouteChange')}
               </span>
             )}
           </div>
@@ -110,7 +113,7 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
           <div className="grid gap-3 lg:grid-cols-2">
             <div>
               <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
-                Reasons
+                {t('adaptiveRecommendations.reasons')}
               </div>
               <ul className="space-y-1.5">
                 {recommendation.reasons.map((reason) => (
@@ -123,7 +126,7 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
             <div>
               <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
                 <ShieldAlert className="h-3.5 w-3.5" />
-                Risks
+                {t('adaptiveRecommendations.risks')}
               </div>
               <ul className="space-y-1.5">
                 {recommendation.risks.map((risk) => (
@@ -137,10 +140,10 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Metric icon={BadgeDollarSign} label="Cost / 1k" value={money(savings.cost_usd_per_1k_calls)} />
-          <Metric icon={TrendingDown} label="Window cost" value={money(savings.window_cost_usd)} />
-          <Metric icon={Gauge} label="P50 saved" value={`${savings.p50_latency_ms}ms`} />
-          <Metric icon={Activity} label="P95 saved" value={`${savings.p95_latency_ms}ms`} />
+          <Metric icon={BadgeDollarSign} label={t('adaptiveRecommendations.metrics.costPer1k')} value={money(savings.cost_usd_per_1k_calls)} />
+          <Metric icon={TrendingDown} label={t('adaptiveRecommendations.metrics.windowCost')} value={money(savings.window_cost_usd)} />
+          <Metric icon={Gauge} label={t('adaptiveRecommendations.metrics.p50Saved')} value={`${savings.p50_latency_ms}ms`} />
+          <Metric icon={Activity} label={t('adaptiveRecommendations.metrics.p95Saved')} value={`${savings.p95_latency_ms}ms`} />
         </div>
       </div>
     </div>
@@ -148,10 +151,12 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
 }
 
 function TargetStatsTable({ targets }: { targets: AdaptiveRouteTargetStats[] }) {
+  const { t } = useTranslation('routing')
+
   if (targets.length === 0) {
     return (
       <div className="rounded-lg bg-[var(--background-secondary)] px-4 py-5 text-[12px] text-[var(--foreground-dim)]">
-        No local traffic has landed in the recommendation window yet.
+        {t('adaptiveRecommendations.emptyStats')}
       </div>
     )
   }
@@ -160,12 +165,12 @@ function TargetStatsTable({ targets }: { targets: AdaptiveRouteTargetStats[] }) 
     <div className="overflow-x-auto">
       <div className="min-w-[760px] space-y-1">
         <div className="grid grid-cols-[1.45fr_70px_90px_90px_90px_90px] gap-3 px-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
-          <span>Node:model</span>
-          <span>Calls</span>
-          <span>Success</span>
-          <span>Fallback</span>
-          <span>P95</span>
-          <span>Cost / 1k</span>
+          <span>{t('adaptiveRecommendations.stats.nodeModel')}</span>
+          <span>{t('adaptiveRecommendations.stats.calls')}</span>
+          <span>{t('adaptiveRecommendations.stats.success')}</span>
+          <span>{t('adaptiveRecommendations.stats.fallback')}</span>
+          <span>{t('adaptiveRecommendations.stats.p95')}</span>
+          <span>{t('adaptiveRecommendations.metrics.costPer1k')}</span>
         </div>
         {targets.slice(0, 6).map((target) => (
           <div
@@ -186,6 +191,7 @@ function TargetStatsTable({ targets }: { targets: AdaptiveRouteTargetStats[] }) 
 }
 
 export function AdaptiveRoutingRecommendations() {
+  const { t } = useTranslation('routing')
   const { data, isLoading, isError, error, refetch } = useRoutingRecommendations()
 
   if (isLoading) {
@@ -219,20 +225,20 @@ export function AdaptiveRoutingRecommendations() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h3 className="text-[14px] font-bold text-[var(--foreground)]">Adaptive routing recommendations</h3>
+            <h3 className="text-[14px] font-bold text-[var(--foreground)]">{t('adaptiveRecommendations.title')}</h3>
             <Badge variant="gold" className="gap-1 text-[9px]">
               <LockKeyhole className="h-3 w-3" />
-              Read-only
+              {t('adaptiveRecommendations.readOnly')}
             </Badge>
           </div>
           <p className="max-w-3xl text-[12px] leading-relaxed text-[var(--foreground-dim)]">
-            Local sliding-window guidance from observed node:model reliability, latency, cost, and fallback behavior. It never changes routing config automatically.
+            {t('adaptiveRecommendations.description')}
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-right">
-          <Metric icon={Activity} label="Window" value={`${stats.window_hours}h`} />
-          <Metric icon={Gauge} label="Calls" value={String(stats.observed_calls)} />
-          <Metric icon={TrendingDown} label="Actions" value={String(actionable)} />
+          <Metric icon={Activity} label={t('adaptiveRecommendations.metrics.window')} value={`${stats.window_hours}h`} />
+          <Metric icon={Gauge} label={t('adaptiveRecommendations.stats.calls')} value={String(stats.observed_calls)} />
+          <Metric icon={TrendingDown} label={t('adaptiveRecommendations.metrics.actions')} value={String(actionable)} />
         </div>
       </div>
 
@@ -245,10 +251,13 @@ export function AdaptiveRoutingRecommendations() {
       <div className="rounded-lg bg-[var(--inset-bg)] p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
-            Sliding-window node:model stats
+            {t('adaptiveRecommendations.stats.title')}
           </div>
           <span className="font-mono text-[10px] text-[var(--foreground-dim)]">
-            min samples {stats.min_samples} · limit {stats.sample_limit}
+            {t('adaptiveRecommendations.stats.windowMeta', {
+              min: stats.min_samples,
+              limit: stats.sample_limit,
+            })}
           </span>
         </div>
         <TargetStatsTable targets={stats.targets} />

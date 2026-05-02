@@ -141,7 +141,7 @@ export function DashboardPage() {
     ...(apiKeysData?.items || []).map((key) => ({ value: key.id, label: key.name })),
   ]
   const namespaceOptions = [
-    { value: '', label: 'All namespaces' },
+    { value: '', label: t('filters.allNamespaces') },
     ...(namespacesData?.namespaces || []).map((namespace) => ({
       value: namespace.id,
       label: namespace.name || namespace.id,
