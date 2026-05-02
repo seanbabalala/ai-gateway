@@ -55,9 +55,15 @@ describe('Claude routing compatibility', () => {
 
   it('pins Claude Code messages requests to the configured messages node with no cross-provider fallbacks', async () => {
     const config = new ConfigService();
+    const capabilityService = {
+      resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+        max_context_tokens: undefined,
+        structured_output: null,
+      }),
+    };
     const service = new PipelineService(
       config,
-      {} as never,
+      capabilityService as never,
       {} as never,
       {} as never,
       {} as never,

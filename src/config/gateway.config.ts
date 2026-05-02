@@ -110,6 +110,17 @@ export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 
 export type HealthCheckMethod = 'HEAD' | 'GET' | 'POST';
 
+export interface ModelCapabilityConfig {
+  /** Maximum total context window for this model, including input and reserved output tokens. */
+  max_context_tokens?: number;
+  /** Whether this model should be considered safe for structured output requests. */
+  structured_output?: boolean;
+  /** Optional per-node/model pricing override used by routing and cost accounting. */
+  pricing?: ModelPricing;
+  /** Optional operator-supplied quality hint; higher values win for optimization: quality. */
+  quality_score?: number;
+}
+
 export interface NodeHealthCheckConfig {
   /** Enable active background probes for this node (default: false) */
   enabled?: boolean;
@@ -140,6 +151,12 @@ export interface NodeConfig {
   queue_policy?: QueuePolicy; // wait (default) | fallback | reject
   headers?: Record<string, string>;
   health_check?: NodeHealthCheckConfig;
+  /** Node-level default context window used when a model-specific value is omitted. */
+  max_context_tokens?: number;
+  /** Node-level default structured-output support flag. */
+  structured_output?: boolean;
+  /** Optional per-model capability and pricing metadata. Keys are model IDs. */
+  model_capabilities?: Record<string, ModelCapabilityConfig>;
 
   /**
    * Structured capability tags — describe what this node is good at.
@@ -211,6 +228,8 @@ export interface RoutingConfig {
   tiers: Record<string, TierConfig>;
   scoring: ScoringThresholds;
   retry?: RetryConfig;
+  /** Optional v0.3 same-capability optimization mode for automatic routing. */
+  optimization?: RoutingOptimization;
 
   /**
    * Domain-based node preference.
@@ -254,6 +273,8 @@ export interface SplitVariant {
 }
 
 export type LoadBalancingStrategy = 'weighted' | 'round_robin' | 'least_latency' | 'random';
+
+export type RoutingOptimization = 'cost' | 'latency' | 'balanced' | 'quality';
 
 export interface WeightedRouteTarget extends RouteTarget {
   weight?: number;      // used by weighted strategy; defaults to 1

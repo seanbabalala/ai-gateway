@@ -52,11 +52,17 @@ function routeTargetFrom(value: unknown): RouteTargetLike | null {
   return isRecord(value) ? value : null;
 }
 
-function hasPricingFor(config: PartialGatewayConfig, model: string): boolean {
+function hasTopLevelPricingFor(config: PartialGatewayConfig, model: string): boolean {
   const pricing = config.models_pricing as unknown;
   return (
     isRecord(pricing) && Object.prototype.hasOwnProperty.call(pricing, model)
   );
+}
+
+function hasNodeModelPricing(node: PartialNodeConfig | undefined, model: string): boolean {
+  if (!node || !isRecord(node.model_capabilities)) return false;
+  const modelCapability = node.model_capabilities[model];
+  return isRecord(modelCapability) && isRecord(modelCapability.pricing);
 }
 
 /**
@@ -174,12 +180,16 @@ export function buildNodeModelDiagnostics(
   }
 
   for (const [model, owners] of modelOwners.entries()) {
-    if (!hasPricingFor(config, model)) {
+    const ownersMissingPricing = owners.filter((owner) =>
+      !hasTopLevelPricingFor(config, model) &&
+      !hasNodeModelPricing(nodeById.get(owner), model),
+    );
+    if (ownersMissingPricing.length > 0) {
       diagnostics.push({
         severity: 'warning',
         code: 'missing_model_pricing',
-        message: `Model "${model}" has no pricing entry. Requests can still route, but cost reporting for node(s) ${owners.join(', ')} may be incomplete.`,
-        nodes: owners,
+        message: `Model "${model}" has no pricing entry. Requests can still route, but cost reporting for node(s) ${ownersMissingPricing.join(', ')} may be incomplete.`,
+        nodes: ownersMissingPricing,
         model,
       });
     }

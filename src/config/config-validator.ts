@@ -42,6 +42,8 @@ interface EnvReference {
 
 const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
 const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages']);
+const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
+const ROUTING_OPTIMIZATIONS = new Set(['cost', 'latency', 'balanced', 'quality']);
 const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
@@ -574,7 +576,135 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     }
 
     validateNodeAliases(node, basePath, issues);
+    validateNodeRoutingCapabilities(node, basePath, issues);
   });
+}
+
+function validateNodeRoutingCapabilities(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (
+    node.max_context_tokens !== undefined &&
+    (!isFiniteNumber(node.max_context_tokens) || node.max_context_tokens <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_max_context_tokens',
+        'nodes[].max_context_tokens must be a positive number when set.',
+        `${basePath}.max_context_tokens`,
+      ),
+    );
+  }
+
+  if (
+    node.structured_output !== undefined &&
+    typeof node.structured_output !== 'boolean'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_structured_output_flag',
+        'nodes[].structured_output must be a boolean when set.',
+        `${basePath}.structured_output`,
+      ),
+    );
+  }
+
+  if (node.model_capabilities === undefined) return;
+  if (!isRecord(node.model_capabilities)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_model_capabilities',
+        'nodes[].model_capabilities must be an object keyed by model id.',
+        `${basePath}.model_capabilities`,
+      ),
+    );
+    return;
+  }
+
+  const listedModels = new Set(
+    Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : [],
+  );
+
+  for (const [model, capability] of Object.entries(node.model_capabilities)) {
+    const capabilityPath = `${basePath}.model_capabilities.${model}`;
+    if (!isRecord(capability)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_capability_entry',
+          'Model capability entries must be objects.',
+          capabilityPath,
+        ),
+      );
+      continue;
+    }
+
+    if (listedModels.size > 0 && !listedModels.has(model)) {
+      issues.push(
+        issue(
+          'warning',
+          'model_capability_model_not_listed',
+          `Model capability "${model}" is not listed under this node's models.`,
+          capabilityPath,
+        ),
+      );
+    }
+
+    if (
+      capability.max_context_tokens !== undefined &&
+      (!isFiniteNumber(capability.max_context_tokens) || capability.max_context_tokens <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_max_context_tokens',
+          'model_capabilities[].max_context_tokens must be a positive number when set.',
+          `${capabilityPath}.max_context_tokens`,
+        ),
+      );
+    }
+
+    if (
+      capability.structured_output !== undefined &&
+      typeof capability.structured_output !== 'boolean'
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_structured_output_flag',
+          'model_capabilities[].structured_output must be a boolean when set.',
+          `${capabilityPath}.structured_output`,
+        ),
+      );
+    }
+
+    if (
+      capability.quality_score !== undefined &&
+      (!isFiniteNumber(capability.quality_score) || capability.quality_score < 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_quality_score',
+          'model_capabilities[].quality_score must be a non-negative number when set.',
+          `${capabilityPath}.quality_score`,
+        ),
+      );
+    }
+
+    if (capability.pricing !== undefined) {
+      validatePricingEntry(
+        capability.pricing,
+        `${capabilityPath}.pricing`,
+        issues,
+      );
+    }
+  }
 }
 
 function validateNodeAliases(
@@ -725,6 +855,21 @@ function validateRouting(
     }
   }
 
+  if (
+    routing.optimization !== undefined &&
+    (!isNonEmptyString(routing.optimization) ||
+      !ROUTING_OPTIMIZATIONS.has(routing.optimization))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_routing_optimization',
+        'routing.optimization must be one of cost, latency, balanced, or quality.',
+        'routing.optimization',
+      ),
+    );
+  }
+
   validateDomainPreferences(routing.domain_preferences, nodes, issues);
 }
 
@@ -746,25 +891,54 @@ function validateTier(
     return;
   }
 
-  validateRouteTargetShape(tierValue.primary, `${tierPath}.primary`, issues);
-
-  if (!Array.isArray(tierValue.fallbacks)) {
+  const hasTargets = Array.isArray(tierValue.targets) && tierValue.targets.length > 0;
+  if (tierValue.primary === undefined && !hasTargets) {
     issues.push(
       issue(
         'error',
-        'missing_required_field',
-        'Routing tier fallbacks must be an array.',
-        `${tierPath}.fallbacks`,
+        'missing_route_primary_or_targets',
+        'Routing tier must define primary or targets.',
+        tierPath,
       ),
     );
-  } else {
-    tierValue.fallbacks.forEach((fallback, index) =>
-      validateRouteTargetShape(
-        fallback,
-        `${tierPath}.fallbacks[${index}]`,
-        issues,
+  } else if (tierValue.primary !== undefined) {
+    validateRouteTargetShape(tierValue.primary, `${tierPath}.primary`, issues);
+  }
+
+  if (
+    tierValue.strategy !== undefined &&
+    (!isNonEmptyString(tierValue.strategy) ||
+      !LOAD_BALANCING_STRATEGIES.has(tierValue.strategy))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_routing_strategy',
+        'Routing tier strategy must be one of weighted, round_robin, least_latency, or random.',
+        `${tierPath}.strategy`,
       ),
     );
+  }
+
+  if (tierValue.fallbacks !== undefined) {
+    if (!Array.isArray(tierValue.fallbacks)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'Routing tier fallbacks must be an array.',
+          `${tierPath}.fallbacks`,
+        ),
+      );
+    } else {
+      tierValue.fallbacks.forEach((fallback, index) =>
+        validateRouteTargetShape(
+          fallback,
+          `${tierPath}.fallbacks[${index}]`,
+          issues,
+        ),
+      );
+    }
   }
 
   if (tierValue.split !== undefined) {
@@ -1002,28 +1176,36 @@ function validatePricing(
 
   for (const [model, entry] of Object.entries(pricing)) {
     const pricingPath = `models_pricing.${model}`;
-    if (!isRecord(entry)) {
+    validatePricingEntry(entry, pricingPath, issues);
+  }
+}
+
+function validatePricingEntry(
+  entry: unknown,
+  pricingPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isRecord(entry)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_pricing_entry',
+        'Pricing entry must be an object.',
+        pricingPath,
+      ),
+    );
+    return;
+  }
+  for (const key of ['input', 'output']) {
+    if (!isFiniteNumber(entry[key]) || entry[key] < 0) {
       issues.push(
         issue(
           'error',
           'invalid_pricing_entry',
-          'Pricing entry must be an object.',
-          pricingPath,
+          `${pricingPath}.${key} must be a non-negative number.`,
+          `${pricingPath}.${key}`,
         ),
       );
-      continue;
-    }
-    for (const key of ['input', 'output']) {
-      if (!isFiniteNumber(entry[key]) || entry[key] < 0) {
-        issues.push(
-          issue(
-            'error',
-            'invalid_pricing_entry',
-            `models_pricing.${model}.${key} must be a non-negative number.`,
-            `${pricingPath}.${key}`,
-          ),
-        );
-      }
     }
   }
 }

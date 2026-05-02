@@ -21,7 +21,8 @@ import {
   ProviderError,
 } from '../providers/provider-client.service';
 import { ScoringService } from '../scoring/scoring.service';
-import { RoutingService } from '../routing/routing.service';
+import { RoutingConstraintError, RoutingService } from '../routing/routing.service';
+import { estimateCanonicalRequestTokens } from '../routing/token-estimator';
 import { CircuitBreakerService } from '../routing/circuit-breaker.service';
 import {
   ConcurrencyLease,
@@ -334,6 +335,7 @@ export class PipelineService {
             canonical,
             canonicalResponse.usage,
             usedModel,
+            usedNodeId,
           );
 
           // ── Telemetry Metrics ──
@@ -388,6 +390,16 @@ export class PipelineService {
             };
           }
           if (err instanceof GatewayRequestRejectedError) {
+            return {
+              body: this.formatError(
+                canonical.metadata.source_format,
+                err.statusCode,
+                err.message,
+              ),
+              statusCode: err.statusCode,
+            };
+          }
+          if (err instanceof RoutingConstraintError) {
             return {
               body: this.formatError(
                 canonical.metadata.source_format,
@@ -829,7 +841,12 @@ export class PipelineService {
                 this.cacheService.store(canonical, assembledResponse);
               }
 
-              const { costUsd } = await this.recordBudgetUsage(canonical, usage, usedModel);
+              const { costUsd } = await this.recordBudgetUsage(
+                canonical,
+                usage,
+                usedModel,
+                usedNodeId,
+              );
 
               const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
                 experimentGroupsByTarget,
@@ -1061,6 +1078,18 @@ export class PipelineService {
         return;
       }
 
+      if (err instanceof RoutingConstraintError && !headersFlushed) {
+        res.status(err.statusCode).json(
+          this.formatError(
+            canonical.metadata.source_format,
+            err.statusCode,
+            err.message,
+          ),
+        );
+        rootSpan.end();
+        return;
+      }
+
       if (!headersFlushed) {
         const failureStatus = this.resolveFailureStatus(err as Error);
         res.status(failureStatus).json(
@@ -1107,6 +1136,7 @@ export class PipelineService {
             ? this.resolvePinnedMessagesModel(requestedModel, pinnedNode.id)
             : pinnedNode.models[0];
         this.assertTargetAllowed(canonical, pinnedNode.id, pinnedModel);
+        this.assertContextWindow(canonical, pinnedNode.id, pinnedModel);
 
         this.logger.log(
           `Pinned messages route: "${requestedModel || 'auto'}" → node "${pinnedNode.id}" (model: ${pinnedModel})`,
@@ -1133,6 +1163,7 @@ export class PipelineService {
       if (resolved) {
         this.assertRouteModeAllowed(canonical, 'direct');
         this.assertTargetAllowed(canonical, resolved.nodeId, resolved.model);
+        this.assertContextWindow(canonical, resolved.nodeId, resolved.model);
         this.logger.log(
           `Direct route: "${requestedModel}" → node "${resolved.nodeId}" (model: ${resolved.model})`,
         );
@@ -1152,9 +1183,12 @@ export class PipelineService {
         }
 
         // Build fallbacks from other nodes (modality-aware)
-        const fallbacks = this.filterAllowedTargets(
+        const fallbacks = this.filterContextCompatibleFallbacks(
           canonical,
-          this.buildDirectFallbacks(canonical, resolved.nodeId),
+          this.filterAllowedTargets(
+            canonical,
+            this.buildDirectFallbacks(canonical, resolved.nodeId),
+          ),
         );
 
         return {
@@ -1220,9 +1254,17 @@ export class PipelineService {
       effectiveScore = hookData.score;
     }
 
+    const tokenEstimate = estimateCanonicalRequestTokens(canonical);
+    const requiresStructuredOutput = this.requestRequiresStructuredOutput(canonical);
+
     const routeDecision = this.telemetry.withSpanSync(
       'gateway.routing',
-      { 'gateway.tier': effectiveTier, 'gateway.score': effectiveScore },
+      {
+        'gateway.tier': effectiveTier,
+        'gateway.score': effectiveScore,
+        'gateway.estimated_context_tokens': tokenEstimate.context_tokens,
+        'gateway.routing.optimization': this.config.routing.optimization || '',
+      },
       (span) => {
         const decision = this.routingService.resolve(
           effectiveTier,
@@ -1230,6 +1272,12 @@ export class PipelineService {
           canonical.metadata.session_key,
           scoringResult.domainHint,
           scoringResult.modalityHints,
+          {
+            estimated_input_tokens: tokenEstimate.input_tokens,
+            estimated_output_tokens: tokenEstimate.output_tokens,
+            estimated_context_tokens: tokenEstimate.context_tokens,
+            requires_structured_output: requiresStructuredOutput,
+          },
         );
         span.setAttributes({
           'gateway.routing.primary_node': decision.primary.node,
@@ -1372,6 +1420,74 @@ export class PipelineService {
     return targets.filter((target) =>
       this.isTargetAllowed(canonical, target.node, target.model),
     );
+  }
+
+  private filterContextCompatibleFallbacks(
+    canonical: CanonicalRequest,
+    targets: { node: string; model: string }[],
+  ): { node: string; model: string }[] {
+    const estimate = estimateCanonicalRequestTokens(canonical);
+    return targets.filter((target) => {
+      const maxContextTokens =
+        this.capabilityService.resolveModelRoutingCapabilities(
+          target.node,
+          target.model,
+        ).max_context_tokens;
+      return !maxContextTokens || estimate.context_tokens <= maxContextTokens;
+    });
+  }
+
+  private assertContextWindow(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+  ): void {
+    const maxContextTokens =
+      this.capabilityService.resolveModelRoutingCapabilities(
+        nodeId,
+        model,
+      ).max_context_tokens;
+    if (!maxContextTokens) return;
+
+    const estimate = estimateCanonicalRequestTokens(canonical);
+    if (estimate.context_tokens > maxContextTokens) {
+      throw new GatewayRequestRejectedError(
+        `Direct route ${nodeId}/${model} has max_context_tokens=${maxContextTokens}, but the request is estimated at ${estimate.context_tokens} context tokens.`,
+        400,
+      );
+    }
+
+    if (estimate.context_tokens > maxContextTokens * 0.8) {
+      this.logger.warn(
+        `Direct route ${nodeId}/${model} is estimated at ${estimate.context_tokens} context tokens, over 80% of configured max_context_tokens=${maxContextTokens}.`,
+      );
+    }
+  }
+
+  private requestRequiresStructuredOutput(canonical: CanonicalRequest): boolean {
+    const requestLike = canonical as CanonicalRequest & {
+      response_format?: unknown;
+    };
+    if (requestLike.response_format !== undefined) {
+      return true;
+    }
+
+    const rawBody = canonical.metadata.raw_body;
+    if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+      return false;
+    }
+    const body = rawBody as Record<string, unknown>;
+    if (body.response_format !== undefined) {
+      return true;
+    }
+    const text = body.text;
+    if (text && typeof text === 'object' && !Array.isArray(text)) {
+      const format = (text as Record<string, unknown>).format;
+      if (format && typeof format === 'object' && !Array.isArray(format)) {
+        return (format as Record<string, unknown>).type !== 'text';
+      }
+    }
+    return false;
   }
 
   private isTargetAllowed(
@@ -1645,8 +1761,9 @@ export class PipelineService {
     canonical: CanonicalRequest,
     usage: TokenUsage,
     model: string,
+    nodeId?: string,
   ): Promise<{ totalTokens: number; costUsd: number }> {
-    const pricing = this.config.getModelPricing(model);
+    const pricing = this.config.getModelPricing(model, nodeId);
     const costUsd = this.calculateCost(usage, pricing);
     const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
 
@@ -1737,7 +1854,7 @@ export class PipelineService {
     modalityHints?: string[];
   }): Promise<void> {
     try {
-      const pricing = this.config.getModelPricing(params.model);
+      const pricing = this.config.getModelPricing(params.model, params.nodeId);
       const costUsd = this.calculateCost(params.usage, pricing);
 
       const log = this.callLogRepo.create({

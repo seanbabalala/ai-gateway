@@ -219,8 +219,10 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid configuration: routing.scoring is required');
     }
     for (const [tierName, tier] of Object.entries(config.routing.tiers)) {
-      if (!tier?.primary?.node || !tier.primary.model) {
-        throw new Error(`Invalid configuration: routing.tiers.${tierName}.primary is required`);
+      const hasPrimary = Boolean(tier?.primary?.node && tier.primary.model);
+      const hasTargets = Array.isArray(tier?.targets) && tier.targets.length > 0;
+      if (!hasPrimary && !hasTargets) {
+        throw new Error(`Invalid configuration: routing.tiers.${tierName} must define primary or targets`);
       }
       if (!Array.isArray(tier.fallbacks)) {
         throw new Error(`Invalid configuration: routing.tiers.${tierName}.fallbacks must be an array`);
@@ -552,8 +554,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.config.nodes.find((n) => n.id === nodeId);
   }
 
-  /** Get pricing for a specific model */
-  getModelPricing(model: string): ModelPricing | undefined {
+  /** Get pricing for a specific model, preferring node/model overrides when a node is supplied. */
+  getModelPricing(model: string, nodeId?: string): ModelPricing | undefined {
+    if (nodeId) {
+      const nodePricing = this.getNode(nodeId)?.model_capabilities?.[model]?.pricing;
+      if (nodePricing) return nodePricing;
+    }
     return this.config.models_pricing[model];
   }
 
@@ -865,6 +871,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       split?: { node: string; model: string; weight: number; name?: string }[];
     }>;
     scoring?: { simple_max: number; standard_max: number; complex_max: number };
+    optimization?: 'cost' | 'latency' | 'balanced' | 'quality';
     domain_preferences?: Record<string, string[]>;
   }): void {
     if (updates.tiers) {
@@ -913,6 +920,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     }
     if (updates.scoring) {
       this.config.routing.scoring = updates.scoring;
+    }
+    if (updates.optimization !== undefined) {
+      if (!['cost', 'latency', 'balanced', 'quality'].includes(updates.optimization)) {
+        throw new Error(`Routing optimization "${updates.optimization}" is not supported`);
+      }
+      this.config.routing.optimization = updates.optimization;
     }
     if (updates.domain_preferences !== undefined) {
       this.config.routing.domain_preferences = updates.domain_preferences;

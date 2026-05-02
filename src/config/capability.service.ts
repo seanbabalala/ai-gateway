@@ -14,7 +14,7 @@ import {
   VALID_CAPABILITY_IDS,
   CapabilityDefinition,
 } from './capabilities';
-import { NodeConfig, RouteTarget } from './gateway.config';
+import { ModelPricing, NodeConfig, RouteTarget } from './gateway.config';
 import {
   Modality,
   inferModelModalities,
@@ -33,6 +33,13 @@ export interface RoutingRecommendation {
   primary: RouteTarget | null;
   fallbacks: RouteTarget[];
   score: number;
+}
+
+export interface ResolvedModelRoutingCapabilities {
+  max_context_tokens?: number;
+  structured_output: boolean | null;
+  pricing?: ModelPricing;
+  quality_score?: number;
 }
 
 @Injectable()
@@ -254,6 +261,25 @@ export class CapabilityService {
 
     // 4. Default: text-only
     return [...DEFAULT_MODALITIES];
+  }
+
+  /** Resolve v0.3 routing metadata for a node/model target. */
+  resolveModelRoutingCapabilities(
+    nodeId: string,
+    model: string,
+  ): ResolvedModelRoutingCapabilities {
+    const node = this.config.getNode(nodeId);
+    const modelCapability = node?.model_capabilities?.[model];
+
+    return {
+      max_context_tokens:
+        modelCapability?.max_context_tokens ?? node?.max_context_tokens,
+      structured_output:
+        modelCapability?.structured_output ?? node?.structured_output ?? null,
+      pricing:
+        modelCapability?.pricing ?? this.config.getModelPricing(model, nodeId),
+      quality_score: modelCapability?.quality_score,
+    };
   }
 
   // ── Private Helpers ──────────────────────────────────────────────

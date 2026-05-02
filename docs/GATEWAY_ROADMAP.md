@@ -185,36 +185,46 @@
 ### P0：路由智能化
 
 #### 11. 基于成本的路由优化
-- **现状**：路由主要基于复杂度评分，不考虑成本
+- **状态**：✅ v0.3 开发分支已实现（`codex/v0.3-cost-context-routing`）
+- **现状**：已支持 `routing.optimization` 在同能力候选目标内按成本、延迟、均衡或质量选择
 - **目标**：在同等能力下选择最低成本路由
 - **实现方案**：
   ```yaml
   routing:
     optimization: cost  # cost | latency | balanced | quality
   ```
-  - `cost`：同 tier 内选最便宜的模型
-  - `latency`：同 tier 内选延迟最低的
-  - `balanced`：成本 × 延迟加权
-  - `quality`：优先选最强模型（现有逻辑）
-  - 基于历史数据的滑动窗口评估
+  - `cost`：同 tier 内选最便宜的模型，使用 `model_capabilities.*.pricing` 或 `models_pricing`
+  - `latency`：同 tier 内选本地滑动窗口延迟最低的目标，冷启动保持稳定 fallback
+  - `balanced`：归一化成本 × 延迟加权
+  - `quality`：优先选配置了更高 `quality_score` 的模型，否则保留现有 tier/strategy 顺序
+  - direct model routing 和 Gateway API key 权限边界保持不变
 - **抽象到企业版**：Fleet 级成本优化报告 + 路由建议推送
 
 #### 12. 上下文窗口感知路由
-- **现状**：不检查请求 Token 数是否超过模型上下文窗口
+- **状态**：✅ v0.3 开发分支已实现（`codex/v0.3-cost-context-routing`）
+- **现状**：已在自动路由前做本地 token 估算，并根据 `max_context_tokens` 过滤或降级目标
 - **目标**：预估 Token 数，避免发送到窗口不够的模型
 - **实现方案**：
-  - 为每个模型配置 `max_context_tokens`
-  - 快速 Token 预估（基于字符数 / tiktoken-lite）
+  - 为 node 或每个模型配置 `max_context_tokens`
+  - 快速 Token 预估（基于字符数、消息、工具 schema 和输出预算）
   - 超过 80% 窗口 → 路由到长上下文模型
+  - 超过目标窗口 → 自动路由移除该目标；direct route 返回清晰 400，不静默改道
   - 配置模型能力矩阵：
     ```yaml
     nodes:
       - id: openai-prod
-        models:
-          - id: gpt-4o
-            max_context: 128000
-          - id: gpt-4o-mini
-            max_context: 128000
+        max_context_tokens: 128000
+        structured_output: true
+        models: [gpt-4o, gpt-4o-mini]
+        model_capabilities:
+          gpt-4o:
+            max_context_tokens: 128000
+            structured_output: true
+            quality_score: 0.9
+          gpt-4o-mini:
+            max_context_tokens: 128000
+            structured_output: true
+            pricing: { input: 0.15, output: 0.60 }
     ```
 
 #### 13. 自适应路由（基于历史表现）
