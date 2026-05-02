@@ -30,14 +30,17 @@ export interface GatewayConfig {
   /** Optional OSS-local embeddings request batching — disabled by default */
   embedding_batching?: EmbeddingBatchingConfig;
 
+  /** Optional shared state backend; memory remains the default single-node mode */
+  state?: StateBackendConfig;
+
+  /** Optional multi-instance cluster mode; enabled explicitly or by state.backend=redis */
+  cluster?: ClusterConfig;
+
   /** Optional OSS-local alerting channels — disabled by default */
   alerts?: AlertsConfig;
 
   /** Optional external call-log sinks — disabled by default */
   logging?: LoggingConfig;
-
-  /** Optional shared runtime state backend — memory by default */
-  state?: StateBackendConfig;
 
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
@@ -72,6 +75,22 @@ export interface HotReloadConfig {
   watch?: boolean;
   /** Debounce file watcher reloads in milliseconds (default: 500) */
   debounce_ms?: number;
+}
+
+// ===== Cluster =====
+export interface ClusterConfig {
+  /** Explicit cluster switch. state.backend=redis also enables cluster status/heartbeats. */
+  enabled?: boolean;
+  /** Stable instance id. Defaults to hostname + process id. */
+  instance_id?: string;
+  /** Redis override for cluster Pub/Sub. Falls back to state.redis. */
+  redis?: RedisStateBackendConfig;
+  /** Heartbeat publish/write interval in seconds (default: 10). */
+  heartbeat_interval_seconds?: number;
+  /** Instance heartbeat TTL in seconds (default: max(30, interval*3)). */
+  heartbeat_ttl_seconds?: number;
+  /** Broadcast successful local config reloads to peers (default: true). */
+  reload_broadcast?: boolean;
 }
 
 // ===== Alerts =====

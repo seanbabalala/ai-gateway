@@ -482,6 +482,124 @@ describe('config validator', () => {
     );
   });
 
+  it('accepts Redis state and cluster mode config', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        state: {
+          backend: 'redis',
+          redis: {
+            url: '${REDIS_URL:-redis://127.0.0.1:6379}',
+            prefix: 'siftgate:',
+          },
+        },
+        cluster: {
+          enabled: true,
+          instance_id: 'gateway-a',
+          heartbeat_interval_seconds: 10,
+          heartbeat_ttl_seconds: 30,
+          reload_broadcast: true,
+        },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o-mini': { input: 0.15, output: 0.6 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).toHaveLength(0);
+  });
+
+  it('rejects invalid Redis state and cluster mode settings', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        state: {
+          backend: 'shared',
+          redis: { url: 'http://localhost:6379', prefix: '' },
+        },
+        cluster: {
+          enabled: 'yes',
+          instance_id: '',
+          redis: { url: 'not-a-url' },
+          heartbeat_interval_seconds: 10,
+          heartbeat_ttl_seconds: 5,
+          reload_broadcast: 'yes',
+        },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o-mini': { input: 0.15, output: 0.6 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_state_backend',
+        'invalid_redis_url',
+        'invalid_redis_config',
+        'invalid_cluster_config',
+      ]),
+    );
+    expect(codes(result.warnings)).toContain('cluster_heartbeat_ttl_short');
+  });
+
   it('validates fallback policy shape and cost/race safety requirements', () => {
     const result = validateConfigObject(
       {

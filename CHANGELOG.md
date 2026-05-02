@@ -16,6 +16,9 @@
 - v0.5 stream cache controls via `cache.stream_cache.enabled`, disabled by default and only storing fully completed deterministic streams for later SSE replay.
 - v0.5 local embedding batching via `embedding_batching`, disabled by default, with per-node/model safe grouping, queue limits, cancellation, timeout, and partial-response handling.
 - Config validation, unit coverage, and documentation for stream cache and embedding batching safety defaults.
+- v0.5 Redis-backed cluster mode for OSS Data Plane instance registration, heartbeats, and config reload broadcasts.
+- `GET /cluster/status` for Redis-backed multi-instance inventory and reload broadcast status, enabled only when `state.backend=redis` or `cluster.enabled=true`.
+- Config validation, docs, and example config for `state` and `cluster` settings without requiring SiftGate Cloud.
 
 ### Changed
 

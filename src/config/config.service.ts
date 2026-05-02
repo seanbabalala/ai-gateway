@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { Subject, Subscription } from 'rxjs';
@@ -20,6 +21,7 @@ import {
   ControlPlaneConfig,
   HotReloadConfig,
   EmbeddingBatchingConfig,
+  ClusterConfig,
   AlertsConfig,
   AlertSpikeRuleConfig,
   AlertLatencySpikeRuleConfig,
@@ -37,7 +39,12 @@ import type { EventBusService } from '../plugins/event-bus.service';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
-export type ConfigReloadSource = 'manual' | 'dashboard' | 'sighup' | 'watcher';
+export type ConfigReloadSource =
+  | 'manual'
+  | 'dashboard'
+  | 'sighup'
+  | 'watcher'
+  | 'cluster';
 
 export interface ConfigSnapshot {
   version: number;
@@ -60,6 +67,7 @@ export interface ConfigChangeSummary {
   control_plane_changed: boolean;
   hot_reload_changed: boolean;
   state_changed: boolean;
+  cluster_changed: boolean;
 }
 
 export interface ConfigReloadResult {
@@ -469,6 +477,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       control_plane_changed: JSON.stringify(previous.control_plane || null) !== JSON.stringify(next.control_plane || null),
       hot_reload_changed: JSON.stringify(previous.hot_reload || null) !== JSON.stringify(next.hot_reload || null),
       state_changed: JSON.stringify(previous.state || null) !== JSON.stringify(next.state || null),
+      cluster_changed: JSON.stringify(previous.cluster || null) !== JSON.stringify(next.cluster || null),
     };
   }
 
@@ -483,6 +492,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       control_plane_changed: false,
       hot_reload_changed: false,
       state_changed: false,
+      cluster_changed: false,
     };
   }
 
@@ -665,15 +675,49 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       unavailable_policy: state?.unavailable_policy ?? 'fail_open',
       redis: {
         url: state?.redis?.url ?? 'redis://localhost:6379',
-        prefix: state?.redis?.prefix ?? 'siftgate:state:',
+        prefix: this.normalizeRedisPrefix(state?.redis?.prefix, 'siftgate:state:'),
         timeout_ms: state?.redis?.timeout_ms ?? 500,
         sync_interval_ms: state?.redis?.sync_interval_ms ?? 2000,
       },
     };
   }
 
+  get cluster(): Required<Omit<ClusterConfig, 'redis'>> & {
+    redis: {
+      url: string;
+      prefix: string;
+    };
+  } {
+    const state = this.state;
+    const cluster = this.config.cluster;
+    const heartbeatInterval = cluster?.heartbeat_interval_seconds ?? 10;
+    return {
+      enabled: cluster?.enabled ?? state.backend === 'redis',
+      instance_id:
+        cluster?.instance_id ||
+        process.env.SIFTGATE_INSTANCE_ID ||
+        `${os.hostname()}-${process.pid}`,
+      heartbeat_interval_seconds: heartbeatInterval,
+      heartbeat_ttl_seconds:
+        cluster?.heartbeat_ttl_seconds ?? Math.max(30, heartbeatInterval * 3),
+      reload_broadcast: cluster?.reload_broadcast ?? true,
+      redis: {
+        url: cluster?.redis?.url ?? state.redis.url,
+        prefix: this.normalizeRedisPrefix(
+          cluster?.redis?.prefix ?? state.redis.prefix,
+          state.redis.prefix,
+        ),
+      },
+    };
+  }
+
   get modelsPricing(): Record<string, ModelPricing> {
     return this.config.models_pricing;
+  }
+
+  private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {
+    const value = prefix && prefix.length > 0 ? prefix : fallback;
+    return value.endsWith(':') ? value : `${value}:`;
   }
 
   /** Get hosted control-plane config with safe privacy-preserving defaults. */

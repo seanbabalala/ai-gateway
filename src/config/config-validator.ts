@@ -208,6 +208,7 @@ export function validateConfigObject(
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
+  validateCluster(config.cluster, config.state, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
@@ -1748,6 +1749,183 @@ function validateEmbeddingBatching(
         ),
       );
     }
+  }
+}
+
+function validateCluster(
+  cluster: unknown,
+  state: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (cluster === undefined) return;
+  if (!isRecord(cluster)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'cluster must be an object.',
+        'cluster',
+      ),
+    );
+    return;
+  }
+
+  if (cluster.enabled !== undefined && !isBoolean(cluster.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cluster_config',
+        'cluster.enabled must be a boolean.',
+        'cluster.enabled',
+      ),
+    );
+  }
+  if (
+    cluster.reload_broadcast !== undefined &&
+    !isBoolean(cluster.reload_broadcast)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cluster_config',
+        'cluster.reload_broadcast must be a boolean.',
+        'cluster.reload_broadcast',
+      ),
+    );
+  }
+  if (
+    cluster.instance_id !== undefined &&
+    !isNonEmptyString(cluster.instance_id)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cluster_config',
+        'cluster.instance_id must be a non-empty string when set.',
+        'cluster.instance_id',
+      ),
+    );
+  }
+
+  validatePositiveNumber(
+    cluster.heartbeat_interval_seconds,
+    'cluster.heartbeat_interval_seconds',
+    'invalid_cluster_config',
+    issues,
+  );
+  validatePositiveNumber(
+    cluster.heartbeat_ttl_seconds,
+    'cluster.heartbeat_ttl_seconds',
+    'invalid_cluster_config',
+    issues,
+  );
+
+  if (
+    isFiniteNumber(cluster.heartbeat_interval_seconds) &&
+    isFiniteNumber(cluster.heartbeat_ttl_seconds) &&
+    cluster.heartbeat_ttl_seconds <= cluster.heartbeat_interval_seconds
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'cluster_heartbeat_ttl_short',
+        'cluster.heartbeat_ttl_seconds should be greater than cluster.heartbeat_interval_seconds.',
+        'cluster.heartbeat_ttl_seconds',
+      ),
+    );
+  }
+
+  if (cluster.redis !== undefined) {
+    validateRedisConnection(cluster.redis, 'cluster.redis', issues);
+  }
+
+  const enabledByCluster = cluster.enabled === true;
+  const enabledByState = isRecord(state) && state.backend === 'redis';
+  if (enabledByCluster || enabledByState) {
+    const redis = isRecord(cluster.redis)
+      ? cluster.redis
+      : isRecord(state) && isRecord(state.redis)
+        ? state.redis
+        : undefined;
+    if (redis?.url !== undefined) {
+      validateRedisUrl(
+        redis.url,
+        enabledByCluster ? 'cluster.redis.url' : 'state.redis.url',
+        issues,
+      );
+    }
+  }
+}
+
+function validateRedisConnection(
+  redis: unknown,
+  redisPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isRecord(redis)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_config',
+        `${redisPath} must be an object.`,
+        redisPath,
+      ),
+    );
+    return;
+  }
+  if (redis.url !== undefined) {
+    validateRedisUrl(redis.url, `${redisPath}.url`, issues);
+  }
+  if (redis.prefix !== undefined && !isNonEmptyString(redis.prefix)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_config',
+        `${redisPath}.prefix must be a non-empty string when set.`,
+        `${redisPath}.prefix`,
+      ),
+    );
+  }
+}
+
+function validateRedisUrl(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isNonEmptyString(value)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_config',
+        `${valuePath} must be a non-empty Redis URL when set.`,
+        valuePath,
+      ),
+    );
+    return;
+  }
+  if (containsEnvReference(value)) return;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_redis_url',
+          `${valuePath} must use redis:// or rediss://.`,
+          valuePath,
+        ),
+      );
+    }
+  } catch {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_url',
+        `${valuePath} must be a valid Redis URL.`,
+        valuePath,
+      ),
+    );
   }
 }
 

@@ -75,6 +75,12 @@ hardening visible without blocking local development.
 - Optional `logging.sinks` entries for file, webhook, S3 interface, and
   Elasticsearch exports, including batching, retry, queue, URL/header, and
   sensitive-field filter checks.
+- Optional `state` backend configuration, including `memory`/`redis` backend
+  names, Redis URL scheme (`redis://` or `rediss://`), and non-empty key
+  prefixes.
+- Optional `cluster` configuration, including boolean switches, instance id
+  shape, heartbeat interval/TTL values, reload broadcast settings, and Redis
+  overrides used by multi-instance Pub/Sub.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

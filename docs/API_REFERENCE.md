@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.4.0 adds OpenAI-compatible embeddings ingress alongside the existing chat, responses, messages, models, health, and Dashboard APIs.
+v0.5 adds optional Redis-backed cluster status alongside the existing chat, responses, messages, embeddings, models, health, and Dashboard APIs.
 
 ## Live Documentation
 
@@ -60,8 +60,9 @@ Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by AP
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/health` | Gateway health, uptime, node circuit state, model circuit state, and budget status |
+| `GET` | `/cluster/status` | Redis-backed cluster inventory, heartbeat status, and reload broadcast metadata when `state.backend=redis` or `cluster.enabled=true` |
 
-`/health` is intended for local health checks, Docker checks, and monitoring systems.
+`/health` is intended for local health checks, Docker checks, and monitoring systems. `/cluster/status` returns `404` in the default single-instance memory mode.
 
 ## Dashboard API
 

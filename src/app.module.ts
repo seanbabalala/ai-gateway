@@ -11,12 +11,13 @@ import { TelemetryModule } from './telemetry/telemetry.module';
 import { ControlPlaneModule } from './control-plane/control-plane.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { StateModule } from './state/state.module';
+import { ClusterModule } from './cluster/cluster.module';
 
 @Module({
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'frontend', 'dist'),
-      exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}'],
+      exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}', '/cluster{/*path}'],
     }),
     ConfigModule,
     StateModule,
@@ -24,6 +25,7 @@ import { StateModule } from './state/state.module';
     TelemetryModule,
     ControlPlaneModule,
     AlertsModule,
+    ClusterModule,
     PluginModule,
     AuthModule,
     IngestModule,
