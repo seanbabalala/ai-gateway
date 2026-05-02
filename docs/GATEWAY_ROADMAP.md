@@ -702,9 +702,9 @@
 
 ### P0：可解释路由
 
-#### 37. Route Decision Trace 后端
+#### 37. Route Decision Trace + Dashboard 路线解释页
 
-- **状态**：🚧 v0.6 分支已实现后端基础能力
+- **状态**：🚧 v0.6 分支已实现后端 trace 与 Dashboard 只读解释页
 - **目标**：每次请求都能回答“为什么选择这个 `node:model`”
 - **实现方案**：
   - Pipeline/RoutingService 生成 privacy-safe trace
@@ -713,8 +713,10 @@
   - Dashboard API：
     - `GET /api/dashboard/route-decisions`
     - `GET /api/dashboard/route-decisions/:requestId`
+  - Dashboard 新增只读 Route Explanation 页面，展示候选模型、过滤原因、成本/延迟/context 权衡、fallback reason 与最终选择
+  - Logs 详情可深链跳转到对应 request 的 route decision
   - 不保存 prompt、response、raw headers、provider keys
-- **下一步**：Dashboard 增加可视化“路线选择解释页”
+- **下一步**：将 Route Explanation 与后续结构化输出、shadow 对比报告联动
 
 ### P0：协议能力补齐
 
@@ -773,7 +775,7 @@
 | 33  | Embedding Batching |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    | ✅ v0.5 OSS |
 | 36  | 影子流量           |  ⭐⭐⭐⭐  |    中    | ✅ v0.5 OSS |
-| 37  | 可解释路由 Trace   | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6    |
+| 37  | 可解释路由 Trace + Dashboard | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6    |
 
 ---
 

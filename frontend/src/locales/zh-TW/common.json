@@ -28,6 +28,7 @@
   "nav.manage": "管理",
   "nav.monitor": "監控",
   "nav.nodes": "節點",
+  "nav.routeExplanation": "路由解釋",
   "nav.routing": "路由",
   "nav.shadow": "影子流量",
   "sidebar.productSubtitle": "AI 閘道",

@@ -72,6 +72,138 @@ export interface LogsResponse {
   pagination: LogsPagination
 }
 
+// ── Route Decisions ──
+
+export interface RouteDecisionTarget {
+  node: string
+  model: string
+}
+
+export interface RouteDecisionCandidate {
+  node: string
+  model: string
+  weight: number | null
+  position: number
+  circuit_state: string
+  circuit_available: boolean
+  selected: boolean
+  fallback: boolean
+  filter_reasons: string[]
+  scores: {
+    cost: number | null
+    latency: number | null
+    context: number | null
+  }
+  metrics: {
+    estimated_cost_usd: number | null
+    avg_latency_ms: number | null
+    p95_latency_ms: number | null
+    max_context_tokens: number | null
+    context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown'
+    structured_output: boolean | null
+  }
+}
+
+export interface RouteDecisionFilter {
+  node: string
+  model: string
+  stage: string
+  reason: string
+}
+
+export interface RouteDecisionTrace {
+  version: 1
+  request_id?: string
+  source_format?: string
+  requested_model?: string | null
+  mode: string
+  tier: string
+  score: number
+  domain_hints: {
+    domain: string | null
+    modalities: string[]
+    fast_path?: string | null
+  }
+  scoring: {
+    tier: string
+    score: number
+    momentum_adjusted: boolean
+  }
+  constraints: {
+    estimated_input_tokens: number | null
+    estimated_output_tokens: number | null
+    estimated_context_tokens: number | null
+    requires_structured_output: boolean
+  }
+  candidate_targets: RouteDecisionCandidate[]
+  filters: RouteDecisionFilter[]
+  load_balancing: {
+    strategy: string
+    source: string
+    selected: RouteDecisionTarget | null
+    target_count: number
+    reason: string
+  }
+  fallback_chain: RouteDecisionTarget[]
+  cost_downgrade?: {
+    applied: boolean
+    from: RouteDecisionTarget
+    to: RouteDecisionTarget
+    reason: string
+  } | null
+  final_selection: {
+    node: string | null
+    model: string | null
+    reason: string | null
+    is_fallback: boolean
+    fallback_reason: string | null
+  }
+  outcome?: {
+    status_code: number
+    error: string | null
+  }
+  privacy: {
+    prompt: false
+    response: false
+    raw_headers: false
+    provider_keys: false
+  }
+}
+
+export interface RouteDecisionSummary {
+  id: number
+  request_id: string
+  timestamp: string
+  source_format: string
+  tier: string
+  score: number
+  route_mode: string | null
+  strategy: string | null
+  selected: RouteDecisionTarget
+  final_selection: RouteDecisionTrace['final_selection']
+  domain_hint: string | null
+  candidate_count: number
+  filtered_count: number
+  status_code: number
+  is_fallback: boolean
+  fallback_reason: string | null
+  api_key_name: string | null
+  api_key_id: string | null
+  namespace_id: string | null
+  summary: {
+    reason: string | null
+    fallback_chain: RouteDecisionTarget[]
+    filters: RouteDecisionFilter[]
+    privacy: RouteDecisionTrace['privacy']
+  }
+  trace?: RouteDecisionTrace | null
+}
+
+export interface RouteDecisionsResponse {
+  data: RouteDecisionSummary[]
+  pagination: LogsPagination
+}
+
 // ── Budget ──
 
 export interface BudgetRule {

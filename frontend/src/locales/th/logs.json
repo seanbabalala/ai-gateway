@@ -4,6 +4,7 @@
   "common.yes": "ใช่",
   "detail.apiKey": "API Key",
   "detail.error": "Error",
+  "detail.explainRoute": "อธิบาย route",
   "detail.fallback": "Fallback",
   "detail.fallbackReason": "เหตุผล Fallback",
   "detail.requestId": "Request ID",

@@ -4,6 +4,7 @@
   "common.yes": "是",
   "detail.apiKey": "API Key",
   "detail.error": "錯誤",
+  "detail.explainRoute": "解釋路由",
   "detail.fallback": "降級",
   "detail.fallbackReason": "降級原因",
   "detail.requestId": "請求 ID",

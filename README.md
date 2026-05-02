@@ -104,7 +104,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
-- **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs
+- **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -1074,6 +1074,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
+- **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
 - **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations

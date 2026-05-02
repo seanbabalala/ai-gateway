@@ -28,6 +28,7 @@
   "nav.manage": "จัดการ",
   "nav.monitor": "มอนิเตอร์",
   "nav.nodes": "โหนด",
+  "nav.routeExplanation": "อธิบายเส้นทาง",
   "nav.routing": "การกำหนดเส้นทาง",
   "nav.shadow": "Shadow",
   "sidebar.productSubtitle": "AI Gateway",

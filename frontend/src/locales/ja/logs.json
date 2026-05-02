@@ -4,6 +4,7 @@
   "common.yes": "はい",
   "detail.apiKey": "API Key",
   "detail.error": "エラー",
+  "detail.explainRoute": "ルートを説明",
   "detail.fallback": "フォールバック",
   "detail.fallbackReason": "フォールバック理由",
   "detail.requestId": "リクエスト ID",
