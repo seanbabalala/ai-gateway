@@ -575,17 +575,24 @@
 #### 31. HTTP/2 + 连接池
 
 - **现状**：使用 Node.js 原生 fetch，无连接复用
+- **状态**：✅ v0.5 已实现 per-node undici pool；HTTP/2 为 experimental opt-in
 - **目标**：高吞吐场景下减少连接开销
 - **实现方案**：
   - 引入 `undici` 连接池（per node）
-  - 支持 HTTP/2 multiplexing 到支持的 Provider
+  - 支持 stream / non-stream / embeddings 共享 per-node dispatcher
+  - 支持 keep_alive、pool_size、headers timeout、body timeout
+  - HTTP/2 multiplexing 先以 `connection.http2: true` 实验性启用
   - 配置：
     ```yaml
     nodes:
       - id: openai-prod
         connection:
+          enabled: true
           pool_size: 10
+          keep_alive: true
           keep_alive_ms: 60000
+          headers_timeout_ms: 30000
+          body_timeout_ms: 300000
           http2: true
     ```
 

@@ -120,6 +120,16 @@ nodes:
     # max_concurrency: 50
     # queue_timeout_ms: 10000
     # queue_policy: wait # wait | fallback | reject
+    # Optional undici upstream connection pool. Omit this block to keep the
+    # default fetch behavior. HTTP/2 is experimental and disabled by default.
+    # connection:
+    #   enabled: true
+    #   keep_alive: true
+    #   pool_size: 10
+    #   keep_alive_ms: 60000
+    #   headers_timeout_ms: 30000
+    #   body_timeout_ms: 300000
+    #   http2: false
     # Active health probing is disabled by default. Prefer HEAD/GET against a
     # cheap provider/proxy readiness endpoint. Use lightweight_model only when
     # no readiness endpoint exists; probes send a synthetic 1-token request.

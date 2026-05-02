@@ -10,10 +10,14 @@
 - v0.5 PostgreSQL production migration path for the OSS Data Plane via `siftgate migrate-db --from sqlite --to postgres`.
 - SQLite-to-PostgreSQL migrator with dry-run inspection, optional SQLite backup, non-empty target protection, row-count validation, sequence reset, and secret-redacted reports.
 - Production deployment documentation covering PostgreSQL recommendation, TypeORM schema strategy, Docker Compose PostgreSQL profile, and SQLite migration workflow.
+- v0.5 upstream connection pooling for the OSS Data Plane via optional `nodes[].connection` undici per-node dispatchers.
+- Keep-alive, pool size, headers timeout, body timeout, and experimental HTTP/2 connection settings for upstream provider calls.
+- Upstream benchmark script and performance notes for future forwarding regression checks.
 
 ### Changed
 
 - Added optional `database.synchronize` configuration so local SQLite development can keep schema sync while production PostgreSQL can run with synchronization disabled.
+- Provider forwarding now shares the optional per-node dispatcher across streaming, non-streaming, and embeddings requests while leaving default `fetch` behavior unchanged when no connection pool is configured.
 
 ## 0.4.0 - 2026-05-02
 

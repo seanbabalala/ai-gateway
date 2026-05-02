@@ -637,8 +637,85 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     }
 
     validateNodeAliases(node, basePath, issues);
+    validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
   });
+}
+
+function validateNodeConnection(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.connection === undefined) return;
+  if (!isRecord(node.connection)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_connection',
+        'nodes[].connection must be an object when set.',
+        `${basePath}.connection`,
+      ),
+    );
+    return;
+  }
+
+  const connection = node.connection;
+  for (const key of ['enabled', 'keep_alive', 'http2']) {
+    if (connection[key] !== undefined && !isBoolean(connection[key])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_connection_flag',
+          `nodes[].connection.${key} must be a boolean when set.`,
+          `${basePath}.connection.${key}`,
+        ),
+      );
+    }
+  }
+
+  for (const key of ['pool_size', 'keep_alive_ms']) {
+    if (
+      connection[key] !== undefined &&
+      (!isFiniteNumber(connection[key]) || connection[key] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_connection_value',
+          `nodes[].connection.${key} must be a positive number when set.`,
+          `${basePath}.connection.${key}`,
+        ),
+      );
+    }
+  }
+
+  for (const key of ['headers_timeout_ms', 'body_timeout_ms']) {
+    if (
+      connection[key] !== undefined &&
+      (!isFiniteNumber(connection[key]) || connection[key] < 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_connection_value',
+          `nodes[].connection.${key} must be a non-negative number when set.`,
+          `${basePath}.connection.${key}`,
+        ),
+      );
+    }
+  }
+
+  if (connection.http2 === true) {
+    issues.push(
+      issue(
+        'warning',
+        'experimental_http2_connection_pool',
+        'nodes[].connection.http2 is experimental; leave it disabled unless the upstream is known to work with undici HTTP/2.',
+        `${basePath}.connection.http2`,
+      ),
+    );
+  }
 }
 
 function validateNodeEmbeddingModels(
