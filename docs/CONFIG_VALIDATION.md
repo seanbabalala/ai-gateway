@@ -49,11 +49,15 @@ hardening visible without blocking local development.
 - Shared ConfigService diagnostics for ambiguous node/model resolution,
   duplicate model ids across nodes, alias conflicts, duplicate prefixes,
   missing model pricing, and routing references.
-- Routing integrity for `primary`, `fallbacks`, `split`, and future
-  `targets` entries.
+- Routing integrity for `primary`, `fallbacks`, `split`, and `targets` entries.
+- `routing.optimization`, which must be `cost`, `latency`, `balanced`, or
+  `quality` when configured.
 - Split weights, which must sum to `100`.
 - `routing.domain_preferences` references to known node ids.
 - Pricing entries with numeric `input` and `output` values.
+- v0.3 model capability metadata, including positive `max_context_tokens`,
+  boolean `structured_output`, non-negative `quality_score`, and optional
+  per-model `pricing` overrides.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

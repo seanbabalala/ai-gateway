@@ -71,6 +71,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Complexity scoring** — analyzes each request across 14 dimensions (keywords, structure, tools, etc.) to determine complexity tier (simple / standard / complex / reasoning)
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
+- **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
@@ -501,6 +502,38 @@ Compatibility rules:
 - `least_latency` uses an in-memory sliding window of recent successful upstream latencies and falls back to stable config order while targets are cold.
 - The Dashboard routing page is read/write for config and read-only for live selection metrics such as samples, average latency, p95 latency, and the most recent target choice.
 
+For v0.3 cost and context-window aware routing, add model capability metadata and an optional optimization mode:
+
+```yaml
+nodes:
+  - id: openai
+    models: ["gpt-4o", "gpt-4o-mini"]
+    max_context_tokens: 128000        # node-level default
+    structured_output: true           # node-level default
+    model_capabilities:
+      gpt-4o:
+        max_context_tokens: 128000
+        structured_output: true
+        quality_score: 0.9
+      gpt-4o-mini:
+        max_context_tokens: 128000
+        structured_output: true
+        quality_score: 0.6
+        pricing: { input: 0.15, output: 0.60 } # optional node/model override
+
+routing:
+  optimization: cost # cost | latency | balanced | quality
+```
+
+The gateway estimates request tokens from canonical messages, tools, and the requested output budget before automatic routing. Targets whose configured `max_context_tokens` cannot fit the estimate are removed; targets above 80% of their window are demoted behind longer-context alternatives. Direct model routing is not silently changed: if a direct model has a configured window and the estimate exceeds it, the gateway returns a clear 400 error instead of rerouting around the caller's choice. API key `allow_auto`, `allow_direct`, `allowed_nodes`, and `allowed_models` checks still run before a request reaches an upstream provider.
+
+Optimization modes apply only within the already-eligible smart-routing target set:
+
+- `cost` chooses the lowest estimated input/output cost using per-model `pricing` or `models_pricing`.
+- `latency` chooses the lowest local sliding-window latency, with stable cold-start fallback.
+- `balanced` combines normalized cost and latency.
+- `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
+
 ### Budget
 
 ```yaml
@@ -509,7 +542,7 @@ budget:
   daily_cost_limit: 200.00 # Max cost per day (USD)
   alert_threshold: 0.8 # Alert at 80% usage
 
-models_pricing: # Cost per 1M tokens (USD)
+models_pricing: # Cost per 1M tokens (USD); used when node/model pricing is omitted
   gpt-4o: { input: 2.50, output: 10.00 }
   claude-opus-4: { input: 15.00, output: 75.00 }
 ```
@@ -556,7 +589,7 @@ For each accepted request, the gateway applies the same accounting path:
 3. Check both global budgets and the key's own budgets.
 4. Resolve `auto` or direct routing according to the key's permissions.
 5. Serve from gateway prompt cache or call the upstream provider.
-6. Compute token usage and estimated cost from `models_pricing`.
+6. Compute token usage and estimated cost from node/model `pricing` overrides or `models_pricing`.
 7. Record usage against global budgets and, when present, the key budget.
 8. Write a call log attributed to the same `api_key_id`.
 
@@ -569,7 +602,7 @@ The call log stores:
 - upstream node
 - upstream model
 - input and output tokens
-- estimated cost from `models_pricing`
+- estimated cost from node/model `pricing` overrides or `models_pricing`
 - status code and latency
 
 That record powers the Dashboard, Logs, Analytics, Budget, and per-key billing views. Generated key budgets are reset by `budget_rule.id`, not by rule type, so global and per-key `daily_cost` rules cannot be confused.
@@ -578,7 +611,7 @@ Dashboard filters for generated Gateway API keys use the immutable `api_key_id`.
 
 Gateway prompt-cache hits are still logged and recorded against budgets using the cached response's usage and model pricing. They are marked as tier `cached` with node `cache`, so they remain attributable without making an upstream provider call.
 
-Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry, routing still works, token usage is still tracked, and cost may be `0` until pricing is configured.
+Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, routing still works, token usage is still tracked, and cost may be `0` until pricing is configured.
 
 When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"` and structured details such as `scope`, `api_key_id`, `budget_type`, `current`, `limit`, and `reset_at`.
 

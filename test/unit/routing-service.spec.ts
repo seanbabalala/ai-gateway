@@ -5,6 +5,7 @@ import { Tier } from '../../src/canonical/canonical.types';
 function makeRoutingService(overrides: {
   tiers?: Record<string, any>;
   domainPreferences?: Record<string, string[]>;
+  optimization?: any;
   nodes?: any[];
   circuitBreaker?: any;
   momentum?: any;
@@ -23,6 +24,7 @@ function makeRoutingService(overrides: {
         },
       },
       scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 },
+      optimization: overrides.optimization,
       domain_preferences: overrides.domainPreferences,
     },
     nodes: overrides.nodes || [
@@ -44,6 +46,10 @@ function makeRoutingService(overrides: {
 
   const capabilityService = overrides.capabilityService || {
     resolveModelModalities: jest.fn().mockReturnValue(['text', 'vision']),
+    resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+      structured_output: null,
+      pricing: undefined,
+    }),
   };
 
   return new RoutingService(config, capabilityService, circuitBreaker, momentum);
@@ -313,5 +319,123 @@ describe('RoutingService', () => {
     expect(decision.primary.node).toBe('n1');
     expect(decision.experimentGroup).toBe('simple:legacy-split');
     expect(decision.loadBalancing.source).toBe('split');
+  });
+
+  it('should prefer the lowest estimated cost when routing.optimization is cost', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+        structured_output: null,
+        pricing:
+          model === 'cheap-model'
+            ? { input: 0.1, output: 0.2 }
+            : { input: 5, output: 15 },
+      })),
+    };
+    const svc = makeRoutingService({
+      optimization: 'cost',
+      capabilityService,
+      tiers: {
+        standard: {
+          strategy: 'weighted',
+          targets: [
+            { node: 'n2', model: 'expensive-model', weight: 100 },
+            { node: 'n1', model: 'cheap-model', weight: 1 },
+          ],
+        },
+      },
+    });
+
+    const decision = svc.resolve('standard' as Tier, 0.4, undefined, null, undefined, {
+      estimated_input_tokens: 1000,
+      estimated_output_tokens: 500,
+      estimated_context_tokens: 1500,
+    });
+
+    expect(decision.primary.model).toBe('cheap-model');
+    expect(decision.loadBalancing.strategy).toBe('cost');
+  });
+
+  it('should remove targets whose configured context window is too small', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+        structured_output: null,
+        max_context_tokens: model === 'short-model' ? 8000 : 32000,
+      })),
+    };
+    const svc = makeRoutingService({
+      capabilityService,
+      tiers: {
+        standard: {
+          targets: [
+            { node: 'n1', model: 'short-model' },
+            { node: 'n2', model: 'long-model' },
+          ],
+        },
+      },
+    });
+
+    const decision = svc.resolve('standard' as Tier, 0.4, undefined, null, undefined, {
+      estimated_context_tokens: 9000,
+    });
+
+    expect(decision.primary.model).toBe('long-model');
+    expect(decision.fallbacks).toHaveLength(0);
+  });
+
+  it('should demote near-limit context targets when a longer-context target exists', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+        structured_output: null,
+        max_context_tokens: model === 'near-model' ? 10000 : 50000,
+      })),
+    };
+    const svc = makeRoutingService({
+      capabilityService,
+      tiers: {
+        standard: {
+          targets: [
+            { node: 'n1', model: 'near-model' },
+            { node: 'n2', model: 'long-model' },
+          ],
+        },
+      },
+    });
+
+    const decision = svc.resolve('standard' as Tier, 0.4, undefined, null, undefined, {
+      estimated_context_tokens: 9000,
+    });
+
+    expect(decision.primary.model).toBe('long-model');
+    expect(decision.fallbacks[0].model).toBe('near-model');
+  });
+
+  it('should reject automatic routes when every configured target is over context window', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+        structured_output: null,
+        max_context_tokens: 4000,
+      }),
+    };
+    const svc = makeRoutingService({
+      capabilityService,
+      tiers: {
+        standard: {
+          targets: [
+            { node: 'n1', model: 'short-a' },
+            { node: 'n2', model: 'short-b' },
+          ],
+        },
+      },
+    });
+
+    expect(() =>
+      svc.resolve('standard' as Tier, 0.4, undefined, null, undefined, {
+        estimated_context_tokens: 5000,
+      }),
+    ).toThrow('No route targets for tier "standard" can fit');
   });
 });

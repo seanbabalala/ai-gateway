@@ -117,6 +117,117 @@ describe('config validator', () => {
       expect.arrayContaining(['duplicate_model_id', 'missing_model_pricing']),
     );
   });
+
+  it('accepts v0.3 routing optimization and model capability metadata', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+            max_context_tokens: 128000,
+            structured_output: true,
+            model_capabilities: {
+              'gpt-4o-mini': {
+                max_context_tokens: 128000,
+                structured_output: true,
+                pricing: { input: 0.15, output: 0.6 },
+                quality_score: 0.7,
+              },
+            },
+          },
+        ],
+        routing: {
+          optimization: 'cost',
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).toHaveLength(0);
+    expect(codes(result.warnings)).not.toContain('missing_model_pricing');
+  });
+
+  it('rejects invalid v0.3 routing optimization and capability metadata', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+            max_context_tokens: -1,
+            structured_output: 'yes',
+            model_capabilities: {
+              'gpt-4o-mini': {
+                max_context_tokens: 0,
+                structured_output: 'yes',
+                pricing: { input: -1, output: 0.6 },
+              },
+            },
+          },
+        ],
+        routing: {
+          optimization: 'magic',
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_max_context_tokens',
+        'invalid_structured_output_flag',
+        'invalid_pricing_entry',
+        'invalid_routing_optimization',
+      ]),
+    );
+  });
 });
 
 describe('siftgate validate CLI', () => {

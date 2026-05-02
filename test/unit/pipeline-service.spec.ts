@@ -49,6 +49,13 @@ function makePipeline(overrides: Record<string, any> = {}): {
   const capabilityService = {
     resolveModelModalities: jest.fn().mockReturnValue(['text']),
     resolveNodeModalities: jest.fn().mockReturnValue(['text']),
+    resolveModelRoutingCapabilities: jest.fn().mockImplementation(
+      (_nodeId: string, model: string) => ({
+        max_context_tokens: 128000,
+        structured_output: null,
+        pricing: config.getModelPricing(model),
+      }),
+    ),
     ...overrides.capabilityService,
   };
 
@@ -208,6 +215,45 @@ describe('PipelineService — direct routing', () => {
 
     expect(mocks.scoringService.score).toHaveBeenCalled();
     expect(mocks.routingService.resolve).toHaveBeenCalled();
+  });
+
+  it('should reject a direct route when the configured context window is too small', async () => {
+    const { pipeline, mocks } = makePipeline({
+      capabilityService: {
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          max_context_tokens: 10,
+          structured_output: null,
+          pricing: { input: 5, output: 15 },
+        }),
+      },
+    });
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(400);
+    expect(String((result.body.error as any).message)).toContain('max_context_tokens=10');
+    expect(mocks.providerClient.forward).not.toHaveBeenCalled();
+  });
+
+  it('should pass token estimates into automatic routing', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'auto', maxTokens: 25 });
+
+    await pipeline.process(request);
+
+    expect(mocks.routingService.resolve).toHaveBeenCalledWith(
+      'standard',
+      0.45,
+      undefined,
+      undefined,
+      undefined,
+      expect.objectContaining({
+        estimated_input_tokens: expect.any(Number),
+        estimated_output_tokens: 25,
+        estimated_context_tokens: expect.any(Number),
+      }),
+    );
   });
 });
 

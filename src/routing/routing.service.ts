@@ -21,6 +21,7 @@ import { MomentumService } from './momentum.service';
 import {
   LoadBalancingStrategy,
   RouteTarget,
+  RoutingOptimization,
   SplitVariant,
   TierConfig,
   WeightedRouteTarget,
@@ -40,7 +41,11 @@ export interface RouteDecision {
   loadBalancing: RouteLoadBalancingDecision;
 }
 
-export type EffectiveRoutingStrategy = LoadBalancingStrategy | 'primary_fallback' | 'split';
+export type EffectiveRoutingStrategy =
+  | LoadBalancingStrategy
+  | RoutingOptimization
+  | 'primary_fallback'
+  | 'split';
 
 export interface RouteLoadBalancingDecision {
   strategy: EffectiveRoutingStrategy;
@@ -71,6 +76,28 @@ export interface RoutingTierStatus {
     strategy: EffectiveRoutingStrategy;
     reason: string;
   } | null;
+}
+
+export interface RouteSelectionHints {
+  estimated_input_tokens?: number;
+  estimated_output_tokens?: number;
+  estimated_context_tokens?: number;
+  requires_structured_output?: boolean;
+}
+
+interface SelectedRouteTarget {
+  target: WeightedRouteTarget;
+  strategy: EffectiveRoutingStrategy;
+}
+
+export class RoutingConstraintError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode = 400,
+  ) {
+    super(message);
+    this.name = 'RoutingConstraintError';
+  }
 }
 
 /**
@@ -121,6 +148,7 @@ export class RoutingService {
     sessionKey?: string,
     domainHint?: 'frontend' | 'backend' | null,
     modalityHints?: Modality[],
+    selectionHints: RouteSelectionHints = {},
   ): RouteDecision {
     const hint = domainHint || null;
 
@@ -139,7 +167,11 @@ export class RoutingService {
         `No config for tier "${effectiveTier}", falling back to "${firstTier}"`,
       );
       const fallbackConfig = this.config.routing.tiers[firstTier];
-      const fallbackTargets = this.normalizeTierTargets(fallbackConfig).targets;
+      const fallbackTargets = this.applyCapabilityConstraints(
+        effectiveTier,
+        this.normalizeTierTargets(fallbackConfig).targets,
+        selectionHints,
+      );
       const selected = fallbackTargets[0];
       return {
         primary: selected,
@@ -201,6 +233,12 @@ export class RoutingService {
           splitOrdered = this.reorderByPreference(splitAvailable, preferredNodes);
         }
       }
+
+      splitOrdered = this.applyCapabilityConstraints(
+        effectiveTier,
+        splitOrdered,
+        selectionHints,
+      );
 
       experimentGroup = this.resolveExperimentGroupForTarget(
         splitResult.experimentGroupsByTarget,
@@ -298,13 +336,21 @@ export class RoutingService {
       }
     }
 
+    orderedTargets = this.applyCapabilityConstraints(
+      effectiveTier,
+      orderedTargets,
+      selectionHints,
+    );
+
     // ── Step 5: Apply load-balancing strategy and build final route ──
-    const primary = this.selectTargetByStrategy(
+    const selection = this.selectTargetByStrategy(
       effectiveTier,
       normalized.strategy,
       orderedTargets,
       sessionKey,
+      selectionHints,
     );
+    const primary = selection.target;
     const fallbacks = orderedTargets
       .filter((target) => target !== primary)
       .map((target) => this.toRouteTarget(target));
@@ -318,9 +364,9 @@ export class RoutingService {
     this.recordSelection(
       effectiveTier,
       primary,
-      normalized.strategy,
+      selection.strategy,
       normalized.source,
-      this.selectionReason(normalized.strategy, primary),
+      this.selectionReason(selection.strategy, primary),
     );
 
     return {
@@ -333,7 +379,7 @@ export class RoutingService {
       experimentGroup: null,
       experimentGroupsByTarget: {},
       loadBalancing: {
-        strategy: normalized.strategy,
+        strategy: selection.strategy,
         source: normalized.source,
         selected: this.toRouteTarget(primary),
         target_count: orderedTargets.length,
@@ -374,9 +420,13 @@ export class RoutingService {
             })),
           }
         : this.normalizeTierTargets(tierConfig);
+      const effectiveStrategy =
+        normalized.source === 'split'
+          ? normalized.strategy
+          : this.config.routing.optimization || normalized.strategy;
 
       result[tier] = {
-        strategy: normalized.strategy,
+        strategy: effectiveStrategy,
         source: normalized.source,
         targets: normalized.targets.map((target) => this.buildTargetMetrics(target)),
         last_selected: this.lastSelections.get(tier) || null,
@@ -418,25 +468,213 @@ export class RoutingService {
     strategy: EffectiveRoutingStrategy,
     targets: WeightedRouteTarget[],
     sessionKey?: string,
-  ): WeightedRouteTarget {
+    selectionHints: RouteSelectionHints = {},
+  ): SelectedRouteTarget {
     if (targets.length === 0) {
       throw new Error(`No route targets available for tier "${tier}"`);
     }
-    if (targets.length === 1 || strategy === 'primary_fallback' || strategy === 'split') {
-      return targets[0];
+    if (targets.length === 1 || strategy === 'split') {
+      return { target: targets[0], strategy };
+    }
+
+    const contextPreferred = this.selectContextPreferredTarget(
+      targets,
+      selectionHints,
+    );
+    if (contextPreferred) {
+      return { target: contextPreferred, strategy };
+    }
+
+    const optimization = this.config.routing.optimization;
+    if (optimization) {
+      const optimizedTarget = this.selectTargetByOptimization(
+        optimization,
+        targets,
+        selectionHints,
+      );
+      if (optimizedTarget) {
+        return { target: optimizedTarget, strategy: optimization };
+      }
+    }
+
+    if (strategy === 'primary_fallback') {
+      return { target: targets[0], strategy };
     }
 
     switch (strategy) {
       case 'round_robin':
-        return this.selectRoundRobin(tier, targets);
+        return { target: this.selectRoundRobin(tier, targets), strategy };
       case 'least_latency':
-        return this.selectLeastLatency(targets);
+        return { target: this.selectLeastLatency(targets), strategy };
       case 'random':
-        return targets[Math.floor(Math.random() * targets.length)] || targets[0];
+        return {
+          target: targets[Math.floor(Math.random() * targets.length)] || targets[0],
+          strategy,
+        };
       case 'weighted':
       default:
-        return this.selectWeighted(tier, targets, sessionKey);
+        return { target: this.selectWeighted(tier, targets, sessionKey), strategy };
     }
+  }
+
+  private selectTargetByOptimization(
+    optimization: RoutingOptimization,
+    targets: WeightedRouteTarget[],
+    selectionHints: RouteSelectionHints,
+  ): WeightedRouteTarget | null {
+    switch (optimization) {
+      case 'cost':
+        return this.selectLowestCost(targets, selectionHints);
+      case 'latency':
+        return this.selectLeastLatency(targets);
+      case 'balanced':
+        return this.selectBalanced(targets, selectionHints);
+      case 'quality':
+        return this.selectHighestQuality(targets);
+      default:
+        return null;
+    }
+  }
+
+  private selectContextPreferredTarget(
+    targets: WeightedRouteTarget[],
+    selectionHints: RouteSelectionHints,
+  ): WeightedRouteTarget | null {
+    const estimatedContextTokens = selectionHints.estimated_context_tokens;
+    if (!estimatedContextTokens || estimatedContextTokens <= 0) return null;
+
+    const safe: WeightedRouteTarget[] = [];
+    const unknown: WeightedRouteTarget[] = [];
+    let nearLimitCount = 0;
+
+    for (const target of targets) {
+      const maxContextTokens =
+        this.capabilityService.resolveModelRoutingCapabilities(
+          target.node,
+          target.model,
+        ).max_context_tokens;
+      if (!maxContextTokens) {
+        unknown.push(target);
+      } else if (estimatedContextTokens > maxContextTokens * 0.8) {
+        nearLimitCount++;
+      } else {
+        safe.push(target);
+      }
+    }
+
+    if (nearLimitCount === 0) return null;
+    return safe[0] || unknown[0] || null;
+  }
+
+  private selectLowestCost(
+    targets: WeightedRouteTarget[],
+    selectionHints: RouteSelectionHints,
+  ): WeightedRouteTarget | null {
+    const priced = targets
+      .map((target, index) => ({
+        target,
+        index,
+        cost: this.estimateTargetCost(target, selectionHints),
+      }))
+      .filter((item) => item.cost !== null);
+
+    if (priced.length === 0) return null;
+
+    priced.sort((a, b) => {
+      if (a.cost !== b.cost) return (a.cost as number) - (b.cost as number);
+      return a.index - b.index;
+    });
+    return priced[0].target;
+  }
+
+  private selectBalanced(
+    targets: WeightedRouteTarget[],
+    selectionHints: RouteSelectionHints,
+  ): WeightedRouteTarget | null {
+    const entries = targets.map((target, index) => ({
+      target,
+      index,
+      cost: this.estimateTargetCost(target, selectionHints),
+      latency: this.averageLatency(target.node, target.model),
+    }));
+    const costs = entries
+      .map((entry) => entry.cost)
+      .filter((value): value is number => value !== null);
+    const latencies = entries
+      .map((entry) => entry.latency)
+      .filter((value): value is number => value !== null);
+
+    if (costs.length === 0 && latencies.length === 0) return null;
+
+    const minCost = costs.length ? Math.min(...costs) : 0;
+    const maxCost = costs.length ? Math.max(...costs) : 0;
+    const minLatency = latencies.length ? Math.min(...latencies) : 0;
+    const maxLatency = latencies.length ? Math.max(...latencies) : 0;
+
+    const normalized = entries.map((entry) => ({
+      ...entry,
+      score:
+        this.normalizeMetric(entry.cost, minCost, maxCost) * 0.6 +
+        this.normalizeMetric(entry.latency, minLatency, maxLatency) * 0.4,
+    }));
+
+    normalized.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      return a.index - b.index;
+    });
+    return normalized[0].target;
+  }
+
+  private selectHighestQuality(
+    targets: WeightedRouteTarget[],
+  ): WeightedRouteTarget | null {
+    const scored = targets
+      .map((target, index) => ({
+        target,
+        index,
+        quality:
+          this.capabilityService.resolveModelRoutingCapabilities(
+            target.node,
+            target.model,
+          ).quality_score ?? null,
+      }))
+      .filter((item) => item.quality !== null);
+
+    if (scored.length === 0) return null;
+
+    scored.sort((a, b) => {
+      if (a.quality !== b.quality) return (b.quality as number) - (a.quality as number);
+      return a.index - b.index;
+    });
+    return scored[0].target;
+  }
+
+  private estimateTargetCost(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+  ): number | null {
+    const pricing = this.capabilityService.resolveModelRoutingCapabilities(
+      target.node,
+      target.model,
+    ).pricing;
+    if (!pricing) return null;
+
+    const inputTokens = selectionHints.estimated_input_tokens ?? 1_000_000;
+    const outputTokens = selectionHints.estimated_output_tokens ?? 1_000_000;
+    return (
+      (inputTokens / 1_000_000) * pricing.input +
+      (outputTokens / 1_000_000) * pricing.output
+    );
+  }
+
+  private normalizeMetric(
+    value: number | null,
+    min: number,
+    max: number,
+  ): number {
+    if (value === null) return 1;
+    if (max <= min) return 0;
+    return (value - min) / (max - min);
   }
 
   private selectRoundRobin(
@@ -516,6 +754,16 @@ export class RoutingService {
     strategy: EffectiveRoutingStrategy,
     target: RouteTarget,
   ): string {
+    if (strategy === 'cost') {
+      const cost = this.estimateTargetCost(target, {});
+      return cost === null ? 'lowest configured cost' : `lowest estimated cost (${cost.toFixed(6)} USD)`;
+    }
+    if (strategy === 'latency') {
+      const avg = this.averageLatency(target.node, target.model);
+      return avg === null ? 'latency optimization cold-start fallback' : `lowest local average latency (${avg}ms)`;
+    }
+    if (strategy === 'balanced') return 'balanced local cost and latency score';
+    if (strategy === 'quality') return 'highest configured quality score';
     if (strategy === 'least_latency') {
       const avg = this.averageLatency(target.node, target.model);
       return avg === null ? 'cold-start ordered fallback' : `lowest local average latency (${avg}ms)`;
@@ -524,6 +772,118 @@ export class RoutingService {
     if (strategy === 'random') return 'random target';
     if (strategy === 'weighted') return 'weighted target selection';
     return 'legacy primary/fallback order';
+  }
+
+  private applyCapabilityConstraints<T extends RouteTarget>(
+    tier: string,
+    targets: T[],
+    selectionHints: RouteSelectionHints,
+  ): T[] {
+    let constrained = targets;
+
+    if (selectionHints.requires_structured_output) {
+      constrained = this.preferStructuredOutputTargets(tier, constrained);
+    }
+
+    const estimatedContextTokens = selectionHints.estimated_context_tokens;
+    if (
+      estimatedContextTokens === undefined ||
+      estimatedContextTokens <= 0 ||
+      constrained.length === 0
+    ) {
+      return constrained;
+    }
+
+    const safe: T[] = [];
+    const unknown: T[] = [];
+    const nearLimit: T[] = [];
+    const overflow: T[] = [];
+
+    for (const target of constrained) {
+      const maxContextTokens =
+        this.capabilityService.resolveModelRoutingCapabilities(
+          target.node,
+          target.model,
+        ).max_context_tokens;
+
+      if (!maxContextTokens) {
+        unknown.push(target);
+      } else if (estimatedContextTokens > maxContextTokens) {
+        overflow.push(target);
+      } else if (estimatedContextTokens > maxContextTokens * 0.8) {
+        nearLimit.push(target);
+      } else {
+        safe.push(target);
+      }
+    }
+
+    const fits = [...safe, ...unknown, ...nearLimit];
+    if (fits.length === 0) {
+      const largestWindow = Math.max(
+        ...overflow.map((target) =>
+          this.capabilityService.resolveModelRoutingCapabilities(
+            target.node,
+            target.model,
+          ).max_context_tokens || 0,
+        ),
+      );
+      throw new RoutingConstraintError(
+        `No route targets for tier "${tier}" can fit the estimated ${estimatedContextTokens} context tokens` +
+          (largestWindow ? ` (largest configured window: ${largestWindow}).` : '.'),
+        400,
+      );
+    }
+
+    if (overflow.length > 0) {
+      this.logger.warn(
+        `Context-aware routing removed ${overflow.length} target(s) for tier "${tier}" because estimated context ${estimatedContextTokens} exceeds their configured windows.`,
+      );
+    }
+
+    if (safe.length > 0 && nearLimit.length > 0) {
+      this.logger.debug(
+        `Context-aware routing demoted ${nearLimit.length} near-limit target(s) for tier "${tier}" over 80% of context window.`,
+      );
+    }
+
+    return fits;
+  }
+
+  private preferStructuredOutputTargets<T extends RouteTarget>(
+    tier: string,
+    targets: T[],
+  ): T[] {
+    const supported: T[] = [];
+    const unknown: T[] = [];
+    const unsupported: T[] = [];
+
+    for (const target of targets) {
+      const structuredOutput =
+        this.capabilityService.resolveModelRoutingCapabilities(
+          target.node,
+          target.model,
+        ).structured_output;
+      if (structuredOutput === true) {
+        supported.push(target);
+      } else if (structuredOutput === false) {
+        unsupported.push(target);
+      } else {
+        unknown.push(target);
+      }
+    }
+
+    if (supported.length > 0) {
+      return [...supported, ...unknown];
+    }
+
+    if (unknown.length === 0 && unsupported.length > 0) {
+      throw new RoutingConstraintError(
+        `No route targets for tier "${tier}" declare structured output support.`,
+        400,
+      );
+    }
+
+    return [...unknown, ...unsupported];
   }
 
   private toRouteTarget(target: RouteTarget): RouteTarget {

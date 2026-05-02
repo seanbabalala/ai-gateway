@@ -90,6 +90,19 @@ nodes:
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     timeout_ms: 60000
+    max_context_tokens: 128000
+    structured_output: true
+    model_capabilities:
+      gpt-4o:
+        max_context_tokens: 128000
+        structured_output: true
+        quality_score: 0.9
+      gpt-4o-mini:
+        max_context_tokens: 128000
+        structured_output: true
+        quality_score: 0.6
+        # Optional per-node/model pricing override. If omitted, models_pricing below is used.
+        pricing: { input: 0.15, output: 0.60 }
     # Optional per-node upstream concurrency limiter.
     # Applies across all models routed through this node.
     # max_concurrency: 50
@@ -124,6 +137,13 @@ nodes:
     auth_type: x-api-key # Anthropic uses x-api-key header
     models: ["claude-sonnet-4-20250514"]
     timeout_ms: 120000
+    max_context_tokens: 200000
+    structured_output: false
+    model_capabilities:
+      claude-sonnet-4-20250514:
+        max_context_tokens: 200000
+        structured_output: false
+        quality_score: 0.9
     tags: ["code", "backend", "reasoning", "math"]
     model_aliases:
       claude: claude-sonnet-4-20250514
@@ -180,6 +200,11 @@ nodes:
 # overrides targets until split is removed.
 # ============================================================
 routing:
+  # Optional v0.3 automatic routing optimization.
+  # Applies only to smart routing (`model: auto`) after permission, health,
+  # modality, and context-window constraints are evaluated.
+  optimization: balanced # cost | latency | balanced | quality
+
   tiers:
     simple:
       primary: { node: openai, model: gpt-4o-mini }
