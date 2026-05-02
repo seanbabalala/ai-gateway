@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- v0.3 external log sinks via `logging.sinks`, with JSONL file output, webhook batches, and a minimal Elasticsearch bulk exporter.
+- Asynchronous per-sink batching, retry, max queue, overflow handling, and sanitized field allow/deny filtering for exported call logs.
+- Config validation and documentation for external log sink settings, with S3 reserved as an interface placeholder.
+
 ## 0.2.0 - 2026-05-02
 
 ### Added

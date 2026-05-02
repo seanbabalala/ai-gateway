@@ -27,6 +27,9 @@ export interface GatewayConfig {
   /** Runtime config reload behavior — watcher disabled by default */
   hot_reload?: HotReloadConfig;
 
+  /** Optional external call-log sinks — disabled by default */
+  logging?: LoggingConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
 }
@@ -38,6 +41,81 @@ export interface HotReloadConfig {
   /** Debounce file watcher reloads in milliseconds (default: 500) */
   debounce_ms?: number;
 }
+
+// ===== External Log Sinks =====
+export type LogSinkType = 'file' | 'webhook' | 's3' | 'elasticsearch';
+export type LogSinkOverflowPolicy = 'drop_oldest' | 'drop_newest';
+
+export interface LoggingConfig {
+  /** Master switch for local external log sinks (default: false) */
+  enabled?: boolean;
+  /** External sink list. SQLite/Postgres call_log remains authoritative. */
+  sinks?: LogSinkConfig[];
+}
+
+export interface LogSinkRetryConfig {
+  /** Total delivery attempts, including the first attempt (default: 3). */
+  attempts?: number;
+  /** Delay between failed attempts in milliseconds (default: 1000). */
+  backoff_ms?: number;
+  /** Per-attempt HTTP timeout in milliseconds (default: 5000). */
+  timeout_ms?: number;
+}
+
+export interface BaseLogSinkConfig {
+  type: LogSinkType;
+  /** Stable name used in logs, stats, and queue state. */
+  name?: string;
+  /** Disable one sink without deleting it (default: true). */
+  enabled?: boolean;
+  /** Records delivered per flush (default: 100). */
+  batch_size?: number;
+  /** Background flush interval in milliseconds (default: 5000). */
+  flush_interval_ms?: number;
+  /** Per-sink in-memory queue limit (default: 10000). */
+  max_queue?: number;
+  /** Queue overflow behavior (default: drop_oldest). */
+  overflow?: LogSinkOverflowPolicy;
+  /** Optional allow-list of output fields. Empty/unset means all safe fields. */
+  fields?: string[];
+  /** Optional deny-list applied after fields. */
+  exclude_fields?: string[];
+  /** Delivery retry controls. */
+  retry?: LogSinkRetryConfig;
+}
+
+export interface FileLogSinkConfig extends BaseLogSinkConfig {
+  type: 'file';
+  /** JSONL output path. Parent directories are created automatically. */
+  path: string;
+}
+
+export interface WebhookLogSinkConfig extends BaseLogSinkConfig {
+  type: 'webhook';
+  url: string;
+  /** Optional outbound headers. Values may use environment references. */
+  headers?: Record<string, string>;
+}
+
+export interface S3LogSinkConfig extends BaseLogSinkConfig {
+  type: 's3';
+  bucket: string;
+  region?: string;
+  prefix?: string;
+}
+
+export interface ElasticsearchLogSinkConfig extends BaseLogSinkConfig {
+  type: 'elasticsearch';
+  url: string;
+  index: string;
+  headers?: Record<string, string>;
+}
+
+export type LogSinkConfig =
+  | FileLogSinkConfig
+  | WebhookLogSinkConfig
+  | S3LogSinkConfig
+  | ElasticsearchLogSinkConfig;
 
 // ===== Dashboard =====
 export interface DashboardConfig {

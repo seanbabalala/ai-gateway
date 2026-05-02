@@ -54,6 +54,9 @@ hardening visible without blocking local development.
 - Split weights, which must sum to `100`.
 - `routing.domain_preferences` references to known node ids.
 - Pricing entries with numeric `input` and `output` values.
+- Optional `logging.sinks` entries for file, webhook, S3 interface, and
+  Elasticsearch exports, including batching, retry, queue, URL/header, and
+  sensitive-field filter checks.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

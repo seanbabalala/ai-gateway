@@ -45,6 +45,7 @@ Client Request
   -> Provider Client
   -> Denormalizer
   -> Call Log
+  -> Optional External Log Sinks
   -> Optional Control-Plane Metadata Upload
 ```
 
@@ -130,6 +131,8 @@ The gateway records call logs with:
 - experiment group
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, and optional connected-gateway metadata upload.
+
+External log sinks can mirror sanitized `CallLog` metadata to JSONL files, webhook receivers, or a minimal Elasticsearch bulk endpoint. Sink delivery is asynchronous and starts only after the local database write succeeds. Export payloads do not include prompts, responses, provider keys, raw auth headers, or secret-bearing fields by default.
 
 ## Connected Gateway
 

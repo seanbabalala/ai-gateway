@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -33,6 +33,7 @@ import { PromptCacheService } from '../cache/prompt-cache.service';
 import { LogEventBus } from '../dashboard/log-event-bus';
 import { HookExecutorService } from '../plugins/hook-executor.service';
 import { TelemetryUploaderService } from '../control-plane/telemetry-uploader.service';
+import { LogSinkService } from '../log-sinks/log-sink.service';
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
@@ -96,6 +97,7 @@ export class PipelineService {
     private readonly telemetryUploader: TelemetryUploaderService,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
+    @Optional() private readonly logSinks?: LogSinkService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -1761,6 +1763,11 @@ export class PipelineService {
 
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);
+      try {
+        this.logSinks?.enqueue(saved);
+      } catch (err) {
+        this.logger.warn(`Failed to enqueue external log sinks: ${(err as Error).message}`);
+      }
 
       // Optional hosted control-plane metadata upload. This is privacy-preserving:
       // it derives metadata only from CallLog and never includes prompt/response bodies.

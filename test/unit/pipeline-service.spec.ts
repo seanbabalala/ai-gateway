@@ -135,6 +135,10 @@ function makePipeline(overrides: Record<string, any> = {}): {
     enqueue: jest.fn(),
     ...overrides.telemetryUploader,
   };
+  const logSinks = {
+    enqueue: jest.fn(),
+    ...overrides.logSinks,
+  };
 
   const callLogRepo = {
     create: jest.fn().mockImplementation((data: any) => data),
@@ -157,6 +161,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     new TelemetryService(),
     telemetryUploader as any,
     callLogRepo as any,
+    logSinks as any,
   );
 
   return {
@@ -164,7 +169,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     mocks: {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, concurrencyLimiter, budgetService, cacheService,
-      logEventBus, hooks, telemetryUploader, callLogRepo,
+      logEventBus, hooks, telemetryUploader, callLogRepo, logSinks,
     },
   };
 }
@@ -1217,6 +1222,21 @@ describe('PipelineService — processStream transmission-phase errors', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('PipelineService — control-plane telemetry metadata', () => {
+  it('should enqueue external log sinks after the local call log is saved', async () => {
+    const { pipeline, mocks } = makePipeline();
+
+    await pipeline.process(makeRequest('Hello'));
+
+    expect(mocks.callLogRepo.save).toHaveBeenCalled();
+    expect(mocks.logSinks.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 1,
+        node_id: 'openai',
+        model: 'gpt-4o',
+      }),
+    );
+  });
+
   it('should enqueue domain and modality metadata without request bodies', async () => {
     const { pipeline, mocks } = makePipeline({
       scoringService: {

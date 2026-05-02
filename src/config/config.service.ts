@@ -15,6 +15,8 @@ import {
   RetryConfig,
   BudgetConfig,
   CacheConfig,
+  LoggingConfig,
+  LogSinkConfig,
   ControlPlaneConfig,
   HotReloadConfig,
   ModelPricing,
@@ -219,10 +221,13 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid configuration: routing.scoring is required');
     }
     for (const [tierName, tier] of Object.entries(config.routing.tiers)) {
-      if (!tier?.primary?.node || !tier.primary.model) {
+      const hasTargets = Array.isArray(tier?.targets) && tier.targets.length > 0;
+      const hasSplit = Array.isArray(tier?.split) && tier.split.length > 0;
+      const requiresLegacyRoute = !hasTargets && !hasSplit;
+      if (requiresLegacyRoute && (!tier?.primary?.node || !tier.primary.model)) {
         throw new Error(`Invalid configuration: routing.tiers.${tierName}.primary is required`);
       }
-      if (!Array.isArray(tier.fallbacks)) {
+      if (tier?.fallbacks !== undefined && !Array.isArray(tier.fallbacks)) {
         throw new Error(`Invalid configuration: routing.tiers.${tierName}.fallbacks must be an array`);
       }
     }
@@ -518,6 +523,15 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return {
       watch: hotReload?.watch ?? false,
       debounce_ms: hotReload?.debounce_ms ?? 500,
+    };
+  }
+
+  /** Get external log sink config with safe disabled-by-default behavior. */
+  get logSinks(): Required<LoggingConfig> & { sinks: LogSinkConfig[] } {
+    const logging = this.config.logging;
+    return {
+      enabled: logging?.enabled ?? false,
+      sinks: logging?.sinks ?? [],
     };
   }
 
