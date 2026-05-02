@@ -28,6 +28,7 @@
   "nav.manage": "管理",
   "nav.monitor": "監視",
   "nav.nodes": "ノード",
+  "nav.routeExplanation": "ルート説明",
   "nav.routing": "ルーティング",
   "nav.shadow": "シャドウ",
   "sidebar.productSubtitle": "AI ゲートウェイ",

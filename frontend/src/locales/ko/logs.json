@@ -4,6 +4,7 @@
   "common.yes": "예",
   "detail.apiKey": "API 키",
   "detail.error": "오류",
+  "detail.explainRoute": "경로 설명",
   "detail.fallback": "Fallback",
   "detail.fallbackReason": "Fallback 이유",
   "detail.requestId": "요청 ID",

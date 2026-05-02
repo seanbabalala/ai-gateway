@@ -90,13 +90,15 @@
 
 #### 5. 路由选择解释页
 
-- **状态**：后端 Route Decision Trace ✅ 已在 `codex/v0.6-route-decision-trace` 实现；Dashboard 页面待合并
+- **状态**：✅ 后端 Route Decision Trace 已在 `codex/v0.6-route-decision-trace` 实现；Dashboard 只读解释页已在 `codex/v0.6-route-explanation-dashboard` 实现
 - **目标**：让用户看到 SiftGate 为什么选择某个 node/model，而不只是知道最终路由结果
 - **实现方案**：
   - Pipeline/RoutingService 生成 privacy-safe trace
   - trace 包含 `request_id`、`source_format`、tier、score、domain hints、candidate targets、过滤原因、成本/延迟/context 分数、circuit 状态、fallback chain、最终选择
   - `route_decisions` 独立表存储 trace summary 与完整 JSON，兼容 SQLite/PostgreSQL
   - Dashboard API 提供 `GET /api/dashboard/route-decisions` 与 `GET /api/dashboard/route-decisions/:requestId`
+  - Dashboard 新增只读 Route Explanation 页面，展示候选模型、过滤原因、成本/延迟/context 权衡、fallback reason 与最终选择
+  - Logs 详情可深链跳转到对应 request 的 route decision
   - 不保存 prompt、response、raw headers、provider keys
 
 ---
@@ -815,8 +817,7 @@
 | 37  | 多模态能力 Schema  | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
 | 38  | 结构化输出完整透传 | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
 | 39  | Image/Audio/Rerank/Realtime | ⭐⭐⭐⭐⭐ |    大    | 🔴 v0.6 P0 |
-| 40  | 路由选择解释页     | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
-| 41  | 可解释路由 Trace   | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
+| 40  | 可解释路由 Trace + Dashboard | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
 
 ---
 

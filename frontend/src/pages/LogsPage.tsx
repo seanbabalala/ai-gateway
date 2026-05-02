@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardStatic } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -94,6 +95,15 @@ function LogDetailRow({ log }: { log: CallLog }) {
               <span className="font-mono text-red-600 dark:text-red-400">{log.error}</span>
             </div>
           )}
+          <div className="col-span-3">
+            <Link
+              to={`/route-decisions/${encodeURIComponent(log.request_id)}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'mt-1' })}
+            >
+              <Route className="h-3.5 w-3.5" />
+              {t('detail.explainRoute')}
+            </Link>
+          </div>
         </div>
       </TableCell>
     </TableRow>

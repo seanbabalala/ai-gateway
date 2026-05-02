@@ -4,6 +4,7 @@
   "common.yes": "Yes",
   "detail.apiKey": "API Key",
   "detail.error": "Error",
+  "detail.explainRoute": "Explain route",
   "detail.fallback": "Fallback",
   "detail.fallbackReason": "Fallback Reason",
   "detail.requestId": "Request ID",
