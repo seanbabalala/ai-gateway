@@ -12,7 +12,7 @@ import { ControlPlaneModule } from '../control-plane/control-plane.module';
 import { AlertsModule } from '../alerts/alerts.module';
 import { LogSinksModule } from '../log-sinks/log-sinks.module';
 import { ShadowModule } from '../shadow/shadow.module';
-import { CallLog } from '../database/entities/call-log.entity';
+import { CallLog, RouteDecisionLog } from '../database/entities';
 
 @Module({
   imports: [
@@ -26,7 +26,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     AlertsModule,
     LogSinksModule,
     ShadowModule,
-    TypeOrmModule.forFeature([CallLog]),
+    TypeOrmModule.forFeature([CallLog, RouteDecisionLog]),
   ],
   providers: [PipelineService, EmbeddingBatchingService],
   exports: [PipelineService, EmbeddingBatchingService],

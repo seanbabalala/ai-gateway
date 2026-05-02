@@ -90,13 +90,14 @@
 
 #### 5. 路由选择解释页
 
-- **状态**：计划中
+- **状态**：后端 Route Decision Trace ✅ 已在 `codex/v0.6-route-decision-trace` 实现；Dashboard 页面待合并
 - **目标**：让用户看到 SiftGate 为什么选择某个 node/model，而不只是知道最终路由结果
 - **实现方案**：
-  - 记录 route decision trace：候选目标、过滤原因、score/tier、optimization、capability、budget、fallback/circuit/concurrency 状态
-  - Dashboard 增加 Explain 页或 Call Log 详情 tab
-  - API 提供只读 route explanation，不自动修改配置
-  - 默认不包含 prompt/response，必要摘要必须脱敏
+  - Pipeline/RoutingService 生成 privacy-safe trace
+  - trace 包含 `request_id`、`source_format`、tier、score、domain hints、candidate targets、过滤原因、成本/延迟/context 分数、circuit 状态、fallback chain、最终选择
+  - `route_decisions` 独立表存储 trace summary 与完整 JSON，兼容 SQLite/PostgreSQL
+  - Dashboard API 提供 `GET /api/dashboard/route-decisions` 与 `GET /api/dashboard/route-decisions/:requestId`
+  - 不保存 prompt、response、raw headers、provider keys
 
 ---
 
@@ -777,80 +778,6 @@
 
 ---
 
-## v0.6 — Protocol + Explainability（协议广度 + 可解释路由）
-
-**v0.6 当前状态**：进行中。目标是补齐生产协议能力，并把 “为什么选择这个 node/model” 做成 SiftGate 的核心产品亮点。所有能力继续保持开源 Data Plane 单机可用，Redis/Postgres/Cloud 只作为可选能力。
-
-### P0：协议能力铺底
-
-#### 37. 统一多模态 capability schema
-
-- **状态**：🚧 v0.6 开发中
-- **现状**：v0.5 已有 `models`、`embedding_models`、`max_context_tokens`、`structured_output`、`pricing` 等分散能力字段
-- **目标**：为 Image、Audio、Rerank、Realtime 等入口建立统一能力矩阵，避免后续每个端点单独设计一套 schema
-- **实现方案**：
-  ```yaml
-  nodes:
-    - id: openai
-      models: [gpt-4o]
-      embedding_models: [text-embedding-3-small]
-      modalities: [text, vision]
-      endpoints:
-        image: /v1/images/generations
-        audio: /v1/audio/transcriptions
-        rerank: /v1/rerank
-        realtime: wss://api.openai.com/v1/realtime
-      input_types: [text, image, audio]
-      output_types: [text, image, events]
-      max_file_size: 20000000
-      supports_streaming: true
-      supports_realtime: false
-      supports_rerank: false
-      model_capabilities:
-        gpt-4o:
-          modalities: [text, image, audio]
-          pricing: { input: 2.5, output: 10 }
-        text-embedding-3-small:
-          modalities: [text, embedding]
-          dimensions: [512, 1536]
-  ```
-
-  - 兼容旧字段：`nodes[].models`、`embedding_models`、`modalities: [text, vision]` 继续有效
-  - `vision` 作为旧图像输入别名保留，并在路由匹配时兼容 `image`
-  - Config validation 校验 modality、endpoint map、input/output types、file-size、support flags 和 pricing warning
-  - RoutingService 对自动路由按请求 modality 严格过滤候选 node:model
-  - Dashboard Nodes/Routing 页面只读展示模型能力，不自动改配置
-
-#### 38. 结构化输出完整透传
-
-- **状态**：v0.6 P0
-- **目标**：完整支持 OpenAI Chat Completions `response_format`、OpenAI Responses `text.format`，并对 Anthropic Messages 做明确降级/透传策略
-- **实现方案**：
-  - CanonicalRequest 保留统一 response format 与原始请求意图
-  - provider 转发和跨协议转换不丢失 JSON mode / JSON schema
-  - 与 fallback policy 联动：非流式 parse/schema failure 可触发 fallback；stream 已开始后不破坏 SSE
-  - Dashboard call log 展示结构化输出意图、支持状态、降级/透传原因
-
-#### 39. Image / Audio / Rerank / Realtime 入口
-
-- **状态**：v0.6 P0
-- **目标**：补齐 New API/LiteLLM 类项目常见协议广度短板
-- **实现方案**：
-  - 复用统一 capability schema 做节点筛选
-  - 分阶段实现：优先 Image、Audio、Rerank 的 OpenAI-compatible 请求入口；Realtime 可先做明确 experimental 能力与文档
-  - 默认不保存 prompt、response、raw headers 或 provider key
-
-### P0：可解释路由
-
-#### 40. 路由选择解释页
-
-- **状态**：v0.6 P0
-- **目标**：让用户看到为什么选中当前 node/model，以及哪些候选被过滤或降级
-- **实现方案**：
-  - 路由决策记录候选集合、过滤条件、成本/延迟/质量/context/modality/structured-output 原因
-  - Dashboard 提供只读 explain 页面和 call log drill-down
-  - 不自动修改 routing 配置；推荐和解释分离
-
 ---
 
 ## 功能优先级矩阵
@@ -889,6 +816,7 @@
 | 38  | 结构化输出完整透传 | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
 | 39  | Image/Audio/Rerank/Realtime | ⭐⭐⭐⭐⭐ |    大    | 🔴 v0.6 P0 |
 | 40  | 路由选择解释页     | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
+| 41  | 可解释路由 Trace   | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
 
 ---
 
@@ -937,10 +865,10 @@
 
 ## 建议下一批启动项
 
-基于**用户价值最大 + 为后续功能奠基**的原则，v0.5.0 发布后建议优先启动：
+基于**用户价值最大 + 为后续功能奠基**的原则，v0.6 阶段建议优先完成：
 
-1. **内置 Playground**（最直观的用户体验提升）
-2. **结构化输出透传**（提升跨协议兼容性）
-3. **Image Generation / Completions Legacy / MCP 支持**（继续扩展开源网关的 API 与集成覆盖面）
+1. **Route Decision Trace + Dashboard 路线解释页**（把 explainable routing 做成核心差异）
+2. **结构化输出透传**（提升 OpenAI/Claude 生产应用兼容性）
+3. **Rerank / Image / Audio / Realtime 最小可用入口**（继续扩展开源网关的 API 覆盖面）
 
-这三项可以并行开发，互不依赖，并且都能继续保持 Cloud 作为可选控制面。
+这些能力都必须继续保持单机 OSS Data Plane 可用，Cloud 只作为可选控制面。

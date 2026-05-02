@@ -9,7 +9,7 @@ import { BudgetModule } from '../budget/budget.module';
 import { CacheModule } from '../cache/cache.module';
 import { AuthModule } from '../auth/auth.module';
 import { ShadowModule } from '../shadow/shadow.module';
-import { CallLog } from '../database/entities/call-log.entity';
+import { CallLog, RouteDecisionLog } from '../database/entities';
 
 @Module({
   imports: [
@@ -19,7 +19,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     CacheModule,
     AuthModule,
     ShadowModule,
-    TypeOrmModule.forFeature([CallLog]),
+    TypeOrmModule.forFeature([CallLog, RouteDecisionLog]),
   ],
   controllers: [HealthController, DashboardController],
   providers: [LogEventBus],

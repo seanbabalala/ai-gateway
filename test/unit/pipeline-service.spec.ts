@@ -244,6 +244,11 @@ function makePipeline(overrides: Record<string, any> = {}): {
     save: jest.fn().mockImplementation((data: any) => Promise.resolve({ id: 1, ...data })),
     ...overrides.callLogRepo,
   };
+  const routeDecisionRepo = {
+    create: jest.fn().mockImplementation((data: any) => data),
+    save: jest.fn().mockImplementation((data: any) => Promise.resolve({ id: 1, ...data })),
+    ...overrides.routeDecisionRepo,
+  };
 
   const pipeline = new PipelineService(
     config,
@@ -260,6 +265,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     telemetry as any,
     telemetryUploader as any,
     callLogRepo as any,
+    routeDecisionRepo as any,
     alerts as any,
     logSinks as any,
     embeddingBatching as any,
@@ -271,7 +277,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     mocks: {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, concurrencyLimiter, budgetService, cacheService,
-      logEventBus, hooks, telemetry, telemetryUploader, callLogRepo, alerts, logSinks,
+      logEventBus, hooks, telemetry, telemetryUploader, callLogRepo, routeDecisionRepo, alerts, logSinks,
       embeddingBatching,
       shadowTraffic,
     },
@@ -374,6 +380,113 @@ describe('PipelineService — direct routing', () => {
         estimated_context_tokens: expect.any(Number),
       }),
     );
+  });
+
+  it('should persist a privacy-safe route decision trace', async () => {
+    const { pipeline, mocks } = makePipeline({
+      routingService: {
+        resolve: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'gpt-4o' },
+          fallbacks: [{ node: 'claude', model: 'claude-3-opus' }],
+          tier: 'standard',
+          momentumAdjusted: false,
+          domainHint: 'backend',
+          experimentGroup: null,
+          experimentGroupsByTarget: {},
+          loadBalancing: {
+            strategy: 'balanced',
+            source: 'targets',
+            selected: { node: 'openai', model: 'gpt-4o' },
+            target_count: 2,
+          },
+          trace: {
+            version: 1,
+            mode: 'auto',
+            tier: 'standard',
+            score: 0.45,
+            domain_hints: { domain: 'backend', modalities: ['text'] },
+            scoring: { tier: 'standard', score: 0.45, momentum_adjusted: false },
+            constraints: {
+              estimated_input_tokens: 10,
+              estimated_output_tokens: 25,
+              estimated_context_tokens: 35,
+              requires_structured_output: false,
+            },
+            candidate_targets: [
+              {
+                node: 'openai',
+                model: 'gpt-4o',
+                weight: 70,
+                position: 0,
+                circuit_state: 'CLOSED',
+                circuit_available: true,
+                selected: true,
+                fallback: false,
+                filter_reasons: [],
+                scores: { cost: 0.9, latency: 0.8, context: 0.99 },
+                metrics: {
+                  estimated_cost_usd: 0.001,
+                  avg_latency_ms: 120,
+                  p95_latency_ms: 200,
+                  max_context_tokens: 128000,
+                  context_fit: 'safe',
+                  structured_output: true,
+                },
+              },
+            ],
+            filters: [],
+            load_balancing: {
+              strategy: 'balanced',
+              source: 'targets',
+              selected: { node: 'openai', model: 'gpt-4o' },
+              target_count: 2,
+              reason: 'balanced local cost and latency score',
+            },
+            fallback_chain: [{ node: 'claude', model: 'claude-3-opus' }],
+            cost_downgrade: null,
+            final_selection: {
+              node: 'openai',
+              model: 'gpt-4o',
+              reason: 'balanced local cost and latency score',
+              is_fallback: false,
+              fallback_reason: null,
+            },
+            privacy: {
+              prompt: false,
+              response: false,
+              raw_headers: false,
+              provider_keys: false,
+            },
+          },
+        }),
+      },
+    });
+    const request = makeRequest('do backend work', { originalModel: 'auto', maxTokens: 25 });
+    request.metadata.raw_headers = { authorization: 'Bearer gw_sk_secret' };
+
+    await pipeline.process(request);
+
+    expect(mocks.routeDecisionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request_id: expect.any(String),
+        source_format: 'chat_completions',
+        selected_node_id: 'openai',
+        selected_model: 'gpt-4o',
+        route_mode: 'auto',
+        strategy: 'balanced',
+      }),
+    );
+    const saved = mocks.routeDecisionRepo.create.mock.calls[0][0];
+    const trace = JSON.parse(saved.trace_json);
+    expect(trace.request_id).toBe(saved.request_id);
+    expect(trace.final_selection).toMatchObject({ node: 'openai', model: 'gpt-4o' });
+    expect(JSON.stringify(trace)).not.toContain('gw_sk_secret');
+    expect(trace.privacy).toEqual({
+      prompt: false,
+      response: false,
+      raw_headers: false,
+      provider_keys: false,
+    });
   });
 });
 

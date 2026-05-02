@@ -14,6 +14,7 @@ const TABLES: DbMigrationTableName[] = [
   "budget_rules",
   "node_status",
   "call_logs",
+  "route_decisions",
 ];
 
 class MemoryPostgresTarget implements PostgresMigrationTarget {
@@ -146,6 +147,29 @@ function createSqliteFixture(dir: string): string {
       cache_read_input_tokens integer,
       experiment_group varchar
     );
+
+    CREATE TABLE route_decisions (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      request_id varchar,
+      timestamp datetime,
+      source_format varchar,
+      tier varchar,
+      score real,
+      route_mode varchar,
+      strategy varchar,
+      selected_node_id varchar,
+      selected_model varchar,
+      domain_hint varchar,
+      candidate_count integer,
+      filtered_count integer,
+      status_code integer,
+      is_fallback integer,
+      fallback_reason varchar,
+      api_key_name varchar,
+      api_key_id varchar,
+      namespace_id varchar,
+      trace_json text
+    );
   `);
 
   db.prepare(
@@ -250,6 +274,38 @@ function createSqliteFixture(dir: string): string {
     "control",
   );
 
+  db.prepare(
+    `
+    INSERT INTO route_decisions (
+      request_id, timestamp, source_format, tier, score, route_mode,
+      strategy, selected_node_id, selected_model, domain_hint,
+      candidate_count, filtered_count, status_code, is_fallback,
+      fallback_reason, api_key_name, api_key_id, namespace_id, trace_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "req-1",
+    "2026-05-01T00:01:00.000Z",
+    "chat_completions",
+    "standard",
+    42,
+    "auto",
+    "balanced",
+    "openai",
+    "gpt-4o",
+    "backend",
+    2,
+    1,
+    200,
+    0,
+    null,
+    "prod-key",
+    "key-1",
+    "team-alpha",
+    JSON.stringify({ version: 1, privacy: { prompt: false, response: false } }),
+  );
+
   db.close();
   return dbPath;
 }
@@ -273,7 +329,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(4);
+    expect(result.totals.source_rows).toBe(5);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -311,6 +367,11 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(callLog?.structured_output_requested).toBe(true);
     expect(callLog?.structured_output_supported).toBe(true);
     expect(callLog?.timestamp).toBeInstanceOf(Date);
+
+    const routeDecision = target.rows.get("route_decisions")?.[0];
+    expect(routeDecision?.is_fallback).toBe(false);
+    expect(routeDecision?.candidate_count).toBe(2);
+    expect(routeDecision?.timestamp).toBeInstanceOf(Date);
   });
 
   it("refuses non-empty PostgreSQL targets unless force is explicit", async () => {
@@ -342,7 +403,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(4);
+    expect(result.validation.mismatches).toHaveLength(5);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

@@ -27,6 +27,9 @@
 - `nodes[].realtime_models` and `nodes[].realtime_endpoint` for realtime-capable upstreams, plus config validation and pricing diagnostics.
 - Dashboard nodes and `/health` realtime summaries with active connection counts, capability status, last close timestamps, and sanitized errors.
 - E2E coverage for realtime auth rejection, safe WebSocket proxying, close release, upstream failure handling, and provider-key redaction.
+- v0.6 explainable routing backend trace for the OSS Data Plane, recording why each request selected a `node:model` without storing prompts, responses, raw headers, or provider keys.
+- `route_decisions` persistence for SQLite/PostgreSQL plus Dashboard APIs `GET /api/dashboard/route-decisions` and `GET /api/dashboard/route-decisions/:requestId`.
+- Route decision trace details for candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and privacy flags.
 
 ### Changed
 

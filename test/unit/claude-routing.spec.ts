@@ -76,6 +76,7 @@ describe('Claude routing compatibility', () => {
       new TelemetryService(),
       { enqueue: jest.fn() } as never,
       {} as never,
+      { create: jest.fn(), save: jest.fn() } as never,
     );
 
     const route = await (service as any).resolveSmartRoute(makeMessagesRequest());
