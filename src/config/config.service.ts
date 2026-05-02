@@ -22,6 +22,7 @@ import {
   DatabaseConfig,
   AuthConfig,
   DashboardConfig,
+  FallbackPolicyConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -224,7 +225,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       if (!hasPrimary && !hasTargets) {
         throw new Error(`Invalid configuration: routing.tiers.${tierName} must define primary or targets`);
       }
-      if (!Array.isArray(tier.fallbacks)) {
+      if (!hasTargets && !Array.isArray(tier.fallbacks)) {
         throw new Error(`Invalid configuration: routing.tiers.${tierName}.fallbacks must be an array`);
       }
     }
@@ -497,6 +498,46 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       backoff_base_ms: r?.backoff_base_ms ?? 500,
       backoff_max_ms: r?.backoff_max_ms ?? 5000,
       retryable_status: r?.retryable_status ?? [429, 502, 503],
+    };
+  }
+
+  /** Get v0.3 fallback policy with conservative defaults. */
+  get fallbackPolicy(): Required<FallbackPolicyConfig> & {
+    timeout: {
+      enabled: boolean;
+      threshold_ms?: number;
+      race_fallback: boolean;
+    };
+    structured_output: {
+      enabled: boolean;
+      fallback_on_parse_error: boolean;
+      fallback_on_schema_error: boolean;
+    };
+    cost_downgrade: {
+      enabled: boolean;
+      max_estimated_cost_usd?: number;
+    };
+  } {
+    const policy = this.config.routing.fallback_policy;
+    return {
+      immediate_429: policy?.immediate_429 ?? false,
+      timeout: {
+        enabled: policy?.timeout?.enabled ?? false,
+        threshold_ms: policy?.timeout?.threshold_ms,
+        race_fallback: policy?.timeout?.race_fallback ?? false,
+      },
+      structured_output: {
+        enabled: policy?.structured_output?.enabled ?? false,
+        fallback_on_parse_error:
+          policy?.structured_output?.fallback_on_parse_error ?? true,
+        fallback_on_schema_error:
+          policy?.structured_output?.fallback_on_schema_error ?? true,
+      },
+      cost_downgrade: {
+        enabled: policy?.cost_downgrade?.enabled ?? false,
+        max_estimated_cost_usd:
+          policy?.cost_downgrade?.max_estimated_cost_usd,
+      },
     };
   }
 

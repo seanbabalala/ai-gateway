@@ -72,6 +72,12 @@ describe('Edge Cases (e2e)', () => {
     expect(res.status).toBe(200);
     // Should have made at least 2 fetch calls (primary + fallback)
     expect(harness.fetchMock.calls.length).toBeGreaterThanOrEqual(2);
+
+    await new Promise((r) => setTimeout(r, 200));
+    const logRes = await harness.agent.get('/api/dashboard/logs?limit=1');
+    expect(logRes.status).toBe(200);
+    expect(logRes.body.data[0].is_fallback).toBe(true);
+    expect(logRes.body.data[0].fallback_reason).toBe('upstream_error');
   });
 
   it('all providers return 500 → upstream error response', async () => {

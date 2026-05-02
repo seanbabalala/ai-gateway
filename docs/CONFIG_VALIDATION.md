@@ -54,6 +54,8 @@ hardening visible without blocking local development.
   `quality` when configured.
 - Split weights, which must sum to `100`.
 - `routing.domain_preferences` references to known node ids.
+- `routing.fallback_policy` shape, including explicit timeout race thresholds
+  and cost-downgrade limits when those policies are enabled.
 - Pricing entries with numeric `input` and `output` values.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional

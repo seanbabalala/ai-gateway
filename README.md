@@ -534,6 +534,33 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
+### Fallback Policies
+
+SiftGate still supports the normal primary/fallback chain, and v0.3 adds optional local policies for cases where waiting for retries is the wrong move:
+
+```yaml
+routing:
+  fallback_policy:
+    immediate_429: true
+    timeout:
+      enabled: true
+      threshold_ms: 30000
+      race_fallback: false
+    structured_output:
+      enabled: true
+      fallback_on_parse_error: true
+      fallback_on_schema_error: true
+    cost_downgrade:
+      enabled: true
+      max_estimated_cost_usd: 0.05
+```
+
+- `immediate_429` skips same-node retries for rate limits and tries the next fallback.
+- `timeout.threshold_ms` uses an upstream attempt timeout before moving on. `race_fallback` is off by default because it can create extra provider cost; when enabled it must have an explicit threshold.
+- `structured_output` checks OpenAI `response_format` and Responses `text.format` JSON output. Non-streaming responses can fallback on parse/schema failure; streaming responses stay conservative and never change routes after SSE starts.
+- `cost_downgrade` estimates request cost from local token heuristics and `models_pricing`, then uses a cheaper fallback when the primary estimate exceeds the configured limit.
+- Call logs, Dashboard log details/exports/SSE, OpenTelemetry, and optional connected-gateway telemetry include `fallback_reason`.
+
 ### Budget
 
 ```yaml

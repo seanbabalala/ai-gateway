@@ -19,6 +19,7 @@ function makeCallLog(overrides: Partial<CallLog> = {}): CallLog {
     latency_ms: 850,
     status_code: 200,
     is_fallback: false,
+    fallback_reason: null,
     session_key: null,
     error: null,
     api_key_name: 'prod',

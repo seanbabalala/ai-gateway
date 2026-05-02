@@ -37,6 +37,7 @@ export class TelemetryService {
   readonly tokensUsage: Counter;
   readonly costTotal: Counter;
   readonly cacheOperations: Counter;
+  readonly fallbackTotal: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
@@ -66,6 +67,10 @@ export class TelemetryService {
     this.cacheOperations = this.meter.createCounter('gateway.cache.operations', {
       description: 'Cache operations (hit/miss/store)',
       unit: '{operation}',
+    });
+    this.fallbackTotal = this.meter.createCounter('gateway.fallback.total', {
+      description: 'Total fallback decisions by reason',
+      unit: '{fallback}',
     });
 
     // Histograms

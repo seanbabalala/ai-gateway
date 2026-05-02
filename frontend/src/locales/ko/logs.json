@@ -5,6 +5,7 @@
   "detail.apiKey": "API 키",
   "detail.error": "오류",
   "detail.fallback": "Fallback",
+  "detail.fallbackReason": "Fallback 이유",
   "detail.requestId": "요청 ID",
   "detail.score": "점수",
   "detail.sessionKey": "세션 키",

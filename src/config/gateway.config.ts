@@ -230,6 +230,8 @@ export interface RoutingConfig {
   retry?: RetryConfig;
   /** Optional v0.3 same-capability optimization mode for automatic routing. */
   optimization?: RoutingOptimization;
+  /** Optional v0.3 fallback trigger policies. */
+  fallback_policy?: FallbackPolicyConfig;
 
   /**
    * Domain-based node preference.
@@ -248,6 +250,50 @@ export interface RoutingConfig {
    * If not configured, nodes with matching tags are auto-preferred.
    */
   domain_preferences?: Record<string, string[]>;
+}
+
+/**
+ * v0.3 fallback policy controls.
+ * Defaults are conservative: existing retry/fallback behavior is preserved unless
+ * a policy is explicitly enabled.
+ */
+export interface FallbackPolicyConfig {
+  /** Skip same-node retries on HTTP 429 and immediately try the next fallback. */
+  immediate_429?: boolean;
+  /** Timeout-driven fallback behavior for upstream calls. */
+  timeout?: TimeoutFallbackConfig;
+  /** Validate structured-output responses and fallback on invalid JSON/schema. */
+  structured_output?: StructuredOutputFallbackConfig;
+  /** Downgrade to a cheaper fallback before calling upstream when estimated cost is high. */
+  cost_downgrade?: CostDowngradeFallbackConfig;
+}
+
+export interface TimeoutFallbackConfig {
+  /** Enable timeout fallback (default: false). */
+  enabled?: boolean;
+  /** Per-upstream attempt timeout before falling back. Defaults to the node timeout. */
+  threshold_ms?: number;
+  /**
+   * Start the first fallback while the primary is still running after threshold_ms.
+   * Disabled by default because it can create extra provider cost.
+   */
+  race_fallback?: boolean;
+}
+
+export interface StructuredOutputFallbackConfig {
+  /** Enable structured-output parse/schema validation (default: false). */
+  enabled?: boolean;
+  /** Fallback when JSON parsing fails (default: true). */
+  fallback_on_parse_error?: boolean;
+  /** Fallback when a simple JSON schema check fails (default: true). */
+  fallback_on_schema_error?: boolean;
+}
+
+export interface CostDowngradeFallbackConfig {
+  /** Enable pre-upstream cost downgrade (default: false). */
+  enabled?: boolean;
+  /** Estimated request cost threshold in USD. Required when enabled. */
+  max_estimated_cost_usd?: number;
 }
 
 /**

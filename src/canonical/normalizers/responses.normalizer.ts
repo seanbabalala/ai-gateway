@@ -57,6 +57,7 @@ export class ResponsesNormalizer implements Normalizer {
           | string
           | undefined,
         raw_headers: headers,
+        raw_body: req,
       },
     };
   }

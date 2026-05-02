@@ -58,6 +58,7 @@ export class TelemetryUploaderService implements OnModuleInit, OnModuleDestroy {
       output_tokens: Number(log.output_tokens || 0),
       cost_usd: Number(log.cost_usd || 0),
       fallback_used: Boolean(log.is_fallback),
+      fallback_reason: log.fallback_reason || null,
       retry_count: Number(log.retry_count || 0),
       cache_hit: context.cacheHit ?? (log.tier === 'cached' || log.node_id === 'cache'),
       policy_hits: context.policyHits || [],

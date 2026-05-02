@@ -509,6 +509,216 @@ describe('PipelineService — retry and fallback', () => {
   });
 });
 
+describe('PipelineService — fallback policies', () => {
+  it('should immediately fallback on 429 when policy is enabled', async () => {
+    const fallbackResponse = makeCanonicalResponse({ model: 'claude-3-opus' });
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        fallbackPolicy: {
+          immediate_429: true,
+          timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },
+          structured_output: {
+            enabled: false,
+            fallback_on_parse_error: true,
+            fallback_on_schema_error: true,
+          },
+          cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
+        },
+      },
+      providerClient: {
+        forward: jest.fn().mockImplementation((_request, nodeId: string) => {
+          if (nodeId === 'openai') {
+            throw new ProviderError('Rate limited', 429, 'openai', 'rate_limited');
+          }
+          return Promise.resolve(fallbackResponse);
+        }),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forward).toHaveBeenCalledTimes(2);
+    expect(mocks.providerClient.forward.mock.calls[0][1]).toBe('openai');
+    expect(mocks.providerClient.forward.mock.calls[1][1]).toBe('claude');
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.is_fallback).toBe(true);
+    expect(savedLog.fallback_reason).toBe('rate_limited');
+  });
+
+  it('should fallback on policy timeout without retrying the timed-out node', async () => {
+    const fallbackResponse = makeCanonicalResponse({ model: 'claude-3-opus' });
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        fallbackPolicy: {
+          immediate_429: false,
+          timeout: { enabled: true, threshold_ms: 25, race_fallback: false },
+          structured_output: {
+            enabled: false,
+            fallback_on_parse_error: true,
+            fallback_on_schema_error: true,
+          },
+          cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
+        },
+      },
+      providerClient: {
+        forward: jest.fn().mockImplementation((_request, nodeId: string) => {
+          if (nodeId === 'openai') {
+            throw new ProviderError('Timed out', 504, 'openai', 'timeout');
+          }
+          return Promise.resolve(fallbackResponse);
+        }),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forward).toHaveBeenCalledTimes(2);
+    expect(mocks.providerClient.forward.mock.calls[0][4]).toEqual({ timeoutMs: 25 });
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.fallback_reason).toBe('timeout');
+  });
+
+  it('should fallback when structured output is not valid JSON', async () => {
+    const badJson = makeCanonicalResponse({
+      model: 'gpt-4o',
+      content: [{ type: 'text', text: 'not json' }],
+    });
+    const goodJson = makeCanonicalResponse({
+      model: 'claude-3-opus',
+      content: [{ type: 'text', text: '{"ok":true}' }],
+    });
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        fallbackPolicy: {
+          immediate_429: false,
+          timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },
+          structured_output: {
+            enabled: true,
+            fallback_on_parse_error: true,
+            fallback_on_schema_error: true,
+          },
+          cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
+        },
+      },
+    });
+    mocks.providerClient.forward
+      .mockResolvedValueOnce(badJson)
+      .mockResolvedValueOnce(goodJson);
+
+    const request = makeRequest('Return JSON', { originalModel: 'auto' });
+    request.metadata.raw_body = { response_format: { type: 'json_object' } };
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forward).toHaveBeenCalledTimes(2);
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.fallback_reason).toBe('structured_output_parse_failed');
+  });
+
+  it('should fallback when structured output JSON schema validation fails', async () => {
+    const schema = {
+      type: 'object',
+      required: ['ok'],
+      properties: { ok: { type: 'boolean' } },
+      additionalProperties: false,
+    };
+    const schemaMiss = makeCanonicalResponse({
+      model: 'gpt-4o',
+      content: [{ type: 'text', text: '{"message":"missing ok"}' }],
+    });
+    const schemaHit = makeCanonicalResponse({
+      model: 'claude-3-opus',
+      content: [{ type: 'text', text: '{"ok":true}' }],
+    });
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        fallbackPolicy: {
+          immediate_429: false,
+          timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },
+          structured_output: {
+            enabled: true,
+            fallback_on_parse_error: true,
+            fallback_on_schema_error: true,
+          },
+          cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
+        },
+      },
+    });
+    mocks.providerClient.forward
+      .mockResolvedValueOnce(schemaMiss)
+      .mockResolvedValueOnce(schemaHit);
+
+    const request = makeRequest('Return schema JSON', { originalModel: 'auto' });
+    request.metadata.raw_body = {
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'Result', schema },
+      },
+    };
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.fallback_reason).toBe('structured_output_schema_failed');
+  });
+
+  it('should downgrade to a cheaper fallback before upstream when estimated cost exceeds policy', async () => {
+    const cheapResponse = makeCanonicalResponse({ model: 'gpt-4o-mini' });
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        fallbackPolicy: {
+          immediate_429: false,
+          timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },
+          structured_output: {
+            enabled: false,
+            fallback_on_parse_error: true,
+            fallback_on_schema_error: true,
+          },
+          cost_downgrade: { enabled: true, max_estimated_cost_usd: 0.01 },
+        },
+        getModelPricing: jest.fn().mockImplementation((model: string) => {
+          if (model === 'gpt-4o') return { input: 500, output: 500 };
+          if (model === 'gpt-4o-mini') return { input: 0.01, output: 0.01 };
+          return { input: 5, output: 15 };
+        }),
+      },
+      routingService: {
+        resolve: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'gpt-4o' },
+          fallbacks: [{ node: 'openai', model: 'gpt-4o-mini' }],
+          tier: 'standard',
+          momentumAdjusted: false,
+          experimentGroup: null,
+          experimentGroupsByTarget: {},
+        }),
+      },
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(cheapResponse),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Long prompt', {
+      originalModel: 'auto',
+      maxTokens: 20_000,
+    });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forward).toHaveBeenCalledTimes(1);
+    expect(mocks.providerClient.forward.mock.calls[0][2]).toBe('gpt-4o-mini');
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.is_fallback).toBe(true);
+    expect(savedLog.fallback_reason).toBe('cost_downgrade');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Concurrency Limiter
 // ═══════════════════════════════════════════════════════════
@@ -1119,6 +1329,45 @@ describe('PipelineService — processStream', () => {
         content: [{ type: 'text', text: 'Cached text' }],
       }),
     );
+  });
+
+  it('should not fallback after a structured-output stream has started', async () => {
+    async function* invalidJsonStream() {
+      yield { type: 'start' as const, id: 'json-stream', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'not json' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 5, output_tokens: 2 } };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        fallbackPolicy: {
+          immediate_429: false,
+          timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },
+          structured_output: {
+            enabled: true,
+            fallback_on_parse_error: true,
+            fallback_on_schema_error: true,
+          },
+          cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
+        },
+      },
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(invalidJsonStream()),
+      },
+    });
+
+    const request = makeRequest('Stream JSON', { originalModel: 'auto' });
+    request.stream = true;
+    request.metadata.raw_body = { response_format: { type: 'json_object' } };
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(mocks.providerClient.forwardStream).toHaveBeenCalledTimes(1);
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.is_fallback).toBe(false);
+    expect(savedLog.fallback_reason).toBeNull();
   });
 });
 

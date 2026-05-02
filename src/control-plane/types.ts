@@ -37,6 +37,7 @@ export interface ControlPlaneTelemetryEvent {
   output_tokens: number;
   cost_usd: number;
   fallback_used: boolean;
+  fallback_reason: string | null;
   retry_count: number;
   cache_hit: boolean;
   policy_hits: string[];

@@ -239,13 +239,16 @@
 - **抽象到企业版**：Fleet 聚合数据驱动的路由推荐引擎
 
 #### 14. Fallback 触发策略增强
-- **现状**：仅在请求失败时 fallback
+- **状态**：✅ v0.3 开发分支已实现（`codex/v0.3-fallback-policies`）
+- **现状**：已支持本地 `routing.fallback_policy`，不会依赖 Cloud 控制面
 - **目标**：支持更多 fallback 触发条件
 - **实现方案**：
-  - 超时 fallback：请求超过阈值但未失败 → 并行发到 fallback（竞争模式）
-  - 内容 fallback：响应不满足条件（如 JSON 格式错误）→ 重试到其他模型
-  - 成本 fallback：预估成本超限 → 降级到便宜模型
-  - 限流 fallback：收到 429 → 立即切换不等重试
+  - 超时 fallback：可配置 `threshold_ms`，默认顺序 abort-and-fallback；`race_fallback` 必须显式开启并声明阈值
+  - 内容 fallback：OpenAI `response_format` / Responses `text.format` 结构化输出 JSON parse 或 schema 校验失败时切换 fallback
+  - 成本 fallback：基于本地 token 粗估与 `models_pricing`，超过 `max_estimated_cost_usd` 时降级到更便宜 fallback
+  - 限流 fallback：收到 429 可配置立即切换，不等待同节点 retry
+  - Stream 请求保持保守：只在连接阶段 fallback，SSE 已开始后不因内容校验改道
+  - `call_logs`、Dashboard、OpenTelemetry 与可选控制面 telemetry 记录 `fallback_reason`
 
 ---
 

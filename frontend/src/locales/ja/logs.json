@@ -5,6 +5,7 @@
   "detail.apiKey": "API Key",
   "detail.error": "エラー",
   "detail.fallback": "フォールバック",
+  "detail.fallbackReason": "フォールバック理由",
   "detail.requestId": "リクエスト ID",
   "detail.score": "スコア",
   "detail.sessionKey": "セッションキー",

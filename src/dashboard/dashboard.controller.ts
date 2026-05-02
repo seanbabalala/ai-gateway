@@ -559,7 +559,7 @@ export class DashboardController {
       'timestamp', 'request_id', 'tier', 'score', 'node_id', 'model',
       'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
       'latency_ms', 'status_code', 'is_fallback', 'session_key',
-      'api_key_id', 'api_key_name', 'retry_count', 'error',
+      'fallback_reason', 'api_key_id', 'api_key_name', 'retry_count', 'error',
     ];
     const csvRows = [headers.join(',')];
 

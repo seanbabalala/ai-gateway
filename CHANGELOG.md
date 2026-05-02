@@ -8,11 +8,16 @@
 - Node/model routing capability metadata for `max_context_tokens`, `structured_output`, `quality_score`, and optional per-node/model `pricing` overrides.
 - Local request token estimation for automatic routing, including messages, tools, and output budget.
 - Context-window aware routing that removes targets whose configured window is too small and demotes targets above 80% of their window behind longer-context alternatives.
+- v0.3 fallback policy controls via `routing.fallback_policy` for 429 immediate fallback, timeout fallback, structured-output parse/schema fallback, and cost downgrade.
+- `fallback_reason` in call logs, Dashboard log details/exports/SSE payloads, OpenTelemetry fallback metrics, and optional control-plane telemetry metadata.
+- Structured-output validation for OpenAI `response_format` and Responses `text.format` requests, with conservative stream behavior that never falls back after SSE has started.
 
 ### Changed
 
 - Direct model routing now preserves caller intent by returning a clear 400 when the selected direct target has a configured context window that cannot fit the estimated request, instead of silently rerouting.
 - Cost accounting can prefer node/model pricing overrides before falling back to `models_pricing`.
+- Chat Completions and Responses normalization now preserves raw request bodies so fallback policies can inspect structured-output intent.
+- Provider timeouts are surfaced as explicit timeout failures for routing and logging.
 
 ## 0.2.0 - 2026-05-02
 

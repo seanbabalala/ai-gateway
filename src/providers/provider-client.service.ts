@@ -45,7 +45,13 @@ export class ProviderClientService {
     canonical: CanonicalRequest,
     nodeId: string,
     targetModel: string,
-    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: { timeoutMs?: number } = {},
   ): Promise<CanonicalResponse> {
     return this.telemetry.withSpan(
       'gateway.upstream',
@@ -64,7 +70,12 @@ export class ProviderClientService {
         const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
         (requestBody as Record<string, unknown>).stream = false;
 
-        const response = await this.sendRequest(node, requestBody, canonical);
+        const response = await this.sendRequest(
+          node,
+          requestBody,
+          canonical,
+          options.timeoutMs,
+        );
         const latencyMs = Date.now() - startTime;
 
         this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
@@ -100,6 +111,7 @@ export class ProviderClientService {
     canonical: CanonicalRequest,
     nodeId: string,
     targetModel: string,
+    options: { timeoutMs?: number } = {},
   ): AsyncGenerator<CanonicalStreamEvent> {
     const node = this.config.getNode(nodeId);
     if (!node) throw new Error(`Node not found: ${nodeId}`);
@@ -107,7 +119,12 @@ export class ProviderClientService {
     const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
     (requestBody as Record<string, unknown>).stream = true;
 
-    const response = await this.sendRequest(node, requestBody, canonical);
+    const response = await this.sendRequest(
+      node,
+      requestBody,
+      canonical,
+      options.timeoutMs,
+    );
 
     if (!response.body) {
       throw new ProviderError(`No response body from ${node.id}`, 502, nodeId);
@@ -150,6 +167,7 @@ export class ProviderClientService {
     node: NodeConfig,
     requestBody: Record<string, unknown>,
     canonical?: CanonicalRequest,
+    timeoutMs?: number,
   ): Promise<Response> {
     const url = `${node.base_url}${node.endpoint}`;
     const headers: Record<string, string> = {
@@ -179,7 +197,8 @@ export class ProviderClientService {
     );
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), node.timeout_ms || 60000);
+    const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
+    const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
 
     let response: Response;
     try {
@@ -192,7 +211,21 @@ export class ProviderClientService {
     } catch (err: unknown) {
       clearTimeout(timeout);
       const message = err instanceof Error ? err.message : 'Unknown fetch error';
-      throw new ProviderError(`Failed to connect to ${node.id}: ${message}`, 0, node.id);
+      const errorName = err instanceof Error ? err.name : '';
+      if (errorName === 'AbortError') {
+        throw new ProviderError(
+          `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
+          504,
+          node.id,
+          'timeout',
+        );
+      }
+      throw new ProviderError(
+        `Failed to connect to ${node.id}: ${message}`,
+        0,
+        node.id,
+        'network_error',
+      );
     } finally {
       clearTimeout(timeout);
     }
@@ -206,10 +239,13 @@ export class ProviderClientService {
         );
       }
       this.logger.warn(`Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 200)}`);
+      const retryAfter = response.headers?.get?.('retry-after');
       throw new ProviderError(
-        `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}`,
+        `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}` +
+          (retryAfter ? ` retry-after: ${retryAfter}` : ''),
         response.status,
         node.id,
+        response.status === 429 ? 'rate_limited' : 'http_error',
       );
     }
 
@@ -356,7 +392,12 @@ export class ProviderClientService {
   normalizeResponse(
     body: Record<string, unknown>,
     protocol: NodeProtocol,
-    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
     nodeId: string,
     model: string,
     latencyMs: number,
@@ -375,7 +416,12 @@ export class ProviderClientService {
 
   private normalizeChatCompletionsResponse(
     body: Record<string, unknown>,
-    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
     nodeId: string, model: string, latencyMs: number,
   ): CanonicalResponse {
     const choices = body.choices as Record<string, unknown>[];
@@ -412,7 +458,12 @@ export class ProviderClientService {
 
   private normalizeResponsesResponse(
     body: Record<string, unknown>,
-    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
     nodeId: string, model: string, latencyMs: number,
   ): CanonicalResponse {
     const output = (body.output || []) as Record<string, unknown>[];
@@ -450,7 +501,12 @@ export class ProviderClientService {
 
   private normalizeMessagesResponse(
     body: Record<string, unknown>,
-    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
     nodeId: string, model: string, latencyMs: number,
   ): CanonicalResponse {
     const rawContent = (body.content || []) as Record<string, unknown>[];
@@ -514,6 +570,11 @@ export class ProviderError extends Error {
     message: string,
     public readonly statusCode: number,
     public readonly nodeId: string,
+    public readonly failureType:
+      | 'timeout'
+      | 'rate_limited'
+      | 'http_error'
+      | 'network_error' = 'http_error',
   ) {
     super(message);
     this.name = 'ProviderError';

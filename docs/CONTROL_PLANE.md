@@ -86,7 +86,7 @@ Telemetry events are derived from `call_logs` and contain metadata only:
 - request id and Gateway API key id
 - node, model, tier, score
 - latency, status, input/output tokens, estimated cost
-- fallback, retry count, cache hit, policy hits
+- fallback used, fallback reason, retry count, cache hit, policy hits
 - timestamp
 
 By default telemetry does not include:

@@ -59,6 +59,10 @@ function LogDetailRow({ log }: { log: CallLog }) {
             <span className="font-mono text-[var(--foreground-muted)]">{log.is_fallback ? t('common.yes') : t('common.no')}</span>
           </div>
           <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.fallbackReason')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.fallback_reason ?? t('common.na')}</span>
+          </div>
+          <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.tokens')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
               {t('detail.tokensInOut', { input: log.input_tokens, output: log.output_tokens })}

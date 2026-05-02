@@ -262,6 +262,22 @@ routing:
   #   backoff_max_ms: 5000               # Max backoff delay (default: 5000)
   #   retryable_status: [429, 502, 503]  # HTTP codes to retry (default: [429, 502, 503])
 
+  # Fallback policy controls (optional, v0.3)
+  # Existing primary/fallback behavior is preserved when this section is omitted.
+  # fallback_policy:
+  #   immediate_429: true                 # Skip same-node retries on HTTP 429
+  #   timeout:
+  #     enabled: true
+  #     threshold_ms: 30000               # Abort this upstream attempt, then fallback
+  #     race_fallback: false              # Starts fallback in parallel; off by default to avoid extra cost
+  #   structured_output:
+  #     enabled: true                     # Validate JSON for response_format/text.format requests
+  #     fallback_on_parse_error: true
+  #     fallback_on_schema_error: true
+  #   cost_downgrade:
+  #     enabled: false
+  #     max_estimated_cost_usd: 0.05      # Requires models_pricing entries
+
   # Domain-based node preference (optional)
   # When the scoring engine detects a domain hint in the request,
   # these nodes are promoted in the routing order.
