@@ -386,6 +386,80 @@ export interface RoutingRecommendationResponse {
   recommendations: RoutingRecommendationItem[]
 }
 
+// ── Adaptive Routing Recommendations ──
+
+export interface AdaptiveRouteTargetStats {
+  key: string
+  tier?: string
+  node: string
+  model: string
+  calls: number
+  successes: number
+  failures: number
+  success_rate: number
+  fallback_calls: number
+  fallback_rate: number
+  retry_count: number
+  avg_latency_ms: number
+  p50_latency_ms: number
+  p95_latency_ms: number
+  total_cost_usd: number
+  avg_cost_usd: number
+  cost_per_1k_calls_usd: number
+  first_seen_at: string | null
+  last_seen_at: string | null
+}
+
+export interface AdaptiveTierStats {
+  tier: string
+  calls: number
+  fallback_calls: number
+  fallback_rate: number
+  targets: AdaptiveRouteTargetStats[]
+}
+
+export interface AdaptiveRoutingStatsWindow {
+  generated_at: string
+  window_hours: number
+  sample_limit: number
+  min_samples: number
+  observed_calls: number
+  targets: AdaptiveRouteTargetStats[]
+  tiers: AdaptiveTierStats[]
+}
+
+export interface AdaptiveRoutingSavings {
+  cost_usd_per_1k_calls: number
+  window_cost_usd: number
+  p50_latency_ms: number
+  p95_latency_ms: number
+}
+
+export interface AdaptiveRoutingRecommendation {
+  id: string
+  tier: string
+  type: 'promote_primary' | 'investigate_primary' | 'collect_more_data'
+  current_primary: { node: string; model: string }
+  suggested_primary: { node: string; model: string } | null
+  suggested_fallbacks: { node: string; model: string }[]
+  reasons: string[]
+  confidence: number
+  potential_savings: AdaptiveRoutingSavings
+  risks: string[]
+  evidence: {
+    current: AdaptiveRouteTargetStats | null
+    candidate: AdaptiveRouteTargetStats | null
+    tier_calls: number
+  }
+}
+
+export interface AdaptiveRoutingRecommendationsResponse {
+  mode: 'recommendation_only'
+  generated_at: string
+  stats: AdaptiveRoutingStatsWindow
+  recommendations: AdaptiveRoutingRecommendation[]
+}
+
 // ── Experiment Analytics ──
 
 export interface ExperimentGroupStats {

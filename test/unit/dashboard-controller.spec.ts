@@ -110,6 +110,15 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...overrides.gatewayApiKeys,
   };
 
+  const routingRecommendations = {
+    getRecommendations: jest.fn().mockResolvedValue({
+      mode: 'recommendation_only',
+      stats: { observed_calls: 0, targets: [], tiers: [] },
+      recommendations: [],
+    }),
+    ...overrides.routingRecommendations,
+  };
+
   const dataSource = {
     options: { type: 'better-sqlite3' },
     ...overrides.dataSource,
@@ -126,12 +135,13 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     cacheService as any,
     logEventBus as any,
     new TelemetryService(),
+    routingRecommendations as any,
     gatewayApiKeys as any,
     dataSource as any,
     callLogRepo as any,
   );
 
-  return { controller, config, circuitBreaker, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
+  return { controller, config, circuitBreaker, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService, routingRecommendations };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -486,6 +496,16 @@ describe('DashboardController — capabilities & routing', () => {
     const { controller } = makeDashboard();
     const result = controller.recommendRouting();
     expect(result).toHaveProperty('recommendations');
+  });
+
+  it('should return read-only adaptive routing recommendations', async () => {
+    const { controller, routingRecommendations } = makeDashboard();
+    const result = await controller.getAdaptiveRoutingRecommendations(12, 500);
+    expect(result.mode).toBe('recommendation_only');
+    expect(routingRecommendations.getRecommendations).toHaveBeenCalledWith({
+      windowHours: 12,
+      sampleLimit: 500,
+    });
   });
 
   it('should update routing config', () => {

@@ -36,6 +36,7 @@ import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
 import { DashboardGuard } from '../auth/dashboard.guard';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import type { Modality } from '../config/modality';
 import {
   CreateGatewayApiKeyDto,
@@ -56,6 +57,7 @@ export class DashboardController {
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
     private readonly telemetry: TelemetryService,
+    private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
@@ -787,6 +789,20 @@ export class DashboardController {
   @Post('routing/recommend')
   recommendRouting() {
     return { recommendations: this.capabilityService.recommendRouting() };
+  }
+
+  /** Read-only adaptive routing recommendations from local sliding-window metrics */
+  @Get('routing/recommendations')
+  getAdaptiveRoutingRecommendations(
+    @Query('window_hours', new DefaultValuePipe(24), ParseIntPipe)
+    windowHours: number,
+    @Query('sample_limit', new DefaultValuePipe(1000), ParseIntPipe)
+    sampleLimit: number,
+  ) {
+    return this.routingRecommendations.getRecommendations({
+      windowHours,
+      sampleLimit,
+    });
   }
 
   /** Update routing configuration (tiers, scoring, domain preferences) */
