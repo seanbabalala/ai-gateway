@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.4 plugin manager CLI via `siftgate plugin install/list/remove`.
+- Local path and npm package plugin installation with initial `@siftgate/plugin-*` registry scope support.
+- `plugins.config.yaml` declaration management so plugin installs do not rewrite `gateway.config.yaml`.
+- Plugin version and SiftGate gateway compatibility checks using package metadata.
+- Runtime plugin loader support for `plugins.config.yaml` and npm package resolution through `node_modules`.
 
 ## 0.3.0 - 2026-05-02
 

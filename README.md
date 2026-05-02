@@ -111,6 +111,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
+- **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 
 ## Quick Start
@@ -313,6 +314,8 @@ node dist/cli/siftgate.js validate --config gateway.config.yaml
 ```
 
 The validator checks YAML parsing, required sections, node/model naming conflicts, routing/fallback/split/targets references, pricing coverage warnings, environment-reference format, provider key hygiene, and optional `control_plane` safety. Errors return a non-zero exit code; warnings and info are printed without failing the command. See [Config Validation](docs/CONFIG_VALIDATION.md) for CI examples and the issue taxonomy.
+
+Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 
 ### Server
 
@@ -773,6 +776,23 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
 - **API Keys** — Client Gateway API key generation, permissions, budgets, rate limits, rotation, and disable/delete controls
+
+## Plugins
+
+SiftGate can load runtime plugins from the local `plugins/` directory, from `gateway.config.yaml`, or from the standalone `plugins.config.yaml` declaration file. The plugin manager writes `plugins.config.yaml` by default, leaving `gateway.config.yaml` under operator control.
+
+```bash
+# Local directory or file
+node dist/cli/siftgate.js plugin install ./plugins/pii-filter
+
+# npm registry package from the initial official scope
+node dist/cli/siftgate.js plugin install @siftgate/plugin-guardrails
+
+node dist/cli/siftgate.js plugin list
+node dist/cli/siftgate.js plugin remove @siftgate/plugin-guardrails
+```
+
+For npm packages, the CLI currently accepts the `@siftgate/plugin-*` scope, reads package metadata with `npm view`, checks the plugin's declared SiftGate compatibility range, then runs `npm install --save` and records the declaration. Local plugins are checked against a nearby `package.json` when one is present. See [Plugin Manager](docs/PLUGINS.md) for declaration format and compatibility metadata.
 
 ## Observability
 

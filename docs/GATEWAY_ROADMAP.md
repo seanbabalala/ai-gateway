@@ -390,7 +390,8 @@
 ### P1：插件生态
 
 #### 22. 插件包管理器
-- **现状**：插件必须手动放到 `plugins/` 目录
+- **状态**：✅ v0.4 已实现（功能分支 `codex/v0.4-plugin-manager`）
+- **现状**：支持本地路径与 `@siftgate/plugin-*` npm package 的声明式安装
 - **目标**：支持 npm-like 插件安装
 - **实现方案**：
   ```bash
@@ -401,7 +402,8 @@
   ```
   - 插件 registry（初期用 npm scope `@siftgate/plugin-*`）
   - 插件版本管理 + 兼容性检查
-  - `plugins.config.yaml` 声明式管理
+  - `plugins.config.yaml` 声明式管理，不自动覆盖 `gateway.config.yaml`
+  - Runtime loader 合并读取 `gateway.config.yaml` 与 `plugins.config.yaml`
 
 #### 23. 官方插件集
 - **现状**：仅 1 个示例插件（pii-filter）
@@ -618,6 +620,7 @@
 | 13 | 自适应路由 | ⭐⭐⭐⭐⭐ | 大 | ✅ v0.3.0 |
 | 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | ✅ v0.3.0 |
 | 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |
+| 22 | 插件包管理器 | ⭐⭐⭐⭐ | 中 | ✅ v0.4 |
 | 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | 🔵 v0.4 |
 | 28 | Redis 共享状态 | ⭐⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
 | 31 | HTTP/2 连接池 | ⭐⭐⭐ | 中 | 🟣 v0.5 |
