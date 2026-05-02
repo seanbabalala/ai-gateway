@@ -7,6 +7,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { PluginLoaderService } from '../../src/plugins/plugin-loader.service';
 import { PluginRegistryService } from '../../src/plugins/plugin-registry.service';
 import { EventBusService } from '../../src/plugins/event-bus.service';
@@ -156,6 +157,33 @@ describe('PluginLoaderService', () => {
     });
   });
 
+  it('should load plugins declared in plugins.config.yaml', async () => {
+    existsSyncSpy.mockImplementation((p: unknown) =>
+      String(p).endsWith('plugins.config.yaml'),
+    );
+    jest.spyOn(fs, 'readFileSync').mockImplementation((p: any) => {
+      if (String(p).endsWith('plugins.config.yaml')) {
+        return 'plugins:\n  - path: "@siftgate/plugin-guardrails"\n    required: false\n';
+      }
+      return '';
+    });
+
+    const loadSpy = jest.spyOn(
+      PluginLoaderService.prototype as any,
+      'loadSinglePlugin',
+    );
+    loadSpy.mockResolvedValue(undefined);
+
+    const { loader } = makeLoader();
+    await loader.onModuleInit();
+
+    expect(loadSpy).toHaveBeenCalledTimes(1);
+    expect(loadSpy.mock.calls[0][0]).toEqual({
+      path: '@siftgate/plugin-guardrails',
+      required: false,
+    });
+  });
+
   it('should merge YAML and directory entries (YAML takes priority)', async () => {
     existsSyncSpy.mockReturnValue(true);
     readdirSyncSpy.mockReturnValue([
@@ -254,5 +282,35 @@ describe('PluginLoaderService', () => {
 
     const resolved = (loader as any).resolvePluginPath('plugins/pii-filter');
     expect(resolved).toBe(compiledIndex);
+  });
+
+  it('should resolve npm package plugin declarations through node_modules', () => {
+    existsSyncSpy.mockRestore();
+    readdirSyncSpy.mockRestore();
+    const originalCwd = process.cwd();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-plugin-loader-'));
+    const packageDir = path.join(tmp, 'node_modules', '@siftgate', 'plugin-guardrails');
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDir, 'package.json'),
+      JSON.stringify({
+        name: '@siftgate/plugin-guardrails',
+        version: '1.0.0',
+        main: 'index.js',
+      }),
+      'utf8',
+    );
+    fs.writeFileSync(path.join(packageDir, 'index.js'), 'module.exports = class {};\n', 'utf8');
+
+    try {
+      process.chdir(tmp);
+      const { loader } = makeLoader();
+      const resolved = (loader as any).resolvePluginPath('@siftgate/plugin-guardrails');
+      expect(fs.realpathSync(resolved)).toBe(
+        fs.realpathSync(path.join(packageDir, 'index.js')),
+      );
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 });

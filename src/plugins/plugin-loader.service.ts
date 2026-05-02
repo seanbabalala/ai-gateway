@@ -8,6 +8,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as yaml from 'js-yaml';
 import { PluginRegistryService } from './plugin-registry.service';
 import { EventBusService } from './event-bus.service';
 import { ConfigService } from '../config/config.service';
@@ -18,6 +19,10 @@ export class PluginLoaderService implements OnModuleInit {
   private readonly logger = new Logger(PluginLoaderService.name);
   private readonly sourcePluginsDir = path.resolve(process.cwd(), 'plugins');
   private readonly compiledPluginsDir = path.resolve(process.cwd(), 'dist-runtime-plugins', 'plugins');
+  private readonly managedPluginsConfigPath = path.resolve(
+    process.cwd(),
+    process.env.SIFTGATE_PLUGINS_CONFIG || 'plugins.config.yaml',
+  );
 
   constructor(
     private readonly registry: PluginRegistryService,
@@ -200,9 +205,31 @@ export class PluginLoaderService implements OnModuleInit {
   private getYamlEntries(): PluginConfigEntry[] {
     const fullConfig = this.config.getFullConfig?.();
     if (!fullConfig) return [];
-    const plugins = fullConfig.plugins;
-    if (!Array.isArray(plugins)) return [];
-    return plugins;
+    const gatewayPlugins = Array.isArray(fullConfig.plugins)
+      ? fullConfig.plugins
+      : [];
+    const managedPlugins = this.getManagedConfigEntries();
+    return [...gatewayPlugins, ...managedPlugins];
+  }
+
+  private getManagedConfigEntries(): PluginConfigEntry[] {
+    if (!fs.existsSync(this.managedPluginsConfigPath)) return [];
+
+    let raw: string;
+    try {
+      raw = fs.readFileSync(this.managedPluginsConfigPath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    }
+    const parsed = yaml.load(raw) as { plugins?: PluginConfigEntry[] } | null;
+    if (!parsed) return [];
+    if (!Array.isArray(parsed.plugins)) {
+      throw new Error(
+        `${this.managedPluginsConfigPath} must contain a top-level plugins array.`,
+      );
+    }
+    return parsed.plugins;
   }
 
   // ── Path Resolution ───────────────────────────────────────
@@ -220,11 +247,23 @@ export class PluginLoaderService implements OnModuleInit {
 
   private buildPluginPathCandidates(pluginPath: string): string[] {
     const normalized = pluginPath.replace(/\\/g, '/');
+
+    if (this.isPackageReference(normalized)) {
+      try {
+        return [require.resolve(pluginPath, { paths: [process.cwd()] })];
+      } catch {
+        return [pluginPath];
+      }
+    }
+
     const absolute = path.isAbsolute(pluginPath)
       ? pluginPath
       : path.resolve(process.cwd(), pluginPath);
 
-    const candidates = [absolute];
+    const candidates = [
+      ...this.directoryEntryCandidates(absolute),
+      absolute,
+    ];
 
     if (!this.isCompiledRuntime()) {
       return candidates;
@@ -245,6 +284,47 @@ export class PluginLoaderService implements OnModuleInit {
     }
 
     return Array.from(new Set(candidates));
+  }
+
+  private directoryEntryCandidates(candidatePath: string): string[] {
+    if (!fs.existsSync(candidatePath)) return [];
+    try {
+      if (!fs.statSync(candidatePath).isDirectory()) return [];
+    } catch {
+      return [];
+    }
+
+    const candidates: string[] = [];
+    const packageJson = path.join(candidatePath, 'package.json');
+    if (fs.existsSync(packageJson)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(packageJson, 'utf8')) as {
+          main?: string;
+        };
+        if (parsed.main) {
+          candidates.push(path.resolve(candidatePath, parsed.main));
+        }
+      } catch {
+        // Let require(candidatePath) surface the real package.json parse error later.
+      }
+    }
+
+    candidates.push(
+      path.join(candidatePath, 'index.js'),
+      path.join(candidatePath, 'index.cjs'),
+      path.join(candidatePath, 'index.mjs'),
+    );
+    if (!this.isCompiledRuntime()) {
+      candidates.push(path.join(candidatePath, 'index.ts'));
+    }
+    return candidates;
+  }
+
+  private isPackageReference(pluginPath: string): boolean {
+    if (path.isAbsolute(pluginPath)) return false;
+    if (pluginPath.startsWith('.') || pluginPath.startsWith('plugins/')) return false;
+    if (pluginPath.startsWith('@')) return true;
+    return !pluginPath.includes('/');
   }
 
   private isRuntimePluginFile(filename: string): boolean {

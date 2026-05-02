@@ -9,6 +9,11 @@
 - `nodes[].embedding_models`, optional `nodes[].embeddings_endpoint`, and embedding `model_capabilities[].dimensions` configuration with validation.
 - Embedding routing that supports batch input, API key permissions, dimension filtering, circuit state, fallback, concurrency limits, and cost-aware target ranking.
 - Unit and e2e coverage for embeddings controller, pipeline, provider client, routing, config validation, OpenAPI, and proxy behavior.
+- v0.4 plugin manager CLI via `siftgate plugin install/list/remove`.
+- Local path and npm package plugin installation with initial `@siftgate/plugin-*` registry scope support.
+- `plugins.config.yaml` declaration management so plugin installs do not rewrite `gateway.config.yaml`.
+- Plugin version and SiftGate gateway compatibility checks using package metadata.
+- Runtime plugin loader support for `plugins.config.yaml` and npm package resolution through `node_modules`.
 
 ## 0.3.0 - 2026-05-02
 
