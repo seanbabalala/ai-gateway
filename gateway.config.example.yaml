@@ -413,6 +413,53 @@ models_pricing:
 #   exclude_tool_use: true     # Don't cache tool_use responses (default: true)
 
 # ============================================================
+# Runtime Plugins — optional OSS Data Plane extensions
+# ============================================================
+# Official plugins live in plugins/ and are built into
+# dist-runtime-plugins for production Docker images. They are safe
+# no-ops by default unless enabled in their plugin config.
+#
+# Safety defaults:
+# - redis-cache sends only hashed cache keys; response storage requires
+#   explicit store_responses: true.
+# - analytics-sink exports sanitized call-log metadata only.
+# - request-transform runs local rewrites only.
+# - guardrails runs local audit/block checks only.
+# ============================================================
+# plugins:
+#   - path: plugins/request-transform
+#     required: false
+#     config:
+#       enabled: true
+#       rules:
+#         - name: deterministic-tools
+#           when:
+#             has_tools: true
+#           set:
+#             temperature: 0
+#
+#   - path: plugins/guardrails
+#     required: false
+#     config:
+#       enabled: true
+#       mode: audit
+#       input_patterns:
+#         - "(?i)secret project"
+#
+#   - path: plugins/analytics-sink
+#     required: false
+#     config:
+#       enabled: false
+#       endpoint: ${ANALYTICS_SINK_URL:-}
+#
+#   - path: plugins/redis-cache
+#     required: false
+#     config:
+#       enabled: false
+#       url: ${REDIS_URL:-redis://127.0.0.1:6379}
+#       store_responses: false
+
+# ============================================================
 # Telemetry — OpenTelemetry and Prometheus metrics
 # ============================================================
 # Disabled by default. When enabled, SiftGate starts the existing

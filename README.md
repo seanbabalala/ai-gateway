@@ -114,6 +114,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
+- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 
 ## Quick Start
 
@@ -374,6 +375,37 @@ hot_reload:
 ```
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
+### Plugins
+
+SiftGate ships a lightweight MIT-licensed runtime plugin system for the open-source Data Plane. Official plugins live under `plugins/` and are compiled by `npm run build` into `dist-runtime-plugins`, which the production Docker image copies into `/app/dist-runtime-plugins`.
+
+The first official batch is:
+
+| Plugin | Purpose | Default behavior |
+|--------|---------|------------------|
+| `plugins/redis-cache` | Redis-backed response cache | Disabled; only stores responses when `store_responses: true` is explicit |
+| `plugins/analytics-sink` | Sanitized call-log analytics webhook | Disabled; safe metadata allow-list only |
+| `plugins/request-transform` | Local request rewrites before routing | Disabled; no-op until rules are configured |
+| `plugins/guardrails` | Local audit/block guardrails skeleton | Disabled; logs finding counts only |
+
+Example:
+
+```yaml
+plugins:
+  - path: plugins/request-transform
+    required: false
+    config:
+      enabled: true
+      rules:
+        - name: deterministic-tools
+          when:
+            has_tools: true
+          set:
+            temperature: 0
+```
+
+Official plugins do not send prompts, responses, provider keys, or raw headers to external systems by default. See [Official Plugins](docs/plugins/OFFICIAL_PLUGINS.md) and each plugin README under `plugins/*/README.md` for safety notes and example configs.
 
 ### Nodes (Upstream Providers)
 

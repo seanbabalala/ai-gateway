@@ -266,7 +266,7 @@ export class PluginLoaderService implements OnModuleInit {
     ];
 
     if (!this.isCompiledRuntime()) {
-      return candidates;
+      return Array.from(new Set(candidates));
     }
 
     const relativeToSource = path.isAbsolute(pluginPath)
@@ -287,13 +287,6 @@ export class PluginLoaderService implements OnModuleInit {
   }
 
   private directoryEntryCandidates(candidatePath: string): string[] {
-    if (!fs.existsSync(candidatePath)) return [];
-    try {
-      if (!fs.statSync(candidatePath).isDirectory()) return [];
-    } catch {
-      return [];
-    }
-
     const candidates: string[] = [];
     const packageJson = path.join(candidatePath, 'package.json');
     if (fs.existsSync(packageJson)) {

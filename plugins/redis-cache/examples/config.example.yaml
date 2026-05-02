@@ -1,0 +1,11 @@
+plugins:
+  - path: plugins/redis-cache
+    required: false
+    config:
+      enabled: true
+      url: ${REDIS_URL}
+      store_responses: true
+      ttl_seconds: 300
+      timeout_ms: 500
+      key_prefix: siftgate:cache:
+      include_session: true

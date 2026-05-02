@@ -291,6 +291,39 @@ describe('HookExecutorService', () => {
     expect(typeof capturedCtx.log.debug).toBe('function');
   });
 
+  it('should share the same per-request store across hook phases', async () => {
+    registry.register(
+      makePlugin('store-aware', {
+        preRequest: (ctx: any) => {
+          ctx.store.set('official-plugin-cache-key', 'abc123');
+          return undefined;
+        },
+        postUpstream: (ctx: any) => ({
+          response: {
+            ...ctx.data.response,
+            fromStore: ctx.store.get('official-plugin-cache-key'),
+          },
+        }),
+      } as any),
+    );
+
+    const store = new Map<string, unknown>();
+    await executor.run(
+      'preRequest',
+      { request: {} } as any,
+      store,
+      makeGatewayConfig(),
+    );
+    const result = await executor.run(
+      'postUpstream',
+      { response: { ok: true } } as any,
+      store,
+      makeGatewayConfig(),
+    );
+
+    expect((result.data as any).response.fromStore).toBe('abc123');
+  });
+
   // ── Async hooks ───────────────────────────────────────────
 
   it('should handle async hooks', async () => {

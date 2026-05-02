@@ -208,6 +208,41 @@ describe('PluginLoaderService', () => {
     expect(loadSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('should deduplicate YAML directory paths against discovered index.ts files', async () => {
+    const pluginIndex = path.resolve(
+      process.cwd(),
+      'plugins',
+      'redis-cache',
+      'index.ts',
+    );
+    existsSyncSpy.mockImplementation((p: unknown) => {
+      const value = String(p);
+      return value.endsWith('plugins') || value === pluginIndex;
+    });
+    readdirSyncSpy.mockReturnValue([
+      { name: 'redis-cache', isFile: () => false, isDirectory: () => true },
+    ]);
+
+    const loadSpy = jest.spyOn(
+      PluginLoaderService.prototype as any,
+      'loadSinglePlugin',
+    );
+    loadSpy.mockResolvedValue(undefined);
+
+    const { loader } = makeLoader({
+      fullConfig: {
+        plugins: [{ path: 'plugins/redis-cache', config: { enabled: false } }],
+      },
+    });
+    await loader.onModuleInit();
+
+    expect(loadSpy).toHaveBeenCalledTimes(1);
+    expect(loadSpy.mock.calls[0][0]).toEqual({
+      path: 'plugins/redis-cache',
+      config: { enabled: false },
+    });
+  });
+
   // ── required: false ───────────────────────────────────────
 
   it('should skip optional plugins that fail to load', async () => {
@@ -312,5 +347,19 @@ describe('PluginLoaderService', () => {
     } finally {
       process.chdir(originalCwd);
     }
+  });
+
+  it('should resolve source plugin directories to index.ts in development mode', () => {
+    const { loader } = makeLoader();
+    jest.spyOn(loader as any, 'isCompiledRuntime').mockReturnValue(false);
+
+    const sourceIndex = path.resolve(
+      process.cwd(),
+      'plugins/redis-cache/index.ts',
+    );
+    existsSyncSpy.mockImplementation((p: unknown) => String(p) === sourceIndex);
+
+    const resolved = (loader as any).resolvePluginPath('plugins/redis-cache');
+    expect(resolved).toBe(sourceIndex);
   });
 });
