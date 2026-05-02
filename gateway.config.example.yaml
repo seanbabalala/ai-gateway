@@ -441,6 +441,23 @@ models_pricing:
 #   ttl_seconds: 300           # Cache TTL in seconds (default: 300 = 5 min)
 #   max_entries: 1000          # Max cached responses, LRU eviction (default: 1000)
 #   exclude_tool_use: true     # Don't cache tool_use responses (default: true)
+#   stream_cache:
+#     enabled: false           # Opt-in stream cache + SSE replay (default: false)
+
+# ============================================================
+# Embedding Batching — optional /v1/embeddings request coalescing
+# ============================================================
+# Disabled by default. When enabled, small same-target embedding
+# requests are collected for a short window, sent upstream as one
+# batch, then split back into per-request responses.
+# ============================================================
+# embedding_batching:
+#   enabled: false             # Master switch (default: false)
+#   window_ms: 10              # Local collection window (default: 10)
+#   max_batch_size: 64         # Max upstream input items per batch
+#   max_input_items: 8         # Only batch small requests with <= this many items
+#   max_queue: 1000            # Max queued local embedding requests
+#   timeout_ms: 10000          # Per-request queue/dispatch timeout
 
 # ============================================================
 # Runtime Plugins — optional OSS Data Plane extensions

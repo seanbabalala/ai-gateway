@@ -53,6 +53,7 @@ import { CallLog } from '../database/entities/call-log.entity';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
 import { LogSinkService } from '../log-sinks/log-sink.service';
+import { EmbeddingBatchingService } from './embedding-batching.service';
 
 export interface PipelineResult {
   body: Record<string, unknown>;
@@ -152,6 +153,7 @@ export class PipelineService {
     private readonly callLogRepo: Repository<CallLog>,
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly logSinks?: LogSinkService,
+    @Optional() private readonly embeddingBatching?: EmbeddingBatchingService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -504,7 +506,10 @@ export class PipelineService {
     ); // end of withSpan
   }
 
-  async processEmbeddings(canonical: CanonicalEmbeddingRequest): Promise<PipelineResult> {
+  async processEmbeddings(
+    canonical: CanonicalEmbeddingRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PipelineResult> {
     const requestId = uuidv4();
     const startTime = Date.now();
     const requestedModel = canonical.model || canonical.metadata.original_model || 'auto';
@@ -582,6 +587,7 @@ export class PipelineService {
                 fallback_reason: isFallback ? fallbackReason || 'upstream_error' : null,
               },
               retryConfig,
+              options,
             );
             totalRetries += attempt.retries;
             if (attempt.response) {
@@ -978,6 +984,7 @@ export class PipelineService {
       fallback_reason?: string | null;
     },
     retryConfig: RetryConfig,
+    options: { signal?: AbortSignal } = {},
   ): Promise<EmbeddingAttemptResult> {
     const maxAttempts = 1 + retryConfig.max_retries;
     let lastError: Error | null = null;
@@ -986,16 +993,12 @@ export class PipelineService {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const attemptStart = Date.now();
       try {
-        const response = await this.withConcurrencySlot(
+        const response = await this.forwardEmbeddingsMaybeBatched(
+          canonical,
           nodeId,
           model,
-          () =>
-            this.forwardEmbeddingsWithFallbackTimeout(
-              canonical,
-              nodeId,
-              model,
-              routingMeta,
-            ),
+          routingMeta,
+          options,
         );
         this.circuitBreaker.recordSuccess(nodeId, model);
         this.routingService.recordTargetResult?.(
@@ -1141,6 +1144,7 @@ export class PipelineService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
+    options: { signal?: AbortSignal } = {},
   ): Promise<CanonicalEmbeddingResponse> {
     const timeoutMs = this.resolveFallbackTimeoutMs();
     if (timeoutMs === undefined) {
@@ -1149,6 +1153,7 @@ export class PipelineService {
         nodeId,
         model,
         routingMeta,
+        { signal: options.signal },
       );
     }
     return this.providerClient.forwardEmbeddings(
@@ -1156,7 +1161,54 @@ export class PipelineService {
       nodeId,
       model,
       routingMeta,
-      { timeoutMs },
+      { timeoutMs, signal: options.signal },
+    );
+  }
+
+  private forwardEmbeddingsMaybeBatched(
+    canonical: CanonicalEmbeddingRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CanonicalEmbeddingResponse> {
+    const dispatch = (
+      request: CanonicalEmbeddingRequest,
+      dispatchNodeId: string,
+      dispatchModel: string,
+      dispatchRoutingMeta: {
+        tier: Tier;
+        score: number;
+        is_fallback: boolean;
+        fallback_reason?: string | null;
+      },
+    ) =>
+      this.withConcurrencySlot(dispatchNodeId, dispatchModel, () =>
+        this.forwardEmbeddingsWithFallbackTimeout(
+          request,
+          dispatchNodeId,
+          dispatchModel,
+          dispatchRoutingMeta,
+          options,
+        ),
+      );
+
+    if (!this.embeddingBatching) {
+      return dispatch(canonical, nodeId, model, routingMeta);
+    }
+
+    return this.embeddingBatching.enqueue(
+      canonical,
+      nodeId,
+      model,
+      routingMeta,
+      dispatch,
+      options,
     );
   }
 
@@ -1164,16 +1216,19 @@ export class PipelineService {
     canonical: CanonicalRequest,
     nodeId: string,
     model: string,
+    options: { signal?: AbortSignal } = {},
   ): AsyncGenerator<CanonicalStreamEvent> {
     const timeoutMs = this.resolveFallbackTimeoutMs();
     if (timeoutMs === undefined) {
-      return this.providerClient.forwardStream(canonical, nodeId, model);
+      return this.providerClient.forwardStream(canonical, nodeId, model, {
+        signal: options.signal,
+      });
     }
     return this.providerClient.forwardStream(
       canonical,
       nodeId,
       model,
-      { timeoutMs },
+      { timeoutMs, signal: options.signal },
     );
   }
 
@@ -1438,6 +1493,17 @@ export class PipelineService {
     const store = new Map<string, unknown>();
     let currentPhase = 'preRequest';
     let headersFlushed = false;
+    const streamAbort = new AbortController();
+    let streamCanceled = false;
+    let streamCompleted = false;
+
+    const onClientClose = () => {
+      if (!streamCompleted && !(res as { writableEnded?: boolean }).writableEnded) {
+        streamCanceled = true;
+        streamAbort.abort();
+      }
+    };
+    res.on?.('close', onClientClose);
 
     // Manual span for streaming (can't use withSpan with generators)
     const rootSpan = this.telemetry.tracer.startSpan('gateway.request', {
@@ -1527,13 +1593,14 @@ export class PipelineService {
 
       // ── Cache Lookup (stream) ──
       currentPhase = 'cacheLookup';
-      if (this.cacheService.shouldCache(canonical)) {
+      if (this.shouldUseStreamCache(canonical)) {
         const cacheStart = Date.now();
         const cached = await this.lookupCachedResponse(canonical);
         if (cached) {
           const cacheLatency = Date.now() - cacheStart;
 
           await this.recordBudgetUsage(canonical, cached.usage, cached.model);
+          streamCompleted = true;
           this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, cached);
 
           await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
@@ -1638,6 +1705,7 @@ export class PipelineService {
                 requestForTarget,
                 target.node,
                 target.model,
+                { signal: streamAbort.signal },
               );
 
               // Stream events to client
@@ -1649,6 +1717,9 @@ export class PipelineService {
 
               currentPhase = 'upstreamStream';
               for await (const event of stream) {
+                if (streamCanceled) {
+                  throw new Error('Client canceled stream.');
+                }
                 streamConnected = true;
                 connected = true;
                 usedNodeId = target.node;
@@ -1690,13 +1761,20 @@ export class PipelineService {
                   res.write(sseText);
                 }
               }
+              if (streamCanceled) {
+                throw new Error('Client canceled stream.');
+              }
 
               // Stream completed successfully
               const latencyMs = Date.now() - startTime;
               this.circuitBreaker.recordSuccess(target.node, target.model);
 
               // ── Cache Store (from stream accumulation) ──
-              if (this.cacheService.shouldCache(canonical) && accumulatedText.length > 0) {
+              if (
+                !streamCanceled &&
+                this.shouldUseStreamCache(canonical) &&
+                accumulatedText.length > 0
+              ) {
                 const assembledResponse: CanonicalResponse = {
                   id: streamId || `cache-${requestId}`,
                   content: [{ type: 'text', text: accumulatedText.join('') }],
@@ -1753,6 +1831,7 @@ export class PipelineService {
                 this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
               }
 
+              streamCompleted = true;
               res.end();
               rootSpan.end();
               return;
@@ -1762,6 +1841,23 @@ export class PipelineService {
           } catch (err) {
             lastError = err as Error;
             const attemptFallbackReason = this.resolveFallbackReason(lastError);
+            if (streamCanceled) {
+              this.logger.warn(`Client canceled stream from ${target.node}`);
+              const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+                experimentGroupsByTarget,
+                target.node,
+                target.model,
+                experimentGroup,
+              );
+              await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
+                statusCode: 499, isFallback, latencyMs: Date.now() - startTime,
+                usage: { input_tokens: 0, output_tokens: 0 }, error: 'Client canceled stream',
+                retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+                domainHint, modalityHints, fallbackReason,
+                fallbackFromNode });
+              rootSpan.end();
+              return;
+            }
             if (lastError instanceof ConcurrencyLimitError) {
               this.logger.warn(lastError.message);
               if (!lastError.fallbackAllowed) {
@@ -1995,6 +2091,8 @@ export class PipelineService {
       if (headersFlushed) {
         throw err;
       }
+    } finally {
+      res.off?.('close', onClientClose);
     }
   }
 
@@ -2609,6 +2707,15 @@ export class PipelineService {
       case 'messages': return new MessagesStreamSerializer();
       default: return new ChatCompletionsStreamSerializer();
     }
+  }
+
+  private shouldUseStreamCache(canonical: CanonicalRequest): boolean {
+    const cache = this.cacheService as PromptCacheService & {
+      shouldCacheStream?: (request: CanonicalRequest) => boolean;
+    };
+    return typeof cache.shouldCacheStream === 'function'
+      ? cache.shouldCacheStream(canonical)
+      : false;
   }
 
   // ══════════════════════════════════════════════════════

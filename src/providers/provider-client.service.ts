@@ -35,6 +35,11 @@ function isUndiciTimeoutError(error: unknown): boolean {
   );
 }
 
+interface ProviderRequestOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
 @Injectable()
 export class ProviderClientService {
   private readonly logger = new Logger(ProviderClientService.name);
@@ -69,7 +74,7 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    options: { timeoutMs?: number } = {},
+    options: ProviderRequestOptions = {},
   ): Promise<CanonicalResponse> {
     return this.telemetry.withSpan(
       'gateway.upstream',
@@ -93,6 +98,7 @@ export class ProviderClientService {
           requestBody,
           canonical,
           options.timeoutMs,
+          options.signal,
         );
         const latencyMs = Date.now() - startTime;
 
@@ -124,7 +130,7 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    options: { timeoutMs?: number } = {},
+    options: ProviderRequestOptions = {},
   ): Promise<CanonicalEmbeddingResponse> {
     return this.telemetry.withSpan(
       'gateway.upstream.embeddings',
@@ -146,6 +152,7 @@ export class ProviderClientService {
           requestBody,
           undefined,
           options.timeoutMs,
+          options.signal,
           node.embeddings_endpoint || '/v1/embeddings',
         );
         const latencyMs = Date.now() - startTime;
@@ -186,7 +193,7 @@ export class ProviderClientService {
     canonical: CanonicalRequest,
     nodeId: string,
     targetModel: string,
-    options: { timeoutMs?: number } = {},
+    options: ProviderRequestOptions = {},
   ): AsyncGenerator<CanonicalStreamEvent> {
     const node = this.config.getNode(nodeId);
     if (!node) throw new Error(`Node not found: ${nodeId}`);
@@ -199,6 +206,7 @@ export class ProviderClientService {
       requestBody,
       canonical,
       options.timeoutMs,
+      options.signal,
     );
 
     if (!response.body) {
@@ -209,9 +217,20 @@ export class ProviderClientService {
     const parser = this.createStreamParser(node.protocol);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const cancelReader = () => {
+      void reader.cancel().catch(() => undefined);
+    };
+    if (options.signal?.aborted) {
+      cancelReader();
+    } else {
+      options.signal?.addEventListener('abort', cancelReader, { once: true });
+    }
 
     try {
       while (true) {
+        if (options.signal?.aborted) {
+          break;
+        }
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -230,6 +249,7 @@ export class ProviderClientService {
         },
       };
     } finally {
+      options.signal?.removeEventListener('abort', cancelReader);
       reader.releaseLock();
     }
   }
@@ -243,6 +263,7 @@ export class ProviderClientService {
     requestBody: Record<string, unknown>,
     canonical?: CanonicalRequest,
     timeoutMs?: number,
+    signal?: AbortSignal,
     endpointOverride?: string,
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
@@ -275,6 +296,12 @@ export class ProviderClientService {
     const controller = new AbortController();
     const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
     const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+    const abortFromExternal = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener('abort', abortFromExternal, { once: true });
+    }
 
     let response: Response;
     try {
@@ -310,6 +337,7 @@ export class ProviderClientService {
       );
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', abortFromExternal);
     }
 
     if (!response.ok) {

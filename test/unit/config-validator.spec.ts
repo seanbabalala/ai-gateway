@@ -130,6 +130,67 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('experimental_http2_connection_pool');
   });
 
+  it('validates stream cache and embedding batching controls', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            embeddings_endpoint: '/v1/embeddings',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            embedding_models: ['text-embedding-3-small'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        cache: {
+          enabled: true,
+          ttl_seconds: 300,
+          max_entries: 1000,
+          exclude_tool_use: true,
+          stream_cache: { enabled: true },
+        },
+        embedding_batching: {
+          enabled: true,
+          window_ms: 10,
+          max_batch_size: 64,
+          max_input_items: 4,
+          max_queue: 1000,
+          timeout_ms: 10000,
+        },
+        models_pricing: {
+          'gpt-4o-mini': { input: 0.15, output: 0.6 },
+          'text-embedding-3-small': { input: 0.02, output: 0 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it('reports structural, routing, env, and control-plane issues', () => {
     const result = validateConfigFile({
       configPath: fixture('invalid.gateway.yaml'),

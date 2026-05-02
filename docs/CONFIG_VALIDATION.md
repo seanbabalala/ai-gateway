@@ -66,6 +66,10 @@ hardening visible without blocking local development.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional
   per-model `pricing` overrides.
+- `cache` shape, including positive TTL/entry limits and explicit
+  `cache.stream_cache.enabled` boolean validation.
+- Optional `embedding_batching` shape, including boolean enablement and
+  positive queue/window/batch/timeout values.
 - `alerts` webhook channel shape, supported event names, debounce values,
   retry controls, and spike detector thresholds.
 - Optional `logging.sinks` entries for file, webhook, S3 interface, and

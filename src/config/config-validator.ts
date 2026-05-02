@@ -203,6 +203,8 @@ export function validateConfigObject(
   validateNodes(config.nodes, issues);
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
+  validateCache(config.cache, issues);
+  validateEmbeddingBatching(config.embedding_batching, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
@@ -1598,6 +1600,151 @@ function validateBudget(
           'missing_required_field',
           `budget.${key} must be a number.`,
           `budget.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateCache(
+  cache: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (cache === undefined) return;
+  if (!isRecord(cache)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'cache must be an object.',
+        'cache',
+      ),
+    );
+    return;
+  }
+
+  if (cache.enabled !== undefined && !isBoolean(cache.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.enabled must be a boolean.',
+        'cache.enabled',
+      ),
+    );
+  }
+  if (
+    cache.ttl_seconds !== undefined &&
+    (!isFiniteNumber(cache.ttl_seconds) || cache.ttl_seconds <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.ttl_seconds must be a positive number.',
+        'cache.ttl_seconds',
+      ),
+    );
+  }
+  if (
+    cache.max_entries !== undefined &&
+    (!isFiniteNumber(cache.max_entries) || cache.max_entries <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.max_entries must be a positive number.',
+        'cache.max_entries',
+      ),
+    );
+  }
+  if (
+    cache.exclude_tool_use !== undefined &&
+    !isBoolean(cache.exclude_tool_use)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.exclude_tool_use must be a boolean.',
+        'cache.exclude_tool_use',
+      ),
+    );
+  }
+  if (cache.stream_cache !== undefined) {
+    if (!isRecord(cache.stream_cache)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_stream_cache_config',
+          'cache.stream_cache must be an object when set.',
+          'cache.stream_cache',
+        ),
+      );
+      return;
+    }
+    if (
+      cache.stream_cache.enabled !== undefined &&
+      !isBoolean(cache.stream_cache.enabled)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_stream_cache_config',
+          'cache.stream_cache.enabled must be a boolean.',
+          'cache.stream_cache.enabled',
+        ),
+      );
+    }
+  }
+}
+
+function validateEmbeddingBatching(
+  batching: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (batching === undefined) return;
+  if (!isRecord(batching)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_embedding_batching_config',
+        'embedding_batching must be an object.',
+        'embedding_batching',
+      ),
+    );
+    return;
+  }
+
+  if (batching.enabled !== undefined && !isBoolean(batching.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_embedding_batching_config',
+        'embedding_batching.enabled must be a boolean.',
+        'embedding_batching.enabled',
+      ),
+    );
+  }
+
+  for (const key of [
+    'window_ms',
+    'max_batch_size',
+    'max_input_items',
+    'max_queue',
+    'timeout_ms',
+  ]) {
+    if (
+      batching[key] !== undefined &&
+      (!isFiniteNumber(batching[key]) || batching[key] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_embedding_batching_config',
+          `embedding_batching.${key} must be a positive number.`,
+          `embedding_batching.${key}`,
         ),
       );
     }

@@ -100,6 +100,15 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       ttl_seconds: 300,
       max_entries: 1000,
       exclude_tool_use: true,
+      stream_cache: { enabled: false },
+    },
+    embeddingBatching: {
+      enabled: false,
+      window_ms: 10,
+      max_batch_size: 64,
+      max_input_items: 8,
+      max_queue: 1000,
+      timeout_ms: 10000,
     },
     controlPlane: {
       enabled: false,

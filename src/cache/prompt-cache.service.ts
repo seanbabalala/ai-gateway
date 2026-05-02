@@ -75,6 +75,16 @@ export class PromptCacheService {
   }
 
   /**
+   * Stream caching is an explicit opt-in because replaying long responses can
+   * surprise clients that expect a fresh live provider stream.
+   */
+  shouldCacheStream(canonical: CanonicalRequest): boolean {
+    const cfg = this.config.cache;
+    if (!cfg.stream_cache?.enabled) return false;
+    return this.shouldCache(canonical);
+  }
+
+  /**
    * Look up a cached response. Returns deep-cloned response on hit, null on miss.
    */
   lookup(canonical: CanonicalRequest): CanonicalResponse | null {
@@ -300,6 +310,7 @@ export class PromptCacheService {
       max_tokens: canonical.max_tokens ?? null,
       request_context: {
         source_format: canonical.metadata.source_format,
+        api_key_id: canonical.metadata.api_key_id ?? null,
         api_key_name: canonical.metadata.api_key_name ?? null,
         session_key: canonical.metadata.session_key ?? null,
         routing_headers: {

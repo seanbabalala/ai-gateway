@@ -598,27 +598,33 @@
 
 #### 32. 流式缓存
 
-- **现状**：Cache 只对非流式 temperature=0 请求生效
+- **状态**：✅ v0.5 已实现，默认关闭
 - **目标**：支持流式请求的缓存
 - **实现方案**：
-  - 首次流式请求：正常流式返回 + 后台缓冲完整响应
-  - 后续命中：从缓存重放为流式事件（模拟延迟或即时发送）
-  - 配置项：`cache.streaming: true`
+  - 首次流式请求：正常流式返回 + 缓冲完整响应
+  - 后续命中：从缓存重放为 SSE 流式事件
+  - 取消、超时、中断或部分响应不写入缓存
+  - Cache key 纳入协议、路由相关 headers、Gateway API key id/name、session，避免跨租户复用
+  - 配置项：`cache.stream_cache.enabled: true`
 
 #### 33. 请求批处理（Batching）
 
-- **现状**：每个请求独立转发
+- **状态**：✅ v0.5 已实现 Embedding batching，默认关闭
 - **目标**：将短时间内的小请求合并为 batch
 - **实现方案**：
   - 适用于 embedding 等支持批量的端点
   - 收集 N ms 窗口内的请求 → 合并为一个 batch → 拆分响应分发
+  - 按 node/model/dimensions/encoding_format/user/input kind/tenant 隔离 batch
+  - 支持取消、超时、部分失败、队列上限和大请求旁路
   - 配置：
     ```yaml
-    batching:
+    embedding_batching:
       enabled: true
-      window_ms: 50
-      max_batch_size: 20
-      endpoints: [embeddings]
+      window_ms: 10
+      max_batch_size: 64
+      max_input_items: 8
+      max_queue: 1000
+      timeout_ms: 10000
     ```
 
 ---
@@ -705,6 +711,8 @@
 | 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v0.4 TS scaffold |
 | 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  🟣 v0.5   |
 | 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  🟣 v0.5   |
+| 32  | 流式缓存           |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
+| 33  | Embedding Batching |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    |  🟣 v0.5   |
 
 ---

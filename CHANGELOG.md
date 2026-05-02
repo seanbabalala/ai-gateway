@@ -13,6 +13,9 @@
 - v0.5 upstream connection pooling for the OSS Data Plane via optional `nodes[].connection` undici per-node dispatchers.
 - Keep-alive, pool size, headers timeout, body timeout, and experimental HTTP/2 connection settings for upstream provider calls.
 - Upstream benchmark script and performance notes for future forwarding regression checks.
+- v0.5 stream cache controls via `cache.stream_cache.enabled`, disabled by default and only storing fully completed deterministic streams for later SSE replay.
+- v0.5 local embedding batching via `embedding_batching`, disabled by default, with per-node/model safe grouping, queue limits, cancellation, timeout, and partial-response handling.
+- Config validation, unit coverage, and documentation for stream cache and embedding batching safety defaults.
 
 ### Changed
 
