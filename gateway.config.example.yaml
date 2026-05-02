@@ -1,5 +1,5 @@
 # ============================================================
-# AI Gateway — Example Configuration
+# SiftGate — Example Configuration
 # ============================================================
 # Copy this file to gateway.config.yaml and customize:
 #   cp gateway.config.example.yaml gateway.config.yaml
@@ -29,14 +29,12 @@ database:
   # url: "postgresql://user:pass@localhost:5432/ai_gateway"
 
 auth:
-  api_keys:
-    - key: "${GATEWAY_API_KEY:-gw_sk_dev_default}"
-      name: "default"
-    # Add more keys for different users/services:
-    # - key: "${TEAM_API_KEY}"
-    #   name: "team-backend"
+  # Client Gateway API keys are generated and managed in the Dashboard.
+  # Provider API keys still live under nodes[].api_key below.
+  api_keys: []
 
-  # Rate limiting (optional)
+  # Global rate limiting defaults (optional).
+  # Individual Gateway API keys can override requests_per_minute in the Dashboard.
   # Sliding-window counters per API key / per IP.
   # If omitted, no rate limiting is applied.
   # rate_limit:
@@ -54,9 +52,19 @@ auth:
 #   password: "my-secret-password"
 
 # ============================================================
-# Nodes — AI provider endpoints
+# Nodes — upstream provider endpoints
 # ============================================================
-# Each node represents one AI provider or model endpoint.
+# Each node represents one upstream provider account, deployment,
+# proxy route, or API endpoint. A node can expose one or more models.
+#
+# Good node IDs/names describe the upstream channel, not a single model:
+#   id: openai-main       name: "OpenAI Main Account"
+#   id: azure-prod        name: "Azure OpenAI Production"
+#   id: local-vllm        name: "Local vLLM"
+#
+# Models are listed under nodes[].models.
+# Use model_prefixes when clients should direct-route future model family IDs
+# such as "claude-sonnet-..." or "gpt-..." through a stable upstream node ID.
 # Supported protocols:
 #   - chat_completions  (OpenAI /v1/chat/completions)
 #   - responses         (OpenAI /v1/responses)
@@ -65,7 +73,7 @@ auth:
 nodes:
   # ── OpenAI ──
   - id: openai
-    name: "GPT-4o"
+    name: "OpenAI"
     protocol: chat_completions
     base_url: "https://api.openai.com"
     endpoint: "/v1/chat/completions"
@@ -79,27 +87,29 @@ nodes:
     model_aliases:
       gpt4: gpt-4o
       gpt4-mini: gpt-4o-mini
+    model_prefixes: ["gpt", "o"]
 
   # ── Anthropic ──
-  - id: claude
-    name: "Claude Sonnet 4"
+  - id: anthropic
+    name: "Anthropic"
     protocol: messages
     base_url: "https://api.anthropic.com"
     endpoint: "/v1/messages"
     api_key: "${ANTHROPIC_API_KEY}"
-    auth_type: x-api-key              # Anthropic uses x-api-key header
+    auth_type: x-api-key # Anthropic uses x-api-key header
     models: ["claude-sonnet-4-20250514"]
     timeout_ms: 120000
     tags: ["code", "backend", "reasoning", "math"]
     model_aliases:
       claude: claude-sonnet-4-20250514
       sonnet: claude-sonnet-4-20250514
+    model_prefixes: ["claude"]
     headers:
       anthropic-version: "2023-06-01"
 
   # ── Google Gemini (via OpenAI-compatible endpoint) ──
   # - id: gemini
-  #   name: "Gemini 2.5 Pro"
+  #   name: "Google Gemini"
   #   protocol: chat_completions
   #   base_url: "https://generativelanguage.googleapis.com"
   #   endpoint: "/v1beta/chat/completions"
@@ -109,10 +119,11 @@ nodes:
   #   tags: ["code", "frontend", "fast", "long-context"]
   #   model_aliases:
   #     gemini-pro: gemini-2.5-pro
+  #   model_prefixes: ["gemini"]
 
   # ── Azure OpenAI ──
   # - id: azure
-  #   name: "Azure GPT-4o"
+  #   name: "Azure OpenAI"
   #   protocol: chat_completions
   #   base_url: "${AZURE_OPENAI_ENDPOINT}"
   #   endpoint: "/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-01"
@@ -144,26 +155,27 @@ routing:
     simple:
       primary: { node: openai, model: gpt-4o-mini }
       fallbacks:
-        - { node: claude, model: claude-sonnet-4-20250514 }
+        - { node: anthropic, model: claude-sonnet-4-20250514 }
     standard:
       primary: { node: openai, model: gpt-4o }
       fallbacks:
-        - { node: claude, model: claude-sonnet-4-20250514 }
+        - { node: anthropic, model: claude-sonnet-4-20250514 }
     complex:
-      primary: { node: claude, model: claude-sonnet-4-20250514 }
+      primary: { node: anthropic, model: claude-sonnet-4-20250514 }
       fallbacks:
         - { node: openai, model: gpt-4o }
     reasoning:
-      primary: { node: claude, model: claude-sonnet-4-20250514 }
+      primary: { node: anthropic, model: claude-sonnet-4-20250514 }
       fallbacks:
         - { node: openai, model: gpt-4o }
 
   # Scoring thresholds — tune these to adjust routing sensitivity
   scoring:
-    simple_max: -0.1       # Score ≤ -0.1  → simple
-    standard_max: 0.08     # Score ≤ 0.08  → standard
-    complex_max: 0.35      # Score ≤ 0.35  → complex
-                           # Score > 0.35  → reasoning
+    simple_max: -0.1 # Score ≤ -0.1  → simple
+    standard_max: 0.08 # Score ≤ 0.08  → standard
+    complex_max:
+      0.35 # Score ≤ 0.35  → complex
+      # Score > 0.35  → reasoning
 
     # Custom dimension weights (optional) — override default weights
     # Valid dimensions: simpleIndicators, codeGeneration, codeFrontend, codeBackend,
@@ -196,16 +208,16 @@ routing:
   # these nodes are promoted in the routing order.
   domain_preferences:
     frontend: [openai]
-    backend: [claude, openai]
-    math: [claude]
+    backend: [anthropic, openai]
+    math: [anthropic]
 
 # ============================================================
 # Budget — Daily usage limits
 # ============================================================
 budget:
-  daily_token_limit: 5000000     # 5M tokens per day
-  daily_cost_limit: 50.00        # $50 per day
-  alert_threshold: 0.8           # Alert at 80% usage
+  daily_token_limit: 5000000 # 5M tokens per day
+  daily_cost_limit: 50.00 # $50 per day
+  alert_threshold: 0.8 # Alert at 80% usage
 
 # ============================================================
 # Model Pricing — Cost per 1M tokens (USD)
@@ -213,9 +225,9 @@ budget:
 # Used to calculate per-request costs and enforce budget limits.
 # Add entries for every model ID listed in your nodes above.
 models_pricing:
-  gpt-4o:                    { input: 2.50, output: 10.00 }
-  gpt-4o-mini:               { input: 0.15, output: 0.60 }
-  claude-sonnet-4-20250514:  { input: 3.00, output: 15.00 }
+  gpt-4o: { input: 2.50, output: 10.00 }
+  gpt-4o-mini: { input: 0.15, output: 0.60 }
+  claude-sonnet-4-20250514: { input: 3.00, output: 15.00 }
   # gemini-2.5-pro:          { input: 1.25, output: 10.00 }
 
 # ============================================================
@@ -230,3 +242,23 @@ models_pricing:
 #   ttl_seconds: 300           # Cache TTL in seconds (default: 300 = 5 min)
 #   max_entries: 1000          # Max cached responses, LRU eviction (default: 1000)
 #   exclude_tool_use: true     # Don't cache tool_use responses (default: true)
+
+# ============================================================
+# Connected Gateway — Cloud Control Plane (optional)
+# ============================================================
+# Disabled by default. When enabled, this data plane can register
+# with SiftGate Cloud for fleet health, policy sync, and
+# privacy-preserving metadata analytics. AI requests, prompts,
+# responses, and provider API keys do not pass through the control plane.
+# Local Cloud API during development: http://localhost:3100
+# Production Cloud API placeholder: https://api.siftgate.dev
+# ============================================================
+# control_plane:
+#   enabled: false
+#   url: "http://localhost:3100"
+#   gateway_id: "gw_prod_us"
+#   registration_token: "${GATEWAY_REGISTRATION_TOKEN}"
+#   telemetry:
+#     upload_interval_seconds: 30
+#     include_prompt: false
+#     include_response: false

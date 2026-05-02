@@ -1,4 +1,5 @@
 import { getAuthToken, clearAuthToken } from '@/contexts/AuthContext'
+import { i18n } from '@/i18n'
 
 export class ApiError extends Error {
   constructor(
@@ -23,10 +24,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
     // Token expired or invalid — clear and redirect to login
     clearAuthToken()
     window.location.href = '/login'
-    throw new ApiError(401, 'Unauthorized')
+    throw new ApiError(401, i18n.t('error.unauthorized'))
   }
   if (!res.ok) {
-    const text = await res.text().catch(() => 'Unknown error')
+    const text = await res.text().catch(() => i18n.t('error.unknown'))
     throw new ApiError(res.status, text)
   }
   return res.json() as Promise<T>

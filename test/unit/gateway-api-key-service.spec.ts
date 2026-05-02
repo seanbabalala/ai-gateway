@@ -1,0 +1,229 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { GatewayApiKeyService } from '../../src/auth/gateway-api-key.service';
+import { mockConfigService } from '../helpers';
+
+function makeRepo<T extends { id?: any }>(initial: T[] = []) {
+  const store = [...initial];
+  let nextId = 1;
+
+  const matchesWhere = (item: any, where: Record<string, unknown>) =>
+    Object.entries(where).every(([key, value]) => item[key] === value);
+
+  return {
+    _store: store,
+    find: jest.fn(async (opts?: any) => {
+      let rows = [...store];
+      if (opts?.where) {
+        rows = rows.filter((item) => matchesWhere(item, opts.where));
+      }
+      if (opts?.order?.created_at === 'DESC') {
+        rows.sort((a: any, b: any) => Number(b.created_at) - Number(a.created_at));
+      }
+      return rows;
+    }),
+    findOne: jest.fn(async (opts: any) => {
+      if (!opts?.where) return null;
+      return store.find((item) => matchesWhere(item, opts.where)) || null;
+    }),
+    create: jest.fn((partial: Partial<T>) => ({ ...partial })),
+    save: jest.fn(async (entity: any) => {
+      if (!entity.id) entity.id = `id-${nextId++}`;
+      if (!entity.created_at) entity.created_at = new Date();
+      entity.updated_at = new Date();
+      const existing = store.findIndex((item: any) => item.id === entity.id);
+      if (existing >= 0) {
+        store[existing] = entity;
+      } else {
+        store.push(entity);
+      }
+      return entity;
+    }),
+    update: jest.fn(async (where: any, patch: any) => {
+      for (const item of store as any[]) {
+        if (matchesWhere(item, where)) Object.assign(item, patch);
+      }
+      return { affected: store.filter((item) => matchesWhere(item, where)).length };
+    }),
+    remove: jest.fn(async (entity: any) => {
+      const idx = store.findIndex((item: any) => item.id === entity.id);
+      if (idx >= 0) store.splice(idx, 1);
+      return entity;
+    }),
+  };
+}
+
+function makeCallLogRepo(raw: Record<string, unknown> = {}) {
+  const qb = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    getRawOne: jest.fn().mockResolvedValue(raw),
+  };
+  return {
+    createQueryBuilder: jest.fn(() => qb),
+    qb,
+  };
+}
+
+function makeService(seed: any[] = []) {
+  const config = mockConfigService({
+    budget: {
+      daily_token_limit: 100_000,
+      daily_cost_limit: 10,
+      alert_threshold: 0.75,
+    },
+  });
+  const apiKeyRepo = makeRepo(seed);
+  const budgetRepo = makeRepo<any>();
+  const callLogRepo = makeCallLogRepo({
+    calls: '2',
+    cost: '0.0123456',
+    inputTokens: '100',
+    outputTokens: '50',
+  });
+  const service = new GatewayApiKeyService(
+    config,
+    apiKeyRepo as any,
+    budgetRepo as any,
+    callLogRepo as any,
+  );
+  return { service, apiKeyRepo, budgetRepo, callLogRepo };
+}
+
+describe('GatewayApiKeyService', () => {
+  it('creates a dashboard-managed key and stores only its hash plus display prefix', async () => {
+    const { service, apiKeyRepo, budgetRepo } = makeService();
+
+    const created = await service.create({
+      name: 'Production App',
+      description: '  user-facing app  ',
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: ['openai', 'openai', ' anthropic '],
+      allowed_models: ['gpt-4o-mini'],
+      daily_token_limit: 1000,
+      daily_cost_limit: 2.5,
+      rate_limit_per_minute: 60,
+    });
+
+    expect(created.key).toMatch(/^gw_sk_live_/);
+    expect(created.item.name).toBe('Production App');
+    expect(created.item.description).toBe('user-facing app');
+    expect(created.item.allowed_nodes).toEqual(['openai', 'anthropic']);
+    expect(created.item.today.calls).toBe(2);
+
+    const stored = apiKeyRepo._store[0] as any;
+    expect(stored.key_hash).toBe(createHash('sha256').update(created.key).digest('hex'));
+    expect(stored.key_hash).not.toContain(created.key);
+    expect(stored.key_prefix).toMatch(/^gw_sk_live_.+\.\.\..{4}$/);
+    expect(stored.key_prefix).not.toBe(created.key);
+
+    expect(budgetRepo._store).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        api_key_id: stored.id,
+        api_key_name: 'Production App',
+        type: 'daily_tokens',
+        limit_value: 1000,
+        alert_threshold: 0.75,
+        is_active: true,
+      }),
+      expect.objectContaining({
+        api_key_id: stored.id,
+        api_key_name: 'Production App',
+        type: 'daily_cost',
+        limit_value: 2.5,
+        alert_threshold: 0.75,
+        is_active: true,
+      }),
+    ]));
+  });
+
+  it('returns context only for active matching keys and updates last-used metadata', async () => {
+    const { service } = makeService();
+    const created = await service.create({ name: 'Worker' });
+
+    const context = await service.findContextByPlainKey(created.key, '10.0.0.1');
+
+    expect(context).toEqual(expect.objectContaining({
+      id: created.item.id,
+      name: 'Worker',
+      status: 'active',
+      allow_auto: true,
+      allow_direct: false,
+      allowed_nodes: [],
+      allowed_models: [],
+      rate_limit_per_minute: null,
+    }));
+
+    const listed = await service.list();
+    expect(listed[0].last_used_ip).toBe('10.0.0.1');
+    expect(listed[0].last_used_at).toBeInstanceOf(Date);
+    await expect(service.findContextByPlainKey('gw_sk_live_wrong')).resolves.toBeNull();
+  });
+
+  it('renames and disables budget rules when key limits change or key is removed', async () => {
+    const { service, budgetRepo } = makeService();
+    const created = await service.create({
+      name: 'Original',
+      daily_token_limit: 100,
+      daily_cost_limit: 1,
+    });
+
+    await service.update(created.item.id, {
+      name: 'Renamed',
+      daily_token_limit: null,
+      daily_cost_limit: 3,
+    });
+
+    expect(budgetRepo.update).toHaveBeenCalledWith(
+      { api_key_id: created.item.id },
+      { api_key_name: 'Renamed' },
+    );
+    expect(budgetRepo._store).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        api_key_id: created.item.id,
+        type: 'daily_tokens',
+        api_key_name: 'Renamed',
+        is_active: false,
+      }),
+      expect.objectContaining({
+        api_key_id: created.item.id,
+        type: 'daily_cost',
+        api_key_name: 'Renamed',
+        limit_value: 3,
+        is_active: true,
+      }),
+    ]));
+
+    await service.remove(created.item.id);
+    expect(budgetRepo.update).toHaveBeenCalledWith(
+      { api_key_id: created.item.id },
+      { is_active: false },
+    );
+  });
+
+  it('rotates keys without returning the old secret again', async () => {
+    const { service } = makeService();
+    const created = await service.create({ name: 'Rotating' });
+
+    const rotated = await service.rotate(created.item.id);
+
+    expect(rotated.key).toMatch(/^gw_sk_live_/);
+    expect(rotated.key).not.toBe(created.key);
+    await expect(service.findContextByPlainKey(created.key)).resolves.toBeNull();
+    await expect(service.findContextByPlainKey(rotated.key)).resolves.toEqual(
+      expect.objectContaining({ id: created.item.id, name: 'Rotating' }),
+    );
+  });
+
+  it('rejects duplicate names, invalid limits, and missing ids', async () => {
+    const { service } = makeService();
+    await service.create({ name: 'Duplicate' });
+
+    await expect(service.create({ name: 'Duplicate' })).rejects.toThrow(BadRequestException);
+    await expect(service.create({ name: 'Bad', rate_limit_per_minute: 1.5 })).rejects.toThrow(BadRequestException);
+    await expect(service.update('missing', { name: 'Nope' })).rejects.toThrow(NotFoundException);
+  });
+});

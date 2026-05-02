@@ -197,9 +197,11 @@ export class PromptCacheService {
 
   /**
    * Build a deterministic cache key from the semantic parts of a request.
-   * Excludes: stream flag, source_format, raw_headers, session_key, api_key_name.
+   * Excludes only transient transport details such as the stream flag.
+   * Includes caller/routing context so cached responses do not bleed across keys/sessions.
    */
   buildKey(canonical: CanonicalRequest): string {
+    const rawHeaders = canonical.metadata.raw_headers || {};
     const keyData = {
       model: canonical.metadata.original_model || 'auto',
       messages: canonical.messages,
@@ -209,6 +211,16 @@ export class PromptCacheService {
       top_p: canonical.top_p ?? null,
       stop: canonical.stop || null,
       max_tokens: canonical.max_tokens ?? null,
+      request_context: {
+        source_format: canonical.metadata.source_format,
+        api_key_name: canonical.metadata.api_key_name ?? null,
+        session_key: canonical.metadata.session_key ?? null,
+        routing_headers: {
+          'anthropic-version': rawHeaders['anthropic-version'] ?? null,
+          'anthropic-beta': rawHeaders['anthropic-beta'] ?? null,
+          'user-agent': rawHeaders['user-agent'] ?? null,
+        },
+      },
     };
 
     const hash = createHash('sha256')

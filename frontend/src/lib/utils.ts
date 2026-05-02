@@ -55,35 +55,35 @@ export function formatDate(iso: string): string {
   })
 }
 
-// ── Color constants — Noir Command Center palette ──
+// Signal Console palette
 
 export const TIER_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  simple: { bg: 'bg-emerald-500/12', text: 'text-emerald-700 dark:text-emerald-400', dot: '#2D8659' },
-  standard: { bg: 'bg-sky-500/12', text: 'text-sky-700 dark:text-sky-400', dot: '#0284C7' },
-  complex: { bg: 'bg-violet-500/12', text: 'text-violet-700 dark:text-violet-400', dot: '#7C3AED' },
-  reasoning: { bg: 'bg-rose-500/12', text: 'text-rose-700 dark:text-rose-400', dot: '#E11D48' },
-  direct: { bg: 'bg-stone-500/10 dark:bg-stone-500/12', text: 'text-stone-600 dark:text-stone-400', dot: '#78716C' },
+  simple: { bg: 'bg-emerald-700/10', text: 'text-emerald-800 dark:text-emerald-300', dot: '#064B3A' },
+  standard: { bg: 'bg-blue-600/10', text: 'text-blue-800 dark:text-blue-300', dot: '#4867E8' },
+  complex: { bg: 'bg-violet-600/10', text: 'text-violet-800 dark:text-violet-300', dot: '#7446C6' },
+  reasoning: { bg: 'bg-pink-600/10', text: 'text-pink-800 dark:text-pink-300', dot: '#CC3C7E' },
+  direct: { bg: 'bg-slate-500/10 dark:bg-slate-500/12', text: 'text-slate-600 dark:text-slate-300', dot: '#7B8F89' },
 }
 
 export const TIER_CHART_COLORS: Record<string, string> = {
-  simple: '#2D8659',
-  standard: '#0284C7',
-  complex: '#7C3AED',
-  reasoning: '#E11D48',
-  direct: '#78716C',
+  simple: '#064B3A',
+  standard: '#4867E8',
+  complex: '#7446C6',
+  reasoning: '#CC3C7E',
+  direct: '#7B8F89',
 }
 
 export const NODE_COLORS: Record<string, string> = {
-  gpt: '#2D8659',
-  claude: '#7C3AED',
-  gemini: '#0284C7',
-  minimax: '#D4A947',
-  deepseek: '#0891B2',
+  gpt: '#064B3A',
+  claude: '#7446C6',
+  gemini: '#4867E8',
+  minimax: '#D9872F',
+  deepseek: '#189AA8',
   grok: '#A78BFA',
   mistral: '#F97316',
   groq: '#22D3EE',
-  openrouter: '#E879F9',
-  ollama: '#6B7280',
+  openrouter: '#CC3C7E',
+  ollama: '#7B8F89',
 }
 
 export function getNodeColor(nodeId: string): string {
@@ -91,5 +91,5 @@ export function getNodeColor(nodeId: string): string {
   for (const [key, color] of Object.entries(NODE_COLORS)) {
     if (lower.includes(key)) return color
   }
-  return '#78716C'
+  return '#7B8F89'
 }

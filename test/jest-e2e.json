@@ -2,6 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testRegex": ".e2e-spec.ts$",
+  "testPathIgnorePatterns": ["/node_modules/", "/siftgate-cloud/"],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },

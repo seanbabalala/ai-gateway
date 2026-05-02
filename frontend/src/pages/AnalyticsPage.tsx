@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AreaChart,
   Area,
@@ -13,11 +14,22 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
-import { DollarSign, TrendingUp, Coins, Zap } from 'lucide-react'
+import { DollarSign, TrendingUp, Coins, Zap, BarChart3 as BarChart3Icon, PieChart as PieChartIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
+import { SkeletonCard, SkeletonChart, Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
 import { useCostAnalytics } from '@/hooks/use-analytics'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useThemeColors } from '@/lib/theme'
@@ -30,33 +42,47 @@ import {
   TIER_CHART_COLORS,
 } from '@/lib/utils'
 
-const periodOptions = [
-  { value: '7d', label: '7 days' },
-  { value: '30d', label: '30 days' },
-  { value: '90d', label: '90 days' },
-]
-
 const MODEL_COLORS = [
-  '#D4A947', '#7C3AED', '#0284C7', '#2D8659', '#E11D48',
-  '#F97316', '#0891B2', '#A78BFA', '#22D3EE', '#E879F9',
+  '#064B3A', '#4867E8', '#D9872F', '#7446C6', '#CC3C7E',
+  '#189AA8', '#B86B2B', '#8B6AD6', '#287F8C', '#4E756A',
 ]
 
 export function AnalyticsPage() {
+  const { t } = useTranslation('analytics')
   const [period, setPeriod] = useState('7d')
   const [apiKeyFilter, setApiKeyFilter] = useState('')
-  const { data, isLoading } = useCostAnalytics(period, apiKeyFilter || undefined)
+  const { data, isLoading, isError, error, refetch } = useCostAnalytics(
+    period,
+    apiKeyFilter ? { id: apiKeyFilter } : undefined,
+  )
   const { data: apiKeysData } = useApiKeys()
   const colors = useThemeColors()
+  const periodOptions = [
+    { value: '7d', label: t('filters.days', { count: 7 }) },
+    { value: '30d', label: t('filters.days', { count: 30 }) },
+    { value: '90d', label: t('filters.days', { count: 90 }) },
+  ]
 
   const apiKeyOptions = [
-    { value: '', label: 'All API Keys' },
-    ...(apiKeysData?.keys || []).map((k) => ({ value: k, label: k })),
+    { value: '', label: t('filters.allApiKeys') },
+    ...(apiKeysData?.items || []).map((key) => ({ value: key.id, label: key.name })),
   ]
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />
+  }
 
   if (isLoading || !data) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="animate-shimmer h-6 w-48 rounded-lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('analytics.title')} description={t('analytics.description')} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+        <div className="glass-card-static rounded-2xl p-6">
+          <Skeleton className="h-4 w-40 mb-4" />
+          <SkeletonChart height={280} />
+        </div>
       </div>
     )
   }
@@ -64,33 +90,34 @@ export function AnalyticsPage() {
   const tooltipStyle = {
     background: colors.chartTooltipBg,
     border: `1px solid ${colors.chartTooltipBorder}`,
-    borderRadius: '12px',
+    borderRadius: '8px',
     fontSize: '12px',
     padding: '8px 12px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+    boxShadow: '0 22px 52px rgba(5,46,36,0.16)',
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cost Analytics"
-        description="Cost trends, breakdown by model and node"
+        title={t('analytics.title')}
+        description={t('analytics.description')}
+        icon={BarChart3Icon}
       >
         <div className="flex items-center gap-3">
           <Select
             options={apiKeyOptions}
             value={apiKeyFilter}
-            onChange={(e) => setApiKeyFilter(e.target.value)}
+            onChange={(v) => setApiKeyFilter(v)}
             className="w-40"
           />
-          <div className="flex items-center gap-1 rounded-xl bg-[var(--inset-bg)] p-1">
+          <div className="flex items-center gap-1 rounded-lg bg-[var(--background-secondary)] p-1 shadow-[0_1px_2px_rgba(5,46,36,0.05)]">
             {periodOptions.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setPeriod(opt.value)}
                 className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all ${
                   period === opt.value
-                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                    ? 'bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm'
                     : 'text-[var(--foreground-dim)] hover:text-[var(--foreground)]'
                 }`}
               >
@@ -102,29 +129,31 @@ export function AnalyticsPage() {
       </PageHeader>
 
       {/* Summary Metrics */}
-      <div className="stagger-children grid grid-cols-4 gap-5">
+      <div className="stagger-children grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <MetricCard
-          label="Total Cost"
+          label={t('metrics.totalCost')}
           value={formatCost(data.total.cost)}
-          subtitle={`${data.period}d period`}
+          subtitle={t('metrics.period', { count: data.period })}
           icon={DollarSign}
         />
         <MetricCard
-          label="Total Calls"
+          label={t('metrics.totalCalls')}
           value={formatNumber(data.total.calls)}
-          subtitle={`Avg ${formatCost(data.total.avgCostPerCall)}/call`}
+          subtitle={t('metrics.avgCostPerCall', { cost: formatCost(data.total.avgCostPerCall) })}
           icon={Zap}
         />
         <MetricCard
-          label="Input Tokens"
+          label={t('metrics.inputTokens')}
           value={formatTokens(data.total.inputTokens)}
-          subtitle={`${formatTokens(data.total.inputTokens + data.total.outputTokens)} total`}
+          subtitle={t('metrics.totalTokens', { total: formatTokens(data.total.inputTokens + data.total.outputTokens) })}
           icon={Coins}
         />
         <MetricCard
-          label="Output Tokens"
+          label={t('metrics.outputTokens')}
           value={formatTokens(data.total.outputTokens)}
-          subtitle={`${((data.total.outputTokens / Math.max(1, data.total.inputTokens + data.total.outputTokens)) * 100).toFixed(0)}% of total`}
+          subtitle={t('metrics.percentOfTotal', {
+            value: ((data.total.outputTokens / Math.max(1, data.total.inputTokens + data.total.outputTokens)) * 100).toFixed(0),
+          })}
           icon={TrendingUp}
         />
       </div>
@@ -132,20 +161,18 @@ export function AnalyticsPage() {
       {/* Daily Cost Trend */}
       <Card className="animate-fade-up" style={{ animationDelay: '100ms' }}>
         <CardHeader>
-          <CardTitle>Daily Cost Trend</CardTitle>
+          <CardTitle>{t('dailyTrend.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           {data.dailyTrend.length === 0 ? (
-            <div className="flex h-64 items-center justify-center text-sm text-[var(--foreground-dim)]">
-              No data for this period
-            </div>
+            <EmptyState icon={TrendingUp} title={t('dailyTrend.emptyTitle')} description={t('dailyTrend.emptyDescription')} className="py-8" />
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={data.dailyTrend}>
                 <defs>
                   <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#D4A947" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#D4A947" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.16} />
+                    <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -155,7 +182,7 @@ export function AnalyticsPage() {
                 />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                   axisLine={{ stroke: colors.chartAxisLine }}
                   tickLine={false}
                   tickFormatter={(v: string) => {
@@ -164,7 +191,7 @@ export function AnalyticsPage() {
                   }}
                 />
                 <YAxis
-                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                   axisLine={false}
                   tickLine={false}
                   width={50}
@@ -175,16 +202,16 @@ export function AnalyticsPage() {
                   itemStyle={{ color: colors.chartTooltipText }}
                   labelStyle={{ color: colors.chartTooltipText, fontWeight: 600, marginBottom: 4 }}
                   formatter={(value: number, name: string) => {
-                    if (name === 'cost') return [formatCost(value), 'Cost']
-                    if (name === 'calls') return [value, 'Calls']
+                    if (name === 'cost') return [formatCost(value), t('labels.cost')]
+                    if (name === 'calls') return [value, t('labels.calls')]
                     return [value, name]
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="cost"
-                  stroke="#D4A947"
-                  strokeWidth={2}
+                  stroke="var(--accent)"
+                  strokeWidth={2.5}
                   fill="url(#costGradient)"
                 />
               </AreaChart>
@@ -194,17 +221,15 @@ export function AnalyticsPage() {
       </Card>
 
       {/* Cost by Model + Cost by Node */}
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Cost Distribution Pie (by Model) */}
         <Card className="animate-fade-up" style={{ animationDelay: '160ms' }}>
           <CardHeader>
-            <CardTitle>Cost by Model</CardTitle>
+            <CardTitle>{t('byModel.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.byModel.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-[var(--foreground-dim)]">
-                No data
-              </div>
+              <EmptyState icon={PieChartIcon} title={t('byModel.emptyTitle')} description={t('byModel.emptyDescription')} className="py-8" />
             ) : (
               <div className="flex items-center gap-4">
                 <ResponsiveContainer width="55%" height={200}>
@@ -217,8 +242,10 @@ export function AnalyticsPage() {
                       outerRadius={80}
                       dataKey="cost"
                       nameKey="model"
-                      stroke="none"
-                      paddingAngle={2}
+                      stroke="var(--background-secondary)"
+                      strokeWidth={5}
+                      paddingAngle={4}
+                      cornerRadius={8}
                     >
                       {data.byModel.map((_entry, i) => (
                         <Cell key={i} fill={MODEL_COLORS[i % MODEL_COLORS.length]} />
@@ -227,7 +254,7 @@ export function AnalyticsPage() {
                     <Tooltip
                       contentStyle={tooltipStyle}
                       itemStyle={{ color: colors.chartTooltipText }}
-                      formatter={(value: number) => [formatCost(value), 'Cost']}
+                      formatter={(value: number) => [formatCost(value), t('labels.cost')]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -258,24 +285,27 @@ export function AnalyticsPage() {
         {/* Cost by Node Bar Chart */}
         <Card className="animate-fade-up" style={{ animationDelay: '220ms' }}>
           <CardHeader>
-            <CardTitle>Cost by Node</CardTitle>
+            <CardTitle>{t('byNode.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.byNode.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-[var(--foreground-dim)]">
-                No data
-              </div>
+              <EmptyState icon={BarChart3Icon} title={t('byNode.emptyTitle')} description={t('byNode.emptyDescription')} className="py-8" />
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={data.byNode}>
+                  <CartesianGrid
+                    vertical={false}
+                    stroke={colors.chartAxisLine}
+                    strokeDasharray="4 8"
+                  />
                   <XAxis
                     dataKey="nodeId"
-                    tick={{ fill: colors.chartAxisTick, fontSize: 11, fontFamily: 'Space Mono' }}
+                    tick={{ fill: colors.chartAxisTick, fontSize: 11, fontFamily: 'IBM Plex Mono' }}
                     axisLine={{ stroke: colors.chartAxisLine }}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                    tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                     axisLine={false}
                     tickLine={false}
                     width={50}
@@ -285,11 +315,11 @@ export function AnalyticsPage() {
                     contentStyle={tooltipStyle}
                     itemStyle={{ color: colors.chartTooltipText }}
                     formatter={(value: number, name: string) => {
-                      if (name === 'cost') return [formatCost(value), 'Cost']
+                      if (name === 'cost') return [formatCost(value), t('labels.cost')]
                       return [value, name]
                     }}
                   />
-                  <Bar dataKey="cost" radius={[6, 6, 0, 0]}>
+                  <Bar dataKey="cost" radius={[8, 8, 0, 0]} barSize={26}>
                     {data.byNode.map((entry) => (
                       <Cell
                         key={entry.nodeId}
@@ -307,30 +337,31 @@ export function AnalyticsPage() {
       {/* Cost by Tier */}
       <Card className="animate-fade-up" style={{ animationDelay: '280ms' }}>
         <CardHeader>
-          <CardTitle>Cost by Tier</CardTitle>
+          <CardTitle>{t('byTier.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           {data.byTier.length === 0 ? (
-            <div className="flex h-32 items-center justify-center text-sm text-[var(--foreground-dim)]">
-              No data
-            </div>
+            <EmptyState icon={Coins} title={t('byTier.emptyTitle')} description={t('byTier.emptyDescription')} className="py-6" />
           ) : (
-            <div className="grid grid-cols-4 gap-4">
-              {data.byTier.map((t) => (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {data.byTier.map((tierItem) => (
                 <div
-                  key={t.tier}
-                  className="rounded-xl bg-[var(--inset-bg)] p-4"
+                  key={tierItem.tier}
+                  className="rounded-lg bg-[var(--background-tertiary)] p-4"
                 >
                   <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[var(--foreground-dim)]">
-                    {t.tier}
+                    {tierItem.tier}
                   </div>
                   <div className="text-xl font-semibold tracking-tight text-[var(--foreground)]"
-                    style={{ color: TIER_CHART_COLORS[t.tier || ''] }}
+                    style={{ color: TIER_CHART_COLORS[tierItem.tier || ''] }}
                   >
-                    {formatCost(t.cost)}
+                    {formatCost(tierItem.cost)}
                   </div>
                   <div className="mt-1 font-mono text-[10px] text-[var(--foreground-dim)]">
-                    {formatNumber(t.calls)} calls &middot; {formatTokens(t.inputTokens + t.outputTokens)} tok
+                    {t('byTier.callsTokens', {
+                      calls: formatNumber(tierItem.calls),
+                      tokens: formatTokens(tierItem.inputTokens + tierItem.outputTokens),
+                    })}
                   </div>
                 </div>
               ))}
@@ -342,56 +373,52 @@ export function AnalyticsPage() {
       {/* Detailed Breakdown Table */}
       <Card className="animate-fade-up" style={{ animationDelay: '340ms' }}>
         <CardHeader>
-          <CardTitle>Model Breakdown</CardTitle>
+          <CardTitle>{t('breakdown.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           {data.byModel.length === 0 ? (
-            <div className="flex h-24 items-center justify-center text-sm text-[var(--foreground-dim)]">
-              No data
-            </div>
+            <EmptyState icon={DollarSign} title={t('breakdown.emptyTitle')} description={t('breakdown.emptyDescription')} className="py-6" />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[var(--border)]">
-                    <th className="pb-3 pr-4 font-medium text-[var(--foreground-dim)]">Model</th>
-                    <th className="pb-3 pr-4 text-right font-medium text-[var(--foreground-dim)]">Calls</th>
-                    <th className="pb-3 pr-4 text-right font-medium text-[var(--foreground-dim)]">Input Tokens</th>
-                    <th className="pb-3 pr-4 text-right font-medium text-[var(--foreground-dim)]">Output Tokens</th>
-                    <th className="pb-3 pr-4 text-right font-medium text-[var(--foreground-dim)]">Total Cost</th>
-                    <th className="pb-3 pr-4 text-right font-medium text-[var(--foreground-dim)]">Avg Cost/Call</th>
-                    <th className="pb-3 text-right font-medium text-[var(--foreground-dim)]">Avg Latency</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byModel.map((item) => (
-                    <tr key={item.model} className="border-b border-[var(--border)]/50">
-                      <td className="py-2.5 pr-4 font-mono text-[11px] text-[var(--foreground)]">
-                        {item.model}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono text-[var(--foreground-muted)]">
-                        {formatNumber(item.calls)}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono text-[var(--foreground-muted)]">
-                        {formatTokens(item.inputTokens)}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono text-[var(--foreground-muted)]">
-                        {formatTokens(item.outputTokens)}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono font-semibold text-[var(--foreground)]">
-                        {formatCost(item.cost)}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono text-[var(--foreground-muted)]">
-                        {formatCost(item.avgCostPerCall || 0)}
-                      </td>
-                      <td className="py-2.5 text-right font-mono text-[var(--foreground-muted)]">
-                        {formatLatency(item.avgLatency || 0)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('breakdown.model')}</TableHead>
+                  <TableHead className="text-right">{t('labels.calls')}</TableHead>
+                  <TableHead className="text-right">{t('breakdown.inputTokens')}</TableHead>
+                  <TableHead className="text-right">{t('breakdown.outputTokens')}</TableHead>
+                  <TableHead className="text-right">{t('breakdown.totalCost')}</TableHead>
+                  <TableHead className="text-right">{t('breakdown.avgCostCall')}</TableHead>
+                  <TableHead className="text-right">{t('breakdown.avgLatency')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.byModel.map((item) => (
+                  <TableRow key={item.model}>
+                    <TableCell className="font-mono text-[11px] font-medium text-[var(--foreground)]">
+                      {item.model}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      {formatNumber(item.calls)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      {formatTokens(item.inputTokens)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      {formatTokens(item.outputTokens)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] font-semibold text-[var(--foreground)]">
+                      {formatCost(item.cost)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      {formatCost(item.avgCostPerCall || 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      {formatLatency(item.avgLatency || 0)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

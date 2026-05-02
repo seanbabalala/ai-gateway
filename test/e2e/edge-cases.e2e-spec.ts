@@ -74,7 +74,7 @@ describe('Edge Cases (e2e)', () => {
     expect(harness.fetchMock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('all providers fail → 502 error response', async () => {
+  it('all providers return 500 → upstream error response', async () => {
     harness.fetchMock.setError(500, 'All backends down');
 
     const res = await harness.agent
@@ -85,7 +85,7 @@ describe('Edge Cases (e2e)', () => {
         messages: [{ role: 'user', content: 'test error' }],
       });
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(500);
     expect(res.body.error).toBeDefined();
   });
 
@@ -129,7 +129,7 @@ describe('Edge Cases (e2e)', () => {
     expect(call.url).toContain('mock-upstream.test');
   });
 
-  it('model:"nonexistent" → fallthrough to auto routing → 200', async () => {
+  it('model:"nonexistent" with a generated key → clear direct-model error', async () => {
     const res = await harness.agent
       .post('/v1/chat/completions')
       .set('Authorization', `Bearer ${API_KEY}`)
@@ -138,9 +138,9 @@ describe('Edge Cases (e2e)', () => {
         messages: [{ role: 'user', content: 'unknown model test' }],
       });
 
-    // Should succeed — unknown models fall through to auto routing
-    expect(res.status).toBe(200);
-    expect(harness.fetchMock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toContain('not configured');
+    expect(harness.fetchMock.calls.length).toBe(0);
   });
 
   it('model:"auto" with no model header → scoring-based routing', async () => {

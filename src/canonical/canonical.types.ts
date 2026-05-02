@@ -1,5 +1,5 @@
 // ===================================================================
-// AI Gateway — Canonical Internal Format
+// SiftGate — Canonical Internal Format
 // ===================================================================
 // All three API protocols (chat/completions, responses, messages)
 // are normalized into this unified format for internal processing.
@@ -84,6 +84,13 @@ export interface CanonicalRequest {
     raw_headers: Record<string, string>;
     raw_body?: unknown;
     api_key_name?: string;
+    api_key_id?: string;
+    api_key_permissions?: {
+      allow_auto: boolean;
+      allow_direct: boolean;
+      allowed_nodes: string[];
+      allowed_models: string[];
+    };
   };
 }
 

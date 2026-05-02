@@ -6,6 +6,7 @@
 // ===================================================================
 
 import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { CAPABILITY_MAP } from '@/lib/capabilities'
 
 interface TierRecommendationProps {
@@ -16,7 +17,7 @@ interface TierScore {
   tier: string
   score: number
   suitable: boolean
-  label: string
+  labelKey: string
 }
 
 function computeTierScores(capabilities: string[]): TierScore[] {
@@ -45,13 +46,13 @@ function computeTierScores(capabilities: string[]): TierScore[] {
       total += affinityMap[capId]?.[tier] ?? 0
     }
     const avg = Number((total / validCaps.length).toFixed(2))
-    let label: string
-    if (avg >= 0.7) label = 'Best fit'
-    else if (avg >= 0.5) label = 'Good fit'
-    else if (avg >= 0.3) label = 'Fallback only'
-    else label = 'Not recommended'
+    let labelKey: string
+    if (avg >= 0.7) labelKey = 'tierRecommendation.bestFit'
+    else if (avg >= 0.5) labelKey = 'tierRecommendation.goodFit'
+    else if (avg >= 0.3) labelKey = 'tierRecommendation.fallbackOnly'
+    else labelKey = 'tierRecommendation.notRecommended'
 
-    return { tier, score: avg, suitable: avg > 0.4, label }
+    return { tier, score: avg, suitable: avg > 0.4, labelKey }
   })
 
   results.sort((a, b) => b.score - a.score)
@@ -59,13 +60,14 @@ function computeTierScores(capabilities: string[]): TierScore[] {
 }
 
 export function TierRecommendation({ capabilities }: TierRecommendationProps) {
+  const { t } = useTranslation('nodes')
   const scores = computeTierScores(capabilities)
 
   if (scores.length === 0) {
     return (
       <div className="rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] px-4 py-3">
         <p className="text-[11px] text-[var(--foreground-dim)]">
-          Select capabilities above to see tier recommendations
+          {t('tierRecommendation.selectCapabilities')}
         </p>
       </div>
     )
@@ -74,7 +76,7 @@ export function TierRecommendation({ capabilities }: TierRecommendationProps) {
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] px-4 py-3">
       <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
-        Tier Recommendation
+        {t('tierRecommendation.title')}
       </div>
       <div className="space-y-1.5">
         {scores.map((s) => (
@@ -97,7 +99,7 @@ export function TierRecommendation({ capabilities }: TierRecommendationProps) {
                   ? 'text-amber-600 dark:text-amber-400'
                   : 'text-[var(--foreground-dim)]'
             }`}>
-              — {s.label}
+              — {t(s.labelKey)}
             </span>
           </div>
         ))}

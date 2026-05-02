@@ -3,6 +3,7 @@
 // ===================================================================
 
 import { CAPABILITY_MAP } from '@/lib/capabilities'
+import { useTranslation } from 'react-i18next'
 
 interface CapabilityBadgeProps {
   capabilityId: string
@@ -10,6 +11,7 @@ interface CapabilityBadgeProps {
 }
 
 export function CapabilityBadge({ capabilityId, size = 'sm' }: CapabilityBadgeProps) {
+  const { t } = useTranslation('nodes')
   const cap = CAPABILITY_MAP[capabilityId]
   if (!cap) {
     // Unknown capability — render as plain text
@@ -31,7 +33,7 @@ export function CapabilityBadge({ capabilityId, size = 'sm' }: CapabilityBadgePr
       className={`inline-flex items-center rounded-lg font-semibold border transition-colors ${sizeClasses} ${cap.bgClass} ${cap.borderClass} ${cap.textClass}`}
     >
       <Icon className={iconSize} />
-      {cap.label.en}
+      {t(`capabilities.${capabilityId}`, { defaultValue: cap.label.en })}
     </span>
   )
 }

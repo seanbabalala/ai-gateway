@@ -30,6 +30,7 @@ export interface RouteDecision {
   momentumAdjusted: boolean;
   domainHint: 'frontend' | 'backend' | null;
   experimentGroup: string | null;  // A/B split: "tier:variantName" format, null when no split
+  experimentGroupsByTarget: Record<string, string>;
 }
 
 /**
@@ -98,6 +99,7 @@ export class RoutingService {
         momentumAdjusted: adjusted,
         domainHint: hint,
         experimentGroup: null,
+        experimentGroupsByTarget: {},
       };
     }
 
@@ -110,7 +112,6 @@ export class RoutingService {
       );
       // Use split-derived targets for Steps 3+
       const splitAllTargets = splitResult.orderedTargets;
-      experimentGroup = splitResult.experimentGroup;
 
       // Filter by circuit breaker
       let splitAvailable = splitAllTargets.filter((t) =>
@@ -145,6 +146,11 @@ export class RoutingService {
         }
       }
 
+      experimentGroup = this.resolveExperimentGroupForTarget(
+        splitResult.experimentGroupsByTarget,
+        splitOrdered[0],
+      );
+
       return {
         primary: splitOrdered[0],
         fallbacks: splitOrdered.slice(1),
@@ -153,6 +159,7 @@ export class RoutingService {
         momentumAdjusted: adjusted,
         domainHint: hint,
         experimentGroup,
+        experimentGroupsByTarget: splitResult.experimentGroupsByTarget,
       };
     }
 
@@ -174,6 +181,7 @@ export class RoutingService {
         momentumAdjusted: adjusted,
         domainHint: hint,
         experimentGroup: null,
+        experimentGroupsByTarget: {},
       };
     }
 
@@ -248,6 +256,7 @@ export class RoutingService {
       momentumAdjusted: adjusted,
       domainHint: hint,
       experimentGroup: null,
+      experimentGroupsByTarget: {},
     };
   }
 
@@ -260,7 +269,7 @@ export class RoutingService {
     variants: SplitVariant[],
     tier: string,
     sessionKey?: string,
-  ): { orderedTargets: RouteTarget[]; experimentGroup: string } {
+  ): { orderedTargets: RouteTarget[]; experimentGroupsByTarget: Record<string, string> } {
     const hash = fnv1a32(sessionKey || uuidv4());
     const bucket = hash % 100;
 
@@ -280,6 +289,15 @@ export class RoutingService {
     const fallbacks = variants
       .filter((_, i) => i !== selectedIdx)
       .map(v => ({ node: v.node, model: v.model }));
+    const experimentGroupsByTarget = Object.fromEntries(
+      variants.map((variant) => {
+        const variantName = variant.name || `${variant.node}:${variant.model}`;
+        return [
+          this.buildExperimentTargetKey(variant.node, variant.model),
+          `${tier}:${variantName}`,
+        ];
+      }),
+    );
 
     this.logger.log(
       `A/B split tier="${tier}": bucket=${bucket} → variant="${name}" (weight=${selected.weight})`,
@@ -287,8 +305,19 @@ export class RoutingService {
 
     return {
       orderedTargets: [primary, ...fallbacks],
-      experimentGroup: `${tier}:${name}`,
+      experimentGroupsByTarget,
     };
+  }
+
+  private resolveExperimentGroupForTarget(
+    experimentGroupsByTarget: Record<string, string>,
+    target: RouteTarget,
+  ): string | null {
+    return experimentGroupsByTarget[this.buildExperimentTargetKey(target.node, target.model)] || null;
+  }
+
+  private buildExperimentTargetKey(node: string, model: string): string {
+    return `${node}:${model}`;
   }
 
   /**

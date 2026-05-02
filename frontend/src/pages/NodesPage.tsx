@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { RefreshCw, RotateCcw, Plus, Pencil, Trash2, Eye, Type, Volume2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { RefreshCw, RotateCcw, Plus, Pencil, Trash2, Eye, Type, Volume2, Server, AlertTriangle, Boxes, Gauge } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { CircuitBadge } from '@/components/shared/CircuitBadge'
@@ -8,6 +9,9 @@ import { CapabilityBadge } from '@/components/shared/CapabilityBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CardStatic } from '@/components/ui/card'
+import { SkeletonCard } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
 import { NodeFormModal } from '@/components/nodes/NodeFormModal'
 import { DeleteNodeDialog } from '@/components/nodes/DeleteNodeDialog'
 import { QuickModelReference } from '@/components/nodes/QuickModelReference'
@@ -25,28 +29,28 @@ import type { NodeInfo, CreateNodeRequest, UpdateNodeRequest } from '@/types/api
 
 // ── Modality display configuration ──
 const MODALITY_DISPLAY: Record<string, {
-  label: string
+  labelKey: string
   icon: typeof Eye
   bgClass: string
   borderClass: string
   textClass: string
 }> = {
   text: {
-    label: 'Text',
+    labelKey: 'modalities.text',
     icon: Type,
     bgClass: 'bg-stone-500/10',
     borderClass: 'border-stone-500/20',
     textClass: 'text-stone-600 dark:text-stone-400',
   },
   vision: {
-    label: 'Vision',
+    labelKey: 'modalities.vision',
     icon: Eye,
     bgClass: 'bg-purple-500/10',
     borderClass: 'border-purple-500/30',
     textClass: 'text-purple-700 dark:text-purple-400',
   },
   audio: {
-    label: 'Audio',
+    labelKey: 'modalities.audio',
     icon: Volume2,
     bgClass: 'bg-rose-500/10',
     borderClass: 'border-rose-500/30',
@@ -55,7 +59,8 @@ const MODALITY_DISPLAY: Record<string, {
 }
 
 export function NodesPage() {
-  const { data: nodesData, isLoading } = useNodes()
+  const { t } = useTranslation('nodes')
+  const { data: nodesData, isLoading, isError, error, refetch } = useNodes()
   const resetCircuit = useResetCircuit()
   const reloadConfig = useReloadConfig()
   const createNode = useCreateNode()
@@ -97,24 +102,36 @@ export function NodesPage() {
     })
   }
 
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />
+  }
+
   if (isLoading || !nodesData) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="animate-shimmer h-6 w-48 rounded-lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('nodes.title')} description={t('nodes.description')} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} className="h-48" />)}
+        </div>
       </div>
     )
   }
 
   const existingIds = nodesData.nodes.map((n) => n.id)
+  const diagnostics = nodesData.diagnostics ?? []
+  const healthyCount = nodesData.nodes.filter((node) => node.healthy).length
+  const totalModels = nodesData.nodes.reduce((sum, node) => sum + node.models.length, 0)
+  const openCircuitCount = nodesData.nodes.filter((node) => node.circuit.state !== 'CLOSED').length
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageHeader
-          title="Nodes"
-          description="AI provider nodes and circuit breaker status"
+          title={t('nodes.title')}
+          description={t('nodes.description')}
+          icon={Server}
         />
-        <div className="flex items-center gap-2.5">
+        <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:justify-end">
           <Button
             variant="outline"
             size="sm"
@@ -124,225 +141,285 @@ export function NodesPage() {
             <RefreshCw
               className={`h-3.5 w-3.5 ${reloadConfig.isPending ? 'animate-spin' : ''}`}
             />
-            Reload Config
+            {reloadConfig.isPending ? t('actions.reloadingConfig') : t('actions.reloadConfig')}
           </Button>
           <Button size="sm" onClick={handleOpenCreate}>
             <Plus className="h-3.5 w-3.5" />
-            Add Node
+            {t('actions.addUpstream')}
           </Button>
         </div>
       </div>
+
+      {diagnostics.length > 0 && (
+        <div className="rounded-lg bg-amber-500/10 px-4 py-3 text-amber-800 dark:text-amber-300">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold">
+                {t('diagnostics.title')}
+              </div>
+              <div className="mt-1 space-y-1">
+                {diagnostics.slice(0, 3).map((diagnostic, idx) => (
+                  <p key={`${diagnostic.code}-${diagnostic.model ?? diagnostic.alias ?? idx}`} className="text-[11px] leading-5">
+                    {diagnostic.message}
+                  </p>
+                ))}
+                {diagnostics.length > 3 && (
+                  <p className="text-[11px] font-medium">
+                    {t('diagnostics.moreWarnings', { count: diagnostics.length - 3 })}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Model Reference */}
       <div className="animate-fade-up">
         <QuickModelReference nodes={nodesData.nodes} />
       </div>
 
-      {/* Node Cards Grid */}
-      <div className="stagger-children grid grid-cols-2 gap-5">
-        {nodesData.nodes.map((node) => (
-          <CardStatic key={node.id} className="animate-fade-up p-5">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-xl"
-                  style={{
-                    backgroundColor: colorWithOpacity(getNodeColor(node.id), '15'),
-                    boxShadow: `0 0 20px ${colorWithOpacity(getNodeColor(node.id), '10')}`,
-                  }}
-                >
-                  <NodeIcon
-                    nodeId={node.id}
-                    protocol={node.protocol}
-                    className="h-5 w-5"
-                    style={{ color: getNodeColor(node.id) }}
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-                      {node.name}
-                    </span>
-                    <StatusDot
-                      status={node.healthy ? 'healthy' : 'unhealthy'}
-                      size="sm"
-                    />
-                  </div>
-                  <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
-                    {node.id} &middot; {node.protocol}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => handleOpenEdit(node)}
-                  className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all duration-200 hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
-                  title="Edit node"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setDeleteTarget(node)}
-                  className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all duration-200 hover:bg-red-500/10 hover:text-red-500"
-                  title="Delete node"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+      <div className="animate-fade-up rounded-lg bg-[#052e24] p-2 shadow-[0_18px_42px_rgba(5,46,36,0.16)] dark:bg-[var(--background-secondary)]">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md bg-white/10 md:grid-cols-4">
+          <div className="bg-[#052e24] px-4 py-3 dark:bg-[var(--background-secondary)]">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-white/52">
+              <Server className="h-3.5 w-3.5" />
+              {t('stats.upstreams')}
             </div>
+            <div className="mt-2 font-mono text-2xl font-extrabold text-white">
+              {nodesData.nodes.length}
+            </div>
+          </div>
+          <div className="bg-[#052e24] px-4 py-3 dark:bg-[var(--background-secondary)]">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-white/52">
+              <Gauge className="h-3.5 w-3.5" />
+              {t('stats.healthy')}
+            </div>
+            <div className="mt-2 font-mono text-2xl font-extrabold text-white">
+              {healthyCount}
+              <span className="text-sm font-semibold text-white/45"> / {nodesData.nodes.length}</span>
+            </div>
+          </div>
+          <div className="bg-[#052e24] px-4 py-3 dark:bg-[var(--background-secondary)]">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-white/52">
+              <Boxes className="h-3.5 w-3.5" />
+              {t('stats.models')}
+            </div>
+            <div className="mt-2 font-mono text-2xl font-extrabold text-white">
+              {totalModels}
+            </div>
+          </div>
+          <div className="bg-[#052e24] px-4 py-3 dark:bg-[var(--background-secondary)]">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-white/52">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {t('stats.openCircuits')}
+            </div>
+            <div className="mt-2 font-mono text-2xl font-extrabold text-white">
+              {openCircuitCount}
+            </div>
+          </div>
+        </div>
+      </div>
 
-            {/* Models + Per-Model Circuit Breakers */}
-            <div className="mt-4">
-              <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                Models
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {node.models.map((model) => {
-                  const mc = node.modelCircuits?.[model]
-                  const hasIssue = mc && mc.state !== 'CLOSED'
-                  return (
-                    <div
-                      key={model}
-                      className="flex items-center justify-between rounded-lg bg-[var(--inset-bg)] px-2.5 py-1.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="blue" className="text-[10px]">
-                          {model}
-                        </Badge>
-                        {mc && mc.state !== 'CLOSED' && (
-                          <>
-                            <CircuitBadge state={mc.state} />
-                            {mc.consecutiveFailures > 0 && (
-                              <span className="font-mono text-[9px] text-[var(--foreground-dim)]">
-                                {mc.consecutiveFailures} failures
-                              </span>
-                            )}
-                          </>
-                        )}
-                        {(!mc || mc.state === 'CLOSED') && (
-                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400">●</span>
-                        )}
+      {/* Node Matrix */}
+      {nodesData.nodes.length === 0 ? (
+        <EmptyState
+          icon={Server}
+          title={t('empty.title')}
+          description={t('empty.description')}
+          action={
+            <Button size="sm" onClick={handleOpenCreate}>
+              <Plus className="h-3.5 w-3.5" />
+              {t('actions.addUpstream')}
+            </Button>
+          }
+        />
+      ) : (
+        <CardStatic className="animate-fade-up overflow-hidden p-3">
+          <div className="hidden grid-cols-[minmax(210px,1.1fr)_minmax(260px,1.35fr)_minmax(190px,1fr)_135px_78px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
+            <span>{t('table.upstream')}</span>
+            <span>{t('table.models')}</span>
+            <span>{t('table.capabilities')}</span>
+            <span>{t('table.status')}</span>
+            <span className="text-right">{t('table.actions')}</span>
+          </div>
+          <div className="space-y-2">
+            {nodesData.nodes.map((node) => {
+              const nodeDiagnostics = diagnostics.filter((diagnostic) =>
+                diagnostic.nodes.includes(node.id) || diagnostic.matchingNodes?.includes(node.id),
+              )
+              const color = getNodeColor(node.id)
+              const unhealthyModels = node.models.filter((model) => {
+                const circuit = node.modelCircuits?.[model]
+                return circuit && circuit.state !== 'CLOSED'
+              })
+
+              return (
+                <div
+                  key={node.id}
+                  className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[minmax(210px,1.1fr)_minmax(260px,1.35fr)_minmax(190px,1fr)_135px_78px] lg:items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                        style={{ backgroundColor: colorWithOpacity(color, '12') }}
+                      >
+                        <NodeIcon
+                          nodeId={node.id}
+                          protocol={node.protocol}
+                          className="h-5 w-5"
+                          style={{ color }}
+                        />
                       </div>
-                      {hasIssue && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            resetCircuit.mutate({ nodeId: node.id, model })
-                          }}
-                          disabled={resetCircuit.isPending}
-                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium text-[var(--foreground-dim)] transition-colors hover:bg-[var(--hover-bg)] hover:text-[var(--foreground)]"
-                        >
-                          <RotateCcw className="h-2.5 w-2.5" />
-                          Reset
-                        </button>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-[14px] font-extrabold text-[var(--foreground)]">
+                            {node.name}
+                          </span>
+                          <StatusDot status={node.healthy ? 'healthy' : 'unhealthy'} size="sm" pulse={false} />
+                        </div>
+                        <div className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">
+                          {node.id} / {node.protocol}
+                        </div>
+                      </div>
+                    </div>
+                    {nodeDiagnostics.length > 0 && (
+                      <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:text-amber-300">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{nodeDiagnostics[0].message}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap gap-1.5">
+                      {node.models.slice(0, 5).map((model) => {
+                        const mc = node.modelCircuits?.[model]
+                        const hasIssue = mc && mc.state !== 'CLOSED'
+                        return (
+                          <span
+                            key={model}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--background-secondary)] px-2.5 py-1 font-mono text-[10px] font-semibold text-[var(--foreground-muted)]"
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: hasIssue ? 'var(--warning)' : color }}
+                            />
+                            {model}
+                            {hasIssue && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  resetCircuit.mutate({ nodeId: node.id, model })
+                                }}
+                                disabled={resetCircuit.isPending}
+                                className="ml-1 text-[var(--foreground-dim)] transition-colors hover:text-[var(--foreground)]"
+                                title={t('actions.resetModelCircuit')}
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                              </button>
+                            )}
+                          </span>
+                        )
+                      })}
+                      {node.models.length > 5 && (
+                        <Badge variant="zinc" className="text-[10px]">+{node.models.length - 5}</Badge>
                       )}
                     </div>
-                  )
-                })}
-              </div>
-            </div>
+                    {Object.keys(node.aliases).length > 0 && (
+                      <div className="mt-2 truncate text-[10px] text-[var(--foreground-dim)]">
+                        {Object.entries(node.aliases).slice(0, 3).map(([alias, target]) => (
+                          <span key={alias} className="mr-2">
+                            <span className="text-[var(--foreground-muted)]">{alias}</span>
+                            <span className="mx-1 text-[var(--divider-dim)]">&rarr;</span>
+                            <span className="font-mono">{target}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-            {/* Capabilities */}
-            {node.capabilities && node.capabilities.length > 0 && (
-              <div className="mt-3">
-                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                  Capabilities
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {node.capabilities.map((cap) => (
-                    <CapabilityBadge key={cap} capabilityId={cap} />
-                  ))}
-                </div>
-              </div>
-            )}
+                  <div className="min-w-0 space-y-2">
+                    {node.capabilities?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {node.capabilities.slice(0, 4).map((cap) => (
+                          <CapabilityBadge key={cap} capabilityId={cap} size="sm" />
+                        ))}
+                        {node.capabilities.length > 4 && (
+                          <Badge variant="zinc" className="text-[10px]">+{node.capabilities.length - 4}</Badge>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {node.modalities?.map((modality) => {
+                        const config = MODALITY_DISPLAY[modality] || MODALITY_DISPLAY.text
+                        const Icon = config.icon
+                        return (
+                          <span
+                            key={modality}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ${config.bgClass} ${config.textClass}`}
+                          >
+                            <Icon className="h-3 w-3" />
+                            {t(config.labelKey)}
+                          </span>
+                        )
+                      })}
+                      {node.tags.slice(0, 3).map((tag) => (
+                        <Badge key={tag} variant="zinc" className="text-[10px]">{tag}</Badge>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Modalities */}
-            {node.modalities && node.modalities.length > 0 && (
-              <div className="mt-3">
-                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                  Modalities
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {node.modalities.map((modality) => {
-                    const config = MODALITY_DISPLAY[modality] || MODALITY_DISPLAY.text
-                    const Icon = config.icon
-                    return (
-                      <span
-                        key={modality}
-                        className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold border transition-colors ${config.bgClass} ${config.borderClass} ${config.textClass}`}
+                  <div className="flex flex-wrap items-center gap-2 lg:block lg:space-y-2">
+                    <CircuitBadge state={node.circuit.state} />
+                    {node.circuit.consecutiveFailures > 0 && (
+                      <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
+                        {t('status.failures', { count: node.circuit.consecutiveFailures })}
+                      </div>
+                    )}
+                    {unhealthyModels.length > 0 && (
+                      <div className="text-[10px] font-semibold text-[var(--warning)]">
+                        {t('status.modelIssues', { count: unhealthyModels.length })}
+                      </div>
+                    )}
+                    {node.circuit.state !== 'CLOSED' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resetCircuit.mutate({ nodeId: node.id })}
+                        disabled={resetCircuit.isPending}
+                        className="h-7 px-2 text-[10px]"
                       >
-                        <Icon className="h-3 w-3" />
-                        {config.label}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+                        <RotateCcw className="h-3 w-3" />
+                        {t('actions.reset')}
+                      </Button>
+                    )}
+                  </div>
 
-            {/* Tags */}
-            {node.tags.length > 0 && (
-              <div className="mt-3">
-                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                  Tags
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {node.tags.map((tag) => (
-                    <Badge key={tag} variant="zinc" className="text-[10px]">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Aliases */}
-            {Object.keys(node.aliases).length > 0 && (
-              <div className="mt-3">
-                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                  Aliases
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(node.aliases).map(([alias, target]) => (
-                    <span
-                      key={alias}
-                      className="text-[10px] text-[var(--foreground-dim)]"
+                  <div className="flex items-center gap-1 lg:justify-end">
+                    <button
+                      onClick={() => handleOpenEdit(node)}
+                      className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-[var(--background-secondary)] hover:text-[var(--foreground)] hover:shadow-[0_10px_24px_rgba(5,46,36,0.08)]"
+                      title={t('actions.editUpstream')}
                     >
-                      <span className="text-[var(--foreground-muted)]">{alias}</span>
-                      <span className="mx-1 text-[var(--divider-dim)]">&rarr;</span>
-                      <span className="font-mono">{target}</span>
-                    </span>
-                  ))}
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(node)}
+                      className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-red-500/10 hover:text-red-500"
+                      title={t('actions.deleteUpstream')}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-
-            {/* Node-Level Circuit Breaker (Aggregated) */}
-            <div className="mt-4 flex items-center justify-between rounded-xl bg-[var(--inset-bg)] px-3.5 py-2.5">
-              <div className="flex items-center gap-2.5">
-                <CircuitBadge state={node.circuit.state} />
-                {node.circuit.consecutiveFailures > 0 && (
-                  <span className="font-mono text-[10px] text-[var(--foreground-dim)]">
-                    {node.circuit.consecutiveFailures} failures
-                  </span>
-                )}
-              </div>
-              {node.circuit.state !== 'CLOSED' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => resetCircuit.mutate({ nodeId: node.id })}
-                  disabled={resetCircuit.isPending}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Reset All
-                </Button>
-              )}
-            </div>
-          </CardStatic>
-        ))}
-      </div>
+              )
+            })}
+          </div>
+        </CardStatic>
+      )}
 
       {/* Modals */}
       <NodeFormModal
@@ -352,6 +429,7 @@ export function NodesPage() {
         isPending={editNode ? updateNode.isPending : createNode.isPending}
         editNode={editNode}
         existingIds={existingIds}
+        existingNodes={nodesData.nodes}
       />
 
       <DeleteNodeDialog

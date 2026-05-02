@@ -1,11 +1,11 @@
 # ============================================================
-# AI Gateway — Multi-stage Docker build
+# SiftGate — Multi-stage Docker build
 # ============================================================
 # Produces a single image that serves the NestJS backend
 # and the pre-built React frontend (via @nestjs/serve-static).
 #
-# Build:  docker build -t ai-gateway .
-# Run:    docker run -p 2099:2099 -v $(pwd)/gateway.config.yaml:/app/gateway.config.yaml ai-gateway
+# Build:  docker build -t siftgate .
+# Run:    docker run -p 2099:2099 -v $(pwd)/gateway.config.yaml:/app/gateway.config.yaml siftgate
 # ============================================================
 
 # ── Stage 1: Build frontend ──
@@ -23,6 +23,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json nest-cli.json ./
 COPY src/ ./src/
+COPY plugins/ ./plugins/
+COPY tsconfig.plugins.json ./
 RUN npm run build
 
 # ── Stage 3: Production image ──
@@ -35,6 +37,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built backend
 COPY --from=backend-build /app/dist ./dist
+COPY --from=backend-build /app/dist-runtime-plugins ./dist-runtime-plugins
 
 # Copy built frontend
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
@@ -47,8 +50,8 @@ COPY gateway.config.example.yaml ./gateway.config.yaml
 
 EXPOSE 2099
 
-# Health check
+# Health check. Use Node's built-in fetch so the image does not rely on curl/wget.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://localhost:2099/health || exit 1
+  CMD node -e "fetch('http://127.0.0.1:2099/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "dist/main.js"]

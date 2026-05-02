@@ -25,7 +25,7 @@ export class ModelsController {
         id: 'auto',
         object: 'model',
         created: 0,
-        owned_by: 'ai-gateway',
+        owned_by: 'siftgate',
         description: 'Automatic routing — gateway scores request complexity and picks the best node.',
       },
       // Real models

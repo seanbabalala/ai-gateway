@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Copy, Check, Sparkles } from 'lucide-react'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +12,7 @@ interface QuickModelReferenceProps {
 }
 
 export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
+  const { t } = useTranslation('nodes')
   const [expanded, setExpanded] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
@@ -22,19 +24,19 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
   }, [])
 
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--glass-bg)] backdrop-blur-sm">
+    <div className="rounded-lg bg-[var(--glass-bg)] shadow-[var(--card-shadow)]">
       {/* Toggle Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-[var(--inset-bg)] rounded-2xl"
+        className="matrix-row flex w-full items-center justify-between rounded-lg px-5 py-3.5 text-left"
       >
         <div className="flex items-center gap-2.5">
           <Sparkles className="h-4 w-4 text-[var(--accent)]" />
           <span className="text-[13px] font-semibold text-[var(--foreground)]">
-            Quick Model Reference
+            {t('quickReference.title')}
           </span>
           <span className="text-[11px] text-[var(--foreground-dim)]">
-            &mdash; Click any model ID to copy
+            &mdash; {t('quickReference.subtitle')}
           </span>
         </div>
         {expanded ? (
@@ -46,14 +48,16 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
 
       {/* Content */}
       {expanded && (
-        <div className="border-t border-[var(--border)] px-5 pb-4 pt-3">
+        <div className="px-5 pb-4 pt-3">
           {/* Auto (Smart Routing) */}
           <div className="mb-3">
             <CopyableId
               text="auto"
-              label="Smart Routing"
+              label={t('quickReference.smartRouting')}
               isCopied={copiedId === 'auto'}
               onCopy={copyToClipboard}
+              copyTitle={t('quickReference.copyTitle', { value: 'auto' })}
+              copiedLabel={t('quickReference.copied')}
               accent
             />
           </div>
@@ -90,6 +94,8 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
                       text={model}
                       isCopied={copiedId === model}
                       onCopy={copyToClipboard}
+                      copyTitle={t('quickReference.copyTitle', { value: model })}
+                      copiedLabel={t('quickReference.copied')}
                     />
                   ))}
 
@@ -101,6 +107,8 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
                       suffix={`\u2192 ${target}`}
                       isCopied={copiedId === alias}
                       onCopy={copyToClipboard}
+                      copyTitle={t('quickReference.copyTitle', { value: alias })}
+                      copiedLabel={t('quickReference.copied')}
                       muted
                     />
                   ))}
@@ -122,6 +130,8 @@ function CopyableId({
   suffix,
   isCopied,
   onCopy,
+  copyTitle,
+  copiedLabel,
   accent,
   muted,
 }: {
@@ -130,6 +140,8 @@ function CopyableId({
   suffix?: string
   isCopied: boolean
   onCopy: (text: string) => void
+  copyTitle: string
+  copiedLabel: string
   accent?: boolean
   muted?: boolean
 }) {
@@ -138,12 +150,12 @@ function CopyableId({
       onClick={() => onCopy(text)}
       className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-[10px] transition-all duration-200 ${
         accent
-          ? 'bg-[var(--accent-muted)] text-[var(--accent)] hover:shadow-[0_0_12px_var(--accent-glow)]'
+          ? 'bg-[var(--accent-muted)] text-[var(--accent)] hover:bg-[var(--background-tertiary)]'
           : muted
             ? 'bg-[var(--inset-bg)] text-[var(--foreground-dim)] hover:text-[var(--foreground-muted)] hover:bg-[var(--background-tertiary)]'
-            : 'bg-[var(--inset-bg)] text-[var(--foreground-muted)] hover:bg-[var(--background-tertiary)] hover:text-[var(--foreground)]'
+            : 'bg-[var(--inset-bg)] text-[var(--foreground-muted)] hover:bg-[var(--accent-muted)] hover:text-[var(--foreground)]'
       }`}
-      title={`Click to copy: ${text}`}
+      title={copyTitle}
     >
       {isCopied ? (
         <Check className="h-3 w-3 text-emerald-500" />
@@ -156,7 +168,7 @@ function CopyableId({
       )}
       {isCopied && (
         <Badge variant="gold" className="ml-1 text-[9px] px-1.5 py-0">
-          Copied!
+          {copiedLabel}
         </Badge>
       )}
     </button>

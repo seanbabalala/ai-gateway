@@ -1,9 +1,14 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { ApiKeyGuard } from '../../src/auth/api-key.guard';
-import { mockConfigService } from '../helpers';
 
 function makeContext(headers: Record<string, string> = {}): any {
-  const request: any = { headers, apiKeyName: undefined };
+  const request: any = {
+    headers,
+    ip: '127.0.0.1',
+    apiKeyName: undefined,
+    apiKeyId: undefined,
+    gatewayApiKey: undefined,
+  };
   return {
     switchToHttp: () => ({
       getRequest: () => request,
@@ -12,109 +17,47 @@ function makeContext(headers: Record<string, string> = {}): any {
   };
 }
 
+function makeApiKeyService(match: any = null): any {
+  return {
+    findContextByPlainKey: jest.fn().mockResolvedValue(match),
+  };
+}
+
 describe('ApiKeyGuard', () => {
-  it('should allow access when no API keys are configured', () => {
-    const config = mockConfigService({ auth: { api_keys: [] } });
-    const guard = new ApiKeyGuard(config);
-    const ctx = makeContext();
-    expect(guard.canActivate(ctx)).toBe(true);
+  it('should throw UnauthorizedException when header is missing', async () => {
+    const service = makeApiKeyService();
+    const guard = new ApiKeyGuard(service);
+    await expect(guard.canActivate(makeContext({}))).rejects.toThrow(UnauthorizedException);
+    expect(service.findContextByPlainKey).not.toHaveBeenCalled();
   });
 
-  it('should allow access when auth is undefined', () => {
-    const config = mockConfigService({ auth: undefined });
-    const guard = new ApiKeyGuard(config);
-    const ctx = makeContext();
-    expect(guard.canActivate(ctx)).toBe(true);
+  it('should throw UnauthorizedException for invalid or disabled key', async () => {
+    const service = makeApiKeyService(null);
+    const guard = new ApiKeyGuard(service);
+    const ctx = makeContext({ authorization: 'Bearer gw_sk_live_wrong' });
+
+    await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
+    expect(service.findContextByPlainKey).toHaveBeenCalledWith('gw_sk_live_wrong', '127.0.0.1');
   });
 
-  it('should throw UnauthorizedException when header is missing', () => {
-    const config = mockConfigService({
-      auth: { api_keys: [{ key: 'sk-test-123', name: 'test' }] },
-    });
-    const guard = new ApiKeyGuard(config);
-    const ctx = makeContext({});
-    expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
-  });
+  it('should pass and attach generated key context for a valid key', async () => {
+    const keyContext = {
+      id: 'key_123',
+      name: 'production-app',
+      status: 'active',
+      allow_auto: true,
+      allow_direct: false,
+      allowed_nodes: ['openai'],
+      allowed_models: ['gpt-4o-mini'],
+      rate_limit_per_minute: 60,
+    };
+    const service = makeApiKeyService(keyContext);
+    const guard = new ApiKeyGuard(service);
+    const ctx = makeContext({ authorization: 'Bearer gw_sk_live_valid' });
 
-  it('should throw UnauthorizedException for invalid key', () => {
-    const config = mockConfigService({
-      auth: { api_keys: [{ key: 'sk-test-123', name: 'test' }] },
-    });
-    const guard = new ApiKeyGuard(config);
-    const ctx = makeContext({ authorization: 'Bearer sk-wrong-key' });
-    expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
-  });
-
-  it('should pass and attach key name for valid key', () => {
-    const config = mockConfigService({
-      auth: { api_keys: [{ key: 'sk-test-123', name: 'my-app' }] },
-    });
-    const guard = new ApiKeyGuard(config);
-    const ctx = makeContext({ authorization: 'Bearer sk-test-123' });
-
-    expect(guard.canActivate(ctx)).toBe(true);
-    expect(ctx._request.apiKeyName).toBe('my-app');
-  });
-
-  // ===== Timing-safe comparison tests =====
-
-  it('should use timing-safe comparison (correct key matches via SHA-256)', () => {
-    const config = mockConfigService({
-      auth: { api_keys: [{ key: 'sk-timing-safe-key', name: 'secure-app' }] },
-    });
-    const guard = new ApiKeyGuard(config);
-    const ctx = makeContext({ authorization: 'Bearer sk-timing-safe-key' });
-
-    expect(guard.canActivate(ctx)).toBe(true);
-    expect(ctx._request.apiKeyName).toBe('secure-app');
-  });
-
-  it('should reject a key that differs by one character', () => {
-    const config = mockConfigService({
-      auth: { api_keys: [{ key: 'sk-test-abc', name: 'test' }] },
-    });
-    const guard = new ApiKeyGuard(config);
-
-    // Differs by last character
-    const ctx = makeContext({ authorization: 'Bearer sk-test-abd' });
-    expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
-  });
-
-  it('should match the correct key among multiple configured keys', () => {
-    const config = mockConfigService({
-      auth: {
-        api_keys: [
-          { key: 'sk-first', name: 'first' },
-          { key: 'sk-second', name: 'second' },
-          { key: 'sk-third', name: 'third' },
-        ],
-      },
-    });
-    const guard = new ApiKeyGuard(config);
-
-    const ctx = makeContext({ authorization: 'Bearer sk-second' });
-    expect(guard.canActivate(ctx)).toBe(true);
-    expect(ctx._request.apiKeyName).toBe('second');
-  });
-
-  it('should re-compute hashes when config keys change', () => {
-    const keys = [{ key: 'sk-old', name: 'old' }];
-    const config = mockConfigService({ auth: { api_keys: keys } });
-    const guard = new ApiKeyGuard(config);
-
-    // Old key works
-    expect(guard.canActivate(makeContext({ authorization: 'Bearer sk-old' }))).toBe(true);
-
-    // Simulate config reload — replace the array reference
-    const newKeys = [{ key: 'sk-new', name: 'new' }];
-    config.auth = { api_keys: newKeys };
-
-    // New key works
-    expect(guard.canActivate(makeContext({ authorization: 'Bearer sk-new' }))).toBe(true);
-
-    // Old key no longer works
-    expect(() =>
-      guard.canActivate(makeContext({ authorization: 'Bearer sk-old' })),
-    ).toThrow(UnauthorizedException);
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(ctx._request.apiKeyName).toBe('production-app');
+    expect(ctx._request.apiKeyId).toBe('key_123');
+    expect(ctx._request.gatewayApiKey).toEqual(keyContext);
   });
 });

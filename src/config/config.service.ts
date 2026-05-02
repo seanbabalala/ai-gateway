@@ -9,12 +9,36 @@ import {
   RetryConfig,
   BudgetConfig,
   CacheConfig,
+  ControlPlaneConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
   AuthConfig,
   DashboardConfig,
 } from './gateway.config';
+
+export type ConfigDiagnosticSeverity = 'warning';
+
+export interface ConfigDiagnostic {
+  severity: ConfigDiagnosticSeverity;
+  code:
+    | 'duplicate_model_id'
+    | 'model_id_matches_node_id'
+    | 'alias_conflicts_with_model_id'
+    | 'alias_matches_node_id'
+    | 'duplicate_alias'
+    | 'duplicate_model_prefix'
+    | 'missing_model_pricing'
+    | 'route_references_unknown_node'
+    | 'route_references_unknown_model';
+  message: string;
+  nodes: string[];
+  model?: string;
+  alias?: string;
+  matchingNodes?: string[];
+  tier?: string;
+  target?: string;
+}
 
 @Injectable()
 export class ConfigService {
@@ -42,6 +66,7 @@ export class ConfigService {
 
     // Resolve environment variables in string values
     this.config = this.resolveEnvVars(parsed);
+    this.warnAboutNodeModelResolutionConflicts();
 
     this.logger.log(
       `Configuration loaded from ${this.configPath} — ${this.config.nodes.length} node(s) configured`,
@@ -161,6 +186,28 @@ export class ConfigService {
     return this.config.models_pricing;
   }
 
+  /** Get hosted control-plane config with safe privacy-preserving defaults. */
+  get controlPlane(): Required<ControlPlaneConfig> & {
+    telemetry: {
+      upload_interval_seconds: number;
+      include_prompt: boolean;
+      include_response: boolean;
+    };
+  } {
+    const cp = this.config.control_plane;
+    return {
+      enabled: cp?.enabled ?? false,
+      url: cp?.url ?? '',
+      gateway_id: cp?.gateway_id ?? '',
+      registration_token: cp?.registration_token ?? '',
+      telemetry: {
+        upload_interval_seconds: cp?.telemetry?.upload_interval_seconds ?? 30,
+        include_prompt: cp?.telemetry?.include_prompt ?? false,
+        include_response: cp?.telemetry?.include_response ?? false,
+      },
+    };
+  }
+
   /** Get a specific node by ID */
   getNode(nodeId: string): NodeConfig | undefined {
     return this.config.nodes.find((n) => n.id === nodeId);
@@ -176,6 +223,11 @@ export class ConfigService {
     return this.config;
   }
 
+  /** Get structured node/model naming diagnostics for dashboard and tests. */
+  getNodeModelDiagnostics(): ConfigDiagnostic[] {
+    return this.buildNodeModelDiagnostics();
+  }
+
   // ===== Model Resolution =====
 
   /**
@@ -185,10 +237,11 @@ export class ConfigService {
    *   1. Exact match: model ID exists in some node's `models[]`
    *   2. Alias match: model name matches some node's `model_aliases`
    *   3. Node ID shortcut: model name matches a node's `id` → use that node's first model
-   *   4. Prefix match: model name starts with a node's `id` + separator (e.g. "claude/my-custom")
+   *   4. Node prefix match: model name starts with a node's `id` + separator (e.g. "anthropic-prod/my-custom")
    *      → route to that node, pass-through the model name as-is
-   *   5. Protocol prefix match: model name starts with a node's ID followed by "-"
-   *      (e.g. "claude-opus-4-6") → route to that node, pass model through as-is
+   *   5. Model-family prefix match: model name starts with the node id or an explicit
+   *      `model_prefixes[]` entry followed by "-" (e.g. "claude-opus-4-6")
+   *      → route to that node, pass model through as-is
    *   6. null: truly unknown — will fall through to auto routing
    *
    * This design allows users to send ANY model name. If it can be associated
@@ -233,10 +286,13 @@ export class ConfigService {
       }
     }
 
-    // 5. Protocol prefix match — "claude-opus-4-6" → claude node, pass model through
+    // 5. Model-family prefix match — "claude-opus-4-6" → anthropic node, pass model through
     for (const node of this.config.nodes) {
-      if (name.startsWith(`${node.id}-`)) {
-        return { nodeId: node.id, model: name };
+      const prefixes = [node.id, ...(node.model_prefixes || [])];
+      for (const prefix of prefixes) {
+        if (prefix && name.startsWith(`${prefix}-`)) {
+          return { nodeId: node.id, model: name };
+        }
       }
     }
 
@@ -323,6 +379,7 @@ export class ConfigService {
       throw new Error(`Node with id "${node.id}" already exists`);
     }
     this.config.nodes.push(node);
+    this.warnAboutNodeModelResolutionConflicts();
     this.saveConfig();
     this.logger.log(`Node "${node.id}" added`);
   }
@@ -337,6 +394,7 @@ export class ConfigService {
       throw new Error(`Node "${nodeId}" not found`);
     }
     this.config.nodes[idx] = { ...this.config.nodes[idx], ...updates, id: nodeId };
+    this.warnAboutNodeModelResolutionConflicts();
     this.saveConfig();
     this.logger.log(`Node "${nodeId}" updated`);
   }
@@ -418,6 +476,170 @@ export class ConfigService {
         );
       }
     }
+  }
+
+  /**
+   * Direct model resolution is intentionally permissive, but ambiguous names
+   * are hard for users to reason about. Warn instead of throwing so existing
+   * configs keep working while operators get a clear fix path.
+   */
+  private warnAboutNodeModelResolutionConflicts(): void {
+    for (const diagnostic of this.buildNodeModelDiagnostics()) {
+      this.logger.warn(diagnostic.message);
+    }
+  }
+
+  private buildNodeModelDiagnostics(): ConfigDiagnostic[] {
+    const nodes = this.config.nodes || [];
+    const modelOwners = new Map<string, string[]>();
+    const aliasOwners = new Map<string, string[]>();
+    const prefixOwners = new Map<string, string[]>();
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const diagnostics: ConfigDiagnostic[] = [];
+
+    for (const node of nodes) {
+      for (const model of node.models || []) {
+        const owners = modelOwners.get(model) || [];
+        owners.push(node.id);
+        modelOwners.set(model, owners);
+      }
+
+      for (const alias of Object.keys(node.model_aliases || {})) {
+        const owners = aliasOwners.get(alias) || [];
+        owners.push(node.id);
+        aliasOwners.set(alias, owners);
+      }
+
+      for (const prefix of [...new Set([node.id, ...(node.model_prefixes || [])])]) {
+        const owners = prefixOwners.get(prefix) || [];
+        owners.push(node.id);
+        prefixOwners.set(prefix, owners);
+      }
+    }
+
+    for (const [model, owners] of modelOwners.entries()) {
+      if (owners.length > 1) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'duplicate_model_id',
+          message: `Model id "${model}" is listed under multiple upstream nodes (${owners.join(', ')}). Direct requests for this model will route to the first matching node in config order.`,
+          nodes: owners,
+          model,
+        });
+      }
+      if (nodeIds.has(model)) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'model_id_matches_node_id',
+          message: `Model id "${model}" is also a node id. Exact model matches take precedence over the node-id shortcut, which can make direct routing confusing.`,
+          nodes: [...new Set([...owners, model])],
+          model,
+        });
+      }
+    }
+
+    for (const [alias, owners] of aliasOwners.entries()) {
+      const matchingModelOwners = modelOwners.get(alias);
+      if (matchingModelOwners) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'alias_conflicts_with_model_id',
+          message: `Model alias "${alias}" on node(s) ${owners.join(', ')} conflicts with a real model id on node(s) ${matchingModelOwners.join(', ')}. Exact model ids win before aliases during direct routing.`,
+          nodes: owners,
+          alias,
+          matchingNodes: matchingModelOwners,
+        });
+      }
+
+      if (nodeIds.has(alias)) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'alias_matches_node_id',
+          message: `Model alias "${alias}" on node(s) ${owners.join(', ')} is also a node id. Aliases resolve before the node-id shortcut.`,
+          nodes: [...new Set([...owners, alias])],
+          alias,
+        });
+      }
+
+      if (owners.length > 1) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'duplicate_alias',
+          message: `Model alias "${alias}" is defined on multiple upstream nodes (${owners.join(', ')}). Direct requests for this alias will route to the first matching alias in config order.`,
+          nodes: owners,
+          alias,
+        });
+      }
+    }
+
+    for (const [prefix, owners] of prefixOwners.entries()) {
+      if (owners.length > 1) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'duplicate_model_prefix',
+          message: `Model prefix "${prefix}-*" is configured on multiple upstream nodes (${owners.join(', ')}). Direct pass-through routing will use the first matching node in config order.`,
+          nodes: owners,
+          alias: prefix,
+        });
+      }
+    }
+
+    for (const [model, owners] of modelOwners.entries()) {
+      if (!this.config.models_pricing?.[model]) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'missing_model_pricing',
+          message: `Model "${model}" has no pricing entry. Requests can still route, but cost reporting for node(s) ${owners.join(', ')} may be incomplete.`,
+          nodes: owners,
+          model,
+        });
+      }
+    }
+
+    const addRouteTargetDiagnostics = (
+      tier: string,
+      target: { node: string; model: string },
+      targetName: string,
+    ) => {
+      const node = nodeById.get(target.node);
+      if (!node) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'route_references_unknown_node',
+          message: `Routing tier "${tier}" ${targetName} references unknown upstream node "${target.node}".`,
+          nodes: [target.node],
+          model: target.model,
+          tier,
+          target: targetName,
+        });
+        return;
+      }
+
+      if (!node.models.includes(target.model)) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'route_references_unknown_model',
+          message: `Routing tier "${tier}" ${targetName} references model "${target.model}" that is not listed under upstream node "${target.node}".`,
+          nodes: [target.node],
+          model: target.model,
+          tier,
+          target: targetName,
+        });
+      }
+    };
+
+    for (const [tier, config] of Object.entries(this.config.routing?.tiers || {})) {
+      addRouteTargetDiagnostics(tier, config.primary, 'primary');
+      config.fallbacks?.forEach((fallback, idx) =>
+        addRouteTargetDiagnostics(tier, fallback, `fallback[${idx}]`),
+      );
+      config.split?.forEach((variant, idx) =>
+        addRouteTargetDiagnostics(tier, variant, `split[${idx}]`),
+      );
+    }
+
+    return diagnostics;
   }
 
   // ===== Model Pricing CRUD =====

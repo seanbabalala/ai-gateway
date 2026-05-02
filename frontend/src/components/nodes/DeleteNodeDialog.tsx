@@ -1,5 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 
 interface DeleteNodeDialogProps {
   open: boolean
@@ -18,18 +20,10 @@ export function DeleteNodeDialog({
   nodeName,
   nodeId,
 }: DeleteNodeDialogProps) {
-  if (!open) return null
-
+  const { t } = useTranslation('nodes')
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-md"
-        onClick={onClose}
-      />
-
-      {/* Dialog */}
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--glass-border)] bg-[var(--background)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
         <div className="flex items-start gap-4">
           <div
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10"
@@ -39,31 +33,30 @@ export function DeleteNodeDialog({
           </div>
           <div>
             <h3 className="text-[15px] font-bold tracking-tight text-[var(--foreground)]">
-              Delete Node
+              {t('deleteDialog.title')}
             </h3>
             <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">
-              Are you sure you want to delete <strong>{nodeName}</strong> (
+              {t('deleteDialog.confirmPrefix')} <strong>{nodeName}</strong> (
               <code className="rounded-lg bg-[var(--inset-bg)] px-1.5 py-0.5 font-mono text-[11px]">
                 {nodeId}
               </code>
               )?
             </p>
             <p className="mt-2 text-[11px] text-[var(--foreground-dim)]">
-              Routing references to this node will be automatically cleaned up.
-              If this node is the primary for a tier, the first fallback will be promoted.
+              {t('deleteDialog.description')}
             </p>
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end gap-3">
+        <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
-            {isPending ? 'Deleting...' : 'Delete Node'}
+            {isPending ? t('actions.deleting') : t('actions.deleteUpstream')}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

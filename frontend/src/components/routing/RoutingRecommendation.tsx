@@ -3,11 +3,11 @@
 // ===================================================================
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Lightbulb, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { CapabilityBadge } from '@/components/shared/CapabilityBadge'
-import { CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { getNodeColor } from '@/lib/utils'
 import { colorWithOpacity } from '@/lib/theme'
 import type { NodeInfo } from '@/types/api'
@@ -73,6 +73,7 @@ function computeRecommendations(nodes: NodeInfo[]): TierRec[] {
 }
 
 export function RoutingRecommendation({ nodes }: RoutingRecommendationProps) {
+  const { t } = useTranslation('routing')
   const [expanded, setExpanded] = useState(false)
 
   // Only show if at least one node has capabilities
@@ -82,104 +83,122 @@ export function RoutingRecommendation({ nodes }: RoutingRecommendationProps) {
   const recommendations = computeRecommendations(nodes)
 
   return (
-    <CardStatic className="animate-fade-up border-[var(--accent)]/20">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-muted)]">
-              <Lightbulb className="h-4 w-4 text-[var(--accent)]" />
-            </div>
-            <CardTitle>Routing Recommendation</CardTitle>
-            <Badge variant="gold" className="text-[9px]">Based on capabilities</Badge>
+    <div className="animate-fade-up rounded-lg bg-[var(--glass-bg)] shadow-[var(--card-shadow)]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="matrix-row flex w-full items-center justify-between rounded-lg px-5 py-4 text-left"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#052e24] dark:bg-[var(--accent-muted)]">
+            <Lightbulb className="h-4 w-4 text-white dark:text-[var(--accent)]" />
           </div>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
-          >
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[14px] font-bold text-[var(--foreground)]">
+                {t('recommendation.title')}
+              </span>
+              <Badge variant="gold" className="text-[9px]">{t('recommendation.badge')}</Badge>
+            </div>
+            <div className="mt-0.5 truncate text-[11px] text-[var(--foreground-dim)]">
+              {t('recommendation.description')}
+            </div>
+          </div>
         </div>
-      </CardHeader>
+        <span className="rounded-md p-2 text-[var(--foreground-dim)] transition-colors hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]">
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </span>
+      </button>
 
       {expanded && (
-        <CardContent>
-          {/* Node capabilities summary */}
-          <div className="mb-5 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
-              Node Capabilities
+        <div className="grid gap-4 px-5 pb-5 pt-1 xl:grid-cols-[minmax(260px,0.78fr)_1fr]">
+          <div className="rounded-md bg-[var(--background-tertiary)] px-4 py-3">
+            <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('recommendation.nodeCapabilities')}
             </div>
-            {nodes.filter((n) => n.capabilities && n.capabilities.length > 0).map((node) => (
-              <div key={node.id} className="flex items-center gap-2.5">
-                <span
-                  className="text-[11px] font-semibold w-20 shrink-0"
-                  style={{ color: getNodeColor(node.id) }}
-                >
-                  {node.id}
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {node.capabilities!.map((cap) => (
-                    <CapabilityBadge key={cap} capabilityId={cap} size="sm" />
-                  ))}
+            <div className="space-y-2.5">
+              {nodes.filter((n) => n.capabilities && n.capabilities.length > 0).map((node) => (
+                <div key={node.id} className="grid grid-cols-[76px_1fr] items-start gap-3">
+                  <span
+                    className="truncate pt-1 text-[11px] font-semibold"
+                    style={{ color: getNodeColor(node.id) }}
+                  >
+                    {node.id}
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {node.capabilities!.map((cap) => (
+                      <CapabilityBadge key={cap} capabilityId={cap} size="sm" />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
-          {/* Recommended routing */}
-          <div className="space-y-3">
-            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
-              Suggested Tier Routing
+          <div className="min-w-0">
+            <div className="mb-2 hidden grid-cols-[110px_1fr_1.35fr_64px] gap-3 px-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
+              <span>{t('recommendation.tier')}</span>
+              <span>{t('recommendation.primary')}</span>
+              <span>{t('recommendation.fallbackLane')}</span>
+              <span className="text-right">{t('recommendation.score')}</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
               {recommendations.map((rec) => (
                 <div
                   key={rec.tier}
-                  className="rounded-xl border border-[var(--border)] bg-[var(--glass-bg)] p-3"
+                  className="matrix-row grid gap-3 rounded-md px-3 py-3 lg:grid-cols-[110px_1fr_1.35fr_64px] lg:items-center"
                 >
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2">
                     <TierBadge tier={rec.tier} />
-                    <span className="font-mono text-[10px] text-[var(--foreground-dim)]">
-                      ({rec.score.toFixed(2)})
-                    </span>
                   </div>
                   {rec.primary ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                    <>
+                      <div className="flex min-w-0 items-center gap-2">
                         <div
-                          className="h-2 w-2 rounded-full shrink-0"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
                           style={{ backgroundColor: getNodeColor(rec.primary.node) }}
                         />
-                        <span className="text-[11px] font-semibold text-[var(--foreground)]">
+                        <span className="truncate text-[11px] font-semibold text-[var(--foreground)]">
                           {rec.primary.node}
                         </span>
-                        <span className="font-mono text-[10px] text-[var(--foreground-dim)]">
+                        <span className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">
                           {rec.primary.model}
                         </span>
                       </div>
-                      {rec.fallbacks.map((fb, i) => (
-                        <div key={i} className="flex items-center gap-2 ml-2">
-                          <ArrowRight className="h-2.5 w-2.5 text-[var(--divider-dim)]" />
-                          <div
-                            className="h-1.5 w-1.5 rounded-full shrink-0"
-                            style={{ backgroundColor: colorWithOpacity(getNodeColor(fb.node), '60') }}
-                          />
-                          <span className="text-[10px] text-[var(--foreground-muted)]">
-                            {fb.node}
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {rec.fallbacks.length > 0 ? rec.fallbacks.map((fb, i) => (
+                          <div key={i} className="flex min-w-0 items-center gap-2">
+                            {i > 0 && <ArrowRight className="h-3 w-3 text-[var(--divider-dim)]" />}
+                            <div
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: colorWithOpacity(getNodeColor(fb.node), '70') }}
+                            />
+                            <span className="truncate text-[10px] font-medium text-[var(--foreground-muted)]">
+                              {fb.node}
+                            </span>
+                          </div>
+                        )) : (
+                          <span className="text-[10px] font-medium text-[var(--foreground-dim)]">
+                            {t('recommendation.noFallback')}
                           </span>
-                        </div>
-                      ))}
-                    </div>
+                        )}
+                      </div>
+                      <span className="font-mono text-[11px] font-bold text-[var(--foreground)] lg:text-right">
+                        {rec.score.toFixed(2)}
+                      </span>
+                    </>
                   ) : (
-                    <span className="text-[10px] text-[var(--foreground-dim)]">
-                      No suitable node
-                    </span>
+                    <>
+                      <span className="text-[10px] text-[var(--foreground-dim)]">{t('recommendation.noSuitableNode')}</span>
+                      <span className="text-[10px] text-[var(--foreground-dim)]">-</span>
+                      <span className="font-mono text-[11px] text-[var(--foreground-dim)] lg:text-right">0.00</span>
+                    </>
                   )}
                 </div>
               ))}
             </div>
           </div>
-        </CardContent>
+        </div>
       )}
-    </CardStatic>
+    </div>
   )
 }

@@ -19,7 +19,26 @@ export class MessagesController {
     try {
       const headers = this.extractHeaders(req);
       const canonical = this.normalizer.normalize(req.body, headers);
-      canonical.metadata.api_key_name = (req as unknown as Record<string, unknown>).apiKeyName as string | undefined;
+      const gatewayKey = (req as unknown as Record<string, unknown>).gatewayApiKey as
+        | {
+            id: string;
+            name: string;
+            allow_auto: boolean;
+            allow_direct: boolean;
+            allowed_nodes: string[];
+            allowed_models: string[];
+          }
+        | undefined;
+      canonical.metadata.api_key_name = gatewayKey?.name;
+      canonical.metadata.api_key_id = gatewayKey?.id;
+      canonical.metadata.api_key_permissions = gatewayKey
+        ? {
+            allow_auto: gatewayKey.allow_auto,
+            allow_direct: gatewayKey.allow_direct,
+            allowed_nodes: gatewayKey.allowed_nodes,
+            allowed_models: gatewayKey.allowed_models,
+          }
+        : undefined;
 
       this.logger.log(
         `[messages] ${canonical.messages.length} msg, stream=${canonical.stream}`,
@@ -35,10 +54,14 @@ export class MessagesController {
       this.logger.error(`[messages] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
         const status = err instanceof BudgetExceededError ? 429 : 500;
-        if (status === 429) {
+        if (err instanceof BudgetExceededError) {
           res.status(429).json({
             type: 'error',
-            error: { type: 'budget_exceeded', message: (err as Error).message },
+            error: {
+              type: 'budget_exceeded',
+              message: err.message,
+              details: err.toDetails(),
+            },
           });
         } else {
           res.status(500).json({

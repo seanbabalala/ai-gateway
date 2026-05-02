@@ -1,0 +1,10 @@
+{
+  "login.authStatusError": "認証状態の確認に失敗しました",
+  "login.errorFallback": "ログインに失敗しました",
+  "login.invalidPassword": "パスワードが無効です",
+  "login.passwordPlaceholder": "パスワード",
+  "login.signingIn": "サインイン中...",
+  "login.submit": "サインイン",
+  "login.subtitle": "ダッシュボードにアクセスするにはパスワードを入力してください",
+  "login.title": "SiftGate"
+}

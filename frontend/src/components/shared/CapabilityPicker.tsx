@@ -3,6 +3,7 @@
 // ===================================================================
 
 import { CAPABILITIES } from '@/lib/capabilities'
+import { useTranslation } from 'react-i18next'
 
 interface CapabilityPickerProps {
   selected: string[]
@@ -10,6 +11,7 @@ interface CapabilityPickerProps {
 }
 
 export function CapabilityPicker({ selected, onChange }: CapabilityPickerProps) {
+  const { t } = useTranslation('nodes')
   const toggle = (id: string) => {
     if (selected.includes(id)) {
       onChange(selected.filter((c) => c !== id))
@@ -41,7 +43,7 @@ export function CapabilityPicker({ selected, onChange }: CapabilityPickerProps) 
             `}
           >
             <Icon className="h-3.5 w-3.5" />
-            <span>{cap.label.en}</span>
+            <span>{t(`capabilities.${cap.id}`, { defaultValue: cap.label.en })}</span>
           </button>
         )
       })}

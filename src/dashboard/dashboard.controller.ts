@@ -24,7 +24,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
@@ -37,6 +37,11 @@ import { DashboardGuard } from '../auth/dashboard.guard';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import type { Modality } from '../config/modality';
+import {
+  CreateGatewayApiKeyDto,
+  GatewayApiKeyService,
+  UpdateGatewayApiKeyDto,
+} from '../auth/gateway-api-key.service';
 
 @Controller('api/dashboard')
 @UseGuards(DashboardGuard)
@@ -51,6 +56,7 @@ export class DashboardController {
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
     private readonly telemetry: TelemetryService,
+    private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
@@ -84,6 +90,26 @@ export class DashboardController {
     return `strftime('%Y-%m-%d', ${column})`;
   }
 
+  private apiKeyWhere(apiKey?: string, apiKeyId?: string): FindOptionsWhere<CallLog> | undefined {
+    if (apiKeyId) return { api_key_id: apiKeyId };
+    if (apiKey) return { api_key_name: apiKey };
+    return undefined;
+  }
+
+  private applyApiKeyLogFilter<T extends { where: Function; andWhere: Function }>(
+    qb: T,
+    apiKey?: string,
+    apiKeyId?: string,
+    method: 'where' | 'andWhere' = 'andWhere',
+  ): T {
+    if (apiKeyId) {
+      qb[method]('log.api_key_id = :apiKeyId', { apiKeyId });
+    } else if (apiKey) {
+      qb[method]('log.api_key_name = :apiKey', { apiKey });
+    }
+    return qb;
+  }
+
   // ══════════════════════════════════════════════════════
   // Cost Analytics
   // ══════════════════════════════════════════════════════
@@ -93,6 +119,7 @@ export class DashboardController {
     @Query('period') period: string = '7d',
     @Query('groupBy') groupBy: string = 'model',
     @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
   ) {
     // Parse period
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
@@ -109,7 +136,7 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .groupBy('date')
       .orderBy('date', 'ASC');
-    if (apiKey) dailyTrendQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(dailyTrendQb, apiKey, apiKeyId);
     const dailyTrend = await dailyTrendQb.getRawMany();
 
     // Group by model
@@ -124,7 +151,7 @@ export class DashboardController {
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.model')
       .orderBy('cost', 'DESC');
-    if (apiKey) byModelQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(byModelQb, apiKey, apiKeyId);
     const byModel = await byModelQb.getRawMany();
 
     // Group by node
@@ -139,7 +166,7 @@ export class DashboardController {
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.node_id')
       .orderBy('cost', 'DESC');
-    if (apiKey) byNodeQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(byNodeQb, apiKey, apiKeyId);
     const byNode = await byNodeQb.getRawMany();
 
     // Group by tier
@@ -153,7 +180,7 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .groupBy('log.tier')
       .orderBy('cost', 'DESC');
-    if (apiKey) byTierQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(byTierQb, apiKey, apiKeyId);
     const byTier = await byTierQb.getRawMany();
 
     // Total for the period
@@ -167,7 +194,7 @@ export class DashboardController {
       .addSelect('AVG(log.cost_usd)', 'avgCostPerCall')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
       .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
-    if (apiKey) totalQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(totalQb, apiKey, apiKeyId);
     const totalAgg = await totalQb.getRawOne();
 
     return {
@@ -229,6 +256,7 @@ export class DashboardController {
     @Query('period') period: string = '7d',
     @Query('tier') tier?: string,
     @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
   ) {
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
     const since = new Date(Date.now() - periodDays * 86_400_000);
@@ -240,9 +268,7 @@ export class DashboardController {
     if (tier) {
       qb = qb.andWhere('log.tier = :tier', { tier });
     }
-    if (apiKey) {
-      qb = qb.andWhere('log.api_key_name = :apiKey', { apiKey });
-    }
+    qb = this.applyApiKeyLogFilter(qb, apiKey, apiKeyId);
 
     const byGroup = await qb
       .select('log.experiment_group', 'experimentGroup')
@@ -262,9 +288,7 @@ export class DashboardController {
     if (tier) {
       trendQb = trendQb.andWhere('log.tier = :tier', { tier });
     }
-    if (apiKey) {
-      trendQb = trendQb.andWhere('log.api_key_name = :apiKey', { apiKey });
-    }
+    trendQb = this.applyApiKeyLogFilter(trendQb, apiKey, apiKeyId);
 
     const dailyTrend = await trendQb
       .select(this.dateTruncDay('log.timestamp'), 'date')
@@ -315,12 +339,16 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('stats')
-  async getStats(@Query('api_key') apiKey?: string) {
-    const totalCalls = apiKey
-      ? await this.callLogRepo.count({ where: { api_key_name: apiKey } })
+  async getStats(
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+  ) {
+    const keyWhere = this.apiKeyWhere(apiKey, apiKeyId);
+    const totalCalls = keyWhere
+      ? await this.callLogRepo.count({ where: keyWhere })
       : await this.callLogRepo.count();
-    const successCalls = apiKey
-      ? await this.callLogRepo.count({ where: { status_code: 200, api_key_name: apiKey } })
+    const successCalls = keyWhere
+      ? await this.callLogRepo.count({ where: { status_code: 200, ...keyWhere } })
       : await this.callLogRepo.count({ where: { status_code: 200 } });
     const failedCalls = totalCalls - successCalls;
 
@@ -334,7 +362,7 @@ export class DashboardController {
       .addSelect('COUNT(DISTINCT log.session_key)', 'uniqueSessions')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
       .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
-    if (apiKey) aggQb.where('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(aggQb, apiKey, apiKeyId, 'where');
     const agg = await aggQb.getRawOne();
 
     // Tier distribution
@@ -343,7 +371,7 @@ export class DashboardController {
       .select('log.tier', 'tier')
       .addSelect('COUNT(*)', 'count')
       .groupBy('log.tier');
-    if (apiKey) tierQb.where('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(tierQb, apiKey, apiKeyId, 'where');
     const tierDist = await tierQb.getRawMany();
 
     // Node distribution
@@ -353,7 +381,7 @@ export class DashboardController {
       .addSelect('COUNT(*)', 'count')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.node_id');
-    if (apiKey) nodeQb.where('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(nodeQb, apiKey, apiKeyId, 'where');
     const nodeDist = await nodeQb.getRawMany();
 
     // Last 24h stats
@@ -364,7 +392,7 @@ export class DashboardController {
       .select('COUNT(*)', 'calls')
       .addSelect('SUM(log.cost_usd)', 'cost')
       .addSelect('SUM(log.input_tokens + log.output_tokens)', 'tokens');
-    if (apiKey) recentQb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(recentQb, apiKey, apiKeyId);
     const recentAgg = await recentQb.getRawOne();
 
     return {
@@ -411,6 +439,7 @@ export class DashboardController {
     @Query('node') node?: string,
     @Query('status') status?: string,
     @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
   ) {
     const qb = this.callLogRepo
       .createQueryBuilder('log')
@@ -419,7 +448,7 @@ export class DashboardController {
     if (tier) qb.andWhere('log.tier = :tier', { tier });
     if (node) qb.andWhere('log.node_id = :node', { node });
     if (status) qb.andWhere('log.status_code = :status', { status: Number(status) });
-    if (apiKey) qb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(qb, apiKey, apiKeyId);
 
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     const safePage = Math.max(page, 1);
@@ -447,6 +476,7 @@ export class DashboardController {
     @Query('format') format: string = 'csv',
     @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
     @Query('api_key') apiKey: string | undefined,
+    @Query('api_key_id') apiKeyId: string | undefined,
     @Res() res: Response,
   ) {
     const safeDays = Math.min(Math.max(days, 1), 365);
@@ -456,7 +486,7 @@ export class DashboardController {
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .orderBy('log.timestamp', 'DESC');
-    if (apiKey) qb.andWhere('log.api_key_name = :apiKey', { apiKey });
+    this.applyApiKeyLogFilter(qb, apiKey, apiKeyId);
     const logs = await qb.getMany();
 
     if (format === 'json') {
@@ -471,7 +501,7 @@ export class DashboardController {
       'timestamp', 'request_id', 'tier', 'score', 'node_id', 'model',
       'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
       'latency_ms', 'status_code', 'is_fallback', 'session_key',
-      'api_key_name', 'retry_count', 'error',
+      'api_key_id', 'api_key_name', 'retry_count', 'error',
     ];
     const csvRows = [headers.join(',')];
 
@@ -525,60 +555,128 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('budget')
-  async getBudget(@Query('api_key') apiKey?: string) {
-    if (apiKey) {
+  async getBudget(
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+  ) {
+    if (apiKey || apiKeyId) {
       const globalStatus = await this.budgetService.getStatus();
-      const keyStatus = await this.budgetService.getStatus(apiKey);
+      const keyStatus = await this.budgetService.getStatus(apiKey || null, apiKeyId || null);
       return {
-        rules: globalStatus.map((s) => ({
-          type: s.type,
-          limit: s.limit,
-          current: Number(s.current.toFixed(4)),
-          percentage: Number((s.percentage * 100).toFixed(1)),
-          exceeded: s.isExceeded,
-          alert: s.isAlert,
-          periodStart: s.periodStart,
-        })),
-        perKeyRules: keyStatus.map((s) => ({
-          type: s.type,
-          limit: s.limit,
-          current: Number(s.current.toFixed(4)),
-          percentage: Number((s.percentage * 100).toFixed(1)),
-          exceeded: s.isExceeded,
-          alert: s.isAlert,
-          periodStart: s.periodStart,
-        })),
-        apiKeyName: apiKey,
+        rules: globalStatus.map((s) => this.serializeBudgetStatus(s)),
+        perKeyRules: keyStatus.map((s) => this.serializeBudgetStatus(s)),
+        apiKeyName: keyStatus[0]?.apiKeyName || apiKey || null,
+        apiKeyId: keyStatus[0]?.apiKeyId || apiKeyId || null,
       };
     }
     // Backward-compatible: no api_key → global rules only
     const status = await this.budgetService.getStatus();
     return {
-      rules: status.map((s) => ({
-        type: s.type,
-        limit: s.limit,
-        current: Number(s.current.toFixed(4)),
-        percentage: Number((s.percentage * 100).toFixed(1)),
-        exceeded: s.isExceeded,
-        alert: s.isAlert,
-        periodStart: s.periodStart,
-      })),
+      rules: status.map((s) => this.serializeBudgetStatus(s)),
     };
+  }
+
+  private serializeBudgetStatus(s: {
+    id: number;
+    type: string;
+    scope: 'global' | 'api_key';
+    apiKeyName: string | null;
+    apiKeyId: string | null;
+    limit: number;
+    current: number;
+    percentage: number;
+    isExceeded: boolean;
+    isAlert: boolean;
+    periodStart: Date;
+    resetAt: Date | null;
+  }) {
+    return {
+      id: s.id,
+      type: s.type,
+      scope: s.scope,
+      apiKeyName: s.apiKeyName,
+      apiKeyId: s.apiKeyId,
+      limit: s.limit,
+      current: this.serializeBudgetCurrent(s.type, s.current),
+      percentage: Number((s.percentage * 100).toFixed(1)),
+      exceeded: s.isExceeded,
+      alert: s.isAlert,
+      periodStart: s.periodStart,
+      resetAt: s.resetAt,
+    };
+  }
+
+  private serializeBudgetCurrent(type: string, current: number): number {
+    return Number(current.toFixed(type.includes('cost') ? 6 : 4));
   }
 
   @Get('budget/keys')
   async getBudgetKeys() {
-    return { keys: await this.budgetService.getKeysWithBudgets() };
+    const budgetKeys = await this.budgetService.getKeysWithBudgets();
+    const generatedKeys = await this.gatewayApiKeys.list();
+    return {
+      keys: [...new Set([
+        ...budgetKeys,
+        ...generatedKeys.map((key) => key.name),
+      ])],
+      items: generatedKeys.map((key) => ({
+        id: key.id,
+        name: key.name,
+        key_prefix: key.key_prefix,
+        daily_token_limit: key.daily_token_limit,
+        daily_cost_limit: key.daily_cost_limit,
+        rate_limit_per_minute: key.rate_limit_per_minute,
+      })),
+    };
   }
 
   @Get('api-keys')
   async getApiKeyNames() {
-    const results = await this.callLogRepo
-      .createQueryBuilder('log')
-      .select('DISTINCT log.api_key_name', 'api_key_name')
-      .where('log.api_key_name IS NOT NULL')
-      .getRawMany();
-    return { keys: results.map((r: any) => r.api_key_name) };
+    const items = await this.gatewayApiKeys.list();
+    return {
+      keys: items.map((key) => key.name),
+      items,
+    };
+  }
+
+  @Post('api-keys')
+  async createApiKey(@Body() body: CreateGatewayApiKeyDto) {
+    const created = await this.gatewayApiKeys.create(body);
+    return {
+      success: true,
+      message: 'Gateway API key created',
+      key: created.key,
+      item: created.item,
+    };
+  }
+
+  @Put('api-keys/:id')
+  async updateApiKey(
+    @Param('id') id: string,
+    @Body() body: UpdateGatewayApiKeyDto,
+  ) {
+    return {
+      success: true,
+      message: 'Gateway API key updated',
+      item: await this.gatewayApiKeys.update(id, body),
+    };
+  }
+
+  @Post('api-keys/:id/rotate')
+  async rotateApiKey(@Param('id') id: string) {
+    const rotated = await this.gatewayApiKeys.rotate(id);
+    return {
+      success: true,
+      message: 'Gateway API key rotated',
+      key: rotated.key,
+      item: rotated.item,
+    };
+  }
+
+  @Delete('api-keys/:id')
+  async deleteApiKey(@Param('id') id: string) {
+    await this.gatewayApiKeys.remove(id);
+    return { success: true, message: 'Gateway API key deleted' };
   }
 
   @Post('budget/:id/reset')
@@ -617,7 +715,7 @@ export class DashboardController {
       active: enabled, // active = SDK was initialized (enabled at boot time)
       config: enabled
         ? {
-            service_name: telemetryCfg?.service_name || 'ai-gateway',
+            service_name: telemetryCfg?.service_name || 'siftgate',
             traces_endpoint: telemetryCfg?.traces?.endpoint || 'http://localhost:4318/v1/traces',
             sample_rate: telemetryCfg?.traces?.sample_rate ?? 1.0,
             prometheus_port: telemetryCfg?.metrics?.prometheus_port || 9464,
@@ -642,10 +740,8 @@ export class DashboardController {
     }));
 
     const sanitizedAuth = {
-      api_keys: full.auth.api_keys.map((k) => ({
-        name: k.name,
-        key: `${k.key.substring(0, 8)}...`,
-      })),
+      api_keys: [],
+      managed_in_dashboard: true,
     };
 
     return {
@@ -656,6 +752,7 @@ export class DashboardController {
       routing: full.routing,
       budget: full.budget,
       models_pricing: full.models_pricing,
+      diagnostics: this.config.getNodeModelDiagnostics(),
     };
   }
 
@@ -747,6 +844,7 @@ export class DashboardController {
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         tags: node.tags || [],
         aliases: node.model_aliases || {},
+        model_prefixes: node.model_prefixes || [],
         circuit: {
           state: cbStatus.state,
           consecutiveFailures: cbStatus.consecutiveFailures,
@@ -759,7 +857,10 @@ export class DashboardController {
       };
     });
 
-    return { nodes };
+    return {
+      nodes,
+      diagnostics: this.config.getNodeModelDiagnostics(),
+    };
   }
 
   // ── Node Connectivity Test ─────────────────────────────
@@ -867,9 +968,11 @@ export class DashboardController {
     }
 
     const startTime = Date.now();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
+      timeout = setTimeout(() => controller.abort(), 15_000);
+      timeout.unref?.();
 
       const response = await fetch(url, {
         method: 'POST',
@@ -878,6 +981,7 @@ export class DashboardController {
         signal: controller.signal,
       });
       clearTimeout(timeout);
+      timeout = undefined;
 
       const latencyMs = Date.now() - startTime;
       const responseText = await response.text().catch(() => '');
@@ -964,6 +1068,8 @@ export class DashboardController {
       }
 
       return { success: false, status: 0, latency_ms: latencyMs, message: `Connection error: ${causeMsg || causeCode || errMsg}` };
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 
@@ -985,6 +1091,7 @@ export class DashboardController {
         modalities: dto.modalities as Modality[] | undefined,
         tags: dto.tags,
         model_aliases: dto.model_aliases,
+        model_prefixes: dto.model_prefixes,
         headers: dto.headers,
         auth_type: dto.auth_type,
       });
@@ -1000,10 +1107,12 @@ export class DashboardController {
   @Put('nodes/:id')
   updateNode(@Param('id') nodeId: string, @Body() dto: UpdateNodeDto) {
     try {
-      // If api_key is not provided (or empty), keep the original value
-      const updates: Partial<typeof dto> = { ...dto };
-      if (!updates.api_key) {
-        delete updates.api_key;
+      // Keep omitted fields intact. class-transformer may materialize optional
+      // DTO properties as undefined, so strip them before merging into config.
+      const updates: Partial<typeof dto> = {};
+      for (const [key, value] of Object.entries(dto) as [keyof UpdateNodeDto, unknown][]) {
+        if (value === undefined || value === '') continue;
+        (updates as Record<string, unknown>)[key] = value;
       }
       this.config.updateNode(nodeId, updates as Parameters<typeof this.config.updateNode>[1]);
       return { success: true, message: `Node "${nodeId}" updated` };

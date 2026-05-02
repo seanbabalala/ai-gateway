@@ -3,9 +3,13 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('budget_rules')
+@Index(['api_key_name'])
+@Index(['api_key_id'])
+@Index(['api_key_id', 'type'])
 export class BudgetRule {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -30,4 +34,7 @@ export class BudgetRule {
 
   @Column({ type: 'varchar', nullable: true, default: null })
   api_key_name!: string | null;  // NULL = global rule, non-null = per-key rule
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  api_key_id!: string | null;  // NULL = global rule, non-null = GatewayApiKey.id
 }

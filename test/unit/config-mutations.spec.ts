@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'js-yaml';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '../../src/config/config.service';
 
 function createTempConfig(config: Record<string, unknown>): string {
@@ -265,5 +266,107 @@ describe('ConfigService — reload', () => {
 
     svc.reload();
     expect(svc.server.port).toBe(9999);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Node/model naming diagnostics
+// ═══════════════════════════════════════════════════════════
+
+describe('ConfigService — node/model naming diagnostics', () => {
+  it('should warn when an alias conflicts with a real model id', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+    const { svc } = loadConfigService({
+      nodes: [
+        {
+          id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
+          base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
+          api_key: 'sk-test', models: ['gpt-4o'],
+          model_aliases: { 'gpt-mini': 'gpt-4o' },
+        },
+        {
+          id: 'proxy', name: 'Proxy', protocol: 'chat_completions',
+          base_url: 'https://proxy.example.com', endpoint: '/v1/chat/completions',
+          api_key: 'sk-proxy', models: ['gpt-mini'],
+        },
+      ],
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Model alias "gpt-mini"'));
+    expect(svc.getNodeModelDiagnostics()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'alias_conflicts_with_model_id',
+        alias: 'gpt-mini',
+        nodes: ['openai'],
+        matchingNodes: ['proxy'],
+      }),
+    ]));
+    warnSpy.mockRestore();
+  });
+
+  it('should warn when a model id is listed under multiple nodes', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+    const { svc } = loadConfigService({
+      nodes: [
+        {
+          id: 'openai-a', name: 'OpenAI A', protocol: 'chat_completions',
+          base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
+          api_key: 'sk-a', models: ['gpt-4o'],
+        },
+        {
+          id: 'openai-b', name: 'OpenAI B', protocol: 'chat_completions',
+          base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
+          api_key: 'sk-b', models: ['gpt-4o'],
+        },
+      ],
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Model id "gpt-4o"'));
+    expect(svc.getNodeModelDiagnostics()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'duplicate_model_id',
+        model: 'gpt-4o',
+        nodes: ['openai-a', 'openai-b'],
+      }),
+    ]));
+    warnSpy.mockRestore();
+  });
+
+  it('should report missing pricing and invalid routing references', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+    const { svc } = loadConfigService({
+      models_pricing: {},
+      routing: {
+        tiers: {
+          simple: {
+            primary: { node: 'missing-node', model: 'gpt-4o' },
+            fallbacks: [{ node: 'openai', model: 'not-listed' }],
+          },
+        },
+        scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 },
+      },
+    });
+
+    expect(svc.getNodeModelDiagnostics()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'missing_model_pricing',
+        model: 'gpt-4o',
+      }),
+      expect.objectContaining({
+        code: 'route_references_unknown_node',
+        tier: 'simple',
+        nodes: ['missing-node'],
+      }),
+      expect.objectContaining({
+        code: 'route_references_unknown_model',
+        tier: 'simple',
+        nodes: ['openai'],
+        model: 'not-listed',
+      }),
+    ]));
+    warnSpy.mockRestore();
   });
 });

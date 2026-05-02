@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist-runtime-plugins",
+    "declaration": false,
+    "sourceMap": false,
+    "incremental": false
+  },
+  "include": ["plugins/**/*"],
+  "exclude": ["node_modules", "dist", "dist-runtime-plugins", "frontend", "test"]
+}

@@ -1,0 +1,624 @@
+# SiftGate 开源 Gateway Roadmap
+
+> 本文档定义开源数据面（Data Plane）的功能迭代计划。
+> 经过验证的功能将在后续抽象到企业版云控制面。
+> 最后更新：2026-05-02
+
+---
+
+## 版本策略
+
+| 版本 | 代号 | 目标 | 时间线 |
+|------|------|------|--------|
+| v0.1 | Foundation | 已完成 — 发布开源 | ✅ Done |
+| v0.2 | Resilience | 生产环境可靠性 + 开发者体验 | 4 周 |
+| v0.3 | Intelligence | 智能路由进化 + 可观测性 | 4 周 |
+| v0.4 | Ecosystem | 插件生态 + 多端点 + 集成 | 4 周 |
+| v0.5 | Scale | 高可用 + 高性能 + 企业就绪 | 6 周 |
+
+---
+
+## v0.2 — Resilience（生产环境可靠性 + 开发者体验）
+
+### P0：核心可靠性
+
+#### 1. 配置热重载（Hot Reload）
+- **现状**：YAML 配置在启动时读取一次，修改需重启
+- **目标**：支持 `SIGHUP` 信号或 API 触发无中断重载
+- **实现方案**：
+  - 文件 watcher（chokidar）+ debounce
+  - ConfigService 重新解析 + 校验 → 原子替换内部引用
+  - 路由/节点/预算模块监听配置变更事件
+  - Dashboard 提供 "Reload Config" 按钮
+  - 重载失败回滚到上一个有效配置
+- **抽象到企业版**：云控制面下发 Policy Bundle 时自动应用
+
+#### 2. 请求并发控制（Concurrency Limiter）
+- **现状**：无上游并发限制，高流量可能压垮 Provider
+- **目标**：每个 Node 可配置最大并发请求数
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: openai-prod
+      max_concurrency: 50
+      queue_timeout_ms: 10000
+  ```
+  - 超过并发上限 → 排队等待（带超时）或立即 fallback
+  - Dashboard 展示实时并发数和排队深度
+- **抽象到企业版**：Fleet 级别并发配额分配
+
+#### 3. 主动健康检查（Active Health Probing）
+- **现状**：仅被动健康检测（请求失败触发熔断）
+- **目标**：定期主动探测 Node 可用性
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: openai-prod
+      health_check:
+        enabled: true
+        interval_seconds: 30
+        timeout_ms: 5000
+        method: HEAD  # 或轻量 completion 请求
+  ```
+  - 健康检查失败 → 提前标记 Node 不可用，路由绕开
+  - 与 Circuit Breaker 联动：探测恢复 → HALF_OPEN → CLOSED
+  - Dashboard 节点健康时间线
+- **抽象到企业版**：Fleet 健康总览 + 异常告警推送
+
+#### 4. 负载均衡策略（Load Balancing）
+- **现状**：同一 Tier 内只有 primary + fallback 顺序
+- **目标**：支持多种负载分发策略
+- **实现方案**：
+  ```yaml
+  routing:
+    tiers:
+      standard:
+        strategy: weighted_round_robin  # round_robin | weighted | least_latency | random
+        targets:
+          - node: openai-prod
+            model: gpt-4o
+            weight: 70
+          - node: anthropic-prod
+            model: claude-sonnet
+            weight: 30
+        fallbacks:
+          - node: backup
+            model: gpt-4o-mini
+  ```
+  - `round_robin`：轮询
+  - `weighted`：按权重分配（兼容现有 A/B split）
+  - `least_latency`：基于滑动窗口平均延迟选择
+  - `random`：随机
+- **抽象到企业版**：基于 Fleet 聚合延迟数据的自适应权重
+
+---
+
+### P1：开发者体验
+
+#### 5. 内置 Playground（Chat 测试界面）
+- **现状**：测试需要 curl 或外部工具
+- **目标**：Dashboard 内嵌一个 Chat Playground
+- **实现方案**：
+  - 新增 Dashboard 页面 `/playground`
+  - 支持选择模型（auto / 指定 node:model）
+  - 流式输出展示
+  - System prompt 编辑
+  - 请求/响应对比视图（展示路由决策）
+  - 延迟、Token、成本实时展示
+- **抽象到企业版**：多团队共享 Prompt Template
+
+#### 6. OpenAPI 文档自动生成
+- **现状**：无正式 API 文档，用户需阅读源码
+- **目标**：自动生成 Swagger/OpenAPI 规范
+- **实现方案**：
+  - 集成 `@nestjs/swagger`
+  - 所有 Controller 加 DTO 装饰器
+  - `/docs` 路径提供 Swagger UI
+  - 导出 `openapi.json` 供客户端生成
+- **抽象到企业版**：API 文档作为开发者门户的一部分
+
+#### 7. 配置校验 CLI
+- **现状**：配置错误只在运行时才发现
+- **目标**：提供 `npx siftgate validate` 命令
+- **实现方案**：
+  - 独立 CLI 入口，加载 YAML → 校验 → 输出结果
+  - 复用 ConfigService 的诊断逻辑
+  - 彩色输出 warnings / errors
+  - CI 可用（exit code 非零 = 配置有误）
+  - 检查项：节点连通性（dry-run probe）、模型命名冲突、路由引用完整性、定价配置完整性
+
+#### 8. 结构化输出透传（Structured Output）
+- **现状**：`response_format: { type: "json_schema" }` 在协议转换中可能丢失
+- **目标**：完整保留并适配各 Provider 的结构化输出能力
+- **实现方案**：
+  - Canonical format 增加 `response_format` 字段
+  - Normalizer/Denormalizer 适配 OpenAI / Anthropic 的结构化输出参数
+  - 路由时考虑模型是否支持 JSON mode / structured output
+
+---
+
+### P2：安全加固
+
+#### 9. Provider Key 加密存储
+- **现状**：API key 明文存储在 YAML 和环境变量中
+- **目标**：支持加密存储 + Secrets Manager 集成
+- **实现方案**：
+  - 支持 `${env:OPENAI_KEY}` 引用环境变量（已有）
+  - 新增 `${vault:secret/openai}` 格式支持 HashiCorp Vault
+  - 新增 `${aws-sm:openai-key}` 格式支持 AWS Secrets Manager
+  - 本地 fallback：AES-256 加密文件
+
+#### 10. 请求/响应审计日志
+- **现状**：Call Log 用于分析，但不是正式审计
+- **目标**：不可篡改的操作审计日志
+- **实现方案**：
+  - 配置变更、API Key 操作、预算修改等管理操作审计
+  - 可选：请求级审计（谁在什么时候用什么 Key 访问了什么模型）
+  - 日志格式兼容 SIEM 工具（JSON Lines）
+  - 可配置保留策略
+- **抽象到企业版**：审计日志上传到控制面，统一查询
+
+---
+
+## v0.3 — Intelligence（智能路由进化 + 可观测性增强）
+
+### P0：路由智能化
+
+#### 11. 基于成本的路由优化
+- **现状**：路由主要基于复杂度评分，不考虑成本
+- **目标**：在同等能力下选择最低成本路由
+- **实现方案**：
+  ```yaml
+  routing:
+    optimization: cost  # cost | latency | balanced | quality
+  ```
+  - `cost`：同 tier 内选最便宜的模型
+  - `latency`：同 tier 内选延迟最低的
+  - `balanced`：成本 × 延迟加权
+  - `quality`：优先选最强模型（现有逻辑）
+  - 基于历史数据的滑动窗口评估
+- **抽象到企业版**：Fleet 级成本优化报告 + 路由建议推送
+
+#### 12. 上下文窗口感知路由
+- **现状**：不检查请求 Token 数是否超过模型上下文窗口
+- **目标**：预估 Token 数，避免发送到窗口不够的模型
+- **实现方案**：
+  - 为每个模型配置 `max_context_tokens`
+  - 快速 Token 预估（基于字符数 / tiktoken-lite）
+  - 超过 80% 窗口 → 路由到长上下文模型
+  - 配置模型能力矩阵：
+    ```yaml
+    nodes:
+      - id: openai-prod
+        models:
+          - id: gpt-4o
+            max_context: 128000
+          - id: gpt-4o-mini
+            max_context: 128000
+    ```
+
+#### 13. 自适应路由（基于历史表现）
+- **现状**：路由权重静态配置
+- **目标**：基于实际表现动态调整路由偏好
+- **实现方案**：
+  - 收集每个 node:model 的 P50/P95 延迟、成功率、成本
+  - 滑动窗口（如最近 1000 请求或 1 小时）
+  - 自适应调整 tier 内路由顺序
+  - 可配置激进程度：conservative / moderate / aggressive
+  - Dashboard 展示自适应调整历史
+- **抽象到企业版**：Fleet 聚合数据驱动的路由推荐引擎
+
+#### 14. Fallback 触发策略增强
+- **现状**：仅在请求失败时 fallback
+- **目标**：支持更多 fallback 触发条件
+- **实现方案**：
+  - 超时 fallback：请求超过阈值但未失败 → 并行发到 fallback（竞争模式）
+  - 内容 fallback：响应不满足条件（如 JSON 格式错误）→ 重试到其他模型
+  - 成本 fallback：预估成本超限 → 降级到便宜模型
+  - 限流 fallback：收到 429 → 立即切换不等重试
+
+---
+
+### P1：可观测性增强
+
+#### 15. 外部日志 Sink 支持
+- **现状**：日志仅存 SQLite，无法对接外部系统
+- **目标**：支持多种日志输出目标
+- **实现方案**：
+  ```yaml
+  logging:
+    sinks:
+      - type: elasticsearch
+        url: http://elastic:9200
+        index: siftgate-logs
+      - type: s3
+        bucket: ai-gateway-logs
+        region: us-east-1
+      - type: webhook
+        url: https://your-endpoint.com/logs
+        batch_size: 100
+      - type: file
+        path: /var/log/siftgate/calls.jsonl
+        rotation: daily
+  ```
+  - 批量异步写入，不阻塞请求流
+  - 可配置哪些字段包含（排除敏感信息）
+  - 支持过滤规则（只 sink 特定 tier/node/status 的日志）
+
+#### 16. Webhook 告警系统
+- **现状**：预算告警只在日志和 Dashboard 展示
+- **目标**：支持外部通知渠道
+- **实现方案**：
+  ```yaml
+  alerts:
+    channels:
+      - type: webhook
+        url: https://hooks.slack.com/xxx
+        events: [budget_threshold, node_down, circuit_open, error_spike]
+      - type: email
+        smtp: smtp://...
+        to: team@company.com
+        events: [budget_exceeded]
+    rules:
+      - name: error_spike
+        condition: error_rate > 10% over 5m
+        severity: critical
+      - name: latency_spike
+        condition: p95_latency > 10s over 3m
+        severity: warning
+  ```
+  - 事件类型：budget_threshold, budget_exceeded, node_down, node_recovered, circuit_open, circuit_close, error_spike, latency_spike
+  - 防抖（同一事件 N 分钟内不重复发送）
+- **抽象到企业版**：统一告警管理 + 告警路由
+
+#### 17. 高级分析仪表盘
+- **现状**：Dashboard 有基础分析
+- **目标**：更深度的分析视图
+- **新增视图**：
+  - Token 用量趋势（按 model/node/key 拆分，日/周/月）
+  - 成本预测（基于历史趋势预测月底成本）
+  - 路由决策分布（每个 tier 的命中分布）
+  - 错误分析（按错误类型、Provider、时间分布）
+  - 模型对比（同一请求发到不同模型的延迟/成本对比）
+  - 缓存效率（命中率趋势 + 节省的 Token/成本）
+
+#### 18. 自定义 Prometheus Metrics
+- **现状**：OTel 集成已有，但自定义业务指标有限
+- **目标**：暴露更丰富的 Prometheus-scrapeable 指标
+- **实现方案**：
+  - `GET /metrics` 端点（Prometheus exposition format）
+  - 指标列表：
+    - `siftgate_requests_total{node, model, tier, status}`
+    - `siftgate_request_duration_seconds{node, model, tier}`
+    - `siftgate_tokens_total{node, model, direction}`
+    - `siftgate_cost_total{node, model}`
+    - `siftgate_circuit_breaker_state{node, model}`
+    - `siftgate_cache_hits_total` / `siftgate_cache_misses_total`
+    - `siftgate_fallback_total{tier, from_node, to_node}`
+    - `siftgate_budget_usage_ratio{key_id}`
+    - `siftgate_concurrent_requests{node}`
+
+---
+
+## v0.4 — Ecosystem（插件生态 + 多端点 + 集成）
+
+### P0：API 扩展
+
+#### 19. Embeddings 端点
+- **现状**：仅支持 Chat/Responses/Messages
+- **目标**：支持 `/v1/embeddings`
+- **实现方案**：
+  - 新 Controller：`POST /v1/embeddings`
+  - Node 配置增加 `embedding_models` 列表
+  - 支持批量 embedding 请求
+  - 路由：按维度/价格选择 embedding 模型
+  - 兼容 OpenAI embedding API 格式
+
+#### 20. Image Generation 端点
+- **现状**：不支持图片生成
+- **目标**：支持 `/v1/images/generations`
+- **实现方案**：
+  - 新 Controller：`POST /v1/images/generations`
+  - Node 增加 `image_models` 配置
+  - 路由：按风格/质量/价格选择
+  - 支持 DALL-E / Stable Diffusion / Midjourney API 格式
+
+#### 21. Completions Legacy 端点
+- **现状**：不支持旧版 completions
+- **目标**：支持 `/v1/completions`（为兼容旧系统）
+- **实现方案**：
+  - 新 Controller + Normalizer
+  - 转为 canonical 格式走统一 pipeline
+  - 标记为 deprecated，文档引导迁移到 chat/completions
+
+---
+
+### P1：插件生态
+
+#### 22. 插件包管理器
+- **现状**：插件必须手动放到 `plugins/` 目录
+- **目标**：支持 npm-like 插件安装
+- **实现方案**：
+  ```bash
+  npx siftgate plugin install @siftgate/plugin-redis-cache
+  npx siftgate plugin install @siftgate/plugin-guardrails
+  npx siftgate plugin list
+  npx siftgate plugin remove <name>
+  ```
+  - 插件 registry（初期用 npm scope `@siftgate/plugin-*`）
+  - 插件版本管理 + 兼容性检查
+  - `plugins.config.yaml` 声明式管理
+
+#### 23. 官方插件集
+- **现状**：仅 1 个示例插件（pii-filter）
+- **目标**：提供 5-8 个高质量官方插件
+- **计划插件列表**：
+
+| 插件名 | 功能 |
+|--------|------|
+| `@siftgate/plugin-redis-cache` | Redis 分布式缓存替代内存 LRU |
+| `@siftgate/plugin-guardrails` | 输入/输出内容安全检查 |
+| `@siftgate/plugin-prompt-template` | 系统 prompt 注入 / 模板管理 |
+| `@siftgate/plugin-cost-alerting` | 实时成本 webhook 通知 |
+| `@siftgate/plugin-request-transform` | 请求/响应自定义变换 |
+| `@siftgate/plugin-analytics-sink` | 日志推送到 ES/S3/Webhook |
+| `@siftgate/plugin-model-router` | 自定义路由逻辑覆盖 |
+| `@siftgate/plugin-rate-limit-advanced` | 滑动窗口 + Token-based 限流 |
+
+#### 24. 插件 Hook 扩展
+- **现状**：7 个 pipeline hooks
+- **新增 Hooks**：
+  - `onConfigReload` — 配置热重载时触发
+  - `onNodeHealthChange` — 节点健康状态变化
+  - `onBudgetAlert` — 预算告警时触发
+  - `onCacheHit` — 缓存命中时可修改响应
+  - `onMetrics` — 自定义指标收集点
+
+---
+
+### P2：集成 & 兼容性
+
+#### 25. LiteLLM 配置兼容
+- **现状**：从 LiteLLM 迁移需手动重写配置
+- **目标**：提供迁移工具
+- **实现方案**：
+  ```bash
+  npx siftgate migrate --from litellm --config ./litellm_config.yaml
+  ```
+  - 解析 LiteLLM YAML → 生成 SiftGate `gateway.config.yaml`
+  - 映射 model names, API keys, fallback rules
+  - 输出迁移报告（兼容/不兼容功能列表）
+
+#### 26. SDK / 客户端库
+- **现状**：用户用原生 HTTP 或 OpenAI SDK（指向 gateway）
+- **目标**：提供轻量 SDK 增强体验
+- **实现方案**：
+  - TypeScript SDK（`@siftgate/client`）
+  - Python SDK（`siftgate-python`）
+  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、错误重试
+  - 与 OpenAI SDK 兼容（drop-in `base_url` 替换）
+
+#### 27. MCP (Model Context Protocol) 支持
+- **现状**：不支持 MCP
+- **目标**：作为 MCP Server 端点，代理 AI tool use
+- **实现方案**：
+  - 实现 MCP Server transport
+  - 将 MCP 请求映射到 canonical format
+  - 支持 MCP 的 resource/tool/prompt primitives
+  - 路由到后端 LLM 处理 tool_use
+
+---
+
+## v0.5 — Scale（高可用 + 高性能 + 企业就绪）
+
+### P0：高可用
+
+#### 28. Redis 共享状态
+- **现状**：Circuit Breaker、Rate Limiter、Cache、Momentum 全部 in-memory
+- **目标**：支持 Redis 作为共享状态后端
+- **实现方案**：
+  ```yaml
+  state:
+    backend: redis  # memory | redis
+    redis:
+      url: redis://localhost:6379
+      prefix: siftgate:
+  ```
+  - Circuit Breaker 状态 → Redis Hash
+  - Rate Limiter 计数 → Redis INCR + EXPIRE
+  - Prompt Cache → Redis String + TTL
+  - Momentum 窗口 → Redis Sorted Set
+  - 所有实例共享状态 → 支持水平扩展
+
+#### 29. 多实例集群模式
+- **现状**：单实例运行
+- **目标**：支持多实例部署 + 自动发现
+- **实现方案**：
+  - 基于 Redis Pub/Sub 的实例注册
+  - 配置变更广播（一个实例 reload → 通知所有实例）
+  - 集群健康端点：`GET /cluster/status`
+  - 无 Leader Election 需求（每个实例独立处理请求）
+  - 推荐部署：N 个无状态 Gateway + 共享 Redis + 负载均衡器
+
+#### 30. PostgreSQL 推荐 + 数据迁移
+- **现状**：SQLite 为默认，PostgreSQL 已支持但非推荐
+- **目标**：生产部署推荐 PostgreSQL，提供迁移工具
+- **实现方案**：
+  - `npx siftgate migrate-db --from sqlite --to postgres`
+  - 自动导出 SQLite 数据 → 导入 PostgreSQL
+  - 文档：生产部署最佳实践
+
+---
+
+### P1：高性能
+
+#### 31. HTTP/2 + 连接池
+- **现状**：使用 Node.js 原生 fetch，无连接复用
+- **目标**：高吞吐场景下减少连接开销
+- **实现方案**：
+  - 引入 `undici` 连接池（per node）
+  - 支持 HTTP/2 multiplexing 到支持的 Provider
+  - 配置：
+    ```yaml
+    nodes:
+      - id: openai-prod
+        connection:
+          pool_size: 10
+          keep_alive_ms: 60000
+          http2: true
+    ```
+
+#### 32. 流式缓存
+- **现状**：Cache 只对非流式 temperature=0 请求生效
+- **目标**：支持流式请求的缓存
+- **实现方案**：
+  - 首次流式请求：正常流式返回 + 后台缓冲完整响应
+  - 后续命中：从缓存重放为流式事件（模拟延迟或即时发送）
+  - 配置项：`cache.streaming: true`
+
+#### 33. 请求批处理（Batching）
+- **现状**：每个请求独立转发
+- **目标**：将短时间内的小请求合并为 batch
+- **实现方案**：
+  - 适用于 embedding 等支持批量的端点
+  - 收集 N ms 窗口内的请求 → 合并为一个 batch → 拆分响应分发
+  - 配置：
+    ```yaml
+    batching:
+      enabled: true
+      window_ms: 50
+      max_batch_size: 20
+      endpoints: [embeddings]
+    ```
+
+---
+
+### P2：企业就绪
+
+#### 34. 数据面 RBAC
+- **现状**：Dashboard 单密码，无角色区分
+- **目标**：数据面本地用户 + 角色
+- **实现方案**：
+  - 角色：admin（全权限）、operator（查看+配置）、viewer（只读）
+  - 本地用户管理或 JWT 验证
+  - API 路径级权限控制
+  - Gateway API Key 归属到 operator
+
+#### 35. 多租户隔离
+- **现状**：所有 API Key 共享同一套节点和路由
+- **目标**：支持 Namespace/Team 级别隔离
+- **实现方案**：
+  ```yaml
+  namespaces:
+    - name: team-a
+      allowed_nodes: [openai-prod, anthropic-prod]
+      budget:
+        daily_cost_limit: 100
+      rate_limit:
+        requests_per_minute: 120
+    - name: team-b
+      allowed_nodes: [openai-prod]
+      budget:
+        daily_cost_limit: 50
+  ```
+  - 每个 namespace 有独立的节点权限、预算、限流
+  - API Key 绑定到 namespace
+  - Dashboard 支持 namespace 切换视图
+
+#### 36. 请求重放 / 影子流量
+- **现状**：无法安全测试新模型/新 Provider
+- **目标**：将生产流量副本发送到测试 Node
+- **实现方案**：
+  ```yaml
+  shadow:
+    enabled: true
+    targets:
+      - node: new-provider-test
+        model: new-model-v1
+        sample_rate: 0.1  # 10% 流量
+    compare: true  # 是否记录对比结果
+  ```
+  - 异步发送，不影响主路径延迟
+  - 对比视图：主路径 vs 影子路径的延迟/成本/质量
+
+---
+
+## 功能优先级矩阵
+
+### 按用户价值 × 实现难度排序
+
+| # | 功能 | 用户价值 | 实现难度 | 推荐优先级 |
+|---|------|:--------:|:--------:|:----------:|
+| 1 | 配置热重载 | ⭐⭐⭐⭐⭐ | 中 | 🔴 立即 |
+| 5 | Playground | ⭐⭐⭐⭐⭐ | 中 | 🔴 立即 |
+| 8 | 结构化输出透传 | ⭐⭐⭐⭐ | 小 | 🔴 立即 |
+| 4 | 负载均衡 | ⭐⭐⭐⭐⭐ | 中 | 🟠 v0.2 |
+| 2 | 并发控制 | ⭐⭐⭐⭐ | 中 | 🟠 v0.2 |
+| 3 | 主动健康检查 | ⭐⭐⭐⭐ | 中 | 🟠 v0.2 |
+| 6 | OpenAPI 文档 | ⭐⭐⭐⭐ | 小 | 🟠 v0.2 |
+| 11 | 成本路由优化 | ⭐⭐⭐⭐⭐ | 中 | 🟡 v0.3 |
+| 12 | 上下文窗口感知 | ⭐⭐⭐⭐ | 小 | 🟡 v0.3 |
+| 16 | Webhook 告警 | ⭐⭐⭐⭐ | 中 | 🟡 v0.3 |
+| 18 | Prometheus Metrics | ⭐⭐⭐⭐ | 小 | 🟡 v0.3 |
+| 13 | 自适应路由 | ⭐⭐⭐⭐⭐ | 大 | 🟡 v0.3 |
+| 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | 🟡 v0.3 |
+| 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |
+| 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | 🔵 v0.4 |
+| 28 | Redis 共享状态 | ⭐⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
+| 31 | HTTP/2 连接池 | ⭐⭐⭐ | 中 | 🟣 v0.5 |
+| 35 | 多租户隔离 | ⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
+
+---
+
+## 开源 → 企业版功能流转规则
+
+```
+┌─────────────────┐     验证成功      ┌──────────────────┐
+│  开源 Gateway    │  ──────────────→  │  企业版控制面     │
+│  (单机功能)      │                   │  (Fleet 管理)     │
+└─────────────────┘                   └──────────────────┘
+
+规则：
+1. 功能先在开源版实现 & 验证
+2. 证明价值后，抽象出 "Fleet 管理层" 到企业版
+3. 开源版保留完整的单机功能
+4. 企业版提供多网关统一管理 + 高级策略
+```
+
+| 开源版功能 | 企业版抽象 |
+|-----------|-----------|
+| 配置热重载 | Policy Bundle 远程下发 |
+| 健康检查 | Fleet 健康总览 + 告警 |
+| 负载均衡 | Fleet 级跨地域负载分配 |
+| 自适应路由 | Fleet 聚合数据路由推荐 |
+| Webhook 告警 | 统一告警管理 + 路由 |
+| 审计日志 | 合规审计 + SIEM 导出 |
+| 预算管理 | 组织级成本管理 + 报表 |
+| 多租户 | 工作区 + RBAC + SCIM |
+
+---
+
+## 非功能性改进（持续进行）
+
+| 项目 | 目标 |
+|------|------|
+| **测试覆盖率** | 保持 >90% 覆盖率，新功能必须带测试 |
+| **文档** | 每个新功能配套用户文档 + 配置示例 |
+| **性能基准** | 建立 benchmark suite，CI 中防止性能退化 |
+| **安全审计** | 每个版本前进行安全审查 |
+| **依赖更新** | 月度依赖更新，及时修复安全漏洞 |
+| **国际化** | Dashboard 持续保持 7 语言同步 |
+| **Docker 镜像** | 每个 release 发布 multi-arch 镜像 |
+| **社区** | Issue 模板、Discussion、Contributing Guide |
+
+---
+
+## 建议首批启动项（本周开始）
+
+基于**用户价值最大 + 为后续功能奠基**的原则，建议首批并行启动：
+
+1. **配置热重载**（所有后续功能的基础）
+2. **内置 Playground**（最直观的用户体验提升）
+3. **结构化输出透传**（小改动，大价值，提升兼容性）
+
+这三项可以并行开发，互不依赖，2 周内可完成。

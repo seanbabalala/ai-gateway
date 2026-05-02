@@ -16,6 +16,8 @@ import type { GatewayPlugin, PluginConfigEntry } from './types';
 @Injectable()
 export class PluginLoaderService implements OnModuleInit {
   private readonly logger = new Logger(PluginLoaderService.name);
+  private readonly sourcePluginsDir = path.resolve(process.cwd(), 'plugins');
+  private readonly compiledPluginsDir = path.resolve(process.cwd(), 'dist-runtime-plugins', 'plugins');
 
   constructor(
     private readonly registry: PluginRegistryService,
@@ -158,7 +160,9 @@ export class PluginLoaderService implements OnModuleInit {
   // ── Directory Discovery ───────────────────────────────────
 
   private discoverPluginDirectory(): PluginConfigEntry[] {
-    const pluginsDir = path.resolve(process.cwd(), 'plugins');
+    const pluginsDir = this.isCompiledRuntime()
+      ? this.compiledPluginsDir
+      : this.sourcePluginsDir;
     if (!fs.existsSync(pluginsDir)) return [];
 
     const entries: PluginConfigEntry[] = [];
@@ -166,9 +170,9 @@ export class PluginLoaderService implements OnModuleInit {
     const items = fs.readdirSync(pluginsDir, { withFileTypes: true });
     for (const item of items) {
       if (item.isFile()) {
-        // .ts or .js files (skip .d.ts, .map, .spec)
+        // Runtime files (skip type declarations, sourcemaps, and tests)
         if (
-          (item.name.endsWith('.ts') || item.name.endsWith('.js')) &&
+          this.isRuntimePluginFile(item.name) &&
           !item.name.endsWith('.d.ts') &&
           !item.name.endsWith('.spec.ts') &&
           !item.name.endsWith('.spec.js') &&
@@ -177,13 +181,13 @@ export class PluginLoaderService implements OnModuleInit {
           entries.push({ path: path.join(pluginsDir, item.name) });
         }
       } else if (item.isDirectory()) {
-        // Directories with index.ts or index.js
-        const indexTs = path.join(pluginsDir, item.name, 'index.ts');
+        // Directories with index.js (prod) or index.ts/index.js (dev)
         const indexJs = path.join(pluginsDir, item.name, 'index.js');
-        if (fs.existsSync(indexTs)) {
-          entries.push({ path: indexTs });
-        } else if (fs.existsSync(indexJs)) {
+        const indexTs = path.join(pluginsDir, item.name, 'index.ts');
+        if (fs.existsSync(indexJs)) {
           entries.push({ path: indexJs });
+        } else if (!this.isCompiledRuntime() && fs.existsSync(indexTs)) {
+          entries.push({ path: indexTs });
         }
       }
     }
@@ -204,8 +208,54 @@ export class PluginLoaderService implements OnModuleInit {
   // ── Path Resolution ───────────────────────────────────────
 
   private resolvePluginPath(pluginPath: string): string {
-    if (path.isAbsolute(pluginPath)) return pluginPath;
-    // Relative paths are resolved from CWD
-    return path.resolve(process.cwd(), pluginPath);
+    const candidates = this.buildPluginPathCandidates(pluginPath);
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return candidates[0];
+  }
+
+  private buildPluginPathCandidates(pluginPath: string): string[] {
+    const normalized = pluginPath.replace(/\\/g, '/');
+    const absolute = path.isAbsolute(pluginPath)
+      ? pluginPath
+      : path.resolve(process.cwd(), pluginPath);
+
+    const candidates = [absolute];
+
+    if (!this.isCompiledRuntime()) {
+      return candidates;
+    }
+
+    const relativeToSource = path.isAbsolute(pluginPath)
+      ? path.relative(this.sourcePluginsDir, pluginPath)
+      : normalized.startsWith('plugins/')
+        ? normalized.slice('plugins/'.length)
+        : null;
+
+    if (relativeToSource && !relativeToSource.startsWith('..')) {
+      const withoutExt = relativeToSource.replace(/\.(ts|js)$/, '');
+      candidates.unshift(
+        path.resolve(this.compiledPluginsDir, `${withoutExt}.js`),
+        path.resolve(this.compiledPluginsDir, withoutExt, 'index.js'),
+      );
+    }
+
+    return Array.from(new Set(candidates));
+  }
+
+  private isRuntimePluginFile(filename: string): boolean {
+    if (filename.endsWith('.js') || filename.endsWith('.cjs') || filename.endsWith('.mjs')) {
+      return true;
+    }
+
+    return !this.isCompiledRuntime() && filename.endsWith('.ts');
+  }
+
+  private isCompiledRuntime(): boolean {
+    return path.basename(path.dirname(__dirname)) === 'dist';
   }
 }

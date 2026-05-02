@@ -79,7 +79,7 @@ export class HealthController {
       nodes,
       budget: budget.map((b) => ({
         type: b.type,
-        current: Number(b.current.toFixed(4)),
+        current: this.formatBudgetCurrent(b.type, b.current),
         limit: b.limit,
         percentage: Number((b.percentage * 100).toFixed(1)),
         exceeded: b.isExceeded,
@@ -98,5 +98,9 @@ export class HealthController {
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
     if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
     return `${seconds}s`;
+  }
+
+  private formatBudgetCurrent(type: string, current: number): number {
+    return Number(current.toFixed(type.includes('cost') ? 6 : 4));
   }
 }

@@ -7,6 +7,7 @@ export interface LogFilters {
   node?: string
   status?: string
   api_key?: string
+  api_key_id?: string
 }
 
 export function useLogs(page: number, limit: number, filters: LogFilters = {}) {
@@ -19,6 +20,7 @@ export function useLogs(page: number, limit: number, filters: LogFilters = {}) {
         tier: filters.tier,
         node: filters.node,
         status: filters.status,
+        api_key_id: filters.api_key_id,
         api_key: filters.api_key,
       }),
   })

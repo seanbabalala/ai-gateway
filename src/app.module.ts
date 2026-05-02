@@ -8,16 +8,18 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
 import { PluginModule } from './plugins/plugin.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
+import { ControlPlaneModule } from './control-plane/control-plane.module';
 
 @Module({
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'frontend', 'dist'),
-      exclude: ['/api(.*)', '/v1(.*)', '/health(.*)'],
+      exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}'],
     }),
     ConfigModule,
     DatabaseModule,
     TelemetryModule,
+    ControlPlaneModule,
     PluginModule,
     AuthModule,
     IngestModule,

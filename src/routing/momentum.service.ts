@@ -39,6 +39,7 @@ export class MomentumService {
   constructor() {
     // Periodic cleanup of stale sessions
     this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    this.cleanupInterval.unref?.();
   }
 
   onModuleDestroy(): void {

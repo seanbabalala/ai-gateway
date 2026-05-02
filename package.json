@@ -1,10 +1,16 @@
 {
-  "name": "ai-gateway",
+  "name": "siftgate",
   "version": "0.1.0",
-  "description": "Local multi-protocol AI gateway with smart routing",
+  "description": "SiftGate self-hosted AI traffic gateway with smart routing",
+  "license": "MIT",
   "private": true,
+  "aiGatewayRelease": {
+    "npmPackage": false,
+    "distribution": "GitHub source and Docker image",
+    "privateReason": "Keep private=true until an npm package is intentionally published."
+  },
   "scripts": {
-    "build": "nest build",
+    "build": "rm -rf dist-runtime-plugins src/canonical/canonical.types.js src/config/gateway.config.js src/config/modality.js src/plugins/types.js && nest build && tsc -p tsconfig.plugins.json",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -14,7 +20,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "smoke:docker": "bash scripts/docker-smoke.sh"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -76,6 +83,7 @@
     "testRegex": ".*\\.spec\\.ts$",
     "testPathIgnorePatterns": [
       "/node_modules/",
+      "/siftgate-cloud/",
       "/test/e2e/"
     ],
     "transform": {

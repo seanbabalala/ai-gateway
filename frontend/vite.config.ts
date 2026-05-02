@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 export default defineConfig({
+  build: {
+    chunkSizeWarningLimit: 900,
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -13,7 +16,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
+      '/api/': {
         target: 'http://localhost:2099',
         changeOrigin: true,
       },

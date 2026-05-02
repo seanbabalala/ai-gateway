@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Plus, Trash2, ArrowLeft, Settings2, Zap, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { X, Plus, Trash2, ArrowLeft, Settings2, Zap, CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { NativeSelect } from '@/components/ui/select'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { CapabilityPicker } from '@/components/shared/CapabilityPicker'
 import { TierRecommendation } from '@/components/shared/TierRecommendation'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useTestNode, useTestExistingNode } from '@/hooks/use-mutations'
 import type { NodeInfo, CreateNodeRequest, UpdateNodeRequest, TestNodeResponse } from '@/types/api'
 
@@ -26,6 +28,7 @@ interface ProviderPreset {
   endpoint: string
   auth_type?: 'bearer' | 'x-api-key'
   models: string[]
+  model_prefixes?: string[]
   capabilities: string[]
   tags: string[]
   keyPlaceholder: string
@@ -33,12 +36,13 @@ interface ProviderPreset {
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    id: 'gpt',
+    id: 'openai',
     name: 'OpenAI',
     protocol: 'chat_completions',
     base_url: 'https://api.openai.com',
     endpoint: '/v1/chat/completions',
     models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
+    model_prefixes: ['gpt', 'o'],
     capabilities: ['coding', 'reasoning', 'tool_use'],
     tags: ['code', 'reasoning'],
     keyPlaceholder: 'sk-...',
@@ -50,6 +54,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://api.openai.com',
     endpoint: '/v1/responses',
     models: ['gpt-4.1', 'gpt-4.1-mini', 'o3', 'o4-mini'],
+    model_prefixes: ['gpt', 'o'],
     capabilities: ['coding', 'reasoning', 'tool_use'],
     tags: ['code', 'reasoning'],
     keyPlaceholder: 'sk-...',
@@ -62,6 +67,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     endpoint: '/v1/messages',
     auth_type: 'x-api-key',
     models: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-20250414'],
+    model_prefixes: ['claude'],
     capabilities: ['coding', 'coding_backend', 'reasoning', 'analysis'],
     tags: ['code', 'reasoning'],
     keyPlaceholder: 'sk-ant-...',
@@ -73,6 +79,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     base_url: 'https://generativelanguage.googleapis.com',
     endpoint: '/v1beta/openai/chat/completions',
     models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+    model_prefixes: ['gemini'],
     capabilities: ['multilingual', 'long_context', 'coding'],
     tags: ['multilingual', 'long-context'],
     keyPlaceholder: 'AIza...',
@@ -176,6 +183,7 @@ interface NodeFormModalProps {
   isPending: boolean
   editNode?: NodeInfo | null
   existingIds: string[]
+  existingNodes: NodeInfo[]
 }
 
 interface FormState {
@@ -187,6 +195,7 @@ interface FormState {
   api_key: string
   timeout_ms: string
   models: string[]
+  model_prefixes: string[]
   capabilities: string[]
   tags: string[]
   aliases: { key: string; value: string }[]
@@ -202,6 +211,7 @@ const EMPTY_FORM: FormState = {
   api_key: '',
   timeout_ms: '30000',
   models: [''],
+  model_prefixes: [],
   capabilities: [],
   tags: [],
   aliases: [],
@@ -217,7 +227,9 @@ export function NodeFormModal({
   isPending,
   editNode,
   existingIds,
+  existingNodes,
 }: NodeFormModalProps) {
+  const { t } = useTranslation('nodes')
   const isEdit = !!editNode
   const [step, setStep] = useState<'pick' | 'form'>('pick')
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
@@ -232,6 +244,8 @@ export function NodeFormModal({
   useEffect(() => {
     if (!open) return
     setTestResult(null)
+    setPrefixInput('')
+    setTagInput('')
     setUseCustomEndpoint(false)
     if (editNode) {
       setStep('form')
@@ -248,6 +262,7 @@ export function NodeFormModal({
         api_key: '',
         timeout_ms: '30000',
         models: editNode.models.length > 0 ? editNode.models : [''],
+        model_prefixes: editNode.model_prefixes || [],
         capabilities: editNode.capabilities || [],
         tags: editNode.tags || [],
         aliases: Object.entries(editNode.aliases || {}).map(([key, value]) => ({ key, value })),
@@ -278,6 +293,7 @@ export function NodeFormModal({
       api_key: '',
       timeout_ms: '30000',
       models: [...preset.models],
+      model_prefixes: [...(preset.model_prefixes || [])],
       capabilities: [...preset.capabilities],
       tags: [...preset.tags],
       aliases: [],
@@ -317,6 +333,18 @@ export function NodeFormModal({
   const updateModel = (idx: number, value: string) =>
     setField('models', form.models.map((m, i) => (i === idx ? value : m)))
 
+  // Model prefixes
+  const [prefixInput, setPrefixInput] = useState('')
+  const addPrefix = () => {
+    const prefix = prefixInput.trim()
+    if (prefix && !form.model_prefixes.includes(prefix)) {
+      setField('model_prefixes', [...form.model_prefixes, prefix])
+    }
+    setPrefixInput('')
+  }
+  const removePrefix = (prefix: string) =>
+    setField('model_prefixes', form.model_prefixes.filter((p) => p !== prefix))
+
   // Tags
   const [tagInput, setTagInput] = useState('')
   const addTag = () => {
@@ -346,7 +374,7 @@ export function NodeFormModal({
         success: false,
         status: 0,
         latency_ms: 0,
-        message: err.message || 'Request failed',
+        message: err.message || t('form.errors.requestFailed'),
       })
 
     if (isEdit && !form.api_key.trim()) {
@@ -358,11 +386,11 @@ export function NodeFormModal({
     }
 
     const errs: Record<string, string> = {}
-    if (!form.base_url.trim()) errs.base_url = 'Required for test'
-    if (!form.endpoint.trim()) errs.endpoint = 'Required for test'
-    if (!form.api_key.trim()) errs.api_key = 'Required for test'
+    if (!form.base_url.trim()) errs.base_url = t('form.errors.requiredForTest')
+    if (!form.endpoint.trim()) errs.endpoint = t('form.errors.requiredForTest')
+    if (!form.api_key.trim()) errs.api_key = t('form.errors.requiredForTest')
     const firstModel = form.models.find((m) => m.trim())
-    if (!firstModel) errs.models = 'Need at least one model to test'
+    if (!firstModel) errs.models = t('form.errors.needModelForTest')
 
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
@@ -392,24 +420,36 @@ export function NodeFormModal({
     const errs: Record<string, string> = {}
 
     if (!isEdit) {
-      if (!form.id.trim()) errs.id = 'ID is required'
+      if (!form.id.trim()) errs.id = t('form.errors.idRequired')
       else if (!/^[a-z0-9_-]+$/i.test(form.id.trim()))
-        errs.id = 'ID must be alphanumeric (a-z, 0-9, _, -)'
+        errs.id = t('form.errors.idFormat')
       else if (existingIds.includes(form.id.trim()))
-        errs.id = 'A node with this ID already exists'
+        errs.id = t('form.errors.idExists')
 
-      if (!form.api_key.trim()) errs.api_key = 'API key is required'
-      if (!form.endpoint.trim()) errs.endpoint = 'Endpoint is required'
+      if (!form.api_key.trim()) errs.api_key = t('form.errors.apiKeyRequired')
+      if (!form.endpoint.trim()) errs.endpoint = t('form.errors.endpointRequired')
     }
 
-    if (!form.name.trim()) errs.name = 'Name is required'
-    if (!form.base_url.trim()) errs.base_url = 'Base URL is required'
+    if (!form.name.trim()) errs.name = t('form.errors.nameRequired')
+    if (!form.base_url.trim()) errs.base_url = t('form.errors.baseUrlRequired')
 
     const validModels = form.models.filter((m) => m.trim())
-    if (validModels.length === 0) errs.models = 'At least one model is required'
+    if (validModels.length === 0) errs.models = t('form.errors.modelRequired')
+    else if (new Set(validModels.map((m) => m.trim())).size !== validModels.length)
+      errs.models = t('form.errors.modelsUnique')
+
+    const validPrefixes = form.model_prefixes.filter((p) => p.trim())
+    if (new Set(validPrefixes.map((p) => p.trim())).size !== validPrefixes.length) {
+      errs.model_prefixes = t('form.errors.prefixesUnique')
+    }
+
+    const validAliases = form.aliases.map((a) => a.key.trim()).filter(Boolean)
+    if (new Set(validAliases).size !== validAliases.length) {
+      errs.aliases = t('form.errors.aliasesUnique')
+    }
 
     const timeout = Number(form.timeout_ms)
-    if (isNaN(timeout) || timeout < 1) errs.timeout_ms = 'Must be a positive number'
+    if (isNaN(timeout) || timeout < 1) errs.timeout_ms = t('form.errors.positiveNumber')
 
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -428,6 +468,7 @@ export function NodeFormModal({
     }
 
     if (isEdit) {
+      const modelPrefixes = form.model_prefixes.map((p) => p.trim()).filter(Boolean)
       const data: UpdateNodeRequest = {
         name: form.name.trim(),
         protocol: form.protocol as CreateNodeRequest['protocol'],
@@ -436,13 +477,15 @@ export function NodeFormModal({
         timeout_ms: Number(form.timeout_ms),
         capabilities: form.capabilities.length > 0 ? form.capabilities : undefined,
         tags: form.tags,
-        model_aliases: Object.keys(aliasMap).length > 0 ? aliasMap : undefined,
+        model_aliases: aliasMap,
+        model_prefixes: modelPrefixes,
       }
       if (form.api_key.trim()) data.api_key = form.api_key.trim()
       if (form.endpoint.trim()) data.endpoint = form.endpoint.trim()
       if (form.auth_type) data.auth_type = form.auth_type as 'bearer' | 'x-api-key'
       onSubmit(data)
     } else {
+      const modelPrefixes = form.model_prefixes.map((p) => p.trim()).filter(Boolean)
       const data: CreateNodeRequest = {
         id: form.id.trim(),
         name: form.name.trim(),
@@ -455,32 +498,76 @@ export function NodeFormModal({
         capabilities: form.capabilities.length > 0 ? form.capabilities : undefined,
         tags: form.tags.length > 0 ? form.tags : undefined,
         model_aliases: Object.keys(aliasMap).length > 0 ? aliasMap : undefined,
+        model_prefixes: modelPrefixes.length > 0 ? modelPrefixes : undefined,
         auth_type: form.auth_type ? (form.auth_type as 'bearer' | 'x-api-key') : undefined,
       }
       onSubmit(data)
     }
   }
 
-  if (!open) return null
-
   const presetInfo = selectedPreset
     ? PROVIDER_PRESETS.find((p) => p.id === selectedPreset)
     : null
+  const currentNodeId = isEdit ? editNode!.id : form.id.trim()
+  const otherNodes = existingNodes.filter((node) => node.id !== currentNodeId)
+  const allNodeIds = existingNodes.map((node) => node.id)
+  const allModelOwners = existingNodes.flatMap((node) =>
+    node.models.map((model) => ({ model, nodeId: node.id })),
+  )
+  const otherModelOwners = allModelOwners.filter((owner) => owner.nodeId !== currentNodeId)
+  const otherAliasOwners = otherNodes.flatMap((node) =>
+    Object.keys(node.aliases || {}).map((alias) => ({ alias, nodeId: node.id })),
+  )
+  const otherPrefixOwners = otherNodes.flatMap((node) =>
+    (node.model_prefixes || []).map((prefix) => ({ prefix, nodeId: node.id })),
+  )
+  const trimmedModels = form.models.map((model) => model.trim()).filter(Boolean)
+  const trimmedPrefixes = form.model_prefixes.map((prefix) => prefix.trim()).filter(Boolean)
+  const trimmedAliases = form.aliases
+    .map((alias) => ({ key: alias.key.trim(), value: alias.value.trim() }))
+    .filter((alias) => alias.key || alias.value)
+  const namingWarnings = [
+    ...(!isEdit && form.id.trim() && allModelOwners.some((owner) => owner.model === form.id.trim())
+      ? [t('form.warnings.upstreamIdMatchesModel', { id: form.id.trim() })]
+      : []),
+    ...trimmedModels
+      .filter((model) => otherModelOwners.some((owner) => owner.model === model))
+      .map((model) => {
+        const owners = otherModelOwners.filter((owner) => owner.model === model).map((owner) => owner.nodeId)
+        return t('form.warnings.modelAlreadyListed', { model, owners: owners.join(', ') })
+      }),
+    ...trimmedAliases
+      .filter((alias) => alias.key && allModelOwners.some((owner) => owner.model === alias.key))
+      .map((alias) => t('form.warnings.aliasMatchesModel', { alias: alias.key })),
+    ...trimmedAliases
+      .filter((alias) => alias.key && allNodeIds.includes(alias.key))
+      .map((alias) => t('form.warnings.aliasMatchesUpstream', { alias: alias.key })),
+    ...trimmedAliases
+      .filter((alias) => alias.key && otherAliasOwners.some((owner) => owner.alias === alias.key))
+      .map((alias) => {
+        const owners = otherAliasOwners.filter((owner) => owner.alias === alias.key).map((owner) => owner.nodeId)
+        return t('form.warnings.aliasAlreadyDefined', { alias: alias.key, owners: owners.join(', ') })
+      }),
+    ...trimmedAliases
+      .filter((alias) => alias.key && alias.value && !trimmedModels.includes(alias.value))
+      .map((alias) => t('form.warnings.aliasTargetMissing', { alias: alias.key, target: alias.value })),
+    ...trimmedPrefixes
+      .filter((prefix) => otherPrefixOwners.some((owner) => owner.prefix === prefix))
+      .map((prefix) => {
+        const owners = otherPrefixOwners.filter((owner) => owner.prefix === prefix).map((owner) => owner.nodeId)
+        return t('form.warnings.prefixAlreadyConfigured', { prefix, owners: owners.join(', ') })
+      }),
+  ].filter((warning, idx, arr) => arr.indexOf(warning) === idx)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-md"
-        onClick={onClose}
-      />
-
-      <div className="relative z-10 w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--glass-border)] bg-[var(--background)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-xl">
         {/* ─── Step 1: Provider Picker ─── */}
         {step === 'pick' && (
           <>
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-bold tracking-tight text-[var(--foreground)]">
-                Add Node &mdash; Choose Provider
+                {t('form.providerPickerTitle')}
               </h2>
               <button
                 onClick={onClose}
@@ -509,7 +596,7 @@ export function NodeFormModal({
                     </span>
                     {alreadyExists && (
                       <span className="text-[9px] text-[var(--foreground-dim)]">
-                        (add another)
+                        {t('form.addAnother')}
                       </span>
                     )}
                   </button>
@@ -523,7 +610,7 @@ export function NodeFormModal({
               >
                 <Settings2 className="h-7 w-7 text-[var(--foreground-dim)]" />
                 <span className="text-xs font-semibold text-[var(--foreground-muted)]">
-                  Custom
+                  {t('form.custom')}
                 </span>
               </button>
             </div>
@@ -540,17 +627,17 @@ export function NodeFormModal({
                   <button
                     onClick={() => setStep('pick')}
                     className="rounded-xl p-2 text-[var(--foreground-dim)] transition-all hover:bg-[var(--inset-bg)] hover:text-[var(--foreground)]"
-                    title="Back to provider list"
+                    title={t('form.backToProviderList')}
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                 )}
                 <h2 className="text-lg font-bold tracking-tight text-[var(--foreground)]">
                   {isEdit
-                    ? `Edit: ${editNode!.name}`
+                    ? t('form.editTitle', { name: editNode!.name })
                     : presetInfo
-                      ? `Add ${presetInfo.name} Node`
-                      : 'Add Custom Node'}
+                      ? t('form.addProviderTitle', { name: presetInfo.name })
+                      : t('form.addCustomTitle')}
                 </h2>
               </div>
               <button
@@ -564,27 +651,27 @@ export function NodeFormModal({
             <div className="space-y-4">
               {/* ID (create only) */}
               {!isEdit && (
-                <FieldGroup label="Node ID" error={errors.id}>
+                <FieldGroup label={t('form.labels.upstreamId')} error={errors.id}>
                   <Input
                     value={form.id}
                     onChange={(e) => setField('id', e.target.value)}
-                    placeholder="e.g. claude, gpt, gemini"
+                    placeholder={t('form.placeholders.upstreamId')}
                   />
                 </FieldGroup>
               )}
 
               {/* Name */}
-              <FieldGroup label="Display Name" error={errors.name}>
+              <FieldGroup label={t('form.labels.displayName')} error={errors.name}>
                 <Input
                   value={form.name}
                   onChange={(e) => setField('name', e.target.value)}
-                  placeholder="e.g. Claude (Anthropic)"
+                  placeholder={t('form.placeholders.displayName')}
                 />
               </FieldGroup>
 
               {/* API Key */}
               <FieldGroup
-                label={isEdit ? 'API Key (blank = keep current, test uses saved key)' : 'API Key'}
+                label={isEdit ? t('form.labels.apiKeyEdit') : t('form.labels.apiKey')}
                 error={errors.api_key}
               >
                 <Input
@@ -593,16 +680,16 @@ export function NodeFormModal({
                   onChange={(e) => setField('api_key', e.target.value)}
                   placeholder={
                     isEdit
-                      ? 'Leave blank to keep existing key'
-                      : presetInfo?.keyPlaceholder ?? 'API key...'
+                      ? t('form.placeholders.keepExistingKey')
+                      : presetInfo?.keyPlaceholder ?? t('form.placeholders.apiKey')
                   }
                 />
               </FieldGroup>
 
               {/* Protocol + Auth Type */}
               <div className="grid grid-cols-2 gap-3">
-                <FieldGroup label="Protocol">
-                  <Select
+                <FieldGroup label={t('form.labels.protocol')}>
+                  <NativeSelect
                     value={form.protocol}
                     onChange={(e) => {
                       const proto = e.target.value
@@ -612,36 +699,36 @@ export function NodeFormModal({
                       }
                     }}
                     options={[
-                      { value: 'chat_completions', label: 'Chat Completions (OpenAI)' },
-                      { value: 'responses', label: 'Responses (OpenAI)' },
-                      { value: 'messages', label: 'Messages (Anthropic)' },
+                      { value: 'chat_completions', label: t('form.protocol.chatCompletions') },
+                      { value: 'responses', label: t('form.protocol.responses') },
+                      { value: 'messages', label: t('form.protocol.messages') },
                     ]}
                   />
                 </FieldGroup>
-                <FieldGroup label="Auth Type">
-                  <Select
+                <FieldGroup label={t('form.labels.authType')}>
+                  <NativeSelect
                     value={form.auth_type}
                     onChange={(e) => setField('auth_type', e.target.value)}
                     options={[
-                      { value: '', label: 'Auto (based on protocol)' },
-                      { value: 'bearer', label: 'Bearer Token' },
-                      { value: 'x-api-key', label: 'x-api-key Header' },
+                      { value: '', label: t('form.auth.auto') },
+                      { value: 'bearer', label: t('form.auth.bearer') },
+                      { value: 'x-api-key', label: t('form.auth.xApiKey') },
                     ]}
                   />
                 </FieldGroup>
               </div>
 
               {/* Base URL + Endpoint */}
-              <FieldGroup label="Base URL" error={errors.base_url}>
+              <FieldGroup label={t('form.labels.baseUrl')} error={errors.base_url}>
                 <Input
                   value={form.base_url}
                   onChange={(e) => setField('base_url', e.target.value)}
-                  placeholder="https://api.openai.com"
+                  placeholder={t('form.placeholders.baseUrl')}
                 />
               </FieldGroup>
 
               <FieldGroup
-                label="Endpoint"
+                label={t('form.labels.endpoint')}
                 error={errors.endpoint}
               >
                 <div className="flex items-center gap-2">
@@ -663,13 +750,13 @@ export function NodeFormModal({
                       }}
                       className="rounded"
                     />
-                    Custom
+                    {t('form.labels.customEndpoint')}
                   </label>
                 </div>
               </FieldGroup>
 
               {/* Timeout */}
-              <FieldGroup label="Timeout (ms)" error={errors.timeout_ms}>
+              <FieldGroup label={t('form.labels.timeout')} error={errors.timeout_ms}>
                 <Input
                   type="number"
                   value={form.timeout_ms}
@@ -679,14 +766,14 @@ export function NodeFormModal({
               </FieldGroup>
 
               {/* Models */}
-              <FieldGroup label="Models" error={errors.models}>
+              <FieldGroup label={t('form.labels.models')} error={errors.models}>
                 <div className="space-y-2">
                   {form.models.map((model, idx) => (
                     <div key={idx} className="flex gap-2">
                       <Input
                         value={model}
                         onChange={(e) => updateModel(idx, e.target.value)}
-                        placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
+                        placeholder={t('form.placeholders.model')}
                         className="flex-1"
                       />
                       {form.models.length > 1 && (
@@ -703,13 +790,55 @@ export function NodeFormModal({
                   ))}
                   <Button variant="outline" size="sm" onClick={addModel} type="button">
                     <Plus className="h-3.5 w-3.5" />
-                    Add Model
+                    {t('form.actions.addModel')}
                   </Button>
                 </div>
               </FieldGroup>
 
+              {/* Model prefixes */}
+              <FieldGroup label={t('form.labels.modelPrefixes')} error={errors.model_prefixes}>
+                <div className="space-y-2">
+                  <p className="text-[11px] leading-5 text-[var(--foreground-dim)]">
+                    {t('form.help.modelPrefixes')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.model_prefixes.map((prefix) => (
+                      <span
+                        key={prefix}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[var(--inset-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground-muted)]"
+                      >
+                        {prefix}-*
+                        <button
+                          onClick={() => removePrefix(prefix)}
+                          className="text-[var(--foreground-dim)] transition-colors hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={prefixInput}
+                      onChange={(e) => setPrefixInput(e.target.value)}
+                      placeholder={t('form.placeholders.prefix')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addPrefix()
+                        }
+                      }}
+                      className="flex-1"
+                    />
+                    <Button variant="outline" size="sm" onClick={addPrefix} type="button">
+                      {t('form.actions.add')}
+                    </Button>
+                  </div>
+                </div>
+              </FieldGroup>
+
               {/* Capabilities */}
-              <FieldGroup label="Capabilities">
+              <FieldGroup label={t('form.labels.capabilities')}>
                 <CapabilityPicker
                   selected={form.capabilities}
                   onChange={(caps) => setField('capabilities', caps)}
@@ -722,7 +851,7 @@ export function NodeFormModal({
               )}
 
               {/* Tags (custom, optional) */}
-              <FieldGroup label="Custom Tags (optional)">
+              <FieldGroup label={t('form.labels.customTags')}>
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-1.5">
                     {form.tags.map((tag) => (
@@ -744,7 +873,7 @@ export function NodeFormModal({
                     <Input
                       value={tagInput}
                       onChange={(e) => setTagInput(e.target.value)}
-                      placeholder="e.g. reasoning, code, fast"
+                      placeholder={t('form.placeholders.tag')}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
@@ -754,28 +883,31 @@ export function NodeFormModal({
                       className="flex-1"
                     />
                     <Button variant="outline" size="sm" onClick={addTag} type="button">
-                      Add
+                      {t('form.actions.add')}
                     </Button>
                   </div>
                 </div>
               </FieldGroup>
 
               {/* Aliases */}
-              <FieldGroup label="Model Aliases (optional)">
+              <FieldGroup label={t('form.labels.modelAliases')} error={errors.aliases}>
                 <div className="space-y-2">
+                  <p className="text-[11px] leading-5 text-[var(--foreground-dim)]">
+                    {t('form.help.modelAliases')}
+                  </p>
                   {form.aliases.map((alias, idx) => (
                     <div key={idx} className="flex gap-2">
                       <Input
                         value={alias.key}
                         onChange={(e) => updateAlias(idx, 'key', e.target.value)}
-                        placeholder="Alias (e.g. claude)"
+                        placeholder={t('form.placeholders.alias')}
                         className="flex-1"
                       />
                       <span className="flex items-center text-[var(--foreground-dim)]">&rarr;</span>
                       <Input
                         value={alias.value}
                         onChange={(e) => updateAlias(idx, 'value', e.target.value)}
-                        placeholder="Model ID"
+                        placeholder={t('form.placeholders.modelId')}
                         className="flex-1"
                       />
                       <Button variant="ghost" size="icon" onClick={() => removeAlias(idx)} type="button">
@@ -785,10 +917,30 @@ export function NodeFormModal({
                   ))}
                   <Button variant="outline" size="sm" onClick={addAlias} type="button">
                     <Plus className="h-3.5 w-3.5" />
-                    Add Alias
+                    {t('form.actions.addAlias')}
                   </Button>
                 </div>
               </FieldGroup>
+
+              {namingWarnings.length > 0 && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-3.5 py-3 text-amber-800 dark:text-amber-300">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold">
+                        {t('form.warnings.title')}
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {namingWarnings.map((warning) => (
+                          <p key={warning} className="text-[11px] leading-5">
+                            {warning}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Test Connection + Result */}
@@ -796,11 +948,11 @@ export function NodeFormModal({
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-semibold text-[var(--foreground-muted)]">
-                    Connectivity Test
+                    {t('form.connectivity.title')}
                   </span>
                   {isEdit && !form.api_key.trim() && (
                     <span className="ml-2 text-[10px] text-[var(--foreground-dim)]">
-                      (using saved config)
+                      {t('form.connectivity.usingSavedConfig')}
                     </span>
                   )}
                 </div>
@@ -815,7 +967,7 @@ export function NodeFormModal({
                   ) : (
                     <Zap className="h-3.5 w-3.5" />
                   )}
-                  {isTestPending ? 'Testing...' : 'Test Connection'}
+                  {isTestPending ? t('form.connectivity.testing') : t('form.connectivity.testConnection')}
                 </Button>
               </div>
 
@@ -847,18 +999,18 @@ export function NodeFormModal({
             {/* Footer */}
             <div className="mt-6 flex justify-end gap-3">
               <Button variant="outline" onClick={onClose} disabled={isPending}>
-                Cancel
+                {t('actions.cancel')}
               </Button>
               <Button onClick={handleSubmit} disabled={isPending}>
                 {isPending
-                  ? isEdit ? 'Saving...' : 'Creating...'
-                  : isEdit ? 'Save Changes' : 'Create Node'}
+                  ? isEdit ? t('actions.saving') : t('actions.creating')
+                  : isEdit ? t('actions.saveChanges') : t('actions.createUpstream')}
               </Button>
             </div>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

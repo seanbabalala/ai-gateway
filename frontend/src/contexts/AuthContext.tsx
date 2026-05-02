@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from 'react'
+import { i18n } from '@/i18n'
 
 interface AuthContextValue {
   token: string | null
@@ -17,7 +18,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const TOKEN_KEY = 'ai-gateway-token'
+const TOKEN_KEY = 'siftgate-token'
 
 export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function checkStatus() {
       try {
         const res = await fetch('/api/auth/status')
-        if (!res.ok) throw new Error('Failed to check auth status')
+        if (!res.ok) throw new Error(i18n.t('login:login.authStatusError'))
         const data = (await res.json()) as { authRequired: boolean }
         if (!cancelled) {
           setAuthRequired(data.authRequired)
@@ -72,8 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({ message: 'Login failed' }))
-      throw new Error(data.message || 'Invalid password')
+      const data = await res.json().catch(() => ({ message: i18n.t('login:login.errorFallback') }))
+      throw new Error(data.message || i18n.t('login:login.invalidPassword'))
     }
 
     const data = (await res.json()) as { token: string }

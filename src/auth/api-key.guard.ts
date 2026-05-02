@@ -5,42 +5,15 @@ import {
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
-import { createHash, timingSafeEqual } from 'crypto';
-import { ConfigService } from '../config/config.service';
-import { ApiKeyEntry } from '../config/gateway.config';
-
-interface HashedKeyEntry {
-  hash: Buffer;
-  entry: ApiKeyEntry;
-}
+import { GatewayApiKeyService } from './gateway-api-key.service';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);
 
-  /** Pre-computed SHA-256 hashes for each configured API key */
-  private keyHashes: HashedKeyEntry[] = [];
-  private lastKeys: ApiKeyEntry[] | undefined;
+  constructor(private readonly apiKeys: GatewayApiKeyService) {}
 
-  constructor(private readonly config: ConfigService) {}
-
-  canActivate(context: ExecutionContext): boolean {
-    const apiKeys = this.config.auth?.api_keys;
-
-    // No API keys configured → open access (backwards-compatible, dev-friendly)
-    if (!apiKeys || apiKeys.length === 0) {
-      return true;
-    }
-
-    // Re-compute hashes if keys changed (config reload)
-    if (apiKeys !== this.lastKeys) {
-      this.keyHashes = apiKeys.map((entry) => ({
-        hash: createHash('sha256').update(entry.key).digest(),
-        entry,
-      }));
-      this.lastKeys = apiKeys;
-    }
-
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader: string | undefined = request.headers?.authorization;
 
@@ -49,31 +22,18 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     const key = authHeader.slice(7);
-    const match = this.findKey(key);
+    const ip: string | undefined = request.ip || request.connection?.remoteAddress;
+    const match = await this.apiKeys.findContextByPlainKey(key, ip);
 
     if (!match) {
+      this.logger.warn('Invalid or disabled gateway API key rejected');
       throw new UnauthorizedException('Invalid API key');
     }
 
-    // Attach key name to request for logging/auditing
+    // Attach key context to request for logging, budget, rate-limit, and permissions.
     request.apiKeyName = match.name;
+    request.apiKeyId = match.id;
+    request.gatewayApiKey = match;
     return true;
-  }
-
-  /**
-   * Timing-safe key lookup using SHA-256 hashes.
-   * Prevents timing attacks that could leak key bytes via response-time analysis.
-   */
-  private findKey(candidateKey: string): ApiKeyEntry | undefined {
-    const candidateHash = createHash('sha256').update(candidateKey).digest();
-    for (const { hash, entry } of this.keyHashes) {
-      if (
-        candidateHash.length === hash.length &&
-        timingSafeEqual(candidateHash, hash)
-      ) {
-        return entry;
-      }
-    }
-    return undefined;
   }
 }

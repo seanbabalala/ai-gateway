@@ -72,6 +72,8 @@ function makePipeline(overrides: Record<string, any> = {}): {
       fallbacks: [{ node: 'claude', model: 'claude-3-opus' }],
       tier: 'standard',
       momentumAdjusted: false,
+      experimentGroup: null,
+      experimentGroupsByTarget: {},
     }),
     ...overrides.routingService,
   };
@@ -103,6 +105,10 @@ function makePipeline(overrides: Record<string, any> = {}): {
   };
 
   const hooks = overrides.hooks || createNoOpHookExecutor();
+  const telemetryUploader = {
+    enqueue: jest.fn(),
+    ...overrides.telemetryUploader,
+  };
 
   const callLogRepo = {
     create: jest.fn().mockImplementation((data: any) => data),
@@ -122,6 +128,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     logEventBus as any,
     hooks as any,
     new TelemetryService(),
+    telemetryUploader as any,
     callLogRepo as any,
   );
 
@@ -130,7 +137,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     mocks: {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, budgetService, cacheService,
-      logEventBus, hooks, callLogRepo,
+      logEventBus, hooks, telemetryUploader, callLogRepo,
     },
   };
 }
@@ -260,7 +267,10 @@ describe('PipelineService — budget enforcement', () => {
 
 describe('PipelineService — caching', () => {
   it('should return cached response without calling provider', async () => {
-    const cachedResponse = makeCanonicalResponse({ model: 'gpt-4o' });
+    const cachedResponse = makeCanonicalResponse({
+      model: 'gpt-4o',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
     const { pipeline, mocks } = makePipeline({
       cacheService: {
         shouldCache: jest.fn().mockReturnValue(true),
@@ -274,6 +284,11 @@ describe('PipelineService — caching', () => {
 
     expect(result.statusCode).toBe(200);
     expect(mocks.providerClient.forward).not.toHaveBeenCalled();
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      15,
+      expect.any(Number),
+      undefined,
+    );
   });
 
   it('should store response in cache after successful call', async () => {
@@ -324,7 +339,7 @@ describe('PipelineService — retry and fallback', () => {
     const result = await pipeline.process(request);
 
     // 400 is not retryable, so only 1 attempt on primary, then fallback(s)
-    expect(result.statusCode).toBe(502); // all failed
+    expect(result.statusCode).toBe(400);
   });
 
   it('should try fallback nodes after primary exhausts retries', async () => {
@@ -355,6 +370,20 @@ describe('PipelineService — retry and fallback', () => {
 
     expect(result.statusCode).toBe(502);
     expect(result.body).toHaveProperty('error');
+  });
+
+  it('should preserve the last upstream status when all nodes fail', async () => {
+    const { pipeline, mocks } = makePipeline();
+    mocks.providerClient.forward
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Forbidden', 403, 'claude'));
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(403);
   });
 
   it('should record circuit breaker success on successful call', async () => {
@@ -400,8 +429,15 @@ describe('PipelineService — error formatting', () => {
     expect(result.body).toEqual({
       error: {
         message: expect.stringContaining('Budget exceeded'),
-        type: 'server_error',
-        code: '429',
+        type: 'budget_exceeded',
+        code: 'tokens',
+        details: expect.objectContaining({
+          scope: 'global',
+          api_key_id: null,
+          budget_type: 'tokens',
+          current: 1_500_000,
+          limit: 1_000_000,
+        }),
       },
     });
   });
@@ -421,7 +457,15 @@ describe('PipelineService — error formatting', () => {
 
     expect(result.body).toEqual({
       type: 'error',
-      error: { type: 'api_error', message: expect.stringContaining('Budget exceeded') },
+      error: {
+        type: 'budget_exceeded',
+        message: expect.stringContaining('Budget exceeded'),
+        details: expect.objectContaining({
+          scope: 'global',
+          api_key_id: null,
+          budget_type: 'tokens',
+        }),
+      },
     });
   });
 });
@@ -468,6 +512,128 @@ describe('PipelineService — call logging', () => {
     // Should not throw
     const result = await pipeline.process(request);
     expect(result.statusCode).toBe(200);
+  });
+
+  it('should attribute experiment group to the actual fallback target', async () => {
+    const { pipeline, mocks } = makePipeline({
+      routingService: {
+        resolve: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'gpt-4o' },
+          fallbacks: [{ node: 'claude', model: 'claude-3-opus' }],
+          tier: 'standard',
+          momentumAdjusted: false,
+          experimentGroup: 'standard:control',
+          experimentGroupsByTarget: {
+            'openai:gpt-4o': 'standard:control',
+            'claude:claude-3-opus': 'standard:challenger',
+          },
+        }),
+      },
+    });
+    mocks.providerClient.forward
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockResolvedValueOnce(makeCanonicalResponse({ model: 'claude-3-opus' }));
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    await pipeline.process(request);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.experiment_group).toBe('standard:challenger');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Plugin Hooks
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — plugin hooks', () => {
+  it('should execute preUpstream hooks before forwarding', async () => {
+    const hooks = {
+      isEmpty: jest.fn().mockReturnValue(false),
+      run: jest.fn().mockImplementation(async (hookName: string, data: Record<string, unknown>) => {
+        if (hookName === 'preRequest') {
+          return { data };
+        }
+        if (hookName === 'preUpstream') {
+          return {
+            data: {
+              ...data,
+              request: {
+                ...(data.request as Record<string, unknown>),
+                messages: [{ role: 'user', content: 'Redacted prompt' }],
+              },
+            },
+          };
+        }
+        return { data };
+      }),
+    };
+
+    const { pipeline, mocks } = makePipeline({ hooks });
+    const request = makeRequest('Sensitive prompt', { originalModel: 'gpt-4o' });
+    await pipeline.process(request);
+
+    expect(mocks.providerClient.forward).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: 'Redacted prompt' }],
+      }),
+      'openai',
+      'gpt-4o',
+      expect.any(Object),
+    );
+  });
+
+  it('should recover from pipeline errors via onError hook', async () => {
+    const recovered = makeCanonicalResponse({
+      id: 'recovered',
+      model: 'gpt-4o',
+      content: [{ type: 'text', text: 'Recovered response' }],
+    });
+    const hooks = {
+      isEmpty: jest.fn().mockReturnValue(false),
+      run: jest.fn().mockImplementation(async (hookName: string, data: Record<string, unknown>) => {
+        if (hookName === 'preRequest') {
+          return { data };
+        }
+        if (hookName === 'onError') {
+          return { shortCircuit: recovered };
+        }
+        return { data };
+      }),
+    };
+
+    const { pipeline, mocks } = makePipeline({
+      hooks,
+      providerClient: {
+        forward: jest.fn().mockRejectedValue(new Error('upstream exploded')),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toEqual(
+      expect.objectContaining({
+        choices: expect.any(Array),
+      }),
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      undefined,
+    );
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: 'hook',
+        model: 'gpt-4o',
+        status_code: 200,
+        error: null,
+      }),
+    );
   });
 });
 
@@ -644,10 +810,9 @@ describe('PipelineService — processStream', () => {
 
     await pipeline.processStream(request, res);
 
-    expect(res.end).toHaveBeenCalled();
-    // Should have written error event
-    const allChunks = res._chunks.join('');
-    expect(allChunks).toContain('error');
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalled();
+    expect(res.write).not.toHaveBeenCalled();
   });
 
   it('should store stream result in cache when caching enabled', async () => {
@@ -792,6 +957,46 @@ describe('PipelineService — processStream transmission-phase errors', () => {
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.is_fallback).toBe(true);
     expect(savedLog.status_code).toBe(502);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Control-Plane Telemetry Metadata
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — control-plane telemetry metadata', () => {
+  it('should enqueue domain and modality metadata without request bodies', async () => {
+    const { pipeline, mocks } = makePipeline({
+      scoringService: {
+        score: jest.fn().mockReturnValue({
+          tier: 'standard',
+          score: 0.42,
+          domainHint: 'backend',
+          modalityHints: ['text', 'vision'],
+          fastPath: undefined,
+        }),
+      },
+    });
+
+    const request = makeRequest('Build an API endpoint', { originalModel: 'auto' });
+    await pipeline.process(request);
+
+    expect(mocks.telemetryUploader.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: 'openai',
+        model: 'gpt-4o',
+        tier: 'standard',
+      }),
+      expect.objectContaining({
+        domainHint: 'backend',
+        modalities: ['text', 'vision'],
+      }),
+    );
+
+    const payload = JSON.stringify(mocks.telemetryUploader.enqueue.mock.calls[0]);
+    expect(payload).not.toContain('messages');
+    expect(payload).not.toContain('Build an API endpoint');
+    expect(payload).not.toContain('sk-');
   });
 });
 

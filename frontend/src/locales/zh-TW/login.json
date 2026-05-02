@@ -1,0 +1,10 @@
+{
+  "login.authStatusError": "檢查認證狀態失敗",
+  "login.errorFallback": "登入失敗",
+  "login.invalidPassword": "密碼無效",
+  "login.passwordPlaceholder": "密碼",
+  "login.signingIn": "登入中...",
+  "login.submit": "登入",
+  "login.subtitle": "輸入密碼存取控制台",
+  "login.title": "SiftGate"
+}

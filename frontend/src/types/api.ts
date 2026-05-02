@@ -54,6 +54,7 @@ export interface CallLog {
   is_fallback: boolean
   session_key: string | null
   error: string | null
+  api_key_id?: string | null
   api_key_name?: string | null
 }
 
@@ -72,13 +73,18 @@ export interface LogsResponse {
 // ── Budget ──
 
 export interface BudgetRule {
+  id: number
   type: string
+  scope: 'global' | 'api_key'
+  apiKeyName: string | null
+  apiKeyId: string | null
   limit: number
   current: number
   percentage: number
   exceeded: boolean
   alert: boolean
   periodStart: string
+  resetAt: string | null
 }
 
 export interface BudgetResponse {
@@ -104,13 +110,38 @@ export interface NodeInfo {
   modalities: string[]
   tags: string[]
   aliases: Record<string, string>
+  model_prefixes: string[]
   circuit: CircuitBreaker
   modelCircuits: Record<string, CircuitBreaker>
   healthy: boolean
 }
 
+export type ConfigDiagnosticCode =
+  | 'duplicate_model_id'
+  | 'model_id_matches_node_id'
+  | 'alias_conflicts_with_model_id'
+  | 'alias_matches_node_id'
+  | 'duplicate_alias'
+  | 'duplicate_model_prefix'
+  | 'missing_model_pricing'
+  | 'route_references_unknown_node'
+  | 'route_references_unknown_model'
+
+export interface ConfigDiagnostic {
+  severity: 'warning'
+  code: ConfigDiagnosticCode
+  message: string
+  nodes: string[]
+  model?: string
+  alias?: string
+  matchingNodes?: string[]
+  tier?: string
+  target?: string
+}
+
 export interface NodesResponse {
   nodes: NodeInfo[]
+  diagnostics: ConfigDiagnostic[]
 }
 
 // ── Health ──
@@ -176,7 +207,7 @@ export interface ModelPricing {
 export interface ConfigResponse {
   server: { port: number; host: string }
   database: { type: string }
-  auth: { api_keys: { name: string; key: string }[] }
+  auth: { api_keys: { name: string; key: string }[]; managed_in_dashboard?: boolean }
   nodes: {
     id: string
     name: string
@@ -193,6 +224,7 @@ export interface ConfigResponse {
     alert_threshold: number
   }
   models_pricing: Record<string, ModelPricing>
+  diagnostics: ConfigDiagnostic[]
 }
 
 // ── SSE Events ──
@@ -274,6 +306,7 @@ export interface CreateNodeRequest {
   modalities?: string[]
   tags?: string[]
   model_aliases?: Record<string, string>
+  model_prefixes?: string[]
   headers?: Record<string, string>
   auth_type?: 'bearer' | 'x-api-key'
 }
@@ -290,6 +323,7 @@ export interface UpdateNodeRequest {
   modalities?: string[]
   tags?: string[]
   model_aliases?: Record<string, string>
+  model_prefixes?: string[]
   headers?: Record<string, string>
   auth_type?: 'bearer' | 'x-api-key'
 }
@@ -385,13 +419,73 @@ export interface ExperimentAnalyticsResponse {
 export interface BudgetPerKeyResponse {
   rules: BudgetRule[]
   perKeyRules: BudgetRule[]
-  apiKeyName: string
+  apiKeyName: string | null
+  apiKeyId: string | null
+}
+
+export interface BudgetKeyItem {
+  id: string
+  name: string
+  key_prefix: string
+  daily_token_limit: number | null
+  daily_cost_limit: number | null
+  rate_limit_per_minute: number | null
 }
 
 export interface BudgetKeysResponse {
   keys: string[]
+  items: BudgetKeyItem[]
 }
 
 export interface ApiKeysResponse {
   keys: string[]
+  items: GatewayApiKey[]
+}
+
+// ── Gateway API Keys ──
+
+export interface GatewayApiKey {
+  id: string
+  name: string
+  description: string | null
+  key_prefix: string
+  status: 'active' | 'disabled'
+  allow_auto: boolean
+  allow_direct: boolean
+  allowed_nodes: string[]
+  allowed_models: string[]
+  daily_token_limit: number | null
+  daily_cost_limit: number | null
+  rate_limit_per_minute: number | null
+  created_at: string
+  updated_at: string
+  last_used_at: string | null
+  last_used_ip: string | null
+  today: {
+    calls: number
+    cost_usd: number
+    input_tokens: number
+    output_tokens: number
+  }
+}
+
+export interface CreateGatewayApiKeyRequest {
+  name: string
+  description?: string | null
+  allow_auto: boolean
+  allow_direct: boolean
+  allowed_nodes: string[]
+  allowed_models: string[]
+  daily_token_limit?: number | null
+  daily_cost_limit?: number | null
+  rate_limit_per_minute?: number | null
+}
+
+export type UpdateGatewayApiKeyRequest = Partial<CreateGatewayApiKeyRequest> & {
+  status?: 'active' | 'disabled'
+}
+
+export interface GatewayApiKeyMutationResponse extends ActionResponse {
+  item: GatewayApiKey
+  key?: string
 }

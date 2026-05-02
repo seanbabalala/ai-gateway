@@ -13,6 +13,7 @@ import {
 @Index(['session_key'])
 @Index(['experiment_group'])
 @Index(['api_key_name'])
+@Index(['api_key_id'])
 export class CallLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -64,6 +65,9 @@ export class CallLog {
 
   @Column({ type: 'varchar', nullable: true })
   api_key_name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  api_key_id!: string | null;
 
   @Column({ type: 'integer', default: 0 })
   retry_count!: number;

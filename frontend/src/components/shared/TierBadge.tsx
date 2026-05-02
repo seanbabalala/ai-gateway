@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { useTranslation } from 'react-i18next'
 
 interface TierBadgeProps {
   tier: string
@@ -13,11 +14,12 @@ const tierVariantMap: Record<string, 'emerald' | 'blue' | 'purple' | 'pink' | 'z
 }
 
 export function TierBadge({ tier }: TierBadgeProps) {
+  const { t } = useTranslation('common')
   const variant = tierVariantMap[tier] ?? 'zinc'
 
   return (
     <Badge variant={variant}>
-      {tier}
+      {t(`tier.${tier}`, { defaultValue: tier })}
     </Badge>
   )
 }

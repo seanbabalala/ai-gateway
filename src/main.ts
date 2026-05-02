@@ -80,7 +80,7 @@ async function bootstrap() {
 
   await app.listen(port, host);
 
-  logger.log(`AI Gateway running on http://${host}:${port}`);
+  logger.log(`SiftGate running on http://${host}:${port}`);
   logger.log(`Nodes configured: ${config.nodes.map((n) => n.id).join(', ')}`);
 }
 

@@ -6,7 +6,7 @@ const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     <div
       ref={ref}
       className={cn(
-        'glass-card rounded-2xl',
+        'glass-card rounded-lg',
         className
       )}
       {...props}
@@ -20,7 +20,7 @@ const CardStatic = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     <div
       ref={ref}
       className={cn(
-        'glass-card-static rounded-2xl',
+        'glass-card-static rounded-lg',
         className
       )}
       {...props}
@@ -33,7 +33,7 @@ const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('flex flex-col space-y-1.5 p-6 pb-4', className)}
+      className={cn('flex flex-col space-y-1.5 p-5 pb-3.5', className)}
       {...props}
     />
   )
@@ -44,7 +44,7 @@ const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingEleme
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn('text-[13px] font-semibold uppercase tracking-[0.05em] text-[var(--foreground-dim)]', className)}
+      className={cn('text-[14px] font-bold text-[var(--foreground)]', className)}
       {...props}
     />
   )
@@ -53,7 +53,7 @@ CardTitle.displayName = 'CardTitle'
 
 const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+    <div ref={ref} className={cn('p-5 pt-0', className)} {...props} />
   )
 )
 CardContent.displayName = 'CardContent'

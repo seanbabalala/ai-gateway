@@ -1,21 +1,16 @@
 import { useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Pencil, Save, X, Plus, Trash2, GripVertical, FlaskConical } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { ArrowRight, Pencil, Save, X, Plus, Trash2, GripVertical, FlaskConical, GitFork } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Card, CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { SkeletonCard, Skeleton } from '@/components/ui/skeleton'
+import { ErrorState } from '@/components/ui/error-state'
 import { RoutingRecommendation } from '@/components/routing/RoutingRecommendation'
 import { useConfig } from '@/hooks/use-config'
 import { useNodes } from '@/hooks/use-nodes'
@@ -43,6 +38,7 @@ interface EditableDomainPrefs {
 // ── Page ──
 
 export function RoutingPage() {
+  const { t } = useTranslation('routing')
   const { data: config, isLoading: configLoading } = useConfig()
   const { data: nodesData, isLoading: nodesLoading } = useNodes()
   const queryClient = useQueryClient()
@@ -51,7 +47,8 @@ export function RoutingPage() {
   const [editTiers, setEditTiers] = useState<EditableTiers>({})
   const [editScoring, setEditScoring] = useState<EditableScoring>({ simple_max: 0, standard_max: 0, complex_max: 0 })
   const [editDomainPrefs, setEditDomainPrefs] = useState<EditableDomainPrefs>({})
-
+  const [addDomainOpen, setAddDomainOpen] = useState(false)
+  const [addDomainName, setAddDomainName] = useState('')
   const saveMutation = useMutation({
     mutationFn: (data: { tiers: EditableTiers; scoring: EditableScoring; domain_preferences: EditableDomainPrefs }) =>
       apiPut<ActionResponse>('/api/dashboard/routing', data),
@@ -85,8 +82,15 @@ export function RoutingPage() {
 
   if (configLoading || nodesLoading || !config) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="animate-shimmer h-6 w-48 rounded-lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('routing.title')} description={t('routing.description')} />
+        <div className="glass-card-static rounded-lg p-6">
+          <Skeleton className="h-4 w-40 mb-4" />
+          <Skeleton className="h-14 w-full rounded-lg" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} className="h-64" />)}
+        </div>
       </div>
     )
   }
@@ -117,6 +121,10 @@ export function RoutingPage() {
   const range = maxScore - minScore
   function scoreToPercent(score: number): number {
     return ((score - minScore) / range) * 100
+  }
+
+  function scoringFieldLabel(field: keyof EditableScoring): string {
+    return t(`scoring.fields.${field}`)
   }
 
   // ── Edit helpers ──
@@ -253,10 +261,17 @@ export function RoutingPage() {
   }
 
   function addDomainPref() {
-    const name = prompt('Domain name (e.g. frontend, backend, math):')
-    if (name && name.trim() && !(name.trim() in editDomainPrefs)) {
-      setEditDomainPrefs((prev) => ({ ...prev, [name.trim()]: [allNodes[0]?.id ?? ''] }))
+    setAddDomainName('')
+    setAddDomainOpen(true)
+  }
+
+  function confirmAddDomainPref() {
+    const name = addDomainName.trim()
+    if (name && !(name in editDomainPrefs)) {
+      setEditDomainPrefs((prev) => ({ ...prev, [name]: [allNodes[0]?.id ?? ''] }))
     }
+    setAddDomainOpen(false)
+    setAddDomainName('')
   }
 
   function removeDomainPref(domain: string) {
@@ -308,13 +323,13 @@ export function RoutingPage() {
           className="w-28"
           options={nodeOptions}
           value={nodeId}
-          onChange={(e) => onNodeChange(e.target.value)}
+          onChange={(v) => onNodeChange(v)}
         />
         <Select
           className="flex-1 font-mono text-[11px]"
           options={modelOptionsForNode(nodeId)}
           value={model}
-          onChange={(e) => onModelChange(e.target.value)}
+          onChange={(v) => onModelChange(v)}
         />
       </div>
     )
@@ -323,40 +338,42 @@ export function RoutingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Routing"
-        description="Tier-based routing configuration and scoring thresholds"
+        title={t('routing.title')}
+        description={t('routing.description')}
+        icon={GitFork}
       >
         {!editing ? (
           <Button variant="outline" size="sm" onClick={startEditing}>
             <Pencil className="h-3.5 w-3.5" />
-            Edit
+            {t('actions.edit')}
           </Button>
         ) : (
           <div className="flex items-center gap-2">
             {saveMutation.isError && (
               <span className="text-[12px] text-red-500">
-                {(saveMutation.error as Error)?.message || 'Save failed'}
+                {(saveMutation.error as Error)?.message || t('actions.saveFailed')}
               </span>
             )}
             <Button variant="outline" size="sm" onClick={cancelEditing}>
               <X className="h-3.5 w-3.5" />
-              Cancel
+              {t('actions.cancel')}
             </Button>
             <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
               <Save className="h-3.5 w-3.5" />
-              {saveMutation.isPending ? 'Saving...' : 'Save'}
+              {saveMutation.isPending ? t('actions.saving') : t('actions.save')}
             </Button>
           </div>
         )}
       </PageHeader>
 
       {/* Scoring Thresholds */}
-      <Card className="animate-fade-up">
-        <CardHeader>
-          <CardTitle>Scoring Thresholds</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="relative h-14 rounded-2xl bg-[var(--inset-bg)] overflow-hidden">
+      <div className="animate-fade-up rounded-lg bg-[var(--glass-bg)] px-5 py-4 shadow-[var(--card-shadow)]">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[14px] font-bold text-[var(--foreground)]">{t('scoring.title')}</h3>
+          <span className="font-mono text-[10px] text-[var(--foreground-dim)]">{t('scoring.range')}</span>
+        </div>
+        <div>
+          <div className="relative h-12 overflow-hidden rounded-md bg-[var(--background-tertiary)]">
             {thresholds.map((t, i) => {
               const prevMax = i === 0 ? minScore : thresholds[i - 1].max
               const left = scoreToPercent(prevMax)
@@ -364,16 +381,19 @@ export function RoutingPage() {
               return (
                 <div
                   key={t.label}
-                  className="absolute top-0 h-full flex items-center justify-center transition-all duration-500"
+                  className="absolute top-0 flex h-full items-center justify-center transition-all duration-500"
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,
-                    backgroundColor: colorWithOpacity(t.color, '18'),
-                    borderRight: i < thresholds.length - 1 ? `2px solid ${colorWithOpacity(t.color, '40')}` : 'none',
+                    backgroundColor: colorWithOpacity(t.color, i === 0 ? '28' : '18'),
                   }}
                 >
-                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: t.color }}>
-                    {t.label}
+                  <span
+                    className="block max-w-full truncate px-1 text-[8px] font-bold uppercase tracking-[0.04em] sm:text-[10px] sm:tracking-[0.12em]"
+                    style={{ color: t.color }}
+                  >
+                    <span className="sm:hidden">{t.label.slice(0, 3)}</span>
+                    <span className="hidden sm:inline">{t.label}</span>
                   </span>
                 </div>
               )
@@ -384,7 +404,7 @@ export function RoutingPage() {
             <div className="mt-3 grid grid-cols-3 gap-3">
               {(['simple_max', 'standard_max', 'complex_max'] as const).map((field) => (
                 <div key={field} className="flex items-center gap-2">
-                  <span className="text-[11px] text-[var(--foreground-dim)] w-24 shrink-0">{field.replace('_', ' ')}:</span>
+                  <span className="text-[11px] text-[var(--foreground-dim)] w-24 shrink-0">{scoringFieldLabel(field)}:</span>
                   <Input
                     type="number"
                     step="0.01"
@@ -408,344 +428,365 @@ export function RoutingPage() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Routing Recommendation */}
       {!editing && nodesData && (
         <RoutingRecommendation nodes={nodesData.nodes} />
       )}
 
-      {/* Tier Routing Cards */}
-      <div className="stagger-children grid grid-cols-2 gap-5">
-        {tierNames.map((tierName) => {
-          const tier = displayTiers[tierName]
-          if (!tier) return null
+      {/* Tier Routing Flow */}
+      <div className="animate-fade-up rounded-lg bg-[var(--glass-bg)] p-3 shadow-[var(--card-shadow)]">
+        <div className="mb-2 hidden grid-cols-[130px_1fr_240px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
+          <span>{t('table.tier')}</span>
+          <span>{t('table.routeLane')}</span>
+          <span>{t('table.trafficMode')}</span>
+        </div>
+        <div className="space-y-2">
+          {tierNames.map((tierName) => {
+            const tier = displayTiers[tierName]
+            if (!tier) return null
+            const tierColor = TIER_CHART_COLORS[tierName] ?? 'var(--accent)'
+            const splitTotal = getSplitWeightTotal(tierName)
 
-          return (
-            <CardStatic key={tierName} className="animate-fade-up p-5">
-              <div className="mb-4 flex items-center gap-2.5">
-                <TierBadge tier={tierName} />
-                <span className="text-[11px] font-medium text-[var(--foreground-dim)]">tier</span>
-              </div>
-
-              {/* Primary */}
-              <div className="mb-3">
-                <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                  Primary
-                </div>
-                {editing ? (
-                  <div className="rounded-xl border border-[var(--border)] px-3 py-2.5">
-                    {renderNodeModelSelector(
-                      tier.primary.node,
-                      tier.primary.model,
-                      (v) => updateTierPrimary(tierName, 'node', v),
-                      (v) => updateTierPrimary(tierName, 'model', v),
-                    )}
+            return (
+              <div
+                key={tierName}
+                className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[130px_1fr_240px] lg:items-start"
+              >
+                <div className="space-y-2">
+                  <TierBadge tier={tierName} />
+                  <div className="h-1.5 w-20 overflow-hidden rounded-full bg-[var(--progress-track)]">
+                    <div className="h-full rounded-full" style={{ width: '72%', background: tierColor }} />
                   </div>
-                ) : (
-                  <div
-                    className="flex items-center gap-2.5 rounded-xl border px-4 py-3"
-                    style={{
-                      borderColor: colorWithOpacity(getNodeColor(tier.primary.node), '25'),
-                      backgroundColor: colorWithOpacity(getNodeColor(tier.primary.node), '06'),
-                    }}
-                  >
-                    <div
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{
-                        backgroundColor: getNodeColor(tier.primary.node),
-                        boxShadow: `0 0 8px ${colorWithOpacity(getNodeColor(tier.primary.node), '40')}`,
-                      }}
-                    />
-                    <span className="font-semibold text-[var(--foreground)]">{tier.primary.node}</span>
-                    <span className="font-mono text-[11px] text-[var(--foreground-dim)]">{tier.primary.model}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Fallbacks */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                    Fallbacks
-                  </span>
-                  {editing && (
-                    <button
-                      onClick={() => addFallback(tierName)}
-                      className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-[var(--accent)] hover:bg-[var(--accent-muted)] transition-colors cursor-pointer"
-                    >
-                      <Plus className="h-3 w-3" /> Add
-                    </button>
-                  )}
                 </div>
-                <div className="space-y-1.5">
-                  {tier.fallbacks.map((fb, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      {editing ? (
-                        <>
-                          <div className="flex flex-col gap-0.5">
+
+                <div className="min-w-0">
+                  {editing ? (
+                    <div className="space-y-3">
+                      <div className="rounded-lg bg-[var(--background-secondary)] px-3 py-3">
+                        <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
+                          {t('route.primary')}
+                        </div>
+                        {renderNodeModelSelector(
+                          tier.primary.node,
+                          tier.primary.model,
+                          (v) => updateTierPrimary(tierName, 'node', v),
+                          (v) => updateTierPrimary(tierName, 'model', v),
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
+                            {t('route.fallbackChain')}
+                          </span>
+                          <button
+                            onClick={() => addFallback(tierName)}
+                            className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-muted)]"
+                          >
+                            <Plus className="h-3 w-3" /> {t('route.addFallback')}
+                          </button>
+                        </div>
+                        {tier.fallbacks.map((fb, i) => (
+                          <div key={i} className="flex items-center gap-2 rounded-lg bg-[var(--inset-bg)] px-3 py-2">
                             <button
                               onClick={() => moveFallback(tierName, i, 'up')}
                               disabled={i === 0}
-                              className="text-[var(--foreground-dim)] hover:text-[var(--foreground)] disabled:opacity-20 cursor-pointer"
+                              className="text-[var(--foreground-dim)] transition-colors hover:text-[var(--foreground)] disabled:opacity-20"
+                              title={t('route.moveFallback')}
                             >
-                              <GripVertical className="h-3 w-3" />
+                              <GripVertical className="h-3.5 w-3.5" />
                             </button>
-                          </div>
-                          <div className="flex-1 rounded-xl border border-[var(--border)] px-3 py-2">
                             {renderNodeModelSelector(
                               fb.node,
                               fb.model,
                               (v) => updateFallback(tierName, i, 'node', v),
                               (v) => updateFallback(tierName, i, 'model', v),
                             )}
-                          </div>
-                          <button
-                            onClick={() => removeFallback(tierName, i)}
-                            className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <ArrowRight className="h-3 w-3 text-[var(--divider-dim)]" />
-                          <div className="flex items-center gap-2 rounded-xl bg-[var(--inset-bg)] px-4 py-2.5 flex-1">
-                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: getNodeColor(fb.node) }} />
-                            <span className="text-sm text-[var(--foreground-muted)]">{fb.node}</span>
-                            <span className="font-mono text-[11px] text-[var(--foreground-dim)]">{fb.model}</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                  {!editing && tier.fallbacks.length === 0 && (
-                    <span className="text-[11px] text-[var(--foreground-dim)] italic">No fallbacks</span>
-                  )}
-                </div>
-              </div>
-
-              {/* A/B Split */}
-              <div className="mt-4 border-t border-[var(--border)] pt-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <FlaskConical className="h-3.5 w-3.5 text-purple-500" />
-                    <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--foreground-dim)]">
-                      A/B Split
-                    </span>
-                  </div>
-                  {editing && (
-                    <button
-                      onClick={() => toggleSplit(tierName, !tier.split)}
-                      className={`rounded-lg px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
-                        tier.split
-                          ? 'text-red-500 hover:bg-red-500/10'
-                          : 'text-purple-500 hover:bg-purple-500/10'
-                      }`}
-                    >
-                      {tier.split ? 'Disable' : 'Enable'}
-                    </button>
-                  )}
-                </div>
-
-                {tier.split ? (
-                  <div className="space-y-2">
-                    {/* Weight progress bar (read-only visualization) */}
-                    <div className="flex h-5 rounded-full overflow-hidden">
-                      {tier.split.map((v, i) => (
-                        <div
-                          key={i}
-                          className="h-full flex items-center justify-center text-[8px] font-bold text-white"
-                          style={{
-                            width: `${v.weight}%`,
-                            backgroundColor: getNodeColor(v.node),
-                            minWidth: v.weight > 0 ? '20px' : '0',
-                          }}
-                        >
-                          {v.weight > 10 ? `${v.weight}%` : ''}
-                        </div>
-                      ))}
-                    </div>
-
-                    {editing ? (
-                      <>
-                        {tier.split.map((v, i) => (
-                          <div key={i} className="flex items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-2">
-                            <div className="flex items-center gap-2 flex-1">
-                              <Select
-                                className="w-24"
-                                options={nodeOptions}
-                                value={v.node}
-                                onChange={(e) => updateSplitVariant(tierName, i, 'node', e.target.value)}
-                              />
-                              <Select
-                                className="flex-1 font-mono text-[11px]"
-                                options={modelOptionsForNode(v.node)}
-                                value={v.model}
-                                onChange={(e) => updateSplitVariant(tierName, i, 'model', e.target.value)}
-                              />
-                            </div>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              className="w-16 text-center font-mono text-[11px]"
-                              value={v.weight}
-                              onChange={(e) => updateSplitVariant(tierName, i, 'weight', parseInt(e.target.value) || 0)}
-                            />
-                            <span className="text-[10px] text-[var(--foreground-dim)]">%</span>
-                            <Input
-                              className="w-24 text-[11px]"
-                              placeholder="name"
-                              value={v.name || ''}
-                              onChange={(e) => updateSplitVariant(tierName, i, 'name', e.target.value)}
-                            />
                             <button
-                              onClick={() => removeSplitVariant(tierName, i)}
-                              className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              onClick={() => removeFallback(tierName, i)}
+                              className="rounded-lg p-1.5 text-[var(--foreground-dim)] transition-colors hover:bg-red-500/10 hover:text-red-500"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         ))}
-                        <div className="flex items-center justify-between">
-                          <button
-                            onClick={() => addSplitVariant(tierName)}
-                            className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-purple-500 hover:bg-purple-500/10 transition-colors cursor-pointer"
-                          >
-                            <Plus className="h-3 w-3" /> Add Variant
-                          </button>
-                          {getSplitWeightTotal(tierName) !== 100 && (
-                            <span className="text-[10px] font-medium text-red-500">
-                              Weights sum to {getSplitWeightTotal(tierName)} (must be 100)
-                            </span>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-1">
-                        {tier.split.map((v, i) => (
-                          <div key={i} className="flex items-center gap-2 text-[11px]">
-                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: getNodeColor(v.node) }} />
-                            <span className="text-[var(--foreground-muted)]">{v.name || `${v.node}:${v.model}`}</span>
-                            <span className="font-mono text-[var(--foreground-dim)]">{v.node}/{v.model}</span>
-                            <Badge variant="default" className="text-[9px] ml-auto">{v.weight}%</Badge>
-                          </div>
-                        ))}
                       </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div
+                        className="flex min-w-[210px] items-center gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2.5"
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: getNodeColor(tier.primary.node) }} />
+                        <span className="font-bold text-[var(--foreground)]">{tier.primary.node}</span>
+                        <span className="truncate font-mono text-[11px] text-[var(--foreground-dim)]">{tier.primary.model}</span>
+                      </div>
+                      {tier.fallbacks.map((fb, i) => (
+                        <div key={`${fb.node}-${fb.model}-${i}`} className="flex items-center gap-2">
+                          <ArrowRight className="h-3.5 w-3.5 text-[var(--divider-dim)]" />
+                          <div className="flex min-w-[180px] items-center gap-2 rounded-lg bg-[var(--inset-bg)] px-3 py-2">
+                            <span className="h-2 w-2 rounded-full" style={{ background: getNodeColor(fb.node) }} />
+                            <span className="font-semibold text-[var(--foreground-muted)]">{fb.node}</span>
+                            <span className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">{fb.model}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {tier.fallbacks.length === 0 && (
+                        <span className="rounded-lg bg-[var(--inset-bg)] px-3 py-2 text-[11px] font-medium text-[var(--foreground-dim)]">
+                          {t('route.noFallbackChain')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg bg-[var(--background-secondary)] px-3 py-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
+                      <FlaskConical className="h-3.5 w-3.5" />
+                      {t('split.title')}
+                    </div>
+                    {editing && (
+                      <button
+                        onClick={() => toggleSplit(tierName, !tier.split)}
+                        className={`rounded-lg px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                          tier.split
+                            ? 'text-red-500 hover:bg-red-500/10'
+                            : 'text-[var(--accent)] hover:bg-[var(--accent-muted)]'
+                        }`}
+                      >
+                        {tier.split ? t('split.disable') : t('split.enable')}
+                      </button>
                     )}
                   </div>
-                ) : (
-                  <span className="text-[11px] text-[var(--foreground-dim)] italic">
-                    Not configured — using standard primary + fallback routing
-                  </span>
-                )}
-              </div>
-            </CardStatic>
-          )
-        })}
-      </div>
 
-      {/* Domain Preferences */}
-      <CardStatic className="animate-fade-up" style={{ animationDelay: '300ms' }}>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Domain Preferences</CardTitle>
-            {editing && (
-              <button
-                onClick={addDomainPref}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent)] hover:bg-[var(--accent-muted)] transition-colors cursor-pointer"
-              >
-                <Plus className="h-3 w-3" /> Add Domain
-              </button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {Object.keys(displayDomainPrefs).length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Preferred Nodes (in order)</TableHead>
-                  {editing && <TableHead className="w-10" />}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.entries(displayDomainPrefs).map(([domain, nodes]) => (
-                  <TableRow key={domain}>
-                    <TableCell>
-                      <Badge variant="purple">{domain}</Badge>
-                    </TableCell>
-                    <TableCell>
+                  {tier.split ? (
+                    <div className="space-y-2">
+                      <div className="flex h-2 overflow-hidden rounded-full bg-[var(--progress-track)]">
+                        {tier.split.map((variant, i) => (
+                          <div
+                            key={`${variant.node}-${i}`}
+                            style={{
+                              width: `${variant.weight}%`,
+                              background: getNodeColor(variant.node),
+                            }}
+                          />
+                        ))}
+                      </div>
                       {editing ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {nodes.map((nodeId, i) => (
-                            <div key={i} className="flex items-center gap-1">
-                              {i > 0 && <ArrowRight className="h-3 w-3 text-[var(--divider-dim)]" />}
+                        <>
+                          {tier.split.map((variant, i) => (
+                            <div key={i} className="space-y-2 rounded-md bg-[var(--background-tertiary)] px-2 py-2">
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  className="w-24"
+                                  options={nodeOptions}
+                                  value={variant.node}
+                                  onChange={(val) => updateSplitVariant(tierName, i, 'node', val)}
+                                />
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  className="w-16 text-center font-mono text-[11px]"
+                                  value={variant.weight}
+                                  onChange={(e) => updateSplitVariant(tierName, i, 'weight', parseInt(e.target.value) || 0)}
+                                />
+                                <span className="text-[10px] text-[var(--foreground-dim)]">%</span>
+                                <button
+                                  onClick={() => removeSplitVariant(tierName, i)}
+                                  className="ml-auto rounded-md p-1.5 text-[var(--foreground-dim)] transition-colors hover:bg-red-500/10 hover:text-red-500"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                               <Select
-                                className="w-24 h-7 text-[11px]"
-                                options={nodeOptions}
-                                value={nodeId}
-                                onChange={(e) => updateDomainPrefNode(domain, i, e.target.value)}
+                                className="w-full font-mono text-[11px]"
+                                options={modelOptionsForNode(variant.node)}
+                                value={variant.model}
+                                onChange={(val) => updateSplitVariant(tierName, i, 'model', val)}
                               />
-                              <button
-                                onClick={() => removeDomainPrefNode(domain, i)}
-                                className="text-[var(--foreground-dim)] hover:text-red-500 cursor-pointer"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
                             </div>
                           ))}
-                          <button
-                            onClick={() => addDomainPrefNode(domain)}
-                            className="rounded-lg p-1 text-[var(--accent)] hover:bg-[var(--accent-muted)] cursor-pointer"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              onClick={() => addSplitVariant(tierName)}
+                              className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-muted)]"
+                            >
+                              <Plus className="h-3 w-3" /> {t('split.variant')}
+                            </button>
+                            {splitTotal !== 100 && (
+                              <span className="text-[10px] font-semibold text-red-500">
+                                {splitTotal}%
+                              </span>
+                            )}
+                          </div>
+                        </>
                       ) : (
-                        <div className="flex items-center gap-1.5">
-                          {nodes.map((nodeId, i) => (
-                            <span key={nodeId} className="flex items-center gap-1">
-                              {i > 0 && <ArrowRight className="h-3 w-3 text-[var(--divider-dim)]" />}
-                              <Badge
-                                variant="default"
-                                className="text-[10px]"
-                                style={{
-                                  backgroundColor: colorWithOpacity(getNodeColor(nodeId), '15'),
-                                  color: getNodeColor(nodeId),
-                                }}
-                              >
-                                {nodeId}
-                              </Badge>
-                            </span>
+                        <div className="space-y-1.5">
+                          {tier.split.map((variant, i) => (
+                            <div key={i} className="flex items-center gap-2 text-[11px]">
+                              <span className="h-2 w-2 rounded-full" style={{ background: getNodeColor(variant.node) }} />
+                              <span className="truncate font-semibold text-[var(--foreground-muted)]">
+                                {variant.name || variant.node}
+                              </span>
+                              <span className="ml-auto font-mono font-bold text-[var(--foreground)]">{variant.weight}%</span>
+                            </div>
                           ))}
                         </div>
                       )}
-                    </TableCell>
-                    {editing && (
-                      <TableCell>
-                        <button
-                          onClick={() => removeDomainPref(domain)}
-                          className="rounded-lg p-1.5 text-[var(--foreground-dim)] hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-[12px] text-[var(--foreground-dim)]">
-              {editing ? 'Click "Add Domain" to create a domain preference.' : 'No domain preferences configured.'}
-            </p>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] font-medium text-[var(--foreground-dim)]">
+                      {t('split.primaryFallback')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Domain Preferences */}
+      <div className="animate-fade-up rounded-lg bg-[var(--glass-bg)] p-3 shadow-[var(--card-shadow)]" style={{ animationDelay: '300ms' }}>
+        <div className="mb-2 flex items-center justify-between gap-3 px-2 py-2">
+          <h3 className="text-[14px] font-bold text-[var(--foreground)]">{t('domain.title')}</h3>
+          {editing && (
+            <button
+              onClick={addDomainPref}
+              className="flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-muted)]"
+            >
+              <Plus className="h-3 w-3" /> {t('domain.addDomain')}
+            </button>
           )}
-        </CardContent>
-      </CardStatic>
+        </div>
+        {Object.keys(displayDomainPrefs).length > 0 ? (
+          <div className="space-y-2">
+            <div
+              className={`hidden gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid ${
+                editing ? 'lg:grid-cols-[160px_1fr_44px]' : 'lg:grid-cols-[160px_1fr]'
+              }`}
+            >
+              <span>{t('domain.domain')}</span>
+              <span>{t('domain.preferredLane')}</span>
+              {editing && <span />}
+            </div>
+            {Object.entries(displayDomainPrefs).map(([domain, nodes]) => (
+              <div
+                key={domain}
+                className={`matrix-row grid gap-3 rounded-lg px-4 py-3 lg:items-center ${
+                  editing ? 'lg:grid-cols-[160px_1fr_44px]' : 'lg:grid-cols-[160px_1fr]'
+                }`}
+              >
+                <div>
+                  <Badge variant="gold" className="text-[10px]">{domain}</Badge>
+                </div>
+                <div>
+                  {editing ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {nodes.map((nodeId, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          {i > 0 && <ArrowRight className="h-3 w-3 text-[var(--divider-dim)]" />}
+                          <Select
+                            className="h-7 w-24 text-[11px]"
+                            options={nodeOptions}
+                            value={nodeId}
+                            onChange={(val) => updateDomainPrefNode(domain, i, val)}
+                          />
+                          <button
+                            onClick={() => removeDomainPrefNode(domain, i)}
+                            className="cursor-pointer text-[var(--foreground-dim)] transition-colors hover:text-red-500"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => addDomainPrefNode(domain)}
+                        className="cursor-pointer rounded-lg p-1 text-[var(--accent)] transition-colors hover:bg-[var(--accent-muted)]"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {nodes.map((nodeId, i) => (
+                        <span key={`${nodeId}-${i}`} className="flex items-center gap-1">
+                          {i > 0 && <ArrowRight className="h-3 w-3 text-[var(--divider-dim)]" />}
+                          <Badge
+                            variant="default"
+                            className="text-[10px]"
+                            style={{
+                              backgroundColor: colorWithOpacity(getNodeColor(nodeId), '15'),
+                              color: getNodeColor(nodeId),
+                            }}
+                          >
+                            {nodeId}
+                          </Badge>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {editing && (
+                  <button
+                    onClick={() => removeDomainPref(domain)}
+                    className="w-fit cursor-pointer rounded-lg p-1.5 text-[var(--foreground-dim)] transition-colors hover:bg-red-500/10 hover:text-red-500 lg:ml-auto"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="px-2 py-3 text-[12px] text-[var(--foreground-dim)]">
+            {editing ? t('domain.emptyEditing') : t('domain.empty')}
+          </p>
+        )}
+      </div>
+
+      {/* Add Domain Dialog */}
+      <Dialog open={addDomainOpen} onOpenChange={setAddDomainOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('domain.dialogTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--foreground-dim)]">
+              {t('domain.nameLabel')}
+            </label>
+            <Input
+              value={addDomainName}
+              onChange={(e) => setAddDomainName(e.target.value)}
+              placeholder={t('domain.placeholder')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  confirmAddDomainPref()
+                }
+              }}
+            />
+            {addDomainName.trim() && addDomainName.trim() in editDomainPrefs && (
+              <p className="text-[11px] text-red-500">{t('domain.exists')}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDomainOpen(false)}>
+              {t('actions.cancel')}
+            </Button>
+            <Button
+              onClick={confirmAddDomainPref}
+              disabled={!addDomainName.trim() || addDomainName.trim() in editDomainPrefs}
+            >
+              {t('domain.addDomain')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

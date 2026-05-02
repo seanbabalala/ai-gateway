@@ -28,6 +28,14 @@ function mockBudgetRepo() {
           results = results.filter((r) => r.api_key_name === target);
         }
       }
+      if ('api_key_id' in where) {
+        const target = where.api_key_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          results = results.filter((r) => r.api_key_id === null || r.api_key_id === undefined);
+        } else {
+          results = results.filter((r) => r.api_key_id === target);
+        }
+      }
       return results;
     }),
     findOneBy: jest.fn(async (where: any) => {
@@ -58,7 +66,7 @@ function mockBudgetRepo() {
           return uniqueKeys.map((k) => ({ api_key_name: k }));
         }),
         getMany: jest.fn(async () => {
-          return store.filter((r) => r.api_key_name && r.is_active);
+          return store.filter((r) => r.api_key_name && !r.api_key_id && r.is_active);
         }),
       };
       return qb;
@@ -98,6 +106,7 @@ describe('BudgetService', () => {
       expect(repo._store.map((r: any) => r.type)).toContain('daily_cost');
       // All global rules should have null api_key_name
       expect(repo._store.every((r: any) => r.api_key_name === null)).toBe(true);
+      expect(repo._store.every((r: any) => r.api_key_id === null)).toBe(true);
     });
 
     it('should not create rules if they already exist', async () => {
@@ -278,6 +287,48 @@ describe('BudgetService', () => {
         expect(err.message).toContain('key "intern"');
       }
     });
+
+    it('should use api_key_id as the generated-key budget identity', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_cost',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_cost',
+        limit_value: 5,
+        alert_threshold: 0.8,
+        current_value: 6,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'renamed-client',
+        api_key_id: 'key_123',
+      });
+      repo._store.push({
+        id: 3,
+        type: 'daily_cost',
+        limit_value: 5,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'renamed-client',
+        api_key_id: null,
+      });
+
+      await expect(svc.check('renamed-client', 'key_123')).rejects.toMatchObject({
+        apiKeyId: 'key_123',
+        apiKeyName: 'renamed-client',
+      });
+    });
   });
 
   // ── record ───────────────────────────────────────────────
@@ -369,6 +420,49 @@ describe('BudgetService', () => {
       expect(repo._store[0].current_value).toBe(500); // global updated
       expect(repo._store[1].current_value).toBe(500); // per-key updated
     });
+
+    it('should update generated-key rules by api_key_id, not mutable name', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 10_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'client',
+        api_key_id: 'key_123',
+      });
+      repo._store.push({
+        id: 3,
+        type: 'daily_tokens',
+        limit_value: 10_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'client',
+        api_key_id: null,
+      });
+
+      await svc.record(500, 0.01, 'client', 'key_123');
+
+      expect(repo._store.find((r: any) => r.id === 1).current_value).toBe(500);
+      expect(repo._store.find((r: any) => r.id === 2).current_value).toBe(500);
+      expect(repo._store.find((r: any) => r.id === 3).current_value).toBe(0);
+    });
   });
 
   // ── Daily reset ──────────────────────────────────────────
@@ -454,6 +548,31 @@ describe('BudgetService', () => {
       expect(status[0].current).toBe(3);
     });
 
+    it('should return generated-key status by api_key_id with reset metadata', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 7,
+        type: 'daily_tokens',
+        limit_value: 10_000,
+        alert_threshold: 0.8,
+        current_value: 2500,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'production',
+        api_key_id: 'key_abc',
+      });
+
+      const status = await svc.getStatus(null, 'key_abc');
+      expect(status).toHaveLength(1);
+      expect(status[0]).toMatchObject({
+        id: 7,
+        scope: 'api_key',
+        apiKeyName: 'production',
+        apiKeyId: 'key_abc',
+      });
+      expect(status[0].resetAt).toBeInstanceOf(Date);
+    });
+
     it('should mark isAlert when over alert threshold', async () => {
       const { svc, repo } = makeService();
       repo._store.push({
@@ -533,6 +652,27 @@ describe('BudgetService', () => {
     });
   });
 
+  describe('orphan cleanup', () => {
+    it('should not deactivate DB-managed generated-key rules during YAML cleanup', async () => {
+      const { svc, repo } = makeService({ api_keys: [] });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 1000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'generated',
+        api_key_id: 'key_123',
+      });
+
+      await svc.onModuleInit();
+
+      expect(repo._store.find((r: any) => r.id === 1).is_active).toBe(true);
+    });
+  });
+
   // ── resetRule ────────────────────────────────────────────
 
   describe('resetRule', () => {
@@ -568,12 +708,28 @@ describe('BudgetService', () => {
       const err = new BudgetExceededError('daily_tokens', 100000, 100000);
       expect(err.message).toContain('global');
       expect(err.apiKeyName).toBeUndefined();
+      expect(err.toDetails()).toMatchObject({
+        scope: 'global',
+        api_key_id: null,
+        api_key_name: null,
+        budget_type: 'daily_tokens',
+      });
     });
 
     it('should format per-key scope correctly', () => {
-      const err = new BudgetExceededError('daily_cost', 6, 5, 'intern');
+      const periodStart = new Date('2026-04-29T00:00:00.000Z');
+      const err = new BudgetExceededError('daily_cost', 6, 5, 'intern', 'key_123', periodStart);
       expect(err.message).toContain('key "intern"');
       expect(err.apiKeyName).toBe('intern');
+      expect(err.toDetails()).toMatchObject({
+        scope: 'api_key',
+        api_key_id: 'key_123',
+        api_key_name: 'intern',
+        budget_type: 'daily_cost',
+        current: 6,
+        limit: 5,
+        reset_at: expect.any(String),
+      });
     });
   });
 });

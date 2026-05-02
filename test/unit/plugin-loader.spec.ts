@@ -241,4 +241,18 @@ describe('PluginLoaderService', () => {
 
     await expect(loader.onModuleInit()).rejects.toThrow('Cannot find module');
   });
+
+  it('should resolve source plugin paths to compiled runtime files in production mode', () => {
+    const { loader } = makeLoader();
+    jest.spyOn(loader as any, 'isCompiledRuntime').mockReturnValue(true);
+
+    const compiledIndex = path.resolve(
+      process.cwd(),
+      'dist-runtime-plugins/plugins/pii-filter/index.js',
+    );
+    existsSyncSpy.mockImplementation((p: unknown) => String(p) === compiledIndex);
+
+    const resolved = (loader as any).resolvePluginPath('plugins/pii-filter');
+    expect(resolved).toBe(compiledIndex);
+  });
 });

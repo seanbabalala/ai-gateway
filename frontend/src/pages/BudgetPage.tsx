@@ -1,9 +1,13 @@
-import { useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { RotateCcw, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card, CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { SkeletonCard, SkeletonTable } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
 import {
   Table,
   TableHeader,
@@ -12,7 +16,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
-import { useBudget, useBudgetKeys } from '@/hooks/use-budget'
+import { useBudget, useBudgetKeys, type BudgetScope } from '@/hooks/use-budget'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useConfig } from '@/hooks/use-config'
 import { useResetBudget } from '@/hooks/use-mutations'
@@ -97,9 +101,9 @@ function RingGauge({
           textAnchor="middle"
           fill={gaugeText}
           fontSize="26"
-          fontFamily="Outfit, sans-serif"
+          fontFamily="Plus Jakarta Sans, sans-serif"
           fontWeight="700"
-          letterSpacing="-0.02em"
+          letterSpacing="0"
         >
           {formatPercent(percentage)}
         </text>
@@ -109,7 +113,7 @@ function RingGauge({
           textAnchor="middle"
           fill={gaugeSubtext}
           fontSize="10"
-          fontFamily="Space Mono, monospace"
+          fontFamily="IBM Plex Mono, monospace"
         >
           {format(value)} / {format(max)}
         </text>
@@ -133,13 +137,22 @@ function progressGlow(pct: number): string {
   return 'shadow-[0_0_12px_rgba(45,134,89,0.3)]'
 }
 
-function BudgetRulesSection({ rules, label, resetBudget }: { rules: BudgetRule[], label: string, resetBudget: any }) {
+function BudgetRulesSection({
+  rules,
+  label,
+  resetBudget,
+}: {
+  rules: BudgetRule[]
+  label: string
+  resetBudget: ReturnType<typeof useResetBudget>
+}) {
+  const { t } = useTranslation('budget')
   return (
     <div className="space-y-4">
       {rules.map((rule) => (
         <div
-          key={`${label}-${rule.type}`}
-          className="rounded-xl bg-[var(--inset-bg)] p-4"
+          key={`${label}-${rule.id}`}
+          className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4"
         >
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-2">
@@ -153,23 +166,23 @@ function BudgetRulesSection({ rules, label, resetBudget }: { rules: BudgetRule[]
               )}
               {rule.exceeded && (
                 <span className="rounded-lg bg-red-500/10 px-2 py-0.5 text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">
-                  Exceeded
+                  {t('rules.exceeded')}
                 </span>
               )}
               {rule.alert && !rule.exceeded && (
                 <span className="rounded-lg bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                  Warning
+                  {t('rules.warning')}
                 </span>
               )}
             </div>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => resetBudget.mutate(rule.type)}
-              disabled={resetBudget.isPending}
+              onClick={() => resetBudget.mutate(rule.id)}
+              disabled={resetBudget.isPending || !rule.id}
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              Reset
+              {t('actions.reset')}
             </Button>
           </div>
 
@@ -199,7 +212,7 @@ function BudgetRulesSection({ rules, label, resetBudget }: { rules: BudgetRule[]
           </div>
 
           <div className="mt-1.5 text-right font-mono text-[10px] text-[var(--foreground-dim)]">
-            {formatPercent(rule.percentage)} used
+            {t('rules.used', { value: formatPercent(rule.percentage) })}
           </div>
         </div>
       ))}
@@ -208,33 +221,68 @@ function BudgetRulesSection({ rules, label, resetBudget }: { rules: BudgetRule[]
 }
 
 export function BudgetPage() {
+  const { t } = useTranslation('budget')
   const [selectedKey, setSelectedKey] = useState('')
-  const { data: budgetData, isLoading: budgetLoading } = useBudget(selectedKey || undefined)
   const { data: budgetKeysData } = useBudgetKeys()
   const { data: apiKeysData } = useApiKeys()
+  const selectedScope = useMemo<BudgetScope | undefined>(() => {
+    if (!selectedKey) return undefined
+    if (selectedKey.startsWith('id:')) return { id: selectedKey.slice(3) }
+    if (selectedKey.startsWith('name:')) return { name: selectedKey.slice(5) }
+    return { name: selectedKey }
+  }, [selectedKey])
+  const { data: budgetData, isLoading: budgetLoading, isError, error, refetch } = useBudget(selectedScope)
   const { data: config, isLoading: configLoading } = useConfig()
   const resetBudget = useResetBudget()
   const colors = useThemeColors()
 
-  // Build key selector options from both budget keys and API keys
-  const allKeys = new Set<string>([
-    ...(budgetKeysData?.keys || []),
-    ...(apiKeysData?.keys || []),
-  ])
-  const keyOptions = [
-    { value: '', label: 'All (Global)' },
-    ...[...allKeys].sort().map((k) => ({ value: k, label: k })),
-  ]
+  const keyOptions = useMemo(() => {
+    const generatedById = new Map<string, { id: string; name: string; key_prefix?: string | null }>()
+    for (const item of budgetKeysData?.items || []) {
+      generatedById.set(item.id, item)
+    }
+    for (const item of apiKeysData?.items || []) {
+      generatedById.set(item.id, item)
+    }
+
+    const generatedNames = new Set(Array.from(generatedById.values()).map((item) => item.name))
+    const legacyNames = (budgetKeysData?.keys || [])
+      .filter((name) => !generatedNames.has(name))
+      .sort((a, b) => a.localeCompare(b))
+
+    return [
+      { value: '', label: t('filters.allGlobal') },
+      ...Array.from(generatedById.values())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((item) => ({
+          value: `id:${item.id}`,
+          label: `${item.name} · ${item.key_prefix || item.id.slice(0, 8)}`,
+        })),
+      ...legacyNames.map((name) => ({ value: `name:${name}`, label: t('filters.legacyYaml', { name }) })),
+    ]
+  }, [apiKeysData?.items, budgetKeysData?.items, budgetKeysData?.keys])
+
+  const selectedLabel = keyOptions.find((opt) => opt.value === selectedKey)?.label || selectedKey
+  const selectedName = selectedLabel.split(' · ')[0]
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />
+  }
 
   if (budgetLoading || configLoading || !budgetData) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="animate-shimmer h-6 w-48 rounded-lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('budget.title')} description={t('budget.description')} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <SkeletonCard className="h-64" />
+          <SkeletonCard className="h-64" />
+        </div>
+        <SkeletonCard className="h-48" />
       </div>
     )
   }
 
-  const isPerKeyView = selectedKey && 'perKeyRules' in budgetData
+  const isPerKeyView = Boolean(selectedKey && 'perKeyRules' in budgetData)
   const globalRules = budgetData.rules
   const perKeyRules = isPerKeyView ? (budgetData as BudgetPerKeyResponse).perKeyRules : []
 
@@ -246,58 +294,63 @@ export function BudgetPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Budget"
-        description="Track token usage, costs, and budget limits"
+        title={t('budget.title')}
+        description={t('budget.description')}
+        icon={Wallet}
       >
         <Select
           options={keyOptions}
           value={selectedKey}
-          onChange={(e) => setSelectedKey(e.target.value)}
+          onChange={(v) => setSelectedKey(v)}
           className="w-44"
         />
       </PageHeader>
 
       {/* Ring Gauges */}
-      <div className="stagger-children grid grid-cols-2 gap-5">
+      <div className="stagger-children grid grid-cols-1 md:grid-cols-2 gap-5">
         <Card className="animate-fade-up flex flex-col items-center justify-center py-10 gap-4">
           {isPerKeyView && perKeyTokenRule ? (
             <>
               <RingGauge
-                label={`Daily Tokens (${selectedKey})`}
+                label={t('gauges.dailyTokensForKey', { key: selectedName })}
                 value={perKeyTokenRule.current}
                 max={perKeyTokenRule.limit}
                 format={formatNumber}
-                color="#D4A947"
+                color="#064B3A"
                 gaugeBg={colors.gaugeBg}
                 gaugeText={colors.gaugeText}
                 gaugeSubtext={colors.gaugeSubtext}
               />
               {tokenRule && (
                 <div className="text-[10px] font-mono text-[var(--foreground-dim)]">
-                  Global: {formatNumber(tokenRule.current)} / {formatNumber(tokenRule.limit)} ({formatPercent(tokenRule.percentage)})
+                  {t('gauges.globalUsage', {
+                    current: formatNumber(tokenRule.current),
+                    limit: formatNumber(tokenRule.limit),
+                    percentage: formatPercent(tokenRule.percentage),
+                  })}
                 </div>
               )}
             </>
           ) : tokenRule ? (
             <RingGauge
-              label="Daily Tokens"
+              label={t('gauges.dailyTokens')}
               value={tokenRule.current}
               max={tokenRule.limit}
               format={formatNumber}
-              color="#D4A947"
+              color="#064B3A"
               gaugeBg={colors.gaugeBg}
               gaugeText={colors.gaugeText}
               gaugeSubtext={colors.gaugeSubtext}
             />
           ) : (
-            <div className="text-sm text-[var(--foreground-dim)]">No token budget rule</div>
+            <div className="text-sm text-[var(--foreground-dim)]">{t('gauges.noTokenRule')}</div>
           )}
         </Card>
         <Card className="animate-fade-up flex flex-col items-center justify-center py-10 gap-4">
           {isPerKeyView && perKeyCostRule ? (
             <>
               <RingGauge
-                label={`Daily Cost (${selectedKey})`}
+                label={t('gauges.dailyCostForKey', { key: selectedName })}
                 value={perKeyCostRule.current}
                 max={perKeyCostRule.limit}
                 format={formatCost}
@@ -308,13 +361,17 @@ export function BudgetPage() {
               />
               {costRule && (
                 <div className="text-[10px] font-mono text-[var(--foreground-dim)]">
-                  Global: {formatCost(costRule.current)} / {formatCost(costRule.limit)} ({formatPercent(costRule.percentage)})
+                  {t('gauges.globalUsage', {
+                    current: formatCost(costRule.current),
+                    limit: formatCost(costRule.limit),
+                    percentage: formatPercent(costRule.percentage),
+                  })}
                 </div>
               )}
             </>
           ) : costRule ? (
             <RingGauge
-              label="Daily Cost"
+              label={t('gauges.dailyCost')}
               value={costRule.current}
               max={costRule.limit}
               format={formatCost}
@@ -324,7 +381,7 @@ export function BudgetPage() {
               gaugeSubtext={colors.gaugeSubtext}
             />
           ) : (
-            <div className="text-sm text-[var(--foreground-dim)]">No cost budget rule</div>
+            <div className="text-sm text-[var(--foreground-dim)]">{t('gauges.noCostRule')}</div>
           )}
         </Card>
       </div>
@@ -333,15 +390,15 @@ export function BudgetPage() {
       {config?.models_pricing && (
         <CardStatic className="animate-fade-up" style={{ animationDelay: '160ms' }}>
           <CardHeader>
-            <CardTitle>Model Pricing (per 1M tokens)</CardTitle>
+            <CardTitle>{t('pricing.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Model</TableHead>
-                  <TableHead className="text-right">Input $/1M</TableHead>
-                  <TableHead className="text-right">Output $/1M</TableHead>
+                  <TableHead>{t('pricing.model')}</TableHead>
+                  <TableHead className="text-right">{t('pricing.input')}</TableHead>
+                  <TableHead className="text-right">{t('pricing.output')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -370,28 +427,36 @@ export function BudgetPage() {
       <CardStatic className="animate-fade-up" style={{ animationDelay: '240ms' }}>
         <CardHeader>
           <CardTitle>
-            Budget Rules
+            {t('rules.title')}
             {isPerKeyView && (
               <span className="ml-2 text-xs font-normal text-[var(--foreground-dim)]">
-                — Showing key: {selectedKey}
+                {t('rules.showingKey', { key: selectedLabel })}
               </span>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {isPerKeyView && perKeyRules.length === 0 && (
+            <EmptyState
+              icon={Wallet}
+              title={t('rules.noPerKeyTitle')}
+              description={t('rules.noPerKeyDescription')}
+              className="py-8"
+            />
+          )}
           {isPerKeyView && perKeyRules.length > 0 && (
             <>
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
-                Per-Key Limits ({selectedKey})
+                {t('rules.perKeyLimits', { key: selectedLabel })}
               </div>
-              <BudgetRulesSection rules={perKeyRules} label="per-key" resetBudget={resetBudget} />
+              <BudgetRulesSection rules={perKeyRules} label={t('rules.perKeyLabel')} resetBudget={resetBudget} />
               <div className="my-4 border-t border-[var(--border)]" />
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
-                Global Limits
+                {t('rules.globalLimits')}
               </div>
             </>
           )}
-          <BudgetRulesSection rules={globalRules} label={isPerKeyView ? 'global' : ''} resetBudget={resetBudget} />
+          <BudgetRulesSection rules={globalRules} label={isPerKeyView ? t('rules.globalLabel') : ''} resetBudget={resetBudget} />
         </CardContent>
       </CardStatic>
     </div>

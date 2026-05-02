@@ -12,6 +12,9 @@ import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import * as path from 'path';
 import * as request from 'supertest';
+import { createHash } from 'crypto';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -268,6 +271,31 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 
   await app.init();
+
+  const apiKeyRepo = app.get(getRepositoryToken(GatewayApiKey));
+  await apiKeyRepo.save([
+    apiKeyRepo.create({
+      name: 'test-default',
+      key_hash: createHash('sha256').update(API_KEY).digest('hex'),
+      key_prefix: 'e2e-test-key-1',
+      status: 'active',
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: [],
+    }),
+    apiKeyRepo.create({
+      name: 'test-secondary',
+      key_hash: createHash('sha256').update(API_KEY_2).digest('hex'),
+      key_prefix: 'e2e-test-key-2',
+      status: 'active',
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: [],
+    }),
+  ]);
+
   await app.listen(0);
 
   const server = app.getHttpServer();

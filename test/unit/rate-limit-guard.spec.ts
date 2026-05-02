@@ -2,9 +2,16 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { RateLimitGuard } from '../../src/auth/rate-limit.guard';
 import { mockConfigService } from '../helpers';
 
-function makeContext(overrides: { apiKeyName?: string; ip?: string } = {}): any {
+function makeContext(overrides: {
+  apiKeyId?: string;
+  apiKeyName?: string;
+  ip?: string;
+  gatewayApiKey?: { id?: string; name: string; rate_limit_per_minute: number | null };
+} = {}): any {
   const request: any = {
+    apiKeyId: overrides.apiKeyId,
     apiKeyName: overrides.apiKeyName,
+    gatewayApiKey: overrides.gatewayApiKey,
     ip: overrides.ip || '127.0.0.1',
     connection: { remoteAddress: overrides.ip || '127.0.0.1' },
   };
@@ -90,6 +97,44 @@ describe('RateLimitGuard', () => {
     } catch (e) {
       expect(e).toBeInstanceOf(HttpException);
     }
+  });
+
+  it('should track generated Gateway API keys by immutable id', () => {
+    const config = mockConfigService({
+      auth: {
+        api_keys: [],
+        rate_limit: { requests_per_minute: 2, requests_per_minute_ip: 1 },
+      },
+    });
+    const guard = new RateLimitGuard(config);
+
+    expect(guard.canActivate(makeContext({ apiKeyId: 'key_a', apiKeyName: 'same-name' }))).toBe(true);
+    expect(guard.canActivate(makeContext({ apiKeyId: 'key_a', apiKeyName: 'same-name' }))).toBe(true);
+    expect(guard.canActivate(makeContext({ apiKeyId: 'key_b', apiKeyName: 'same-name' }))).toBe(true);
+
+    try {
+      guard.canActivate(makeContext({ apiKeyId: 'key_a', apiKeyName: 'same-name' }));
+      fail('Expected HttpException');
+    } catch (e) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+    }
+  });
+
+  it('should use a Gateway API key specific RPM override when configured', () => {
+    const config = mockConfigService({
+      auth: {
+        api_keys: [],
+        rate_limit: { requests_per_minute: 60, requests_per_minute_ip: 1 },
+      },
+    });
+    const guard = new RateLimitGuard(config);
+    const gatewayApiKey = { id: 'key_limited', name: 'limited', rate_limit_per_minute: 1 };
+
+    expect(guard.canActivate(makeContext({ gatewayApiKey, apiKeyId: 'key_limited', apiKeyName: 'limited' }))).toBe(true);
+    expect(() =>
+      guard.canActivate(makeContext({ gatewayApiKey, apiKeyId: 'key_limited', apiKeyName: 'limited' })),
+    ).toThrow(HttpException);
   });
 
   it('should set rate limit headers', () => {

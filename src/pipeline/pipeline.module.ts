@@ -7,6 +7,7 @@ import { RoutingModule } from '../routing/routing.module';
 import { BudgetModule } from '../budget/budget.module';
 import { CacheModule } from '../cache/cache.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
+import { ControlPlaneModule } from '../control-plane/control-plane.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
 @Module({
@@ -17,6 +18,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     BudgetModule,
     CacheModule,
     DashboardModule,
+    ControlPlaneModule,
     TypeOrmModule.forFeature([CallLog]),
   ],
   providers: [PipelineService],

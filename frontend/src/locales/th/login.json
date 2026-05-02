@@ -1,0 +1,10 @@
+{
+  "login.authStatusError": "ตรวจสอบสถานะ auth ไม่สำเร็จครับ",
+  "login.errorFallback": "เข้าสู่ระบบไม่สำเร็จครับ",
+  "login.invalidPassword": "รหัสผ่านไม่ถูกต้องครับ",
+  "login.passwordPlaceholder": "รหัสผ่าน",
+  "login.signingIn": "กำลังเข้าสู่ระบบ...",
+  "login.submit": "เข้าสู่ระบบ",
+  "login.subtitle": "กรอกรหัสผ่านเพื่อเข้า dashboard ครับ",
+  "login.title": "SiftGate"
+}

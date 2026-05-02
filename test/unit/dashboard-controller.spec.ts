@@ -63,6 +63,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     updateNode: jest.fn(),
     deleteNode: jest.fn(),
     updateRouting: jest.fn(),
+    getNodeModelDiagnostics: jest.fn().mockReturnValue([]),
     ...overrides.config,
   });
 
@@ -100,6 +101,15 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...overrides.logEventBus,
   };
 
+  const gatewayApiKeys = {
+    list: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    update: jest.fn(),
+    rotate: jest.fn(),
+    remove: jest.fn(),
+    ...overrides.gatewayApiKeys,
+  };
+
   const dataSource = {
     options: { type: 'better-sqlite3' },
     ...overrides.dataSource,
@@ -116,11 +126,12 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     cacheService as any,
     logEventBus as any,
     new TelemetryService(),
+    gatewayApiKeys as any,
     dataSource as any,
     callLogRepo as any,
   );
 
-  return { controller, config, circuitBreaker, budgetService, cacheService, callLogRepo, qb, capabilityService };
+  return { controller, config, circuitBreaker, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -248,7 +259,7 @@ describe('DashboardController — exportLogs', () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs('json', 7, undefined, res);
+    await controller.exportLogs('json', 7, undefined, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json');
     expect(res.send).toHaveBeenCalled();
@@ -261,7 +272,7 @@ describe('DashboardController — exportLogs', () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs('csv', 7, undefined, res);
+    await controller.exportLogs('csv', 7, undefined, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv');
     const csv = res.send.mock.calls[0][0] as string;
@@ -320,13 +331,25 @@ describe('DashboardController — cache', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — config', () => {
-  it('should return sanitized config (API keys masked)', () => {
+  it('should return sanitized config and keep client keys dashboard-managed', () => {
     const { controller } = makeDashboard();
     const result = controller.getConfig();
 
     expect(result.nodes[0].api_key).toContain('...');
     expect(result.nodes[0].api_key).not.toBe('sk-test12345678rest');
-    expect(result.auth.api_keys[0].key).toContain('...');
+    expect(result.auth.api_keys).toEqual([]);
+    expect(result.auth.managed_in_dashboard).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('should include config diagnostics', () => {
+    const diagnostics = [
+      { severity: 'warning', code: 'duplicate_model_id', message: 'Duplicate', nodes: ['a', 'b'], model: 'm' },
+    ];
+    const { controller } = makeDashboard({
+      config: { getNodeModelDiagnostics: jest.fn().mockReturnValue(diagnostics) },
+    });
+    expect(controller.getConfig().diagnostics).toBe(diagnostics);
   });
 
   it('should reload config', () => {
@@ -360,6 +383,7 @@ describe('DashboardController — nodes', () => {
     expect(result.nodes[0].healthy).toBe(true);
     expect(result.nodes[0].capabilities).toBeDefined();
     expect(result.nodes[0].modalities).toBeDefined();
+    expect(result.diagnostics).toEqual([]);
   });
 
   it('should show unhealthy when circuit is OPEN', () => {
@@ -490,11 +514,11 @@ describe('DashboardController — per-key budget', () => {
         getStatus: jest.fn().mockImplementation((keyName?: string) => {
           if (keyName === 'intern') {
             return Promise.resolve([
-              { type: 'daily_cost', current: 3, limit: 5, percentage: 0.6, isExceeded: false, isAlert: false, periodStart: new Date() },
+              { id: 2, type: 'daily_cost', scope: 'api_key', apiKeyName: 'intern', apiKeyId: null, current: 3, limit: 5, percentage: 0.6, isExceeded: false, isAlert: false, periodStart: new Date(), resetAt: new Date() },
             ]);
           }
           return Promise.resolve([
-            { type: 'daily_cost', current: 10, limit: 100, percentage: 0.1, isExceeded: false, isAlert: false, periodStart: new Date() },
+            { id: 1, type: 'daily_cost', scope: 'global', apiKeyName: null, apiKeyId: null, current: 10, limit: 100, percentage: 0.1, isExceeded: false, isAlert: false, periodStart: new Date(), resetAt: new Date() },
           ]);
         }),
         resetRule: jest.fn(),
@@ -507,6 +531,36 @@ describe('DashboardController — per-key budget', () => {
     expect((result as any).perKeyRules).toHaveLength(1);
     expect((result as any).apiKeyName).toBe('intern');
     expect((result as any).perKeyRules[0].limit).toBe(5);
+  });
+
+  it('should query per-key budget by api_key_id when provided', async () => {
+    const getStatus = jest.fn().mockImplementation((_keyName?: string | null, keyId?: string | null) => {
+      if (keyId === 'key_123') {
+        return Promise.resolve([
+          { id: 7, type: 'daily_tokens', scope: 'api_key', apiKeyName: 'production', apiKeyId: 'key_123', current: 2500, limit: 10000, percentage: 0.25, isExceeded: false, isAlert: false, periodStart: new Date(), resetAt: new Date() },
+        ]);
+      }
+      return Promise.resolve([
+        { id: 1, type: 'daily_tokens', scope: 'global', apiKeyName: null, apiKeyId: null, current: 5000, limit: 100000, percentage: 0.05, isExceeded: false, isAlert: false, periodStart: new Date(), resetAt: new Date() },
+      ]);
+    });
+    const { controller } = makeDashboard({
+      budgetService: {
+        getStatus,
+        resetRule: jest.fn(),
+        getKeysWithBudgets: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await controller.getBudget(undefined, 'key_123');
+    expect(getStatus).toHaveBeenCalledWith(null, 'key_123');
+    expect((result as any).apiKeyName).toBe('production');
+    expect((result as any).apiKeyId).toBe('key_123');
+    expect((result as any).perKeyRules[0]).toMatchObject({
+      id: 7,
+      apiKeyId: 'key_123',
+      percentage: 25,
+    });
   });
 
   it('should return only global rules when no api_key query', async () => {
@@ -532,25 +586,43 @@ describe('DashboardController — per-key budget', () => {
         resetRule: jest.fn(),
         getKeysWithBudgets: jest.fn().mockResolvedValue(['intern', 'sean']),
       },
+      gatewayApiKeys: {
+        list: jest.fn().mockResolvedValue([
+          {
+            id: 'key_123',
+            name: 'production',
+            key_prefix: 'gw_sk_live_abcd...1234',
+            daily_token_limit: 10000,
+            daily_cost_limit: 5,
+            rate_limit_per_minute: 60,
+          },
+        ]),
+      },
     });
 
     const result = await controller.getBudgetKeys();
-    expect(result.keys).toEqual(['intern', 'sean']);
+    expect(result.keys).toEqual(['intern', 'sean', 'production']);
+    expect(result.items[0]).toMatchObject({
+      id: 'key_123',
+      name: 'production',
+      daily_token_limit: 10000,
+    });
   });
 });
 
 describe('DashboardController — api-keys', () => {
-  it('should return distinct api key names from logs', async () => {
-    const qb = mockQueryBuilder();
-    qb.getRawMany.mockResolvedValue([
-      { api_key_name: 'sean' },
-      { api_key_name: 'intern' },
-    ]);
-    const repo = mockRepo(qb);
-
-    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+  it('should return managed gateway api keys', async () => {
+    const { controller } = makeDashboard({
+      gatewayApiKeys: {
+        list: jest.fn().mockResolvedValue([
+          { id: '1', name: 'sean' },
+          { id: '2', name: 'intern' },
+        ]),
+      },
+    });
     const result = await controller.getApiKeyNames();
     expect(result.keys).toEqual(['sean', 'intern']);
+    expect(result.items).toHaveLength(2);
   });
 });
 
@@ -565,6 +637,18 @@ describe('DashboardController — api_key filtering on logs', () => {
 
     // Should have been called with api_key filter
     expect(qb.andWhere).toHaveBeenCalledWith('log.api_key_name = :apiKey', { apiKey: 'sean' });
+  });
+
+  it('should prefer api_key_id filter on getLogs', async () => {
+    const qb = mockQueryBuilder();
+    qb.getManyAndCount.mockResolvedValue([[], 0]);
+    const repo = mockRepo(qb);
+
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    await controller.getLogs(1, 50, undefined, undefined, undefined, 'renamed-key', 'key_123');
+
+    expect(qb.andWhere).toHaveBeenCalledWith('log.api_key_id = :apiKeyId', { apiKeyId: 'key_123' });
+    expect(qb.andWhere).not.toHaveBeenCalledWith('log.api_key_name = :apiKey', { apiKey: 'renamed-key' });
   });
 });
 
@@ -581,5 +665,21 @@ describe('DashboardController — api_key filtering on stats', () => {
     const result = await controller.getStats('sean');
 
     expect(result.total.calls).toBe(5);
+  });
+
+  it('should prefer api_key_id param on getStats', async () => {
+    const qb = mockQueryBuilder(
+      { totalInputTokens: '500', totalOutputTokens: '200', totalCost: '0.1', avgLatency: '100', uniqueSessions: '1' },
+      [{ tier: 'simple', count: '2' }],
+    );
+    const repo = mockRepo(qb);
+    repo.count.mockResolvedValueOnce(5).mockResolvedValueOnce(4);
+
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    await controller.getStats('renamed-key', 'key_123');
+
+    expect(repo.count).toHaveBeenNthCalledWith(1, { where: { api_key_id: 'key_123' } });
+    expect(repo.count).toHaveBeenNthCalledWith(2, { where: { status_code: 200, api_key_id: 'key_123' } });
+    expect(qb.where).toHaveBeenCalledWith('log.api_key_id = :apiKeyId', { apiKeyId: 'key_123' });
   });
 });

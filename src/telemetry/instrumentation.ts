@@ -66,7 +66,7 @@ if (telemetryCfg?.enabled) {
 
     const sdk = new NodeSDK({
       resource: resourceFromAttributes({
-        [ATTR_SERVICE_NAME]: telemetryCfg.service_name || 'ai-gateway',
+        [ATTR_SERVICE_NAME]: telemetryCfg.service_name || 'siftgate',
         [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '0.1.0',
       }),
       traceExporter: new OTLPTraceExporter({ url: traceEndpoint }),

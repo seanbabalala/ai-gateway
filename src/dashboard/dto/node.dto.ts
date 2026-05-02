@@ -67,6 +67,11 @@ export class CreateNodeDto {
   model_aliases?: Record<string, string>;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  model_prefixes?: string[];
+
+  @IsOptional()
   @IsObject()
   headers?: Record<string, string>;
 
@@ -162,6 +167,11 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsObject()
   model_aliases?: Record<string, string>;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  model_prefixes?: string[];
 
   @IsOptional()
   @IsObject()

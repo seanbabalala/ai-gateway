@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Shield } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -7,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function LoginPage() {
+  const { t } = useTranslation('login')
   const { login } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
@@ -22,26 +24,27 @@ export function LoginPage() {
       await login(password)
       navigate('/', { replace: true })
     } catch (err) {
-      setError((err as Error).message || 'Login failed')
+      setError((err as Error).message || t('login.errorFallback'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[var(--background)] p-4">
+      <div className="app-grid-bg pointer-events-none absolute inset-0" />
       <Card className="w-full max-w-sm">
         <CardContent className="p-6">
           <div className="mb-6 flex flex-col items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-b from-[var(--accent)] to-[var(--accent-hover)] shadow-lg">
-              <Shield className="h-6 w-6 text-white" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent-muted)] shadow-lg">
+              <Shield className="h-6 w-6 text-[var(--accent)]" />
             </div>
             <div className="text-center">
               <h1 className="text-lg font-semibold text-[var(--foreground)]">
-                AI Gateway
+                {t('login.title')}
               </h1>
               <p className="mt-1 text-[13px] text-[var(--foreground-dim)]">
-                Enter your password to access the dashboard
+                {t('login.subtitle')}
               </p>
             </div>
           </div>
@@ -50,7 +53,7 @@ export function LoginPage() {
             <div>
               <Input
                 type="password"
-                placeholder="Password"
+                placeholder={t('login.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoFocus
@@ -65,7 +68,7 @@ export function LoginPage() {
             )}
 
             <Button type="submit" disabled={loading || !password}>
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? t('login.signingIn') : t('login.submit')}
             </Button>
           </form>
         </CardContent>

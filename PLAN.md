@@ -1,4 +1,4 @@
-# AI Gateway — 本地多协议智能 AI 代理
+# SiftGate — 本地多协议智能 AI 代理
 
 ## Context
 
@@ -62,7 +62,7 @@ manifest 项目只支持 `chat/completions` 作为统一入口，无法原生支
 ## 项目结构
 
 ```
-ai-gateway/
+siftgate/
 ├── package.json
 ├── tsconfig.json
 ├── docker-compose.yml
@@ -756,7 +756,7 @@ Tier 标签色:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  [Logo]  AI Gateway                    [Status] [Theme] │  ← Header: 48px, 毛玻璃背景
+│  [Logo]  SiftGate                    [Status] [Theme] │  ← Header: 48px, 毛玻璃背景
 ├────────┬────────────────────────────────────────────────┤
 │        │                                                │
 │  ◈ 总览 │   ┌────┐ ┌────┐ ┌────┐ ┌────┐                │
@@ -797,7 +797,7 @@ Sidebar 特点：
 
 ### 与 manifest 前端的差异
 
-| 方面 | manifest | AI Gateway (我们) |
+| 方面 | manifest | SiftGate (我们) |
 |---|---|---|
 | 框架 | SolidJS | React 19 |
 | 样式方案 | 原生 CSS (BEM) + 30 个 CSS 文件 | Tailwind CSS + shadcn/ui 组件 |
@@ -885,7 +885,7 @@ Phase 8: 容器化 + 文档 (1天)
 
 ## 与 Manifest 的关键差异
 
-| 方面 | Manifest | AI Gateway (我们) |
+| 方面 | Manifest | SiftGate (我们) |
 |---|---|---|
 | 入口协议 | 仅 chat/completions | 3 种全部支持 |
 | 内部格式 | 直接用 OpenAI 格式 | Canonical 统一格式 |

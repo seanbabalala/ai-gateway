@@ -6,7 +6,7 @@ import { Response as ExpressResponse } from 'express';
 import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
-import { RetryConfig, ModelPricing } from '../config/gateway.config';
+import { RetryConfig, ModelPricing, NodeConfig } from '../config/gateway.config';
 import {
   CanonicalRequest,
   CanonicalResponse,
@@ -27,6 +27,7 @@ import { BudgetService, BudgetExceededError } from '../budget/budget.service';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { LogEventBus } from '../dashboard/log-event-bus';
 import { HookExecutorService } from '../plugins/hook-executor.service';
+import { TelemetryUploaderService } from '../control-plane/telemetry-uploader.service';
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
@@ -41,6 +42,29 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 export interface PipelineResult {
   body: Record<string, unknown>;
   statusCode: number;
+}
+
+interface SmartRouteResolution {
+  route: {
+    primary: { node: string; model: string };
+    fallbacks: { node: string; model: string }[];
+  };
+  tier: Tier;
+  score: number;
+  domainHint: string | null;
+  modalityHints?: string[];
+  experimentGroup: string | null;
+  experimentGroupsByTarget: Record<string, string>;
+}
+
+class GatewayRequestRejectedError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = 'GatewayRequestRejectedError';
+  }
 }
 
 @Injectable()
@@ -63,6 +87,7 @@ export class PipelineService {
     private readonly logEventBus: LogEventBus,
     private readonly hooks: HookExecutorService,
     private readonly telemetry: TelemetryService,
+    private readonly telemetryUploader: TelemetryUploaderService,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
   ) {}
@@ -85,169 +110,289 @@ export class PipelineService {
         'gateway.stream': false,
       },
       async (rootSpan) => {
-    const store = new Map<string, unknown>();
+        const store = new Map<string, unknown>();
+        let currentPhase = 'preRequest';
 
-    // ── preRequest Hook ──
-    if (!this.hooks.isEmpty()) {
-      const hookResult = await this.hooks.run(
-        'preRequest',
-        { request: canonical } as Record<string, unknown>,
-        store,
-        this.config.getFullConfig(),
-      );
-      if (hookResult.shortCircuit) {
-        const scResponse = hookResult.shortCircuit as CanonicalResponse;
-        return {
-          body: this.denormalizeForClient(scResponse, canonical.metadata.source_format),
-          statusCode: 200,
-        };
-      }
-      canonical = (hookResult.data as { request: CanonicalRequest }).request;
-    }
+        try {
+          // ── preRequest Hook ──
+          if (!this.hooks.isEmpty()) {
+            const hookResult = await this.hooks.run(
+              'preRequest',
+              { request: canonical } as Record<string, unknown>,
+              store,
+              this.config.getFullConfig(),
+            );
+            if (hookResult.shortCircuit) {
+              const scResponse = hookResult.shortCircuit as CanonicalResponse;
+              currentPhase = 'budgetCheck';
+              try {
+                await this.checkBudget(canonical);
+              } catch (err) {
+                if (err instanceof BudgetExceededError) {
+                  this.logger.warn(`Budget exceeded: ${err.message}`);
+                  return {
+                    body: this.formatBudgetError(canonical.metadata.source_format, err),
+                    statusCode: 429,
+                  };
+                }
+                throw err;
+              }
+              currentPhase = 'budgetRecord';
+              await this.recordBudgetUsage(canonical, scResponse.usage, scResponse.model);
+              await this.logCall({
+                requestId,
+                canonical,
+                tier: 'direct',
+                score: 0,
+                nodeId: 'hook',
+                model: scResponse.model,
+                statusCode: 200,
+                isFallback: false,
+                latencyMs: Date.now() - startTime,
+                usage: scResponse.usage,
+                error: null,
+                retryCount: 0,
+              });
+              return {
+                body: this.denormalizeForClient(scResponse, canonical.metadata.source_format),
+                statusCode: 200,
+              };
+            }
+            canonical = (hookResult.data as { request: CanonicalRequest }).request;
+          }
 
-    // ── Budget Check ──
-    try {
-      await this.budgetService.check(canonical.metadata.api_key_name || undefined);
-    } catch (err) {
-      if (err instanceof BudgetExceededError) {
-        this.logger.warn(`Budget exceeded: ${err.message}`);
-        return {
-          body: this.formatError(canonical.metadata.source_format, 429, err.message),
-          statusCode: 429,
-        };
-      }
-      throw err;
-    }
+          // ── Budget Check ──
+          currentPhase = 'budgetCheck';
+          try {
+            await this.checkBudget(canonical);
+          } catch (err) {
+            if (err instanceof BudgetExceededError) {
+              this.logger.warn(`Budget exceeded: ${err.message}`);
+              return {
+                body: this.formatBudgetError(canonical.metadata.source_format, err),
+                statusCode: 429,
+              };
+            }
+            throw err;
+          }
 
-    // ── Cache Lookup ──
-    const cacheStart = Date.now();
-    if (this.cacheService.shouldCache(canonical)) {
-      const cached = this.cacheService.lookup(canonical);
-      if (cached) {
-        const cacheLatency = Date.now() - cacheStart;
-        this.telemetry.cacheOperations.add(1, { operation: 'hit' });
-        rootSpan.setAttribute('gateway.cache', 'hit');
-        const responseBody = this.denormalizeForClient(cached, canonical.metadata.source_format);
-        await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
-          model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
-          usage: cached.usage, error: null, retryCount: 0 });
-        return { body: responseBody, statusCode: 200 };
-      }
-      this.telemetry.cacheOperations.add(1, { operation: 'miss' });
-    }
+          // ── Cache Lookup ──
+          currentPhase = 'cacheLookup';
+          const cacheStart = Date.now();
+          if (this.cacheService.shouldCache(canonical)) {
+            const cached = this.cacheService.lookup(canonical);
+            if (cached) {
+              const cacheLatency = Date.now() - cacheStart;
+              this.telemetry.cacheOperations.add(1, { operation: 'hit' });
+              rootSpan.setAttribute('gateway.cache', 'hit');
+              const responseBody = this.denormalizeForClient(cached, canonical.metadata.source_format);
+              await this.recordBudgetUsage(canonical, cached.usage, cached.model);
+              await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
+                model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
+                usage: cached.usage, error: null, retryCount: 0 });
+              return { body: responseBody, statusCode: 200 };
+            }
+            this.telemetry.cacheOperations.add(1, { operation: 'miss' });
+          }
 
-    // ── Route Resolution ──
-    const { route, tier, score, experimentGroup } = await this.resolveSmartRoute(canonical, store);
-    rootSpan.setAttributes({ 'gateway.tier': tier, 'gateway.score': score });
-    const retryConfig = this.config.retry;
+          // ── Route Resolution ──
+          currentPhase = 'routeResolution';
+          const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget } =
+            await this.resolveSmartRoute(canonical, store);
+          rootSpan.setAttributes({ 'gateway.tier': tier, 'gateway.score': score });
+          const retryConfig = this.config.retry;
 
-    let canonicalResponse: CanonicalResponse | null = null;
-    let usedNodeId = route.primary.node;
-    let usedModel = route.primary.model;
-    let isFallback = false;
-    let lastError: Error | null = null;
-    let totalRetries = 0;
+          let canonicalResponse: CanonicalResponse | null = null;
+          let usedNodeId = route.primary.node;
+          let usedModel = route.primary.model;
+          let isFallback = false;
+          let lastError: Error | null = null;
+          let totalRetries = 0;
 
-    // Try primary with retries
-    const primaryResult = await this.tryNodeWithRetry(
-      canonical, route.primary.node, route.primary.model,
-      { tier, score, is_fallback: false }, retryConfig,
-    );
-    totalRetries += primaryResult.retries;
+          // Try primary with retries
+          currentPhase = 'preUpstream';
+          const primaryResult = await this.tryNodeWithRetry(
+            canonical, route.primary.node, route.primary.model,
+            { tier, score, is_fallback: false }, retryConfig, store,
+          );
+          totalRetries += primaryResult.retries;
+          usedNodeId = route.primary.node;
+          usedModel = route.primary.model;
 
-    if (primaryResult.response) {
-      canonicalResponse = primaryResult.response;
-    } else {
-      lastError = primaryResult.lastError;
-    }
+          if (primaryResult.response) {
+            canonicalResponse = primaryResult.response;
+          } else {
+            lastError = primaryResult.lastError;
+          }
 
-    // Try fallbacks with retries
-    if (!canonicalResponse && route.fallbacks.length > 0) {
-      for (const fb of route.fallbacks) {
-        this.logger.log(`Trying fallback: ${fb.node} (${fb.model})`);
-        const fbResult = await this.tryNodeWithRetry(
-          canonical, fb.node, fb.model,
-          { tier, score, is_fallback: true }, retryConfig,
-        );
-        totalRetries += fbResult.retries;
+          // Try fallbacks with retries
+          if (!canonicalResponse && route.fallbacks.length > 0) {
+            for (const fb of route.fallbacks) {
+              this.logger.log(`Trying fallback: ${fb.node} (${fb.model})`);
+              usedNodeId = fb.node;
+              usedModel = fb.model;
+              currentPhase = 'preUpstream';
+              const fbResult = await this.tryNodeWithRetry(
+                canonical, fb.node, fb.model,
+                { tier, score, is_fallback: true }, retryConfig, store,
+              );
+              totalRetries += fbResult.retries;
 
-        if (fbResult.response) {
-          canonicalResponse = fbResult.response;
-          usedNodeId = fb.node;
-          usedModel = fb.model;
-          isFallback = true;
-          break;
+              if (fbResult.response) {
+                canonicalResponse = fbResult.response;
+                isFallback = true;
+                break;
+              }
+              lastError = fbResult.lastError;
+            }
+          }
+
+          if (!canonicalResponse) {
+            const errorMsg = lastError?.message || 'All nodes failed';
+            const failureStatus = this.resolveFailureStatus(lastError);
+            const recovered = await this.runOnErrorHooks(
+              canonical,
+              lastError || new Error(errorMsg),
+              'upstreamFailure',
+              store,
+            );
+            const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+              experimentGroupsByTarget,
+              usedNodeId,
+              usedModel,
+              experimentGroup,
+            );
+            if (recovered) {
+              await this.recordSyntheticSuccess({
+                requestId,
+                canonical,
+                response: recovered,
+                tier,
+                score,
+                nodeId: 'hook',
+                latencyMs: Date.now() - startTime,
+                retryCount: totalRetries,
+                experimentGroup: resolvedExperimentGroup,
+              });
+              return {
+                body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
+                statusCode: 200,
+              };
+            }
+            this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
+            await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+              statusCode: failureStatus,
+              isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
+              retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+              domainHint, modalityHints });
+            return {
+              body: this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
+              statusCode: failureStatus,
+            };
+          }
+
+          // ── postUpstream Hook ──
+          currentPhase = 'postUpstream';
+          if (!this.hooks.isEmpty()) {
+            const hookResult = await this.hooks.run(
+              'postUpstream',
+              { request: canonical, response: canonicalResponse } as Record<string, unknown>,
+              store,
+              this.config.getFullConfig(),
+            );
+            canonicalResponse = (hookResult.data as { response: CanonicalResponse }).response;
+          }
+
+          let responseBody = this.denormalizeForClient(canonicalResponse, canonical.metadata.source_format);
+
+          // ── preResponse Hook ──
+          currentPhase = 'preResponse';
+          if (!this.hooks.isEmpty()) {
+            const hookResult = await this.hooks.run(
+              'preResponse',
+              { request: canonical, body: responseBody } as Record<string, unknown>,
+              store,
+              this.config.getFullConfig(),
+            );
+            responseBody = (hookResult.data as { body: Record<string, unknown> }).body;
+          }
+
+          // ── Cache Store ──
+          currentPhase = 'cacheStore';
+          this.cacheService.store(canonical, canonicalResponse);
+          this.telemetry.cacheOperations.add(1, { operation: 'store' });
+
+          // ── Budget Record ──
+          currentPhase = 'budgetRecord';
+          const { costUsd, totalTokens } = await this.recordBudgetUsage(
+            canonical,
+            canonicalResponse.usage,
+            usedModel,
+          );
+
+          // ── Telemetry Metrics ──
+          const durationMs = Date.now() - startTime;
+          rootSpan.setAttributes({
+            'gateway.node': usedNodeId,
+            'gateway.model': usedModel,
+            'gateway.is_fallback': isFallback,
+            'gen_ai.request.model': usedModel,
+            'gen_ai.usage.input_tokens': canonicalResponse.usage.input_tokens,
+            'gen_ai.usage.output_tokens': canonicalResponse.usage.output_tokens,
+          });
+          this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+          this.telemetry.requestDuration.record(durationMs, { tier, node: usedNodeId });
+          this.telemetry.tokensUsage.add(totalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+          if (costUsd > 0) {
+            this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+          }
+
+          const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+            experimentGroupsByTarget,
+            usedNodeId,
+            usedModel,
+            experimentGroup,
+          );
+          await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+            statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
+            usage: canonicalResponse.usage, error: null, retryCount: totalRetries,
+            experimentGroup: resolvedExperimentGroup, domainHint, modalityHints });
+
+          return { body: responseBody, statusCode: 200 };
+        } catch (err) {
+          const recovered = await this.runOnErrorHooks(
+            canonical,
+            err as Error,
+            currentPhase,
+            store,
+          );
+          if (recovered) {
+            await this.recordSyntheticSuccess({
+              requestId,
+              canonical,
+              response: recovered,
+              tier: 'direct',
+              score: 0,
+              nodeId: 'hook',
+              latencyMs: Date.now() - startTime,
+            });
+            return {
+              body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
+              statusCode: 200,
+            };
+          }
+          if (err instanceof GatewayRequestRejectedError) {
+            return {
+              body: this.formatError(
+                canonical.metadata.source_format,
+                err.statusCode,
+                err.message,
+              ),
+              statusCode: err.statusCode,
+            };
+          }
+          throw err;
         }
-        lastError = fbResult.lastError;
-      }
-    }
-
-    if (!canonicalResponse) {
-      const errorMsg = lastError?.message || 'All nodes failed';
-      this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
-      await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-        statusCode: lastError instanceof ProviderError ? lastError.statusCode : 502,
-        isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
-        retryCount: totalRetries, experimentGroup });
-      return { body: this.formatError(canonical.metadata.source_format, 502, errorMsg), statusCode: 502 };
-    }
-
-    // ── postUpstream Hook ──
-    if (!this.hooks.isEmpty()) {
-      const hookResult = await this.hooks.run(
-        'postUpstream',
-        { request: canonical, response: canonicalResponse } as Record<string, unknown>,
-        store,
-        this.config.getFullConfig(),
-      );
-      canonicalResponse = (hookResult.data as { response: CanonicalResponse }).response;
-    }
-
-    let responseBody = this.denormalizeForClient(canonicalResponse, canonical.metadata.source_format);
-
-    // ── preResponse Hook ──
-    if (!this.hooks.isEmpty()) {
-      const hookResult = await this.hooks.run(
-        'preResponse',
-        { request: canonical, body: responseBody } as Record<string, unknown>,
-        store,
-        this.config.getFullConfig(),
-      );
-      responseBody = (hookResult.data as { body: Record<string, unknown> }).body;
-    }
-
-    // ── Cache Store ──
-    this.cacheService.store(canonical, canonicalResponse);
-    this.telemetry.cacheOperations.add(1, { operation: 'store' });
-
-    // ── Budget Record ──
-    const pricing = this.config.getModelPricing(usedModel);
-    const costUsd = this.calculateCost(canonicalResponse.usage, pricing);
-    const totalTokens = canonicalResponse.usage.input_tokens + canonicalResponse.usage.output_tokens;
-    await this.budgetService.record(totalTokens, costUsd, canonical.metadata.api_key_name || undefined);
-
-    // ── Telemetry Metrics ──
-    const durationMs = Date.now() - startTime;
-    rootSpan.setAttributes({
-      'gateway.node': usedNodeId,
-      'gateway.model': usedModel,
-      'gateway.is_fallback': isFallback,
-      'gen_ai.request.model': usedModel,
-      'gen_ai.usage.input_tokens': canonicalResponse.usage.input_tokens,
-      'gen_ai.usage.output_tokens': canonicalResponse.usage.output_tokens,
-    });
-    this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
-    this.telemetry.requestDuration.record(durationMs, { tier, node: usedNodeId });
-    this.telemetry.tokensUsage.add(totalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
-    if (costUsd > 0) {
-      this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
-    }
-
-    await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-      statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
-      usage: canonicalResponse.usage, error: null, retryCount: totalRetries, experimentGroup });
-
-    return { body: responseBody, statusCode: 200 };
       }, // end of async (rootSpan)
       SpanKind.SERVER,
     ); // end of withSpan
@@ -263,15 +408,34 @@ export class PipelineService {
     model: string,
     routingMeta: { tier: Tier; score: number; is_fallback: boolean },
     retryConfig: RetryConfig,
+    store?: Map<string, unknown>,
   ): Promise<{ response: CanonicalResponse | null; lastError: Error | null; retries: number }> {
     const maxAttempts = 1 + retryConfig.max_retries; // 1 initial + N retries
     let lastError: Error | null = null;
     let retries = 0;
+    let requestForNode = canonical;
+
+    if (store) {
+      const preUpstreamResult = await this.runPreUpstreamHooks(
+        canonical,
+        nodeId,
+        model,
+        store,
+      );
+      if (preUpstreamResult.shortCircuit) {
+        return {
+          response: preUpstreamResult.shortCircuit,
+          lastError: null,
+          retries,
+        };
+      }
+      requestForNode = preUpstreamResult.request;
+    }
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const response = await this.providerClient.forward(
-          canonical, nodeId, model, routingMeta,
+          requestForNode, nodeId, model, routingMeta,
         );
         this.circuitBreaker.recordSuccess(nodeId, model);
         return { response, lastError: null, retries };
@@ -345,6 +509,8 @@ export class PipelineService {
     const requestId = uuidv4();
     const streamStartTime = Date.now();
     const store = new Map<string, unknown>();
+    let currentPhase = 'preRequest';
+    let headersFlushed = false;
 
     // Manual span for streaming (can't use withSpan with generators)
     const rootSpan = this.telemetry.tracer.startSpan('gateway.request', {
@@ -358,288 +524,453 @@ export class PipelineService {
       },
     });
 
-    // ── preRequest Hook (stream) ──
-    if (!this.hooks.isEmpty()) {
-      const hookResult = await this.hooks.run(
-        'preRequest',
-        { request: canonical } as Record<string, unknown>,
+    const ensureStreamHeaders = () => {
+      if (headersFlushed) return;
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+      headersFlushed = true;
+    };
+
+    try {
+      // ── preRequest Hook (stream) ──
+      if (!this.hooks.isEmpty()) {
+        const hookResult = await this.hooks.run(
+          'preRequest',
+          { request: canonical } as Record<string, unknown>,
+          store,
+          this.config.getFullConfig(),
+        );
+        if (hookResult.shortCircuit) {
+          const scResponse = hookResult.shortCircuit as CanonicalResponse;
+          currentPhase = 'budgetCheck';
+          try {
+            await this.checkBudget(canonical);
+          } catch (err) {
+            if (err instanceof BudgetExceededError) {
+              this.logger.warn(`Budget exceeded (stream): ${err.message}`);
+              res.status(429).json(
+                this.formatBudgetError(canonical.metadata.source_format, err),
+              );
+              rootSpan.end();
+              return;
+            }
+            throw err;
+          }
+          currentPhase = 'budgetRecord';
+          await this.recordBudgetUsage(canonical, scResponse.usage, scResponse.model);
+          await this.logCall({
+            requestId,
+            canonical,
+            tier: 'direct',
+            score: 0,
+            nodeId: 'hook',
+            model: scResponse.model,
+            statusCode: 200,
+            isFallback: false,
+            latencyMs: Date.now() - streamStartTime,
+            usage: scResponse.usage,
+            error: null,
+            retryCount: 0,
+          });
+          this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, scResponse);
+          rootSpan.end();
+          return;
+        }
+        canonical = (hookResult.data as { request: CanonicalRequest }).request;
+      }
+
+      // ── Budget Check ──
+      currentPhase = 'budgetCheck';
+      try {
+        await this.checkBudget(canonical);
+      } catch (err) {
+        if (err instanceof BudgetExceededError) {
+          this.logger.warn(`Budget exceeded (stream): ${err.message}`);
+          res.status(429).json(
+            this.formatBudgetError(canonical.metadata.source_format, err),
+          );
+          rootSpan.end();
+          return;
+        }
+        throw err;
+      }
+
+      // ── Cache Lookup (stream) ──
+      currentPhase = 'cacheLookup';
+      if (this.cacheService.shouldCache(canonical)) {
+        const cacheStart = Date.now();
+        const cached = this.cacheService.lookup(canonical);
+        if (cached) {
+          const cacheLatency = Date.now() - cacheStart;
+
+          await this.recordBudgetUsage(canonical, cached.usage, cached.model);
+          this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, cached);
+
+          await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
+            model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
+            usage: cached.usage, error: null, retryCount: 0 });
+          this.telemetry.cacheOperations.add(1, { operation: 'hit' });
+          rootSpan.setAttribute('gateway.cache', 'hit');
+          rootSpan.end();
+          return;
+        }
+      }
+
+      const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget } =
+        await this.resolveSmartRoute(canonical, store);
+      const retryConfig = this.config.retry;
+
+      const startTime = Date.now();
+
+      // Create serializer for client's source format
+      const serializer = this.createSerializer(canonical.metadata.source_format);
+
+      // Try primary + fallbacks (connection-phase fallback + retry)
+      const targets = [route.primary, ...route.fallbacks];
+      let streamConnected = false;
+      let usedNodeId = route.primary.node;
+      let usedModel = route.primary.model;
+      let isFallback = false;
+      let lastError: Error | null = null;
+      let totalRetries = 0;
+
+      for (let i = 0; i < targets.length; i++) {
+        const target = targets[i];
+        const isFirstTarget = i === 0;
+        usedNodeId = target.node;
+        usedModel = target.model;
+        isFallback = !isFirstTarget;
+
+        currentPhase = 'preUpstream';
+        const preUpstreamResult = await this.runPreUpstreamHooks(
+          canonical,
+          target.node,
+          target.model,
+          store,
+        );
+        if (preUpstreamResult.shortCircuit) {
+          const scResponse = preUpstreamResult.shortCircuit;
+          await this.recordBudgetUsage(canonical, scResponse.usage, scResponse.model);
+          const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+            experimentGroupsByTarget,
+            target.node,
+            target.model,
+            experimentGroup,
+          );
+          await this.logCall({
+            requestId,
+            canonical,
+            tier,
+            score,
+            nodeId: target.node,
+            model: scResponse.model,
+            statusCode: 200,
+            isFallback: !isFirstTarget,
+            latencyMs: Date.now() - startTime,
+            usage: scResponse.usage,
+            error: null,
+            retryCount: totalRetries,
+            experimentGroup: resolvedExperimentGroup,
+            domainHint,
+            modalityHints,
+          });
+          this.writeSyntheticStreamResponse(
+            res,
+            canonical.metadata.source_format,
+            scResponse,
+          );
+          rootSpan.end();
+          return;
+        }
+        const requestForTarget = preUpstreamResult.request;
+
+        // Connection-phase retry loop for this target
+        const maxAttempts = 1 + retryConfig.max_retries;
+        let connected = false;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            const stream = this.providerClient.forwardStream(
+              requestForTarget, target.node, target.model,
+            );
+
+            // Stream events to client
+            const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
+            const accumulatedText: string[] = []; // For cache store
+            let streamModel = '';
+            let streamId = '';
+            let streamStopReason = '';
+
+            currentPhase = 'upstreamStream';
+            for await (const event of stream) {
+              streamConnected = true;
+              connected = true;
+              usedNodeId = target.node;
+              usedModel = target.model;
+              isFallback = !isFirstTarget;
+
+              // Accumulate for cache
+              if (event.type === 'start') {
+                streamModel = event.model;
+                streamId = event.id;
+              } else if (event.type === 'delta' && event.content.type === 'text') {
+                accumulatedText.push(event.content.text);
+              } else if (event.type === 'stop') {
+                usage.input_tokens = event.usage.input_tokens;
+                usage.output_tokens = event.usage.output_tokens;
+                if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
+                if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
+                streamStopReason = event.stop_reason;
+              }
+
+              // ── streamEvent Hook ──
+              let outputEvent = event;
+              if (!this.hooks.isEmpty()) {
+                const hookResult = await this.hooks.run(
+                  'streamEvent',
+                  { request: requestForTarget, event } as Record<string, unknown>,
+                  store,
+                  this.config.getFullConfig(),
+                );
+                if (hookResult.shortCircuit && (hookResult.shortCircuit as Record<string, unknown>).__drop) {
+                  continue; // Drop this event
+                }
+                outputEvent = (hookResult.data as { event: CanonicalStreamEvent }).event;
+              }
+
+              const sseText = serializer.serialize(outputEvent);
+              if (sseText) {
+                ensureStreamHeaders();
+                res.write(sseText);
+              }
+            }
+
+            // Stream completed successfully
+            const latencyMs = Date.now() - startTime;
+            this.circuitBreaker.recordSuccess(target.node, target.model);
+
+            // ── Cache Store (from stream accumulation) ──
+            if (this.cacheService.shouldCache(canonical) && accumulatedText.length > 0) {
+              const assembledResponse: CanonicalResponse = {
+                id: streamId || `cache-${requestId}`,
+                content: [{ type: 'text', text: accumulatedText.join('') }],
+                stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
+                usage: { ...usage },
+                model: streamModel || usedModel,
+                routing: { tier, node: usedNodeId, latency_ms: latencyMs, score, is_fallback: isFallback },
+              };
+              this.cacheService.store(canonical, assembledResponse);
+            }
+
+            const { costUsd } = await this.recordBudgetUsage(canonical, usage, usedModel);
+
+            const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+              experimentGroupsByTarget,
+              usedNodeId,
+              usedModel,
+              experimentGroup,
+            );
+            await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+              statusCode: 200, isFallback, latencyMs, usage, error: null,
+              retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+              domainHint, modalityHints });
+
+            // ── Telemetry Metrics (stream success) ──
+            const streamTotalTokens = usage.input_tokens + usage.output_tokens;
+            rootSpan.setAttributes({
+              'gateway.tier': tier,
+              'gateway.node': usedNodeId,
+              'gateway.model': usedModel,
+              'gateway.is_fallback': isFallback,
+              'gen_ai.request.model': usedModel,
+              'gen_ai.usage.input_tokens': usage.input_tokens,
+              'gen_ai.usage.output_tokens': usage.output_tokens,
+            });
+            this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+            this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
+            this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+            if (costUsd > 0) {
+              this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+            }
+
+            res.end();
+            rootSpan.end();
+            return;
+          } catch (err) {
+            lastError = err as Error;
+
+            if (connected || streamConnected) {
+              // Transmission phase — don't retry, send error event
+              this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
+              this.circuitBreaker.recordFailure(target.node, target.model);
+              const recovered = await this.runOnErrorHooks(
+                canonical,
+                lastError,
+                'streamTransmission',
+                store,
+              );
+              const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+                experimentGroupsByTarget,
+                target.node,
+                target.model,
+                experimentGroup,
+              );
+              if (recovered && !headersFlushed) {
+                await this.recordSyntheticSuccess({
+                  requestId,
+                  canonical,
+                  response: recovered,
+                  tier,
+                  score,
+                  nodeId: 'hook',
+                  isFallback: !isFirstTarget,
+                  latencyMs: Date.now() - startTime,
+                  retryCount: totalRetries,
+                  experimentGroup: resolvedExperimentGroup,
+                });
+                this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+                rootSpan.end();
+                return;
+              }
+              const errorEvent: CanonicalStreamEvent = {
+                type: 'error',
+                error: { message: lastError.message, code: 'stream_error' },
+              };
+              ensureStreamHeaders();
+              res.write(serializer.serialize(errorEvent));
+              res.end();
+
+              await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
+                statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
+                usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message,
+                retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+                domainHint, modalityHints });
+              this.telemetry.upstreamErrors.add(1, { node: target.node, reason: 'stream_error' });
+              rootSpan.end();
+              return;
+            }
+
+            // Connection phase failure — check if retryable
+            const statusCode = lastError instanceof ProviderError ? lastError.statusCode : 0;
+            const isRetryable = retryConfig.retryable_status.includes(statusCode);
+            const isLastAttempt = attempt >= maxAttempts - 1;
+
+            if (isRetryable && !isLastAttempt) {
+              totalRetries++;
+              const delay = this.calculateBackoff(attempt, retryConfig, statusCode === 429 ? lastError : undefined);
+              this.logger.warn(
+                `Stream ${target.node} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
+                `retrying in ${delay}ms...`,
+              );
+              await this.sleep(delay);
+              continue;
+            }
+
+            // Not retryable or exhausted — move to next fallback
+            this.logger.warn(
+              `${isFirstTarget ? 'Primary' : 'Fallback'} node ${target.node} stream failed: ${lastError.message}` +
+              (attempt > 0 ? ` (after ${attempt + 1} attempts)` : ''),
+            );
+            this.circuitBreaker.recordFailure(target.node, target.model);
+            break; // break retry loop, continue to next target
+          }
+        }
+      }
+
+      // All nodes failed before stream connected
+      const errorMsg = lastError?.message || 'All nodes failed';
+      const failureStatus = this.resolveFailureStatus(lastError);
+      const recovered = await this.runOnErrorHooks(
+        canonical,
+        lastError || new Error(errorMsg),
+        'upstreamFailure',
         store,
-        this.config.getFullConfig(),
       );
-      if (hookResult.shortCircuit) {
-        const scResponse = hookResult.shortCircuit as CanonicalResponse;
-        res.json(this.denormalizeForClient(scResponse, canonical.metadata.source_format));
+      const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+        experimentGroupsByTarget,
+        usedNodeId,
+        usedModel,
+        experimentGroup,
+      );
+      if (recovered) {
+        await this.recordSyntheticSuccess({
+          requestId,
+          canonical,
+          response: recovered,
+          tier,
+          score,
+          nodeId: 'hook',
+          isFallback,
+          latencyMs: Date.now() - startTime,
+          retryCount: totalRetries,
+          experimentGroup: resolvedExperimentGroup,
+        });
+        this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
         rootSpan.end();
         return;
       }
-      canonical = (hookResult.data as { request: CanonicalRequest }).request;
-    }
-
-    // ── Budget Check ──
-    try {
-      await this.budgetService.check(canonical.metadata.api_key_name || undefined);
+      await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+        statusCode: failureStatus, isFallback, latencyMs: Date.now() - startTime,
+        usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
+        retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+        domainHint, modalityHints });
+      this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
+      res.status(failureStatus).json(
+        this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
+      );
+      rootSpan.end();
     } catch (err) {
-      if (err instanceof BudgetExceededError) {
-        this.logger.warn(`Budget exceeded (stream): ${err.message}`);
-        res.status(429).json(
-          this.formatError(canonical.metadata.source_format, 429, err.message),
+      const recovered = await this.runOnErrorHooks(
+        canonical,
+        err as Error,
+        currentPhase,
+        store,
+      );
+      if (recovered && !headersFlushed) {
+        await this.recordSyntheticSuccess({
+          requestId,
+          canonical,
+          response: recovered,
+          tier: 'direct',
+          score: 0,
+          nodeId: 'hook',
+          latencyMs: Date.now() - streamStartTime,
+        });
+        this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+        rootSpan.end();
+        return;
+      }
+
+      if (err instanceof GatewayRequestRejectedError && !headersFlushed) {
+        res.status(err.statusCode).json(
+          this.formatError(
+            canonical.metadata.source_format,
+            err.statusCode,
+            err.message,
+          ),
         );
         rootSpan.end();
         return;
       }
-      throw err;
-    }
 
-    // ── Cache Lookup (stream) ──
-    if (this.cacheService.shouldCache(canonical)) {
-      const cacheStart = Date.now();
-      const cached = this.cacheService.lookup(canonical);
-      if (cached) {
-        const cacheLatency = Date.now() - cacheStart;
-
-        // Set up SSE headers
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('X-Accel-Buffering', 'no');
-        res.flushHeaders();
-
-        // Create serializer and replay cached response as synthetic stream
-        const serializer = this.createSerializer(canonical.metadata.source_format);
-
-        // start event
-        const startEvt: CanonicalStreamEvent = { type: 'start', id: cached.id, model: cached.model };
-        const startText = serializer.serialize(startEvt);
-        if (startText) res.write(startText);
-
-        // delta events for each text content block
-        for (const block of cached.content) {
-          if (block.type === 'text') {
-            const deltaEvt: CanonicalStreamEvent = {
-              type: 'delta',
-              content: { type: 'text', text: block.text },
-            };
-            const deltaText = serializer.serialize(deltaEvt);
-            if (deltaText) res.write(deltaText);
-          }
-        }
-
-        // stop event
-        const stopEvt: CanonicalStreamEvent = {
-          type: 'stop',
-          stop_reason: cached.stop_reason,
-          usage: cached.usage,
-        };
-        const stopText = serializer.serialize(stopEvt);
-        if (stopText) res.write(stopText);
-
-        res.end();
-
-        await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
-          model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
-          usage: cached.usage, error: null, retryCount: 0 });
-        this.telemetry.cacheOperations.add(1, { operation: 'hit' });
-        rootSpan.setAttribute('gateway.cache', 'hit');
-        rootSpan.end();
-        return;
+      if (!headersFlushed) {
+        const failureStatus = this.resolveFailureStatus(err as Error);
+        res.status(failureStatus).json(
+          this.formatError(
+            canonical.metadata.source_format,
+            failureStatus,
+            (err as Error).message,
+          ),
+        );
+      }
+      rootSpan.end();
+      if (headersFlushed) {
+        throw err;
       }
     }
-
-    const { route, tier, score, experimentGroup } = await this.resolveSmartRoute(canonical, store);    const retryConfig = this.config.retry;
-
-    const startTime = Date.now();
-
-    // Set up SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
-    // Create serializer for client's source format
-    const serializer = this.createSerializer(canonical.metadata.source_format);
-
-    // Try primary + fallbacks (connection-phase fallback + retry)
-    const targets = [route.primary, ...route.fallbacks];
-    let streamConnected = false;
-    let usedNodeId = route.primary.node;
-    let usedModel = route.primary.model;
-    let isFallback = false;
-    let lastError: Error | null = null;
-    let totalRetries = 0;
-
-    for (let i = 0; i < targets.length; i++) {
-      const target = targets[i];
-      const isFirstTarget = i === 0;
-
-      // Connection-phase retry loop for this target
-      const maxAttempts = 1 + retryConfig.max_retries;
-      let connected = false;
-
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-          const stream = this.providerClient.forwardStream(
-            canonical, target.node, target.model,
-          );
-
-          // Stream events to client
-          const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
-          const accumulatedText: string[] = []; // For cache store
-          let streamModel = '';
-          let streamId = '';
-          let streamStopReason = '';
-
-          for await (const event of stream) {
-            streamConnected = true;
-            connected = true;
-            usedNodeId = target.node;
-            usedModel = target.model;
-            isFallback = !isFirstTarget;
-
-            // Accumulate for cache
-            if (event.type === 'start') {
-              streamModel = event.model;
-              streamId = event.id;
-            } else if (event.type === 'delta' && event.content.type === 'text') {
-              accumulatedText.push(event.content.text);
-            } else if (event.type === 'stop') {
-              usage.input_tokens = event.usage.input_tokens;
-              usage.output_tokens = event.usage.output_tokens;
-              if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
-              if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
-              streamStopReason = event.stop_reason;
-            }
-
-            // ── streamEvent Hook ──
-            let outputEvent = event;
-            if (!this.hooks.isEmpty()) {
-              const hookResult = await this.hooks.run(
-                'streamEvent',
-                { request: canonical, event } as Record<string, unknown>,
-                store,
-                this.config.getFullConfig(),
-              );
-              if (hookResult.shortCircuit && (hookResult.shortCircuit as Record<string, unknown>).__drop) {
-                continue; // Drop this event
-              }
-              outputEvent = (hookResult.data as { event: CanonicalStreamEvent }).event;
-            }
-
-            const sseText = serializer.serialize(outputEvent);
-            if (sseText) {
-              res.write(sseText);
-            }
-          }
-
-          // Stream completed successfully
-          const latencyMs = Date.now() - startTime;
-          this.circuitBreaker.recordSuccess(target.node, target.model);
-
-          // ── Cache Store (from stream accumulation) ──
-          if (this.cacheService.shouldCache(canonical) && accumulatedText.length > 0) {
-            const assembledResponse: CanonicalResponse = {
-              id: streamId || `cache-${requestId}`,
-              content: [{ type: 'text', text: accumulatedText.join('') }],
-              stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
-              usage: { ...usage },
-              model: streamModel || usedModel,
-              routing: { tier, node: usedNodeId, latency_ms: latencyMs, score, is_fallback: isFallback },
-            };
-            this.cacheService.store(canonical, assembledResponse);
-          }
-
-          const pricing = this.config.getModelPricing(usedModel);
-          const costUsd = this.calculateCost(usage, pricing);
-          const totalTokens = usage.input_tokens + usage.output_tokens;
-          await this.budgetService.record(totalTokens, costUsd, canonical.metadata.api_key_name || undefined);
-
-          await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-            statusCode: 200, isFallback, latencyMs, usage, error: null, retryCount: totalRetries, experimentGroup });
-
-          // ── Telemetry Metrics (stream success) ──
-          const streamTotalTokens = usage.input_tokens + usage.output_tokens;
-          rootSpan.setAttributes({
-            'gateway.tier': tier,
-            'gateway.node': usedNodeId,
-            'gateway.model': usedModel,
-            'gateway.is_fallback': isFallback,
-            'gen_ai.request.model': usedModel,
-            'gen_ai.usage.input_tokens': usage.input_tokens,
-            'gen_ai.usage.output_tokens': usage.output_tokens,
-          });
-          this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
-          this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
-          this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
-          if (costUsd > 0) {
-            this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
-          }
-
-          res.end();
-          rootSpan.end();
-          return;
-        } catch (err) {
-          lastError = err as Error;
-
-          if (connected || streamConnected) {
-            // Transmission phase — don't retry, send error event
-            this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
-            this.circuitBreaker.recordFailure(target.node, target.model);
-            const errorEvent: CanonicalStreamEvent = {
-              type: 'error',
-              error: { message: lastError.message, code: 'stream_error' },
-            };
-            res.write(serializer.serialize(errorEvent));
-            res.end();
-
-            await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
-              statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
-              usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message, retryCount: totalRetries, experimentGroup });
-            this.telemetry.upstreamErrors.add(1, { node: target.node, reason: 'stream_error' });
-            rootSpan.end();
-            return;
-          }
-
-          // Connection phase failure — check if retryable
-          const statusCode = lastError instanceof ProviderError ? lastError.statusCode : 0;
-          const isRetryable = retryConfig.retryable_status.includes(statusCode);
-          const isLastAttempt = attempt >= maxAttempts - 1;
-
-          if (isRetryable && !isLastAttempt) {
-            totalRetries++;
-            const delay = this.calculateBackoff(attempt, retryConfig, statusCode === 429 ? lastError : undefined);
-            this.logger.warn(
-              `Stream ${target.node} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
-              `retrying in ${delay}ms...`,
-            );
-            await this.sleep(delay);
-            continue;
-          }
-
-          // Not retryable or exhausted — move to next fallback
-          this.logger.warn(
-            `${isFirstTarget ? 'Primary' : 'Fallback'} node ${target.node} stream failed: ${lastError.message}` +
-            (attempt > 0 ? ` (after ${attempt + 1} attempts)` : ''),
-          );
-          this.circuitBreaker.recordFailure(target.node, target.model);
-          break; // break retry loop, continue to next target
-        }
-      }
-    }
-
-    // All nodes failed
-    const errorMsg = lastError?.message || 'All nodes failed';
-    const errorEvent: CanonicalStreamEvent = {
-      type: 'error',
-      error: { message: errorMsg, code: 'all_nodes_failed' },
-    };
-    res.write(serializer.serialize(errorEvent));
-    res.end();
-
-    await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-      statusCode: 502, isFallback: false, latencyMs: Date.now() - startTime,
-      usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg, retryCount: totalRetries, experimentGroup });
-    this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
-    rootSpan.end();
   }
 
   // ══════════════════════════════════════════════════════
@@ -659,34 +990,33 @@ export class PipelineService {
   private async resolveSmartRoute(
     canonical: CanonicalRequest,
     store?: Map<string, unknown>,
-  ): Promise<{
-    route: { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] };
-    tier: Tier;
-    score: number;
-    experimentGroup: string | null;
-  }> {
+  ): Promise<SmartRouteResolution> {
     const requestedModel = canonical.metadata.original_model;
 
     if (this.shouldPinMessagesRequestToClaude(canonical)) {
-      const claudeNode = this.config.getNode('claude');
-      if (claudeNode) {
+      const pinnedNode = this.findPinnedMessagesNode(requestedModel);
+      if (pinnedNode) {
+        this.assertRouteModeAllowed(canonical, 'direct');
         const pinnedModel =
           requestedModel && requestedModel !== 'auto'
-            ? this.resolvePinnedClaudeModel(requestedModel)
-            : claudeNode.models[0];
+            ? this.resolvePinnedMessagesModel(requestedModel, pinnedNode.id)
+            : pinnedNode.models[0];
+        this.assertTargetAllowed(canonical, pinnedNode.id, pinnedModel);
 
         this.logger.log(
-          `Pinned messages route: "${requestedModel || 'auto'}" → node "claude" (model: ${pinnedModel})`,
+          `Pinned messages route: "${requestedModel || 'auto'}" → node "${pinnedNode.id}" (model: ${pinnedModel})`,
         );
 
         return {
           route: {
-            primary: { node: 'claude', model: pinnedModel },
+            primary: { node: pinnedNode.id, model: pinnedModel },
             fallbacks: [],
           },
           tier: 'direct',
           score: 0,
+          domainHint: null,
           experimentGroup: null,
+          experimentGroupsByTarget: {},
         };
       }
     }
@@ -696,6 +1026,8 @@ export class PipelineService {
       const resolved = this.config.resolveModel(requestedModel);
 
       if (resolved) {
+        this.assertRouteModeAllowed(canonical, 'direct');
+        this.assertTargetAllowed(canonical, resolved.nodeId, resolved.model);
         this.logger.log(
           `Direct route: "${requestedModel}" → node "${resolved.nodeId}" (model: ${resolved.model})`,
         );
@@ -715,7 +1047,10 @@ export class PipelineService {
         }
 
         // Build fallbacks from other nodes (modality-aware)
-        const fallbacks = this.buildDirectFallbacks(canonical, resolved.nodeId);
+        const fallbacks = this.filterAllowedTargets(
+          canonical,
+          this.buildDirectFallbacks(canonical, resolved.nodeId),
+        );
 
         return {
           route: {
@@ -724,17 +1059,27 @@ export class PipelineService {
           },
           tier: 'direct',
           score: 0,
+          domainHint: null,
           experimentGroup: null,
+          experimentGroupsByTarget: {},
         };
       }
 
       // Unknown model — fall through to auto routing (not an error)
+      if (canonical.metadata.api_key_permissions) {
+        this.assertRouteModeAllowed(canonical, 'direct');
+        throw new GatewayRequestRejectedError(
+          `Model "${requestedModel}" is not configured. Use "auto" or a node/model prefix for direct routing.`,
+          400,
+        );
+      }
       this.logger.log(
         `Model "${requestedModel}" not recognized, falling through to auto routing`,
       );
     }
 
     // ── 2. Score-based routing (model = "auto" or unspecified) ──
+    this.assertRouteModeAllowed(canonical, 'auto');
     const scoringResult = this.telemetry.withSpanSync(
       'gateway.scoring',
       { 'gateway.requested_model': requestedModel || 'auto' },
@@ -799,14 +1144,19 @@ export class PipelineService {
       `${scoringResult.fastPath ? ` [fast-path: ${scoringResult.fastPath}]` : ''}`,
     );
 
+    const constrainedRoute = this.constrainAutoRoute(canonical, {
+      primary: routeDecision.primary,
+      fallbacks: routeDecision.fallbacks,
+    });
+
     return {
-      route: {
-        primary: routeDecision.primary,
-        fallbacks: routeDecision.fallbacks,
-      },
+      route: constrainedRoute,
       tier: routeDecision.tier,
       score: scoringResult.score,
+      domainHint: routeDecision.domainHint || scoringResult.domainHint || null,
+      modalityHints: scoringResult.modalityHints,
       experimentGroup: routeDecision.experimentGroup,
+      experimentGroupsByTarget: routeDecision.experimentGroupsByTarget || {},
     };
   }
 
@@ -846,11 +1196,105 @@ export class PipelineService {
     return otherNodes;
   }
 
+  private assertRouteModeAllowed(
+    canonical: CanonicalRequest,
+    mode: 'auto' | 'direct',
+  ): void {
+    const permissions = canonical.metadata.api_key_permissions;
+    if (!permissions) return;
+
+    if (mode === 'auto' && !permissions.allow_auto) {
+      throw new GatewayRequestRejectedError(
+        'This API key is not allowed to use automatic model routing.',
+        403,
+      );
+    }
+
+    if (mode === 'direct' && !permissions.allow_direct) {
+      throw new GatewayRequestRejectedError(
+        'This API key is not allowed to use direct model routing.',
+        403,
+      );
+    }
+  }
+
+  private assertTargetAllowed(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+  ): void {
+    if (this.isTargetAllowed(canonical, nodeId, model)) return;
+    throw new GatewayRequestRejectedError(
+      `This API key is not allowed to use ${nodeId}/${model}.`,
+      403,
+    );
+  }
+
+  private constrainAutoRoute(
+    canonical: CanonicalRequest,
+    route: {
+      primary: { node: string; model: string };
+      fallbacks: { node: string; model: string }[];
+    },
+  ): {
+    primary: { node: string; model: string };
+    fallbacks: { node: string; model: string }[];
+  } {
+    if (!canonical.metadata.api_key_permissions) return route;
+
+    const allowedTargets = this.filterAllowedTargets(canonical, [
+      route.primary,
+      ...route.fallbacks,
+    ]);
+
+    if (allowedTargets.length === 0) {
+      throw new GatewayRequestRejectedError(
+        'This API key has no permitted models for the resolved automatic route.',
+        403,
+      );
+    }
+
+    return {
+      primary: allowedTargets[0],
+      fallbacks: allowedTargets.slice(1),
+    };
+  }
+
+  private filterAllowedTargets(
+    canonical: CanonicalRequest,
+    targets: { node: string; model: string }[],
+  ): { node: string; model: string }[] {
+    return targets.filter((target) =>
+      this.isTargetAllowed(canonical, target.node, target.model),
+    );
+  }
+
+  private isTargetAllowed(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+  ): boolean {
+    const permissions = canonical.metadata.api_key_permissions;
+    if (!permissions) return true;
+
+    const nodeAllowed =
+      permissions.allowed_nodes.length === 0 ||
+      permissions.allowed_nodes.includes(nodeId);
+    const modelAllowed =
+      permissions.allowed_models.length === 0 ||
+      permissions.allowed_models.includes(model);
+
+    return nodeAllowed && modelAllowed;
+  }
+
   private shouldStayOnPrimaryNode(
     canonical: CanonicalRequest,
     primaryNodeId: string,
   ): boolean {
-    return primaryNodeId === 'claude' && this.shouldPinMessagesRequestToClaude(canonical);
+    return (
+      this.config.getNode(primaryNodeId)?.protocol === 'messages' &&
+      this.shouldPinMessagesRequestToClaude(canonical)
+    );
   }
 
   private shouldPinMessagesRequestToClaude(canonical: CanonicalRequest): boolean {
@@ -874,9 +1318,21 @@ export class PipelineService {
     return ['claude', 'opus', 'sonnet', 'haiku'].includes(model) || model.startsWith('claude-');
   }
 
-  private resolvePinnedClaudeModel(requestedModel: string): string {
+  private findPinnedMessagesNode(requestedModel?: string): NodeConfig | undefined {
+    if (requestedModel && requestedModel !== 'auto') {
+      const resolved = this.config.resolveModel(requestedModel);
+      const resolvedNode = resolved ? this.config.getNode(resolved.nodeId) : undefined;
+      if (resolvedNode?.protocol === 'messages') {
+        return resolvedNode;
+      }
+    }
+
+    return this.config.nodes.find((node) => node.protocol === 'messages');
+  }
+
+  private resolvePinnedMessagesModel(requestedModel: string, nodeId: string): string {
     const resolved = this.config.resolveModel(requestedModel);
-    if (resolved?.nodeId === 'claude') {
+    if (resolved?.nodeId === nodeId) {
       return resolved.model;
     }
     return requestedModel;
@@ -921,6 +1377,227 @@ export class PipelineService {
     }
   }
 
+  private formatBudgetError(sourceFormat: SourceFormat, err: BudgetExceededError): Record<string, unknown> {
+    const details = err.toDetails();
+    switch (sourceFormat) {
+      case 'messages':
+        return {
+          type: 'error',
+          error: {
+            type: 'budget_exceeded',
+            message: err.message,
+            details,
+          },
+        };
+      case 'chat_completions':
+      case 'responses':
+      default:
+        return {
+          error: {
+            message: err.message,
+            type: 'budget_exceeded',
+            code: err.budgetType,
+            details,
+          },
+        };
+    }
+  }
+
+  private resolveFailureStatus(err: Error | null | undefined): number {
+    if (err instanceof ProviderError && err.statusCode > 0) {
+      return err.statusCode;
+    }
+    return 502;
+  }
+
+  private async runPreUpstreamHooks(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+    store: Map<string, unknown>,
+  ): Promise<{ request: CanonicalRequest; shortCircuit?: CanonicalResponse }> {
+    if (this.hooks.isEmpty()) {
+      return { request: canonical };
+    }
+
+    const hookResult = await this.hooks.run(
+      'preUpstream',
+      { request: canonical, nodeId, model } as Record<string, unknown>,
+      store,
+      this.config.getFullConfig(),
+    );
+
+    if (hookResult.shortCircuit) {
+      return {
+        request: canonical,
+        shortCircuit: hookResult.shortCircuit as CanonicalResponse,
+      };
+    }
+
+    return {
+      request: (hookResult.data as { request: CanonicalRequest }).request,
+    };
+  }
+
+  private async runOnErrorHooks(
+    canonical: CanonicalRequest,
+    err: Error,
+    phase: string,
+    store: Map<string, unknown>,
+  ): Promise<CanonicalResponse | null> {
+    if (this.hooks.isEmpty()) {
+      return null;
+    }
+
+    try {
+      const hookResult = await this.hooks.run(
+        'onError',
+        { request: canonical, error: err, phase } as Record<string, unknown>,
+        store,
+        this.config.getFullConfig(),
+      );
+      if (hookResult.shortCircuit) {
+        return hookResult.shortCircuit as CanonicalResponse;
+      }
+    } catch (hookErr) {
+      this.logger.error(`onError hook failed: ${(hookErr as Error).message}`);
+    }
+
+    return null;
+  }
+
+  private writeSyntheticStreamResponse(
+    res: ExpressResponse,
+    sourceFormat: SourceFormat,
+    canonical: CanonicalResponse,
+  ): void {
+    const serializer = this.createSerializer(sourceFormat);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const startEvt: CanonicalStreamEvent = { type: 'start', id: canonical.id, model: canonical.model };
+    const startText = serializer.serialize(startEvt);
+    if (startText) res.write(startText);
+
+    for (const block of canonical.content) {
+      if (block.type === 'text') {
+        const deltaEvt: CanonicalStreamEvent = {
+          type: 'delta',
+          content: { type: 'text', text: block.text },
+        };
+        const deltaText = serializer.serialize(deltaEvt);
+        if (deltaText) res.write(deltaText);
+      }
+    }
+
+    const stopEvt: CanonicalStreamEvent = {
+      type: 'stop',
+      stop_reason: canonical.stop_reason,
+      usage: canonical.usage,
+    };
+    const stopText = serializer.serialize(stopEvt);
+    if (stopText) res.write(stopText);
+
+    res.end();
+  }
+
+  private resolveExperimentGroupForTarget(
+    experimentGroupsByTarget: Record<string, string> | undefined,
+    nodeId: string,
+    model: string,
+    fallbackExperimentGroup: string | null,
+  ): string | null {
+    return experimentGroupsByTarget?.[this.buildExperimentTargetKey(nodeId, model)] || fallbackExperimentGroup;
+  }
+
+  private buildExperimentTargetKey(nodeId: string, model: string): string {
+    return `${nodeId}:${model}`;
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Budget Accounting
+  // ══════════════════════════════════════════════════════
+
+  private async checkBudget(canonical: CanonicalRequest): Promise<void> {
+    if (canonical.metadata.api_key_id) {
+      await this.budgetService.check(
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id,
+      );
+      return;
+    }
+
+    await this.budgetService.check(canonical.metadata.api_key_name || undefined);
+  }
+
+  private async recordBudgetUsage(
+    canonical: CanonicalRequest,
+    usage: TokenUsage,
+    model: string,
+  ): Promise<{ totalTokens: number; costUsd: number }> {
+    const pricing = this.config.getModelPricing(model);
+    const costUsd = this.calculateCost(usage, pricing);
+    const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+
+    if (canonical.metadata.api_key_id) {
+      await this.budgetService.record(
+        totalTokens,
+        costUsd,
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id,
+      );
+    } else {
+      await this.budgetService.record(
+        totalTokens,
+        costUsd,
+        canonical.metadata.api_key_name || undefined,
+      );
+    }
+
+    return { totalTokens, costUsd };
+  }
+
+  private async recordSyntheticSuccess(params: {
+    requestId: string;
+    canonical: CanonicalRequest;
+    response: CanonicalResponse;
+    tier: Tier;
+    score: number;
+    nodeId: string;
+    isFallback?: boolean;
+    latencyMs: number;
+    retryCount?: number;
+    experimentGroup?: string | null;
+    domainHint?: string | null;
+    modalityHints?: string[];
+  }): Promise<void> {
+    await this.recordBudgetUsage(
+      params.canonical,
+      params.response.usage,
+      params.response.model,
+    );
+    await this.logCall({
+      requestId: params.requestId,
+      canonical: params.canonical,
+      tier: params.tier,
+      score: params.score,
+      nodeId: params.nodeId,
+      model: params.response.model,
+      statusCode: 200,
+      isFallback: params.isFallback || false,
+      latencyMs: params.latencyMs,
+      usage: params.response.usage,
+      error: null,
+      retryCount: params.retryCount || 0,
+      experimentGroup: params.experimentGroup || null,
+      domainHint: params.domainHint,
+      modalityHints: params.modalityHints,
+    });
+  }
+
   // ══════════════════════════════════════════════════════
   // Cost Calculation (cache-aware)
   // ══════════════════════════════════════════════════════
@@ -948,6 +1625,8 @@ export class PipelineService {
     latencyMs: number; usage: TokenUsage; error: string | null;
     retryCount?: number;
     experimentGroup?: string | null;
+    domainHint?: string | null;
+    modalityHints?: string[];
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model);
@@ -966,6 +1645,7 @@ export class PipelineService {
         session_key: params.canonical.metadata.session_key || null,
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
+        api_key_id: params.canonical.metadata.api_key_id || null,
         retry_count: params.retryCount || 0,
         experiment_group: params.experimentGroup || null,
       });
@@ -973,6 +1653,13 @@ export class PipelineService {
 
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);
+
+      // Optional hosted control-plane metadata upload. This is privacy-preserving:
+      // it derives metadata only from CallLog and never includes prompt/response bodies.
+      this.telemetryUploader.enqueue(saved, {
+        domainHint: params.domainHint,
+        modalities: params.modalityHints || Array.from(detectRequestModalities(params.canonical)),
+      });
     } catch (err) {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
     }

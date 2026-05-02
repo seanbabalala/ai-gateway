@@ -1,0 +1,10 @@
+{
+  "login.authStatusError": "No se pudo comprobar el estado de auth",
+  "login.errorFallback": "No se pudo iniciar sesión",
+  "login.invalidPassword": "Contraseña no válida",
+  "login.passwordPlaceholder": "Contraseña",
+  "login.signingIn": "Iniciando sesión...",
+  "login.submit": "Entrar",
+  "login.subtitle": "Introduce tu contraseña para acceder al dashboard",
+  "login.title": "SiftGate"
+}

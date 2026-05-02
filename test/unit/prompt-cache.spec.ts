@@ -223,6 +223,34 @@ describe('PromptCacheService', () => {
       expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
     });
 
+    it('should isolate keys by api_key_name', () => {
+      const svc = makeService();
+      const req1 = makeRequest('hello');
+      const req2 = makeRequest('hello');
+      req1.metadata.api_key_name = 'team-a';
+      req2.metadata.api_key_name = 'team-b';
+
+      expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
+    });
+
+    it('should isolate keys by session_key', () => {
+      const svc = makeService();
+      const req1 = makeRequest('hello', { sessionKey: 'session-a' });
+      const req2 = makeRequest('hello', { sessionKey: 'session-b' });
+
+      expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
+    });
+
+    it('should isolate keys by routing-relevant headers', () => {
+      const svc = makeService();
+      const req1 = makeRequest('hello');
+      const req2 = makeRequest('hello');
+      req1.metadata.raw_headers = { 'anthropic-beta': 'claude-code-20250219' };
+      req2.metadata.raw_headers = { 'anthropic-beta': 'context-management-2025-06-27' };
+
+      expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
+    });
+
     it('should produce a SHA-256 hex string (64 chars)', () => {
       const svc = makeService();
       const key = svc.buildKey(makeRequest('test'));

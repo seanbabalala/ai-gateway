@@ -1,0 +1,10 @@
+{
+  "login.authStatusError": "인증 상태 확인에 실패했습니다",
+  "login.errorFallback": "로그인에 실패했습니다",
+  "login.invalidPassword": "비밀번호가 올바르지 않습니다",
+  "login.passwordPlaceholder": "비밀번호",
+  "login.signingIn": "로그인 중...",
+  "login.submit": "로그인",
+  "login.subtitle": "대시보드에 접근하려면 비밀번호를 입력하세요",
+  "login.title": "SiftGate"
+}

@@ -43,8 +43,8 @@ export class TelemetryService {
   readonly upstreamDuration: Histogram;
 
   constructor() {
-    this.tracer = trace.getTracer('ai-gateway', '0.1.0');
-    this.meter = metrics.getMeter('ai-gateway', '0.1.0');
+    this.tracer = trace.getTracer('siftgate', '0.1.0');
+    this.meter = metrics.getMeter('siftgate', '0.1.0');
 
     // Counters
     this.requestTotal = this.meter.createCounter('gateway.request.total', {

@@ -44,16 +44,16 @@ describe('Claude routing compatibility', () => {
     jest.restoreAllMocks();
   });
 
-  it('routes claude-* model names to the claude node without alias registration', () => {
+  it('routes claude-* model names to the configured messages node without alias registration', () => {
     const config = new ConfigService();
 
     expect(config.resolveModel('claude-haiku-4-5-20251001')).toEqual({
-      nodeId: 'claude',
+      nodeId: 'ctrip-anthropic',
       model: 'claude-haiku-4-5-20251001',
     });
   });
 
-  it('pins Claude Code messages requests to claude with no cross-provider fallbacks', async () => {
+  it('pins Claude Code messages requests to the configured messages node with no cross-provider fallbacks', async () => {
     const config = new ConfigService();
     const service = new PipelineService(
       config,
@@ -67,13 +67,14 @@ describe('Claude routing compatibility', () => {
       {} as never,
       createNoOpHookExecutor() as never,
       new TelemetryService(),
+      { enqueue: jest.fn() } as never,
       {} as never,
     );
 
     const route = await (service as any).resolveSmartRoute(makeMessagesRequest());
 
     expect(route.route.primary).toEqual({
-      node: 'claude',
+      node: 'ctrip-anthropic',
       model: 'claude-opus-4-6-v1',
     });
     expect(route.route.fallbacks).toEqual([]);

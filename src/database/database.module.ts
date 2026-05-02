@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '../config/config.service';
-import { CallLog, BudgetRule, NodeStatus } from './entities';
+import { CallLog, BudgetRule, NodeStatus, GatewayApiKey } from './entities';
 
 @Module({
   imports: [
@@ -9,7 +9,7 @@ import { CallLog, BudgetRule, NodeStatus } from './entities';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const shared = {
-          entities: [CallLog, BudgetRule, NodeStatus],
+          entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey],
           synchronize: true, // Auto-create tables in dev; use migrations in prod
           logging: false,
         };

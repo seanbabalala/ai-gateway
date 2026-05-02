@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   LineChart,
   Line,
@@ -14,6 +15,8 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { SkeletonCard, SkeletonChart, Skeleton } from '@/components/ui/skeleton'
+import { ErrorState } from '@/components/ui/error-state'
 import { useExperimentAnalytics } from '@/hooks/use-experiments'
 import { useThemeColors } from '@/lib/theme'
 import {
@@ -23,22 +26,22 @@ import {
   formatTokens,
 } from '@/lib/utils'
 
-const periodOptions = [
-  { value: '7d', label: '7 days' },
-  { value: '30d', label: '30 days' },
-  { value: '90d', label: '90 days' },
-]
-
 const VARIANT_COLORS = [
-  '#D4A947', '#7C3AED', '#0284C7', '#2D8659', '#E11D48',
-  '#F97316', '#0891B2', '#A78BFA',
+  '#064B3A', '#4867E8', '#D9872F', '#7446C6', '#CC3C7E',
+  '#189AA8', '#B86B2B', '#8B6AD6',
 ]
 
 export function ExperimentPage() {
+  const { t } = useTranslation('analytics')
   const [period, setPeriod] = useState('7d')
   const [tierFilter, setTierFilter] = useState<string | undefined>(undefined)
-  const { data, isLoading } = useExperimentAnalytics(period, tierFilter)
+  const { data, isLoading, isError, error, refetch } = useExperimentAnalytics(period, tierFilter)
   const colors = useThemeColors()
+  const periodOptions = [
+    { value: '7d', label: t('filters.days', { count: 7 }) },
+    { value: '30d', label: t('filters.days', { count: 30 }) },
+    { value: '90d', label: t('filters.days', { count: 90 }) },
+  ]
 
   // Build tier options from active splits
   const tierOptions = useMemo(() => {
@@ -81,10 +84,22 @@ export function ExperimentPage() {
     return { lowestLatency, lowestCost, highestSuccess }
   }, [groups])
 
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />
+  }
+
   if (isLoading || !data) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="animate-shimmer h-6 w-48 rounded-lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('experiments.title')} description={t('experiments.description')} />
+        <SkeletonCard className="h-32" />
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-5">
+          {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} className="h-48" />)}
+        </div>
+        <div className="glass-card-static rounded-2xl p-6">
+          <Skeleton className="h-4 w-40 mb-4" />
+          <SkeletonChart height={280} />
+        </div>
       </div>
     )
   }
@@ -92,35 +107,36 @@ export function ExperimentPage() {
   const tooltipStyle = {
     background: colors.chartTooltipBg,
     border: `1px solid ${colors.chartTooltipBorder}`,
-    borderRadius: '12px',
+    borderRadius: '8px',
     fontSize: '12px',
     padding: '8px 12px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+    boxShadow: '0 22px 52px rgba(5,46,36,0.16)',
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Experiments"
-        description="A/B split test analytics — compare model variants"
+        title={t('experiments.title')}
+        description={t('experiments.description')}
+        icon={FlaskConical}
       >
         <div className="flex items-center gap-3">
           {tierOptions.length > 0 && (
             <Select
               className="w-32 h-8 text-[11px]"
-              options={[{ value: '', label: 'All tiers' }, ...tierOptions]}
+              options={[{ value: '', label: t('experiments.allTiers') }, ...tierOptions]}
               value={tierFilter || ''}
-              onChange={(e) => setTierFilter(e.target.value || undefined)}
+              onChange={(v) => setTierFilter(v || undefined)}
             />
           )}
-          <div className="flex items-center gap-1 rounded-xl bg-[var(--inset-bg)] p-1">
+          <div className="flex items-center gap-1 rounded-lg bg-[var(--background-secondary)] p-1 shadow-[0_1px_2px_rgba(5,46,36,0.05)]">
             {periodOptions.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setPeriod(opt.value)}
                 className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all cursor-pointer ${
                   period === opt.value
-                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                    ? 'bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm'
                     : 'text-[var(--foreground-dim)] hover:text-[var(--foreground)]'
                 }`}
               >
@@ -136,10 +152,9 @@ export function ExperimentPage() {
         <Card className="animate-fade-up">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <FlaskConical className="h-12 w-12 text-[var(--foreground-dim)] mb-4" />
-            <h3 className="text-lg font-semibold text-[var(--foreground)]">No experiment data yet</h3>
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">{t('experiments.emptyTitle')}</h3>
             <p className="mt-2 text-sm text-[var(--foreground-dim)] max-w-md text-center">
-              Configure a <code className="px-1.5 py-0.5 rounded bg-[var(--inset-bg)] text-[var(--accent)] text-xs">split</code> on
-              a routing tier to start an A/B test. Data will appear here once requests are routed through split variants.
+              {t('experiments.emptyPrefix')} <code className="px-1.5 py-0.5 rounded bg-[var(--inset-bg)] text-[var(--accent)] text-xs">split</code> {t('experiments.emptySuffix')}
             </p>
           </CardContent>
         </Card>
@@ -149,15 +164,15 @@ export function ExperimentPage() {
       {Object.keys(data.activeSplits).length > 0 && (
         <Card className="animate-fade-up">
           <CardHeader>
-            <CardTitle>Active Experiments</CardTitle>
+            <CardTitle>{t('experiments.activeTitle')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {Object.entries(data.activeSplits).map(([tier, variants]) => (
-                <div key={tier} className="rounded-xl bg-[var(--inset-bg)] p-4">
+                <div key={tier} className="rounded-lg bg-[var(--background-tertiary)] p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <Badge variant="purple">{tier}</Badge>
-                    <span className="text-[11px] text-[var(--foreground-dim)]">tier</span>
+                    <span className="text-[11px] text-[var(--foreground-dim)]">{t('experiments.tier')}</span>
                   </div>
                   <div className="flex items-center gap-2 h-6 rounded-full overflow-hidden">
                     {variants.map((v, i) => (
@@ -202,7 +217,7 @@ export function ExperimentPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[var(--foreground-dim)]">
-                      <Zap className="h-3 w-3" /> Calls
+                      <Zap className="h-3 w-3" /> {t('labels.calls')}
                     </div>
                     <div className="mt-1 text-lg font-semibold text-[var(--foreground)]">
                       {formatNumber(g.calls)}
@@ -210,7 +225,7 @@ export function ExperimentPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[var(--foreground-dim)]">
-                      <CheckCircle className="h-3 w-3" /> Success
+                      <CheckCircle className="h-3 w-3" /> {t('experiments.success')}
                     </div>
                     <div className="mt-1 text-lg font-semibold text-[var(--foreground)]">
                       {g.successRate}%
@@ -218,7 +233,7 @@ export function ExperimentPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[var(--foreground-dim)]">
-                      <Clock className="h-3 w-3" /> Avg Latency
+                      <Clock className="h-3 w-3" /> {t('experiments.avgLatency')}
                     </div>
                     <div className="mt-1 text-lg font-semibold text-[var(--foreground)]">
                       {formatLatency(g.avgLatency)}
@@ -226,7 +241,7 @@ export function ExperimentPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[var(--foreground-dim)]">
-                      <DollarSign className="h-3 w-3" /> Avg Cost
+                      <DollarSign className="h-3 w-3" /> {t('experiments.avgCost')}
                     </div>
                     <div className="mt-1 text-lg font-semibold text-[var(--foreground)]">
                       {formatCost(g.avgCost)}
@@ -234,7 +249,7 @@ export function ExperimentPage() {
                   </div>
                 </div>
                 <div className="mt-3 border-t border-[var(--border)] pt-3 text-[10px] text-[var(--foreground-dim)]">
-                  Total: {formatCost(g.totalCost)} &middot; {formatTokens(g.totalTokens)} tokens
+                  {t('experiments.totalLine', { cost: formatCost(g.totalCost), tokens: formatTokens(g.totalTokens) })}
                 </div>
               </CardContent>
             </Card>
@@ -246,41 +261,41 @@ export function ExperimentPage() {
       {winners && (
         <Card className="animate-fade-up">
           <CardHeader>
-            <CardTitle>Quick Comparison</CardTitle>
+            <CardTitle>{t('experiments.quickComparison')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-xl bg-[var(--inset-bg)] p-4">
+              <div className="rounded-lg bg-[var(--background-tertiary)] p-4">
                 <div className="text-[9px] font-bold uppercase tracking-widest text-green-500 mb-1">
-                  Lowest Latency
+                  {t('experiments.lowestLatency')}
                 </div>
                 <div className="font-mono text-sm font-semibold text-[var(--foreground)]">
                   {winners.lowestLatency.experimentGroup}
                 </div>
                 <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
-                  {formatLatency(winners.lowestLatency.avgLatency)} avg
+                  {t('experiments.avgValue', { value: formatLatency(winners.lowestLatency.avgLatency) })}
                 </div>
               </div>
-              <div className="rounded-xl bg-[var(--inset-bg)] p-4">
+              <div className="rounded-lg bg-[var(--background-tertiary)] p-4">
                 <div className="text-[9px] font-bold uppercase tracking-widest text-blue-500 mb-1">
-                  Lowest Cost
+                  {t('experiments.lowestCost')}
                 </div>
                 <div className="font-mono text-sm font-semibold text-[var(--foreground)]">
                   {winners.lowestCost.experimentGroup}
                 </div>
                 <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
-                  {formatCost(winners.lowestCost.avgCost)} avg/call
+                  {t('experiments.avgCostPerCall', { cost: formatCost(winners.lowestCost.avgCost) })}
                 </div>
               </div>
-              <div className="rounded-xl bg-[var(--inset-bg)] p-4">
+              <div className="rounded-lg bg-[var(--background-tertiary)] p-4">
                 <div className="text-[9px] font-bold uppercase tracking-widest text-purple-500 mb-1">
-                  Highest Success
+                  {t('experiments.highestSuccess')}
                 </div>
                 <div className="font-mono text-sm font-semibold text-[var(--foreground)]">
                   {winners.highestSuccess.experimentGroup}
                 </div>
                 <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
-                  {winners.highestSuccess.successRate}% success rate
+                  {t('experiments.successRate', { value: winners.highestSuccess.successRate })}
                 </div>
               </div>
             </div>
@@ -292,7 +307,7 @@ export function ExperimentPage() {
       {chartData.length > 0 && (
         <Card className="animate-fade-up">
           <CardHeader>
-            <CardTitle>Latency Trend</CardTitle>
+            <CardTitle>{t('experiments.latencyTrend')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
@@ -304,7 +319,7 @@ export function ExperimentPage() {
                 />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                   axisLine={{ stroke: colors.chartAxisLine }}
                   tickLine={false}
                   tickFormatter={(v: string) => {
@@ -313,7 +328,7 @@ export function ExperimentPage() {
                   }}
                 />
                 <YAxis
-                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                   axisLine={false}
                   tickLine={false}
                   width={50}
@@ -346,7 +361,7 @@ export function ExperimentPage() {
       {chartData.length > 0 && (
         <Card className="animate-fade-up">
           <CardHeader>
-            <CardTitle>Cost Trend</CardTitle>
+            <CardTitle>{t('experiments.costTrend')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
@@ -358,7 +373,7 @@ export function ExperimentPage() {
                 />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                   axisLine={{ stroke: colors.chartAxisLine }}
                   tickLine={false}
                   tickFormatter={(v: string) => {
@@ -367,7 +382,7 @@ export function ExperimentPage() {
                   }}
                 />
                 <YAxis
-                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'Space Mono' }}
+                  tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                   axisLine={false}
                   tickLine={false}
                   width={50}
@@ -377,7 +392,7 @@ export function ExperimentPage() {
                   contentStyle={tooltipStyle}
                   itemStyle={{ color: colors.chartTooltipText }}
                   labelStyle={{ color: colors.chartTooltipText, fontWeight: 600, marginBottom: 4 }}
-                  formatter={(value: number) => [formatCost(value), 'Avg Cost']}
+                  formatter={(value: number) => [formatCost(value), t('experiments.avgCost')]}
                 />
                 <Legend />
                 {uniqueGroups.map((group, i) => (

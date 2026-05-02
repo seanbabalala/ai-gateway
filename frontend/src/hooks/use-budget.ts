@@ -2,12 +2,21 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { BudgetResponse, BudgetPerKeyResponse, BudgetKeysResponse } from '@/types/api'
 
-export function useBudget(apiKey?: string) {
+export interface BudgetScope {
+  id?: string
+  name?: string
+}
+
+export function useBudget(scope?: BudgetScope) {
+  const key = scope?.id ? `id:${scope.id}` : scope?.name ? `name:${scope.name}` : 'global'
   return useQuery<BudgetResponse | BudgetPerKeyResponse>({
-    queryKey: ['budget', apiKey],
+    queryKey: ['budget', key],
     queryFn: () =>
-      apiKey
-        ? apiGet<BudgetPerKeyResponse>('/api/dashboard/budget', { api_key: apiKey })
+      scope?.id || scope?.name
+        ? apiGet<BudgetPerKeyResponse>('/api/dashboard/budget', {
+            api_key_id: scope.id,
+            api_key: scope.id ? undefined : scope.name,
+          })
         : apiGet<BudgetResponse>('/api/dashboard/budget'),
     refetchInterval: 15_000,
   })

@@ -84,9 +84,21 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       max_entries: 1000,
       exclude_tool_use: true,
     },
+    controlPlane: {
+      enabled: false,
+      url: '',
+      gateway_id: '',
+      registration_token: '',
+      telemetry: {
+        upload_interval_seconds: 30,
+        include_prompt: false,
+        include_response: false,
+      },
+    },
     getNode: jest.fn().mockReturnValue(undefined),
     getModelPricing: jest.fn().mockReturnValue(undefined),
     getFullConfig: jest.fn(),
+    getNodeModelDiagnostics: jest.fn().mockReturnValue([]),
     reload: jest.fn(),
     ...overrides,
   };

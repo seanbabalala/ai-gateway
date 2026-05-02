@@ -1,5 +1,5 @@
 # ============================================================
-# AI Gateway — Docker Compose
+# SiftGate — Docker Compose
 # ============================================================
 # Quick start:
 #   1. cp gateway.config.example.yaml gateway.config.yaml
@@ -10,21 +10,22 @@
 # ============================================================
 
 services:
-  ai-gateway:
+  siftgate:
     build: .
-    container_name: ai-gateway
+    container_name: siftgate
     restart: unless-stopped
     ports:
       - "2099:2099"
     volumes:
-      # Mount your config file (required)
-      - ./gateway.config.yaml:/app/gateway.config.yaml:ro
+      # Mount your config file. Keep it writable so dashboard edits and
+      # first-start dashboard password hashing can be persisted.
+      - ./gateway.config.yaml:/app/gateway.config.yaml
       # Persist SQLite database across restarts
       - ./data:/app/data
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:2099/health"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2099/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 10s

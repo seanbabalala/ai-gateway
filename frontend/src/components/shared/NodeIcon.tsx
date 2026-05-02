@@ -1,4 +1,6 @@
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface NodeIconProps {
@@ -73,36 +75,31 @@ function resolveProvider(nodeId?: string, protocol?: string): { logo: string; in
  * Falls back to a generic AI icon if no match is found.
  */
 export function NodeIcon({ nodeId, protocol, className, style }: NodeIconProps) {
+  const { t } = useTranslation('nodes')
+  const [imgError, setImgError] = useState(false)
   const provider = resolveProvider(nodeId, protocol)
 
-  if (provider) {
+  if (provider && !imgError) {
     return (
       <img
         src={provider.logo}
-        alt={nodeId ?? protocol ?? 'AI Provider'}
+        alt={nodeId ?? protocol ?? t('nodeIcon.alt')}
         className={cn(
           className,
           provider.invertInDark && 'dark:invert'
         )}
         style={{ ...style, objectFit: 'contain' }}
         draggable={false}
+        onError={() => setImgError(true)}
       />
     )
   }
 
-  // Generic fallback — a simple AI icon
+  // Generic fallback — Sparkles icon
   return (
-    <svg
-      className={className}
+    <Sparkles
+      className={cn('text-[var(--accent)]', className)}
       style={style}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h2v-2h-2v2zm2.07-7.75l-.9.92C11.45 10.9 11 11.5 11 13h2v-.5l1.17-1.21c.4-.41.83-.86.83-1.79 0-1.38-1.12-2.5-2.5-2.5S10 8.12 10 9.5h2c0-.55.45-1 1-1s1 .45 1 1-.2.68-.93 1.25z"
-        fill="currentColor"
-      />
-    </svg>
+    />
   )
 }

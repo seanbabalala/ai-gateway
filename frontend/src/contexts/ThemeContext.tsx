@@ -17,7 +17,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
-const STORAGE_KEY = 'ai-gateway-theme'
+const STORAGE_KEY = 'siftgate-theme'
 
 function getSystemPreference(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light'

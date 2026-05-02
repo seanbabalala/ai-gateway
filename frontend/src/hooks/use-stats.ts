@@ -2,10 +2,20 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { StatsResponse } from '@/types/api'
 
-export function useStats(apiKey?: string) {
+export interface ApiKeyFilterScope {
+  id?: string
+  name?: string
+}
+
+export function useStats(scope?: ApiKeyFilterScope) {
+  const key = scope?.id ? `id:${scope.id}` : scope?.name ? `name:${scope.name}` : 'all'
   return useQuery<StatsResponse>({
-    queryKey: ['stats', apiKey],
-    queryFn: () => apiGet<StatsResponse>('/api/dashboard/stats', { api_key: apiKey }),
+    queryKey: ['stats', key],
+    queryFn: () =>
+      apiGet<StatsResponse>('/api/dashboard/stats', {
+        api_key_id: scope?.id,
+        api_key: scope?.id ? undefined : scope?.name,
+      }),
     refetchInterval: 10_000,
   })
 }

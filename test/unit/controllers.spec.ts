@@ -222,7 +222,7 @@ describe('ModelsController', () => {
 
     // First entry should be "auto"
     expect(result.data[0].id).toBe('auto');
-    expect(result.data[0].owned_by).toBe('ai-gateway');
+    expect(result.data[0].owned_by).toBe('siftgate');
 
     // Real models follow
     const gpt4o = result.data.find((m: any) => m.id === 'gpt-4o');

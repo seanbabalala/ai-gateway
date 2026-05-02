@@ -1,0 +1,10 @@
+{
+  "login.authStatusError": "Failed to check auth status",
+  "login.errorFallback": "Login failed",
+  "login.invalidPassword": "Invalid password",
+  "login.passwordPlaceholder": "Password",
+  "login.signingIn": "Signing in...",
+  "login.submit": "Sign in",
+  "login.subtitle": "Enter your password to access the dashboard",
+  "login.title": "SiftGate"
+}

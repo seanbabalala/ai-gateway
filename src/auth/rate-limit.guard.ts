@@ -13,8 +13,8 @@ interface WindowEntry {
 
 /**
  * Sliding-window rate limiter.
- * Rate limits by API key name (if authenticated) or by IP (if open).
- * Runs AFTER ApiKeyGuard so req.apiKeyName is available.
+ * Rate limits by immutable Gateway API key id (if authenticated) or by IP.
+ * Runs AFTER ApiKeyGuard so req.gatewayApiKey/request api key fields are available.
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
@@ -25,19 +25,21 @@ export class RateLimitGuard implements CanActivate {
   constructor(private readonly config: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const rateLimit = this.config.auth?.rate_limit;
-    if (!rateLimit) return true; // Not configured → no limit
-
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
+    const rateLimit = this.config.auth?.rate_limit;
+    const gatewayApiKey:
+      | { id?: string; name: string; rate_limit_per_minute: number | null }
+      | undefined = request.gatewayApiKey;
 
+    const apiKeyId: string | undefined = request.apiKeyId || gatewayApiKey?.id;
     const apiKeyName: string | undefined = request.apiKeyName;
     const ip: string = request.ip || request.connection?.remoteAddress || 'unknown';
 
-    const key = apiKeyName ? `key:${apiKeyName}` : `ip:${ip}`;
-    const limit = apiKeyName
-      ? rateLimit.requests_per_minute
-      : rateLimit.requests_per_minute_ip;
+    const key = apiKeyId ? `key:${apiKeyId}` : apiKeyName ? `key-name:${apiKeyName}` : `ip:${ip}`;
+    const limit = gatewayApiKey?.rate_limit_per_minute
+      ?? (apiKeyName ? rateLimit?.requests_per_minute : rateLimit?.requests_per_minute_ip);
+    if (!limit) return true; // Not configured → no limit
 
     const now = Date.now();
     const windowMs = 60_000; // 1 minute
@@ -53,7 +55,7 @@ export class RateLimitGuard implements CanActivate {
     let entry = this.windows.get(key);
     if (!entry) {
       // Enforce max_entries cap with FIFO eviction
-      const maxEntries = rateLimit.max_entries ?? 10_000;
+      const maxEntries = rateLimit?.max_entries ?? 10_000;
       if (this.windows.size >= maxEntries) {
         const oldest = this.windows.keys().next().value;
         if (oldest !== undefined) {

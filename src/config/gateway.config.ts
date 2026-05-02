@@ -23,6 +23,9 @@ export interface GatewayConfig {
 
   /** OpenTelemetry observability — disabled by default */
   telemetry?: TelemetryConfig;
+
+  /** Optional hosted control-plane connection — disabled by default */
+  control_plane?: ControlPlaneConfig;
 }
 
 // ===== Dashboard =====
@@ -156,6 +159,17 @@ export interface NodeConfig {
    *     opus: claude-opus-4-6-v1
    */
   model_aliases?: Record<string, string>;
+
+  /**
+   * Model pass-through prefixes handled by this node.
+   * Use this when the node id is a stable provider/channel id (e.g. "anthropic-prod")
+   * but clients should still be able to direct-route model families like
+   * "claude-sonnet-..." without registering every future model id.
+   *
+   * Example:
+   *   model_prefixes: ["claude"]
+   */
+  model_prefixes?: string[];
 }
 
 // ===== Routing =====
@@ -288,7 +302,7 @@ export interface ModelPricing {
 export interface TelemetryConfig {
   /** Master switch — when false (default), SDK is not initialized, all calls are no-op */
   enabled: boolean;
-  /** OTel service name (default: 'ai-gateway') */
+  /** OTel service name (default: 'siftgate') */
   service_name?: string;
   /** Trace export configuration */
   traces?: {
@@ -304,4 +318,27 @@ export interface TelemetryConfig {
     /** Optional OTLP endpoint for metrics push */
     otlp_endpoint?: string;
   };
+}
+
+// ===== Hosted Control Plane (Connected Gateway) =====
+export interface ControlPlaneTelemetryConfig {
+  /** Batch upload interval in seconds (default: 30) */
+  upload_interval_seconds?: number;
+  /** Never enabled by default. Reserved for explicit enterprise opt-in. */
+  include_prompt?: boolean;
+  /** Never enabled by default. Reserved for explicit enterprise opt-in. */
+  include_response?: boolean;
+}
+
+export interface ControlPlaneConfig {
+  /** Master switch. When false/omitted, the gateway never contacts a control plane. */
+  enabled?: boolean;
+  /** Hosted control-plane base URL, e.g. https://cloud.example.com */
+  url?: string;
+  /** Stable local gateway identifier shown in the hosted fleet view. */
+  gateway_id?: string;
+  /** One-time or long-lived registration token issued by the hosted control plane. */
+  registration_token?: string;
+  /** Metadata upload privacy and batching settings. */
+  telemetry?: ControlPlaneTelemetryConfig;
 }
