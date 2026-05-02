@@ -63,8 +63,59 @@ export type CanonicalToolChoice =
   | { name: string };
 
 // ===== Source Format =====
-export type SourceFormat = 'chat_completions' | 'responses' | 'messages' | 'embeddings';
+export type SourceFormat =
+  | 'chat_completions'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'rerank'
+  | 'image_generation'
+  | 'image_edit'
+  | 'audio_transcription'
+  | 'audio_speech';
 
+// ===== Structured Output =====
+export type StructuredOutputFormatType =
+  | 'text'
+  | 'json_object'
+  | 'json_schema'
+  | 'unknown';
+
+export type StructuredOutputSource =
+  | 'chat_completions.response_format'
+  | 'responses.text.format'
+  | 'messages.output_config.format'
+  | 'messages.output_format'
+  | 'canonical';
+
+export type StructuredOutputStrategy =
+  | 'native'
+  | 'passthrough'
+  | 'downgraded'
+  | 'none';
+
+export interface CanonicalJsonSchemaFormat {
+  name?: string;
+  description?: string;
+  schema?: Record<string, unknown>;
+  strict?: boolean;
+}
+
+export interface CanonicalResponseFormat {
+  type: StructuredOutputFormatType;
+  source: StructuredOutputSource;
+  raw: unknown;
+  json_schema?: CanonicalJsonSchemaFormat;
+}
+
+export interface CanonicalStructuredOutput {
+  requested: boolean;
+  type: StructuredOutputFormatType;
+  source: StructuredOutputSource;
+  name?: string;
+  schema?: Record<string, unknown>;
+  strict?: boolean;
+}
 // ===== Shared Request Metadata =====
 export interface CanonicalRequestMetadata {
   source_format: SourceFormat;
@@ -93,6 +144,8 @@ export interface CanonicalRequest {
   temperature?: number;
   top_p?: number;
   stop?: string[];
+  response_format?: CanonicalResponseFormat;
+  structured_output?: CanonicalStructuredOutput;
   stream: boolean;
 
   /** Original request metadata, preserved for response denormalization */
@@ -153,6 +206,77 @@ export interface CanonicalEmbeddingResponse {
   id: string;
   object: 'list';
   data: CanonicalEmbedding[];
+  usage: TokenUsage;
+  model: string;
+  routing: {
+    tier: Tier;
+    node: string;
+    latency_ms: number;
+    score: number;
+    is_fallback: boolean;
+    fallback_reason?: string | null;
+  };
+}
+
+// ===== Rerank =====
+export type CanonicalRerankDocument =
+  | string
+  | Record<string, unknown>;
+
+export interface CanonicalRerankRequest {
+  model: string;
+  query: string;
+  documents: CanonicalRerankDocument[];
+  top_n?: number;
+  return_documents?: boolean;
+  metadata: CanonicalRequestMetadata;
+}
+
+export interface CanonicalRerankResult {
+  index: number;
+  relevance_score: number;
+  document?: CanonicalRerankDocument;
+}
+
+export interface CanonicalRerankResponse {
+  id: string;
+  object: 'rerank';
+  results: CanonicalRerankResult[];
+  usage: TokenUsage;
+  model: string;
+  routing: {
+    tier: Tier;
+    node: string;
+    latency_ms: number;
+    score: number;
+    is_fallback: boolean;
+    fallback_reason?: string | null;
+  };
+}
+
+// ===== Images / Audio =====
+export type CanonicalMediaSourceFormat =
+  | 'image_generation'
+  | 'image_edit'
+  | 'audio_transcription'
+  | 'audio_speech';
+
+export type CanonicalMediaPayload = Record<string, unknown> | Buffer;
+export type CanonicalMediaResponseBody = Record<string, unknown> | Buffer | string;
+
+export interface CanonicalMediaRequest {
+  model: string;
+  source_format: CanonicalMediaSourceFormat;
+  payload: CanonicalMediaPayload;
+  content_type: string;
+  is_multipart: boolean;
+  metadata: CanonicalRequestMetadata;
+}
+
+export interface CanonicalMediaResponse {
+  id: string;
+  body: CanonicalMediaResponseBody;
+  content_type: string;
   usage: TokenUsage;
   model: string;
   routing: {

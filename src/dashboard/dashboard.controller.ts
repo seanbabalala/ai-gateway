@@ -20,7 +20,7 @@
 import {
   Controller, Get, Post, Put, Delete, Param, Query, Body, Sse, Logger, Res,
   MessageEvent, ParseIntPipe, DefaultValuePipe, HttpException, HttpStatus,
-  UseGuards,
+  UseGuards, Optional, Inject,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -43,7 +43,8 @@ import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
 import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
 import { BudgetService } from '../budget/budget.service';
-import { CallLog } from '../database/entities/call-log.entity';
+import { CallLog, RouteDecisionLog } from '../database/entities';
+import type { RouteDecisionTrace } from '../routing/route-decision-trace';
 import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
 import { DashboardGuard } from '../auth/dashboard.guard';
@@ -51,6 +52,7 @@ import { PromptCacheService } from '../cache/prompt-cache.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
+import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 import type { Modality } from '../config/modality';
 import {
   CreateGatewayApiKeyDto,
@@ -88,9 +90,14 @@ export class DashboardController {
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
+    @Optional()
+    @Inject(RealtimeProxyService)
+    private readonly realtime: RealtimeProxyService | undefined,
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
+    @InjectRepository(RouteDecisionLog)
+    private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -111,6 +118,12 @@ export class DashboardController {
     if (result.affected && result.affected > 0) {
       this.logger.log(`Log cleanup: deleted ${result.affected} logs older than ${retentionDays} days`);
     }
+
+    await this.routeDecisionRepo
+      .createQueryBuilder()
+      .delete()
+      .where('timestamp < :cutoff', { cutoff })
+      .execute();
   }
 
   /** Return a SQL expression that truncates a timestamp column to YYYY-MM-DD string */
@@ -148,6 +161,86 @@ export class DashboardController {
       qb[currentMethod]('log.namespace_id = :namespaceId', { namespaceId });
     }
     return qb;
+  }
+
+  private applyRouteDecisionScopeFilter<T extends { where: Function; andWhere: Function }>(
+    qb: T,
+    apiKey?: string,
+    apiKeyId?: string,
+    namespaceId?: string,
+    method: 'where' | 'andWhere' = 'andWhere',
+  ): T {
+    let currentMethod = method;
+    if (apiKeyId) {
+      qb[currentMethod]('decision.api_key_id = :apiKeyId', { apiKeyId });
+      currentMethod = 'andWhere';
+    } else if (apiKey) {
+      qb[currentMethod]('decision.api_key_name = :apiKey', { apiKey });
+      currentMethod = 'andWhere';
+    }
+    if (namespaceId) {
+      qb[currentMethod]('decision.namespace_id = :namespaceId', { namespaceId });
+    }
+    return qb;
+  }
+
+  private serializeRouteDecision(
+    decision: RouteDecisionLog,
+    includeTrace: boolean,
+  ) {
+    const trace = this.parseRouteDecisionTrace(decision.trace_json);
+    const finalSelection = trace?.final_selection || {
+      node: decision.selected_node_id,
+      model: decision.selected_model,
+      reason: null,
+      is_fallback: decision.is_fallback,
+      fallback_reason: decision.fallback_reason,
+    };
+
+    return {
+      id: decision.id,
+      request_id: decision.request_id,
+      timestamp: decision.timestamp,
+      source_format: decision.source_format,
+      tier: decision.tier,
+      score: decision.score,
+      route_mode: decision.route_mode,
+      strategy: decision.strategy,
+      selected: {
+        node: decision.selected_node_id,
+        model: decision.selected_model,
+      },
+      final_selection: finalSelection,
+      domain_hint: decision.domain_hint,
+      candidate_count: decision.candidate_count,
+      filtered_count: decision.filtered_count,
+      status_code: decision.status_code,
+      is_fallback: decision.is_fallback,
+      fallback_reason: decision.fallback_reason,
+      api_key_name: decision.api_key_name,
+      api_key_id: decision.api_key_id,
+      namespace_id: decision.namespace_id,
+      summary: {
+        reason: finalSelection.reason,
+        fallback_chain: trace?.fallback_chain || [],
+        filters: trace?.filters || [],
+        privacy: trace?.privacy || {
+          prompt: false,
+          response: false,
+          raw_headers: false,
+          provider_keys: false,
+        },
+      },
+      ...(includeTrace ? { trace } : {}),
+    };
+  }
+
+  private parseRouteDecisionTrace(value: string): RouteDecisionTrace | null {
+    try {
+      return JSON.parse(value) as RouteDecisionTrace;
+    } catch {
+      return null;
+    }
   }
 
   // ══════════════════════════════════════════════════════
@@ -542,6 +635,70 @@ export class DashboardController {
     };
   }
 
+  @Get('route-decisions')
+  @ApiOperation({ summary: 'List route decision traces for explainable routing' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 50 })
+  @ApiQuery({ name: 'tier', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiOkResponse({ description: 'Paginated route decision summaries.' })
+  async getRouteDecisions(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('tier') tier?: string,
+    @Query('node') node?: string,
+    @Query('source_format') sourceFormat?: string,
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
+  ) {
+    const qb = this.routeDecisionRepo
+      .createQueryBuilder('decision')
+      .orderBy('decision.timestamp', 'DESC');
+
+    if (tier) qb.andWhere('decision.tier = :tier', { tier });
+    if (node) qb.andWhere('decision.selected_node_id = :node', { node });
+    if (sourceFormat) {
+      qb.andWhere('decision.source_format = :sourceFormat', { sourceFormat });
+    }
+    this.applyRouteDecisionScopeFilter(qb, apiKey, apiKeyId, namespaceId);
+
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    const safePage = Math.max(page, 1);
+    const [items, total] = await qb
+      .skip((safePage - 1) * safeLimit)
+      .take(safeLimit)
+      .getManyAndCount();
+
+    return {
+      data: items.map((item) => this.serializeRouteDecision(item, false)),
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
+  @Get('route-decisions/:requestId')
+  @ApiOperation({ summary: 'Get one route decision trace by request id' })
+  @ApiParam({ name: 'requestId' })
+  @ApiOkResponse({ description: 'Full route decision trace for one request.' })
+  async getRouteDecision(@Param('requestId') requestId: string) {
+    const item = await this.routeDecisionRepo.findOne({
+      where: { request_id: requestId },
+    });
+    if (!item) {
+      throw new HttpException('Route decision not found', HttpStatus.NOT_FOUND);
+    }
+    return this.serializeRouteDecision(item, true);
+  }
+
   // ── Log Export ──────────────────────────────────────────
 
   @Get('logs/export')
@@ -582,8 +739,10 @@ export class DashboardController {
       'timestamp', 'request_id', 'tier', 'score', 'node_id', 'model',
       'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
       'latency_ms', 'status_code', 'is_fallback', 'session_key',
-      'fallback_reason', 'api_key_id', 'api_key_name', 'retry_count', 'error',
-      'namespace_id',
+      'fallback_reason', 'structured_output_requested',
+      'structured_output_type', 'structured_output_strategy',
+      'structured_output_supported', 'structured_output_schema_name',
+      'api_key_id', 'api_key_name', 'retry_count', 'error', 'namespace_id',
     ];
     const csvRows = [headers.join(',')];
 
@@ -937,6 +1096,18 @@ export class DashboardController {
       budget: full.budget,
       namespaces: full.namespaces || [],
       shadow: this.shadowTraffic.getStatus(),
+      realtime: this.realtime?.getStatus() || {
+        enabled: false,
+        experimental: true,
+        path: '/v1/realtime',
+        active_connections: 0,
+        max_connections: 0,
+        max_connections_per_node: 0,
+        idle_timeout_ms: 0,
+        upstream_connect_timeout_ms: 0,
+        max_session_ms: 0,
+        recent: [],
+      },
       models_pricing: full.models_pricing,
       diagnostics: this.config.getNodeModelDiagnostics(),
     };
@@ -1073,6 +1244,24 @@ export class DashboardController {
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
       const concurrency = this.concurrencyLimiter.getNodeStats(node);
       const activeProbe = this.activeHealth.getNodeStatus(node.id);
+      const modelIds = Array.from(new Set([
+        ...node.models,
+        ...(node.embedding_models || []),
+      ]));
+      const modelCapabilities = Object.fromEntries(
+        modelIds.map((model) => [
+          model,
+          this.capabilityService.resolveModelRoutingCapabilities(
+            node.id,
+            model,
+          ),
+        ]),
+      );
+      const endpoints = {
+        default: node.endpoint,
+        ...(node.embeddings_endpoint ? { embeddings: node.embeddings_endpoint } : {}),
+        ...(node.endpoints || {}),
+      };
 
       // Build per-model circuit info
       const modelCircuits: Record<string, {
@@ -1096,9 +1285,20 @@ export class DashboardController {
         protocol: node.protocol,
         base_url: node.base_url,
         endpoint: node.endpoint,
+        endpoints,
         models: node.models,
+        embedding_models: node.embedding_models || [],
+        embeddings_endpoint: node.embeddings_endpoint || null,
+        rerank_models: node.rerank_models || [],
+        image_models: node.image_models || [],
+        images_generations_endpoint: node.images_generations_endpoint || null,
+        images_edits_endpoint: node.images_edits_endpoint || null,
+        audio_models: node.audio_models || [],
+        audio_transcriptions_endpoint: node.audio_transcriptions_endpoint || null,
+        audio_speech_endpoint: node.audio_speech_endpoint || null,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
+        model_capabilities: modelCapabilities,
         tags: node.tags || [],
         aliases: node.model_aliases || {},
         model_prefixes: node.model_prefixes || [],
@@ -1112,6 +1312,18 @@ export class DashboardController {
         modelCircuits,
         concurrency,
         active_probe: activeProbe,
+        realtime: this.realtime?.getNodeStatus(node.id) || {
+          enabled: false,
+          experimental: true,
+          supported: false,
+          endpoint: null,
+          models: [],
+          active_connections: 0,
+          max_connections_per_node: 0,
+          last_connected_at: null,
+          last_closed_at: null,
+          last_error: null,
+        },
         healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
       };
     });
@@ -1358,6 +1570,8 @@ export class DashboardController {
         endpoint: dto.endpoint,
         api_key: dto.api_key,
         models: dto.models,
+        realtime_models: dto.realtime_models,
+        realtime_endpoint: dto.realtime_endpoint,
         timeout_ms: dto.timeout_ms,
         max_concurrency: dto.max_concurrency,
         queue_timeout_ms: dto.queue_timeout_ms,

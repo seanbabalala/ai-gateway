@@ -87,6 +87,21 @@ export class ChatCompletionsRequestDto {
     example: 'auto',
   })
   tool_choice?: unknown;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'OpenAI Chat Completions response_format, including json_object and json_schema.',
+    example: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'answer',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+        strict: true,
+      },
+    },
+  })
+  response_format?: unknown;
 }
 
 export class ResponsesRequestDto {
@@ -117,6 +132,21 @@ export class ResponsesRequestDto {
     description: 'OpenAI Responses tool definitions.',
   })
   tools?: unknown[];
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'OpenAI Responses text.format, including json_schema.',
+    example: {
+      format: {
+        type: 'json_schema',
+        name: 'answer',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+        strict: true,
+      },
+    },
+  })
+  text?: unknown;
 }
 
 export class AnthropicMessagesRequestDto {
@@ -147,6 +177,19 @@ export class AnthropicMessagesRequestDto {
 
   @ApiPropertyOptional({ type: [String], example: ['END'] })
   stop_sequences?: string[];
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Anthropic structured-output passthrough when using native Messages output_config.format.',
+    example: {
+      format: {
+        type: 'json_schema',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+      },
+    },
+  })
+  output_config?: unknown;
 }
 
 export class EmbeddingsRequestDto {
@@ -172,6 +215,118 @@ export class EmbeddingsRequestDto {
 
   @ApiPropertyOptional({ example: 'user-123' })
   user?: string;
+}
+
+export class RerankRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for cost-aware rerank routing or a configured rerank model.' })
+  model!: string;
+
+  @ApiProperty({ example: 'What is SiftGate?' })
+  query!: string;
+
+  @ApiProperty({
+    type: 'array',
+    items: {
+      oneOf: [
+        { type: 'string' },
+        { type: 'object' },
+      ],
+    },
+    example: [
+      'SiftGate is a self-hosted AI traffic gateway.',
+      'A database migration tool moves SQLite data into PostgreSQL.',
+    ],
+  })
+  documents!: Array<string | Record<string, unknown>>;
+
+  @ApiPropertyOptional({ example: 3 })
+  top_n?: number;
+
+  @ApiPropertyOptional({ example: true })
+  return_documents?: boolean;
+}
+
+export class ImageGenerationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate image routing or a configured image model.' })
+  model!: string;
+
+  @ApiProperty({ example: 'A clean product render of a self-hosted AI gateway appliance.' })
+  prompt!: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  n?: number;
+
+  @ApiPropertyOptional({ example: '1024x1024' })
+  size?: string;
+
+  @ApiPropertyOptional({ example: 'url', enum: ['url', 'b64_json'] })
+  response_format?: string;
+
+  @ApiPropertyOptional({ example: 'user-123' })
+  user?: string;
+}
+
+export class ImageEditRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate image routing or a configured image model.' })
+  model!: string;
+
+  @ApiPropertyOptional({
+    example: 'Replace the background with a neutral studio backdrop.',
+    description: 'For JSON requests. Multipart requests should send the usual OpenAI-compatible image/mask fields.',
+  })
+  prompt?: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Multipart image file. SiftGate passes multipart bytes through and only rewrites/appends the model field.',
+  })
+  image?: unknown;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Optional multipart mask file.',
+  })
+  mask?: unknown;
+
+  @ApiPropertyOptional({ example: '1024x1024' })
+  size?: string;
+}
+
+export class AudioTranscriptionRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured audio model.' })
+  model!: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Multipart audio file. SiftGate passes multipart bytes through and only rewrites/appends the model field.',
+  })
+  file?: unknown;
+
+  @ApiPropertyOptional({ example: 'json' })
+  response_format?: string;
+
+  @ApiPropertyOptional({ example: 'en' })
+  language?: string;
+}
+
+export class AudioSpeechRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured speech model.' })
+  model!: string;
+
+  @ApiProperty({ example: 'SiftGate routes this text to an audio-capable upstream.' })
+  input!: string;
+
+  @ApiPropertyOptional({ example: 'alloy' })
+  voice?: string;
+
+  @ApiPropertyOptional({ example: 'mp3' })
+  response_format?: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  speed?: number;
 }
 
 export class ModelItemDto {
@@ -219,6 +374,38 @@ export class HealthModelCircuitDto {
   lastFailureAt!: string | null;
 }
 
+export class HealthRealtimeDto {
+  @ApiProperty({ example: false })
+  enabled!: boolean;
+
+  @ApiProperty({ example: true })
+  experimental!: true;
+
+  @ApiProperty({ example: true })
+  supported!: boolean;
+
+  @ApiProperty({ example: '/v1/realtime', nullable: true })
+  endpoint!: string | null;
+
+  @ApiProperty({ type: [String], example: ['gpt-4o-realtime-preview'] })
+  models!: string[];
+
+  @ApiProperty({ example: 0 })
+  active_connections!: number;
+
+  @ApiProperty({ example: 25 })
+  max_connections_per_node!: number;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_connected_at!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_closed_at!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_error!: string | null;
+}
+
 export class HealthNodeDto {
   @ApiProperty({ example: 'openai' })
   id!: string;
@@ -240,6 +427,9 @@ export class HealthNodeDto {
 
   @ApiProperty({ example: true })
   healthy!: boolean;
+
+  @ApiProperty({ type: HealthRealtimeDto })
+  realtime!: HealthRealtimeDto;
 
   @ApiProperty({
     type: 'object',
@@ -313,6 +503,30 @@ export class SanitizedNodeConfigDto {
 
   @ApiProperty({ type: [String], example: ['gpt-4o', 'gpt-4o-mini'] })
   models!: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
+  embedding_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/embeddings' })
+  embeddings_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-image-1'] })
+  image_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/images/generations' })
+  images_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/edits' })
+  images_edits_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
+  audio_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
+  audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/speech' })
+  audio_speech_endpoint?: string;
 }
 
 export class SanitizedConfigResponseDto {

@@ -81,8 +81,52 @@ describe('Ingest (e2e)', () => {
         messages: [{ role: 'user', content: 'hi' }],
       });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBeLessThan(300);
     expect(harness.fetchMock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('POST /v1/chat/completions — preserves response_format json_schema upstream', async () => {
+    const schema = {
+      type: 'object',
+      required: ['ok'],
+      properties: { ok: { type: 'boolean' } },
+      additionalProperties: false,
+    };
+    harness.fetchMock.setHandler(async () =>
+      new Response(JSON.stringify({
+        id: 'chatcmpl-structured',
+        object: 'chat.completion',
+        model: 'gpt-4o',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: '{"ok":true}' },
+          finish_reason: 'stop',
+        }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const res = await harness.agent
+      .post('/v1/chat/completions')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Return JSON' }],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'Result', schema, strict: true },
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const call = harness.fetchMock.calls[0];
+    expect(call.body.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: { name: 'Result', schema, strict: true },
+    });
   });
 
   // ══════════════════════════════════════════════════════
@@ -122,6 +166,48 @@ describe('Ingest (e2e)', () => {
     expect(call.url).toBe('http://mock-upstream.test/v1/messages');
   });
 
+  it('POST /v1/messages — preserves native output_config.format upstream', async () => {
+    const schema = {
+      type: 'object',
+      required: ['ok'],
+      properties: { ok: { type: 'boolean' } },
+    };
+    harness.fetchMock.setHandler(async () =>
+      new Response(JSON.stringify({
+        id: 'msg-structured',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-20250514',
+        content: [{ type: 'text', text: '{"ok":true}' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const res = await harness.agent
+      .post('/v1/messages')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 100,
+        messages: [{ role: 'user', content: 'Return JSON' }],
+        output_config: {
+          format: { type: 'json_schema', schema },
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const call = harness.fetchMock.calls[0];
+    expect(call.body.output_config).toEqual({
+      format: { type: 'json_schema', schema },
+    });
+    expect(call.body.response_format).toBeUndefined();
+    expect(call.body.text).toBeUndefined();
+  });
+
   // ══════════════════════════════════════════════════════
   // Non-Streaming — Responses
   // ══════════════════════════════════════════════════════
@@ -140,6 +226,53 @@ describe('Ingest (e2e)', () => {
     expect(res.status).toBe(200);
     // Response is denormalized back to responses format
     expect(res.body).toBeDefined();
+  });
+
+  it('POST /v1/responses — maps text.format json_schema to Chat response_format upstream', async () => {
+    const schema = {
+      type: 'object',
+      required: ['ok'],
+      properties: { ok: { type: 'boolean' } },
+    };
+    harness.fetchMock.setHandler(async () =>
+      new Response(JSON.stringify({
+        id: 'chatcmpl-structured-responses',
+        object: 'chat.completion',
+        model: 'gpt-4o',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: '{"ok":true}' },
+          finish_reason: 'stop',
+        }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const res = await harness.agent
+      .post('/v1/responses')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'gpt-4o',
+        input: 'Return JSON',
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'Result',
+            schema,
+            strict: true,
+          },
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const call = harness.fetchMock.calls[0];
+    expect(call.body.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: { name: 'Result', schema, strict: true },
+    });
   });
 
   // ══════════════════════════════════════════════════════
@@ -184,6 +317,128 @@ describe('Ingest (e2e)', () => {
       input: 'hello',
       dimensions: 1536,
     });
+  });
+
+  // ══════════════════════════════════════════════════════
+  // Non-Streaming — Rerank
+  // ══════════════════════════════════════════════════════
+
+  it('POST /v1/rerank → 200 + rerank response format', async () => {
+    const res = await harness.agent
+      .post('/v1/rerank')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        query: 'what is SiftGate?',
+        documents: ['SiftGate routes AI traffic.', 'SQLite migration notes.'],
+        top_n: 1,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.object).toBe('rerank');
+    expect(res.body.model).toBe('rerank-english-v3');
+    expect(res.body.results).toEqual([
+      { index: 0, relevance_score: 1 },
+    ]);
+    expect(res.body.usage).toMatchObject({ prompt_tokens: 16, total_tokens: 16 });
+  });
+
+  it('POST /v1/rerank — routes to configured rerank endpoint', async () => {
+    await harness.agent
+      .post('/v1/rerank')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'rerank-english-v3',
+        query: 'gateway',
+        documents: ['gateway', 'database'],
+        top_n: 2,
+      });
+
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/rerank');
+    expect(call.body).toMatchObject({
+      model: 'rerank-english-v3',
+      query: 'gateway',
+      documents: ['gateway', 'database'],
+      top_n: 2,
+    });
+  });
+
+  // ══════════════════════════════════════════════════════
+  // Non-Streaming — Images / Audio
+  // ══════════════════════════════════════════════════════
+
+  it('POST /v1/images/generations → 200 + OpenAI image response', async () => {
+    const res = await harness.agent
+      .post('/v1/images/generations')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        prompt: 'Draw SiftGate as a clean product render',
+        size: '1024x1024',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].url).toContain('generated.png');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/images/generations');
+    expect(call.body.model).toBe('gpt-image-1');
+  });
+
+  it('POST /v1/images/edits accepts multipart pass-through and preserves safe call flow', async () => {
+    const res = await harness.agent
+      .post('/v1/images/edits')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .field('model', 'gpt-image-1')
+      .field('prompt', 'Add a subtle blue accent')
+      .attach('image', Buffer.from('fake-image-bytes'), 'image.png');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].b64_json).toBeDefined();
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/images/edits');
+    expect(call.headers['Content-Type']).toContain('multipart/form-data');
+    expect(call.rawBody?.toString('latin1')).toContain('name="model"');
+  });
+
+  it('POST /v1/audio/transcriptions accepts multipart audio pass-through', async () => {
+    const res = await harness.agent
+      .post('/v1/audio/transcriptions')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .field('model', 'auto')
+      .attach('file', Buffer.from('fake-audio-bytes'), 'sample.wav');
+
+    expect(res.status).toBe(200);
+    expect(res.body.text).toBe('mock transcription');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/audio/transcriptions');
+    expect(call.headers['Content-Type']).toContain('multipart/form-data');
+    expect(call.rawBody?.toString('latin1')).toContain('gpt-4o-mini-transcribe');
+  });
+
+  it('POST /v1/audio/speech returns binary provider audio', async () => {
+    const res = await harness.agent
+      .post('/v1/audio/speech')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'tts-1',
+        input: 'hello from SiftGate',
+        voice: 'alloy',
+      })
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('audio/mpeg');
+    expect((res.body as Buffer).toString()).toBe('mock-mp3-bytes');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/audio/speech');
+    expect(call.body.model).toBe('tts-1');
   });
 
   // ══════════════════════════════════════════════════════
@@ -255,6 +510,31 @@ describe('Ingest (e2e)', () => {
     const body = res.body as unknown as string;
     const dataLines = body.split('\n').filter((l: string) => l.startsWith('data:'));
     expect(dataLines.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('POST /v1/chat/completions stream:true — structured output does not fallback after SSE starts', async () => {
+    harness.fetchMock.setStreamingChatResponse(['not json']);
+
+    const res = await harness.agent
+      .post('/v1/chat/completions')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        messages: [{ role: 'user', content: 'Return JSON' }],
+        stream: true,
+        response_format: { type: 'json_object' },
+      })
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => { data += chunk; });
+        res.on('end', () => { callback(null, data); });
+      });
+
+    expect(res.status).toBeLessThan(300);
+    expect(harness.fetchMock.calls).toHaveLength(1);
+    expect(res.body as unknown as string).toContain('[DONE]');
   });
 
   // ══════════════════════════════════════════════════════

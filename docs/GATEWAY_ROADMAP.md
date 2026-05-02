@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,12 +15,97 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 已发布 — v0.6.0 协议广度 + 可解释路由 | ✅ Released |
+
+---
+
+## v0.6 — Protocol + Explainability（生产协议补齐 + 可解释路由）
+
+**v0.6.0 发布状态**：已完成并发布 Structured Output 完整透传与 schema-aware fallback、多模态 capability schema、Rerank、Images/Audio 最小可用入口、Realtime experimental preview、Route Decision Trace 与 Dashboard Route Explanation。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：协议生产能力
+
+#### 1. 结构化输出完整透传、降级和验证体验
+
+- **状态**：✅ v0.6.0 已发布
+- **现状**：v0.3 已有 fallback policy 的基础 JSON/schema 校验，但结构化输出意图还没有成为正式 canonical 字段，跨协议映射和 Dashboard 可见性不足
+- **目标**：完整保留并适配 OpenAI/Anthropic 的结构化输出请求意图
+- **实现方案**：
+  - Canonical Request 增加 `response_format` 与 `structured_output`
+  - Chat Completions 支持 `response_format.type=json_object/json_schema`
+  - Responses 支持 `text.format.type=json_object/json_schema`
+  - Anthropic Messages 支持 `output_config.format` 原生透传；不能安全映射时记录 `downgraded` / unsupported
+  - Provider 转发跨协议映射到目标协议的 native 字段，避免丢失结构化输出意图
+  - 非 stream 响应可按 `routing.fallback_policy.structured_output` 在 parse/schema failure 后 fallback
+  - stream 请求保持保守，SSE 已开始后不因内容校验改道
+  - Dashboard Call Log、CSV/JSON export、外部 log sink、可选 telemetry 展示 structured-output intent、strategy、support、schema name
+- **抽象到企业版**：控制面可聚合 structured-output 成功率、fallback 原因与模型兼容矩阵
+
+#### 2. 统一多模态 Capability Schema
+
+- **状态**：✅ v0.6.0 已发布
+- **目标**：为 image/audio/rerank/realtime 统一 node/model 能力声明，不破坏旧配置
+- **实现方案**：
+  - 扩展 `modalities`、`endpoints`、`input_types`、`output_types`、`max_file_size`
+  - 支持 `supports_streaming`、`supports_realtime`、`supports_rerank`、`pricing`
+  - 保持 `nodes[].models`、`nodes[].embedding_models`、旧 `model_capabilities` 字段兼容
+  - Config validation 校验 endpoint/pricing/capability 元数据
+  - RoutingService 按请求 modality 过滤候选 node:model
+  - Dashboard Nodes/Routing 只读展示能力摘要
+
+#### 3. Rerank 入口
+
+- **状态**：✅ v0.6.0 已发布
+- **目标**：提供 OpenAI/common-compatible `POST /v1/rerank`，补齐检索增强、搜索排序、知识库重排场景
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: rerank-prod
+      base_url: https://rerank-provider.example
+      rerank_endpoint: /v1/rerank
+      rerank_models: [rerank-english-v3]
+  ```
+
+  - Canonical rerank request/response 类型
+  - `query`、`documents`、`top_n`、`return_documents` 归一化
+  - 按 Gateway API key、namespace、健康状态、fallback 和成本选择 rerank node:model
+  - usage/cost/call_log/telemetry 记录 `source_format=rerank`
+
+#### 4. Image / Audio / Realtime 入口
+
+- **状态**：✅ v0.6.0 已发布；Realtime 为 experimental preview，默认关闭
+- **目标**：继续补齐 OpenAI/LiteLLM/New API 常见接口广度短板
+- **实现方案**：
+  - Image/audio 提供 `/v1/images/generations`、`/v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/speech`
+  - JSON 请求直接透传并重写选中上游模型
+  - multipart 请求只做安全 pass-through：保留文件字节，重写/补充 `model` 字段，不做图像/音频解析、转码或编辑抽象
+  - API Key、namespace、budget、rate limit、call_log、telemetry、fallback、健康状态继续复用现有 Data Plane 管线
+  - Realtime 默认关闭，必须显式设置 `realtime.enabled=true`
+  - WebSocket 入口 `/v1/realtime?model=...`，优先兼容 OpenAI Realtime 风格
+  - 只做安全转发：Gateway API key 鉴权、API key/namespace 权限、连接数限制、idle/session timeout、关闭释放、脱敏错误摘要
+  - 不解析、不转码、不检查、不保存音频帧；不破坏现有 HTTP/SSE streaming
+  - `/health` 与 Dashboard Nodes API 展示 realtime capability、active connections、last closed/error 摘要
+
+### P0：可解释路由
+
+#### 5. 路由选择解释页
+
+- **状态**：✅ v0.6.0 已发布
+- **目标**：让用户看到 SiftGate 为什么选择某个 node/model，而不只是知道最终路由结果
+- **实现方案**：
+  - Pipeline/RoutingService 生成 privacy-safe trace
+  - trace 包含 `request_id`、`source_format`、tier、score、domain hints、candidate targets、过滤原因、成本/延迟/context 分数、circuit 状态、fallback chain、最终选择
+  - `route_decisions` 独立表存储 trace summary 与完整 JSON，兼容 SQLite/PostgreSQL
+  - Dashboard API 提供 `GET /api/dashboard/route-decisions` 与 `GET /api/dashboard/route-decisions/:requestId`
+  - Dashboard 新增只读 Route Explanation 页面，展示候选模型、过滤原因、成本/延迟/context 权衡、fallback reason 与最终选择
+  - Logs 详情可深链跳转到对应 request 的 route decision
+  - 不保存 prompt、response、raw headers、provider keys
 
 ---
 
 ## v0.2 — Resilience（生产环境可靠性 + 开发者体验）
 
-**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground、结构化输出透传与 P2 安全加固继续保留在后续 roadmap 中。
+**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground 与 P2 安全加固继续保留在后续 roadmap 中；结构化输出已转入 v0.6 Protocol 阶段。
 
 ### P0：核心可靠性
 
@@ -156,8 +241,8 @@
 
 #### 8. 结构化输出透传（Structured Output）
 
-- **状态**：未纳入 v0.2.0，保留为后续开发项
-- **现状**：`response_format: { type: "json_schema" }` 在协议转换中可能丢失
+- **状态**：已转入 v0.6 并完成 canonical 透传、降级和验证体验
+- **历史现状**：`response_format: { type: "json_schema" }` 在协议转换中可能丢失
 - **目标**：完整保留并适配各 Provider 的结构化输出能力
 - **实现方案**：
   - Canonical format 增加 `response_format` 字段
@@ -695,6 +780,8 @@
 
 ---
 
+---
+
 ## 功能优先级矩阵
 
 ### 按用户价值 × 实现难度排序
@@ -727,6 +814,10 @@
 | 33  | Embedding Batching |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    | ✅ v0.5 OSS |
 | 36  | 影子流量           |  ⭐⭐⭐⭐  |    中    | ✅ v0.5 OSS |
+| 37  | 多模态能力 Schema  | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
+| 38  | 结构化输出完整透传 | ⭐⭐⭐⭐⭐ |    中    | 🔴 v0.6 P0 |
+| 39  | Image/Audio/Rerank/Realtime | ⭐⭐⭐⭐⭐ |    大    | 🔴 v0.6 P0 |
+| 40  | 可解释路由 Trace + Dashboard | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6 P0 |
 
 ---
 
@@ -775,10 +866,10 @@
 
 ## 建议下一批启动项
 
-基于**用户价值最大 + 为后续功能奠基**的原则，v0.5.0 发布后建议优先启动：
+基于**用户价值最大 + 为后续功能奠基**的原则，v0.6 阶段建议优先完成：
 
-1. **内置 Playground**（最直观的用户体验提升）
-2. **结构化输出透传**（提升跨协议兼容性）
-3. **Image Generation / Completions Legacy / MCP 支持**（继续扩展开源网关的 API 与集成覆盖面）
+1. **Route Decision Trace + Dashboard 路线解释页**（把 explainable routing 做成核心差异）
+2. **结构化输出透传**（提升 OpenAI/Claude 生产应用兼容性）
+3. **Rerank / Image / Audio / Realtime 最小可用入口**（继续扩展开源网关的 API 覆盖面）
 
-这三项可以并行开发，互不依赖，并且都能继续保持 Cloud 作为可选控制面。
+这些能力都必须继续保持单机 OSS Data Plane 可用，Cloud 只作为可选控制面。

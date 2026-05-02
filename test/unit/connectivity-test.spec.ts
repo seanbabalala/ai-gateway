@@ -57,11 +57,18 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
       execute: jest.fn().mockResolvedValue(undefined),
     }),
   } as any;
+  const routeDecisionRepo = {
+    createQueryBuilder: jest.fn().mockReturnValue({
+      delete: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue(undefined),
+    }),
+  } as any;
 
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService,
     cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, dataSource, callLogRepo,
+    gatewayApiKeys, shadowTraffic, undefined, dataSource, callLogRepo, routeDecisionRepo,
   );
 }
 

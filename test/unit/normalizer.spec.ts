@@ -1,6 +1,8 @@
 import { ChatCompletionsNormalizer } from '../../src/canonical/normalizers/chat-completions.normalizer';
 import { ResponsesNormalizer } from '../../src/canonical/normalizers/responses.normalizer';
 import { MessagesNormalizer } from '../../src/canonical/normalizers/messages.normalizer';
+import { RerankNormalizer } from '../../src/canonical/normalizers/rerank.normalizer';
+import { MediaNormalizer } from '../../src/canonical/normalizers/media.normalizer';
 
 const headers = { 'content-type': 'application/json' };
 
@@ -203,6 +205,38 @@ describe('ChatCompletionsNormalizer', () => {
     );
     expect(result.metadata.session_key).toBe('sess_abc123');
   });
+
+  it('should normalize OpenAI response_format json_schema into canonical structured output', () => {
+    const schema = {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+    };
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Return JSON' }],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'Answer', schema, strict: true },
+        },
+      },
+      headers,
+    );
+
+    expect(result.response_format).toMatchObject({
+      type: 'json_schema',
+      source: 'chat_completions.response_format',
+      json_schema: { name: 'Answer', schema, strict: true },
+    });
+    expect(result.structured_output).toMatchObject({
+      requested: true,
+      type: 'json_schema',
+      name: 'Answer',
+      schema,
+      strict: true,
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -240,6 +274,41 @@ describe('ResponsesNormalizer', () => {
       content: 'You are a helpful assistant.',
     });
     expect(result.messages[1]).toEqual({ role: 'user', content: 'Hi' });
+  });
+
+  it('should normalize Responses text.format json_schema into canonical structured output', () => {
+    const schema = {
+      type: 'object',
+      properties: { label: { type: 'string' } },
+      required: ['label'],
+    };
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-4.1',
+        input: 'Classify this.',
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'Classification',
+            schema,
+            strict: true,
+          },
+        },
+      },
+      headers,
+    );
+
+    expect(result.response_format).toMatchObject({
+      type: 'json_schema',
+      source: 'responses.text.format',
+      json_schema: { name: 'Classification', schema, strict: true },
+    });
+    expect(result.structured_output).toMatchObject({
+      requested: true,
+      type: 'json_schema',
+      name: 'Classification',
+      schema,
+    });
   });
 
   it('should normalize array input with message items', () => {
@@ -346,6 +415,61 @@ describe('ResponsesNormalizer', () => {
     expect(result.messages[0]).toEqual({ role: 'user', content: 'First message' });
     expect(result.messages[1]).toEqual({ role: 'assistant', content: 'Response' });
     expect(result.messages[2]).toEqual({ role: 'user', content: 'Follow up' });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Media Normalizer
+// ═══════════════════════════════════════════════════════════
+describe('MediaNormalizer', () => {
+  const normalizer = new MediaNormalizer();
+
+  it('should normalize image generation JSON requests without hiding intent', () => {
+    const result = normalizer.normalize(
+      { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+      headers,
+      'image_generation',
+    );
+
+    expect(result).toMatchObject({
+      model: 'gpt-image-1',
+      source_format: 'image_generation',
+      is_multipart: false,
+      payload: { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+      metadata: {
+        source_format: 'image_generation',
+        original_model: 'gpt-image-1',
+      },
+    });
+  });
+
+  it('should keep multipart bytes and log only safe shape metadata', () => {
+    const boundary = 'sg-boundary';
+    const body = Buffer.from(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="model"\r\n\r\n' +
+        'gpt-4o-mini-transcribe\r\n' +
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="sample.wav"\r\n' +
+        'Content-Type: audio/wav\r\n\r\n' +
+        'fake-audio\r\n' +
+        `--${boundary}--\r\n`,
+      'latin1',
+    );
+
+    const result = normalizer.normalize(
+      body,
+      { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      'audio_transcription',
+    );
+
+    expect(result.model).toBe('gpt-4o-mini-transcribe');
+    expect(Buffer.isBuffer(result.payload)).toBe(true);
+    expect(result.metadata.raw_body).toEqual({
+      multipart: true,
+      size_bytes: body.length,
+      model: 'gpt-4o-mini-transcribe',
+    });
   });
 });
 
@@ -523,6 +647,39 @@ describe('MessagesNormalizer', () => {
     expect(result.stop).toEqual(['END', 'STOP']);
   });
 
+  it('should normalize Anthropic output_config.format as canonical structured output', () => {
+    const schema = {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+    };
+    const result = normalizer.normalize(
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: 'Return JSON.' }],
+        output_config: {
+          format: {
+            type: 'json_schema',
+            schema,
+          },
+        },
+      },
+      headers,
+    );
+
+    expect(result.response_format).toMatchObject({
+      type: 'json_schema',
+      source: 'messages.output_config.format',
+      json_schema: { schema },
+    });
+    expect(result.structured_output).toMatchObject({
+      requested: true,
+      type: 'json_schema',
+      schema,
+    });
+  });
+
   it('should default max_tokens to 4096 if not provided', () => {
     const body = {
       model: 'claude-sonnet-4-20250514',
@@ -545,5 +702,52 @@ describe('MessagesNormalizer', () => {
     const result = normalizer.normalize(body, headers);
 
     expect(result.metadata.raw_body).toEqual(body);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Rerank Normalizer
+// ═══════════════════════════════════════════════════════════
+
+describe('RerankNormalizer', () => {
+  const normalizer = new RerankNormalizer();
+
+  it('should normalize OpenAI/common-compatible rerank requests', () => {
+    const body = {
+      model: 'rerank-english-v3',
+      query: 'what is siftgate?',
+      documents: ['gateway', { text: 'database migration' }],
+      top_n: 1,
+      return_documents: true,
+    };
+
+    const result = normalizer.normalize(body, {
+      ...headers,
+      'x-session-id': 'sess-rerank',
+    });
+
+    expect(result).toMatchObject({
+      model: 'rerank-english-v3',
+      query: 'what is siftgate?',
+      documents: ['gateway', { text: 'database migration' }],
+      top_n: 1,
+      return_documents: true,
+      metadata: expect.objectContaining({
+        source_format: 'rerank',
+        original_model: 'rerank-english-v3',
+        session_key: 'sess-rerank',
+        raw_body: body,
+      }),
+    });
+  });
+
+  it('should default missing model to auto and drop invalid document entries', () => {
+    const result = normalizer.normalize(
+      { query: 'hello', documents: ['ok', 42, null] },
+      headers,
+    );
+
+    expect(result.model).toBe('auto');
+    expect(result.documents).toEqual(['ok']);
   });
 });

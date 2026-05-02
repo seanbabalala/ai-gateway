@@ -7,13 +7,15 @@ import {
   CallLog,
   GatewayApiKey,
   NodeStatus,
+  RouteDecisionLog,
 } from "../database/entities";
 
 export type DbMigrationTableName =
   | "gateway_api_keys"
   | "budget_rules"
   | "node_status"
-  | "call_logs";
+  | "call_logs"
+  | "route_decisions";
 
 interface MigrationTableDefinition {
   table: DbMigrationTableName;
@@ -26,6 +28,7 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "budget_rules", entity: BudgetRule, generatedSequenceColumn: "id" },
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
+  { table: "route_decisions", entity: RouteDecisionLog, generatedSequenceColumn: "id" },
 ];
 
 export interface DbMigrationWarning {
@@ -157,7 +160,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
     this.dataSource = new DataSource({
       type: "postgres",
       url: this.postgresUrl,
-      entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey],
+      entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey, RouteDecisionLog],
       synchronize: false,
       logging: false,
     });
@@ -528,6 +531,18 @@ function normalizeRow(
     });
   }
 
+  if (table === "route_decisions") {
+    return normalizeFields(row, {
+      id: toNumber,
+      timestamp: toDateOrNow,
+      score: toNumber,
+      candidate_count: toNumber,
+      filtered_count: toNumber,
+      status_code: toNumber,
+      is_fallback: toBoolean,
+    });
+  }
+
   return normalizeFields(row, {
     id: toNumber,
     timestamp: toDateOrNow,
@@ -538,6 +553,8 @@ function normalizeRow(
     latency_ms: toNumber,
     status_code: toNumber,
     is_fallback: toBoolean,
+    structured_output_requested: toBoolean,
+    structured_output_supported: toNullableBoolean,
     retry_count: toNumber,
     cache_creation_input_tokens: toNumber,
     cache_read_input_tokens: toNumber,
@@ -559,6 +576,11 @@ function normalizeFields(
 
 function toBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function toNullableBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined || value === "") return null;
+  return toBoolean(value);
 }
 
 function toNumber(value: unknown): number {

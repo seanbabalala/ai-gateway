@@ -28,6 +28,7 @@
   "nav.manage": "MANAGE",
   "nav.monitor": "MONITOR",
   "nav.nodes": "Nodes",
+  "nav.routeExplanation": "Route Explain",
   "nav.routing": "Routing",
   "nav.shadow": "Shadow",
   "sidebar.productSubtitle": "AI Gateway",

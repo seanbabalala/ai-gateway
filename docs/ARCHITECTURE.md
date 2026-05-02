@@ -53,11 +53,18 @@ Client Request
 
 ### Controllers
 
-The gateway accepts the three major AI API shapes:
+The gateway accepts the major AI API shapes supported by the open-source Data Plane:
 
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
 - `POST /v1/messages`
+- `POST /v1/embeddings`
+- `POST /v1/rerank`
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+- `POST /v1/audio/transcriptions`
+- `POST /v1/audio/speech`
+- `WS /v1/realtime` when the experimental realtime preview is enabled
 
 Each controller normalizes inbound requests into the canonical internal format before routing.
 
@@ -66,6 +73,8 @@ Each controller normalizes inbound requests into the canonical internal format b
 The canonical format lets the gateway translate between provider protocols without making the rest of the pipeline care about the original wire shape.
 
 Normalizers convert client input into canonical requests. Denormalizers convert canonical responses or stream events back into the caller's requested protocol.
+
+v0.6 adds canonical structured-output fields so the pipeline preserves OpenAI Chat `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing. Provider forwarding records whether the target received a native passthrough, a safe native mapping, or an explicit downgrade/unsupported strategy.
 
 ### Authentication And Governance
 
@@ -133,11 +142,14 @@ The gateway records call logs with:
 - latency
 - status code
 - fallback status and fallback reason
+- structured-output requested status, type, strategy, support flag, and schema name
 - retry count
 - cache token fields
 - experiment group
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
+
+For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome. It is designed for Dashboard inspection and incident review without duplicating the full call payload. Prompts, responses, raw headers, and provider keys are never written to this trace table.
 
 ## Shadow Traffic
 

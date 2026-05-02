@@ -3,6 +3,11 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { GatewayConfig } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
+import {
+  VALID_CAPABILITY_ENDPOINTS,
+  VALID_CAPABILITY_IO_TYPES,
+  VALID_MODALITIES,
+} from './modality';
 
 export type ConfigValidationSeverity = 'error' | 'warning' | 'info';
 
@@ -62,6 +67,9 @@ const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const CAPABILITY_ENDPOINTS = new Set<string>(VALID_CAPABILITY_ENDPOINTS);
+const CAPABILITY_MODALITIES = new Set<string>(VALID_MODALITIES);
+const CAPABILITY_IO_TYPES = new Set<string>(VALID_CAPABILITY_IO_TYPES);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -206,6 +214,7 @@ export function validateConfigObject(
   validateBudget(config.budget, issues);
   validateCache(config.cache, issues);
   validateEmbeddingBatching(config.embedding_batching, issues);
+  validateRealtime(config.realtime, config.nodes, issues);
   validateShadow(config.shadow, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
@@ -500,6 +509,15 @@ function validateNamespaces(
       for (const model of Array.isArray(node.embedding_models) ? node.embedding_models : []) {
         if (isNonEmptyString(model)) modelIds.add(model);
       }
+      for (const model of Array.isArray(node.rerank_models) ? node.rerank_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+      for (const model of Array.isArray(node.image_models) ? node.image_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+      for (const model of Array.isArray(node.audio_models) ? node.audio_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
     }
   }
 
@@ -772,6 +790,36 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    if (
+      node.rerank_endpoint !== undefined &&
+      (!isNonEmptyString(node.rerank_endpoint) || !node.rerank_endpoint.startsWith('/'))
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_endpoint',
+          'nodes[].rerank_endpoint should be a non-empty path starting with "/".',
+          `${basePath}.rerank_endpoint`,
+        ),
+      );
+    }
+    if (
+      node.realtime_endpoint !== undefined &&
+      !isValidRealtimeEndpoint(node.realtime_endpoint)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_endpoint',
+          'nodes[].realtime_endpoint should be a non-empty path starting with "/" or a ws/wss URL.',
+          `${basePath}.realtime_endpoint`,
+        ),
+      );
+    }
+    validateOptionalEndpoint(node, basePath, 'images_generations_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'images_edits_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'audio_transcriptions_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'audio_speech_endpoint', issues);
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -822,6 +870,10 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
       });
     }
     validateNodeEmbeddingModels(node, basePath, issues);
+    validateNodeRerankModels(node, basePath, issues);
+    validateNodeMediaModels(node, basePath, 'image_models', 'Image', issues);
+    validateNodeMediaModels(node, basePath, 'audio_models', 'Audio', issues);
+    validateNodeRealtimeModels(node, basePath, issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
         issue(
@@ -915,6 +967,26 @@ function validateNodeConnection(
   }
 }
 
+function validateOptionalEndpoint(
+  node: Record<string, unknown>,
+  basePath: string,
+  key: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const value = node[key];
+  if (value === undefined) return;
+  if (!isNonEmptyString(value) || !value.startsWith('/')) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_endpoint',
+        `nodes[].${key} should be a non-empty path starting with "/".`,
+        `${basePath}.${key}`,
+      ),
+    );
+  }
+}
+
 function validateNodeEmbeddingModels(
   node: Record<string, unknown>,
   basePath: string,
@@ -961,6 +1033,146 @@ function validateNodeEmbeddingModels(
   });
 }
 
+function validateNodeRerankModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.rerank_models === undefined) return;
+  if (!Array.isArray(node.rerank_models)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_rerank_models',
+        'nodes[].rerank_models must be an array of model ids when set.',
+        `${basePath}.rerank_models`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  node.rerank_models.forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.rerank_models[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          'Rerank model ids must be non-empty strings.',
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `Rerank model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
+  });
+}
+
+function validateNodeRealtimeModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.realtime_models === undefined) return;
+  if (!Array.isArray(node.realtime_models)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_models',
+        'nodes[].realtime_models must be an array of model ids when set.',
+        `${basePath}.realtime_models`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  node.realtime_models.forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.realtime_models[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          'Realtime model ids must be non-empty strings.',
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `Realtime model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
+  });
+}
+
+function validateNodeMediaModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  key: 'image_models' | 'audio_models',
+  label: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node[key] === undefined) return;
+  if (!Array.isArray(node[key])) {
+    issues.push(
+      issue(
+        'error',
+        `invalid_${key}`,
+        `nodes[].${key} must be an array of model ids when set.`,
+        `${basePath}.${key}`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  (node[key] as unknown[]).forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.${key}[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          `${label} model ids must be non-empty strings.`,
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `${label} model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
+  });
+}
+
 function validateNodeRoutingCapabilities(
   node: Record<string, unknown>,
   basePath: string,
@@ -994,6 +1206,8 @@ function validateNodeRoutingCapabilities(
     );
   }
 
+  validateCapabilitySchemaFields(node, basePath, 'nodes[]', issues);
+
   if (node.model_capabilities === undefined) return;
   if (!isRecord(node.model_capabilities)) {
     issues.push(
@@ -1011,6 +1225,10 @@ function validateNodeRoutingCapabilities(
     [
       ...(Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.embedding_models) ? node.embedding_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.rerank_models) ? node.rerank_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.image_models) ? node.image_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.audio_models) ? node.audio_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.realtime_models) ? node.realtime_models.filter(isNonEmptyString) : []),
     ],
   );
 
@@ -1038,6 +1256,13 @@ function validateNodeRoutingCapabilities(
         ),
       );
     }
+
+    validateCapabilitySchemaFields(
+      capability,
+      capabilityPath,
+      'model_capabilities[]',
+      issues,
+    );
 
     if (
       capability.max_context_tokens !== undefined &&
@@ -1096,6 +1321,199 @@ function validateNodeRoutingCapabilities(
         issues,
       );
     }
+  }
+}
+
+function validateCapabilitySchemaFields(
+  capability: Record<string, unknown>,
+  capabilityPath: string,
+  label: string,
+  issues: ConfigValidationIssue[],
+): void {
+  validateModalityArray(capability.modalities, `${capabilityPath}.modalities`, issues);
+  validateEndpointMap(capability.endpoints, `${capabilityPath}.endpoints`, issues);
+  validateCapabilityIOArray(
+    capability.input_types,
+    `${capabilityPath}.input_types`,
+    `${label}.input_types`,
+    issues,
+  );
+  validateCapabilityIOArray(
+    capability.output_types,
+    `${capabilityPath}.output_types`,
+    `${label}.output_types`,
+    issues,
+  );
+
+  if (
+    capability.max_file_size !== undefined &&
+    (!isFiniteNumber(capability.max_file_size) || capability.max_file_size <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_max_file_size',
+        `${label}.max_file_size must be a positive number of bytes when set.`,
+        `${capabilityPath}.max_file_size`,
+      ),
+    );
+  }
+
+  for (const key of ['supports_streaming', 'supports_realtime', 'supports_rerank']) {
+    if (capability[key] !== undefined && !isBoolean(capability[key])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_support_flag',
+          `${label}.${key} must be a boolean when set.`,
+          `${capabilityPath}.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateModalityArray(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_capability_modalities',
+        'modalities must be a non-empty array when set.',
+        valuePath,
+      ),
+    );
+    return;
+  }
+  value.forEach((modality, index) => {
+    const itemPath = `${valuePath}[${index}]`;
+    if (!isNonEmptyString(modality)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_modalities',
+          'modalities entries must be non-empty strings.',
+          itemPath,
+        ),
+      );
+      return;
+    }
+    if (!CAPABILITY_MODALITIES.has(modality)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_modalities',
+          `Unsupported modality "${modality}". Supported values: ${VALID_MODALITIES.join(', ')}.`,
+          itemPath,
+        ),
+      );
+    }
+  });
+}
+
+function validateEndpointMap(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_capability_endpoints',
+        'endpoints must be an object keyed by capability endpoint when set.',
+        valuePath,
+      ),
+    );
+    return;
+  }
+
+  for (const [endpointName, endpointValue] of Object.entries(value)) {
+    const endpointPath = `${valuePath}.${endpointName}`;
+    if (!CAPABILITY_ENDPOINTS.has(endpointName)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_endpoints',
+          `Unsupported capability endpoint "${endpointName}". Supported values: ${VALID_CAPABILITY_ENDPOINTS.join(', ')}.`,
+          endpointPath,
+        ),
+      );
+      continue;
+    }
+    if (
+      !isNonEmptyString(endpointValue) ||
+      !isEndpointReference(endpointValue)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_endpoints',
+          'Capability endpoint values must be paths starting with "/" or absolute http(s)/ws(s) URLs.',
+          endpointPath,
+        ),
+      );
+    }
+  }
+}
+
+function validateCapabilityIOArray(
+  value: unknown,
+  valuePath: string,
+  label: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_capability_io_types',
+        `${label} must be a non-empty array when set.`,
+        valuePath,
+      ),
+    );
+    return;
+  }
+  value.forEach((item, index) => {
+    if (!isNonEmptyString(item)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_io_types',
+          `${label} entries must be non-empty strings.`,
+          `${valuePath}[${index}]`,
+        ),
+      );
+      return;
+    }
+    if (!CAPABILITY_IO_TYPES.has(item)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_io_types',
+          `Unsupported capability I/O type "${item}". Supported values: ${VALID_CAPABILITY_IO_TYPES.join(', ')}.`,
+          `${valuePath}[${index}]`,
+        ),
+      );
+    }
+  });
+}
+
+function isEndpointReference(value: string): boolean {
+  if (HAS_ENV_REF_PATTERN.test(value)) return true;
+  if (value.startsWith('/')) return true;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol);
+  } catch {
+    return false;
   }
 }
 
@@ -1946,6 +2364,161 @@ function validateEmbeddingBatching(
   }
 }
 
+function validateRealtime(
+  realtime: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (realtime === undefined) return;
+  if (!isRecord(realtime)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'realtime must be an object when set.',
+        'realtime',
+      ),
+    );
+    return;
+  }
+
+  if (realtime.enabled !== undefined && !isBoolean(realtime.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.enabled must be a boolean.',
+        'realtime.enabled',
+      ),
+    );
+  }
+  if (
+    realtime.path !== undefined &&
+    (!isNonEmptyString(realtime.path) || !realtime.path.startsWith('/'))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.path must be a non-empty path starting with "/".',
+        'realtime.path',
+      ),
+    );
+  }
+
+  for (const key of [
+    'max_connections',
+    'max_connections_per_node',
+    'idle_timeout_ms',
+    'upstream_connect_timeout_ms',
+    'max_session_ms',
+  ]) {
+    validateOptionalPositiveNumber(
+      realtime[key],
+      `realtime.${key}`,
+      'invalid_realtime_config',
+      issues,
+    );
+  }
+
+  if (realtime.default_node !== undefined && !isNonEmptyString(realtime.default_node)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.default_node must be a non-empty string when set.',
+        'realtime.default_node',
+      ),
+    );
+  }
+  if (realtime.default_model !== undefined && !isNonEmptyString(realtime.default_model)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.default_model must be a non-empty string when set.',
+        'realtime.default_model',
+      ),
+    );
+  }
+
+  const realtimeTargets: Array<{ node: string; model: string }> = [];
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (!isRecord(node) || !isNonEmptyString(node.id)) continue;
+      for (const model of Array.isArray(node.realtime_models) ? node.realtime_models : []) {
+        if (isNonEmptyString(model)) {
+          realtimeTargets.push({ node: node.id, model });
+        }
+      }
+    }
+  }
+
+  if (realtime.enabled === true && realtimeTargets.length === 0) {
+    issues.push(
+      issue(
+        'error',
+        'realtime_no_models',
+        'realtime.enabled requires at least one nodes[].realtime_models entry.',
+        'realtime.enabled',
+      ),
+    );
+  }
+
+  if (isNonEmptyString(realtime.default_node)) {
+    const nodeTargets = realtimeTargets.filter(
+      (target) => target.node === realtime.default_node,
+    );
+    if (nodeTargets.length === 0) {
+      issues.push(
+        issue(
+          'error',
+          'realtime_default_target_invalid',
+          `realtime.default_node "${realtime.default_node}" does not expose realtime_models.`,
+          'realtime.default_node',
+        ),
+      );
+    } else if (
+      isNonEmptyString(realtime.default_model) &&
+      realtime.default_model !== 'auto' &&
+      !nodeTargets.some((target) => target.model === realtime.default_model)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'realtime_default_target_invalid',
+          `realtime.default_model "${realtime.default_model}" is not listed under node "${realtime.default_node}" realtime_models.`,
+          'realtime.default_model',
+        ),
+      );
+    }
+  } else if (
+    isNonEmptyString(realtime.default_model) &&
+    realtime.default_model !== 'auto' &&
+    !realtimeTargets.some((target) => target.model === realtime.default_model)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'realtime_default_target_invalid',
+        `realtime.default_model "${realtime.default_model}" is not listed in any nodes[].realtime_models.`,
+        'realtime.default_model',
+      ),
+    );
+  }
+
+  if (realtime.enabled === true) {
+    issues.push(
+      issue(
+        'info',
+        'realtime_experimental',
+        'realtime is experimental: it performs WebSocket pass-through only and does not process audio locally.',
+        'realtime.enabled',
+      ),
+    );
+  }
+}
+
 function validateShadow(
   shadow: unknown,
   nodes: unknown,
@@ -2003,6 +2576,9 @@ function validateShadow(
       const models = [
         ...(Array.isArray(targetNode.models) ? targetNode.models : []),
         ...(Array.isArray(targetNode.embedding_models) ? targetNode.embedding_models : []),
+        ...(Array.isArray(targetNode.rerank_models) ? targetNode.rerank_models : []),
+        ...(Array.isArray(targetNode.image_models) ? targetNode.image_models : []),
+        ...(Array.isArray(targetNode.audio_models) ? targetNode.audio_models : []),
       ].filter(isNonEmptyString);
       if (models.length > 0 && !models.includes(shadow.target_model)) {
         issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));
@@ -3199,6 +3775,17 @@ function validateHttpUrl(
   } catch {
     issues.push(issue('error', code, 'Value must be a valid URL.', issuePath));
     return null;
+  }
+}
+
+function isValidRealtimeEndpoint(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  if (value.startsWith('/')) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'ws:' || url.protocol === 'wss:';
+  } catch {
+    return false;
   }
 }
 

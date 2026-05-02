@@ -26,11 +26,11 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic.
+Current open-source release: **v0.6.0**. This release is the Protocol + Explainability milestone: structured-output passthrough and schema-aware fallback, unified multimodal capabilities, OpenAI/common-compatible rerank, minimal images/audio ingress, an experimental disabled-by-default Realtime preview, and privacy-safe route decision traces with a Dashboard Route Explanation page.
 
-SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
+SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
-**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
+**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
 
 ```
 Your App ──▶ SiftGate ──▶ OpenAI (GPT)
@@ -64,7 +64,12 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Responses** (`/v1/responses`) — OpenAI's newer API format
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
-- Full **streaming** support across all three protocols
+- **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
+- **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`) — image-capable node routing with JSON and multipart pass-through
+- **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/speech`) — transcription and speech routing with multipart input and binary audio output support
+- **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
+- **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
+- Full **streaming** support across supported generative protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
 ### Smart Routing
@@ -73,10 +78,12 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
 - **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
+- **Explainable routing trace** — records privacy-safe route decision evidence so operators can inspect why a `node:model` was selected
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
 
 ### Cost & Budget Control
@@ -101,8 +108,10 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
+- **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
+- **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -523,10 +532,20 @@ nodes:
     base_url: "https://api.openai.com" # Provider base URL
     endpoint: "/v1/chat/completions" # API endpoint path
     embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
+    # rerank_endpoint: "/v1/rerank" # Optional rerank path for compatible upstreams/proxies
+    realtime_endpoint: "/v1/realtime" # Optional experimental realtime WebSocket path or ws/wss URL
+    images_generations_endpoint: "/v1/images/generations" # Optional image generation endpoint path
+    images_edits_endpoint: "/v1/images/edits" # Optional image edit endpoint path
+    audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
+    audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
+    # rerank_models: ["rerank-english-v3"] # Models eligible for /v1/rerank
+    realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
+    image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
+    audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -560,7 +579,74 @@ nodes:
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
 
-`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests. Images and audio endpoints use `nodes[].image_models` and `nodes[].audio_models` so media traffic can be permitted, priced, logged, and routed independently from chat traffic.
+
+### Unified Model Capabilities
+
+v0.6 adds one capability schema that covers chat/responses/messages/embeddings plus image, audio, rerank, and realtime routing without breaking old configs. Existing `nodes[].models`, `nodes[].embedding_models`, `max_context_tokens`, `structured_output`, and `pricing` remain valid.
+
+```yaml
+nodes:
+  - id: openai
+    models: ["gpt-4o", "gpt-4o-mini"]
+    embedding_models: ["text-embedding-3-small"]
+    modalities: ["text", "vision"] # legacy image-input alias; compatible with "image"
+    endpoints:
+      image: "/v1/images/generations"
+      audio: "/v1/audio/transcriptions"
+      rerank: "/v1/rerank"
+      realtime: "wss://api.openai.com/v1/realtime"
+    input_types: ["text", "image", "audio"]
+    output_types: ["text", "image", "events"]
+    max_file_size: 20000000
+    supports_streaming: true
+    supports_realtime: false
+    supports_rerank: false
+    model_capabilities:
+      gpt-4o:
+        modalities: ["text", "image", "audio"]
+        input_types: ["text", "image", "audio"]
+        output_types: ["text"]
+        supports_streaming: true
+        pricing: { input: 2.5, output: 10 }
+      text-embedding-3-small:
+        modalities: ["text", "embedding"]
+        input_types: ["text"]
+        output_types: ["embedding"]
+        dimensions: [512, 1536]
+        pricing: { input: 0.02, output: 0 }
+```
+
+Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible.
+
+See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
+
+`/v1/rerank` accepts OpenAI/common-compatible rerank requests and uses `nodes[].rerank_models`; chat and embedding models are not selected for rerank requests.
+
+### Experimental Realtime Preview
+
+Realtime is an experimental v0.6 WebSocket proxy preview. It is disabled by default and only performs safe pass-through: Gateway API key authentication, API key/namespace node-model permission checks, connection limits, idle/session timeouts, close cleanup, sanitized error summaries, and Dashboard/health connection state. It does not parse, transcode, inspect, or persist audio frames.
+
+```yaml
+nodes:
+  - id: openai
+    base_url: "https://api.openai.com"
+    realtime_endpoint: "/v1/realtime"
+    realtime_models: ["gpt-4o-realtime-preview"]
+
+realtime:
+  enabled: true
+  path: /v1/realtime
+  max_connections: 25
+  max_connections_per_node: 25
+  idle_timeout_ms: 300000
+  upstream_connect_timeout_ms: 10000
+  max_session_ms: 1800000
+  default_node: openai
+  default_model: gpt-4o-realtime-preview
+```
+
+Clients connect to `ws://localhost:2099/v1/realtime?model=gpt-4o-realtime-preview` with `Authorization: Bearer <gateway-api-key>`. SiftGate forwards upstream with the provider API key and `OpenAI-Beta: realtime=v1`. Browser clients that cannot set an `Authorization` header should use a trusted backend to mint or proxy the connection; the preview intentionally does not accept Gateway API keys in query strings.
 
 ### Upstream Connection Pooling
 
@@ -712,6 +798,18 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
+Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. It intentionally records only routing metadata: prompts, responses, raw headers, and provider keys are not stored.
+
+Use the Dashboard API to power an explainable routing page or inspect one request during incident response:
+
+```bash
+curl http://localhost:2099/api/dashboard/route-decisions \
+  -H "Authorization: Bearer <dashboard_jwt>"
+
+curl http://localhost:2099/api/dashboard/route-decisions/<request_id> \
+  -H "Authorization: Bearer <dashboard_jwt>"
+```
+
 ### Embeddings
 
 `POST /v1/embeddings` accepts OpenAI-compatible requests with `model`, `input`, optional `dimensions`, `encoding_format`, and `user`. `input` may be a string, array of strings, token array, or array of token arrays.
@@ -727,6 +825,136 @@ curl http://localhost:2099/v1/embeddings \
     "input": ["hello", "world"],
     "dimensions": 1536
   }'
+```
+
+### Structured Output
+
+SiftGate preserves structured-output intent in the canonical request so routing, fallback, logs, and provider forwarding all see the same request contract. The v0.6 behavior covers:
+
+- OpenAI Chat Completions `response_format` with `json_object` and `json_schema`
+- OpenAI Responses `text.format` with `json_object` and `json_schema`
+- Anthropic Messages `output_config.format` passthrough when the request and target are both Messages-compatible
+
+Chat Completions example:
+
+```json
+{
+  "model": "auto",
+  "messages": [{ "role": "user", "content": "Return whether deployment is safe." }],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "deployment_check",
+      "schema": {
+        "type": "object",
+        "required": ["safe"],
+        "properties": { "safe": { "type": "boolean" } },
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Responses example:
+
+```json
+{
+  "model": "auto",
+  "input": "Return a JSON object with ok=true.",
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "name": "answer",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Anthropic Messages example:
+
+```json
+{
+  "model": "auto",
+  "max_tokens": 1024,
+  "messages": [{ "role": "user", "content": "Return a compact JSON result." }],
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      }
+    }
+  }
+}
+```
+
+Forwarding strategies are explicit in call logs and Dashboard details:
+
+- `passthrough` means the request and target provider use the same native structured-output field.
+- `native` means SiftGate mapped the canonical intent to the target protocol's closest native field.
+- `downgraded` means no safe mapping exists or the selected node/model declares `structured_output: false`; the request is still forwarded conservatively and the log records unsupported status.
+
+When `routing.fallback_policy.structured_output.enabled` is true, non-streaming responses can fallback on JSON parse or schema validation failure. Streaming requests remain conservative: SiftGate will not change routes after SSE output has started.
+
+### Rerank
+
+`POST /v1/rerank` accepts OpenAI/common-compatible rerank requests with `model`, `query`, `documents`, optional `top_n`, and optional `return_documents`.
+
+For `model: "auto"`, SiftGate selects from configured `rerank_models`, filters by Gateway API key permissions, local namespace restrictions, health/circuit state, and then ranks eligible targets by configured input cost. Direct rerank requests use the same direct-routing permission checks as chat and embeddings and return a clear 400 if the requested model is not listed under any node's `rerank_models`.
+
+```bash
+curl http://localhost:2099/v1/rerank \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "query": "what is SiftGate?",
+    "documents": [
+      "SiftGate is a self-hosted AI traffic gateway.",
+      "SQLite is the default local database."
+    ],
+    "top_n": 1
+  }'
+```
+
+### Images and Audio
+
+v0.6 adds minimal OpenAI-compatible media ingress for common provider/proxy APIs:
+
+| Endpoint | Models selected from | Request body |
+| --- | --- | --- |
+| `POST /v1/images/generations` | `nodes[].image_models` | JSON; multipart is accepted as pass-through |
+| `POST /v1/images/edits` | `nodes[].image_models` | JSON or `multipart/form-data` |
+| `POST /v1/audio/transcriptions` | `nodes[].audio_models` | JSON or `multipart/form-data` |
+| `POST /v1/audio/speech` | `nodes[].audio_models` | JSON; binary provider responses are returned unchanged |
+
+For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`multipart`, byte size, model), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, or validation. Increase `server.body_limit` if your edit or transcription payloads exceed the default `1mb`.
+
+```bash
+curl http://localhost:2099/v1/images/generations \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "prompt": "A clean product render of SiftGate as an AI gateway"
+  }'
+```
+
+```bash
+curl http://localhost:2099/v1/audio/transcriptions \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -F model=auto \
+  -F file=@sample.wav
 ```
 
 ### Stream Cache and Embedding Batching
@@ -782,7 +1010,7 @@ routing:
 
 - `immediate_429` skips same-node retries for rate limits and tries the next fallback.
 - `timeout.threshold_ms` uses an upstream attempt timeout before moving on. `race_fallback` is off by default because it can create extra provider cost; when enabled it must have an explicit threshold.
-- `structured_output` checks OpenAI `response_format` and Responses `text.format` JSON output. Non-streaming responses can fallback on parse/schema failure; streaming responses stay conservative and never change routes after SSE starts.
+- `structured_output` checks OpenAI Chat `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` JSON output. Non-streaming responses can fallback on parse/schema failure; streaming responses stay conservative and never change routes after SSE starts.
 - `cost_downgrade` estimates request cost from local token heuristics and `models_pricing`, then uses a cheaper fallback when the primary estimate exceeds the configured limit.
 - Call logs, Dashboard log details/exports/SSE, OpenTelemetry, and optional connected-gateway telemetry include `fallback_reason`.
 
@@ -971,6 +1199,12 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/responses`        | OpenAI Responses format                       |
 | `POST` | `/v1/messages`         | Anthropic Messages format                     |
 | `POST` | `/v1/embeddings`       | OpenAI Embeddings format                      |
+| `POST` | `/v1/rerank`           | OpenAI/common-compatible rerank format        |
+| `POST` | `/v1/images/generations` | OpenAI Images generation format             |
+| `POST` | `/v1/images/edits`     | OpenAI Images edits format with multipart pass-through |
+| `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription format         |
+| `POST` | `/v1/audio/speech`     | OpenAI Audio speech format with binary responses |
+| `WS`   | `/v1/realtime`         | Experimental OpenAI Realtime-style pass-through |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -1002,7 +1236,7 @@ For each accepted request, the gateway applies the same accounting path:
 7. Record usage against global budgets and, when present, the key budget and namespace budget.
 8. Write a call log attributed to the same `api_key_id`.
 
-Embedding requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Their usage is recorded as input tokens with zero output tokens.
+Embedding, images, and audio requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Embedding and media usage is recorded from upstream `usage` when present, with lightweight local input estimation as a fallback for cost/budget accounting.
 
 The call log stores:
 
@@ -1034,6 +1268,8 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id`, legacy `api_key`, and `namespace` filters            |
 | `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id`, legacy `api_key`, and `namespace` filters              |
 | `GET`  | `/api/dashboard/logs/sse`                | Real-time log stream (SSE)                                                                         |
+| `GET`  | `/api/dashboard/route-decisions`         | Paginated explainable routing summaries with tier, node, source format, key, and namespace filters |
+| `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
@@ -1058,6 +1294,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
+- **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
 - **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
@@ -1209,7 +1446,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings
+│   Controller    │  ← chat, responses, messages, embeddings, rerank, images, audio, realtime WS
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -1241,7 +1478,7 @@ Client Request (any format)
 
 **Key components:**
 
-- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and embedding request/response shapes
+- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, embeddings, rerank request/response shapes, and safe media pass-through metadata
 - **Scoring Engine** — Evaluates request complexity across keyword, structural, and tool dimensions
 - **Router** — Tier-based node selection with circuit breaker, momentum, and domain-aware reordering
 - **Provider Client** — HTTP forwarder with streaming support (SSE parsing for each protocol)
@@ -1251,7 +1488,7 @@ Client Request (any format)
 
 - **Backend:** NestJS 11, TypeORM, SQLite (default) / PostgreSQL
 - **Frontend:** React 19, Vite, Tailwind CSS v4, TanStack Query, Recharts
-- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings
+- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings, rerank, images, and audio ingress
 
 ## Troubleshooting
 

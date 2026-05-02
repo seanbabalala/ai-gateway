@@ -21,6 +21,12 @@ nodes:
     base_url: http://mock-upstream.test
     endpoint: /v1/chat/completions
     embeddings_endpoint: /v1/embeddings
+    rerank_endpoint: /v1/rerank
+    realtime_endpoint: /v1/realtime
+    images_generations_endpoint: /v1/images/generations
+    images_edits_endpoint: /v1/images/edits
+    audio_transcriptions_endpoint: /v1/audio/transcriptions
+    audio_speech_endpoint: /v1/audio/speech
     api_key: mock-openai-key
     models:
       - gpt-4o
@@ -28,6 +34,15 @@ nodes:
     embedding_models:
       - text-embedding-3-small
       - text-embedding-3-large
+    rerank_models:
+      - rerank-english-v3
+    realtime_models:
+      - gpt-4o-realtime-preview
+    image_models:
+      - gpt-image-1
+    audio_models:
+      - gpt-4o-mini-transcribe
+      - tts-1
     timeout_ms: 10000
     tags:
       - code
@@ -49,6 +64,10 @@ nodes:
           - 3072
         pricing:
           input: 0.13
+          output: 0
+      rerank-english-v3:
+        pricing:
+          input: 0.01
           output: 0
   - id: mock-claude
     name: Mock Claude
@@ -111,6 +130,11 @@ routing:
       - mock-openai
     math:
       - mock-claude
+  fallback_policy:
+    structured_output:
+      enabled: true
+      fallback_on_parse_error: true
+      fallback_on_schema_error: true
 budget:
   daily_token_limit: 5000000
   daily_cost_limit: 50
@@ -131,3 +155,27 @@ models_pricing:
   text-embedding-3-large:
     input: 0.13
     output: 0
+  rerank-english-v3:
+    input: 0.01
+    output: 0
+  gpt-4o-realtime-preview:
+    input: 5
+    output: 20
+  gpt-image-1:
+    input: 5
+    output: 0
+  gpt-4o-mini-transcribe:
+    input: 0.6
+    output: 0
+  tts-1:
+    input: 15
+    output: 0
+namespaces: []
+realtime:
+  enabled: true
+  path: /v1/realtime
+  max_connections: 2
+  max_connections_per_node: 2
+  idle_timeout_ms: 30000
+  upstream_connect_timeout_ms: 1000
+  max_session_ms: 60000

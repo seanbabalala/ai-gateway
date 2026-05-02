@@ -2,7 +2,44 @@
 
 ## Unreleased
 
-No changes yet.
+No unreleased changes yet.
+
+## 0.6.0 - 2026-05-03
+
+### Added
+
+- v0.6 canonical structured-output support that preserves OpenAI Chat Completions `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` intent across protocol conversion.
+- Provider forwarding strategies for structured output: native passthrough, cross-protocol native mapping, and explicit downgrade/unsupported metadata when a target cannot safely honor the request.
+- Structured-output call-log metadata for Dashboard details, CSV/JSON exports, external log sinks, and optional connected-gateway telemetry.
+- Unit coverage for Chat, Responses, Anthropic passthrough/downgrade behavior, provider forwarding, schema fallback, and streaming conservative behavior.
+- v0.6 unified multimodal capability schema for node/model declarations, covering modalities, endpoint maps, input/output types, file-size limits, streaming, realtime, rerank, and pricing metadata.
+- Smart-routing modality filtering that removes incompatible node:model targets for image/audio-style requests while preserving legacy `vision` compatibility.
+- Read-only Dashboard Nodes and Routing capability summaries for per-model modalities, streaming/realtime/rerank flags, context windows, dimensions, file-size limits, and pricing hints.
+- Config validation and docs for v0.6 capability fields, endpoint maps, and multimodal model metadata.
+- v0.6 OpenAI/common-compatible `POST /v1/rerank` endpoint for the open-source Data Plane.
+- Canonical rerank request/response types, normalizer, provider forwarding, routing, usage, cost, telemetry, and call-log support.
+- `nodes[].rerank_models` and optional `nodes[].rerank_endpoint` configuration with validation and example pricing.
+- Rerank routing that respects Gateway API key permissions, local namespace policy, circuit/health state, fallback, and cost-aware target ranking.
+- Unit and e2e coverage for rerank controller, normalizer, provider client, routing, pipeline behavior, config validation, and OpenAPI exposure.
+- v0.6 minimal OpenAI-compatible images and audio ingress for the OSS Data Plane.
+- `POST /v1/images/generations`, `POST /v1/images/edits`, `POST /v1/audio/transcriptions`, and `POST /v1/audio/speech` with canonical media metadata and provider pass-through forwarding.
+- `nodes[].image_models`, `nodes[].audio_models`, media endpoint path configuration, pricing validation, routing, budget, rate-limit, telemetry, and call-log coverage.
+- Multipart pass-through for image edits and audio transcriptions that rewrites/appends only the selected `model` field and avoids local media parsing/transcoding.
+- Unit and e2e coverage for media normalization, routing, provider forwarding, config validation, controllers, OpenAPI paths, multipart pass-through, and binary audio responses.
+- v0.6 experimental OpenAI Realtime-style WebSocket preview for the OSS Data Plane.
+- Disabled-by-default `realtime` config with `/v1/realtime` upgrade handling, Gateway API key auth, API key/namespace permission checks, global/per-node connection limits, idle/session timeouts, and close cleanup.
+- `nodes[].realtime_models` and `nodes[].realtime_endpoint` for realtime-capable upstreams, plus config validation and pricing diagnostics.
+- Dashboard nodes and `/health` realtime summaries with active connection counts, capability status, last close timestamps, and sanitized errors.
+- E2E coverage for realtime auth rejection, safe WebSocket proxying, close release, upstream failure handling, and provider-key redaction.
+- v0.6 explainable routing backend trace for the OSS Data Plane, recording why each request selected a `node:model` without storing prompts, responses, raw headers, or provider keys.
+- `route_decisions` persistence for SQLite/PostgreSQL plus Dashboard APIs `GET /api/dashboard/route-decisions` and `GET /api/dashboard/route-decisions/:requestId`.
+- Route decision trace details for candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and privacy flags.
+- Dashboard Route Explanation page with read-only route decision list/detail views, candidate tradeoff tables, filter reasons, fallback context, empty/error states, and deep links from log details.
+
+### Changed
+
+- Structured-output fallback validation now reads canonical request fields first, with raw body fallback for older call paths.
+- Dashboard call log details now show structured-output requested status, type, strategy, and unsupported markers.
 
 ## 0.5.0 - 2026-05-02
 

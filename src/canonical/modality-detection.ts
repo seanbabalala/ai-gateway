@@ -12,8 +12,9 @@ import { Modality } from '../config/modality';
 
 /**
  * Scan all messages in a CanonicalRequest and detect required modalities.
- * Every request requires 'text'. Image blocks add 'vision'.
- * Future: audio blocks would add 'audio'.
+ * Every request requires 'text'. Image blocks add the legacy 'vision'
+ * modality, which is compatible with the newer capability schema's 'image'
+ * modality. Future audio blocks add 'audio'.
  */
 export function detectRequestModalities(req: CanonicalRequest): Set<Modality> {
   const modalities = new Set<Modality>(['text'] as Modality[]);
@@ -37,6 +38,9 @@ function scanBlock(block: CanonicalContentBlock, modalities: Set<Modality>): voi
   if (block.type === 'image') {
     modalities.add('vision');
   }
+  if ((block as { type: string }).type === 'audio') {
+    modalities.add('audio');
+  }
 
   // tool_result blocks can contain nested content blocks
   if (block.type === 'tool_result' && Array.isArray(block.content)) {
@@ -44,6 +48,4 @@ function scanBlock(block: CanonicalContentBlock, modalities: Set<Modality>): voi
       scanBlock(nested, modalities);
     }
   }
-
-  // Future: if (block.type === 'audio') modalities.add('audio');
 }

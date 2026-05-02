@@ -38,6 +38,10 @@ export interface ControlPlaneTelemetryEvent {
   cost_usd: number;
   fallback_used: boolean;
   fallback_reason: string | null;
+  structured_output_requested?: boolean;
+  structured_output_type?: string | null;
+  structured_output_strategy?: string | null;
+  structured_output_supported?: boolean | null;
   retry_count: number;
   cache_hit: boolean;
   policy_hits: string[];

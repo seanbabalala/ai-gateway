@@ -21,6 +21,7 @@ import { colorWithOpacity } from '@/lib/theme'
 import type {
   ActionResponse,
   LoadBalancingStrategy,
+  ModelCapabilityInfo,
   RoutingConfig,
   RoutingTierStatus,
   SplitVariant,
@@ -42,6 +43,29 @@ interface EditableScoring {
 
 interface EditableDomainPrefs {
   [domain: string]: string[]
+}
+
+function formatCapabilityNumber(value: number): string {
+  if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k`
+  return `${value}`
+}
+
+function routingCapabilityPills(capability?: ModelCapabilityInfo): string[] {
+  if (!capability) return []
+  const pills = [
+    ...(capability.modalities || []).slice(0, 3),
+  ]
+  if (capability.supports_streaming) pills.push('stream')
+  if (capability.supports_realtime) pills.push('realtime')
+  if (capability.supports_rerank) pills.push('rerank')
+  if (capability.max_context_tokens) pills.push(`${formatCapabilityNumber(capability.max_context_tokens)} ctx`)
+  if (capability.dimensions) {
+    pills.push(Array.isArray(capability.dimensions)
+      ? `dim ${capability.dimensions.slice(0, 2).join('/')}${capability.dimensions.length > 2 ? '+' : ''}`
+      : `dim ${capability.dimensions}`)
+  }
+  return pills.slice(0, 5)
 }
 
 // ── Page ──
@@ -151,6 +175,27 @@ export function RoutingPage() {
 
   function metricLatencyLabel(value: number | null | undefined) {
     return typeof value === 'number' ? formatLatency(value) : '-'
+  }
+
+  function capabilityForTarget(target: { node: string; model: string }) {
+    return allNodes.find((node) => node.id === target.node)?.model_capabilities?.[target.model]
+  }
+
+  function renderTargetCapabilityPills(target: { node: string; model: string }) {
+    const pills = routingCapabilityPills(capabilityForTarget(target))
+    if (pills.length === 0) return null
+    return (
+      <div className="mt-1 flex max-w-full flex-wrap gap-1">
+        {pills.map((pill) => (
+          <span
+            key={pill}
+            className="rounded bg-[var(--background-tertiary)] px-1.5 py-0.5 text-[8px] font-bold text-[var(--foreground-dim)]"
+          >
+            {pill}
+          </span>
+        ))}
+      </div>
+    )
   }
 
   // Scoring visualization
@@ -440,6 +485,7 @@ export function RoutingPage() {
                         {target.weight ?? 1}
                       </span>
                     </div>
+                    {renderTargetCapabilityPills(target)}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-medium text-[var(--foreground-dim)]">
                       {isSelected && <span className="text-[var(--accent)]">{t('lb.selected')}</span>}
                       <span>{t('lb.samples')}: {metric?.samples ?? 0}</span>
@@ -747,20 +793,26 @@ export function RoutingPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       {primaryTarget && (
                         <div
-                          className="flex min-w-[210px] items-center gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2.5"
+                          className="min-w-[210px] rounded-lg bg-[var(--background-secondary)] px-3 py-2.5"
                         >
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: getNodeColor(primaryTarget.node) }} />
-                          <span className="font-bold text-[var(--foreground)]">{primaryTarget.node}</span>
-                          <span className="truncate font-mono text-[11px] text-[var(--foreground-dim)]">{primaryTarget.model}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: getNodeColor(primaryTarget.node) }} />
+                            <span className="font-bold text-[var(--foreground)]">{primaryTarget.node}</span>
+                            <span className="truncate font-mono text-[11px] text-[var(--foreground-dim)]">{primaryTarget.model}</span>
+                          </div>
+                          {renderTargetCapabilityPills(primaryTarget)}
                         </div>
                       )}
                       {fallbackTargets.map((fb, i) => (
                         <div key={`${fb.node}-${fb.model}-${i}`} className="flex items-center gap-2">
                           <ArrowRight className="h-3.5 w-3.5 text-[var(--divider-dim)]" />
-                          <div className="flex min-w-[180px] items-center gap-2 rounded-lg bg-[var(--inset-bg)] px-3 py-2">
-                            <span className="h-2 w-2 rounded-full" style={{ background: getNodeColor(fb.node) }} />
-                            <span className="font-semibold text-[var(--foreground-muted)]">{fb.node}</span>
-                            <span className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">{fb.model}</span>
+                          <div className="min-w-[180px] rounded-lg bg-[var(--inset-bg)] px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: getNodeColor(fb.node) }} />
+                              <span className="font-semibold text-[var(--foreground-muted)]">{fb.node}</span>
+                              <span className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">{fb.model}</span>
+                            </div>
+                            {renderTargetCapabilityPills(fb)}
                           </div>
                         </div>
                       ))}

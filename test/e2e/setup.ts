@@ -8,7 +8,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { json, urlencoded } from 'express';
+import { json, raw, urlencoded } from 'express';
 import helmet from 'helmet';
 import * as path from 'path';
 import * as request from 'supertest';
@@ -29,6 +29,7 @@ export interface FetchCall {
   method: string;
   headers: Record<string, string>;
   body: Record<string, unknown>;
+  rawBody?: Buffer;
 }
 
 type FetchHandler = (url: string, init: RequestInit) => Promise<Response>;
@@ -51,15 +52,19 @@ export class FetchMock {
         }
       }
       let body: Record<string, unknown> = {};
+      let rawBody: Buffer | undefined;
       if (init?.body && typeof init.body === 'string') {
         try {
           body = JSON.parse(init.body);
         } catch {
           body = { _raw: init.body };
         }
+      } else if (init?.body instanceof Buffer) {
+        rawBody = init.body;
+        body = { _raw_bytes: init.body.length };
       }
 
-      this.calls.push({ url, method, headers, body });
+      this.calls.push({ url, method, headers, body, rawBody });
 
       if (this.handler) {
         return this.handler(url, init!);
@@ -215,6 +220,68 @@ export class FetchMock {
       });
     }
 
+    if (url.includes('/v1/rerank')) {
+      const documents = Array.isArray(body.documents) ? body.documents : [];
+      const topN = typeof body.top_n === 'number' ? body.top_n : documents.length;
+      return new Response(JSON.stringify({
+        id: 'rerank-e2e-test',
+        object: 'rerank',
+        model: (body.model as string) || 'rerank-english-v3',
+        results: documents
+          .map((_item, index) => ({
+            index,
+            relevance_score: Number((1 - index * 0.1).toFixed(2)),
+          }))
+          .slice(0, topN),
+        usage: { prompt_tokens: documents.length * 8, total_tokens: documents.length * 8 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/images/generations')) {
+      return new Response(JSON.stringify({
+        created: Math.floor(Date.now() / 1000),
+        model: (body.model as string) || 'gpt-image-1',
+        data: [{ url: 'https://mock-upstream.test/generated.png' }],
+        usage: { prompt_tokens: 6, total_tokens: 6 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/images/edits')) {
+      return new Response(JSON.stringify({
+        created: Math.floor(Date.now() / 1000),
+        model: (body.model as string) || 'gpt-image-1',
+        data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }],
+        usage: { prompt_tokens: 4, total_tokens: 4 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/audio/transcriptions')) {
+      return new Response(JSON.stringify({
+        text: 'mock transcription',
+        model: (body.model as string) || 'gpt-4o-mini-transcribe',
+        usage: { input_tokens: 12, output_tokens: 3 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/audio/speech')) {
+      return new Response(Buffer.from('mock-mp3-bytes'), {
+        status: 200,
+        headers: { 'Content-Type': 'audio/mpeg' },
+      });
+    }
+
     if (url.includes('/v1/messages')) {
       return new Response(JSON.stringify({
         id: 'msg-e2e-test',
@@ -286,6 +353,20 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   setupOpenApi(app);
   app.use(helmet());
   app.enableCors({ origin: true, credentials: true });
+  const mediaBodyTypes = [
+    'multipart/form-data',
+    'application/octet-stream',
+    'audio/*',
+    'image/*',
+  ];
+  for (const route of [
+    '/v1/images/generations',
+    '/v1/images/edits',
+    '/v1/audio/transcriptions',
+    '/v1/audio/speech',
+  ]) {
+    app.use(route, raw({ type: mediaBodyTypes, limit: '1mb' }));
+  }
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 

@@ -2,11 +2,72 @@
 // Modality Registry — Model → modality mapping
 // ===================================================================
 // Defines the modality type system and a known-model inference table.
-// Used to determine which modalities (text, vision, audio) a model
+// Used to determine which modalities (text, vision, audio, etc.) a model
 // supports based on its name, when no explicit config is provided.
 // ===================================================================
 
-export type Modality = 'text' | 'vision' | 'audio';
+export type Modality =
+  | 'text'
+  | 'vision'
+  | 'image'
+  | 'audio'
+  | 'embedding'
+  | 'rerank'
+  | 'realtime';
+
+export type CapabilityEndpoint =
+  | 'chat_completions'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'image'
+  | 'audio'
+  | 'rerank'
+  | 'realtime';
+
+export type CapabilityIOType =
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'file'
+  | 'json'
+  | 'embedding'
+  | 'documents'
+  | 'ranked_documents'
+  | 'events';
+
+export const VALID_MODALITIES: readonly Modality[] = [
+  'text',
+  'vision',
+  'image',
+  'audio',
+  'embedding',
+  'rerank',
+  'realtime',
+];
+
+export const VALID_CAPABILITY_ENDPOINTS: readonly CapabilityEndpoint[] = [
+  'chat_completions',
+  'responses',
+  'messages',
+  'embeddings',
+  'image',
+  'audio',
+  'rerank',
+  'realtime',
+];
+
+export const VALID_CAPABILITY_IO_TYPES: readonly CapabilityIOType[] = [
+  'text',
+  'image',
+  'audio',
+  'file',
+  'json',
+  'embedding',
+  'documents',
+  'ranked_documents',
+  'events',
+];
 
 // ── Known Model → Modality Mapping ────────────────────────────────
 // Patterns are checked in order; first match wins.
@@ -51,3 +112,22 @@ export function inferModelModalities(modelName: string): Modality[] | null {
 
 /** Default modalities for unknown models (conservative: text-only). */
 export const DEFAULT_MODALITIES: Modality[] = ['text'];
+
+/** Expand compatibility aliases without changing the operator-visible config. */
+export function expandModalityAliases(modalities: readonly Modality[]): Set<Modality> {
+  const expanded = new Set<Modality>();
+  for (const modality of modalities) {
+    expanded.add(modality);
+    if (modality === 'vision') expanded.add('image');
+    if (modality === 'image') expanded.add('vision');
+  }
+  return expanded;
+}
+
+export function supportsModalities(
+  supportedModalities: readonly Modality[],
+  requiredModalities: readonly Modality[],
+): boolean {
+  const expanded = expandModalityAliases(supportedModalities);
+  return requiredModalities.every((modality) => expanded.has(modality));
+}

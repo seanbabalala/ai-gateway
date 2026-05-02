@@ -4,7 +4,11 @@
 // Types matching the structure of gateway.config.yaml
 // ===================================================================
 
-import type { Modality } from './modality';
+import type {
+  CapabilityEndpoint,
+  CapabilityIOType,
+  Modality,
+} from './modality';
 import type { PluginConfigEntry } from '../plugins/types';
 
 export interface GatewayConfig {
@@ -29,6 +33,9 @@ export interface GatewayConfig {
 
   /** Optional OSS-local embeddings request batching — disabled by default */
   embedding_batching?: EmbeddingBatchingConfig;
+
+  /** Experimental OpenAI Realtime-compatible WebSocket preview — disabled by default */
+  realtime?: RealtimeConfig;
 
   /** Optional shared state backend; memory remains the default single-node mode */
   state?: StateBackendConfig;
@@ -364,6 +371,22 @@ export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 export type HealthCheckMethod = 'HEAD' | 'GET' | 'POST';
 
 export interface ModelCapabilityConfig {
+  /** Explicit modalities supported by this model. "vision" remains supported as the legacy image-input alias. */
+  modalities?: Modality[];
+  /** Endpoint paths or absolute URLs used by future protocol-specific provider calls. */
+  endpoints?: Partial<Record<CapabilityEndpoint, string>>;
+  /** Input media/data types accepted by this model. */
+  input_types?: CapabilityIOType[] | string[];
+  /** Output media/data types emitted by this model. */
+  output_types?: CapabilityIOType[] | string[];
+  /** Maximum accepted uploaded or inline file size in bytes. */
+  max_file_size?: number;
+  /** Whether this model supports streaming responses. */
+  supports_streaming?: boolean;
+  /** Whether this model supports realtime sessions/events. */
+  supports_realtime?: boolean;
+  /** Whether this model supports rerank requests. */
+  supports_rerank?: boolean;
   /** Maximum total context window for this model, including input and reserved output tokens. */
   max_context_tokens?: number;
   /** Whether this model should be considered safe for structured output requests. */
@@ -421,6 +444,26 @@ export interface NodeConfig {
   embeddings_endpoint?: string;
   /** Embedding-capable model IDs exposed by this node. */
   embedding_models?: string[];
+  /** Optional OpenAI/common-compatible rerank endpoint path (default: /v1/rerank). */
+  rerank_endpoint?: string;
+  /** Rerank-capable model IDs exposed by this node. */
+  rerank_models?: string[];
+  /** Optional OpenAI-compatible image generation endpoint path (default: /v1/images/generations). */
+  images_generations_endpoint?: string;
+  /** Optional OpenAI-compatible image edit endpoint path (default: /v1/images/edits). */
+  images_edits_endpoint?: string;
+  /** Image-capable model IDs exposed by this node. */
+  image_models?: string[];
+  /** Optional OpenAI-compatible audio transcription endpoint path (default: /v1/audio/transcriptions). */
+  audio_transcriptions_endpoint?: string;
+  /** Optional OpenAI-compatible text-to-speech endpoint path (default: /v1/audio/speech). */
+  audio_speech_endpoint?: string;
+  /** Audio-capable model IDs exposed by this node. */
+  audio_models?: string[];
+  /** Experimental OpenAI-compatible realtime WebSocket endpoint path (default: /v1/realtime). */
+  realtime_endpoint?: string;
+  /** Realtime-capable model IDs exposed by this node. */
+  realtime_models?: string[];
   timeout_ms: number;
   max_concurrency?: number; // Optional per-node upstream concurrency limit
   queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set
@@ -433,6 +476,14 @@ export interface NodeConfig {
   max_context_tokens?: number;
   /** Node-level default structured-output support flag. */
   structured_output?: boolean;
+  /** Node-level default multimodal capability declarations. */
+  endpoints?: Partial<Record<CapabilityEndpoint, string>>;
+  input_types?: CapabilityIOType[] | string[];
+  output_types?: CapabilityIOType[] | string[];
+  max_file_size?: number;
+  supports_streaming?: boolean;
+  supports_realtime?: boolean;
+  supports_rerank?: boolean;
   /** Optional per-model capability and pricing metadata. Keys are model IDs. */
   model_capabilities?: Record<string, ModelCapabilityConfig>;
 
@@ -452,7 +503,8 @@ export interface NodeConfig {
    * Explicitly declare which modalities this node supports.
    * When set, this takes highest priority over model-name inference and capability fallback.
    *
-   * Valid modalities: "text", "vision", "audio"
+   * Valid modalities: "text", "vision", "image", "audio", "embedding", "rerank", "realtime"
+   * "vision" is kept for backwards compatibility and is treated as compatible with "image".
    *
    * If omitted, modalities are inferred from model names or capabilities.
    * Unknown models default to ["text"] (text-only).
@@ -709,6 +761,28 @@ export interface EmbeddingBatchingConfig {
   max_queue?: number;
   /** Per-request queue/dispatch timeout. */
   timeout_ms?: number;
+}
+
+// ===== Experimental Realtime Preview =====
+export interface RealtimeConfig {
+  /** Master switch for the experimental WebSocket proxy. Disabled by default. */
+  enabled?: boolean;
+  /** Local WebSocket path exposed by the gateway (default: /v1/realtime). */
+  path?: string;
+  /** Maximum concurrent realtime client connections across this gateway instance. */
+  max_connections?: number;
+  /** Maximum concurrent realtime connections to a single upstream node. */
+  max_connections_per_node?: number;
+  /** Close idle client/upstream sessions after this many milliseconds. */
+  idle_timeout_ms?: number;
+  /** Timeout while opening the upstream realtime WebSocket. */
+  upstream_connect_timeout_ms?: number;
+  /** Hard cap for a realtime session lifetime. */
+  max_session_ms?: number;
+  /** Optional default node used when model=auto or no model is supplied. */
+  default_node?: string;
+  /** Optional default realtime model used when model=auto or no model is supplied. */
+  default_model?: string;
 }
 
 // ===== Telemetry (OpenTelemetry) =====

@@ -12,6 +12,7 @@ import { ControlPlaneModule } from './control-plane/control-plane.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { StateModule } from './state/state.module';
 import { ClusterModule } from './cluster/cluster.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ClusterModule } from './cluster/cluster.module';
     ControlPlaneModule,
     AlertsModule,
     ClusterModule,
+    RealtimeModule,
     PluginModule,
     AuthModule,
     IngestModule,

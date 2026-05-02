@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.5 adds optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results alongside the existing chat, responses, messages, embeddings, models, and health APIs.
+v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
 
 ## Live Documentation
 
@@ -34,11 +34,91 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/responses` | OpenAI Responses-compatible ingress |
 | `POST` | `/v1/messages` | Anthropic Messages-compatible ingress |
 | `POST` | `/v1/embeddings` | OpenAI Embeddings-compatible ingress |
+| `POST` | `/v1/rerank` | OpenAI/common-compatible rerank ingress |
+| `POST` | `/v1/images/generations` | OpenAI Images generation-compatible ingress |
+| `POST` | `/v1/images/edits` | OpenAI Images edits-compatible ingress |
+| `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
+| `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
+| `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
 
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
+
+### Structured Output
+
+Structured-output intent is preserved in the canonical request and forwarded to the selected provider when SiftGate has a safe protocol mapping.
+
+| Ingress | Supported Field | Behavior |
+| --- | --- | --- |
+| `/v1/chat/completions` | `response_format.type=json_object` or `json_schema` | Passed through to Chat targets or mapped to Responses `text.format` / Messages `output_config.format` when possible |
+| `/v1/responses` | `text.format.type=json_object` or `json_schema` | Passed through to Responses targets or mapped to Chat `response_format` / Messages `output_config.format` when possible |
+| `/v1/messages` | `output_config.format.type=json_schema` | Passed through for native Messages targets; mapped to OpenAI-compatible structured-output fields only when safe |
+
+Example Chat request:
+
+```json
+{
+  "model": "auto",
+  "messages": [{ "role": "user", "content": "Return a JSON status." }],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "status",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Example Responses request:
+
+```json
+{
+  "model": "auto",
+  "input": "Return a JSON status.",
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "name": "status",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Example Messages request:
+
+```json
+{
+  "model": "auto",
+  "max_tokens": 512,
+  "messages": [{ "role": "user", "content": "Return a JSON status." }],
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      }
+    }
+  }
+}
+```
+
+Call logs, CSV/JSON exports, external log sinks, and optional control-plane telemetry include structured-output metadata: requested status, type, strategy (`passthrough`, `native`, or `downgraded`), support flag, and schema name. If `routing.fallback_policy.structured_output.enabled` is true, non-streaming requests can fallback on JSON parse or schema validation failure. Streaming requests do not fallback after SSE output has started.
 
 ### Embeddings
 
@@ -55,11 +135,81 @@ The gateway preserves the caller-facing protocol while routing across configured
 
 Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by API key permissions, active circuits, and requested dimensions, then prefers the lowest configured input price. Direct model requests must resolve to an embedding model; chat models listed only in `nodes[].models` are not selected for this endpoint. Responses preserve the OpenAI shape with `object: "list"`, embedding data, and `usage.prompt_tokens` / `usage.total_tokens`.
 
+### Rerank
+
+`POST /v1/rerank` accepts OpenAI/common-compatible rerank requests:
+```json
+{
+  "model": "auto",
+  "query": "what is SiftGate?",
+  "documents": [
+    "SiftGate is a self-hosted AI traffic gateway.",
+    "SQLite is the default local database."
+  ],
+  "top_n": 1,
+  "return_documents": true
+}
+```
+
+Rerank routing uses `nodes[].rerank_models`. `model: "auto"` filters by Gateway API key permissions, local namespace restrictions, circuit/health state, and configured model availability, then prefers the lowest configured input price. Direct model requests must resolve to a rerank model; chat models listed only in `nodes[].models` and embeddings listed only in `nodes[].embedding_models` are not selected for this endpoint. Responses preserve a common rerank shape with `object: "rerank"`, sorted `results`, `relevance_score`, optional `document`, and `usage.prompt_tokens` / `usage.total_tokens`.
+
+### Images
+
+`POST /v1/images/generations` accepts OpenAI-compatible JSON bodies and selects from `nodes[].image_models`:
+
+```json
+{
+  "model": "auto",
+  "prompt": "A clean product render of SiftGate",
+  "size": "1024x1024"
+}
+```
+
+`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as multipart status, byte size, and model.
+
+Image responses are returned in the upstream provider's OpenAI-compatible JSON shape.
+
+### Audio
+
+`POST /v1/audio/transcriptions` accepts JSON or `multipart/form-data` and selects from `nodes[].audio_models`. Multipart audio is pass-through: SiftGate rewrites/appends `model`, forwards the original file bytes, and does not decode or transcode media locally.
+
+```bash
+curl http://localhost:2099/v1/audio/transcriptions \
+  -H "Authorization: Bearer gw_sk_live_..." \
+  -F model=auto \
+  -F file=@sample.wav
+```
+
+`POST /v1/audio/speech` accepts OpenAI-compatible JSON and can return binary provider audio directly:
+
+```json
+{
+  "model": "tts-1",
+  "input": "Hello from SiftGate",
+  "voice": "alloy"
+}
+```
+
+When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged. Increase `server.body_limit` when image edit or audio transcription files are larger than the default `1mb`.
+
+### Experimental Realtime
+
+`WS /v1/realtime` is an experimental preview and is disabled unless `realtime.enabled: true` is set. It is intentionally a pass-through proxy for OpenAI Realtime-style providers:
+
+- Clients connect to `/v1/realtime?model=<realtime-model>` with `Authorization: Bearer <gateway-api-key>`.
+- Upstream targets come from `nodes[].realtime_models` and `nodes[].realtime_endpoint`.
+- The gateway enforces Gateway API key auth, API key/namespace node-model permissions, global and per-node connection limits, idle timeout, session timeout, and close cleanup.
+- The gateway forwards `OpenAI-Beta: realtime=v1` and the provider API key upstream.
+- It does not parse, transcode, inspect, persist, or validate audio frames.
+- Gateway API keys are not accepted in query strings; browser clients that cannot set headers should connect through a trusted backend.
+
+Connection state summaries are exposed through `/health` and `/api/dashboard/nodes` under each node's `realtime` field. Errors are sanitized and do not include provider keys, Gateway API keys, prompts, responses, raw headers, or audio payloads.
+
 ## Health
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Gateway health, uptime, node circuit state, model circuit state, and budget status |
+| `GET` | `/health` | Gateway health, uptime, node circuit state, realtime connection summary, model circuit state, and budget status |
 | `GET` | `/cluster/status` | Redis-backed cluster inventory, heartbeat status, and reload broadcast metadata when `state.backend=redis` or `cluster.enabled=true` |
 
 `/health` is intended for local health checks, Docker checks, and monitoring systems. `/cluster/status` returns `404` in the default single-instance memory mode.
@@ -76,6 +226,8 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/logs` | Paginated call logs |
 | `GET` | `/api/dashboard/logs/export` | Export logs as CSV or JSON |
 | `GET` | `/api/dashboard/logs/sse` | Server-Sent Events stream for live call logs |
+| `GET` | `/api/dashboard/route-decisions` | Paginated explainable routing summaries |
+| `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
@@ -91,7 +243,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
-| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, and circuit state |
+| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, and realtime capability/connection summary |
 | `POST` | `/api/dashboard/nodes/test` | Test an arbitrary node payload before saving |
 | `POST` | `/api/dashboard/nodes` | Create a node in local config |
 | `PUT` | `/api/dashboard/nodes/:id` | Update a node in local config |
@@ -101,6 +253,12 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/cache/stats` | Prompt-cache statistics |
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
 | `GET` | `/api/dashboard/telemetry-status` | Optional connected-gateway telemetry status |
+
+### Explainable Routing Traces
+
+`GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
+
+Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
 
 ## Gateway API Key Management
 

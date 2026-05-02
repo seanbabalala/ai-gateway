@@ -1,5 +1,5 @@
 import { ProviderClientService, ProviderError } from '../../src/providers/provider-client.service';
-import { Tier, CanonicalRequest } from '../../src/canonical/canonical.types';
+import { Tier, CanonicalMediaRequest, CanonicalRequest } from '../../src/canonical/canonical.types';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 const routingMeta = { tier: 'standard' as Tier, score: 0.1, is_fallback: false };
@@ -42,6 +42,24 @@ function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequ
     messages: [{ role: 'user', content: 'Hi' }],
     stream: false,
     metadata: { source_format: 'chat_completions', raw_headers: {} },
+    ...overrides,
+  };
+}
+
+function makeMediaCanonical(
+  overrides: Partial<CanonicalMediaRequest> = {},
+): CanonicalMediaRequest {
+  return {
+    model: 'gpt-image-1',
+    source_format: 'image_generation',
+    payload: { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+    content_type: 'application/json',
+    is_multipart: false,
+    metadata: {
+      source_format: 'image_generation',
+      original_model: 'gpt-image-1',
+      raw_headers: {},
+    },
     ...overrides,
   };
 }
@@ -266,6 +284,50 @@ describe('ProviderClientService', () => {
       expect(body.messages[0].content).toHaveLength(1);
       expect(body.messages[0].content[0].type).toBe('tool_use');
     });
+
+    it('should preserve native Anthropic structured-output output_config in passthrough', () => {
+      const schema = {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+      };
+      const svc = makeService();
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: false,
+        response_format: {
+          type: 'json_schema' as const,
+          source: 'messages.output_config.format' as const,
+          raw: { type: 'json_schema', schema },
+          json_schema: { schema },
+        },
+        structured_output: {
+          requested: true,
+          type: 'json_schema' as const,
+          source: 'messages.output_config.format' as const,
+          schema,
+        },
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: false,
+            messages: [{ role: 'user', content: 'Hi' }],
+            output_config: { format: { type: 'json_schema', schema } },
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.output_config).toEqual({
+        format: { type: 'json_schema', schema },
+      });
+      expect(body.response_format).toBeUndefined();
+      expect(body.text).toBeUndefined();
+    });
   });
 
   // ── Header extraction ──────────────────────────────────
@@ -439,6 +501,115 @@ describe('ProviderClientService', () => {
         input: ['hello', 'world'],
         dimensions: 1536,
       });
+    });
+
+    it('should forward rerank requests to the rerank endpoint', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'rerank-1',
+          object: 'rerank',
+          model: 'rerank-english-v3',
+          results: [{ index: 1, relevance_score: 0.92 }],
+          usage: { prompt_tokens: 18, total_tokens: 18 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        rerank_models: ['rerank-english-v3'],
+        rerank_endpoint: '/v1/rerank',
+      });
+      const result = await svc.forwardRerank(
+        {
+          model: 'rerank-english-v3',
+          query: 'what is siftgate?',
+          documents: ['gateway', 'migration'],
+          top_n: 1,
+          metadata: { source_format: 'rerank', raw_headers: {} },
+        } as any,
+        'openai',
+        'rerank-english-v3',
+        routingMeta,
+      );
+
+      expect(result.results[0]).toEqual({ index: 1, relevance_score: 0.92 });
+      expect(result.usage.input_tokens).toBe(18);
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.openai.com/v1/rerank');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        model: 'rerank-english-v3',
+        query: 'what is siftgate?',
+        documents: ['gateway', 'migration'],
+        top_n: 1,
+      });
+    });
+
+    it('should forward image generation JSON to the configured media endpoint', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(new Response(JSON.stringify({
+        created: 123,
+        model: 'upstream-image-model',
+        data: [{ url: 'https://example.test/image.png' }],
+        usage: { prompt_tokens: 7, total_tokens: 7 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        image_models: ['gpt-image-1'],
+        images_generations_endpoint: '/v1/images/generations',
+      });
+      const result = await svc.forwardMedia(
+        makeMediaCanonical({ model: 'auto' }),
+        'openai',
+        'gpt-image-1',
+        routingMeta,
+      );
+
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.openai.com/v1/images/generations');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        model: 'gpt-image-1',
+        prompt: 'Draw SiftGate',
+      });
+      expect(result.body).toMatchObject({
+        data: [{ url: 'https://example.test/image.png' }],
+      });
+      expect(result.usage.input_tokens).toBe(7);
+    });
+
+    it('should return binary audio speech responses with content type', async () => {
+      global.fetch = jest.fn().mockResolvedValue(new Response(Buffer.from('audio-bytes'), {
+        status: 200,
+        headers: { 'Content-Type': 'audio/mpeg' },
+      })) as any;
+
+      const svc = makeServiceWithNode({
+        audio_models: ['tts-1'],
+        audio_speech_endpoint: '/v1/audio/speech',
+      });
+      const result = await svc.forwardMedia(
+        makeMediaCanonical({
+          model: 'tts-1',
+          source_format: 'audio_speech',
+          payload: { model: 'tts-1', input: 'hello', voice: 'alloy' },
+          metadata: {
+            source_format: 'audio_speech',
+            original_model: 'tts-1',
+            raw_headers: {},
+          },
+        }),
+        'openai',
+        'tts-1',
+        routingMeta,
+      );
+
+      expect(Buffer.isBuffer(result.body)).toBe(true);
+      expect(result.content_type).toBe('audio/mpeg');
+      expect((result.body as Buffer).toString()).toBe('audio-bytes');
     });
 
     it('should throw ProviderError for non-OK response', async () => {

@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "i18n:check": "node scripts/check-i18n.mjs",
     "routing:check": "node scripts/check-dev-routing.mjs",
-    "test": "npm run i18n:check && npm run routing:check",
+    "route-explanation:check": "node scripts/check-route-explanation.mjs",
+    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check",
     "preview": "vite preview"
   },
   "dependencies": {

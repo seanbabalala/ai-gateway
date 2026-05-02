@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardStatic } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -68,6 +69,21 @@ function LogDetailRow({ log }: { log: CallLog }) {
             <span className="font-mono text-[var(--foreground-muted)]">{log.fallback_reason ?? t('common.na')}</span>
           </div>
           <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutput')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_requested ? t('common.yes') : t('common.no')}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputType')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_type ?? t('common.na')}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputStrategy')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.structured_output_strategy ?? t('common.na')}
+              {log.structured_output_supported === false ? ` / ${t('detail.unsupported')}` : ''}
+            </span>
+          </div>
+          <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.tokens')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
               {t('detail.tokensInOut', { input: log.input_tokens, output: log.output_tokens })}
@@ -79,6 +95,15 @@ function LogDetailRow({ log }: { log: CallLog }) {
               <span className="font-mono text-red-600 dark:text-red-400">{log.error}</span>
             </div>
           )}
+          <div className="col-span-3">
+            <Link
+              to={`/route-decisions/${encodeURIComponent(log.request_id)}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'mt-1' })}
+            >
+              <Route className="h-3.5 w-3.5" />
+              {t('detail.explainRoute')}
+            </Link>
+          </div>
         </div>
       </TableCell>
     </TableRow>

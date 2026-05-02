@@ -88,6 +88,17 @@ export class CreateNodeDto {
   @ArrayMinSize(1)
   models!: string[];
 
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  realtime_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/realtime' })
+  @IsOptional()
+  @IsString()
+  realtime_endpoint?: string;
+
   @ApiProperty({ example: 60000, minimum: 1 })
   @IsNumber()
   @Min(1)
@@ -249,6 +260,17 @@ export class UpdateNodeDto {
   @IsString({ each: true })
   @ArrayMinSize(1)
   models?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  realtime_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/realtime' })
+  @IsOptional()
+  @IsString()
+  realtime_endpoint?: string;
 
   @ApiPropertyOptional({ example: 60000, minimum: 1 })
   @IsOptional()

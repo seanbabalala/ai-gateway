@@ -8,6 +8,9 @@ function makeRoutingService(overrides: {
   optimization?: any;
   nodes?: any[];
   resolveEmbeddingModel?: any;
+  resolveRerankModel?: any;
+  resolveImageModel?: any;
+  resolveAudioModel?: any;
   circuitBreaker?: any;
   momentum?: any;
   capabilityService?: any;
@@ -41,9 +44,34 @@ function makeRoutingService(overrides: {
     }
     return null;
   });
+  config.resolveRerankModel = overrides.resolveRerankModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.rerank_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
+  });
+  config.resolveImageModel = overrides.resolveImageModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.image_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
+  });
+  config.resolveAudioModel = overrides.resolveAudioModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.audio_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
+  });
 
   const circuitBreaker = overrides.circuitBreaker || {
     isAvailable: jest.fn().mockReturnValue(true),
+    getCircuitState: jest.fn().mockReturnValue('CLOSED'),
   };
 
   const momentum = overrides.momentum || {
@@ -95,6 +123,7 @@ describe('RoutingService', () => {
   it('should filter out nodes with open circuit breakers', () => {
     const circuitBreaker = {
       isAvailable: jest.fn().mockImplementation((node: string, _model: string) => node !== 'n1'),
+      getCircuitState: jest.fn().mockImplementation((node: string) => node === 'n1' ? 'OPEN' : 'CLOSED'),
     };
     const svc = makeRoutingService({ circuitBreaker });
     const decision = svc.resolve('simple' as Tier, 0.1);
@@ -107,6 +136,7 @@ describe('RoutingService', () => {
   it('should use all targets as last resort when all circuits are open', () => {
     const circuitBreaker = {
       isAvailable: jest.fn().mockReturnValue(false),
+      getCircuitState: jest.fn().mockReturnValue('OPEN'),
     };
     const svc = makeRoutingService({ circuitBreaker });
     const decision = svc.resolve('simple' as Tier, 0.1);
@@ -116,9 +146,9 @@ describe('RoutingService', () => {
     expect(decision.fallbacks).toHaveLength(1);
   });
 
-  // ── Modality reordering ──────────────────────────────────
+  // ── Modality filtering ───────────────────────────────────
 
-  it('should reorder targets based on modality compatibility', () => {
+  it('should filter targets based on modality compatibility', () => {
     const capabilityService = {
       resolveModelModalities: jest.fn().mockImplementation((_nodeId: string, model: string) => {
         if (model === 'fast-model') return ['text']; // n1 doesn't support vision
@@ -128,8 +158,34 @@ describe('RoutingService', () => {
     const svc = makeRoutingService({ capabilityService });
     const decision = svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'vision']);
 
-    // n2 supports vision, should be promoted over n1
+    // n2 supports vision, n1 is removed rather than kept as a fallback
     expect(decision.primary.node).toBe('n2');
+    expect(decision.fallbacks).toHaveLength(0);
+  });
+
+  it('should treat configured image modality as compatible with legacy vision hints', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockImplementation((_nodeId: string, model: string) => {
+        if (model === 'fast-model') return ['text'];
+        return ['text', 'image'];
+      }),
+    };
+    const svc = makeRoutingService({ capabilityService });
+    const decision = svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'vision']);
+
+    expect(decision.primary.node).toBe('n2');
+    expect(decision.fallbacks).toHaveLength(0);
+  });
+
+  it('should reject automatic routes when no target supports required modalities', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+    };
+    const svc = makeRoutingService({ capabilityService });
+
+    expect(() =>
+      svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'audio']),
+    ).toThrow('No route targets for tier "simple" support required modalities');
   });
 
   // ── Domain hint (explicit config) ────────────────────────
@@ -178,6 +234,80 @@ describe('RoutingService', () => {
     expect(decision.score).toBe(0.42);
   });
 
+  it('should include route decision trace candidates, filters, and scores', () => {
+    const circuitBreaker = {
+      isAvailable: jest.fn().mockImplementation((node: string) => node !== 'n2'),
+      getCircuitState: jest.fn().mockImplementation((node: string) => node === 'n2' ? 'OPEN' : 'CLOSED'),
+    };
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+        max_context_tokens: model === 'fast-model' ? 128000 : 1000,
+        structured_output: model === 'fast-model',
+        pricing: model === 'fast-model'
+          ? { input: 1, output: 2 }
+          : { input: 10, output: 20 },
+      })),
+    };
+    const svc = makeRoutingService({ circuitBreaker, capabilityService });
+    const decision = svc.resolve(
+      'simple' as Tier,
+      0.42,
+      'session-1',
+      'backend',
+      ['text'],
+      {
+        estimated_input_tokens: 100,
+        estimated_output_tokens: 50,
+        estimated_context_tokens: 1200,
+        requires_structured_output: true,
+      },
+    );
+
+    expect(decision.trace).toMatchObject({
+      mode: 'auto',
+      tier: 'simple',
+      score: 0.42,
+      domain_hints: { domain: 'backend', modalities: ['text'] },
+      constraints: {
+        estimated_context_tokens: 1200,
+        requires_structured_output: true,
+      },
+      final_selection: {
+        node: 'n1',
+        model: 'fast-model',
+      },
+      privacy: {
+        prompt: false,
+        response: false,
+        raw_headers: false,
+        provider_keys: false,
+      },
+    });
+    expect(decision.trace.candidate_targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node: 'n1',
+          selected: true,
+          scores: expect.objectContaining({
+            cost: expect.any(Number),
+            context: expect.any(Number),
+          }),
+        }),
+        expect.objectContaining({
+          node: 'n2',
+          circuit_state: 'OPEN',
+          filter_reasons: expect.arrayContaining(['circuit_open']),
+        }),
+      ]),
+    );
+    expect(decision.trace.filters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ node: 'n2', stage: 'circuit_breaker' }),
+      ]),
+    );
+  });
+
   // ── Null domain hint ─────────────────────────────────────
 
   it('should handle null domain hint', () => {
@@ -191,6 +321,7 @@ describe('RoutingService', () => {
   it('should not reorder when only one target is available', () => {
     const circuitBreaker = {
       isAvailable: jest.fn().mockImplementation((node: string) => node === 'n1'),
+      getCircuitState: jest.fn().mockImplementation((node: string) => node === 'n1' ? 'CLOSED' : 'OPEN'),
     };
     const svc = makeRoutingService({
       circuitBreaker,
@@ -522,5 +653,149 @@ describe('RoutingService — embeddings', () => {
 
     expect(route.mode).toBe('direct');
     expect(route.primary).toEqual({ node: 'cheap', model: 'text-embedding-3-small' });
+  });
+});
+
+describe('RoutingService — rerank', () => {
+  const rerankNodes = [
+    {
+      id: 'cheap',
+      tags: ['fast'],
+      rerank_models: ['rerank-small'],
+    },
+    {
+      id: 'quality',
+      tags: ['quality'],
+      rerank_models: ['rerank-large'],
+    },
+  ];
+
+  it('should choose the lowest priced healthy rerank target for auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: rerankNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          structured_output: null,
+          pricing: model.includes('small')
+            ? { input: 0.01, output: 0 }
+            : { input: 0.1, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveRerankRoute('auto');
+
+    expect(route.mode).toBe('auto');
+    expect(route.primary).toEqual({ node: 'cheap', model: 'rerank-small' });
+    expect(route.fallbacks).toEqual([{ node: 'quality', model: 'rerank-large' }]);
+  });
+
+  it('should filter rerank targets by API key/namespace permissions', () => {
+    const svc = makeRoutingService({
+      nodes: rerankNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          pricing: { input: 0.1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveRerankRoute('auto', (target) => target.node === 'quality');
+
+    expect(route.primary).toEqual({ node: 'quality', model: 'rerank-large' });
+    expect(route.fallbacks).toHaveLength(0);
+  });
+
+  it('should keep unhealthy rerank targets out of auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: rerankNodes,
+      circuitBreaker: {
+        isAvailable: jest.fn().mockImplementation((node: string) => node !== 'cheap'),
+      },
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          pricing: { input: 0.1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveRerankRoute('auto');
+
+    expect(route.primary).toEqual({ node: 'quality', model: 'rerank-large' });
+  });
+});
+
+describe('RoutingService — images and audio', () => {
+  const mediaNodes = [
+    {
+      id: 'cheap-media',
+      tags: ['fast'],
+      image_models: ['gpt-image-mini'],
+      audio_models: ['tts-mini'],
+    },
+    {
+      id: 'quality-media',
+      tags: ['quality'],
+      image_models: ['gpt-image-1'],
+      audio_models: ['gpt-4o-mini-transcribe'],
+    },
+  ];
+
+  it('should choose the lowest priced image target for auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: mediaNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['vision']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          structured_output: null,
+          pricing: model.includes('mini')
+            ? { input: 0.5, output: 0 }
+            : { input: 5, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveMediaRoute('image_generation', 'auto');
+
+    expect(route.mode).toBe('auto');
+    expect(route.primary).toEqual({ node: 'cheap-media', model: 'gpt-image-mini' });
+    expect(route.fallbacks[0]).toEqual({ node: 'quality-media', model: 'gpt-image-1' });
+  });
+
+  it('should resolve direct audio models and apply target permissions', () => {
+    const svc = makeRoutingService({ nodes: mediaNodes });
+
+    expect(() =>
+      svc.resolveMediaRoute(
+        'audio_speech',
+        'tts-mini',
+        (target) => target.node !== 'cheap-media',
+      ),
+    ).toThrow('This API key is not allowed');
+  });
+
+  it('should skip unavailable media targets when healthy alternatives exist', () => {
+    const svc = makeRoutingService({
+      nodes: mediaNodes,
+      circuitBreaker: {
+        isAvailable: jest.fn().mockImplementation((node: string) => node !== 'cheap-media'),
+      },
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['audio']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          pricing: { input: 1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveMediaRoute('audio_transcription', 'auto');
+
+    expect(route.primary).toEqual({ node: 'quality-media', model: 'gpt-4o-mini-transcribe' });
   });
 });

@@ -27,7 +27,7 @@ export class CallLog {
   timestamp!: Date;
 
   @Column({ type: 'varchar' })
-  source_format!: string; // chat_completions | responses | messages
+  source_format!: string; // chat_completions | responses | messages | embeddings | rerank | image_* | audio_*
 
   @Column({ type: 'varchar' })
   tier!: string; // simple | standard | complex | reasoning
@@ -61,6 +61,21 @@ export class CallLog {
 
   @Column({ type: 'varchar', nullable: true })
   fallback_reason!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  structured_output_requested!: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  structured_output_type!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  structured_output_strategy!: string | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  structured_output_supported!: boolean | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  structured_output_schema_name!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   session_key!: string | null;

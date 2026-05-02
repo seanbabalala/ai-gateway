@@ -43,7 +43,20 @@ function mockRepo(qb: any) {
 function makeDashboard(overrides: Record<string, any> = {}) {
   const config = mockConfigService({
     nodes: [
-      { id: 'openai', name: 'OpenAI', protocol: 'chat_completions', base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions', models: ['gpt-4o'], api_key: 'sk-test12345678rest', tags: [], model_aliases: {} },
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        protocol: 'chat_completions',
+        base_url: 'https://api.openai.com',
+        endpoint: '/v1/chat/completions',
+        embeddings_endpoint: '/v1/embeddings',
+        endpoints: { image: '/v1/images/generations' },
+        models: ['gpt-4o'],
+        embedding_models: ['text-embedding-3-small'],
+        api_key: 'sk-test12345678rest',
+        tags: [],
+        model_aliases: {},
+      },
       { id: 'claude', name: 'Claude', protocol: 'messages', base_url: 'https://api.anthropic.com', endpoint: '/v1/messages', models: ['claude-3-opus'], api_key: 'sk-ant-12345678rest', tags: [], model_aliases: {} },
     ],
     database: { type: 'sqlite', path: ':memory:', log_retention_days: 30 },
@@ -78,6 +91,15 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     getRegistry: jest.fn().mockReturnValue([]),
     getNodeCapabilities: jest.fn().mockReturnValue([]),
     resolveNodeModalities: jest.fn().mockReturnValue(['text']),
+    resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+      modalities: model.includes('embedding') ? ['text', 'embedding'] : ['text', 'image'],
+      structured_output: model.includes('embedding') ? null : true,
+      dimensions: model.includes('embedding') ? [512, 1536] : undefined,
+      supports_streaming: !model.includes('embedding'),
+      pricing: model.includes('embedding')
+        ? { input: 0.02, output: 0 }
+        : { input: 2.5, output: 10 },
+    })),
     recommendTiers: jest.fn().mockReturnValue({}),
     recommendRouting: jest.fn().mockReturnValue({}),
     ...overrides.capabilityService,
@@ -192,6 +214,10 @@ function makeDashboard(overrides: Record<string, any> = {}) {
 
   const qb = overrides.qb || mockQueryBuilder();
   const callLogRepo = overrides.callLogRepo || mockRepo(qb);
+  const routeDecisionRepo = overrides.routeDecisionRepo || {
+    ...mockRepo(qb),
+    findOne: jest.fn().mockResolvedValue(null),
+  };
 
   const controller = new DashboardController(
     config,
@@ -207,11 +233,13 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     shadowTraffic as any,
+    overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
+    routeDecisionRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -323,6 +351,164 @@ describe('DashboardController — getLogs', () => {
     const result = await controller.getLogs(1, 999);
 
     expect(result.pagination.limit).toBe(200);
+  });
+});
+
+describe('DashboardController — route decisions', () => {
+  const trace = {
+    version: 1,
+    mode: 'auto',
+    tier: 'standard',
+    score: 0.45,
+    domain_hints: { domain: 'backend', modalities: ['text'] },
+    scoring: { tier: 'standard', score: 0.45, momentum_adjusted: false },
+    constraints: {
+      estimated_input_tokens: 12,
+      estimated_output_tokens: 100,
+      estimated_context_tokens: 112,
+      requires_structured_output: false,
+    },
+    candidate_targets: [
+      {
+        node: 'openai',
+        model: 'gpt-4o',
+        weight: 70,
+        position: 0,
+        circuit_state: 'CLOSED',
+        circuit_available: true,
+        selected: true,
+        fallback: false,
+        filter_reasons: [],
+        scores: { cost: 0.99, latency: 0.8, context: 0.99 },
+        metrics: {
+          estimated_cost_usd: 0.001,
+          avg_latency_ms: 100,
+          p95_latency_ms: 150,
+          max_context_tokens: 128000,
+          context_fit: 'safe',
+          structured_output: true,
+        },
+      },
+    ],
+    filters: [],
+    load_balancing: {
+      strategy: 'balanced',
+      source: 'targets',
+      selected: { node: 'openai', model: 'gpt-4o' },
+      target_count: 1,
+      reason: 'balanced local cost and latency score',
+    },
+    fallback_chain: [],
+    cost_downgrade: null,
+    final_selection: {
+      node: 'openai',
+      model: 'gpt-4o',
+      reason: 'balanced local cost and latency score',
+      is_fallback: false,
+      fallback_reason: null,
+    },
+    privacy: {
+      prompt: false,
+      response: false,
+      raw_headers: false,
+      provider_keys: false,
+    },
+  };
+
+  it('should list paginated route decision summaries', async () => {
+    const item = {
+      id: 1,
+      request_id: 'req-1',
+      timestamp: new Date(),
+      source_format: 'chat_completions',
+      tier: 'standard',
+      score: 0.45,
+      route_mode: 'auto',
+      strategy: 'balanced',
+      selected_node_id: 'openai',
+      selected_model: 'gpt-4o',
+      domain_hint: 'backend',
+      candidate_count: 1,
+      filtered_count: 0,
+      status_code: 200,
+      is_fallback: false,
+      fallback_reason: null,
+      api_key_name: 'prod',
+      api_key_id: 'key_1',
+      namespace_id: 'team-alpha',
+      trace_json: JSON.stringify(trace),
+    };
+    const qb = mockQueryBuilder();
+    qb.getManyAndCount.mockResolvedValue([[item], 1]);
+    const routeDecisionRepo = {
+      ...mockRepo(qb),
+      findOne: jest.fn(),
+    };
+    const { controller } = makeDashboard({ routeDecisionRepo, qb });
+
+    const result = await controller.getRouteDecisions(
+      1,
+      50,
+      'standard',
+      'openai',
+      'chat_completions',
+    );
+
+    expect(result.data[0]).toMatchObject({
+      request_id: 'req-1',
+      selected: { node: 'openai', model: 'gpt-4o' },
+      summary: {
+        reason: 'balanced local cost and latency score',
+      },
+    });
+    expect(result.data[0]).not.toHaveProperty('trace');
+    expect(qb.andWhere).toHaveBeenCalledWith('decision.tier = :tier', { tier: 'standard' });
+    expect(qb.andWhere).toHaveBeenCalledWith('decision.selected_node_id = :node', { node: 'openai' });
+    expect(qb.andWhere).toHaveBeenCalledWith('decision.source_format = :sourceFormat', { sourceFormat: 'chat_completions' });
+  });
+
+  it('should return a full route decision trace by request id', async () => {
+    const routeDecisionRepo = {
+      ...mockRepo(mockQueryBuilder()),
+      findOne: jest.fn().mockResolvedValue({
+        id: 1,
+        request_id: 'req-1',
+        timestamp: new Date(),
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.45,
+        route_mode: 'auto',
+        strategy: 'balanced',
+        selected_node_id: 'openai',
+        selected_model: 'gpt-4o',
+        domain_hint: 'backend',
+        candidate_count: 1,
+        filtered_count: 0,
+        status_code: 200,
+        is_fallback: false,
+        fallback_reason: null,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+        trace_json: JSON.stringify(trace),
+      }),
+    };
+    const { controller } = makeDashboard({ routeDecisionRepo });
+
+    const result = await controller.getRouteDecision('req-1');
+
+    expect(routeDecisionRepo.findOne).toHaveBeenCalledWith({
+      where: { request_id: 'req-1' },
+    });
+    expect(result.trace).toMatchObject({
+      candidate_targets: expect.any(Array),
+      privacy: {
+        prompt: false,
+        response: false,
+        raw_headers: false,
+        provider_keys: false,
+      },
+    });
   });
 });
 
@@ -476,6 +662,26 @@ describe('DashboardController — nodes', () => {
     expect(result.nodes[0].healthy).toBe(true);
     expect(result.nodes[0].capabilities).toBeDefined();
     expect(result.nodes[0].modalities).toBeDefined();
+    expect(result.nodes[0].embedding_models).toEqual(['text-embedding-3-small']);
+    expect(result.nodes[0].endpoints).toEqual(
+      expect.objectContaining({
+        default: '/v1/chat/completions',
+        embeddings: '/v1/embeddings',
+        image: '/v1/images/generations',
+      }),
+    );
+    expect(result.nodes[0].model_capabilities['gpt-4o']).toEqual(
+      expect.objectContaining({
+        modalities: ['text', 'image'],
+        supports_streaming: true,
+      }),
+    );
+    expect(result.nodes[0].model_capabilities['text-embedding-3-small']).toEqual(
+      expect.objectContaining({
+        modalities: ['text', 'embedding'],
+        dimensions: [512, 1536],
+      }),
+    );
     expect(result.nodes[0].concurrency).toEqual(
       expect.objectContaining({ active: 0, queued: 0 }),
     );

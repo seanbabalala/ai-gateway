@@ -53,6 +53,11 @@ export interface CallLog {
   status_code: number
   is_fallback: boolean
   fallback_reason: string | null
+  structured_output_requested?: boolean
+  structured_output_type?: string | null
+  structured_output_strategy?: string | null
+  structured_output_supported?: boolean | null
+  structured_output_schema_name?: string | null
   session_key: string | null
   error: string | null
   api_key_id?: string | null
@@ -69,6 +74,138 @@ export interface LogsPagination {
 
 export interface LogsResponse {
   data: CallLog[]
+  pagination: LogsPagination
+}
+
+// ── Route Decisions ──
+
+export interface RouteDecisionTarget {
+  node: string
+  model: string
+}
+
+export interface RouteDecisionCandidate {
+  node: string
+  model: string
+  weight: number | null
+  position: number
+  circuit_state: string
+  circuit_available: boolean
+  selected: boolean
+  fallback: boolean
+  filter_reasons: string[]
+  scores: {
+    cost: number | null
+    latency: number | null
+    context: number | null
+  }
+  metrics: {
+    estimated_cost_usd: number | null
+    avg_latency_ms: number | null
+    p95_latency_ms: number | null
+    max_context_tokens: number | null
+    context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown'
+    structured_output: boolean | null
+  }
+}
+
+export interface RouteDecisionFilter {
+  node: string
+  model: string
+  stage: string
+  reason: string
+}
+
+export interface RouteDecisionTrace {
+  version: 1
+  request_id?: string
+  source_format?: string
+  requested_model?: string | null
+  mode: string
+  tier: string
+  score: number
+  domain_hints: {
+    domain: string | null
+    modalities: string[]
+    fast_path?: string | null
+  }
+  scoring: {
+    tier: string
+    score: number
+    momentum_adjusted: boolean
+  }
+  constraints: {
+    estimated_input_tokens: number | null
+    estimated_output_tokens: number | null
+    estimated_context_tokens: number | null
+    requires_structured_output: boolean
+  }
+  candidate_targets: RouteDecisionCandidate[]
+  filters: RouteDecisionFilter[]
+  load_balancing: {
+    strategy: string
+    source: string
+    selected: RouteDecisionTarget | null
+    target_count: number
+    reason: string
+  }
+  fallback_chain: RouteDecisionTarget[]
+  cost_downgrade?: {
+    applied: boolean
+    from: RouteDecisionTarget
+    to: RouteDecisionTarget
+    reason: string
+  } | null
+  final_selection: {
+    node: string | null
+    model: string | null
+    reason: string | null
+    is_fallback: boolean
+    fallback_reason: string | null
+  }
+  outcome?: {
+    status_code: number
+    error: string | null
+  }
+  privacy: {
+    prompt: false
+    response: false
+    raw_headers: false
+    provider_keys: false
+  }
+}
+
+export interface RouteDecisionSummary {
+  id: number
+  request_id: string
+  timestamp: string
+  source_format: string
+  tier: string
+  score: number
+  route_mode: string | null
+  strategy: string | null
+  selected: RouteDecisionTarget
+  final_selection: RouteDecisionTrace['final_selection']
+  domain_hint: string | null
+  candidate_count: number
+  filtered_count: number
+  status_code: number
+  is_fallback: boolean
+  fallback_reason: string | null
+  api_key_name: string | null
+  api_key_id: string | null
+  namespace_id: string | null
+  summary: {
+    reason: string | null
+    fallback_chain: RouteDecisionTarget[]
+    filters: RouteDecisionFilter[]
+    privacy: RouteDecisionTrace['privacy']
+  }
+  trace?: RouteDecisionTrace | null
+}
+
+export interface RouteDecisionsResponse {
+  data: RouteDecisionSummary[]
   pagination: LogsPagination
 }
 
@@ -112,22 +249,56 @@ export interface ConcurrencySnapshot {
   queued: number
 }
 
+export interface RealtimeNodeStatus {
+  enabled: boolean
+  experimental: true
+  supported: boolean
+  endpoint: string | null
+  models: string[]
+  active_connections: number
+  max_connections_per_node: number
+  last_connected_at: string | null
+  last_closed_at: string | null
+  last_error: string | null
+}
+
 export interface NodeInfo {
   id: string
   name: string
   protocol: 'chat_completions' | 'responses' | 'messages'
   base_url: string
   endpoint: string
+  endpoints?: Record<string, string>
   models: string[]
+  embedding_models?: string[]
+  rerank_models?: string[]
   capabilities: string[]
   modalities: string[]
+  model_capabilities?: Record<string, ModelCapabilityInfo>
   tags: string[]
   aliases: Record<string, string>
   model_prefixes: string[]
   circuit: CircuitBreaker
   modelCircuits: Record<string, CircuitBreaker>
   concurrency: ConcurrencySnapshot
+  realtime?: RealtimeNodeStatus
   healthy: boolean
+}
+
+export interface ModelCapabilityInfo {
+  modalities: string[]
+  endpoints?: Record<string, string>
+  input_types?: string[]
+  output_types?: string[]
+  max_file_size?: number
+  supports_streaming?: boolean
+  supports_realtime?: boolean
+  supports_rerank?: boolean
+  max_context_tokens?: number
+  structured_output: boolean | null
+  dimensions?: number | number[]
+  pricing?: ModelPricing
+  quality_score?: number
 }
 
 export type ConfigDiagnosticCode =
@@ -170,6 +341,7 @@ export interface HealthNodeStatus {
   lastFailureAt: string | null
   healthy: boolean
   concurrency: ConcurrencySnapshot
+  realtime?: RealtimeNodeStatus
 }
 
 export interface HealthBudgetStatus {
@@ -245,6 +417,7 @@ export interface SplitVariant {
 }
 
 export type LoadBalancingStrategy = 'weighted' | 'round_robin' | 'least_latency' | 'random'
+export type RoutingOptimization = 'cost' | 'latency' | 'balanced' | 'quality'
 
 export interface WeightedRouteTarget {
   node: string
@@ -273,14 +446,14 @@ export interface RoutingTargetMetrics {
 }
 
 export interface RoutingTierStatus {
-  strategy: LoadBalancingStrategy | 'primary_fallback' | 'split'
+  strategy: LoadBalancingStrategy | RoutingOptimization | 'primary_fallback' | 'split'
   source: 'primary_fallback' | 'targets' | 'split'
   targets: RoutingTargetMetrics[]
   last_selected: {
     node: string
     model: string
     selected_at: string
-    strategy: LoadBalancingStrategy | 'primary_fallback' | 'split'
+    strategy: LoadBalancingStrategy | RoutingOptimization | 'primary_fallback' | 'split'
     reason: string
   } | null
 }
@@ -310,6 +483,8 @@ export interface ConfigResponse {
     protocol: string
     base_url: string
     models: string[]
+    embedding_models?: string[]
+    model_capabilities?: Record<string, ModelCapabilityInfo>
     tags: string[]
     api_key: string
   }[]
@@ -400,6 +575,8 @@ export interface CreateNodeRequest {
   endpoint: string
   api_key: string
   models: string[]
+  realtime_models?: string[]
+  realtime_endpoint?: string
   timeout_ms: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -420,6 +597,8 @@ export interface UpdateNodeRequest {
   endpoint?: string
   api_key?: string
   models?: string[]
+  realtime_models?: string[]
+  realtime_endpoint?: string
   timeout_ms?: number
   max_concurrency?: number
   queue_timeout_ms?: number

@@ -6,6 +6,11 @@ import {
   CanonicalRequest,
   CanonicalEmbeddingRequest,
   CanonicalEmbeddingResponse,
+  CanonicalRerankRequest,
+  CanonicalRerankResponse,
+  CanonicalMediaRequest,
+  CanonicalMediaResponse,
+  CanonicalMediaSourceFormat,
   CanonicalResponse,
   CanonicalContentBlock,
   CanonicalStreamEvent,
@@ -15,6 +20,7 @@ import {
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
+import { toAnthropicMessagesOutputFormat } from '../canonical/structured-output';
 import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
@@ -162,6 +168,122 @@ export class ProviderClientService {
         const responseBody = await this.readJsonResponse(response, node);
         const canonicalResp = this.normalizeEmbeddingsResponse(
           responseBody as Record<string, unknown>,
+          routingMeta,
+          nodeId,
+          targetModel,
+          latencyMs,
+        );
+        span.setAttributes({
+          'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
+          'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
+          'gateway.upstream.latency_ms': latencyMs,
+        });
+        return canonicalResp;
+      },
+      SpanKind.CLIENT,
+    );
+  }
+
+  async forwardRerank(
+    canonical: CanonicalRerankRequest,
+    nodeId: string,
+    targetModel: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: ProviderRequestOptions = {},
+  ): Promise<CanonicalRerankResponse> {
+    return this.telemetry.withSpan(
+      'gateway.upstream.rerank',
+      {
+        'gateway.upstream.node': nodeId,
+        'gateway.upstream.model': targetModel,
+        'gateway.upstream.is_fallback': routingMeta.is_fallback,
+        'gen_ai.system': 'rerank',
+        'gen_ai.request.model': targetModel,
+      },
+      async (span) => {
+        const node = this.config.getNode(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+        const startTime = Date.now();
+        const requestBody = this.buildRerankRequest(canonical, targetModel);
+        const response = await this.sendRequest(
+          node,
+          requestBody,
+          undefined,
+          options.timeoutMs,
+          options.signal,
+          node.rerank_endpoint || '/v1/rerank',
+        );
+        const latencyMs = Date.now() - startTime;
+
+        this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
+
+        const responseBody = await this.readJsonResponse(response, node);
+        const canonicalResp = this.normalizeRerankResponse(
+          responseBody as Record<string, unknown>,
+          canonical,
+          routingMeta,
+          nodeId,
+          targetModel,
+          latencyMs,
+        );
+        span.setAttributes({
+          'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
+          'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
+          'gateway.upstream.latency_ms': latencyMs,
+        });
+        return canonicalResp;
+      },
+      SpanKind.CLIENT,
+    );
+  }
+
+  async forwardMedia(
+    canonical: CanonicalMediaRequest,
+    nodeId: string,
+    targetModel: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: ProviderRequestOptions = {},
+  ): Promise<CanonicalMediaResponse> {
+    return this.telemetry.withSpan(
+      `gateway.upstream.${canonical.source_format}`,
+      {
+        'gateway.upstream.node': nodeId,
+        'gateway.upstream.model': targetModel,
+        'gateway.upstream.is_fallback': routingMeta.is_fallback,
+        'gen_ai.system': canonical.source_format,
+        'gen_ai.request.model': targetModel,
+      },
+      async (span) => {
+        const node = this.config.getNode(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+        const startTime = Date.now();
+        const endpoint = this.mediaEndpointFor(node, canonical.source_format);
+        const request = this.buildMediaRequest(canonical, targetModel);
+        const response = await this.sendMediaRequest(
+          node,
+          request,
+          endpoint,
+          options.timeoutMs,
+          options.signal,
+        );
+        const latencyMs = Date.now() - startTime;
+
+        this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
+        const canonicalResp = await this.normalizeMediaResponse(
+          response,
+          canonical,
           routingMeta,
           nodeId,
           targetModel,
@@ -362,6 +484,91 @@ export class ProviderClientService {
     return response;
   }
 
+  private async sendMediaRequest(
+    node: NodeConfig,
+    request: { body: Record<string, unknown> | Buffer; contentType: string },
+    endpoint: string,
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const url = `${node.base_url}${endpoint}`;
+    const headers: Record<string, string> = {
+      'Content-Type': request.contentType,
+    };
+
+    const authType =
+      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
+    if (authType === 'x-api-key') {
+      headers['x-api-key'] = node.api_key;
+      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${node.api_key}`;
+    }
+    if (node.headers) Object.assign(headers, node.headers);
+
+    const controller = new AbortController();
+    const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
+    const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+    const abortFromExternal = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener('abort', abortFromExternal, { once: true });
+    }
+
+    try {
+      const body = Buffer.isBuffer(request.body)
+        ? (request.body as unknown as BodyInit)
+        : JSON.stringify(request.body);
+      const fetchOptions: FetchOptionsWithDispatcher = {
+        method: 'POST',
+        headers,
+        body,
+        signal: controller.signal,
+      };
+      const dispatcher = this.connectionPool?.getDispatcher(node);
+      if (dispatcher) {
+        fetchOptions.dispatcher = dispatcher;
+      }
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorBody: string;
+        try { errorBody = await response.text(); } catch { errorBody = 'Unable to read error body'; }
+        this.logger.warn(`Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 200)}`);
+        const retryAfter = response.headers?.get?.('retry-after');
+        throw new ProviderError(
+          `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}` +
+            (retryAfter ? ` retry-after: ${retryAfter}` : ''),
+          response.status,
+          node.id,
+          response.status === 429 ? 'rate_limited' : 'http_error',
+        );
+      }
+      return response;
+    } catch (err: unknown) {
+      if (err instanceof ProviderError) throw err;
+      const message = err instanceof Error ? err.message : 'Unknown fetch error';
+      const errorName = err instanceof Error ? err.name : '';
+      if (errorName === 'AbortError' || isUndiciTimeoutError(err)) {
+        throw new ProviderError(
+          `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
+          504,
+          node.id,
+          'timeout',
+        );
+      }
+      throw new ProviderError(
+        `Failed to connect to ${node.id}: ${message}`,
+        0,
+        node.id,
+        'network_error',
+      );
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', abortFromExternal);
+    }
+  }
+
   private async readJsonResponse(
     response: Response,
     node: NodeConfig,
@@ -443,6 +650,97 @@ export class ProviderClientService {
     return body;
   }
 
+  private buildRerankRequest(
+    canonical: CanonicalRerankRequest,
+    targetModel: string,
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      model: targetModel,
+      query: canonical.query,
+      documents: canonical.documents,
+    };
+    if (canonical.top_n !== undefined) {
+      body.top_n = canonical.top_n;
+    }
+    if (canonical.return_documents !== undefined) {
+      body.return_documents = canonical.return_documents;
+    }
+    return body;
+  }
+
+  private mediaEndpointFor(
+    node: NodeConfig,
+    sourceFormat: CanonicalMediaSourceFormat,
+  ): string {
+    switch (sourceFormat) {
+      case 'image_generation':
+        return node.images_generations_endpoint || '/v1/images/generations';
+      case 'image_edit':
+        return node.images_edits_endpoint || '/v1/images/edits';
+      case 'audio_transcription':
+        return node.audio_transcriptions_endpoint || '/v1/audio/transcriptions';
+      case 'audio_speech':
+        return node.audio_speech_endpoint || '/v1/audio/speech';
+      default:
+        return node.endpoint;
+    }
+  }
+
+  private buildMediaRequest(
+    canonical: CanonicalMediaRequest,
+    targetModel: string,
+  ): { body: Record<string, unknown> | Buffer; contentType: string } {
+    if (Buffer.isBuffer(canonical.payload)) {
+      return {
+        body: this.withMultipartModel(canonical.payload, canonical.content_type, targetModel),
+        contentType: canonical.content_type,
+      };
+    }
+
+    return {
+      body: {
+        ...canonical.payload,
+        model: targetModel,
+      },
+      contentType: 'application/json',
+    };
+  }
+
+  private withMultipartModel(
+    body: Buffer,
+    contentType: string,
+    targetModel: string,
+  ): Buffer {
+    const boundaryMatch = /boundary=([^;]+)/i.exec(contentType);
+    if (!boundaryMatch) return body;
+
+    const boundary = boundaryMatch[1].replace(/^"|"$/g, '');
+    const raw = body.toString('latin1');
+    const parts = raw.split(`--${boundary}`);
+    let replaced = false;
+    const rewritten = parts.map((part) => {
+      if (replaced || !part.includes('name="model"')) return part;
+      const valueStart = part.indexOf('\r\n\r\n');
+      if (valueStart < 0) return part;
+      const valueEnd = part.indexOf('\r\n', valueStart + 4);
+      replaced = true;
+      return `${part.slice(0, valueStart + 4)}${targetModel}${part.slice(valueEnd >= 0 ? valueEnd : part.length)}`;
+    }).join(`--${boundary}`);
+
+    if (replaced) {
+      return Buffer.from(rewritten, 'latin1');
+    }
+
+    const closing = `--${boundary}--`;
+    const insertAt = raw.lastIndexOf(closing);
+    if (insertAt < 0) return body;
+    const field =
+      `--${boundary}\r\n` +
+      'Content-Disposition: form-data; name="model"\r\n\r\n' +
+      `${targetModel}\r\n`;
+    return Buffer.from(`${raw.slice(0, insertAt)}${field}${raw.slice(insertAt)}`, 'latin1');
+  }
+
   private shouldPassthroughNativeMessages(
     canonical: CanonicalRequest,
     protocol: NodeProtocol,
@@ -464,6 +762,24 @@ export class ProviderClientService {
     const cloned = JSON.parse(JSON.stringify(rawBody)) as Record<string, unknown>;
     cloned.model = targetModel;
     cloned.stream = canonical.stream;
+    const outputFormat = toAnthropicMessagesOutputFormat(
+      canonical.response_format,
+    );
+    if (outputFormat) {
+      const outputConfig =
+        cloned.output_config &&
+        typeof cloned.output_config === 'object' &&
+        !Array.isArray(cloned.output_config)
+          ? (cloned.output_config as Record<string, unknown>)
+          : {};
+      cloned.output_config = {
+        ...outputConfig,
+        format: outputFormat,
+      };
+      delete cloned.output_format;
+      delete cloned.response_format;
+      delete cloned.text;
+    }
     return this.sanitizeNativeMessagesRequest(cloned);
   }
 
@@ -604,6 +920,118 @@ export class ProviderClientService {
         output_tokens: 0,
       },
       model: (body.model as string) || model,
+      routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
+    };
+  }
+
+  normalizeRerankResponse(
+    body: Record<string, unknown>,
+    canonical: CanonicalRerankRequest,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+  ): CanonicalRerankResponse {
+    const usage = (body.usage || body.meta || {}) as Record<string, unknown>;
+    const billedUnits = (usage.billed_units || {}) as Record<string, unknown>;
+    const results = Array.isArray(body.results)
+      ? body.results
+      : Array.isArray(body.data)
+        ? body.data
+        : [];
+
+    return {
+      id: (body.id as string) || `rerank_${Date.now()}`,
+      object: 'rerank',
+      results: results.map((item, index) => {
+        const entry =
+          item && typeof item === 'object'
+            ? (item as Record<string, unknown>)
+            : {};
+        const resultIndex =
+          typeof entry.index === 'number' && Number.isFinite(entry.index)
+            ? entry.index
+            : index;
+        return {
+          index: resultIndex,
+          relevance_score:
+            typeof entry.relevance_score === 'number' && Number.isFinite(entry.relevance_score)
+              ? entry.relevance_score
+              : typeof entry.score === 'number' && Number.isFinite(entry.score)
+                ? entry.score
+                : 0,
+          document:
+            entry.document !== undefined
+              ? (entry.document as CanonicalRerankResponse['results'][number]['document'])
+              : canonical.return_documents
+                ? canonical.documents[resultIndex]
+                : undefined,
+        };
+      }),
+      usage: {
+        input_tokens:
+          (usage.prompt_tokens as number) ||
+          (usage.input_tokens as number) ||
+          (usage.total_tokens as number) ||
+          (billedUnits.input_tokens as number) ||
+          (billedUnits.search_units as number) ||
+          0,
+        output_tokens: (usage.output_tokens as number) || 0,
+      },
+      model: (body.model as string) || model,
+      routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
+    };
+  }
+
+  private async normalizeMediaResponse(
+    response: Response,
+    canonical: CanonicalMediaRequest,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+  ): Promise<CanonicalMediaResponse> {
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    if (contentType.includes('application/json')) {
+      const body = (await response.json()) as Record<string, unknown>;
+      const usage = (body.usage || {}) as Record<string, unknown>;
+      return {
+        id: (body.id as string) || `${canonical.source_format}_${Date.now()}`,
+        body,
+        content_type: contentType,
+        usage: {
+          input_tokens:
+            (usage.prompt_tokens as number) ||
+            (usage.input_tokens as number) ||
+            (usage.total_tokens as number) ||
+            0,
+          output_tokens:
+            (usage.completion_tokens as number) ||
+            (usage.output_tokens as number) ||
+            0,
+        },
+        model: (body.model as string) || model,
+        routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
+      };
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return {
+      id: `${canonical.source_format}_${Date.now()}`,
+      body: Buffer.from(arrayBuffer),
+      content_type: contentType,
+      usage: { input_tokens: 0, output_tokens: 0 },
+      model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };
   }
