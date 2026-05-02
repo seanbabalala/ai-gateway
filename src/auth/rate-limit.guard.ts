@@ -4,8 +4,10 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
+import { StateBackendService } from '../state/state-backend.service';
 
 interface WindowEntry {
   timestamps: number[];
@@ -22,9 +24,65 @@ export class RateLimitGuard implements CanActivate {
   private readonly windows = new Map<string, WindowEntry>();
   private lastCleanup = Date.now();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly state?: StateBackendService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> {
+    if (this.state?.isRedisConfigured()) {
+      return this.canActivateShared(context);
+    }
+    return this.canActivateMemory(context);
+  }
+
+  private async canActivateShared(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
+    const rateLimit = this.config.auth?.rate_limit;
+    const gatewayApiKey:
+      | { id?: string; name: string; rate_limit_per_minute: number | null }
+      | undefined = request.gatewayApiKey;
+
+    const apiKeyId: string | undefined = request.apiKeyId || gatewayApiKey?.id;
+    const apiKeyName: string | undefined = request.apiKeyName;
+    const ip: string = request.ip || request.connection?.remoteAddress || 'unknown';
+
+    const key = apiKeyId ? `key:${apiKeyId}` : apiKeyName ? `key-name:${apiKeyName}` : `ip:${ip}`;
+    const limit = gatewayApiKey?.rate_limit_per_minute
+      ?? (apiKeyName ? rateLimit?.requests_per_minute : rateLimit?.requests_per_minute_ip);
+    if (!limit) return true; // Not configured → no limit
+
+    const now = Date.now();
+    const windowMs = 60_000; // 1 minute
+    const result = await this.state!.hitRateLimit('rate_limit', key, limit, windowMs, now);
+
+    response.setHeader('X-RateLimit-Limit', String(limit));
+    response.setHeader('X-RateLimit-Remaining', String(result.remaining));
+    response.setHeader('X-RateLimit-Reset', String(result.resetAt));
+    if (result.degraded) {
+      response.setHeader('X-RateLimit-State-Backend', 'degraded');
+    }
+
+    if (!result.allowed) {
+      response.setHeader('Retry-After', String(Math.max(1, result.retryAfterSec)));
+      throw new HttpException(
+        {
+          error: {
+            message: this.state!.shouldFailClosed()
+              ? 'Rate limit state backend unavailable.'
+              : `Rate limit exceeded. Max ${limit} requests per minute.`,
+            type: 'rate_limit_exceeded',
+          },
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return true;
+  }
+
+  private canActivateMemory(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
     const rateLimit = this.config.auth?.rate_limit;

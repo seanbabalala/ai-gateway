@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
   HttpException,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -24,6 +25,7 @@ import {
   LoginRequestDto,
   LoginResponseDto,
 } from '../openapi/openapi.dto';
+import { StateBackendService } from '../state/state-backend.service';
 
 @Controller('api/auth')
 @ApiTags('Dashboard Auth')
@@ -34,6 +36,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly config: ConfigService,
+    @Optional() private readonly state?: StateBackendService,
   ) {}
 
   /**
@@ -48,7 +51,7 @@ export class AuthController {
   @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
   async login(@Req() req: any, @Body() body: { password?: string }) {
     const ip: string = req.ip || req.connection?.remoteAddress || 'unknown';
-    this.checkLoginRate(ip);
+    await this.checkLoginRate(ip);
 
     if (!this.authService.isAuthRequired) {
       // No password configured — this shouldn't be called, but handle gracefully
@@ -86,10 +89,35 @@ export class AuthController {
    * Check per-IP login rate limit.
    * Throws 429 if login_requests_per_minute is exceeded.
    */
-  private checkLoginRate(ip: string): void {
+  private async checkLoginRate(ip: string): Promise<void> {
     const limit = this.config.auth?.rate_limit?.login_requests_per_minute ?? 5;
     const now = Date.now();
     const windowMs = 60_000;
+
+    if (this.state?.isRedisConfigured()) {
+      const result = await this.state.hitRateLimit(
+        'rate_limit:login',
+        `ip:${ip}`,
+        limit,
+        windowMs,
+        now,
+      );
+      if (!result.allowed) {
+        throw new HttpException(
+          {
+            error: {
+              message: this.state.shouldFailClosed()
+                ? 'Login rate limit state backend unavailable.'
+                : `Too many login attempts. Max ${limit} per minute.`,
+              type: 'login_rate_limit_exceeded',
+            },
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      return;
+    }
+
     const windowStart = now - windowMs;
 
     let timestamps = this.loginAttempts.get(ip);

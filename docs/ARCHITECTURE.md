@@ -108,6 +108,7 @@ The data plane protects request flow with:
 - provider fallback chains and optional v0.3 fallback policies for 429, timeout, structured-output validation, and cost downgrade
 - model-level circuit breakers
 - prompt cache
+- optional Redis shared state backend for circuit breakers, rate limits, prompt cache, and routing momentum
 - graceful shutdown
 - body size limits
 - dashboard health and node status
@@ -137,6 +138,21 @@ These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook
 The open-source data plane includes an optional `alerts` subsystem. It listens to budget threshold/exceeded events, active health probe state, circuit breaker transitions, and the local call-log stream for error/latency spikes. Delivery runs from an in-memory asynchronous queue so webhook latency does not block AI proxy requests.
 
 Alert payloads are sanitized before dispatch. Prompts, responses, provider API keys, raw headers, configured webhook headers, passwords, secrets, and tokens are not included. Dashboard alert status is read from local memory through `GET /api/dashboard/alerts`; webhook URLs and headers are not exposed there.
+
+## Shared Runtime State
+
+The data plane defaults to in-process memory for runtime state. The optional
+v0.5 Redis backend lets multiple gateway instances share state without requiring
+the Cloud Control Plane:
+
+- circuit breakers are mirrored through a Redis hash
+- API key/IP rate limits use Redis `INCR` and expiry
+- prompt-cache entries use Redis String+TTL values
+- routing momentum uses Redis sorted sets
+
+When Redis is unavailable, `state.unavailable_policy` controls behavior:
+`fail_open` keeps traffic flowing with degraded state, while `fail_closed`
+rejects rate-limited paths and treats circuits as unavailable.
 
 External log sinks can mirror sanitized `CallLog` metadata to JSONL files, webhook receivers, or a minimal Elasticsearch bulk endpoint. Sink delivery is asynchronous and starts only after the local database write succeeds. Export payloads do not include prompts, responses, provider keys, raw auth headers, or secret-bearing fields by default.
 

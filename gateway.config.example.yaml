@@ -400,9 +400,27 @@ models_pricing:
   # gemini-2.5-pro:          { input: 1.25, output: 10.00 }
 
 # ============================================================
+# Shared State Backend — optional multi-instance runtime state
+# ============================================================
+# Defaults to local memory so a single open-source gateway works without
+# extra services. Set backend: redis when running multiple gateway replicas
+# that should share circuit breakers, rate limits, prompt cache, and
+# routing momentum.
+# ============================================================
+# state:
+#   backend: memory              # memory | redis (default: memory)
+#   unavailable_policy: fail_open # fail_open | fail_closed when Redis is unavailable
+#   redis:
+#     url: ${REDIS_URL:-redis://localhost:6379}
+#     prefix: siftgate:state:
+#     timeout_ms: 500
+#     sync_interval_ms: 2000      # Circuit/momentum local mirror refresh
+
+# ============================================================
 # Cache — Prompt response caching
 # ============================================================
-# Caches deterministic responses (temperature=0) in memory.
+# Caches deterministic responses (temperature=0). With state.backend: redis,
+# cache entries are stored as shared Redis String+TTL values.
 # Identical requests return instantly from cache without hitting
 # the upstream provider, saving tokens and reducing latency.
 # ============================================================

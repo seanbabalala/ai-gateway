@@ -12,11 +12,12 @@
 //   - Dashboard stats (hit rate, entries, memory)
 // ===================================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { ConfigService } from '../config/config.service';
 import { CacheConfig } from '../config/gateway.config';
 import { CanonicalRequest, CanonicalResponse } from '../canonical/canonical.types';
+import { StateBackendService } from '../state/state-backend.service';
 
 interface CacheEntry {
   response: CanonicalResponse;
@@ -43,7 +44,10 @@ export class PromptCacheService {
   private misses = 0;
   private totalSizeBytes = 0;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly stateBackend?: StateBackendService,
+  ) {}
 
   // ══════════════════════════════════════════════════════
   // Public API
@@ -106,6 +110,41 @@ export class PromptCacheService {
   }
 
   /**
+   * Async lookup used by the request pipeline. Memory mode returns immediately;
+   * Redis mode reads a String+TTL entry from the shared state backend.
+   */
+  async lookupAsync(canonical: CanonicalRequest): Promise<CanonicalResponse | null> {
+    if (!this.stateBackend?.isRedisConfigured()) {
+      return this.lookup(canonical);
+    }
+
+    const cfg = this.config.cache;
+    if (!cfg.enabled) return null;
+
+    const key = this.buildKey(canonical);
+    try {
+      const entry = await this.stateBackend.getJson<CacheEntry>('prompt_cache', key);
+      if (!entry) {
+        this.misses++;
+        return null;
+      }
+      const age = (Date.now() - entry.createdAt) / 1000;
+      if (age > cfg.ttl_seconds) {
+        await this.stateBackend.delete('prompt_cache', key);
+        this.misses++;
+        return null;
+      }
+      this.hits++;
+      this.logger.log(`Cache HIT(redis, key=${key.slice(0, 12)}…, age=${age.toFixed(0)}s)`);
+      return JSON.parse(JSON.stringify(entry.response));
+    } catch (err) {
+      this.misses++;
+      this.logger.warn(`Cache lookup skipped: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
    * Store a response in the cache.
    */
   store(canonical: CanonicalRequest, response: CanonicalResponse): void {
@@ -162,6 +201,47 @@ export class PromptCacheService {
   }
 
   /**
+   * Async store used by the request pipeline. Redis mode writes the same
+   * sanitized canonical cache entry as a shared String+TTL value.
+   */
+  async storeAsync(
+    canonical: CanonicalRequest,
+    response: CanonicalResponse,
+  ): Promise<void> {
+    if (!this.stateBackend?.isRedisConfigured()) {
+      this.store(canonical, response);
+      return;
+    }
+
+    const cfg = this.config.cache;
+    if (!cfg.enabled) return;
+    if (!this.shouldCache(canonical)) return;
+    if (!this.shouldStore(response, cfg)) return;
+
+    const key = this.buildKey(canonical);
+    const json = JSON.stringify(response);
+    const sizeBytes = json.length * 2;
+    if (sizeBytes > 1_048_576) {
+      this.logger.debug(`Cache SKIP (response too large: ${(sizeBytes / 1024).toFixed(0)}KB)`);
+      return;
+    }
+
+    const entry: CacheEntry = {
+      response: JSON.parse(json),
+      createdAt: Date.now(),
+      sizeBytes,
+    };
+    try {
+      await this.stateBackend.setJson('prompt_cache', key, entry, cfg.ttl_seconds);
+      this.logger.log(
+        `Cache STORE(redis, key=${key.slice(0, 12)}…, size=${(sizeBytes / 1024).toFixed(1)}KB)`,
+      );
+    } catch (err) {
+      this.logger.warn(`Cache store skipped: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Get cache statistics for dashboard.
    */
   getStats(): CacheStats {
@@ -189,6 +269,13 @@ export class PromptCacheService {
     this.hits = 0;
     this.misses = 0;
     this.logger.log(`Cache cleared (${count} entries removed)`);
+    if (this.stateBackend?.isRedisConfigured()) {
+      this.stateBackend
+        .clearNamespace('prompt_cache')
+        .catch((err) =>
+          this.logger.warn(`Shared cache clear skipped: ${(err as Error).message}`),
+        );
+    }
   }
 
   // ══════════════════════════════════════════════════════

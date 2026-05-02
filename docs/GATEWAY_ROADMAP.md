@@ -524,21 +524,26 @@
 
 #### 28. Redis 共享状态
 
-- **现状**：Circuit Breaker、Rate Limiter、Cache、Momentum 全部 in-memory
+- **状态**：🚧 v0.5 开发中，已实现可选 Redis backend；memory 仍为默认
+- **现状**：单机默认使用 in-memory；Redis 可选用于多实例共享运行时状态
 - **目标**：支持 Redis 作为共享状态后端
 - **实现方案**：
   ```yaml
   state:
     backend: redis  # memory | redis
+    unavailable_policy: fail_open # fail_open | fail_closed
     redis:
       url: redis://localhost:6379
       prefix: siftgate:
+      timeout_ms: 500
+      sync_interval_ms: 2000
   ```
 
-  - Circuit Breaker 状态 → Redis Hash
-  - Rate Limiter 计数 → Redis INCR + EXPIRE
-  - Prompt Cache → Redis String + TTL
-  - Momentum 窗口 → Redis Sorted Set
+  - ✅ Circuit Breaker 状态 → Redis Hash + 本地 mirror 周期同步
+  - ✅ Rate Limiter 计数 → Redis INCR + EXPIRE，支持 fail-open/fail-closed
+  - ✅ Prompt Cache → Redis String + TTL
+  - ✅ Momentum 窗口 → Redis Sorted Set + 本地 mirror
+  - ✅ Docker Compose 提供可选 Redis profile
   - 所有实例共享状态 → 支持水平扩展
 
 #### 29. 多实例集群模式

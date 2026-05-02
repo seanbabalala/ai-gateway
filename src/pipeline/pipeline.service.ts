@@ -242,7 +242,7 @@ export class PipelineService {
           currentPhase = 'cacheLookup';
           const cacheStart = Date.now();
           if (this.cacheService.shouldCache(canonical)) {
-            const cached = this.cacheService.lookup(canonical);
+            const cached = await this.lookupCachedResponse(canonical);
             if (cached) {
               const cacheLatency = Date.now() - cacheStart;
               this.telemetry.recordCacheHit();
@@ -412,7 +412,7 @@ export class PipelineService {
 
           // ── Cache Store ──
           currentPhase = 'cacheStore';
-          this.cacheService.store(canonical, canonicalResponse);
+          await this.storeCachedResponse(canonical, canonicalResponse);
           this.telemetry.recordCacheStore();
 
           // ── Budget Record ──
@@ -1529,7 +1529,7 @@ export class PipelineService {
       currentPhase = 'cacheLookup';
       if (this.cacheService.shouldCache(canonical)) {
         const cacheStart = Date.now();
-        const cached = this.cacheService.lookup(canonical);
+        const cached = await this.lookupCachedResponse(canonical);
         if (cached) {
           const cacheLatency = Date.now() - cacheStart;
 
@@ -1712,7 +1712,7 @@ export class PipelineService {
                     fallback_reason: fallbackReason,
                   },
                 };
-                this.cacheService.store(canonical, assembledResponse);
+                await this.storeCachedResponse(canonical, assembledResponse);
               }
 
               const { costUsd } = await this.recordBudgetUsage(
@@ -2788,6 +2788,26 @@ export class PipelineService {
     if (stopText) res.write(stopText);
 
     res.end();
+  }
+
+  private async lookupCachedResponse(
+    canonical: CanonicalRequest,
+  ): Promise<CanonicalResponse | null> {
+    if (typeof this.cacheService.lookupAsync === 'function') {
+      return this.cacheService.lookupAsync(canonical);
+    }
+    return this.cacheService.lookup(canonical);
+  }
+
+  private async storeCachedResponse(
+    canonical: CanonicalRequest,
+    response: CanonicalResponse,
+  ): Promise<void> {
+    if (typeof this.cacheService.storeAsync === 'function') {
+      await this.cacheService.storeAsync(canonical, response);
+      return;
+    }
+    this.cacheService.store(canonical, response);
   }
 
   private resolveExperimentGroupForTarget(

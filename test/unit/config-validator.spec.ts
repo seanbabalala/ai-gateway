@@ -513,6 +513,62 @@ describe('config validator', () => {
       ]),
     );
   });
+
+  it('validates Redis shared state backend configuration', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai-a',
+            name: 'OpenAI A',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai-a', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        state: {
+          backend: 'redis',
+          unavailable_policy: 'fail_closed',
+          redis: {
+            url: 'http://redis.example.test',
+            prefix: 'bad prefix',
+            timeout_ms: 0,
+          },
+        },
+        models_pricing: { 'gpt-4o': { input: 5, output: 15 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_state_redis_url',
+        'invalid_state_redis_prefix',
+        'invalid_state_redis_number',
+      ]),
+    );
+  });
 });
 
 describe('siftgate validate CLI', () => {
