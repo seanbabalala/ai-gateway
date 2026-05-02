@@ -9,9 +9,10 @@ import { AdaptiveRoutingStatsService } from './adaptive-routing-stats.service';
 import { RoutingRecommendationService } from './routing-recommendation.service';
 import { ConfigModule } from '../config/config.module';
 import { CallLog } from '../database/entities/call-log.entity';
+import { AlertsModule } from '../alerts/alerts.module';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([CallLog])],
+  imports: [ConfigModule, AlertsModule, TypeOrmModule.forFeature([CallLog])],
   providers: [
     RoutingService,
     CircuitBreakerService,

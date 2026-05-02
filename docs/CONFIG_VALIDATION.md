@@ -60,6 +60,8 @@ hardening visible without blocking local development.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional
   per-model `pricing` overrides.
+- `alerts` webhook channel shape, supported event names, debounce values,
+  retry controls, and spike detector thresholds.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

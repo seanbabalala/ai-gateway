@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -49,6 +49,7 @@ import {
 } from '../providers/stream/stream-serializers';
 import { CallLog } from '../database/entities/call-log.entity';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { AlertService } from '../alerts/alert.service';
 
 export interface PipelineResult {
   body: Record<string, unknown>;
@@ -137,6 +138,7 @@ export class PipelineService {
     private readonly telemetryUploader: TelemetryUploaderService,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
+    @Optional() private readonly alerts?: AlertService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -2547,6 +2549,7 @@ export class PipelineService {
 
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);
+      this.alerts?.recordCall(saved);
 
       // Optional hosted control-plane metadata upload. This is privacy-preserving:
       // it derives metadata only from CallLog and never includes prompt/response bodies.

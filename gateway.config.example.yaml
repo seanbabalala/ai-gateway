@@ -295,6 +295,47 @@ budget:
   alert_threshold: 0.8 # Alert at 80% usage
 
 # ============================================================
+# Alerts — local webhook alerting (optional)
+# ============================================================
+# Disabled by default. Alert delivery is asynchronous and payloads are
+# sanitized: prompts, responses, provider API keys, and raw headers are
+# never included.
+# ============================================================
+# alerts:
+#   enabled: false
+#   history_size: 50
+#   channels:
+#     - type: webhook
+#       name: ops
+#       url: "${ALERT_WEBHOOK_URL}"
+#       headers:
+#         Authorization: "Bearer ${ALERT_WEBHOOK_TOKEN}"
+#       events:
+#         - budget_threshold
+#         - budget_exceeded
+#         - node_down
+#         - node_recovered
+#         - circuit_open
+#         - circuit_close
+#         - error_spike
+#         - latency_spike
+#       debounce_seconds: 300
+#       retry:
+#         attempts: 3
+#         backoff_ms: 1000
+#         timeout_ms: 5000
+#   error_spike:
+#     enabled: true
+#     window_seconds: 300
+#     min_requests: 20
+#     error_rate: 0.1
+#   latency_spike:
+#     enabled: true
+#     window_seconds: 300
+#     min_requests: 20
+#     p95_ms: 10000
+
+# ============================================================
 # Model Pricing — Cost per 1M tokens (USD)
 # ============================================================
 # Used to calculate per-request costs and enforce budget limits.

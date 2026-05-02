@@ -602,6 +602,45 @@ models_pricing: # Cost per 1M tokens (USD); used when node/model pricing is omit
   claude-opus-4: { input: 15.00, output: 75.00 }
 ```
 
+### Webhook Alerts
+
+Webhook alerting is disabled by default and runs entirely inside the open-source data plane. When enabled, delivery is queued asynchronously so webhook latency or failures do not block proxy requests.
+
+```yaml
+alerts:
+  enabled: true
+  channels:
+    - type: webhook
+      name: ops
+      url: "${ALERT_WEBHOOK_URL}"
+      headers:
+        Authorization: "Bearer ${ALERT_WEBHOOK_TOKEN}"
+      events:
+        - budget_threshold
+        - budget_exceeded
+        - node_down
+        - node_recovered
+        - circuit_open
+        - circuit_close
+        - error_spike
+        - latency_spike
+      debounce_seconds: 300
+      retry:
+        attempts: 3
+        backoff_ms: 1000
+        timeout_ms: 5000
+  error_spike:
+    window_seconds: 300
+    min_requests: 20
+    error_rate: 0.1
+  latency_spike:
+    window_seconds: 300
+    min_requests: 20
+    p95_ms: 10000
+```
+
+Alert payloads include event metadata, severity, message, and sanitized details only. They do not include prompts, responses, provider API keys, or raw headers. The Dashboard shows configured webhook channels plus recent delivery status and failure reasons. See [docs/WEBHOOK_ALERTS.md](docs/WEBHOOK_ALERTS.md) for payload shape and event details.
+
 ## API Endpoints
 
 Live API docs are available when the gateway is running:

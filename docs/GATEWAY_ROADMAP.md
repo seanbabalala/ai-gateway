@@ -281,29 +281,37 @@
   - 支持过滤规则（只 sink 特定 tier/node/status 的日志）
 
 #### 16. Webhook 告警系统
-- **现状**：预算告警只在日志和 Dashboard 展示
+- **状态**：✅ v0.3 开发分支已实现（`codex/v0.3-webhook-alerts`）
+- **现状**：开源 Data Plane 已支持本地 webhook 告警，不依赖 Cloud 控制面
 - **目标**：支持外部通知渠道
 - **实现方案**：
   ```yaml
   alerts:
+    enabled: true
     channels:
       - type: webhook
+        name: ops
         url: https://hooks.slack.com/xxx
-        events: [budget_threshold, node_down, circuit_open, error_spike]
-      - type: email
-        smtp: smtp://...
-        to: team@company.com
-        events: [budget_exceeded]
-    rules:
-      - name: error_spike
-        condition: error_rate > 10% over 5m
-        severity: critical
-      - name: latency_spike
-        condition: p95_latency > 10s over 3m
-        severity: warning
+        events: [budget_threshold, budget_exceeded, node_down, node_recovered, circuit_open, circuit_close, error_spike, latency_spike]
+        debounce_seconds: 300
+        retry:
+          attempts: 3
+          backoff_ms: 1000
+          timeout_ms: 5000
+    error_spike:
+      window_seconds: 300
+      min_requests: 20
+      error_rate: 0.1
+    latency_spike:
+      window_seconds: 300
+      min_requests: 20
+      p95_ms: 10000
   ```
   - 事件类型：budget_threshold, budget_exceeded, node_down, node_recovered, circuit_open, circuit_close, error_spike, latency_spike
   - 防抖（同一事件 N 分钟内不重复发送）
+  - Webhook 发送异步执行并带重试，不阻塞主请求路径
+  - 默认只发送脱敏元数据，不包含 prompt、response、provider key 或 raw headers
+  - Dashboard 展示最近告警状态、发送结果和失败原因
 - **抽象到企业版**：统一告警管理 + 告警路由
 
 #### 17. 高级分析仪表盘

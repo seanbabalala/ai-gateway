@@ -44,6 +44,16 @@ const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
 const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages']);
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
 const ROUTING_OPTIMIZATIONS = new Set(['cost', 'latency', 'balanced', 'quality']);
+const ALERT_EVENTS = new Set([
+  'budget_threshold',
+  'budget_exceeded',
+  'node_down',
+  'node_recovered',
+  'circuit_open',
+  'circuit_close',
+  'error_spike',
+  'latency_spike',
+]);
 const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
@@ -189,6 +199,7 @@ export function validateConfigObject(
   validateNodes(config.nodes, issues);
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
+  validateAlerts(config.alerts, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
@@ -1103,13 +1114,14 @@ function validateTier(
   }
 
   const hasTargets = Array.isArray(tierValue.targets) && tierValue.targets.length > 0;
+  const hasSplit = Array.isArray(tierValue.split) && tierValue.split.length > 0;
   const hasPrimary = tierValue.primary !== undefined;
-  if (!hasPrimary && !hasTargets) {
+  if (!hasPrimary && !hasTargets && !hasSplit) {
     issues.push(
       issue(
         'error',
         'missing_route_primary_or_targets',
-        'Routing tier must define primary or targets.',
+        'Routing tier must define primary, targets, or split.',
         tierPath,
       ),
     );
@@ -1133,7 +1145,7 @@ function validateTier(
     );
   }
 
-  if (!hasTargets && !Array.isArray(tierValue.fallbacks)) {
+  if (!hasTargets && !hasSplit && !Array.isArray(tierValue.fallbacks)) {
     issues.push(
       issue(
         'error',
@@ -1376,6 +1388,320 @@ function validateBudget(
         ),
       );
     }
+  }
+}
+
+function validateAlerts(
+  alerts: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (alerts === undefined) return;
+  if (!isRecord(alerts)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'alerts must be an object.',
+        'alerts',
+      ),
+    );
+    return;
+  }
+
+  if (alerts.enabled !== undefined && typeof alerts.enabled !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alerts_config',
+        'alerts.enabled must be a boolean.',
+        'alerts.enabled',
+      ),
+    );
+  }
+
+  if (
+    alerts.history_size !== undefined &&
+    (!isFiniteNumber(alerts.history_size) || alerts.history_size <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alerts_config',
+        'alerts.history_size must be a positive number.',
+        'alerts.history_size',
+      ),
+    );
+  }
+
+  validateAlertSpikeRule(alerts.error_spike, 'alerts.error_spike', 'error_rate', issues);
+  validateAlertSpikeRule(alerts.latency_spike, 'alerts.latency_spike', 'p95_ms', issues);
+  validateAlertChannels(alerts.channels, issues);
+}
+
+function validateAlertSpikeRule(
+  rule: unknown,
+  rulePath: string,
+  thresholdKey: 'error_rate' | 'p95_ms',
+  issues: ConfigValidationIssue[],
+): void {
+  if (rule === undefined) return;
+  if (!isRecord(rule)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_spike_rule',
+        `${rulePath} must be an object.`,
+        rulePath,
+      ),
+    );
+    return;
+  }
+  if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_spike_rule',
+        `${rulePath}.enabled must be a boolean.`,
+        `${rulePath}.enabled`,
+      ),
+    );
+  }
+  for (const key of ['window_seconds', 'min_requests']) {
+    if (
+      rule[key] !== undefined &&
+      (!isFiniteNumber(rule[key]) || rule[key] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_spike_rule',
+          `${rulePath}.${key} must be a positive number.`,
+          `${rulePath}.${key}`,
+        ),
+      );
+    }
+  }
+  if (
+    rule[thresholdKey] !== undefined &&
+    (!isFiniteNumber(rule[thresholdKey]) || rule[thresholdKey] <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_spike_rule',
+        `${rulePath}.${thresholdKey} must be a positive number.`,
+        `${rulePath}.${thresholdKey}`,
+      ),
+    );
+  }
+  if (
+    thresholdKey === 'error_rate' &&
+    isFiniteNumber(rule.error_rate) &&
+    rule.error_rate > 1
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_spike_rule',
+        'alerts.error_spike.error_rate must be between 0 and 1.',
+        'alerts.error_spike.error_rate',
+      ),
+    );
+  }
+}
+
+function validateAlertChannels(
+  channels: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (channels === undefined) return;
+  if (!Array.isArray(channels)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_channel',
+        'alerts.channels must be an array.',
+        'alerts.channels',
+      ),
+    );
+    return;
+  }
+
+  channels.forEach((channel, index) => {
+    const channelPath = `alerts.channels[${index}]`;
+    if (!isRecord(channel)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel',
+          'Alert channel entries must be objects.',
+          channelPath,
+        ),
+      );
+      return;
+    }
+    if (channel.type !== 'webhook') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel_type',
+          'Open-source alert channels currently support only type "webhook".',
+          `${channelPath}.type`,
+        ),
+      );
+    }
+    if (!isNonEmptyString(channel.url)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'Webhook alert channels require url.',
+          `${channelPath}.url`,
+        ),
+      );
+    } else if (!containsEnvReference(channel.url)) {
+      validateHttpUrl(
+        channel.url,
+        `${channelPath}.url`,
+        'invalid_alert_webhook_url',
+        issues,
+      );
+    }
+    if (channel.name !== undefined && !isNonEmptyString(channel.name)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel',
+          'alerts.channels[].name must be a non-empty string when set.',
+          `${channelPath}.name`,
+        ),
+      );
+    }
+    if (
+      channel.debounce_seconds !== undefined &&
+      (!isFiniteNumber(channel.debounce_seconds) || channel.debounce_seconds < 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel',
+          'alerts.channels[].debounce_seconds must be a non-negative number.',
+          `${channelPath}.debounce_seconds`,
+        ),
+      );
+    }
+    validateAlertChannelHeaders(channel.headers, channelPath, issues);
+    validateAlertChannelEvents(channel.events, channelPath, issues);
+    validateAlertChannelRetry(channel.retry, channelPath, issues);
+  });
+}
+
+function validateAlertChannelHeaders(
+  headers: unknown,
+  channelPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (headers === undefined) return;
+  if (!isRecord(headers)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_channel_headers',
+        'alerts.channels[].headers must be an object.',
+        `${channelPath}.headers`,
+      ),
+    );
+    return;
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    if (!isNonEmptyString(key) || !isNonEmptyString(value)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel_headers',
+          'Webhook alert headers must be non-empty string key/value pairs.',
+          `${channelPath}.headers.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateAlertChannelEvents(
+  events: unknown,
+  channelPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (events === undefined) return;
+  if (!Array.isArray(events)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_channel_events',
+        'alerts.channels[].events must be an array.',
+        `${channelPath}.events`,
+      ),
+    );
+    return;
+  }
+  events.forEach((event, eventIndex) => {
+    if (!isNonEmptyString(event) || !ALERT_EVENTS.has(event)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel_event',
+          `Unsupported alert event "${String(event)}".`,
+          `${channelPath}.events[${eventIndex}]`,
+        ),
+      );
+    }
+  });
+}
+
+function validateAlertChannelRetry(
+  retry: unknown,
+  channelPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (retry === undefined) return;
+  if (!isRecord(retry)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_channel_retry',
+        'alerts.channels[].retry must be an object.',
+        `${channelPath}.retry`,
+      ),
+    );
+    return;
+  }
+  for (const key of ['attempts', 'timeout_ms']) {
+    if (
+      retry[key] !== undefined &&
+      (!isFiniteNumber(retry[key]) || retry[key] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_alert_channel_retry',
+          `alerts.channels[].retry.${key} must be a positive number.`,
+          `${channelPath}.retry.${key}`,
+        ),
+      );
+    }
+  }
+  if (
+    retry.backoff_ms !== undefined &&
+    (!isFiniteNumber(retry.backoff_ms) || retry.backoff_ms < 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_alert_channel_retry',
+        'alerts.channels[].retry.backoff_ms must be a non-negative number.',
+        `${channelPath}.retry.backoff_ms`,
+      ),
+    );
   }
 }
 

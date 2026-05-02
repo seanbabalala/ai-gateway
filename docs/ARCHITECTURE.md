@@ -129,7 +129,13 @@ The gateway records call logs with:
 - cache token fields
 - experiment group
 
-These logs power Dashboard pages, SSE updates, analytics, budgets, and optional connected-gateway metadata upload.
+These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, and optional connected-gateway metadata upload.
+
+## Local Webhook Alerts
+
+The open-source data plane includes an optional `alerts` subsystem. It listens to budget threshold/exceeded events, active health probe state, circuit breaker transitions, and the local call-log stream for error/latency spikes. Delivery runs from an in-memory asynchronous queue so webhook latency does not block AI proxy requests.
+
+Alert payloads are sanitized before dispatch. Prompts, responses, provider API keys, raw headers, configured webhook headers, passwords, secrets, and tokens are not included. Dashboard alert status is read from local memory through `GET /api/dashboard/alerts`; webhook URLs and headers are not exposed there.
 
 ## Connected Gateway
 

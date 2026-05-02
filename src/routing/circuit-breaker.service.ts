@@ -13,7 +13,8 @@
 //   - All models CLOSED → node is "healthy"
 // ===================================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AlertService } from '../alerts/alert.service';
 
 export enum CircuitState {
   CLOSED = 'CLOSED',
@@ -47,7 +48,7 @@ export class CircuitBreakerService {
   private readonly circuits = new Map<string, CircuitStatus>();
   private readonly config: CircuitBreakerConfig;
 
-  constructor() {
+  constructor(@Optional() private readonly alerts?: AlertService) {
     this.config = { ...DEFAULT_CONFIG };
   }
 
@@ -95,6 +96,7 @@ export class CircuitBreakerService {
   recordSuccess(nodeId: string, model?: string): void {
     const key = this.buildKey(nodeId, model);
     const status = this.getStatus(key);
+    const previousState = status.state;
 
     if (status.state === CircuitState.HALF_OPEN) {
       this.logger.log(`Circuit CLOSED for "${key}" (probe succeeded)`);
@@ -104,6 +106,21 @@ export class CircuitBreakerService {
     status.state = CircuitState.CLOSED;
     status.consecutiveFailures = 0;
     status.halfOpenProbes = 0;
+
+    if (previousState !== CircuitState.CLOSED) {
+      this.alerts?.emit({
+        type: 'circuit_close',
+        severity: 'info',
+        message: `Circuit closed for ${key}.`,
+        dedupeKey: key,
+        details: {
+          node_id: nodeId,
+          model: model || null,
+          previous_state: previousState,
+          state: CircuitState.CLOSED,
+        },
+      });
+    }
   }
 
   /**
@@ -131,6 +148,7 @@ export class CircuitBreakerService {
   recordFailure(nodeId: string, model?: string): void {
     const key = this.buildKey(nodeId, model);
     const status = this.getStatus(key);
+    const previousState = status.state;
     status.consecutiveFailures++;
     status.lastFailureAt = Date.now();
 
@@ -139,6 +157,7 @@ export class CircuitBreakerService {
       status.state = CircuitState.OPEN;
       status.openedAt = Date.now();
       this.logger.warn(`Circuit re-OPENED for "${key}" (probe failed)`);
+      this.alertCircuitOpen(nodeId, model, key, status, previousState, 'probe failed');
       return;
     }
 
@@ -151,6 +170,14 @@ export class CircuitBreakerService {
       this.logger.warn(
         `Circuit OPENED for "${key}" (${status.consecutiveFailures} consecutive failures)`,
       );
+      this.alertCircuitOpen(
+        nodeId,
+        model,
+        key,
+        status,
+        previousState,
+        `${status.consecutiveFailures} consecutive failures`,
+      );
     }
   }
 
@@ -162,6 +189,7 @@ export class CircuitBreakerService {
   markUnavailable(nodeId: string, model?: string, reason = 'active probe failed'): void {
     const key = this.buildKey(nodeId, model);
     const status = this.getStatus(key);
+    const previousState = status.state;
     status.state = CircuitState.OPEN;
     status.consecutiveFailures = Math.max(
       status.consecutiveFailures + 1,
@@ -171,6 +199,9 @@ export class CircuitBreakerService {
     status.openedAt = Date.now();
     status.halfOpenProbes = 0;
     this.logger.warn(`Circuit OPENED for "${key}" (${reason})`);
+    if (previousState !== CircuitState.OPEN) {
+      this.alertCircuitOpen(nodeId, model, key, status, previousState, reason);
+    }
   }
 
   /**
@@ -313,5 +344,29 @@ export class CircuitBreakerService {
       });
     }
     return this.circuits.get(key)!;
+  }
+
+  private alertCircuitOpen(
+    nodeId: string,
+    model: string | undefined,
+    key: string,
+    status: CircuitStatus,
+    previousState: CircuitState,
+    reason: string,
+  ): void {
+    this.alerts?.emit({
+      type: 'circuit_open',
+      severity: 'critical',
+      message: `Circuit opened for ${key}: ${reason}.`,
+      dedupeKey: key,
+      details: {
+        node_id: nodeId,
+        model: model || null,
+        previous_state: previousState,
+        state: CircuitState.OPEN,
+        consecutive_failures: status.consecutiveFailures,
+        reason,
+      },
+    });
   }
 }

@@ -15,6 +15,9 @@
 - Local sliding-window node:model stats for success rate, p50/p95 latency, cost, and fallback rate.
 - Read-only Dashboard routing recommendations with reasons, confidence, potential savings, and risk notes.
 - `GET /api/dashboard/routing/recommendations` for local recommendation evidence without mutating routing config.
+- v0.3 local webhook alerts via `alerts.channels` for budget, node health, circuit breaker, error spike, and latency spike events.
+- Asynchronous alert delivery with per-channel debounce, retry, timeout, sanitized payloads, and Dashboard delivery status.
+- Config validation and documentation for webhook alert channels and spike detector rules.
 
 ### Changed
 

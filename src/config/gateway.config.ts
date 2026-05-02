@@ -27,6 +27,9 @@ export interface GatewayConfig {
   /** Runtime config reload behavior — watcher disabled by default */
   hot_reload?: HotReloadConfig;
 
+  /** Optional OSS-local alerting channels — disabled by default */
+  alerts?: AlertsConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
 }
@@ -37,6 +40,76 @@ export interface HotReloadConfig {
   watch?: boolean;
   /** Debounce file watcher reloads in milliseconds (default: 500) */
   debounce_ms?: number;
+}
+
+// ===== Alerts =====
+export type AlertEventType =
+  | 'budget_threshold'
+  | 'budget_exceeded'
+  | 'node_down'
+  | 'node_recovered'
+  | 'circuit_open'
+  | 'circuit_close'
+  | 'error_spike'
+  | 'latency_spike';
+
+export interface AlertsConfig {
+  /** Master switch for local alert dispatch (default: false) */
+  enabled?: boolean;
+  /** Webhook-only OSS channel list. Empty by default. */
+  channels?: WebhookAlertChannelConfig[];
+  /** Recent alert delivery records retained for Dashboard (default: 50) */
+  history_size?: number;
+  /** Local sliding-window rule for error spikes. */
+  error_spike?: AlertSpikeRuleConfig;
+  /** Local sliding-window rule for p95 latency spikes. */
+  latency_spike?: AlertLatencySpikeRuleConfig;
+}
+
+export interface WebhookAlertChannelConfig {
+  type: 'webhook';
+  /** Stable display name used in Dashboard and debounce keys. */
+  name?: string;
+  url: string;
+  /** Optional outbound headers. Values may use environment references. */
+  headers?: Record<string, string>;
+  /** Events delivered by this channel. Unset means all supported events. */
+  events?: AlertEventType[];
+  /** Per-channel debounce window in seconds (default: 300). */
+  debounce_seconds?: number;
+  /** Webhook retry and timeout controls. */
+  retry?: AlertWebhookRetryConfig;
+}
+
+export interface AlertWebhookRetryConfig {
+  /** Total delivery attempts, including the first attempt (default: 3). */
+  attempts?: number;
+  /** Delay between failed attempts in milliseconds (default: 1000). */
+  backoff_ms?: number;
+  /** Per-attempt HTTP timeout in milliseconds (default: 5000). */
+  timeout_ms?: number;
+}
+
+export interface AlertSpikeRuleConfig {
+  /** Enable this detector when alerting is enabled (default: true). */
+  enabled?: boolean;
+  /** Sliding window in seconds (default: 300). */
+  window_seconds?: number;
+  /** Minimum samples before evaluating (default: 20). */
+  min_requests?: number;
+  /** Error-rate threshold as 0-1 (default: 0.1). */
+  error_rate?: number;
+}
+
+export interface AlertLatencySpikeRuleConfig {
+  /** Enable this detector when alerting is enabled (default: true). */
+  enabled?: boolean;
+  /** Sliding window in seconds (default: 300). */
+  window_seconds?: number;
+  /** Minimum samples before evaluating (default: 20). */
+  min_requests?: number;
+  /** p95 latency threshold in milliseconds (default: 10000). */
+  p95_ms?: number;
 }
 
 // ===== Dashboard =====
