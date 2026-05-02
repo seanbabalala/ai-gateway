@@ -303,20 +303,21 @@
   - 缓存效率（命中率趋势 + 节省的 Token/成本）
 
 #### 18. 自定义 Prometheus Metrics
-- **现状**：OTel 集成已有，但自定义业务指标有限
-- **目标**：暴露更丰富的 Prometheus-scrapeable 指标
+- **现状**：已在 `codex/v0.3-business-metrics` 基于现有 OpenTelemetry/Prometheus exporter 补齐业务指标
+- **目标**：暴露更丰富的 Prometheus-scrapeable 指标，同时控制 label cardinality
 - **实现方案**：
-  - `GET /metrics` 端点（Prometheus exposition format）
+  - 通过 `telemetry.enabled` 启动现有 Prometheus exporter，默认 `:9464/metrics`
   - 指标列表：
-    - `siftgate_requests_total{node, model, tier, status}`
-    - `siftgate_request_duration_seconds{node, model, tier}`
+    - `siftgate_requests_total{tier, node, model, status}`
+    - `siftgate_request_duration_seconds{tier, node, model, status}`
     - `siftgate_tokens_total{node, model, direction}`
     - `siftgate_cost_total{node, model}`
     - `siftgate_circuit_breaker_state{node, model}`
     - `siftgate_cache_hits_total` / `siftgate_cache_misses_total`
-    - `siftgate_fallback_total{tier, from_node, to_node}`
-    - `siftgate_budget_usage_ratio{key_id}`
+    - `siftgate_fallback_total{tier, node, model}`
+    - `siftgate_budget_usage_ratio{scope, budget_type}`
     - `siftgate_concurrent_requests{node}`
+  - 不使用 API key 明文、prompt、response、provider key、raw headers 作为指标 label
 
 ---
 
@@ -580,7 +581,7 @@
 | 11 | 成本路由优化 | ⭐⭐⭐⭐⭐ | 中 | 🟡 v0.3 |
 | 12 | 上下文窗口感知 | ⭐⭐⭐⭐ | 小 | 🟡 v0.3 |
 | 16 | Webhook 告警 | ⭐⭐⭐⭐ | 中 | 🟡 v0.3 |
-| 18 | Prometheus Metrics | ⭐⭐⭐⭐ | 小 | 🟡 v0.3 |
+| 18 | Prometheus Metrics | ⭐⭐⭐⭐ | 小 | ✅ v0.3 |
 | 13 | 自适应路由 | ⭐⭐⭐⭐⭐ | 大 | 🟡 v0.3 |
 | 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | 🟡 v0.3 |
 | 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |

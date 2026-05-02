@@ -272,6 +272,38 @@ describe('CircuitBreakerService — getAllStatuses', () => {
     const all = cb.getAllStatuses();
     expect(all.size).toBe(0);
   });
+
+  it('should expose circuit states as a business gauge', () => {
+    const gauges: Record<string, any> = {};
+    const telemetry = {
+      meter: {
+        createObservableGauge: jest.fn((name: string) => {
+          const gauge = {
+            addCallback: jest.fn((handler) => {
+              gauge.callback = handler;
+            }),
+            callback: undefined as any,
+          };
+          gauges[name] = gauge;
+          return gauge;
+        }),
+      },
+    };
+    const cb = new CircuitBreakerService(telemetry as any);
+    tripCircuit(cb, 'openai', 'gpt-4');
+
+    const observable = { observe: jest.fn() };
+    gauges.siftgate_circuit_breaker_state.callback(observable);
+
+    expect(telemetry.meter.createObservableGauge).toHaveBeenCalledWith(
+      'siftgate_circuit_breaker_state',
+      expect.any(Object),
+    );
+    expect(observable.observe).toHaveBeenCalledWith(
+      1,
+      { node: 'openai', model: 'gpt-4' },
+    );
+  });
 });
 
 // ═══════════════════════════════════════════════════════════

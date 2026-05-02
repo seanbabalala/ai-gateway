@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added v0.3 business Prometheus metrics through the existing OpenTelemetry exporter for requests, latency, tokens, cost, fallback, cache hit/miss, budget usage, concurrency, and circuit breaker state.
+- Added low-cardinality metric labels that avoid API key names/IDs, prompts, responses, provider keys, and raw headers.
+- Added unit coverage for telemetry helpers, pipeline metric recording, budget gauge aggregation, concurrency gauges, and circuit breaker gauges.
+
 ## 0.2.0 - 2026-05-02
 
 ### Added

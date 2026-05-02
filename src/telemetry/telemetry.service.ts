@@ -22,9 +22,27 @@ import {
   type Meter,
   type Counter,
   type Histogram,
+  type ObservableGauge,
   type Span,
   type Attributes,
 } from '@opentelemetry/api';
+
+export interface BusinessMetricLabels {
+  tier: string;
+  node: string;
+  model: string;
+  statusCode: number;
+}
+
+export interface CallMetricInput extends BusinessMetricLabels {
+  latencyMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  costUsd: number;
+  isFallback: boolean;
+}
 
 @Injectable()
 export class TelemetryService {
@@ -37,46 +55,169 @@ export class TelemetryService {
   readonly tokensUsage: Counter;
   readonly costTotal: Counter;
   readonly cacheOperations: Counter;
+  readonly fallbackTotal: Counter;
+  readonly cacheHitsTotal: Counter;
+  readonly cacheMissesTotal: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
   readonly upstreamDuration: Histogram;
+
+  // ── Observable Gauges ─────────────────────────────────
+  readonly budgetUsageRatio: ObservableGauge;
 
   constructor() {
     this.tracer = trace.getTracer('siftgate', '0.1.0');
     this.meter = metrics.getMeter('siftgate', '0.1.0');
 
     // Counters
-    this.requestTotal = this.meter.createCounter('gateway.request.total', {
-      description: 'Total gateway requests',
+    this.requestTotal = this.meter.createCounter('siftgate_requests_total', {
+      description: 'Total accepted gateway requests, labeled with bounded routing metadata',
       unit: '{request}',
     });
     this.upstreamErrors = this.meter.createCounter('gateway.upstream.errors', {
       description: 'Upstream provider errors',
       unit: '{error}',
     });
-    this.tokensUsage = this.meter.createCounter('gateway.tokens.usage', {
-      description: 'Token usage (input + output)',
+    this.tokensUsage = this.meter.createCounter('siftgate_tokens_total', {
+      description: 'Token usage by direction',
       unit: '{token}',
     });
-    this.costTotal = this.meter.createCounter('gateway.cost.total', {
-      description: 'Total estimated cost',
+    this.costTotal = this.meter.createCounter('siftgate_cost_total', {
+      description: 'Total estimated cost by upstream target',
       unit: 'USD',
     });
     this.cacheOperations = this.meter.createCounter('gateway.cache.operations', {
       description: 'Cache operations (hit/miss/store)',
       unit: '{operation}',
     });
+    this.fallbackTotal = this.meter.createCounter('siftgate_fallback_total', {
+      description: 'Requests served by a fallback target',
+      unit: '{request}',
+    });
+    this.cacheHitsTotal = this.meter.createCounter('siftgate_cache_hits_total', {
+      description: 'Prompt cache hits',
+      unit: '{hit}',
+    });
+    this.cacheMissesTotal = this.meter.createCounter('siftgate_cache_misses_total', {
+      description: 'Prompt cache misses',
+      unit: '{miss}',
+    });
 
     // Histograms
-    this.requestDuration = this.meter.createHistogram('gateway.request.duration', {
+    this.requestDuration = this.meter.createHistogram('siftgate_request_duration_seconds', {
       description: 'End-to-end request duration',
-      unit: 'ms',
+      unit: 's',
     });
     this.upstreamDuration = this.meter.createHistogram('gateway.upstream.duration', {
       description: 'Upstream provider call duration',
       unit: 'ms',
     });
+
+    this.budgetUsageRatio = this.meter.createObservableGauge(
+      'siftgate_budget_usage_ratio',
+      {
+        description: 'Current budget usage ratio, aggregated by scope and budget type',
+        unit: '1',
+      },
+    );
+  }
+
+  // ── Business Metrics ───────────────────────────────────
+
+  recordCallMetrics(input: CallMetricInput): void {
+    const attrs = this.routeAttrs(input);
+    this.requestTotal.add(1, attrs);
+    this.requestDuration.record(
+      Math.max(0, input.latencyMs || 0) / 1000,
+      attrs,
+    );
+
+    this.recordTokens(input.inputTokens, {
+      node: input.node,
+      model: input.model,
+      direction: 'input',
+    });
+    this.recordTokens(input.outputTokens, {
+      node: input.node,
+      model: input.model,
+      direction: 'output',
+    });
+    this.recordTokens(input.cacheCreationInputTokens || 0, {
+      node: input.node,
+      model: input.model,
+      direction: 'cache_creation_input',
+    });
+    this.recordTokens(input.cacheReadInputTokens || 0, {
+      node: input.node,
+      model: input.model,
+      direction: 'cache_read_input',
+    });
+
+    if (input.costUsd > 0) {
+      this.costTotal.add(input.costUsd, this.targetAttrs(input));
+    }
+    if (input.isFallback) {
+      this.fallbackTotal.add(1, {
+        tier: this.safeLabel(input.tier, 'unknown'),
+        node: this.safeLabel(input.node, 'unknown'),
+        model: this.safeLabel(input.model, 'unknown'),
+      });
+    }
+  }
+
+  recordCacheHit(): void {
+    this.cacheOperations.add(1, { operation: 'hit' });
+    this.cacheHitsTotal.add(1);
+  }
+
+  recordCacheMiss(): void {
+    this.cacheOperations.add(1, { operation: 'miss' });
+    this.cacheMissesTotal.add(1);
+  }
+
+  recordCacheStore(): void {
+    this.cacheOperations.add(1, { operation: 'store' });
+  }
+
+  private recordTokens(
+    value: number,
+    attrs: { node: string; model: string; direction: string },
+  ): void {
+    if (!Number.isFinite(value) || value <= 0) return;
+    this.tokensUsage.add(value, {
+      node: this.safeLabel(attrs.node, 'unknown'),
+      model: this.safeLabel(attrs.model, 'unknown'),
+      direction: this.safeLabel(attrs.direction, 'unknown'),
+    });
+  }
+
+  private routeAttrs(input: BusinessMetricLabels): Attributes {
+    return {
+      tier: this.safeLabel(input.tier, 'unknown'),
+      node: this.safeLabel(input.node, 'unknown'),
+      model: this.safeLabel(input.model, 'unknown'),
+      status: this.statusClass(input.statusCode),
+    };
+  }
+
+  private targetAttrs(input: Pick<BusinessMetricLabels, 'node' | 'model'>): Attributes {
+    return {
+      node: this.safeLabel(input.node, 'unknown'),
+      model: this.safeLabel(input.model, 'unknown'),
+    };
+  }
+
+  private statusClass(statusCode: number): string {
+    if (!Number.isFinite(statusCode) || statusCode <= 0) return 'unknown';
+    return `${Math.floor(statusCode / 100)}xx`;
+  }
+
+  private safeLabel(value: unknown, fallback: string): string {
+    if (typeof value !== 'string' && typeof value !== 'number') return fallback;
+    const normalized = String(value).trim();
+    if (!normalized) return fallback;
+    return normalized.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 80) || fallback;
   }
 
   // ── Span Helpers ──────────────────────────────────────

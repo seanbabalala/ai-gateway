@@ -22,11 +22,18 @@ describe('TelemetryService', () => {
     expect(service.tokensUsage).toBeDefined();
     expect(service.costTotal).toBeDefined();
     expect(service.cacheOperations).toBeDefined();
+    expect(service.fallbackTotal).toBeDefined();
+    expect(service.cacheHitsTotal).toBeDefined();
+    expect(service.cacheMissesTotal).toBeDefined();
   });
 
   it('should create all histogram instruments', () => {
     expect(service.requestDuration).toBeDefined();
     expect(service.upstreamDuration).toBeDefined();
+  });
+
+  it('should create all observable gauge instruments', () => {
+    expect(service.budgetUsageRatio).toBeDefined();
   });
 
   // ── Counter / Histogram no-op safety ────────────────────────
@@ -37,11 +44,89 @@ describe('TelemetryService', () => {
     expect(() => service.tokensUsage.add(100, { direction: 'input' })).not.toThrow();
     expect(() => service.costTotal.add(0.01, { model: 'gpt-4' })).not.toThrow();
     expect(() => service.cacheOperations.add(1, { operation: 'hit' })).not.toThrow();
+    expect(() => service.fallbackTotal.add(1, { tier: 'standard' })).not.toThrow();
+    expect(() => service.cacheHitsTotal.add(1)).not.toThrow();
+    expect(() => service.cacheMissesTotal.add(1)).not.toThrow();
   });
 
   it('should not throw when recording histograms (no-op)', () => {
-    expect(() => service.requestDuration.record(150, { tier: 'standard' })).not.toThrow();
+    expect(() => service.requestDuration.record(0.15, { tier: 'standard' })).not.toThrow();
     expect(() => service.upstreamDuration.record(200, { node: 'claude' })).not.toThrow();
+  });
+
+  it('should record business call metrics with bounded labels', () => {
+    (service as any).requestTotal = { add: jest.fn() };
+    (service as any).requestDuration = { record: jest.fn() };
+    (service as any).tokensUsage = { add: jest.fn() };
+    (service as any).costTotal = { add: jest.fn() };
+    (service as any).fallbackTotal = { add: jest.fn() };
+
+    service.recordCallMetrics({
+      tier: 'standard',
+      node: 'openai/us east',
+      model: 'gpt-4o/tenant-secret-key-that-should-not-be-a-label',
+      statusCode: 201,
+      latencyMs: 1234,
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheCreationInputTokens: 2,
+      cacheReadInputTokens: 3,
+      costUsd: 0.00042,
+      isFallback: true,
+    });
+
+    expect(service.requestTotal.add).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        tier: 'standard',
+        node: 'openai_us_east',
+        status: '2xx',
+      }),
+    );
+    expect(service.requestDuration.record).toHaveBeenCalledWith(
+      1.234,
+      expect.objectContaining({ status: '2xx' }),
+    );
+    expect(service.tokensUsage.add).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({ direction: 'input' }),
+    );
+    expect(service.tokensUsage.add).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ direction: 'output' }),
+    );
+    expect(service.tokensUsage.add).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ direction: 'cache_creation_input' }),
+    );
+    expect(service.tokensUsage.add).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ direction: 'cache_read_input' }),
+    );
+    expect(service.costTotal.add).toHaveBeenCalledWith(
+      0.00042,
+      expect.objectContaining({ node: 'openai_us_east' }),
+    );
+    expect(service.fallbackTotal.add).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ tier: 'standard', node: 'openai_us_east' }),
+    );
+  });
+
+  it('should record cache hits and misses on both legacy and business counters', () => {
+    (service as any).cacheOperations = { add: jest.fn() };
+    (service as any).cacheHitsTotal = { add: jest.fn() };
+    (service as any).cacheMissesTotal = { add: jest.fn() };
+
+    service.recordCacheHit();
+    service.recordCacheMiss();
+    service.recordCacheStore();
+
+    expect(service.cacheOperations.add).toHaveBeenCalledWith(1, { operation: 'hit' });
+    expect(service.cacheOperations.add).toHaveBeenCalledWith(1, { operation: 'miss' });
+    expect(service.cacheOperations.add).toHaveBeenCalledWith(1, { operation: 'store' });
+    expect(service.cacheHitsTotal.add).toHaveBeenCalledWith(1);
+    expect(service.cacheMissesTotal.add).toHaveBeenCalledWith(1);
   });
 
   // ── withSpan() ──────────────────────────────────────────────

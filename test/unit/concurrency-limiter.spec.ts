@@ -45,6 +45,38 @@ describe('ConcurrencyLimiterService', () => {
     );
   });
 
+  it('registers a business active-request gauge by node', async () => {
+    const gauges: Record<string, any> = {};
+    const telemetry = {
+      meter: {
+        createObservableGauge: jest.fn((name: string) => {
+          const gauge = {
+            addCallback: jest.fn((handler) => {
+              gauge.callback = handler;
+            }),
+            callback: undefined as any,
+          };
+          gauges[name] = gauge;
+          return gauge;
+        }),
+      },
+    };
+    const limiter = new ConcurrencyLimiterService(telemetry as any);
+    const node = makeNode();
+
+    const lease = await limiter.acquire(node, 'gpt-4o');
+    const observable = { observe: jest.fn() };
+    gauges.siftgate_concurrent_requests.callback(observable);
+
+    expect(telemetry.meter.createObservableGauge).toHaveBeenCalledWith(
+      'siftgate_concurrent_requests',
+      expect.any(Object),
+    );
+    expect(observable.observe).toHaveBeenCalledWith(1, { node: 'openai' });
+
+    lease.release();
+  });
+
   it('queues wait-policy callers and grants the next slot on release', async () => {
     const limiter = makeLimiter();
     const node = makeNode();

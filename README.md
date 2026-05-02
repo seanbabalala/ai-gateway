@@ -613,6 +613,25 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
 - **API Keys** — Client Gateway API key generation, permissions, budgets, rate limits, rotation, and disable/delete controls
 
+## Observability
+
+SiftGate uses the existing OpenTelemetry SDK and Prometheus exporter. When `telemetry.enabled: true`, the exporter serves Prometheus metrics from `http://localhost:9464/metrics` by default, configurable with `telemetry.metrics.prometheus_port`.
+
+Business metrics include:
+
+- `siftgate_requests_total{tier,node,model,status}`
+- `siftgate_request_duration_seconds{tier,node,model,status}`
+- `siftgate_tokens_total{node,model,direction}`
+- `siftgate_cost_total{node,model}`
+- `siftgate_fallback_total{tier,node,model}`
+- `siftgate_cache_hits_total`
+- `siftgate_cache_misses_total`
+- `siftgate_budget_usage_ratio{scope,budget_type}`
+- `siftgate_concurrent_requests{node}`
+- `siftgate_circuit_breaker_state{node,model}`
+
+Metric labels are intentionally bounded: status is recorded as a status class such as `2xx`, dynamic model labels are reduced to configured model IDs, `node:prefix*`, or `unlisted`, and API key names/IDs, prompts, responses, provider keys, and raw headers are never used as metric labels.
+
 ## Docker
 
 ### Using Docker Compose (recommended)

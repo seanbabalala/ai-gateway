@@ -258,6 +258,19 @@ export class ConcurrencyLimiterService {
       }
     });
 
+    const businessActiveGauge = this.telemetry.meter.createObservableGauge(
+      'siftgate_concurrent_requests',
+      {
+        description: 'Current in-flight upstream requests by node',
+        unit: '{request}',
+      },
+    );
+    businessActiveGauge.addCallback((observable) => {
+      for (const [node, state] of this.states.entries()) {
+        observable.observe(state.active, { node });
+      }
+    });
+
     const queueGauge = this.telemetry.meter.createObservableGauge(
       'gateway.concurrency.queue_depth',
       {

@@ -76,19 +76,20 @@ function mockBudgetRepo() {
 }
 
 function makeService(overrides: Record<string, unknown> = {}) {
+  const { telemetry, api_keys, ...budgetOverrides } = overrides as any;
   const config = mockConfigService({
     budget: {
       daily_token_limit: 100_000,
       daily_cost_limit: 5.0,
       alert_threshold: 0.8,
-      ...overrides,
+      ...budgetOverrides,
     },
     auth: {
-      api_keys: (overrides as any).api_keys || [],
+      api_keys: api_keys || [],
     },
   });
   const repo = mockBudgetRepo();
-  const svc = new BudgetService(config, repo as any);
+  const svc = new BudgetService(config, repo as any, telemetry as any);
   return { svc, repo, config };
 }
 
@@ -624,6 +625,61 @@ describe('BudgetService', () => {
 
       const status = await svc.getStatus();
       expect(status[0].isExceeded).toBe(true);
+    });
+  });
+
+  describe('business metrics', () => {
+    it('should expose budget usage ratios without API key identifiers', async () => {
+      let callback: any;
+      const telemetry = {
+        budgetUsageRatio: {
+          addCallback: jest.fn((handler) => {
+            callback = handler;
+          }),
+        },
+      };
+      const { svc, repo } = makeService({ telemetry });
+      repo._store.push(
+        {
+          id: 1,
+          type: 'daily_tokens',
+          limit_value: 100,
+          alert_threshold: 0.8,
+          current_value: 50,
+          period_start: new Date(),
+          is_active: true,
+          api_key_name: null,
+          api_key_id: null,
+        },
+        {
+          id: 2,
+          type: 'daily_tokens',
+          limit_value: 100,
+          alert_threshold: 0.8,
+          current_value: 90,
+          period_start: new Date(),
+          is_active: true,
+          api_key_name: 'prod-key',
+          api_key_id: 'key_secret_123',
+        },
+      );
+
+      await svc.getStatus();
+
+      const observable = { observe: jest.fn() };
+      callback(observable);
+
+      expect(telemetry.budgetUsageRatio.addCallback).toHaveBeenCalled();
+      expect(observable.observe).toHaveBeenCalledWith(0.5, {
+        scope: 'global',
+        budget_type: 'daily_tokens',
+      });
+      expect(observable.observe).toHaveBeenCalledWith(0.9, {
+        scope: 'api_key',
+        budget_type: 'daily_tokens',
+      });
+      expect(observable.observe.mock.calls.flat()).not.toContain('prod-key');
+      expect(observable.observe.mock.calls.flat()).not.toContain('key_secret_123');
     });
   });
 

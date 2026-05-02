@@ -6,12 +6,13 @@
 // Supports per-key budgets alongside global limits.
 // ===================================================================
 
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
+import { TelemetryService } from '../telemetry/telemetry.service';
 
 export interface BudgetStatus {
   id: number;
@@ -75,12 +76,19 @@ export class BudgetExceededError extends Error {
 export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BudgetService.name);
   private configReloadSub?: Subscription;
+  private budgetMetricSnapshot: Array<{
+    ratio: number;
+    attrs: { scope: 'global' | 'api_key'; budget_type: string };
+  }> = [];
 
   constructor(
     private readonly config: ConfigService,
     @InjectRepository(BudgetRule)
     private readonly budgetRepo: Repository<BudgetRule>,
-  ) {}
+    @Optional() private readonly telemetry?: TelemetryService,
+  ) {
+    this.registerMetrics();
+  }
 
   async onModuleInit(): Promise<void> {
     await this.syncRulesFromConfig();
@@ -228,6 +236,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     await this.ensureDefaultRules();
     await this.ensurePerKeyRules();
     await this.deactivateOrphanedRules();
+    await this.refreshBudgetMetricSnapshot();
   }
 
   /**
@@ -260,6 +269,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     if (apiKeyName || apiKeyId) {
       await this.recordAgainst(apiKeyName || null, safeTokens, safeCostUsd, apiKeyId);
     }
+    await this.refreshBudgetMetricSnapshot();
   }
 
   /**
@@ -276,7 +286,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
     await this.resetExpiredPeriods(rules);
 
-    return rules.map((r) => ({
+    const statuses: BudgetStatus[] = rules.map((r) => ({
       id: r.id,
       type: r.type,
       scope: r.api_key_id || r.api_key_name ? 'api_key' : 'global',
@@ -290,6 +300,8 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       periodStart: r.period_start,
       resetAt: this.nextResetAt(r),
     }));
+    await this.refreshBudgetMetricSnapshot();
+    return statuses;
   }
 
   /**
@@ -301,6 +313,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       rule.current_value = 0;
       rule.period_start = this.startOfDay(new Date());
       await this.budgetRepo.save(rule);
+      await this.refreshBudgetMetricSnapshot();
       this.logger.log(`Budget rule ${rule.type} manually reset`);
     }
   }
@@ -430,5 +443,57 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private sanitizeCounterValue(value: number): number {
     if (!Number.isFinite(value) || value < 0) return 0;
     return value;
+  }
+
+  private registerMetrics(): void {
+    this.telemetry?.budgetUsageRatio.addCallback((observable) => {
+      for (const item of this.budgetMetricSnapshot) {
+        observable.observe(item.ratio, item.attrs);
+      }
+    });
+  }
+
+  private async refreshBudgetMetricSnapshot(): Promise<void> {
+    try {
+      const rules = await this.budgetRepo.find({ where: { is_active: true } });
+      const statuses: BudgetStatus[] = rules.map((r) => ({
+        id: r.id,
+        type: r.type,
+        scope: r.api_key_id || r.api_key_name ? 'api_key' as const : 'global' as const,
+        apiKeyName: r.api_key_name,
+        apiKeyId: r.api_key_id,
+        limit: r.limit_value,
+        current: r.current_value,
+        percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
+        isExceeded: r.current_value >= r.limit_value,
+        isAlert: r.limit_value > 0 ? r.current_value / r.limit_value >= r.alert_threshold : false,
+        periodStart: r.period_start,
+        resetAt: this.nextResetAt(r),
+      }));
+      this.updateBudgetMetricSnapshot(statuses);
+    } catch (err) {
+      this.logger.warn(`Failed to refresh budget metrics: ${(err as Error).message}`);
+    }
+  }
+
+  private updateBudgetMetricSnapshot(statuses: BudgetStatus[]): void {
+    const aggregates = new Map<string, {
+      ratio: number;
+      attrs: { scope: 'global' | 'api_key'; budget_type: string };
+    }>();
+    for (const status of statuses) {
+      const key = `${status.scope}:${status.type}`;
+      const current = aggregates.get(key);
+      if (!current || status.percentage > current.ratio) {
+        aggregates.set(key, {
+          ratio: Math.max(0, status.percentage || 0),
+          attrs: {
+            scope: status.scope,
+            budget_type: status.type,
+          },
+        });
+      }
+    }
+    this.budgetMetricSnapshot = [...aggregates.values()];
   }
 }
