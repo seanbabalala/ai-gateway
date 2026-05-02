@@ -23,6 +23,7 @@ import {
   TokenUsage,
 } from '../canonical/canonical.types';
 import { detectRequestModalities } from '../canonical/modality-detection';
+import { supportsModalities } from '../config/modality';
 import {
   normalizeStructuredOutputFromBody,
   resolveStructuredOutputForwarding,
@@ -2331,7 +2332,7 @@ export class PipelineService {
             resolved.nodeId,
             resolved.model,
           );
-          if (!modelModalities.includes('vision')) {
+          if (!supportsModalities(modelModalities, ['vision'])) {
             this.logger.warn(
               `Direct route: model "${resolved.model}" on node "${resolved.nodeId}" may not support vision, but proceeding as requested`,
             );
@@ -2481,25 +2482,18 @@ export class PipelineService {
       .filter((n) => n.id !== primaryNodeId)
       .map((n) => ({ node: n.id, model: n.models[0] }));
 
-    // If the request requires vision, sort vision-capable nodes first
+    // If the request requires non-text modalities, keep only compatible
+    // direct fallbacks. The direct primary itself is still honored.
     const reqModalities = detectRequestModalities(canonical);
-    if (reqModalities.has('vision') && otherNodes.length > 1) {
-      const compatible: { node: string; model: string }[] = [];
-      const incompatible: { node: string; model: string }[] = [];
-
-      for (const target of otherNodes) {
+    const requiredModalities = Array.from(reqModalities);
+    if (requiredModalities.length > 1 && otherNodes.length > 0) {
+      return otherNodes.filter((target) => {
         const modalities = this.capabilityService.resolveModelModalities(
           target.node,
           target.model,
         );
-        if (modalities.includes('vision')) {
-          compatible.push(target);
-        } else {
-          incompatible.push(target);
-        }
-      }
-
-      return [...compatible, ...incompatible];
+        return supportsModalities(modalities, requiredModalities);
+      });
     }
 
     return otherNodes;

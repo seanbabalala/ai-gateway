@@ -156,21 +156,44 @@ nodes:
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true
+    modalities: ["text", "vision"]    # Backward-compatible with image-capable chat models
+    endpoints:
+      image: "/v1/images/generations" # Future v0.6 image entrypoint support
+      audio: "/v1/audio/transcriptions"
+      realtime: "/v1/realtime"        # Use wss://... for absolute realtime URLs if needed
+    input_types: ["text", "image", "audio"]
+    output_types: ["text", "image", "events"]
+    max_file_size: 20000000           # Bytes; applies as a node-level default
+    supports_streaming: true
+    supports_realtime: false
+    supports_rerank: false
     model_capabilities:
       gpt-4o:
+        modalities: ["text", "image", "audio"]
+        input_types: ["text", "image", "audio"]
+        output_types: ["text"]
         max_context_tokens: 128000
         structured_output: true
+        supports_streaming: true
         quality_score: 0.9
       gpt-4o-mini:
+        modalities: ["text", "image"]
         max_context_tokens: 128000
         structured_output: true
+        supports_streaming: true
         quality_score: 0.6
         # Optional per-node/model pricing override. If omitted, models_pricing below is used.
         pricing: { input: 0.15, output: 0.60 }
       text-embedding-3-small:
+        modalities: ["text", "embedding"]
+        input_types: ["text"]
+        output_types: ["embedding"]
         dimensions: [512, 1536]
         pricing: { input: 0.02, output: 0.00 }
       text-embedding-3-large:
+        modalities: ["text", "embedding"]
+        input_types: ["text"]
+        output_types: ["embedding"]
         dimensions: [256, 1024, 3072]
         pricing: { input: 0.13, output: 0.00 }
     # Optional per-node upstream concurrency limiter.
@@ -198,9 +221,10 @@ nodes:
     #   method: HEAD        # HEAD | GET | POST
     #   path: /healthz      # Defaults to endpoint when omitted
     #   lightweight_model: gpt-4o-mini
-    # modalities: ["text", "vision"]    # Explicit modality declaration (optional)
-    #   If omitted, modalities are inferred from model names.
-    #   Valid values: "text", "vision", "audio"
+    # Unified v0.6 capability schema is optional.
+    # Valid modalities: text, vision, image, audio, embedding, rerank, realtime.
+    # "vision" is kept as the legacy image-input alias and matches "image".
+    # Per-model model_capabilities override node-level defaults.
     tags: ["code", "reasoning", "creative"]
     model_aliases:
       gpt4: gpt-4o
@@ -221,8 +245,12 @@ nodes:
     structured_output: false
     model_capabilities:
       claude-sonnet-4-20250514:
+        modalities: ["text", "image"]
+        input_types: ["text", "image"]
+        output_types: ["text"]
         max_context_tokens: 200000
         structured_output: false
+        supports_streaming: true
         quality_score: 0.9
     tags: ["code", "backend", "reasoning", "math"]
     model_aliases:

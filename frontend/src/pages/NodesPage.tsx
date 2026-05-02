@@ -1,6 +1,24 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw, RotateCcw, Plus, Pencil, Trash2, Eye, Type, Volume2, Server, AlertTriangle, Boxes, Gauge } from 'lucide-react'
+import {
+  RefreshCw,
+  RotateCcw,
+  Plus,
+  Pencil,
+  Trash2,
+  Eye,
+  Type,
+  Volume2,
+  Server,
+  AlertTriangle,
+  Boxes,
+  Gauge,
+  ImageIcon,
+  Database,
+  ListFilter,
+  Radio,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { CircuitBadge } from '@/components/shared/CircuitBadge'
@@ -25,12 +43,12 @@ import {
 } from '@/hooks/use-mutations'
 import { getNodeColor } from '@/lib/utils'
 import { colorWithOpacity } from '@/lib/theme'
-import type { NodeInfo, CreateNodeRequest, UpdateNodeRequest } from '@/types/api'
+import type { ModelCapabilityInfo, NodeInfo, CreateNodeRequest, UpdateNodeRequest } from '@/types/api'
 
 // ── Modality display configuration ──
 const MODALITY_DISPLAY: Record<string, {
   labelKey: string
-  icon: typeof Eye
+  icon: LucideIcon
   bgClass: string
   borderClass: string
   textClass: string
@@ -49,6 +67,13 @@ const MODALITY_DISPLAY: Record<string, {
     borderClass: 'border-purple-500/30',
     textClass: 'text-purple-700 dark:text-purple-400',
   },
+  image: {
+    labelKey: 'modalities.image',
+    icon: ImageIcon,
+    bgClass: 'bg-indigo-500/10',
+    borderClass: 'border-indigo-500/30',
+    textClass: 'text-indigo-700 dark:text-indigo-400',
+  },
   audio: {
     labelKey: 'modalities.audio',
     icon: Volume2,
@@ -56,6 +81,65 @@ const MODALITY_DISPLAY: Record<string, {
     borderClass: 'border-rose-500/30',
     textClass: 'text-rose-700 dark:text-rose-400',
   },
+  embedding: {
+    labelKey: 'modalities.embedding',
+    icon: Database,
+    bgClass: 'bg-sky-500/10',
+    borderClass: 'border-sky-500/30',
+    textClass: 'text-sky-700 dark:text-sky-400',
+  },
+  rerank: {
+    labelKey: 'modalities.rerank',
+    icon: ListFilter,
+    bgClass: 'bg-amber-500/10',
+    borderClass: 'border-amber-500/30',
+    textClass: 'text-amber-700 dark:text-amber-400',
+  },
+  realtime: {
+    labelKey: 'modalities.realtime',
+    icon: Radio,
+    bgClass: 'bg-emerald-500/10',
+    borderClass: 'border-emerald-500/30',
+    textClass: 'text-emerald-700 dark:text-emerald-400',
+  },
+}
+
+function modelIdsForNode(node: NodeInfo): string[] {
+  return Array.from(new Set([
+    ...node.models,
+    ...(node.embedding_models || []),
+  ]))
+}
+
+function formatLargeNumber(value: number): string {
+  if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k`
+  return `${value}`
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))}MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`
+  return `${bytes}B`
+}
+
+function dimensionsLabel(dimensions: number | number[]): string {
+  return Array.isArray(dimensions)
+    ? `dim ${dimensions.slice(0, 3).join('/')}${dimensions.length > 3 ? '+' : ''}`
+    : `dim ${dimensions}`
+}
+
+function capabilityTokens(capability?: ModelCapabilityInfo): string[] {
+  if (!capability) return []
+  const tokens: string[] = []
+  if (capability.supports_streaming) tokens.push('stream')
+  if (capability.supports_realtime) tokens.push('realtime')
+  if (capability.supports_rerank) tokens.push('rerank')
+  if (capability.max_context_tokens) tokens.push(`${formatLargeNumber(capability.max_context_tokens)} ctx`)
+  if (capability.max_file_size) tokens.push(`${formatFileSize(capability.max_file_size)} file`)
+  if (capability.dimensions) tokens.push(dimensionsLabel(capability.dimensions))
+  if (capability.pricing) tokens.push(`$${capability.pricing.input}/${capability.pricing.output}`)
+  return tokens
 }
 
 export function NodesPage() {
@@ -120,7 +204,7 @@ export function NodesPage() {
   const existingIds = nodesData.nodes.map((n) => n.id)
   const diagnostics = nodesData.diagnostics ?? []
   const healthyCount = nodesData.nodes.filter((node) => node.healthy).length
-  const totalModels = nodesData.nodes.reduce((sum, node) => sum + node.models.length, 0)
+  const totalModels = nodesData.nodes.reduce((sum, node) => sum + modelIdsForNode(node).length, 0)
   const openCircuitCount = nodesData.nodes.filter((node) => node.circuit.state !== 'CLOSED').length
 
   return (
@@ -296,37 +380,65 @@ export function NodesPage() {
 
                   <div className="min-w-0">
                     <div className="flex flex-wrap gap-1.5">
-                      {node.models.slice(0, 5).map((model) => {
+                      {modelIdsForNode(node).slice(0, 5).map((model) => {
                         const mc = node.modelCircuits?.[model]
                         const hasIssue = mc && mc.state !== 'CLOSED'
+                        const capability = node.model_capabilities?.[model]
+                        const isEmbedding = node.embedding_models?.includes(model)
                         return (
                           <span
                             key={model}
-                            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--background-secondary)] px-2.5 py-1 font-mono text-[10px] font-semibold text-[var(--foreground-muted)]"
+                            className="inline-flex min-w-[118px] max-w-full flex-col items-start gap-1 rounded-md bg-[var(--background-secondary)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--foreground-muted)]"
                           >
-                            <span
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: hasIssue ? 'var(--warning)' : color }}
-                            />
-                            {model}
-                            {hasIssue && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  resetCircuit.mutate({ nodeId: node.id, model })
-                                }}
-                                disabled={resetCircuit.isPending}
-                                className="ml-1 text-[var(--foreground-dim)] transition-colors hover:text-[var(--foreground)]"
-                                title={t('actions.resetModelCircuit')}
-                              >
-                                <RotateCcw className="h-3 w-3" />
-                              </button>
+                            <span className="flex max-w-full items-center gap-1.5">
+                              <span
+                                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: hasIssue ? 'var(--warning)' : color }}
+                              />
+                              <span className="truncate font-mono">{model}</span>
+                              {isEmbedding && <Badge variant="blue" className="px-1.5 py-0 text-[8px]">emb</Badge>}
+                              {hasIssue && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    resetCircuit.mutate({ nodeId: node.id, model })
+                                  }}
+                                  disabled={resetCircuit.isPending}
+                                  className="ml-1 text-[var(--foreground-dim)] transition-colors hover:text-[var(--foreground)]"
+                                  title={t('actions.resetModelCircuit')}
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              )}
+                            </span>
+                            {capability && (
+                              <span className="flex max-w-full flex-wrap gap-1">
+                                {capability.modalities.slice(0, 3).map((modality) => {
+                                  const config = MODALITY_DISPLAY[modality] || MODALITY_DISPLAY.text
+                                  return (
+                                    <span
+                                      key={modality}
+                                      className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${config.bgClass} ${config.textClass}`}
+                                    >
+                                      {t(config.labelKey)}
+                                    </span>
+                                  )
+                                })}
+                                {capabilityTokens(capability).slice(0, 3).map((token) => (
+                                  <span
+                                    key={token}
+                                    className="rounded bg-[var(--background-tertiary)] px-1.5 py-0.5 text-[8px] font-bold text-[var(--foreground-dim)]"
+                                  >
+                                    {token}
+                                  </span>
+                                ))}
+                              </span>
                             )}
                           </span>
                         )
                       })}
-                      {node.models.length > 5 && (
-                        <Badge variant="zinc" className="text-[10px]">+{node.models.length - 5}</Badge>
+                      {modelIdsForNode(node).length > 5 && (
+                        <Badge variant="zinc" className="text-[10px]">+{modelIdsForNode(node).length - 5}</Badge>
                       )}
                     </div>
                     {Object.keys(node.aliases).length > 0 && (

@@ -3,6 +3,11 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { GatewayConfig } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
+import {
+  VALID_CAPABILITY_ENDPOINTS,
+  VALID_CAPABILITY_IO_TYPES,
+  VALID_MODALITIES,
+} from './modality';
 
 export type ConfigValidationSeverity = 'error' | 'warning' | 'info';
 
@@ -62,6 +67,9 @@ const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const CAPABILITY_ENDPOINTS = new Set<string>(VALID_CAPABILITY_ENDPOINTS);
+const CAPABILITY_MODALITIES = new Set<string>(VALID_MODALITIES);
+const CAPABILITY_IO_TYPES = new Set<string>(VALID_CAPABILITY_IO_TYPES);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -994,6 +1002,8 @@ function validateNodeRoutingCapabilities(
     );
   }
 
+  validateCapabilitySchemaFields(node, basePath, 'nodes[]', issues);
+
   if (node.model_capabilities === undefined) return;
   if (!isRecord(node.model_capabilities)) {
     issues.push(
@@ -1038,6 +1048,13 @@ function validateNodeRoutingCapabilities(
         ),
       );
     }
+
+    validateCapabilitySchemaFields(
+      capability,
+      capabilityPath,
+      'model_capabilities[]',
+      issues,
+    );
 
     if (
       capability.max_context_tokens !== undefined &&
@@ -1096,6 +1113,199 @@ function validateNodeRoutingCapabilities(
         issues,
       );
     }
+  }
+}
+
+function validateCapabilitySchemaFields(
+  capability: Record<string, unknown>,
+  capabilityPath: string,
+  label: string,
+  issues: ConfigValidationIssue[],
+): void {
+  validateModalityArray(capability.modalities, `${capabilityPath}.modalities`, issues);
+  validateEndpointMap(capability.endpoints, `${capabilityPath}.endpoints`, issues);
+  validateCapabilityIOArray(
+    capability.input_types,
+    `${capabilityPath}.input_types`,
+    `${label}.input_types`,
+    issues,
+  );
+  validateCapabilityIOArray(
+    capability.output_types,
+    `${capabilityPath}.output_types`,
+    `${label}.output_types`,
+    issues,
+  );
+
+  if (
+    capability.max_file_size !== undefined &&
+    (!isFiniteNumber(capability.max_file_size) || capability.max_file_size <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_max_file_size',
+        `${label}.max_file_size must be a positive number of bytes when set.`,
+        `${capabilityPath}.max_file_size`,
+      ),
+    );
+  }
+
+  for (const key of ['supports_streaming', 'supports_realtime', 'supports_rerank']) {
+    if (capability[key] !== undefined && !isBoolean(capability[key])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_support_flag',
+          `${label}.${key} must be a boolean when set.`,
+          `${capabilityPath}.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateModalityArray(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_capability_modalities',
+        'modalities must be a non-empty array when set.',
+        valuePath,
+      ),
+    );
+    return;
+  }
+  value.forEach((modality, index) => {
+    const itemPath = `${valuePath}[${index}]`;
+    if (!isNonEmptyString(modality)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_modalities',
+          'modalities entries must be non-empty strings.',
+          itemPath,
+        ),
+      );
+      return;
+    }
+    if (!CAPABILITY_MODALITIES.has(modality)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_modalities',
+          `Unsupported modality "${modality}". Supported values: ${VALID_MODALITIES.join(', ')}.`,
+          itemPath,
+        ),
+      );
+    }
+  });
+}
+
+function validateEndpointMap(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_capability_endpoints',
+        'endpoints must be an object keyed by capability endpoint when set.',
+        valuePath,
+      ),
+    );
+    return;
+  }
+
+  for (const [endpointName, endpointValue] of Object.entries(value)) {
+    const endpointPath = `${valuePath}.${endpointName}`;
+    if (!CAPABILITY_ENDPOINTS.has(endpointName)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_endpoints',
+          `Unsupported capability endpoint "${endpointName}". Supported values: ${VALID_CAPABILITY_ENDPOINTS.join(', ')}.`,
+          endpointPath,
+        ),
+      );
+      continue;
+    }
+    if (
+      !isNonEmptyString(endpointValue) ||
+      !isEndpointReference(endpointValue)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_endpoints',
+          'Capability endpoint values must be paths starting with "/" or absolute http(s)/ws(s) URLs.',
+          endpointPath,
+        ),
+      );
+    }
+  }
+}
+
+function validateCapabilityIOArray(
+  value: unknown,
+  valuePath: string,
+  label: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_capability_io_types',
+        `${label} must be a non-empty array when set.`,
+        valuePath,
+      ),
+    );
+    return;
+  }
+  value.forEach((item, index) => {
+    if (!isNonEmptyString(item)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_io_types',
+          `${label} entries must be non-empty strings.`,
+          `${valuePath}[${index}]`,
+        ),
+      );
+      return;
+    }
+    if (!CAPABILITY_IO_TYPES.has(item)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_capability_io_types',
+          `Unsupported capability I/O type "${item}". Supported values: ${VALID_CAPABILITY_IO_TYPES.join(', ')}.`,
+          `${valuePath}[${index}]`,
+        ),
+      );
+    }
+  });
+}
+
+function isEndpointReference(value: string): boolean {
+  if (HAS_ENV_REF_PATTERN.test(value)) return true;
+  if (value.startsWith('/')) return true;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol);
+  } catch {
+    return false;
   }
 }
 

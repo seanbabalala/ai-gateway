@@ -1075,6 +1075,24 @@ export class DashboardController {
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
       const concurrency = this.concurrencyLimiter.getNodeStats(node);
       const activeProbe = this.activeHealth.getNodeStatus(node.id);
+      const modelIds = Array.from(new Set([
+        ...node.models,
+        ...(node.embedding_models || []),
+      ]));
+      const modelCapabilities = Object.fromEntries(
+        modelIds.map((model) => [
+          model,
+          this.capabilityService.resolveModelRoutingCapabilities(
+            node.id,
+            model,
+          ),
+        ]),
+      );
+      const endpoints = {
+        default: node.endpoint,
+        ...(node.embeddings_endpoint ? { embeddings: node.embeddings_endpoint } : {}),
+        ...(node.endpoints || {}),
+      };
 
       // Build per-model circuit info
       const modelCircuits: Record<string, {
@@ -1098,9 +1116,12 @@ export class DashboardController {
         protocol: node.protocol,
         base_url: node.base_url,
         endpoint: node.endpoint,
+        endpoints,
         models: node.models,
+        embedding_models: node.embedding_models || [],
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
+        model_capabilities: modelCapabilities,
         tags: node.tags || [],
         aliases: node.model_aliases || {},
         model_prefixes: node.model_prefixes || [],

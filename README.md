@@ -74,6 +74,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
 - **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
@@ -562,6 +563,46 @@ nodes:
 | `messages` | Anthropic Messages | Anthropic Claude |
 
 `/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+
+### Unified Model Capabilities
+
+v0.6 adds one capability schema that covers today’s chat/responses/messages/embeddings paths and prepares the OSS Data Plane for image, audio, rerank, and realtime endpoints without breaking old configs. Existing `nodes[].models`, `nodes[].embedding_models`, `max_context_tokens`, `structured_output`, and `pricing` remain valid.
+
+```yaml
+nodes:
+  - id: openai
+    models: ["gpt-4o", "gpt-4o-mini"]
+    embedding_models: ["text-embedding-3-small"]
+    modalities: ["text", "vision"] # legacy image-input alias; compatible with "image"
+    endpoints:
+      image: "/v1/images/generations"
+      audio: "/v1/audio/transcriptions"
+      rerank: "/v1/rerank"
+      realtime: "wss://api.openai.com/v1/realtime"
+    input_types: ["text", "image", "audio"]
+    output_types: ["text", "image", "events"]
+    max_file_size: 20000000
+    supports_streaming: true
+    supports_realtime: false
+    supports_rerank: false
+    model_capabilities:
+      gpt-4o:
+        modalities: ["text", "image", "audio"]
+        input_types: ["text", "image", "audio"]
+        output_types: ["text"]
+        supports_streaming: true
+        pricing: { input: 2.5, output: 10 }
+      text-embedding-3-small:
+        modalities: ["text", "embedding"]
+        input_types: ["text"]
+        output_types: ["embedding"]
+        dimensions: [512, 1536]
+        pricing: { input: 0.02, output: 0 }
+```
+
+Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible before future v0.6 endpoints are enabled.
+
+See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
 
 ### Upstream Connection Pooling
 

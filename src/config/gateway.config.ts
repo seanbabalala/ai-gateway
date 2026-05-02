@@ -4,7 +4,11 @@
 // Types matching the structure of gateway.config.yaml
 // ===================================================================
 
-import type { Modality } from './modality';
+import type {
+  CapabilityEndpoint,
+  CapabilityIOType,
+  Modality,
+} from './modality';
 import type { PluginConfigEntry } from '../plugins/types';
 
 export interface GatewayConfig {
@@ -364,6 +368,22 @@ export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 export type HealthCheckMethod = 'HEAD' | 'GET' | 'POST';
 
 export interface ModelCapabilityConfig {
+  /** Explicit modalities supported by this model. "vision" remains supported as the legacy image-input alias. */
+  modalities?: Modality[];
+  /** Endpoint paths or absolute URLs used by future protocol-specific provider calls. */
+  endpoints?: Partial<Record<CapabilityEndpoint, string>>;
+  /** Input media/data types accepted by this model. */
+  input_types?: CapabilityIOType[] | string[];
+  /** Output media/data types emitted by this model. */
+  output_types?: CapabilityIOType[] | string[];
+  /** Maximum accepted uploaded or inline file size in bytes. */
+  max_file_size?: number;
+  /** Whether this model supports streaming responses. */
+  supports_streaming?: boolean;
+  /** Whether this model supports realtime sessions/events. */
+  supports_realtime?: boolean;
+  /** Whether this model supports rerank requests. */
+  supports_rerank?: boolean;
   /** Maximum total context window for this model, including input and reserved output tokens. */
   max_context_tokens?: number;
   /** Whether this model should be considered safe for structured output requests. */
@@ -433,6 +453,14 @@ export interface NodeConfig {
   max_context_tokens?: number;
   /** Node-level default structured-output support flag. */
   structured_output?: boolean;
+  /** Node-level default multimodal capability declarations. */
+  endpoints?: Partial<Record<CapabilityEndpoint, string>>;
+  input_types?: CapabilityIOType[] | string[];
+  output_types?: CapabilityIOType[] | string[];
+  max_file_size?: number;
+  supports_streaming?: boolean;
+  supports_realtime?: boolean;
+  supports_rerank?: boolean;
   /** Optional per-model capability and pricing metadata. Keys are model IDs. */
   model_capabilities?: Record<string, ModelCapabilityConfig>;
 
@@ -452,7 +480,8 @@ export interface NodeConfig {
    * Explicitly declare which modalities this node supports.
    * When set, this takes highest priority over model-name inference and capability fallback.
    *
-   * Valid modalities: "text", "vision", "audio"
+   * Valid modalities: "text", "vision", "image", "audio", "embedding", "rerank", "realtime"
+   * "vision" is kept for backwards compatibility and is treated as compatible with "image".
    *
    * If omitted, modalities are inferred from model names or capabilities.
    * Unknown models default to ["text"] (text-only).

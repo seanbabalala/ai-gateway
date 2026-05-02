@@ -26,7 +26,7 @@ import {
   TierConfig,
   WeightedRouteTarget,
 } from '../config/gateway.config';
-import { Modality } from '../config/modality';
+import { Modality, supportsModalities } from '../config/modality';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface RouteDecision {
@@ -144,7 +144,7 @@ export class RoutingService {
    * 1. Apply momentum smoothing (if session key provided)
    * 2. Look up tier config for primary + fallbacks
    * 3. Filter out nodes with OPEN circuit breaker
-   * 3.5. Modality-aware reordering (compatible nodes first)
+   * 3.5. Modality-aware filtering
    * 4. Apply domain hint adjustments (config preference → tag fallback)
    * 5. Build final route
    */
@@ -173,9 +173,14 @@ export class RoutingService {
         `No config for tier "${effectiveTier}", falling back to "${firstTier}"`,
       );
       const fallbackConfig = this.config.routing.tiers[firstTier];
-      const fallbackTargets = this.applyCapabilityConstraints(
+      const modalityCompatibleTargets = this.filterTargetsByModalities(
         effectiveTier,
         this.normalizeTierTargets(fallbackConfig).targets,
+        modalityHints,
+      );
+      const fallbackTargets = this.applyCapabilityConstraints(
+        effectiveTier,
+        modalityCompatibleTargets,
         selectionHints,
       );
       const selected = fallbackTargets[0];
@@ -219,17 +224,11 @@ export class RoutingService {
         splitAvailable = splitAllTargets;
       }
 
-      // Modality-aware reordering on split targets
-      if (modalityHints && modalityHints.length > 0) {
-        const compatible: RouteTarget[] = [];
-        const incompatible: RouteTarget[] = [];
-        for (const target of splitAvailable) {
-          const targetModalities = this.capabilityService.resolveModelModalities(target.node, target.model);
-          const supported = modalityHints.every((m) => targetModalities.includes(m));
-          (supported ? compatible : incompatible).push(target);
-        }
-        splitAvailable = [...compatible, ...incompatible];
-      }
+      splitAvailable = this.filterTargetsByModalities(
+        effectiveTier,
+        splitAvailable,
+        modalityHints,
+      );
 
       // Domain hint reordering on split targets
       let splitOrdered = [...splitAvailable];
@@ -289,41 +288,12 @@ export class RoutingService {
       availableTargets = normalized.targets;
     }
 
-    // ── Step 3.5: Modality-aware reordering ──
-    // Compatible nodes (support all required modalities) go first.
-    // Incompatible nodes are pushed to the end as last resort (not removed).
-    if (modalityHints && modalityHints.length > 0) {
-      const compatible: WeightedRouteTarget[] = [];
-      const incompatible: WeightedRouteTarget[] = [];
-
-      for (const target of availableTargets) {
-        const targetModalities = this.capabilityService.resolveModelModalities(
-          target.node,
-          target.model,
-        );
-        const supported = modalityHints.every((m) =>
-          targetModalities.includes(m),
-        );
-        if (supported) {
-          compatible.push(target);
-        } else {
-          incompatible.push(target);
-        }
-      }
-
-      // Reorder: compatible first, then incompatible as fallback
-      availableTargets = [...compatible, ...incompatible];
-
-      if (compatible.length === 0) {
-        this.logger.warn(
-          `No nodes support modalities [${modalityHints.join(', ')}] for tier "${effectiveTier}". Using all targets as last resort.`,
-        );
-      } else if (incompatible.length > 0) {
-        this.logger.debug(
-          `Modality filter: ${compatible.length} compatible, ${incompatible.length} demoted to fallback end`,
-        );
-      }
-    }
+    // ── Step 3.5: Modality-aware filtering ──
+    availableTargets = this.filterTargetsByModalities(
+      effectiveTier,
+      availableTargets,
+      modalityHints,
+    );
 
     // ── Step 4: Apply domain hint reordering ──
     let orderedTargets = [...availableTargets];
@@ -975,6 +945,39 @@ export class RoutingService {
     }
 
     return fits;
+  }
+
+  private filterTargetsByModalities<T extends RouteTarget>(
+    tier: string,
+    targets: T[],
+    modalityHints?: Modality[],
+  ): T[] {
+    const required = Array.from(new Set(modalityHints || []));
+    if (required.length === 0 || targets.length === 0) return targets;
+
+    const compatible = targets.filter((target) => {
+      const targetModalities = this.capabilityService.resolveModelModalities(
+        target.node,
+        target.model,
+      );
+      return supportsModalities(targetModalities, required);
+    });
+
+    if (compatible.length === 0) {
+      throw new RoutingConstraintError(
+        `No route targets for tier "${tier}" support required modalities [${required.join(', ')}].`,
+        400,
+      );
+    }
+
+    const removed = targets.length - compatible.length;
+    if (removed > 0) {
+      this.logger.debug(
+        `Modality-aware routing removed ${removed} target(s) for tier "${tier}" because they do not support [${required.join(', ')}].`,
+      );
+    }
+
+    return compatible;
   }
 
   private preferStructuredOutputTargets<T extends RouteTarget>(
