@@ -26,11 +26,11 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.3.0**.
+Current open-source release: **v0.3.0**. The unreleased v0.4 branch adds OpenAI-compatible embeddings.
 
-SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in **any** of the three major API formats and intelligently routes them to the best provider based on request complexity, cost, and availability.
+SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
-**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you a **single endpoint** that speaks all three formats and automatically picks the right provider.
+**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
 
 ```
 Your App ──▶ SiftGate ──▶ OpenAI (GPT)
@@ -63,6 +63,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Chat Completions** (`/v1/chat/completions`) — the most common format
 - **OpenAI Responses** (`/v1/responses`) — OpenAI's newer API format
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
+- **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
 - Full **streaming** support across all three protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
@@ -384,9 +385,11 @@ nodes:
     protocol: chat_completions # chat_completions | responses | messages
     base_url: "https://api.openai.com" # Provider base URL
     endpoint: "/v1/chat/completions" # API endpoint path
+    embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
+    embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -411,6 +414,8 @@ nodes:
 | `chat_completions` | OpenAI Chat Completions | OpenAI, Azure OpenAI, Google Gemini, any OpenAI-compatible API |
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
+
+`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
 
 ### Per-Node Concurrency Control
 
@@ -510,6 +515,7 @@ For v0.3 cost and context-window aware routing, add model capability metadata an
 nodes:
   - id: openai
     models: ["gpt-4o", "gpt-4o-mini"]
+    embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     max_context_tokens: 128000        # node-level default
     structured_output: true           # node-level default
     model_capabilities:
@@ -522,6 +528,12 @@ nodes:
         structured_output: true
         quality_score: 0.6
         pricing: { input: 0.15, output: 0.60 } # optional node/model override
+      text-embedding-3-small:
+        dimensions: [512, 1536]
+        pricing: { input: 0.02, output: 0 }
+      text-embedding-3-large:
+        dimensions: [256, 1024, 3072]
+        pricing: { input: 0.13, output: 0 }
 
 routing:
   optimization: cost # cost | latency | balanced | quality
@@ -535,6 +547,23 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `latency` chooses the lowest local sliding-window latency, with stable cold-start fallback.
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
+
+### Embeddings
+
+`POST /v1/embeddings` accepts OpenAI-compatible requests with `model`, `input`, optional `dimensions`, `encoding_format`, and `user`. `input` may be a string, array of strings, token array, or array of token arrays.
+
+For `model: "auto"`, SiftGate selects from configured `embedding_models`, filters by API key permissions and circuit state, prefers exact `dimensions` matches, and then ranks eligible targets by embedding input cost. Direct embedding requests use the same direct-routing permission checks as chat requests and return a clear 400 if the requested model is not listed under any node's `embedding_models`.
+
+```bash
+curl http://localhost:2099/v1/embeddings \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "input": ["hello", "world"],
+    "dimensions": 1536
+  }'
+```
 
 ### Fallback Policies
 
@@ -600,6 +629,7 @@ budget:
 models_pricing: # Cost per 1M tokens (USD); used when node/model pricing is omitted
   gpt-4o: { input: 2.50, output: 10.00 }
   claude-opus-4: { input: 15.00, output: 75.00 }
+  text-embedding-3-small: { input: 0.02, output: 0.00 }
 ```
 
 ### Webhook Alerts
@@ -688,6 +718,7 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions format                |
 | `POST` | `/v1/responses`        | OpenAI Responses format                       |
 | `POST` | `/v1/messages`         | Anthropic Messages format                     |
+| `POST` | `/v1/embeddings`       | OpenAI Embeddings format                      |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -718,6 +749,8 @@ For each accepted request, the gateway applies the same accounting path:
 6. Compute token usage and estimated cost from node/model `pricing` overrides or `models_pricing`.
 7. Record usage against global budgets and, when present, the key budget.
 8. Write a call log attributed to the same `api_key_id`.
+
+Embedding requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Their usage is recorded as input tokens with zero output tokens.
 
 The call log stores:
 
@@ -896,7 +929,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages
+│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -928,7 +961,7 @@ Client Request (any format)
 
 **Key components:**
 
-- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages formats
+- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and embedding request/response shapes
 - **Scoring Engine** — Evaluates request complexity across keyword, structural, and tool dimensions
 - **Router** — Tier-based node selection with circuit breaker, momentum, and domain-aware reordering
 - **Provider Client** — HTTP forwarder with streaming support (SSE parsing for each protocol)
@@ -938,7 +971,7 @@ Client Request (any format)
 
 - **Backend:** NestJS 11, TypeORM, SQLite (default) / PostgreSQL
 - **Frontend:** React 19, Vite, Tailwind CSS v4, TanStack Query, Recharts
-- **Protocols:** Full support for streaming and non-streaming across all three API formats
+- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings
 
 ## Troubleshooting
 

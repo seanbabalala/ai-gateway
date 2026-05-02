@@ -149,6 +149,31 @@ export class AnthropicMessagesRequestDto {
   stop_sequences?: string[];
 }
 
+export class EmbeddingsRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for cost-aware embedding routing or a configured embedding model.' })
+  model!: string;
+
+  @ApiProperty({
+    oneOf: [
+      { type: 'string' },
+      { type: 'array', items: { type: 'string' } },
+      { type: 'array', items: { type: 'number' } },
+      { type: 'array', items: { type: 'array', items: { type: 'number' } } },
+    ],
+    example: ['SiftGate routes AI traffic.', 'Embeddings are useful for search.'],
+  })
+  input!: string | string[] | number[] | number[][];
+
+  @ApiPropertyOptional({ example: 1536 })
+  dimensions?: number;
+
+  @ApiPropertyOptional({ example: 'float' })
+  encoding_format?: string;
+
+  @ApiPropertyOptional({ example: 'user-123' })
+  user?: string;
+}
+
 export class ModelItemDto {
   @ApiProperty({ example: 'gpt-4o' })
   id!: string;

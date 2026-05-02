@@ -4,6 +4,8 @@ import { ConfigService } from '../config/config.service';
 import { NodeConfig, NodeProtocol } from '../config/gateway.config';
 import {
   CanonicalRequest,
+  CanonicalEmbeddingRequest,
+  CanonicalEmbeddingResponse,
   CanonicalResponse,
   CanonicalContentBlock,
   CanonicalStreamEvent,
@@ -96,6 +98,63 @@ export class ProviderClientService {
     );
   }
 
+  async forwardEmbeddings(
+    canonical: CanonicalEmbeddingRequest,
+    nodeId: string,
+    targetModel: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: { timeoutMs?: number } = {},
+  ): Promise<CanonicalEmbeddingResponse> {
+    return this.telemetry.withSpan(
+      'gateway.upstream.embeddings',
+      {
+        'gateway.upstream.node': nodeId,
+        'gateway.upstream.model': targetModel,
+        'gateway.upstream.is_fallback': routingMeta.is_fallback,
+        'gen_ai.system': 'embeddings',
+        'gen_ai.request.model': targetModel,
+      },
+      async (span) => {
+        const node = this.config.getNode(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+        const startTime = Date.now();
+        const requestBody = this.buildEmbeddingsRequest(canonical, targetModel);
+        const response = await this.sendRequest(
+          node,
+          requestBody,
+          undefined,
+          options.timeoutMs,
+          node.embeddings_endpoint || '/v1/embeddings',
+        );
+        const latencyMs = Date.now() - startTime;
+
+        this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
+
+        const responseBody = await response.json();
+        const canonicalResp = this.normalizeEmbeddingsResponse(
+          responseBody as Record<string, unknown>,
+          routingMeta,
+          nodeId,
+          targetModel,
+          latencyMs,
+        );
+        span.setAttributes({
+          'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
+          'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
+          'gateway.upstream.latency_ms': latencyMs,
+        });
+        return canonicalResp;
+      },
+      SpanKind.CLIENT,
+    );
+  }
+
   // ══════════════════════════════════════════════════════
   // Streaming Forward
   // ══════════════════════════════════════════════════════
@@ -168,8 +227,9 @@ export class ProviderClientService {
     requestBody: Record<string, unknown>,
     canonical?: CanonicalRequest,
     timeoutMs?: number,
+    endpointOverride?: string,
   ): Promise<Response> {
-    const url = `${node.base_url}${node.endpoint}`;
+    const url = `${node.base_url}${endpointOverride || node.endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -294,6 +354,26 @@ export class ProviderClientService {
     }
   }
 
+  private buildEmbeddingsRequest(
+    canonical: CanonicalEmbeddingRequest,
+    targetModel: string,
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      model: targetModel,
+      input: canonical.input,
+    };
+    if (canonical.dimensions !== undefined) {
+      body.dimensions = canonical.dimensions;
+    }
+    if (canonical.encoding_format) {
+      body.encoding_format = canonical.encoding_format;
+    }
+    if (canonical.user) {
+      body.user = canonical.user;
+    }
+    return body;
+  }
+
   private shouldPassthroughNativeMessages(
     canonical: CanonicalRequest,
     protocol: NodeProtocol,
@@ -412,6 +492,51 @@ export class ProviderClientService {
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
     }
+  }
+
+  normalizeEmbeddingsResponse(
+    body: Record<string, unknown>,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+  ): CanonicalEmbeddingResponse {
+    const usage = (body.usage || {}) as Record<string, unknown>;
+    const data = Array.isArray(body.data) ? body.data : [];
+    return {
+      id: (body.id as string) || `emb_${Date.now()}`,
+      object: 'list',
+      data: data.map((item, index) => {
+        const entry =
+          item && typeof item === 'object'
+            ? (item as Record<string, unknown>)
+            : {};
+        return {
+          index:
+            typeof entry.index === 'number' && Number.isFinite(entry.index)
+              ? entry.index
+              : index,
+          embedding: Array.isArray(entry.embedding) || typeof entry.embedding === 'string'
+            ? (entry.embedding as number[] | string)
+            : [],
+        };
+      }),
+      usage: {
+        input_tokens:
+          (usage.prompt_tokens as number) ||
+          (usage.input_tokens as number) ||
+          (usage.total_tokens as number) ||
+          0,
+        output_tokens: 0,
+      },
+      model: (body.model as string) || model,
+      routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
+    };
   }
 
   private normalizeChatCompletionsResponse(

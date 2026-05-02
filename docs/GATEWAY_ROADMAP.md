@@ -359,14 +359,16 @@
 ### P0：API 扩展
 
 #### 19. Embeddings 端点
-- **现状**：仅支持 Chat/Responses/Messages
+- **状态**：✅ v0.4 已实现（功能分支 `codex/v0.4-embeddings-endpoint`）
+- **现状**：开源 Data Plane 已支持 OpenAI-compatible `POST /v1/embeddings`
 - **目标**：支持 `/v1/embeddings`
 - **实现方案**：
   - 新 Controller：`POST /v1/embeddings`
-  - Node 配置增加 `embedding_models` 列表
-  - 支持批量 embedding 请求
-  - 路由：按维度/价格选择 embedding 模型
-  - 兼容 OpenAI embedding API 格式
+  - Canonical embeddings request/response 类型与 OpenAI-compatible normalizer
+  - Node 配置增加 `embedding_models` 与可选 `embeddings_endpoint`
+  - 支持批量 embedding 请求和 `dimensions` 参数
+  - 路由：按 API key 权限、circuit 状态、维度兼容和价格选择 embedding 模型
+  - 记录 usage/cost/call_log/telemetry，并复用并发控制、fallback、预算和外部日志路径
 
 #### 20. Image Generation 端点
 - **现状**：不支持图片生成
@@ -617,7 +619,7 @@
 | 18 | Prometheus Metrics | ⭐⭐⭐⭐ | 小 | ✅ v0.3.0 |
 | 13 | 自适应路由 | ⭐⭐⭐⭐⭐ | 大 | ✅ v0.3.0 |
 | 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | ✅ v0.3.0 |
-| 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |
+| 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | ✅ v0.4 |
 | 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | 🔵 v0.4 |
 | 28 | Redis 共享状态 | ⭐⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
 | 31 | HTTP/2 连接池 | ⭐⭐⭐ | 中 | 🟣 v0.5 |

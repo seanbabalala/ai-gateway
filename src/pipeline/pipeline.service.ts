@@ -14,6 +14,8 @@ import {
 } from '../config/gateway.config';
 import {
   CanonicalRequest,
+  CanonicalEmbeddingRequest,
+  CanonicalEmbeddingResponse,
   CanonicalResponse,
   CanonicalStreamEvent,
   SourceFormat,
@@ -86,6 +88,13 @@ interface NodeAttemptResult {
   fallbackReason: FallbackReason | null;
 }
 
+interface EmbeddingAttemptResult {
+  response: CanonicalEmbeddingResponse | null;
+  lastError: Error | null;
+  retries: number;
+  fallbackReason: FallbackReason | null;
+}
+
 interface PrimaryAttemptResult extends NodeAttemptResult {
   usedTarget: RouteTarget;
   usedFallback: boolean;
@@ -114,6 +123,8 @@ class GatewayRequestRejectedError extends Error {
     this.name = 'GatewayRequestRejectedError';
   }
 }
+
+type LoggableCanonicalRequest = CanonicalRequest | CanonicalEmbeddingRequest;
 
 @Injectable()
 export class PipelineService {
@@ -493,6 +504,191 @@ export class PipelineService {
     ); // end of withSpan
   }
 
+  async processEmbeddings(canonical: CanonicalEmbeddingRequest): Promise<PipelineResult> {
+    const requestId = uuidv4();
+    const startTime = Date.now();
+    const requestedModel = canonical.model || canonical.metadata.original_model || 'auto';
+
+    return this.telemetry.withSpan(
+      'gateway.request',
+      {
+        'gateway.request_id': requestId,
+        'gateway.source_format': 'embeddings',
+        'gateway.model': requestedModel,
+        'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.stream': false,
+      },
+      async (rootSpan) => {
+        try {
+          const validationError = this.validateEmbeddingRequest(canonical);
+          if (validationError) {
+            return {
+              body: this.formatError('embeddings', 400, validationError),
+              statusCode: 400,
+            };
+          }
+
+          try {
+            await this.checkBudget(canonical);
+          } catch (err) {
+            if (err instanceof BudgetExceededError) {
+              this.logger.warn(`Budget exceeded (embeddings): ${err.message}`);
+              return {
+                body: this.formatBudgetError('embeddings', err),
+                statusCode: 429,
+              };
+            }
+            throw err;
+          }
+
+          this.assertRouteModeAllowed(
+            canonical,
+            requestedModel === 'auto' ? 'auto' : 'direct',
+          );
+          const route = this.routingService.resolveEmbeddingRoute(
+            requestedModel,
+            canonical.dimensions,
+            (target) => this.isTargetAllowed(canonical, target.node, target.model),
+          );
+          const tier: Tier = route.mode === 'direct' ? 'direct' : 'standard';
+          const targets = [route.primary, ...route.fallbacks];
+          const retryConfig = this.config.retry;
+          let response: CanonicalEmbeddingResponse | null = null;
+          let lastError: Error | null = null;
+          let totalRetries = 0;
+          let usedNodeId = route.primary.node;
+          let usedModel = route.primary.model;
+          let isFallback = false;
+          let fallbackReason: FallbackReason | null = null;
+          let fallbackFromNode: string | null = null;
+
+          for (const [index, target] of targets.entries()) {
+            usedNodeId = target.node;
+            usedModel = target.model;
+            isFallback = index > 0;
+            if (isFallback && !fallbackFromNode) {
+              fallbackFromNode = route.primary.node;
+              this.logger.log(`Trying embedding fallback: ${target.node} (${target.model})`);
+            }
+
+            const attempt = await this.tryEmbeddingNodeWithRetry(
+              canonical,
+              target.node,
+              target.model,
+              {
+                tier,
+                score: 0,
+                is_fallback: isFallback,
+                fallback_reason: isFallback ? fallbackReason || 'upstream_error' : null,
+              },
+              retryConfig,
+            );
+            totalRetries += attempt.retries;
+            if (attempt.response) {
+              response = attempt.response;
+              fallbackReason = isFallback
+                ? fallbackReason || attempt.fallbackReason || 'upstream_error'
+                : attempt.fallbackReason;
+              break;
+            }
+            lastError = attempt.lastError;
+            fallbackReason = attempt.fallbackReason || fallbackReason;
+          }
+
+          if (!response) {
+            const errorMsg = lastError?.message || 'All embedding nodes failed';
+            const failureStatus = this.resolveFailureStatus(lastError);
+            this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
+            await this.logCall({
+              requestId,
+              canonical,
+              tier,
+              score: 0,
+              nodeId: usedNodeId,
+              model: usedModel,
+              statusCode: failureStatus,
+              isFallback,
+              latencyMs: Date.now() - startTime,
+              usage: { input_tokens: 0, output_tokens: 0 },
+              error: errorMsg,
+              retryCount: totalRetries,
+              fallbackReason,
+              fallbackFromNode,
+            });
+            return {
+              body: this.formatError('embeddings', failureStatus, errorMsg),
+              statusCode: failureStatus,
+            };
+          }
+
+          if (response.usage.input_tokens === 0) {
+            response.usage.input_tokens = this.estimateEmbeddingInputTokens(canonical.input);
+          }
+
+          const { costUsd, totalTokens } = await this.recordBudgetUsage(
+            canonical,
+            response.usage,
+            usedModel,
+            usedNodeId,
+          );
+          const durationMs = Date.now() - startTime;
+          rootSpan.setAttributes({
+            'gateway.node': usedNodeId,
+            'gateway.model': usedModel,
+            'gateway.is_fallback': isFallback,
+            'gateway.fallback_reason': fallbackReason || '',
+            'gen_ai.request.model': usedModel,
+            'gen_ai.usage.input_tokens': response.usage.input_tokens,
+            'gen_ai.usage.output_tokens': response.usage.output_tokens,
+          });
+          this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+          this.telemetry.requestDuration.record(durationMs, { tier, node: usedNodeId });
+          this.telemetry.tokensUsage.add(totalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+          if (costUsd > 0) {
+            this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+          }
+
+          await this.logCall({
+            requestId,
+            canonical,
+            tier,
+            score: 0,
+            nodeId: usedNodeId,
+            model: usedModel,
+            statusCode: 200,
+            isFallback,
+            latencyMs: response.routing.latency_ms,
+            usage: response.usage,
+            error: null,
+            retryCount: totalRetries,
+            fallbackReason,
+            fallbackFromNode,
+          });
+
+          return {
+            body: this.denormalizeEmbeddingForClient(response),
+            statusCode: 200,
+          };
+        } catch (err) {
+          if (err instanceof GatewayRequestRejectedError) {
+            return {
+              body: this.formatError('embeddings', err.statusCode, err.message),
+              statusCode: err.statusCode,
+            };
+          }
+          if (err instanceof RoutingConstraintError) {
+            return {
+              body: this.formatError('embeddings', err.statusCode, err.message),
+              statusCode: err.statusCode,
+            };
+          }
+          throw err;
+        }
+      },
+      SpanKind.SERVER,
+    );
+  }
+
   // ══════════════════════════════════════════════════════
   // Retry Helper — try a single node with retries + backoff
   // ══════════════════════════════════════════════════════
@@ -771,6 +967,112 @@ export class PipelineService {
     };
   }
 
+  private async tryEmbeddingNodeWithRetry(
+    canonical: CanonicalEmbeddingRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    retryConfig: RetryConfig,
+  ): Promise<EmbeddingAttemptResult> {
+    const maxAttempts = 1 + retryConfig.max_retries;
+    let lastError: Error | null = null;
+    let retries = 0;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const attemptStart = Date.now();
+      try {
+        const response = await this.withConcurrencySlot(
+          nodeId,
+          model,
+          () =>
+            this.forwardEmbeddingsWithFallbackTimeout(
+              canonical,
+              nodeId,
+              model,
+              routingMeta,
+            ),
+        );
+        this.circuitBreaker.recordSuccess(nodeId, model);
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          response.routing.latency_ms,
+          200,
+        );
+        return { response, lastError: null, retries, fallbackReason: null };
+      } catch (err) {
+        lastError = err as Error;
+        const fallbackReason = this.resolveFallbackReason(lastError);
+        if (lastError instanceof ConcurrencyLimitError) {
+          this.logger.warn(lastError.message);
+          if (!lastError.fallbackAllowed) {
+            throw new GatewayRequestRejectedError(
+              lastError.message,
+              lastError.statusCode,
+            );
+          }
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason: 'concurrency_limited',
+          };
+        }
+
+        const statusCode = err instanceof ProviderError ? err.statusCode : 0;
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          Date.now() - attemptStart,
+          statusCode || 0,
+        );
+        const isRetryable = retryConfig.retryable_status.includes(statusCode);
+        const shouldImmediateFallback =
+          this.shouldImmediateFallback(lastError) || fallbackReason === 'timeout';
+        const isLastAttempt = attempt >= maxAttempts - 1;
+
+        if (!isRetryable || isLastAttempt || shouldImmediateFallback) {
+          this.logger.warn(
+            `Embedding node ${nodeId} failed (attempt ${attempt + 1}/${maxAttempts}): ${lastError.message}` +
+            (isLastAttempt && attempt > 0 ? ' — retries exhausted' : '') +
+            (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
+          );
+          this.circuitBreaker.recordFailure(nodeId, model);
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason,
+          };
+        }
+
+        retries++;
+        const delay = this.calculateBackoff(
+          attempt,
+          retryConfig,
+          statusCode === 429 ? lastError : undefined,
+        );
+        this.logger.warn(
+          `Embedding node ${nodeId} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
+          `retrying in ${delay}ms...`,
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    return {
+      response: null,
+      lastError,
+      retries,
+      fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+    };
+  }
+
   private shouldImmediateFallback(err: Error): boolean {
     return (
       err instanceof ProviderError &&
@@ -821,6 +1123,35 @@ export class PipelineService {
       );
     }
     return this.providerClient.forward(
+      canonical,
+      nodeId,
+      model,
+      routingMeta,
+      { timeoutMs },
+    );
+  }
+
+  private forwardEmbeddingsWithFallbackTimeout(
+    canonical: CanonicalEmbeddingRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+  ): Promise<CanonicalEmbeddingResponse> {
+    const timeoutMs = this.resolveFallbackTimeoutMs();
+    if (timeoutMs === undefined) {
+      return this.providerClient.forwardEmbeddings(
+        canonical,
+        nodeId,
+        model,
+        routingMeta,
+      );
+    }
+    return this.providerClient.forwardEmbeddings(
       canonical,
       nodeId,
       model,
@@ -1761,6 +2092,60 @@ export class PipelineService {
     return Math.max(1, Math.ceil((text.length + toolChars) / 4));
   }
 
+  private estimateEmbeddingInputTokens(input: unknown): number {
+    if (typeof input === 'string') {
+      return Math.max(1, Math.ceil(input.length / 4));
+    }
+    if (!Array.isArray(input)) {
+      return 0;
+    }
+    if (input.every((item) => typeof item === 'string')) {
+      return Math.max(
+        1,
+        Math.ceil((input as string[]).reduce((sum, item) => sum + item.length, 0) / 4),
+      );
+    }
+    if (input.every((item) => typeof item === 'number')) {
+      return input.length;
+    }
+    if (
+      input.every((item) =>
+        Array.isArray(item) &&
+        item.every((token) => typeof token === 'number'),
+      )
+    ) {
+      return (input as number[][]).reduce((sum, tokens) => sum + tokens.length, 0);
+    }
+    return 0;
+  }
+
+  private validateEmbeddingRequest(canonical: CanonicalEmbeddingRequest): string | null {
+    if (!this.isValidEmbeddingInput(canonical.input)) {
+      return 'Embeddings input must be a string, string array, token array, or array of token arrays.';
+    }
+    if (
+      canonical.dimensions !== undefined &&
+      (!Number.isInteger(canonical.dimensions) || canonical.dimensions <= 0)
+    ) {
+      return 'Embeddings dimensions must be a positive integer when provided.';
+    }
+    return null;
+  }
+
+  private isValidEmbeddingInput(input: unknown): boolean {
+    if (typeof input === 'string') return true;
+    if (!Array.isArray(input) || input.length === 0) return false;
+    return (
+      input.every((item) => typeof item === 'string') ||
+      input.every((item) => typeof item === 'number' && Number.isFinite(item)) ||
+      input.every((item) =>
+        Array.isArray(item) &&
+        item.length > 0 &&
+        item.every((token) => typeof token === 'number' && Number.isFinite(token)),
+      )
+    );
+  }
+
   // ══════════════════════════════════════════════════════
   // Smart Route Resolution
   // ══════════════════════════════════════════════════════
@@ -2004,7 +2389,7 @@ export class PipelineService {
   }
 
   private assertRouteModeAllowed(
-    canonical: CanonicalRequest,
+    canonical: LoggableCanonicalRequest,
     mode: 'auto' | 'direct',
   ): void {
     const permissions = canonical.metadata.api_key_permissions;
@@ -2026,7 +2411,7 @@ export class PipelineService {
   }
 
   private assertTargetAllowed(
-    canonical: CanonicalRequest,
+    canonical: LoggableCanonicalRequest,
     nodeId: string,
     model: string,
   ): void {
@@ -2068,7 +2453,7 @@ export class PipelineService {
   }
 
   private filterAllowedTargets(
-    canonical: CanonicalRequest,
+    canonical: LoggableCanonicalRequest,
     targets: { node: string; model: string }[],
   ): { node: string; model: string }[] {
     return targets.filter((target) =>
@@ -2145,7 +2530,7 @@ export class PipelineService {
   }
 
   private isTargetAllowed(
-    canonical: CanonicalRequest,
+    canonical: LoggableCanonicalRequest,
     nodeId: string,
     model: string,
   ): boolean {
@@ -2239,6 +2624,25 @@ export class PipelineService {
     }
   }
 
+  private denormalizeEmbeddingForClient(
+    canonical: CanonicalEmbeddingResponse,
+  ): Record<string, unknown> {
+    return {
+      object: 'list',
+      data: canonical.data.map((item) => ({
+        object: 'embedding',
+        embedding: item.embedding,
+        index: item.index,
+      })),
+      model: canonical.model,
+      usage: {
+        prompt_tokens: canonical.usage.input_tokens,
+        total_tokens:
+          canonical.usage.input_tokens + canonical.usage.output_tokens,
+      },
+    };
+  }
+
   // ══════════════════════════════════════════════════════
   // Error Formatting
   // ══════════════════════════════════════════════════════
@@ -2247,6 +2651,7 @@ export class PipelineService {
     switch (sourceFormat) {
       case 'chat_completions': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'responses': return { error: { message, type: 'server_error', code: String(statusCode) } };
+      case 'embeddings': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'messages': return { type: 'error', error: { type: 'api_error', message } };
       default: return { error: { message } };
     }
@@ -2402,7 +2807,7 @@ export class PipelineService {
   // Budget Accounting
   // ══════════════════════════════════════════════════════
 
-  private async checkBudget(canonical: CanonicalRequest): Promise<void> {
+  private async checkBudget(canonical: LoggableCanonicalRequest): Promise<void> {
     if (canonical.metadata.api_key_id) {
       await this.budgetService.check(
         canonical.metadata.api_key_name || undefined,
@@ -2415,7 +2820,7 @@ export class PipelineService {
   }
 
   private async recordBudgetUsage(
-    canonical: CanonicalRequest,
+    canonical: LoggableCanonicalRequest,
     usage: TokenUsage,
     model: string,
     nodeId?: string,
@@ -2506,7 +2911,7 @@ export class PipelineService {
   // ══════════════════════════════════════════════════════
 
   async logCall(params: {
-    requestId: string; canonical: CanonicalRequest; tier: Tier; score: number;
+    requestId: string; canonical: LoggableCanonicalRequest; tier: Tier; score: number;
     nodeId: string; model: string; statusCode: number; isFallback: boolean;
     latencyMs: number; usage: TokenUsage; error: string | null;
     retryCount?: number;
@@ -2569,7 +2974,7 @@ export class PipelineService {
       // it derives metadata only from CallLog and never includes prompt/response bodies.
       this.telemetryUploader.enqueue(saved, {
         domainHint: params.domainHint,
-        modalities: params.modalityHints || Array.from(detectRequestModalities(params.canonical)),
+        modalities: params.modalityHints || this.modalitiesForLog(params.canonical),
       });
     } catch (err) {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
@@ -2581,9 +2986,16 @@ export class PipelineService {
     }
     const node = this.config.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return 'unknown';
-    if (node.models.includes(model)) return model;
+    if (node.models.includes(model) || node.embedding_models?.includes(model)) return model;
     const prefix = node.model_prefixes?.find((value) => model.startsWith(value));
     return prefix ? `${node.id}:${prefix}*` : 'unlisted';
+  }
+
+  private modalitiesForLog(canonical: LoggableCanonicalRequest): string[] {
+    if (canonical.metadata.source_format === 'embeddings') {
+      return ['text'];
+    }
+    return Array.from(detectRequestModalities(canonical as CanonicalRequest));
   }
 
 }

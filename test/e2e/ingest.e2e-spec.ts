@@ -143,6 +143,50 @@ describe('Ingest (e2e)', () => {
   });
 
   // ══════════════════════════════════════════════════════
+  // Non-Streaming — Embeddings
+  // ══════════════════════════════════════════════════════
+
+  it('POST /v1/embeddings → 200 + OpenAI embeddings format', async () => {
+    const res = await harness.agent
+      .post('/v1/embeddings')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        input: ['hello', 'world'],
+        dimensions: 1536,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.object).toBe('list');
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0]).toMatchObject({
+      object: 'embedding',
+      index: 0,
+    });
+    expect(Array.isArray(res.body.data[0].embedding)).toBe(true);
+    expect(res.body.usage).toMatchObject({ prompt_tokens: 8, total_tokens: 8 });
+  });
+
+  it('POST /v1/embeddings — routes to embeddings endpoint with dimensions', async () => {
+    await harness.agent
+      .post('/v1/embeddings')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'text-embedding-3-small',
+        input: 'hello',
+        dimensions: 1536,
+      });
+
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/embeddings');
+    expect(call.body).toMatchObject({
+      model: 'text-embedding-3-small',
+      input: 'hello',
+      dimensions: 1536,
+    });
+  });
+
+  // ══════════════════════════════════════════════════════
   // Validation
   // ══════════════════════════════════════════════════════
 

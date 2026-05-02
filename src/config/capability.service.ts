@@ -38,6 +38,7 @@ export interface RoutingRecommendation {
 export interface ResolvedModelRoutingCapabilities {
   max_context_tokens?: number;
   structured_output: boolean | null;
+  dimensions?: number | number[];
   pricing?: ModelPricing;
   quality_score?: number;
 }
@@ -276,6 +277,7 @@ export class CapabilityService {
         modelCapability?.max_context_tokens ?? node?.max_context_tokens,
       structured_output:
         modelCapability?.structured_output ?? node?.structured_output ?? null,
+      dimensions: modelCapability?.dimensions,
       pricing:
         modelCapability?.pricing ?? this.config.getModelPricing(model, nodeId),
       quality_score: modelCapability?.quality_score,

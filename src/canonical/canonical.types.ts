@@ -63,7 +63,24 @@ export type CanonicalToolChoice =
   | { name: string };
 
 // ===== Source Format =====
-export type SourceFormat = 'chat_completions' | 'responses' | 'messages';
+export type SourceFormat = 'chat_completions' | 'responses' | 'messages' | 'embeddings';
+
+// ===== Shared Request Metadata =====
+export interface CanonicalRequestMetadata {
+  source_format: SourceFormat;
+  original_model?: string;
+  session_key?: string;
+  raw_headers: Record<string, string>;
+  raw_body?: unknown;
+  api_key_name?: string;
+  api_key_id?: string;
+  api_key_permissions?: {
+    allow_auto: boolean;
+    allow_direct: boolean;
+    allowed_nodes: string[];
+    allowed_models: string[];
+  };
+}
 
 // ===== Request =====
 export interface CanonicalRequest {
@@ -77,21 +94,7 @@ export interface CanonicalRequest {
   stream: boolean;
 
   /** Original request metadata, preserved for response denormalization */
-  metadata: {
-    source_format: SourceFormat;
-    original_model?: string;
-    session_key?: string;
-    raw_headers: Record<string, string>;
-    raw_body?: unknown;
-    api_key_name?: string;
-    api_key_id?: string;
-    api_key_permissions?: {
-      allow_auto: boolean;
-      allow_direct: boolean;
-      allowed_nodes: string[];
-      allowed_models: string[];
-    };
-  };
+  metadata: CanonicalRequestMetadata;
 }
 
 // ===== Stop Reason =====
@@ -113,6 +116,43 @@ export interface CanonicalResponse {
   model: string;
 
   /** Routing metadata for logging / observability */
+  routing: {
+    tier: Tier;
+    node: string;
+    latency_ms: number;
+    score: number;
+    is_fallback: boolean;
+    fallback_reason?: string | null;
+  };
+}
+
+// ===== Embeddings =====
+export type CanonicalEmbeddingInput =
+  | string
+  | string[]
+  | number[]
+  | number[][];
+
+export interface CanonicalEmbeddingRequest {
+  model: string;
+  input: CanonicalEmbeddingInput | unknown;
+  dimensions?: number;
+  encoding_format?: string;
+  user?: string;
+  metadata: CanonicalRequestMetadata;
+}
+
+export interface CanonicalEmbedding {
+  index: number;
+  embedding: number[] | string;
+}
+
+export interface CanonicalEmbeddingResponse {
+  id: string;
+  object: 'list';
+  data: CanonicalEmbedding[];
+  usage: TokenUsage;
+  model: string;
   routing: {
     tier: Tier;
     node: string;

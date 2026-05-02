@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.4 OpenAI-compatible `POST /v1/embeddings` endpoint for the open-source Data Plane.
+- Canonical embeddings request/response types, normalizer, provider forwarding, routing, usage, cost, telemetry, and call-log support.
+- `nodes[].embedding_models`, optional `nodes[].embeddings_endpoint`, and embedding `model_capabilities[].dimensions` configuration with validation.
+- Embedding routing that supports batch input, API key permissions, dimension filtering, circuit state, fallback, concurrency limits, and cost-aware target ranking.
+- Unit and e2e coverage for embeddings controller, pipeline, provider client, routing, config validation, OpenAPI, and proxy behavior.
 
 ## 0.3.0 - 2026-05-02
 

@@ -37,6 +37,12 @@ function makePipeline(overrides: Record<string, any> = {}): {
       if (model.startsWith('openai/')) return { nodeId: 'openai', model: model.replace('openai/', '') };
       return null;
     }),
+    resolveEmbeddingModel: jest.fn().mockImplementation((model: string) => {
+      if (model === 'text-embedding-3-small') {
+        return { nodeId: 'openai', model: 'text-embedding-3-small' };
+      }
+      return null;
+    }),
     getModelPricing: jest.fn().mockReturnValue({ input: 5, output: 15 }),
     ...overrides.config,
   });
@@ -63,6 +69,20 @@ function makePipeline(overrides: Record<string, any> = {}): {
     forward: jest.fn().mockResolvedValue(
       makeCanonicalResponse({ model: 'gpt-4o' }),
     ),
+    forwardEmbeddings: jest.fn().mockResolvedValue({
+      id: 'emb-test',
+      object: 'list',
+      data: [{ index: 0, embedding: [0.1, 0.2, 0.3] }],
+      usage: { input_tokens: 8, output_tokens: 0 },
+      model: 'text-embedding-3-small',
+      routing: {
+        tier: 'standard',
+        node: 'openai',
+        latency_ms: 42,
+        score: 0,
+        is_fallback: false,
+      },
+    }),
     forwardStream: jest.fn(),
     ...overrides.providerClient,
   };
@@ -93,6 +113,11 @@ function makePipeline(overrides: Record<string, any> = {}): {
         selected: { node: 'openai', model: 'gpt-4o' },
         target_count: 2,
       },
+    }),
+    resolveEmbeddingRoute: jest.fn().mockReturnValue({
+      primary: { node: 'openai', model: 'text-embedding-3-small' },
+      fallbacks: [],
+      mode: 'auto',
     }),
     recordTargetResult: jest.fn(),
     ...overrides.routingService,
@@ -263,6 +288,141 @@ describe('PipelineService — direct routing', () => {
         estimated_input_tokens: expect.any(Number),
         estimated_output_tokens: 25,
         estimated_context_tokens: expect.any(Number),
+      }),
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Embeddings
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — embeddings', () => {
+  function makeEmbeddingRequest(overrides: Record<string, any> = {}) {
+    return {
+      model: 'auto',
+      input: ['hello', 'world'],
+      metadata: {
+        source_format: 'embeddings',
+        original_model: 'auto',
+        raw_headers: {},
+        api_key_name: 'test-key',
+        api_key_id: 'key_123',
+        api_key_permissions: {
+          allow_auto: true,
+          allow_direct: true,
+          allowed_nodes: [],
+          allowed_models: [],
+        },
+      },
+      ...overrides,
+    } as any;
+  }
+
+  it('should route OpenAI-compatible embeddings and record usage/cost', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeEmbeddingRequest();
+
+    const result = await pipeline.processEmbeddings(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toMatchObject({
+      object: 'list',
+      model: 'text-embedding-3-small',
+      usage: { prompt_tokens: 8, total_tokens: 8 },
+    });
+    expect((result.body.data as any[])[0]).toMatchObject({
+      object: 'embedding',
+      index: 0,
+      embedding: [0.1, 0.2, 0.3],
+    });
+    expect(mocks.routingService.resolveEmbeddingRoute).toHaveBeenCalledWith(
+      'auto',
+      undefined,
+      expect.any(Function),
+    );
+    expect(mocks.providerClient.forwardEmbeddings).toHaveBeenCalledWith(
+      request,
+      'openai',
+      'text-embedding-3-small',
+      expect.objectContaining({ tier: 'standard', is_fallback: false }),
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      8,
+      expect.any(Number),
+      'test-key',
+      'key_123',
+    );
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_format: 'embeddings',
+        node_id: 'openai',
+        model: 'text-embedding-3-small',
+        input_tokens: 8,
+        output_tokens: 0,
+        status_code: 200,
+      }),
+    );
+  });
+
+  it('should return 400 for invalid embeddings input without calling upstream', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeEmbeddingRequest({ input: { bad: true } });
+
+    const result = await pipeline.processEmbeddings(request);
+
+    expect(result.statusCode).toBe(400);
+    expect(result.body).toMatchObject({
+      error: expect.objectContaining({
+        type: 'server_error',
+      }),
+    });
+    expect(mocks.providerClient.forwardEmbeddings).not.toHaveBeenCalled();
+  });
+
+  it('should try embedding fallbacks and preserve fallback_reason in call logs', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        retry: { max_retries: 0, backoff_base_ms: 10, backoff_max_ms: 100, retryable_status: [429, 502, 503] },
+      },
+      routingService: {
+        resolveEmbeddingRoute: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'text-embedding-3-large' },
+          fallbacks: [{ node: 'openai', model: 'text-embedding-3-small' }],
+          mode: 'auto',
+        }),
+      },
+      providerClient: {
+        forwardEmbeddings: jest
+          .fn()
+          .mockRejectedValueOnce(new ProviderError('rate limited', 429, 'openai'))
+          .mockResolvedValueOnce({
+            id: 'emb-fallback',
+            object: 'list',
+            data: [{ index: 0, embedding: [0.4] }],
+            usage: { input_tokens: 4, output_tokens: 0 },
+            model: 'text-embedding-3-small',
+            routing: {
+              tier: 'standard',
+              node: 'openai',
+              latency_ms: 25,
+              score: 0,
+              is_fallback: true,
+              fallback_reason: 'rate_limited',
+            },
+          }),
+      },
+    });
+
+    const result = await pipeline.processEmbeddings(makeEmbeddingRequest());
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forwardEmbeddings).toHaveBeenCalledTimes(2);
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        is_fallback: true,
+        fallback_reason: 'rate_limited',
+        model: 'text-embedding-3-small',
       }),
     );
   });
