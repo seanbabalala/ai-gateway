@@ -28,6 +28,8 @@
 
 Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic.
 
+Current development branch: **v0.6 Protocol + Explainability**. This branch adds an experimental OpenAI Realtime-style WebSocket pass-through preview, disabled by default and scoped to safe forwarding, authentication, permissions, connection limits, and connection-state summaries.
+
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
 **The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
@@ -64,6 +66,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Responses** (`/v1/responses`) — OpenAI's newer API format
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
+- **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - Full **streaming** support across all three protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
@@ -101,6 +104,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
+- **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
@@ -523,10 +527,12 @@ nodes:
     base_url: "https://api.openai.com" # Provider base URL
     endpoint: "/v1/chat/completions" # API endpoint path
     embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
+    realtime_endpoint: "/v1/realtime" # Optional experimental realtime WebSocket path or ws/wss URL
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
+    realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -561,6 +567,31 @@ nodes:
 | `messages` | Anthropic Messages | Anthropic Claude |
 
 `/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+
+### Experimental Realtime Preview
+
+Realtime is an experimental v0.6 WebSocket proxy preview. It is disabled by default and only performs safe pass-through: Gateway API key authentication, API key/namespace node-model permission checks, connection limits, idle/session timeouts, close cleanup, sanitized error summaries, and Dashboard/health connection state. It does not parse, transcode, inspect, or persist audio frames.
+
+```yaml
+nodes:
+  - id: openai
+    base_url: "https://api.openai.com"
+    realtime_endpoint: "/v1/realtime"
+    realtime_models: ["gpt-4o-realtime-preview"]
+
+realtime:
+  enabled: true
+  path: /v1/realtime
+  max_connections: 25
+  max_connections_per_node: 25
+  idle_timeout_ms: 300000
+  upstream_connect_timeout_ms: 10000
+  max_session_ms: 1800000
+  default_node: openai
+  default_model: gpt-4o-realtime-preview
+```
+
+Clients connect to `ws://localhost:2099/v1/realtime?model=gpt-4o-realtime-preview` with `Authorization: Bearer <gateway-api-key>`. SiftGate forwards upstream with the provider API key and `OpenAI-Beta: realtime=v1`. Browser clients that cannot set an `Authorization` header should use a trusted backend to mint or proxy the connection; the preview intentionally does not accept Gateway API keys in query strings.
 
 ### Upstream Connection Pooling
 
@@ -971,6 +1002,7 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/responses`        | OpenAI Responses format                       |
 | `POST` | `/v1/messages`         | Anthropic Messages format                     |
 | `POST` | `/v1/embeddings`       | OpenAI Embeddings format                      |
+| `WS`   | `/v1/realtime`         | Experimental OpenAI Realtime-style pass-through |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -1209,7 +1241,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings
+│   Controller    │  ← chat/responses/messages/embeddings HTTP plus experimental realtime WS
 └────────┬────────┘
          ▼
 ┌─────────────────┐

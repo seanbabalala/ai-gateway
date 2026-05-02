@@ -20,7 +20,7 @@
 import {
   Controller, Get, Post, Put, Delete, Param, Query, Body, Sse, Logger, Res,
   MessageEvent, ParseIntPipe, DefaultValuePipe, HttpException, HttpStatus,
-  UseGuards,
+  UseGuards, Optional, Inject,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -51,6 +51,7 @@ import { PromptCacheService } from '../cache/prompt-cache.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
+import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 import type { Modality } from '../config/modality';
 import {
   CreateGatewayApiKeyDto,
@@ -88,6 +89,9 @@ export class DashboardController {
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
+    @Optional()
+    @Inject(RealtimeProxyService)
+    private readonly realtime: RealtimeProxyService | undefined,
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
@@ -937,6 +941,18 @@ export class DashboardController {
       budget: full.budget,
       namespaces: full.namespaces || [],
       shadow: this.shadowTraffic.getStatus(),
+      realtime: this.realtime?.getStatus() || {
+        enabled: false,
+        experimental: true,
+        path: '/v1/realtime',
+        active_connections: 0,
+        max_connections: 0,
+        max_connections_per_node: 0,
+        idle_timeout_ms: 0,
+        upstream_connect_timeout_ms: 0,
+        max_session_ms: 0,
+        recent: [],
+      },
       models_pricing: full.models_pricing,
       diagnostics: this.config.getNodeModelDiagnostics(),
     };
@@ -1112,6 +1128,18 @@ export class DashboardController {
         modelCircuits,
         concurrency,
         active_probe: activeProbe,
+        realtime: this.realtime?.getNodeStatus(node.id) || {
+          enabled: false,
+          experimental: true,
+          supported: false,
+          endpoint: null,
+          models: [],
+          active_connections: 0,
+          max_connections_per_node: 0,
+          last_connected_at: null,
+          last_closed_at: null,
+          last_error: null,
+        },
         healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
       };
     });
@@ -1358,6 +1386,8 @@ export class DashboardController {
         endpoint: dto.endpoint,
         api_key: dto.api_key,
         models: dto.models,
+        realtime_models: dto.realtime_models,
+        realtime_endpoint: dto.realtime_endpoint,
         timeout_ms: dto.timeout_ms,
         max_concurrency: dto.max_concurrency,
         queue_timeout_ms: dto.queue_timeout_ms,

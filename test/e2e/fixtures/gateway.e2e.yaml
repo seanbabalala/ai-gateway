@@ -21,6 +21,7 @@ nodes:
     base_url: http://mock-upstream.test
     endpoint: /v1/chat/completions
     embeddings_endpoint: /v1/embeddings
+    realtime_endpoint: ${REALTIME_UPSTREAM_ENDPOINT:-/v1/realtime}
     api_key: mock-openai-key
     models:
       - gpt-4o
@@ -28,6 +29,8 @@ nodes:
     embedding_models:
       - text-embedding-3-small
       - text-embedding-3-large
+    realtime_models:
+      - gpt-4o-realtime-preview
     timeout_ms: 10000
     tags:
       - code
@@ -131,3 +134,14 @@ models_pricing:
   text-embedding-3-large:
     input: 0.13
     output: 0
+  gpt-4o-realtime-preview:
+    input: 5
+    output: 20
+realtime:
+  enabled: true
+  path: /v1/realtime
+  max_connections: 2
+  max_connections_per_node: 2
+  idle_timeout_ms: 30000
+  upstream_connect_timeout_ms: 1000
+  max_session_ms: 60000

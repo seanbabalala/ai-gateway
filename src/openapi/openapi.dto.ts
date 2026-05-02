@@ -219,6 +219,38 @@ export class HealthModelCircuitDto {
   lastFailureAt!: string | null;
 }
 
+export class HealthRealtimeDto {
+  @ApiProperty({ example: false })
+  enabled!: boolean;
+
+  @ApiProperty({ example: true })
+  experimental!: true;
+
+  @ApiProperty({ example: true })
+  supported!: boolean;
+
+  @ApiProperty({ example: '/v1/realtime', nullable: true })
+  endpoint!: string | null;
+
+  @ApiProperty({ type: [String], example: ['gpt-4o-realtime-preview'] })
+  models!: string[];
+
+  @ApiProperty({ example: 0 })
+  active_connections!: number;
+
+  @ApiProperty({ example: 25 })
+  max_connections_per_node!: number;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_connected_at!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_closed_at!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_error!: string | null;
+}
+
 export class HealthNodeDto {
   @ApiProperty({ example: 'openai' })
   id!: string;
@@ -240,6 +272,9 @@ export class HealthNodeDto {
 
   @ApiProperty({ example: true })
   healthy!: boolean;
+
+  @ApiProperty({ type: HealthRealtimeDto })
+  realtime!: HealthRealtimeDto;
 
   @ApiProperty({
     type: 'object',

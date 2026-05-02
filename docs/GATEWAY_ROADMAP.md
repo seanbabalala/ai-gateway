@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,6 +15,56 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 开发中 — 协议广度 + 可解释路由 | 🚧 In Progress |
+
+---
+
+## v0.6 — Protocol + Explainability（生产协议能力 + 可解释路由）
+
+**v0.6 当前状态**：开发中。本阶段保持 MIT 开源 Data Plane 单机 SQLite/memory 默认可用，Redis/PostgreSQL/Cloud 继续作为可选能力；重点是补齐生产协议入口，并把路由决策解释做成产品亮点。
+
+### P0：协议广度
+
+#### 29. Realtime experimental preview
+
+- **状态**：🚧 当前分支实现中
+- **目标**：提供 OpenAI Realtime 风格的实验性 WebSocket 入口，先补齐协议铺底而不引入复杂音频处理
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: openai
+      realtime_endpoint: /v1/realtime
+      realtime_models: [gpt-4o-realtime-preview]
+
+  realtime:
+    enabled: false
+    path: /v1/realtime
+    max_connections: 25
+    max_connections_per_node: 25
+  ```
+
+  - 默认关闭，必须显式设置 `realtime.enabled=true`
+  - WebSocket 入口 `/v1/realtime?model=...`，优先兼容 OpenAI Realtime 风格
+  - 只做安全转发：Gateway API key 鉴权、API key/namespace 权限、连接数限制、idle/session timeout、关闭释放、脱敏错误摘要
+  - 不解析、不转码、不检查、不保存音频帧；不破坏现有 HTTP/SSE streaming
+  - `/health` 与 Dashboard Nodes API 展示 realtime capability、active connections、last closed/error 摘要
+
+#### 30. Structured Output 完整透传与 schema 验证体验
+
+- **状态**：规划中
+- **目标**：让 OpenAI Chat `response_format`、OpenAI Responses `text.format`、Anthropic Messages 兼容降级在协议转换中不丢失意图
+
+#### 31. Rerank、Images 与 Audio 铺底
+
+- **状态**：规划中
+- **目标**：继续补齐常见兼容 API 的入口广度
+
+### P0：Explainable Routing
+
+#### 32. 路由选择解释页
+
+- **状态**：规划中
+- **目标**：把“为什么选这个 node/model”从日志细节升级成 Dashboard 产品亮点
 
 ---
 

@@ -61,7 +61,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService,
     cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, dataSource, callLogRepo,
+    gatewayApiKeys, shadowTraffic, undefined, dataSource, callLogRepo,
   );
 }
 

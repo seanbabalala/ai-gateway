@@ -8,7 +8,7 @@
 //   - Uptime
 // ===================================================================
 
-import { Controller, Get, Logger } from '@nestjs/common';
+import { Controller, Get, Inject, Logger, Optional } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '../config/config.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
@@ -16,6 +16,7 @@ import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.servic
 import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
 import { BudgetService, BudgetStatus } from '../budget/budget.service';
 import { HealthResponseDto } from '../openapi/openapi.dto';
+import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 
 @Controller()
 @ApiTags('Health')
@@ -29,6 +30,9 @@ export class HealthController {
     private readonly concurrencyLimiter: ConcurrencyLimiterService,
     private readonly activeHealth: ActiveHealthProbeService,
     private readonly budgetService: BudgetService,
+    @Optional()
+    @Inject(RealtimeProxyService)
+    private readonly realtime?: RealtimeProxyService,
   ) {}
 
   @Get('health')
@@ -69,6 +73,18 @@ export class HealthController {
         concurrency,
         healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
         active_probe: activeProbe,
+        realtime: this.realtime?.getNodeStatus(node.id) || {
+          enabled: false,
+          experimental: true,
+          supported: false,
+          endpoint: null,
+          models: [],
+          active_connections: 0,
+          max_connections_per_node: 0,
+          last_connected_at: null,
+          last_closed_at: null,
+          last_error: null,
+        },
         models,
       };
     });

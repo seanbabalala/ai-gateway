@@ -135,6 +135,8 @@ auth:
 # Chat/Responses/Messages models are listed under nodes[].models.
 # Embedding-capable models for /v1/embeddings are listed under
 # nodes[].embedding_models and can use a separate embeddings_endpoint.
+# Experimental realtime models are listed under nodes[].realtime_models and
+# require the top-level realtime.enabled switch below.
 # Use model_prefixes when clients should direct-route future model family IDs
 # such as "claude-sonnet-..." or "gpt-..." through a stable upstream node ID.
 # Supported protocols:
@@ -150,9 +152,11 @@ nodes:
     base_url: "https://api.openai.com"
     endpoint: "/v1/chat/completions"
     embeddings_endpoint: "/v1/embeddings"
+    # realtime_endpoint: "/v1/realtime" # Optional ws/wss URL or path for experimental realtime proxy
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
+    # realtime_models: ["gpt-4o-realtime-preview"]
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true
@@ -173,6 +177,8 @@ nodes:
       text-embedding-3-large:
         dimensions: [256, 1024, 3072]
         pricing: { input: 0.13, output: 0.00 }
+      # gpt-4o-realtime-preview:
+      #   pricing: { input: 5.00, output: 20.00 }
     # Optional per-node upstream concurrency limiter.
     # Applies across all models routed through this node.
     # max_concurrency: 50
@@ -267,6 +273,31 @@ nodes:
   #   models: ["llama3"]
   #   timeout_ms: 120000
   #   tags: ["fast", "cheap", "private"]
+
+# ============================================================
+# Experimental Realtime Preview — disabled by default
+# ============================================================
+# This is an OpenAI Realtime-style WebSocket pass-through preview.
+# It performs Gateway API key auth, permission checks, connection limits,
+# timeout/close cleanup, sanitized logging, and node status summaries.
+# It does not parse, transcode, or inspect audio frames locally.
+#
+# Clients connect with:
+#   wss://your-gateway.example/v1/realtime?model=gpt-4o-realtime-preview
+#   Authorization: Bearer <gateway-api-key>
+#
+# Keep disabled unless you have configured nodes[].realtime_models.
+# ============================================================
+# realtime:
+#   enabled: false
+#   path: /v1/realtime
+#   max_connections: 25
+#   max_connections_per_node: 25
+#   idle_timeout_ms: 300000
+#   upstream_connect_timeout_ms: 10000
+#   max_session_ms: 1800000
+#   # default_node: openai
+#   # default_model: gpt-4o-realtime-preview
 
 # ============================================================
 # Routing — How requests are assigned to nodes

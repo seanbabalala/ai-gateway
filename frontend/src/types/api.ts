@@ -112,6 +112,19 @@ export interface ConcurrencySnapshot {
   queued: number
 }
 
+export interface RealtimeNodeStatus {
+  enabled: boolean
+  experimental: true
+  supported: boolean
+  endpoint: string | null
+  models: string[]
+  active_connections: number
+  max_connections_per_node: number
+  last_connected_at: string | null
+  last_closed_at: string | null
+  last_error: string | null
+}
+
 export interface NodeInfo {
   id: string
   name: string
@@ -127,6 +140,7 @@ export interface NodeInfo {
   circuit: CircuitBreaker
   modelCircuits: Record<string, CircuitBreaker>
   concurrency: ConcurrencySnapshot
+  realtime?: RealtimeNodeStatus
   healthy: boolean
 }
 
@@ -170,6 +184,7 @@ export interface HealthNodeStatus {
   lastFailureAt: string | null
   healthy: boolean
   concurrency: ConcurrencySnapshot
+  realtime?: RealtimeNodeStatus
 }
 
 export interface HealthBudgetStatus {
@@ -400,6 +415,8 @@ export interface CreateNodeRequest {
   endpoint: string
   api_key: string
   models: string[]
+  realtime_models?: string[]
+  realtime_endpoint?: string
   timeout_ms: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -420,6 +437,8 @@ export interface UpdateNodeRequest {
   endpoint?: string
   api_key?: string
   models?: string[]
+  realtime_models?: string[]
+  realtime_endpoint?: string
   timeout_ms?: number
   max_concurrency?: number
   queue_timeout_ms?: number
