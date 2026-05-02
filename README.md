@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.2.0**.
+Current open-source release: **v0.3.0**.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in **any** of the three major API formats and intelligently routes them to the best provider based on request complexity, cost, and availability.
 
@@ -750,6 +750,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/logs/sse`         | Real-time log stream (SSE)                                                                         |
 | `GET`  | `/api/dashboard/analytics/cost`   | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics               |
+| `GET`  | `/api/dashboard/alerts`           | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/config`           | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`    | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |

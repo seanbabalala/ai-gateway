@@ -68,6 +68,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
+| `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
 | `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, and circuit state |
 | `POST` | `/api/dashboard/nodes/test` | Test an arbitrary node payload before saving |
