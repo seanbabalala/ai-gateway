@@ -85,6 +85,12 @@ export interface RouteSelectionHints {
   requires_structured_output?: boolean;
 }
 
+export interface EmbeddingRouteDecision {
+  primary: RouteTarget;
+  fallbacks: RouteTarget[];
+  mode: 'auto' | 'direct';
+}
+
 interface SelectedRouteTarget {
   target: WeightedRouteTarget;
   strategy: EffectiveRoutingStrategy;
@@ -405,6 +411,66 @@ export class RoutingService {
     this.latencyWindows.set(key, samples);
   }
 
+  resolveEmbeddingRoute(
+    requestedModel: string | undefined,
+    dimensions?: number,
+    targetFilter: (target: RouteTarget) => boolean = () => true,
+  ): EmbeddingRouteDecision {
+    const model = requestedModel || 'auto';
+    const allTargets = this.getEmbeddingTargets();
+
+    if (model !== 'auto') {
+      const resolved = this.config.resolveEmbeddingModel(model);
+      if (!resolved) {
+        throw new RoutingConstraintError(
+          `Embedding model "${model}" is not configured. Use "auto" or configure nodes[].embedding_models.`,
+          400,
+        );
+      }
+      const primary = { node: resolved.nodeId, model: resolved.model };
+      if (!targetFilter(primary)) {
+        throw new RoutingConstraintError(
+          `This API key is not allowed to use ${primary.node}/${primary.model}.`,
+          403,
+        );
+      }
+      if (!this.embeddingDimensionsCompatible(primary, dimensions)) {
+        throw new RoutingConstraintError(
+          `Embedding model ${primary.node}/${primary.model} does not advertise support for dimensions=${dimensions}.`,
+          400,
+        );
+      }
+      const fallbacks = this.rankEmbeddingTargets(
+        this.filterEmbeddingTargets(
+          allTargets.filter((target) =>
+            target.node !== primary.node || target.model !== primary.model,
+          ),
+          dimensions,
+          targetFilter,
+        ),
+      );
+      return { primary, fallbacks, mode: 'direct' };
+    }
+
+    const candidates = this.rankEmbeddingTargets(
+      this.filterEmbeddingTargets(allTargets, dimensions, targetFilter),
+    );
+    if (candidates.length === 0) {
+      throw new RoutingConstraintError(
+        dimensions
+          ? `No configured embedding model can satisfy dimensions=${dimensions}.`
+          : 'No embedding models are configured.',
+        400,
+      );
+    }
+
+    return {
+      primary: candidates[0],
+      fallbacks: candidates.slice(1),
+      mode: 'auto',
+    };
+  }
+
   getRoutingStatus(): Record<string, RoutingTierStatus> {
     const result: Record<string, RoutingTierStatus> = {};
     for (const [tier, tierConfig] of Object.entries(this.config.routing.tiers || {})) {
@@ -665,6 +731,68 @@ export class RoutingService {
       (inputTokens / 1_000_000) * pricing.input +
       (outputTokens / 1_000_000) * pricing.output
     );
+  }
+
+  private getEmbeddingTargets(): RouteTarget[] {
+    const targets: RouteTarget[] = [];
+    for (const node of this.config.nodes) {
+      for (const model of node.embedding_models || []) {
+        targets.push({ node: node.id, model });
+      }
+    }
+    return targets;
+  }
+
+  private filterEmbeddingTargets(
+    targets: RouteTarget[],
+    dimensions: number | undefined,
+    targetFilter: (target: RouteTarget) => boolean,
+  ): RouteTarget[] {
+    const allowed = targets
+      .filter(targetFilter)
+      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+    if (!dimensions) return allowed;
+
+    const exact = allowed.filter((target) =>
+      this.embeddingDimensionsCompatible(target, dimensions, false),
+    );
+    if (exact.length > 0) return exact;
+
+    return allowed.filter((target) =>
+      this.embeddingDimensionsCompatible(target, dimensions, true),
+    );
+  }
+
+  private embeddingDimensionsCompatible(
+    target: RouteTarget,
+    dimensions: number | undefined,
+    allowUnknown = true,
+  ): boolean {
+    if (!dimensions) return true;
+    const configured = this.capabilityService.resolveModelRoutingCapabilities(
+      target.node,
+      target.model,
+    ).dimensions;
+    if (configured === undefined) return allowUnknown;
+    if (typeof configured === 'number') return configured === dimensions;
+    return configured.includes(dimensions);
+  }
+
+  private rankEmbeddingTargets(targets: RouteTarget[]): RouteTarget[] {
+    return [...targets].sort((a, b) => {
+      const aCost = this.estimateEmbeddingCost(a);
+      const bCost = this.estimateEmbeddingCost(b);
+      if (aCost !== bCost) return aCost - bCost;
+      return targets.indexOf(a) - targets.indexOf(b);
+    });
+  }
+
+  private estimateEmbeddingCost(target: RouteTarget): number {
+    const pricing = this.capabilityService.resolveModelRoutingCapabilities(
+      target.node,
+      target.model,
+    ).pricing;
+    return pricing ? pricing.input : Number.POSITIVE_INFINITY;
   }
 
   private normalizeMetric(

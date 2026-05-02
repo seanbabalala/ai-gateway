@@ -2,6 +2,8 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
+v0.4.0 adds OpenAI-compatible embeddings ingress alongside the existing chat, responses, messages, models, health, and Dashboard APIs.
+
 ## Live Documentation
 
 When the gateway is running, the API documentation is available from the same HTTP server:
@@ -31,11 +33,27 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions-compatible ingress |
 | `POST` | `/v1/responses` | OpenAI Responses-compatible ingress |
 | `POST` | `/v1/messages` | Anthropic Messages-compatible ingress |
+| `POST` | `/v1/embeddings` | OpenAI Embeddings-compatible ingress |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
 
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
+
+### Embeddings
+
+`POST /v1/embeddings` accepts OpenAI-compatible embedding requests:
+
+```json
+{
+  "model": "auto",
+  "input": ["hello", "world"],
+  "dimensions": 1536,
+  "encoding_format": "float"
+}
+```
+
+Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by API key permissions, active circuits, and requested dimensions, then prefers the lowest configured input price. Direct model requests must resolve to an embedding model; chat models listed only in `nodes[].models` are not selected for this endpoint. Responses preserve the OpenAI shape with `object: "list"`, embedding data, and `usage.prompt_tokens` / `usage.total_tokens`.
 
 ## Health
 

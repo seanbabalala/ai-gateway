@@ -1,0 +1,36 @@
+model_list:
+  - model_name: gpt-4o-public
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      timeout: 30
+      input_cost_per_token: 0.0000025
+      output_cost_per_token: 0.00001
+    model_info:
+      max_input_tokens: 128000
+
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: ${ANTHROPIC_API_KEY}
+      input_cost_per_token: 0.000003
+      output_cost_per_token: 0.000015
+    model_info:
+      max_input_tokens: 200000
+
+  - model_name: azure-gpt4o
+    litellm_params:
+      model: azure/prod-gpt-4o
+      api_base: https://example-resource.openai.azure.com
+      api_key: os.environ/AZURE_OPENAI_API_KEY
+      api_version: 2024-02-01
+
+router_settings:
+  routing_strategy: latency-based-routing
+  num_retries: 2
+  fallbacks:
+    - gpt-4o-public:
+        - claude-sonnet
+
+litellm_settings:
+  drop_params: true

@@ -1,0 +1,8 @@
+model_list:
+  - model_name: private-model
+    litellm_params:
+      model: unknown_provider/private-model
+      api_key: literal-secret-value
+
+router_settings:
+  routing_strategy: least-busy

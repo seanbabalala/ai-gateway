@@ -26,11 +26,11 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.3.0**.
+Current open-source release: **v0.4.0**.
 
-SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in **any** of the three major API formats and intelligently routes them to the best provider based on request complexity, cost, and availability.
+SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
-**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you a **single endpoint** that speaks all three formats and automatically picks the right provider.
+**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
 
 ```
 Your App ──▶ SiftGate ──▶ OpenAI (GPT)
@@ -63,6 +63,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Chat Completions** (`/v1/chat/completions`) — the most common format
 - **OpenAI Responses** (`/v1/responses`) — OpenAI's newer API format
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
+- **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
 - Full **streaming** support across all three protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
@@ -111,7 +112,11 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
+- **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
+- **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
+- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
+- **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 
 ## Quick Start
 
@@ -314,6 +319,19 @@ node dist/cli/siftgate.js validate --config gateway.config.yaml
 
 The validator checks YAML parsing, required sections, node/model naming conflicts, routing/fallback/split/targets references, pricing coverage warnings, environment-reference format, provider key hygiene, and optional `control_plane` safety. Errors return a non-zero exit code; warnings and info are printed without failing the command. See [Config Validation](docs/CONFIG_VALIDATION.md) for CI examples and the issue taxonomy.
 
+Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
+
+### LiteLLM Migration
+
+Generate a SiftGate config from an existing LiteLLM YAML file:
+
+```bash
+npm run build
+node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
+```
+
+The migrator maps `model_list`, provider/model names, API key environment references, fallbacks, router retry settings, and known routing strategies. It writes a migration report with compatible, incompatible, and manual-review items. Existing `gateway.config.yaml` is never overwritten unless `--overwrite` is passed. See [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
+
 ### Server
 
 ```yaml
@@ -371,6 +389,37 @@ hot_reload:
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
 
+### Plugins
+
+SiftGate ships a lightweight MIT-licensed runtime plugin system for the open-source Data Plane. Official plugins live under `plugins/` and are compiled by `npm run build` into `dist-runtime-plugins`, which the production Docker image copies into `/app/dist-runtime-plugins`.
+
+The first official batch is:
+
+| Plugin                      | Purpose                               | Default behavior                                                         |
+| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------ |
+| `plugins/redis-cache`       | Redis-backed response cache           | Disabled; only stores responses when `store_responses: true` is explicit |
+| `plugins/analytics-sink`    | Sanitized call-log analytics webhook  | Disabled; safe metadata allow-list only                                  |
+| `plugins/request-transform` | Local request rewrites before routing | Disabled; no-op until rules are configured                               |
+| `plugins/guardrails`        | Local audit/block guardrails skeleton | Disabled; logs finding counts only                                       |
+
+Example:
+
+```yaml
+plugins:
+  - path: plugins/request-transform
+    required: false
+    config:
+      enabled: true
+      rules:
+        - name: deterministic-tools
+          when:
+            has_tools: true
+          set:
+            temperature: 0
+```
+
+Official plugins do not send prompts, responses, provider keys, or raw headers to external systems by default. See [Official Plugins](docs/plugins/OFFICIAL_PLUGINS.md) and each plugin README under `plugins/*/README.md` for safety notes and example configs.
+
 ### Nodes (Upstream Providers)
 
 Each node represents one upstream provider account, deployment, proxy route, or API endpoint. A node can expose one or more models, and routing always targets a `node + model` pair.
@@ -384,9 +433,11 @@ nodes:
     protocol: chat_completions # chat_completions | responses | messages
     base_url: "https://api.openai.com" # Provider base URL
     endpoint: "/v1/chat/completions" # API endpoint path
+    embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
+    embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -412,15 +463,17 @@ nodes:
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
 
+`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+
 ### Per-Node Concurrency Control
 
 Set `max_concurrency` on a node to limit concurrent upstream requests across all models routed through that node. When the node is full, `queue_policy` controls overflow behavior:
 
-| Policy | Behavior |
-| ------ | -------- |
-| `wait` | Queue until a slot opens, then fall back with `503` if `queue_timeout_ms` expires |
-| `fallback` | Skip the saturated node immediately and try the next configured fallback |
-| `reject` | Return `429` without trying fallbacks |
+| Policy     | Behavior                                                                          |
+| ---------- | --------------------------------------------------------------------------------- |
+| `wait`     | Queue until a slot opens, then fall back with `503` if `queue_timeout_ms` expires |
+| `fallback` | Skip the saturated node immediately and try the next configured fallback          |
+| `reject`   | Return `429` without trying fallbacks                                             |
 
 Slots are released after successful responses, provider errors, stream completion, or stream interruption. `/health`, `/api/dashboard/nodes`, and OpenTelemetry gauges expose `active` concurrency and queued depth per node.
 
@@ -510,8 +563,9 @@ For v0.3 cost and context-window aware routing, add model capability metadata an
 nodes:
   - id: openai
     models: ["gpt-4o", "gpt-4o-mini"]
-    max_context_tokens: 128000        # node-level default
-    structured_output: true           # node-level default
+    embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
+    max_context_tokens: 128000 # node-level default
+    structured_output: true # node-level default
     model_capabilities:
       gpt-4o:
         max_context_tokens: 128000
@@ -522,6 +576,12 @@ nodes:
         structured_output: true
         quality_score: 0.6
         pricing: { input: 0.15, output: 0.60 } # optional node/model override
+      text-embedding-3-small:
+        dimensions: [512, 1536]
+        pricing: { input: 0.02, output: 0 }
+      text-embedding-3-large:
+        dimensions: [256, 1024, 3072]
+        pricing: { input: 0.13, output: 0 }
 
 routing:
   optimization: cost # cost | latency | balanced | quality
@@ -535,6 +595,23 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `latency` chooses the lowest local sliding-window latency, with stable cold-start fallback.
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
+
+### Embeddings
+
+`POST /v1/embeddings` accepts OpenAI-compatible requests with `model`, `input`, optional `dimensions`, `encoding_format`, and `user`. `input` may be a string, array of strings, token array, or array of token arrays.
+
+For `model: "auto"`, SiftGate selects from configured `embedding_models`, filters by API key permissions and circuit state, prefers exact `dimensions` matches, and then ranks eligible targets by embedding input cost. Direct embedding requests use the same direct-routing permission checks as chat requests and return a clear 400 if the requested model is not listed under any node's `embedding_models`.
+
+```bash
+curl http://localhost:2099/v1/embeddings \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "input": ["hello", "world"],
+    "dimensions": 1536
+  }'
+```
 
 ### Fallback Policies
 
@@ -600,6 +677,7 @@ budget:
 models_pricing: # Cost per 1M tokens (USD); used when node/model pricing is omitted
   gpt-4o: { input: 2.50, output: 10.00 }
   claude-opus-4: { input: 15.00, output: 75.00 }
+  text-embedding-3-small: { input: 0.02, output: 0.00 }
 ```
 
 ### Webhook Alerts
@@ -661,7 +739,16 @@ logging:
       url: "${LOG_SINK_WEBHOOK_URL}"
       headers:
         Authorization: "Bearer ${LOG_SINK_WEBHOOK_TOKEN}"
-      fields: [request_id, timestamp, node_id, model, status_code, latency_ms, cost_usd]
+      fields:
+        [
+          request_id,
+          timestamp,
+          node_id,
+          model,
+          status_code,
+          latency_ms,
+          cost_usd,
+        ]
       retry:
         attempts: 3
         backoff_ms: 1000
@@ -672,6 +759,36 @@ File sinks write JSONL, one sanitized call-log record per line. Webhook sinks se
 
 By default exports include only safe call-log metadata and exclude prompt text, response text, provider API keys, raw headers, authorization values, and other secret-bearing fields. Use `fields` as an allow-list or `exclude_fields` as a deny-list for additional filtering. See [docs/LOG_SINKS.md](docs/LOG_SINKS.md).
 
+## TypeScript SDK
+
+The v0.4 SDK scaffold lives in [packages/client](packages/client). It is a lightweight fetch-based wrapper for the open-source data plane with typed helpers for models, chat completions, responses, messages, embeddings, and advisory routing hints.
+
+```ts
+import { SiftGateClient } from '@siftgate/client';
+
+const client = new SiftGateClient({
+  baseUrl: 'http://localhost:2099',
+  gatewayApiKey: process.env.SIFTGATE_API_KEY,
+});
+
+await client.chat.completions.create({
+  model: 'auto',
+  messages: [{ role: 'user', content: 'Return a concise answer.' }],
+});
+```
+
+Existing OpenAI SDK users do not need to switch SDKs. Point the SDK at SiftGate and use a dashboard-generated Gateway API key:
+
+```ts
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:2099/v1',
+  apiKey: process.env.SIFTGATE_API_KEY,
+});
+```
+
+See the [TypeScript SDK README](packages/client/README.md) for routing hints, raw streaming access, and the forward-compatible embeddings helper. The Python SDK is design-only for this milestone; see [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
 
 ## API Endpoints
 
@@ -688,6 +805,7 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions format                |
 | `POST` | `/v1/responses`        | OpenAI Responses format                       |
 | `POST` | `/v1/messages`         | Anthropic Messages format                     |
+| `POST` | `/v1/embeddings`       | OpenAI Embeddings format                      |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -719,6 +837,8 @@ For each accepted request, the gateway applies the same accounting path:
 7. Record usage against global budgets and, when present, the key budget.
 8. Write a call log attributed to the same `api_key_id`.
 
+Embedding requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Their usage is recorded as input tokens with zero output tokens.
+
 The call log stores:
 
 - Gateway API key id
@@ -743,23 +863,23 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 
 ### Dashboard API
 
-| Method | Endpoint                          | Description                                                                                        |
-| ------ | --------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/dashboard/stats`            | Aggregated statistics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys |
-| `GET`  | `/api/dashboard/logs`             | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
-| `GET`  | `/api/dashboard/logs/sse`         | Real-time log stream (SSE)                                                                         |
-| `GET`  | `/api/dashboard/analytics/cost`   | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
-| `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics               |
-| `GET`  | `/api/dashboard/alerts`           | Local webhook alert channels and recent delivery status                                            |
-| `GET`  | `/api/dashboard/config`           | Sanitized config (API keys masked)                                                                 |
-| `POST` | `/api/dashboard/config/reload`    | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
-| `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
-| `POST` | `/api/dashboard/api-keys`         | Create a Gateway API key                                                                           |
-| `GET`  | `/api/dashboard/nodes`            | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
-| `POST` | `/api/dashboard/nodes/:id/reset`  | Reset circuit breaker                                                                              |
-| `GET`  | `/api/dashboard/budget`           | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
-| `POST` | `/api/dashboard/budget/:id/reset` | Reset one budget rule by `budget_rule.id`                                                          |
-| `GET`  | `/health`                         | Gateway, budget, node circuit, active probe, and concurrency health                                |
+| Method | Endpoint                                 | Description                                                                                        |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys |
+| `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
+| `GET`  | `/api/dashboard/logs/sse`                | Real-time log stream (SSE)                                                                         |
+| `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
+| `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
+| `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
+| `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
+| `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
+| `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
+| `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
+| `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
+| `POST` | `/api/dashboard/nodes/:id/reset`         | Reset circuit breaker                                                                              |
+| `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
+| `POST` | `/api/dashboard/budget/:id/reset`        | Reset one budget rule by `budget_rule.id`                                                          |
+| `GET`  | `/health`                                | Gateway, budget, node circuit, active probe, and concurrency health                                |
 
 ## Dashboard
 
@@ -773,6 +893,23 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
 - **API Keys** — Client Gateway API key generation, permissions, budgets, rate limits, rotation, and disable/delete controls
+
+## Plugins
+
+SiftGate can load runtime plugins from the local `plugins/` directory, from `gateway.config.yaml`, or from the standalone `plugins.config.yaml` declaration file. The plugin manager writes `plugins.config.yaml` by default, leaving `gateway.config.yaml` under operator control.
+
+```bash
+# Local directory or file
+node dist/cli/siftgate.js plugin install ./plugins/pii-filter
+
+# npm registry package from the initial official scope
+node dist/cli/siftgate.js plugin install @siftgate/plugin-guardrails
+
+node dist/cli/siftgate.js plugin list
+node dist/cli/siftgate.js plugin remove @siftgate/plugin-guardrails
+```
+
+For npm packages, the CLI currently accepts the `@siftgate/plugin-*` scope, reads package metadata with `npm view`, checks the plugin's declared SiftGate compatibility range, then runs `npm install --save` and records the declaration. Local plugins are checked against a nearby `package.json` when one is present. See [Plugin Manager](docs/PLUGINS.md) for declaration format and compatibility metadata.
 
 ## Observability
 
@@ -896,7 +1033,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages
+│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -928,7 +1065,7 @@ Client Request (any format)
 
 **Key components:**
 
-- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages formats
+- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and embedding request/response shapes
 - **Scoring Engine** — Evaluates request complexity across keyword, structural, and tool dimensions
 - **Router** — Tier-based node selection with circuit breaker, momentum, and domain-aware reordering
 - **Provider Client** — HTTP forwarder with streaming support (SSE parsing for each protocol)
@@ -938,7 +1075,7 @@ Client Request (any format)
 
 - **Backend:** NestJS 11, TypeORM, SQLite (default) / PostgreSQL
 - **Frontend:** React 19, Vite, Tailwind CSS v4, TanStack Query, Recharts
-- **Protocols:** Full support for streaming and non-streaming across all three API formats
+- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings
 
 ## Troubleshooting
 

@@ -8,6 +8,7 @@
 import { ChatCompletionsController } from '../../src/ingest/chat-completions.controller';
 import { MessagesController } from '../../src/ingest/messages.controller';
 import { ResponsesController } from '../../src/ingest/responses.controller';
+import { EmbeddingsController } from '../../src/ingest/embeddings.controller';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 
 function mockReq(body: Record<string, unknown>, reqHeaders: Record<string, string> = {}): any {
@@ -34,6 +35,7 @@ function mockRes(): any {
 function mockPipeline(overrides: Record<string, any> = {}): any {
   return {
     process: jest.fn().mockResolvedValue({ statusCode: 200, body: { id: 'test' } }),
+    processEmbeddings: jest.fn().mockResolvedValue({ statusCode: 200, body: { object: 'list', data: [] } }),
     processStream: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -153,6 +155,37 @@ describe('ChatCompletionsController', () => {
 
     const canonical = pipeline.process.mock.calls[0][0];
     expect(canonical.metadata.raw_headers['x-session-id']).toBe('sess_123');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// EmbeddingsController
+// ═══════════════════════════════════════════════════════════
+
+describe('EmbeddingsController', () => {
+  it('should handle OpenAI-compatible embeddings requests', async () => {
+    const pipeline = mockPipeline();
+    const controller = new EmbeddingsController(pipeline);
+
+    const req = mockReq({
+      model: 'auto',
+      input: ['hello', 'world'],
+      dimensions: 1536,
+    });
+    const res = mockRes();
+
+    await controller.handle(req, res);
+
+    expect(pipeline.processEmbeddings).toHaveBeenCalled();
+    const canonical = pipeline.processEmbeddings.mock.calls[0][0];
+    expect(canonical).toMatchObject({
+      model: 'auto',
+      input: ['hello', 'world'],
+      dimensions: 1536,
+      metadata: expect.objectContaining({ source_format: 'embeddings' }),
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ object: 'list', data: [] });
   });
 });
 

@@ -1,9 +1,12 @@
 {
   "name": "siftgate",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,
+  "workspaces": [
+    "packages/client"
+  ],
   "bin": {
     "siftgate": "dist/cli/siftgate.js"
   },
@@ -14,14 +17,17 @@
   },
   "scripts": {
     "build": "rm -rf dist-runtime-plugins src/canonical/canonical.types.js src/config/gateway.config.js src/config/modality.js src/plugins/types.js && nest build && tsc -p tsconfig.plugins.json",
+    "build:sdk": "npm --workspace @siftgate/client run build",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "validate:config": "ts-node src/cli/siftgate.ts validate",
+    "typecheck:sdk": "npm --workspace @siftgate/client run typecheck",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest",
+    "test:sdk": "npm --workspace @siftgate/client run test",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",

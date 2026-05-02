@@ -72,7 +72,9 @@ auth:
 #   id: azure-prod        name: "Azure OpenAI Production"
 #   id: local-vllm        name: "Local vLLM"
 #
-# Models are listed under nodes[].models.
+# Chat/Responses/Messages models are listed under nodes[].models.
+# Embedding-capable models for /v1/embeddings are listed under
+# nodes[].embedding_models and can use a separate embeddings_endpoint.
 # Use model_prefixes when clients should direct-route future model family IDs
 # such as "claude-sonnet-..." or "gpt-..." through a stable upstream node ID.
 # Supported protocols:
@@ -87,8 +89,10 @@ nodes:
     protocol: chat_completions
     base_url: "https://api.openai.com"
     endpoint: "/v1/chat/completions"
+    embeddings_endpoint: "/v1/embeddings"
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
+    embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true
@@ -103,6 +107,12 @@ nodes:
         quality_score: 0.6
         # Optional per-node/model pricing override. If omitted, models_pricing below is used.
         pricing: { input: 0.15, output: 0.60 }
+      text-embedding-3-small:
+        dimensions: [512, 1536]
+        pricing: { input: 0.02, output: 0.00 }
+      text-embedding-3-large:
+        dimensions: [256, 1024, 3072]
+        pricing: { input: 0.13, output: 0.00 }
     # Optional per-node upstream concurrency limiter.
     # Applies across all models routed through this node.
     # max_concurrency: 50
@@ -385,6 +395,8 @@ models_pricing:
   gpt-4o: { input: 2.50, output: 10.00 }
   gpt-4o-mini: { input: 0.15, output: 0.60 }
   claude-sonnet-4-20250514: { input: 3.00, output: 15.00 }
+  text-embedding-3-small: { input: 0.02, output: 0.00 }
+  text-embedding-3-large: { input: 0.13, output: 0.00 }
   # gemini-2.5-pro:          { input: 1.25, output: 10.00 }
 
 # ============================================================
@@ -399,6 +411,53 @@ models_pricing:
 #   ttl_seconds: 300           # Cache TTL in seconds (default: 300 = 5 min)
 #   max_entries: 1000          # Max cached responses, LRU eviction (default: 1000)
 #   exclude_tool_use: true     # Don't cache tool_use responses (default: true)
+
+# ============================================================
+# Runtime Plugins — optional OSS Data Plane extensions
+# ============================================================
+# Official plugins live in plugins/ and are built into
+# dist-runtime-plugins for production Docker images. They are safe
+# no-ops by default unless enabled in their plugin config.
+#
+# Safety defaults:
+# - redis-cache sends only hashed cache keys; response storage requires
+#   explicit store_responses: true.
+# - analytics-sink exports sanitized call-log metadata only.
+# - request-transform runs local rewrites only.
+# - guardrails runs local audit/block checks only.
+# ============================================================
+# plugins:
+#   - path: plugins/request-transform
+#     required: false
+#     config:
+#       enabled: true
+#       rules:
+#         - name: deterministic-tools
+#           when:
+#             has_tools: true
+#           set:
+#             temperature: 0
+#
+#   - path: plugins/guardrails
+#     required: false
+#     config:
+#       enabled: true
+#       mode: audit
+#       input_patterns:
+#         - "(?i)secret project"
+#
+#   - path: plugins/analytics-sink
+#     required: false
+#     config:
+#       enabled: false
+#       endpoint: ${ANALYTICS_SINK_URL:-}
+#
+#   - path: plugins/redis-cache
+#     required: false
+#     config:
+#       enabled: false
+#       url: ${REDIS_URL:-redis://127.0.0.1:6379}
+#       store_responses: false
 
 # ============================================================
 # Telemetry — OpenTelemetry and Prometheus metrics

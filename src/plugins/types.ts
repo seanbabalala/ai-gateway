@@ -190,10 +190,25 @@ export interface EventSubscription {
 // ===== Plugin Config Entry (for gateway.config.yaml) =====
 
 export interface PluginConfigEntry {
+  /** Optional display/metadata name written by the plugin manager */
+  name?: string;
+  /** Declaration source written by the plugin manager */
+  source?: 'local' | 'npm';
+  /** npm package name when source is npm */
+  package?: string;
+  /** Installed plugin version, if known */
+  version?: string;
   /** Relative path to plugin file/directory, or npm package name */
   path: string;
   /** Plugin-specific configuration passed to onLoad() */
   config?: Record<string, unknown>;
   /** If true (default), loading failure prevents gateway startup */
   required?: boolean;
+  /** Gateway compatibility metadata captured at install time */
+  gateway?: {
+    required?: string;
+    checked_with: string;
+  };
+  /** ISO timestamp written by the plugin manager */
+  installed_at?: string;
 }

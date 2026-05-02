@@ -533,6 +533,19 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    if (
+      node.embeddings_endpoint !== undefined &&
+      (!isNonEmptyString(node.embeddings_endpoint) || !node.embeddings_endpoint.startsWith('/'))
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_endpoint',
+          'nodes[].embeddings_endpoint should be a non-empty path starting with "/".',
+          `${basePath}.embeddings_endpoint`,
+        ),
+      );
+    }
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -582,6 +595,7 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
         modelIds.add(model);
       });
     }
+    validateNodeEmbeddingModels(node, basePath, issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
         issue(
@@ -595,6 +609,52 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
 
     validateNodeAliases(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
+  });
+}
+
+function validateNodeEmbeddingModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.embedding_models === undefined) return;
+  if (!Array.isArray(node.embedding_models)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_embedding_models',
+        'nodes[].embedding_models must be an array of model ids when set.',
+        `${basePath}.embedding_models`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  node.embedding_models.forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.embedding_models[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          'Embedding model ids must be non-empty strings.',
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `Embedding model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
   });
 }
 
@@ -645,7 +705,10 @@ function validateNodeRoutingCapabilities(
   }
 
   const listedModels = new Set(
-    Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : [],
+    [
+      ...(Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.embedding_models) ? node.embedding_models.filter(isNonEmptyString) : []),
+    ],
   );
 
   for (const [model, capability] of Object.entries(node.model_capabilities)) {
@@ -715,6 +778,14 @@ function validateNodeRoutingCapabilities(
       );
     }
 
+    if (capability.dimensions !== undefined) {
+      validateEmbeddingDimensions(
+        capability.dimensions,
+        `${capabilityPath}.dimensions`,
+        issues,
+      );
+    }
+
     if (capability.pricing !== undefined) {
       validatePricingEntry(
         capability.pricing,
@@ -723,6 +794,39 @@ function validateNodeRoutingCapabilities(
       );
     }
   }
+}
+
+function validateEmbeddingDimensions(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (isFiniteNumber(value) && Number.isInteger(value) && value > 0) {
+    return;
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    const invalidIndex = value.findIndex(
+      (item) => !isFiniteNumber(item) || !Number.isInteger(item) || item <= 0,
+    );
+    if (invalidIndex === -1) return;
+    issues.push(
+      issue(
+        'error',
+        'invalid_embedding_dimensions',
+        'model_capabilities[].dimensions must contain only positive integers.',
+        `${valuePath}[${invalidIndex}]`,
+      ),
+    );
+    return;
+  }
+  issues.push(
+    issue(
+      'error',
+      'invalid_embedding_dimensions',
+      'model_capabilities[].dimensions must be a positive integer or a non-empty array of positive integers.',
+      valuePath,
+    ),
+  );
 }
 
 function validateNodeAliases(

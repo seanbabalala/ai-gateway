@@ -4,6 +4,35 @@
 
 No changes yet.
 
+## 0.4.0 - 2026-05-02
+
+### Added
+
+- v0.4 OpenAI-compatible `POST /v1/embeddings` endpoint for the open-source Data Plane.
+- Canonical embeddings request/response types, normalizer, provider forwarding, routing, usage, cost, telemetry, and call-log support.
+- `nodes[].embedding_models`, optional `nodes[].embeddings_endpoint`, and embedding `model_capabilities[].dimensions` configuration with validation.
+- Embedding routing that supports batch input, API key permissions, dimension filtering, circuit state, fallback, concurrency limits, and cost-aware target ranking.
+- Unit and e2e coverage for embeddings controller, pipeline, provider client, routing, config validation, OpenAPI, and proxy behavior.
+- v0.4 plugin manager CLI via `siftgate plugin install/list/remove`.
+- Local path and npm package plugin installation with initial `@siftgate/plugin-*` registry scope support.
+- `plugins.config.yaml` declaration management so plugin installs do not rewrite `gateway.config.yaml`.
+- Plugin version and SiftGate gateway compatibility checks using package metadata.
+- Runtime plugin loader support for `plugins.config.yaml` and npm package resolution through `node_modules`.
+- v0.4 official runtime plugin batch: `redis-cache`, `analytics-sink`, `request-transform`, and `guardrails`.
+- Plugin READMEs, example configs, safety notes, and official plugin documentation under `docs/plugins`.
+- Unit coverage for official plugin behavior plus plugin loader and hook executor edge cases.
+- v0.4 LiteLLM migration CLI via `siftgate migrate --from litellm --config ./litellm_config.yaml`.
+- LiteLLM YAML migration for model names, provider/model mapping, API key environment references, fallbacks, router retry settings, known routing strategies, and optional pricing.
+- Human and JSON migration reports covering compatible, incompatible, and manual-review items.
+- LiteLLM migration fixtures and unit coverage.
+- v0.4 lightweight TypeScript SDK scaffold in `packages/client` with typed helpers for models, chat completions, responses, messages, embeddings, routing hints, raw response access, and Gateway API key auth.
+- TypeScript SDK package scripts and tests for build, typecheck, endpoint routing, errors, and request typing.
+- Python SDK design document covering planned client shape, auth, routing hints, errors, and streaming approach without implementing a Python package.
+
+### Changed
+
+- Plugin loader now resolves `plugins/<name>` directory declarations to `index.ts` in development, matching production `dist-runtime-plugins` behavior and avoiding duplicate loads.
+
 ## 0.3.0 - 2026-05-02
 
 ### Added

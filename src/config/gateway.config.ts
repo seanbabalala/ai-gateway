@@ -266,6 +266,8 @@ export interface ModelCapabilityConfig {
   max_context_tokens?: number;
   /** Whether this model should be considered safe for structured output requests. */
   structured_output?: boolean;
+  /** Supported embedding output dimensions for embedding models. */
+  dimensions?: number | number[];
   /** Optional per-node/model pricing override used by routing and cost accounting. */
   pricing?: ModelPricing;
   /** Optional operator-supplied quality hint; higher values win for optimization: quality. */
@@ -296,6 +298,10 @@ export interface NodeConfig {
   api_key: string;
   auth_type?: AuthType; // Default: 'bearer' for chat_completions/responses, 'x-api-key' for messages
   models: string[];
+  /** Optional OpenAI-compatible embeddings endpoint path (default: /v1/embeddings). */
+  embeddings_endpoint?: string;
+  /** Embedding-capable model IDs exposed by this node. */
+  embedding_models?: string[];
   timeout_ms: number;
   max_concurrency?: number; // Optional per-node upstream concurrency limit
   queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set
