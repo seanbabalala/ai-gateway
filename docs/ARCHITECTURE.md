@@ -97,7 +97,7 @@ For automatic routing, the scoring engine evaluates request complexity across 14
 - complex
 - reasoning
 
-The router then applies tier config, domain preferences, modality compatibility, circuit breaker state, momentum, fallbacks, and A/B split rules.
+The router then applies tier config, domain preferences, modality compatibility, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
 
 ### Reliability
 

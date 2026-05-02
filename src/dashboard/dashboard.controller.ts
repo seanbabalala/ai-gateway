@@ -28,6 +28,7 @@ import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
+import { RoutingService } from '../routing/routing.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
 import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
@@ -53,6 +54,7 @@ export class DashboardController {
   constructor(
     private readonly config: ConfigService,
     private readonly capabilityService: CapabilityService,
+    private readonly routingService: RoutingService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly concurrencyLimiter: ConcurrencyLimiterService,
     private readonly activeHealth: ActiveHealthProbeService,
@@ -754,6 +756,7 @@ export class DashboardController {
       auth: sanitizedAuth,
       nodes: sanitizedNodes,
       routing: full.routing,
+      routing_status: this.routingService.getRoutingStatus(),
       budget: full.budget,
       models_pricing: full.models_pricing,
       diagnostics: this.config.getNodeModelDiagnostics(),
@@ -808,7 +811,13 @@ export class DashboardController {
   /** Update routing configuration (tiers, scoring, domain preferences) */
   @Put('routing')
   updateRouting(@Body() body: {
-    tiers?: Record<string, { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] }>;
+    tiers?: Record<string, {
+      primary?: { node: string; model: string };
+      fallbacks?: { node: string; model: string }[];
+      strategy?: 'weighted' | 'round_robin' | 'least_latency' | 'random';
+      targets?: { node: string; model: string; weight?: number; name?: string }[];
+      split?: { node: string; model: string; weight: number; name?: string }[];
+    }>;
     scoring?: { simple_max: number; standard_max: number; complex_max: number };
     domain_preferences?: Record<string, string[]>;
   }) {

@@ -15,9 +15,17 @@ import { RoutingRecommendation } from '@/components/routing/RoutingRecommendatio
 import { useConfig } from '@/hooks/use-config'
 import { useNodes } from '@/hooks/use-nodes'
 import { apiPut } from '@/lib/api'
-import { TIER_CHART_COLORS, getNodeColor } from '@/lib/utils'
+import { TIER_CHART_COLORS, formatLatency, getNodeColor } from '@/lib/utils'
 import { colorWithOpacity } from '@/lib/theme'
-import type { TierRoute, RoutingConfig, ActionResponse, SplitVariant } from '@/types/api'
+import type {
+  ActionResponse,
+  LoadBalancingStrategy,
+  RoutingConfig,
+  RoutingTierStatus,
+  SplitVariant,
+  TierRoute,
+  WeightedRouteTarget,
+} from '@/types/api'
 
 // ── Types ──
 
@@ -103,11 +111,46 @@ export function RoutingPage() {
     nodeModels[n.id] = n.models
   }
   const nodeOptions = allNodes.map((n) => ({ value: n.id, label: n.id }))
+  const strategyOptions = [
+    { value: 'weighted', label: t('lb.strategy.weighted') },
+    { value: 'round_robin', label: t('lb.strategy.round_robin') },
+    { value: 'least_latency', label: t('lb.strategy.least_latency') },
+    { value: 'random', label: t('lb.strategy.random') },
+  ]
 
   const displayTiers = editing ? editTiers : routing.tiers
   const displayScoring = editing ? editScoring : routing.scoring
   const displayDomainPrefs = editing ? editDomainPrefs : (routing.domain_preferences || {})
   const tierNames = Object.keys(displayTiers)
+
+  function fallbackList(tier: TierRoute) {
+    return tier.fallbacks || []
+  }
+
+  function effectiveTargets(tier: TierRoute): WeightedRouteTarget[] {
+    if (tier.targets?.length) return tier.targets
+    return [
+      tier.primary ? { ...tier.primary, weight: 1, name: 'primary' } : undefined,
+      ...fallbackList(tier).map((fb, i) => ({ ...fb, weight: 1, name: `fallback-${i + 1}` })),
+    ].filter(Boolean) as WeightedRouteTarget[]
+  }
+
+  function routingStatusFor(tierName: string): RoutingTierStatus | undefined {
+    return config?.routing_status?.[tierName]
+  }
+
+  function strategyLabel(strategy?: string) {
+    if (!strategy) return t('lb.strategy.primary_fallback')
+    return t(`lb.strategy.${strategy}`, { defaultValue: strategy })
+  }
+
+  function metricForTarget(status: RoutingTierStatus | undefined, target: WeightedRouteTarget) {
+    return status?.targets.find((m) => m.node === target.node && m.model === target.model)
+  }
+
+  function metricLatencyLabel(value: number | null | undefined) {
+    return typeof value === 'number' ? formatLatency(value) : '-'
+  }
 
   // Scoring visualization
   const thresholds = [
@@ -132,7 +175,7 @@ export function RoutingPage() {
   function updateTierPrimary(tierName: string, field: 'node' | 'model', value: string) {
     setEditTiers((prev) => {
       const tier = { ...prev[tierName] }
-      tier.primary = { ...tier.primary, [field]: value }
+      tier.primary = { ...(tier.primary || { node: '', model: '' }), [field]: value }
       // When node changes, auto-select first model of that node
       if (field === 'node' && nodeModels[value]?.length) {
         tier.primary.model = nodeModels[value][0]
@@ -144,7 +187,7 @@ export function RoutingPage() {
   function updateFallback(tierName: string, index: number, field: 'node' | 'model', value: string) {
     setEditTiers((prev) => {
       const tier = { ...prev[tierName] }
-      const fallbacks = [...tier.fallbacks]
+      const fallbacks = [...fallbackList(tier)]
       fallbacks[index] = { ...fallbacks[index], [field]: value }
       if (field === 'node' && nodeModels[value]?.length) {
         fallbacks[index].model = nodeModels[value][0]
@@ -158,7 +201,7 @@ export function RoutingPage() {
     setEditTiers((prev) => {
       const tier = { ...prev[tierName] }
       const firstNode = allNodes[0]
-      tier.fallbacks = [...tier.fallbacks, { node: firstNode?.id ?? '', model: firstNode?.models[0] ?? '' }]
+      tier.fallbacks = [...fallbackList(tier), { node: firstNode?.id ?? '', model: firstNode?.models[0] ?? '' }]
       return { ...prev, [tierName]: tier }
     })
   }
@@ -166,7 +209,7 @@ export function RoutingPage() {
   function removeFallback(tierName: string, index: number) {
     setEditTiers((prev) => {
       const tier = { ...prev[tierName] }
-      tier.fallbacks = tier.fallbacks.filter((_, i) => i !== index)
+      tier.fallbacks = fallbackList(tier).filter((_, i) => i !== index)
       return { ...prev, [tierName]: tier }
     })
   }
@@ -174,7 +217,7 @@ export function RoutingPage() {
   function moveFallback(tierName: string, fromIndex: number, direction: 'up' | 'down') {
     setEditTiers((prev) => {
       const tier = { ...prev[tierName] }
-      const fb = [...tier.fallbacks]
+      const fb = [...fallbackList(tier)]
       const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1
       if (toIndex < 0 || toIndex >= fb.length) return prev
       ;[fb[fromIndex], fb[toIndex]] = [fb[toIndex], fb[fromIndex]]
@@ -190,15 +233,18 @@ export function RoutingPage() {
       const tier = { ...prev[tierName] }
       if (enabled) {
         // Initialize split from primary + fallbacks
+        const targets = effectiveTargets(tier)
+        const primary = targets[0] || { node: '', model: '' }
         const variants: SplitVariant[] = [
-          { node: tier.primary.node, model: tier.primary.model, weight: 70, name: 'control' },
+          { node: primary.node, model: primary.model, weight: 70, name: 'control' },
         ]
-        if (tier.fallbacks.length > 0) {
-          const remaining = Math.floor(30 / tier.fallbacks.length)
-          tier.fallbacks.forEach((fb, i) => {
+        const remainingTargets = targets.slice(1)
+        if (remainingTargets.length > 0) {
+          const remaining = Math.floor(30 / remainingTargets.length)
+          remainingTargets.forEach((fb, i) => {
             variants.push({
               node: fb.node, model: fb.model,
-              weight: i === tier.fallbacks.length - 1 ? 30 - remaining * (tier.fallbacks.length - 1) : remaining,
+              weight: i === remainingTargets.length - 1 ? 30 - remaining * (remainingTargets.length - 1) : remaining,
               name: `variant-${i + 1}`,
             })
           })
@@ -245,6 +291,181 @@ export function RoutingPage() {
       if (tier.split.length === 0) delete tier.split
       return { ...prev, [tierName]: tier }
     })
+  }
+
+  function updateTierStrategy(tierName: string, strategy: string) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      tier.strategy = strategy as LoadBalancingStrategy
+      if (!tier.targets?.length) {
+        tier.targets = effectiveTargets(tier)
+      }
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function updateTarget(tierName: string, index: number, field: keyof WeightedRouteTarget, value: string | number) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      const targets = [...effectiveTargets(tier)]
+      targets[index] = { ...targets[index], [field]: value }
+      if (field === 'node' && typeof value === 'string' && nodeModels[value]?.length) {
+        targets[index].model = nodeModels[value][0]
+      }
+      tier.targets = targets
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function addTarget(tierName: string) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      const firstNode = allNodes[0]
+      tier.targets = [...effectiveTargets(tier), {
+        node: firstNode?.id ?? '',
+        model: firstNode?.models[0] ?? '',
+        weight: 1,
+      }]
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function removeTarget(tierName: string, index: number) {
+    setEditTiers((prev) => {
+      const tier = { ...prev[tierName] }
+      tier.targets = effectiveTargets(tier).filter((_, i) => i !== index)
+      return { ...prev, [tierName]: tier }
+    })
+  }
+
+  function renderLoadBalancingPanel(
+    tierName: string,
+    tier: TierRoute,
+    targets: WeightedRouteTarget[],
+    routingStatus: RoutingTierStatus | undefined,
+  ) {
+    const activeStrategy = routingStatus?.strategy ?? tier.strategy ?? 'primary_fallback'
+    const lastSelected = routingStatus?.last_selected
+    const source = routingStatus?.source ?? (tier.targets?.length ? 'targets' : 'primary_fallback')
+    const visibleTargets = !editing && routingStatus?.targets.length
+      ? routingStatus.targets.map((target) => ({
+          node: target.node,
+          model: target.model,
+          weight: target.weight ?? undefined,
+        }))
+      : targets
+
+    return (
+      <div className="rounded-lg bg-[var(--background-secondary)] px-3 py-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
+            {t('lb.title')}
+          </div>
+          <Badge variant={source === 'targets' ? 'blue' : source === 'split' ? 'purple' : 'zinc'} className="max-w-[145px] truncate text-[9px]">
+            {strategyLabel(activeStrategy)}
+          </Badge>
+        </div>
+
+        {editing ? (
+          <div className="space-y-2">
+            <Select
+              className="w-full text-[11px]"
+              options={strategyOptions}
+              value={tier.strategy || 'weighted'}
+              onChange={(value) => updateTierStrategy(tierName, value)}
+            />
+            <div className="space-y-1.5">
+              {visibleTargets.map((target, i) => (
+                <div key={`${target.node}-${target.model}-${i}`} className="space-y-1.5 rounded-md bg-[var(--background-tertiary)] px-2 py-2">
+                  <div className="flex items-center gap-2">
+                    <Select
+                      className="w-24 text-[11px]"
+                      options={nodeOptions}
+                      value={target.node}
+                      onChange={(value) => updateTarget(tierName, i, 'node', value)}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-16 text-center font-mono text-[11px]"
+                      value={target.weight ?? 1}
+                      onChange={(event) => updateTarget(tierName, i, 'weight', parseFloat(event.target.value) || 0)}
+                    />
+                    <button
+                      onClick={() => removeTarget(tierName, i)}
+                      className="ml-auto rounded-md p-1.5 text-[var(--foreground-dim)] transition-colors hover:bg-red-500/10 hover:text-red-500"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <Select
+                    className="w-full font-mono text-[11px]"
+                    options={modelOptionsForNode(target.node)}
+                    value={target.model}
+                    onChange={(value) => updateTarget(tierName, i, 'model', value)}
+                  />
+                </div>
+              ))}
+              <button
+                onClick={() => addTarget(tierName)}
+                className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-muted)]"
+              >
+                <Plus className="h-3 w-3" /> {t('lb.addTarget')}
+              </button>
+            </div>
+            {tier.split && (
+              <p className="text-[10px] font-medium text-[var(--foreground-dim)]">
+                {t('lb.splitOverrides')}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="space-y-1.5">
+              {visibleTargets.map((target, i) => {
+                const metric = metricForTarget(routingStatus, target)
+                const isSelected = lastSelected?.node === target.node && lastSelected.model === target.model
+                return (
+                  <div
+                    key={`${target.node}-${target.model}-${i}`}
+                    className="rounded-md bg-[var(--background-tertiary)] px-2 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: getNodeColor(target.node) }} />
+                      <span className="truncate text-[11px] font-semibold text-[var(--foreground-muted)]">{target.node}</span>
+                      <span className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">{target.model}</span>
+                      <span className="ml-auto shrink-0 font-mono text-[10px] font-bold text-[var(--foreground)]">
+                        {target.weight ?? 1}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-medium text-[var(--foreground-dim)]">
+                      {isSelected && <span className="text-[var(--accent)]">{t('lb.selected')}</span>}
+                      <span>{t('lb.samples')}: {metric?.samples ?? 0}</span>
+                      <span>{t('lb.avg')}: {metricLatencyLabel(metric?.avg_latency_ms)}</span>
+                      <span>{t('lb.p95')}: {metricLatencyLabel(metric?.p95_latency_ms)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="border-t border-[var(--divider-dim)] pt-2 text-[10px] text-[var(--foreground-dim)]">
+              {lastSelected ? (
+                <div className="space-y-1">
+                  <div className="font-semibold text-[var(--foreground-muted)]">{t('lb.recent')}</div>
+                  <div className="truncate font-mono">
+                    {lastSelected.node}:{lastSelected.model}
+                  </div>
+                  <div className="truncate">{lastSelected.reason}</div>
+                </div>
+              ) : (
+                <span>{t('lb.noRecent')}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   function getSplitWeightTotal(tierName: string): number {
@@ -438,7 +659,7 @@ export function RoutingPage() {
 
       {/* Tier Routing Flow */}
       <div className="animate-fade-up rounded-lg bg-[var(--glass-bg)] p-3 shadow-[var(--card-shadow)]">
-        <div className="mb-2 hidden grid-cols-[130px_1fr_240px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
+        <div className="mb-2 hidden grid-cols-[130px_1fr_320px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
           <span>{t('table.tier')}</span>
           <span>{t('table.routeLane')}</span>
           <span>{t('table.trafficMode')}</span>
@@ -449,11 +670,15 @@ export function RoutingPage() {
             if (!tier) return null
             const tierColor = TIER_CHART_COLORS[tierName] ?? 'var(--accent)'
             const splitTotal = getSplitWeightTotal(tierName)
+            const targets = effectiveTargets(tier)
+            const primaryTarget = targets[0]
+            const fallbackTargets = targets.slice(1)
+            const routingStatus = routingStatusFor(tierName)
 
             return (
               <div
                 key={tierName}
-                className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[130px_1fr_240px] lg:items-start"
+                className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[130px_1fr_320px] lg:items-start"
               >
                 <div className="space-y-2">
                   <TierBadge tier={tierName} />
@@ -470,8 +695,8 @@ export function RoutingPage() {
                           {t('route.primary')}
                         </div>
                         {renderNodeModelSelector(
-                          tier.primary.node,
-                          tier.primary.model,
+                          (tier.primary || primaryTarget)?.node ?? '',
+                          (tier.primary || primaryTarget)?.model ?? '',
                           (v) => updateTierPrimary(tierName, 'node', v),
                           (v) => updateTierPrimary(tierName, 'model', v),
                         )}
@@ -488,7 +713,7 @@ export function RoutingPage() {
                             <Plus className="h-3 w-3" /> {t('route.addFallback')}
                           </button>
                         </div>
-                        {tier.fallbacks.map((fb, i) => (
+                        {fallbackList(tier).map((fb, i) => (
                           <div key={i} className="flex items-center gap-2 rounded-lg bg-[var(--inset-bg)] px-3 py-2">
                             <button
                               onClick={() => moveFallback(tierName, i, 'up')}
@@ -516,14 +741,16 @@ export function RoutingPage() {
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center gap-2">
-                      <div
-                        className="flex min-w-[210px] items-center gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2.5"
-                      >
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: getNodeColor(tier.primary.node) }} />
-                        <span className="font-bold text-[var(--foreground)]">{tier.primary.node}</span>
-                        <span className="truncate font-mono text-[11px] text-[var(--foreground-dim)]">{tier.primary.model}</span>
-                      </div>
-                      {tier.fallbacks.map((fb, i) => (
+                      {primaryTarget && (
+                        <div
+                          className="flex min-w-[210px] items-center gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2.5"
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: getNodeColor(primaryTarget.node) }} />
+                          <span className="font-bold text-[var(--foreground)]">{primaryTarget.node}</span>
+                          <span className="truncate font-mono text-[11px] text-[var(--foreground-dim)]">{primaryTarget.model}</span>
+                        </div>
+                      )}
+                      {fallbackTargets.map((fb, i) => (
                         <div key={`${fb.node}-${fb.model}-${i}`} className="flex items-center gap-2">
                           <ArrowRight className="h-3.5 w-3.5 text-[var(--divider-dim)]" />
                           <div className="flex min-w-[180px] items-center gap-2 rounded-lg bg-[var(--inset-bg)] px-3 py-2">
@@ -533,7 +760,7 @@ export function RoutingPage() {
                           </div>
                         </div>
                       ))}
-                      {tier.fallbacks.length === 0 && (
+                      {fallbackTargets.length === 0 && (
                         <span className="rounded-lg bg-[var(--inset-bg)] px-3 py-2 text-[11px] font-medium text-[var(--foreground-dim)]">
                           {t('route.noFallbackChain')}
                         </span>
@@ -542,7 +769,10 @@ export function RoutingPage() {
                   )}
                 </div>
 
-                <div className="rounded-lg bg-[var(--background-secondary)] px-3 py-3">
+                <div className="space-y-3">
+                  {renderLoadBalancingPanel(tierName, tier, targets, routingStatus)}
+
+                  <div className="rounded-lg bg-[var(--background-secondary)] px-3 py-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
                       <FlaskConical className="h-3.5 w-3.5" />
@@ -643,6 +873,7 @@ export function RoutingPage() {
                       {t('split.primaryFallback')}
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
             )

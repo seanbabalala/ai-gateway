@@ -439,6 +439,7 @@ export class PipelineService {
     }
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const attemptStart = Date.now();
       try {
         const response = await this.withConcurrencySlot(
           nodeId,
@@ -452,6 +453,12 @@ export class PipelineService {
             ),
         );
         this.circuitBreaker.recordSuccess(nodeId, model);
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          response.routing.latency_ms,
+          200,
+        );
         return { response, lastError: null, retries };
       } catch (err) {
         lastError = err as Error;
@@ -466,6 +473,12 @@ export class PipelineService {
           return { response: null, lastError, retries };
         }
         const statusCode = err instanceof ProviderError ? err.statusCode : 0;
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          Date.now() - attemptStart,
+          statusCode || 0,
+        );
         const isRetryable = retryConfig.retryable_status.includes(statusCode);
         const isLastAttempt = attempt >= maxAttempts - 1;
 
@@ -886,6 +899,12 @@ export class PipelineService {
               // Transmission phase — don't retry, send error event
               this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
               this.circuitBreaker.recordFailure(target.node, target.model);
+              this.routingService.recordTargetResult?.(
+                target.node,
+                target.model,
+                Date.now() - startTime,
+                502,
+              );
               const recovered = await this.runOnErrorHooks(
                 canonical,
                 lastError,
@@ -935,6 +954,12 @@ export class PipelineService {
 
             // Connection phase failure — check if retryable
             const statusCode = lastError instanceof ProviderError ? lastError.statusCode : 0;
+            this.routingService.recordTargetResult?.(
+              target.node,
+              target.model,
+              Date.now() - startTime,
+              statusCode || 0,
+            );
             const isRetryable = retryConfig.retryable_status.includes(statusCode);
             const isLastAttempt = attempt >= maxAttempts - 1;
 

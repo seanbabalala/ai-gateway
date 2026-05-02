@@ -143,6 +143,91 @@ describe('ConfigService — split validation', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// updateRouting — targets + strategy validation
+// ═══════════════════════════════════════════════════════════
+
+describe('ConfigService — load-balancing targets validation', () => {
+  it('should accept targets-only routing schema', () => {
+    const { svc, configPath } = loadConfigService();
+
+    expect(() => {
+      svc.updateRouting({
+        tiers: {
+          standard: {
+            strategy: 'round_robin',
+            targets: [
+              { node: 'claude', model: 'claude-opus-4-6-v1', weight: 50 },
+              { node: 'gpt', model: 'gpt-5', weight: 50 },
+            ],
+          },
+        },
+      });
+    }).not.toThrow();
+
+    const saved = yaml.load(fs.readFileSync(configPath, 'utf8')) as any;
+    expect(saved.routing.tiers.standard.strategy).toBe('round_robin');
+    expect(saved.routing.tiers.standard.targets).toHaveLength(2);
+  });
+
+  it('should reject unsupported load-balancing strategy', () => {
+    const { svc } = loadConfigService();
+
+    expect(() => {
+      svc.updateRouting({
+        tiers: {
+          standard: {
+            strategy: 'weighted_round_robin' as any,
+            targets: [{ node: 'gpt', model: 'gpt-5', weight: 100 }],
+          },
+        },
+      });
+    }).toThrow('strategy "weighted_round_robin" is not supported');
+  });
+
+  it('should reject weighted targets with no positive weight', () => {
+    const { svc } = loadConfigService();
+
+    expect(() => {
+      svc.updateRouting({
+        tiers: {
+          standard: {
+            strategy: 'weighted',
+            targets: [
+              { node: 'gpt', model: 'gpt-5', weight: 0 },
+              { node: 'claude', model: 'claude-opus-4-6-v1', weight: 0 },
+            ],
+          },
+        },
+      });
+    }).toThrow('weighted targets must have total weight > 0');
+  });
+
+  it('should warn when split and targets are both configured', () => {
+    const { svc } = loadConfigService();
+    svc.updateRouting({
+      tiers: {
+        standard: {
+          primary: { node: 'claude', model: 'claude-opus-4-6-v1' },
+          fallbacks: [],
+          strategy: 'round_robin',
+          targets: [{ node: 'gpt', model: 'gpt-5', weight: 100 }],
+          split: [{ node: 'claude', model: 'claude-opus-4-6-v1', weight: 100 }],
+        },
+      },
+    });
+
+    expect(svc.getNodeModelDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'split_overrides_targets',
+          tier: 'standard',
+        }),
+      ]),
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 // deleteNode — split cleanup
 // ═══════════════════════════════════════════════════════════
 

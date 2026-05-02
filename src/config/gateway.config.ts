@@ -253,9 +253,20 @@ export interface SplitVariant {
   name?: string;       // optional alias (e.g. "control", "challenger"), defaults to "node:model"
 }
 
+export type LoadBalancingStrategy = 'weighted' | 'round_robin' | 'least_latency' | 'random';
+
+export interface WeightedRouteTarget extends RouteTarget {
+  weight?: number;      // used by weighted strategy; defaults to 1
+  name?: string;        // optional display label
+}
+
 export interface TierConfig {
-  primary: RouteTarget;
-  fallbacks: RouteTarget[];
+  /** Legacy schema: still supported and used when targets is omitted. */
+  primary?: RouteTarget;
+  fallbacks?: RouteTarget[];
+  /** New unified load-balancing schema. Ignored while split is configured. */
+  strategy?: LoadBalancingStrategy;
+  targets?: WeightedRouteTarget[];
   split?: SplitVariant[];  // A/B testing: when set, overrides primary/fallbacks with weighted routing
 }
 

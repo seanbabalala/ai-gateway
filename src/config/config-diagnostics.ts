@@ -11,7 +11,8 @@ export type ConfigDiagnosticCode =
   | 'duplicate_model_prefix'
   | 'missing_model_pricing'
   | 'route_references_unknown_node'
-  | 'route_references_unknown_model';
+  | 'route_references_unknown_model'
+  | 'split_overrides_targets';
 
 export interface ConfigDiagnostic {
   severity: ConfigDiagnosticSeverity;
@@ -265,6 +266,23 @@ export function buildNodeModelDiagnostics(
           `targets[${idx}]`,
         ),
       );
+    }
+
+    if (
+      Array.isArray(tierConfig.split) &&
+      tierConfig.split.length > 0 &&
+      Array.isArray(targets) &&
+      targets.length > 0
+    ) {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'split_overrides_targets',
+        message: `Routing tier "${tier}" defines both split and targets. Split is treated as experiment mode and overrides targets until split is removed.`,
+        nodes: targets
+          .map((target) => routeTargetFrom(target)?.node)
+          .filter(isNonEmptyString),
+        tier,
+      });
     }
   }
 

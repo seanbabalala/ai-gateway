@@ -67,6 +67,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 - **Complexity scoring** — analyzes each request across 14 dimensions (keywords, structure, tools, etc.) to determine complexity tier (simple / standard / complex / reasoning)
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
+- **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
@@ -91,7 +92,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
-- **Routing visualization** — see how tiers, scoring thresholds, and fallback chains are configured
+- **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Light / Dark theme** — system-aware with manual toggle
 
@@ -445,6 +446,8 @@ health_check:
 
 ### Routing
 
+Legacy `primary` + `fallbacks` routing remains supported:
+
 ```yaml
 routing:
   tiers:
@@ -473,6 +476,26 @@ routing:
     frontend: [openai, gemini] # Prefer these upstream nodes for frontend questions
     backend: [anthropic, openai] # Prefer these upstream nodes for backend questions
 ```
+
+For v0.2 load balancing, a tier can use the unified `targets + strategy` schema:
+
+```yaml
+routing:
+  tiers:
+    standard:
+      strategy: weighted # weighted | round_robin | least_latency | random
+      targets:
+        - { node: openai, model: gpt-4o, weight: 70 }
+        - { node: anthropic, model: claude-sonnet-4-20250514, weight: 30 }
+```
+
+Compatibility rules:
+
+- `primary` + `fallbacks` is treated as the legacy `primary_fallback` strategy when `targets` is omitted.
+- `targets` takes over tier selection when present; `weight` defaults to `1`.
+- `split` remains experiment mode and overrides `targets` while configured, so existing A/B tests keep their sticky behavior.
+- `least_latency` uses an in-memory sliding window of recent successful upstream latencies and falls back to stable config order while targets are cold.
+- The Dashboard routing page is read/write for config and read-only for live selection metrics such as samples, average latency, p95 latency, and the most recent target choice.
 
 ### Budget
 

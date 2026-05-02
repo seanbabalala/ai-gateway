@@ -239,7 +239,7 @@ describe('ConfigService — deleteNode', () => {
 
     // claude was fallback in simple and standard tiers
     const simple = svc.routing.tiers.simple;
-    expect(simple.fallbacks.every((fb: any) => fb.node !== 'claude')).toBe(true);
+    expect(simple.fallbacks!.every((fb: any) => fb.node !== 'claude')).toBe(true);
   });
 
   it('should promote fallback to primary when primary is deleted', () => {
@@ -248,7 +248,7 @@ describe('ConfigService — deleteNode', () => {
     svc.deleteNode('claude');
 
     const complex = svc.routing.tiers.complex;
-    expect(complex.primary.node).toBe('openai');
+    expect(complex.primary!.node).toBe('openai');
   });
 
   it('should remove deleted node from domain_preferences', () => {
@@ -309,7 +309,7 @@ describe('ConfigService — updateRouting', () => {
         simple: { primary: { node: 'claude', model: 'claude-3-opus' }, fallbacks: [] },
       },
     });
-    expect(svc.routing.tiers.simple.primary.node).toBe('claude');
+    expect(svc.routing.tiers.simple.primary!.node).toBe('claude');
   });
 
   it('should throw for invalid node reference in tiers', () => {

@@ -72,14 +72,15 @@
 - **抽象到企业版**：Fleet 健康总览 + 异常告警推送
 
 #### 4. 负载均衡策略（Load Balancing）
-- **现状**：同一 Tier 内只有 primary + fallback 顺序
+- **状态**：已在 v0.2 Data Plane 实现，本地单机可用；Cloud 仍仅作为可选控制面
+- **现状**：兼容既有 primary + fallback 顺序，并新增统一 `targets + strategy` schema
 - **目标**：支持多种负载分发策略
 - **实现方案**：
   ```yaml
   routing:
     tiers:
       standard:
-        strategy: weighted_round_robin  # round_robin | weighted | least_latency | random
+        strategy: weighted  # weighted | round_robin | least_latency | random
         targets:
           - node: openai-prod
             model: gpt-4o
@@ -87,14 +88,14 @@
           - node: anthropic-prod
             model: claude-sonnet
             weight: 30
-        fallbacks:
-          - node: backup
-            model: gpt-4o-mini
   ```
   - `round_robin`：轮询
   - `weighted`：按权重分配（兼容现有 A/B split）
   - `least_latency`：基于滑动窗口平均延迟选择
   - `random`：随机
+  - `primary/fallbacks`：保留为 legacy `primary_fallback` 策略
+  - `split`：保留为实验模式，配置存在时优先于 `targets`
+  - Dashboard Routing 页展示策略、目标、权重、样本延迟和最近选择结果
 - **抽象到企业版**：基于 Fleet 聚合延迟数据的自适应权重
 
 ---

@@ -80,7 +80,14 @@ function makePipeline(overrides: Record<string, any> = {}): {
       momentumAdjusted: false,
       experimentGroup: null,
       experimentGroupsByTarget: {},
+      loadBalancing: {
+        strategy: 'primary_fallback',
+        source: 'primary_fallback',
+        selected: { node: 'openai', model: 'gpt-4o' },
+        target_count: 2,
+      },
     }),
+    recordTargetResult: jest.fn(),
     ...overrides.routingService,
   };
 
@@ -413,6 +420,34 @@ describe('PipelineService — retry and fallback', () => {
     await pipeline.process(request);
 
     expect(mocks.circuitBreaker.recordSuccess).toHaveBeenCalled();
+  });
+
+  it('should feed upstream latency results back to routing metrics', async () => {
+    const response = makeCanonicalResponse({
+      model: 'gpt-4o',
+      routing: {
+        tier: 'standard',
+        node: 'openai',
+        latency_ms: 123,
+        score: 0.45,
+        is_fallback: false,
+      },
+    });
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(response),
+      },
+    });
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+
+    await pipeline.process(request);
+
+    expect(mocks.routingService.recordTargetResult).toHaveBeenCalledWith(
+      'openai',
+      'gpt-4o',
+      123,
+      200,
+    );
   });
 
   it('should record circuit breaker failure when node fails', async () => {

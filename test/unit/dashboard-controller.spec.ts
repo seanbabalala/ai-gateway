@@ -83,6 +83,18 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...overrides.capabilityService,
   };
 
+  const routingService = {
+    getRoutingStatus: jest.fn().mockReturnValue({
+      standard: {
+        strategy: 'weighted',
+        source: 'targets',
+        targets: [],
+        last_selected: null,
+      },
+    }),
+    ...overrides.routingService,
+  };
+
   const circuitBreaker = {
     getNodeStatus: jest.fn().mockReturnValue({ state: CircuitState.CLOSED, consecutiveFailures: 0, lastFailureAt: null }),
     getModelStatuses: jest.fn().mockReturnValue({}),
@@ -156,8 +168,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
   const controller = new DashboardController(
     config,
     capabilityService as any,
+    routingService as any,
     circuitBreaker as any,
-    concurrencyLimiter as any,
     concurrencyLimiter as any,
     activeHealth as any,
     budgetService as any,
@@ -169,7 +181,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     callLogRepo as any,
   );
 
-  return { controller, config, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -378,6 +390,7 @@ describe('DashboardController — config', () => {
     expect(result.auth.api_keys).toEqual([]);
     expect(result.auth.managed_in_dashboard).toBe(true);
     expect(result.diagnostics).toEqual([]);
+    expect(result.routing_status.standard.strategy).toBe('weighted');
   });
 
   it('should include config diagnostics', () => {

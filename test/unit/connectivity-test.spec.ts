@@ -22,6 +22,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
     ...configOverrides,
   };
   const capabilityService = {} as any;
+  const routingService = {} as any;
   const circuitBreaker = {} as any;
   const concurrencyLimiter = {} as any;
   const activeHealth = { getNodeStatus: jest.fn(), refreshSchedules: jest.fn() } as any;
@@ -39,7 +40,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   } as any;
 
   return new DashboardController(
-    config as any, capabilityService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService,
+    config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService,
     cacheService, logEventBus, new TelemetryService(), gatewayApiKeys, dataSource, callLogRepo,
   );
 }
