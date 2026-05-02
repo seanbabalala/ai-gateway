@@ -5,23 +5,27 @@
 // declarations. Loads, validates, and registers each plugin.
 // ===================================================================
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as yaml from 'js-yaml';
-import { PluginRegistryService } from './plugin-registry.service';
-import { EventBusService } from './event-bus.service';
-import { ConfigService } from '../config/config.service';
-import type { GatewayPlugin, PluginConfigEntry } from './types';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import * as path from "path";
+import * as fs from "fs";
+import * as yaml from "js-yaml";
+import { PluginRegistryService } from "./plugin-registry.service";
+import { EventBusService } from "./event-bus.service";
+import { ConfigService } from "../config/config.service";
+import type { GatewayPlugin, PluginConfigEntry } from "./types";
 
 @Injectable()
 export class PluginLoaderService implements OnModuleInit {
   private readonly logger = new Logger(PluginLoaderService.name);
-  private readonly sourcePluginsDir = path.resolve(process.cwd(), 'plugins');
-  private readonly compiledPluginsDir = path.resolve(process.cwd(), 'dist-runtime-plugins', 'plugins');
+  private readonly sourcePluginsDir = path.resolve(process.cwd(), "plugins");
+  private readonly compiledPluginsDir = path.resolve(
+    process.cwd(),
+    "dist-runtime-plugins",
+    "plugins",
+  );
   private readonly managedPluginsConfigPath = path.resolve(
     process.cwd(),
-    process.env.SIFTGATE_PLUGINS_CONFIG || 'plugins.config.yaml',
+    process.env.SIFTGATE_PLUGINS_CONFIG || "plugins.config.yaml",
   );
 
   constructor(
@@ -58,7 +62,7 @@ export class PluginLoaderService implements OnModuleInit {
     }
 
     if (allEntries.length === 0) {
-      this.logger.log('No plugins found');
+      this.logger.log("No plugins found");
       return;
     }
 
@@ -91,7 +95,7 @@ export class PluginLoaderService implements OnModuleInit {
     const mod = require(resolvedPath);
     const PluginClass = mod.default || mod;
 
-    if (typeof PluginClass !== 'function') {
+    if (typeof PluginClass !== "function") {
       throw new Error(
         `Plugin "${entry.path}" does not export a class (got ${typeof PluginClass})`,
       );
@@ -108,7 +112,11 @@ export class PluginLoaderService implements OnModuleInit {
 
     // Validate config against schema if declared
     if (instance.meta.configSchema) {
-      this.validateConfig(instance.meta.name, config, instance.meta.configSchema);
+      this.validateConfig(
+        instance.meta.name,
+        config,
+        instance.meta.configSchema,
+      );
     }
 
     // Call onLoad
@@ -137,22 +145,23 @@ export class PluginLoaderService implements OnModuleInit {
     try {
       // Use ajv if available (it's in node_modules)
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const Ajv = require('ajv');
+      const Ajv = require("ajv");
       const ajv = new Ajv({ allErrors: true });
       const validate = ajv.compile(schema);
       if (!validate(config)) {
         const errors = validate.errors
-          ?.map((e: { instancePath: string; message: string }) =>
-            `${e.instancePath || '/'} ${e.message}`,
+          ?.map(
+            (e: { instancePath: string; message: string }) =>
+              `${e.instancePath || "/"} ${e.message}`,
           )
-          .join('; ');
+          .join("; ");
         throw new Error(
           `Config validation failed for plugin "${pluginName}": ${errors}`,
         );
       }
     } catch (err) {
       // If ajv import fails, skip validation with a warning
-      if ((err as Error).message?.includes('Cannot find module')) {
+      if ((err as Error).message?.includes("Cannot find module")) {
         this.logger.warn(
           `Skipping config validation for plugin "${pluginName}" (ajv not available)`,
         );
@@ -178,17 +187,17 @@ export class PluginLoaderService implements OnModuleInit {
         // Runtime files (skip type declarations, sourcemaps, and tests)
         if (
           this.isRuntimePluginFile(item.name) &&
-          !item.name.endsWith('.d.ts') &&
-          !item.name.endsWith('.spec.ts') &&
-          !item.name.endsWith('.spec.js') &&
-          !item.name.endsWith('.map')
+          !item.name.endsWith(".d.ts") &&
+          !item.name.endsWith(".spec.ts") &&
+          !item.name.endsWith(".spec.js") &&
+          !item.name.endsWith(".map")
         ) {
           entries.push({ path: path.join(pluginsDir, item.name) });
         }
       } else if (item.isDirectory()) {
         // Directories with index.js (prod) or index.ts/index.js (dev)
-        const indexJs = path.join(pluginsDir, item.name, 'index.js');
-        const indexTs = path.join(pluginsDir, item.name, 'index.ts');
+        const indexJs = path.join(pluginsDir, item.name, "index.js");
+        const indexTs = path.join(pluginsDir, item.name, "index.ts");
         if (fs.existsSync(indexJs)) {
           entries.push({ path: indexJs });
         } else if (!this.isCompiledRuntime() && fs.existsSync(indexTs)) {
@@ -217,9 +226,9 @@ export class PluginLoaderService implements OnModuleInit {
 
     let raw: string;
     try {
-      raw = fs.readFileSync(this.managedPluginsConfigPath, 'utf8');
+      raw = fs.readFileSync(this.managedPluginsConfigPath, "utf8");
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw err;
     }
     const parsed = yaml.load(raw) as { plugins?: PluginConfigEntry[] } | null;
@@ -246,7 +255,7 @@ export class PluginLoaderService implements OnModuleInit {
   }
 
   private buildPluginPathCandidates(pluginPath: string): string[] {
-    const normalized = pluginPath.replace(/\\/g, '/');
+    const normalized = pluginPath.replace(/\\/g, "/");
 
     if (this.isPackageReference(normalized)) {
       try {
@@ -260,10 +269,7 @@ export class PluginLoaderService implements OnModuleInit {
       ? pluginPath
       : path.resolve(process.cwd(), pluginPath);
 
-    const candidates = [
-      ...this.directoryEntryCandidates(absolute),
-      absolute,
-    ];
+    const candidates = [...this.directoryEntryCandidates(absolute), absolute];
 
     if (!this.isCompiledRuntime()) {
       return Array.from(new Set(candidates));
@@ -271,15 +277,15 @@ export class PluginLoaderService implements OnModuleInit {
 
     const relativeToSource = path.isAbsolute(pluginPath)
       ? path.relative(this.sourcePluginsDir, pluginPath)
-      : normalized.startsWith('plugins/')
-        ? normalized.slice('plugins/'.length)
+      : normalized.startsWith("plugins/")
+        ? normalized.slice("plugins/".length)
         : null;
 
-    if (relativeToSource && !relativeToSource.startsWith('..')) {
-      const withoutExt = relativeToSource.replace(/\.(ts|js)$/, '');
+    if (relativeToSource && !relativeToSource.startsWith("..")) {
+      const withoutExt = relativeToSource.replace(/\.(ts|js)$/, "");
       candidates.unshift(
         path.resolve(this.compiledPluginsDir, `${withoutExt}.js`),
-        path.resolve(this.compiledPluginsDir, withoutExt, 'index.js'),
+        path.resolve(this.compiledPluginsDir, withoutExt, "index.js"),
       );
     }
 
@@ -288,10 +294,10 @@ export class PluginLoaderService implements OnModuleInit {
 
   private directoryEntryCandidates(candidatePath: string): string[] {
     const candidates: string[] = [];
-    const packageJson = path.join(candidatePath, 'package.json');
+    const packageJson = path.join(candidatePath, "package.json");
     if (fs.existsSync(packageJson)) {
       try {
-        const parsed = JSON.parse(fs.readFileSync(packageJson, 'utf8')) as {
+        const parsed = JSON.parse(fs.readFileSync(packageJson, "utf8")) as {
           main?: string;
         };
         if (parsed.main) {
@@ -303,32 +309,37 @@ export class PluginLoaderService implements OnModuleInit {
     }
 
     candidates.push(
-      path.join(candidatePath, 'index.js'),
-      path.join(candidatePath, 'index.cjs'),
-      path.join(candidatePath, 'index.mjs'),
+      path.join(candidatePath, "index.js"),
+      path.join(candidatePath, "index.cjs"),
+      path.join(candidatePath, "index.mjs"),
     );
     if (!this.isCompiledRuntime()) {
-      candidates.push(path.join(candidatePath, 'index.ts'));
+      candidates.push(path.join(candidatePath, "index.ts"));
     }
     return candidates;
   }
 
   private isPackageReference(pluginPath: string): boolean {
     if (path.isAbsolute(pluginPath)) return false;
-    if (pluginPath.startsWith('.') || pluginPath.startsWith('plugins/')) return false;
-    if (pluginPath.startsWith('@')) return true;
-    return !pluginPath.includes('/');
+    if (pluginPath.startsWith(".") || pluginPath.startsWith("plugins/"))
+      return false;
+    if (pluginPath.startsWith("@")) return true;
+    return !pluginPath.includes("/");
   }
 
   private isRuntimePluginFile(filename: string): boolean {
-    if (filename.endsWith('.js') || filename.endsWith('.cjs') || filename.endsWith('.mjs')) {
+    if (
+      filename.endsWith(".js") ||
+      filename.endsWith(".cjs") ||
+      filename.endsWith(".mjs")
+    ) {
       return true;
     }
 
-    return !this.isCompiledRuntime() && filename.endsWith('.ts');
+    return !this.isCompiledRuntime() && filename.endsWith(".ts");
   }
 
   private isCompiledRuntime(): boolean {
-    return path.basename(path.dirname(__dirname)) === 'dist';
+    return path.basename(path.dirname(__dirname)) === "dist";
   }
 }

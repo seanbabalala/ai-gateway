@@ -21,6 +21,9 @@
 - LiteLLM YAML migration for model names, provider/model mapping, API key environment references, fallbacks, router retry settings, known routing strategies, and optional pricing.
 - Human and JSON migration reports covering compatible, incompatible, and manual-review items.
 - LiteLLM migration fixtures and unit coverage.
+- v0.4 lightweight TypeScript SDK scaffold in `packages/client` with typed helpers for models, chat completions, responses, messages, embeddings, routing hints, raw response access, and Gateway API key auth.
+- TypeScript SDK package scripts and tests for build, typecheck, endpoint routing, errors, and request typing.
+- Python SDK design document covering planned client shape, auth, routing hints, errors, and streaming approach without implementing a Python package.
 
 ### Changed
 
