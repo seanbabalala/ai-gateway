@@ -13,7 +13,7 @@
 | v0.1 | Foundation   | 已完成 — 发布开源                   | ✅ Done     |
 | v0.2 | Resilience   | 已发布 — v0.2.0 可靠性 + 开发者体验 | ✅ Released |
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
-| v0.4 | Ecosystem    | 插件生态 + 多端点 + 集成            | 4 周        |
+| v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 高可用 + 高性能 + 企业就绪          | 6 周        |
 
 ---
@@ -390,11 +390,13 @@
 
 ## v0.4 — Ecosystem（插件生态 + 多端点 + 集成）
 
+**v0.4.0 发布状态**：已完成并发布 OpenAI-compatible Embeddings 端点、插件包管理器、首批官方运行时插件、LiteLLM 配置迁移 CLI、TypeScript SDK scaffold 与 Python SDK 设计文档。Image Generation、Completions Legacy、插件 Hook 扩展与 MCP 支持继续保留在后续 roadmap 中。
+
 ### P0：API 扩展
 
 #### 19. Embeddings 端点
 
-- **状态**：✅ v0.4 已实现（功能分支 `codex/v0.4-embeddings-endpoint`）
+- **状态**：✅ v0.4.0 已发布
 - **现状**：开源 Data Plane 已支持 OpenAI-compatible `POST /v1/embeddings`
 - **目标**：支持 `/v1/embeddings`
 - **实现方案**：
@@ -430,7 +432,7 @@
 
 #### 22. 插件包管理器
 
-- **状态**：✅ v0.4 已实现（功能分支 `codex/v0.4-plugin-manager`）
+- **状态**：✅ v0.4.0 已发布
 - **现状**：支持本地路径与 `@siftgate/plugin-*` npm package 的声明式安装
 - **目标**：支持 npm-like 插件安装
 - **实现方案**：
@@ -448,7 +450,7 @@
 
 #### 23. 官方插件集
 
-- **状态**：✅ v0.4 已交付第一批
+- **状态**：✅ v0.4.0 已发布第一批
 - **现状**：已交付首批官方插件：`redis-cache`、`analytics-sink`、`request-transform`、`guardrails` skeleton；每个插件包含 README、示例配置、测试和安全说明
 - **目标**：继续扩展到 5-8 个高质量官方插件
 - **插件列表**：
@@ -480,7 +482,7 @@
 
 #### 25. LiteLLM 配置兼容
 
-- **状态**：✅ v0.4 已交付
+- **状态**：✅ v0.4.0 已发布
 - **现状**：已提供 `siftgate migrate --from litellm`，可从 LiteLLM YAML 生成 SiftGate `gateway.config.yaml` 草案和迁移报告
 - **目标**：降低从 LiteLLM 迁移到开源 Data Plane 的配置成本
 - **实现方案**：
@@ -495,7 +497,7 @@
 
 #### 26. SDK / 客户端库
 
-- **状态**：🟡 v0.4 TypeScript SDK scaffold 已完成；Python SDK 保持设计文档阶段
+- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；Python SDK 保持设计文档阶段
 - **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），并可试用 `packages/client` 中的轻量 TypeScript SDK scaffold
 - **目标**：提供轻量 SDK 增强体验
 - **实现方案**：
@@ -686,7 +688,7 @@
 | 22  | 插件包管理器       |  ⭐⭐⭐⭐  |    中    |  ✅ v0.4   |
 | 23  | 官方插件集         |  ⭐⭐⭐⭐  |    大    |  ✅ v0.4   |
 | 25  | LiteLLM 配置兼容   |   ⭐⭐⭐   |    小    |  ✅ v0.4   |
-| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    | 🟡 v0.4 TS scaffold |
+| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v0.4 TS scaffold |
 | 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  🟣 v0.5   |
 | 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  🟣 v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    |  🟣 v0.5   |
@@ -738,10 +740,10 @@
 
 ## 建议下一批启动项
 
-基于**用户价值最大 + 为后续功能奠基**的原则，v0.3.0 发布后建议优先启动：
+基于**用户价值最大 + 为后续功能奠基**的原则，v0.4.0 发布后建议优先启动：
 
 1. **内置 Playground**（最直观的用户体验提升）
 2. **结构化输出透传**（提升跨协议兼容性）
-3. **Embeddings 端点**（扩展开源网关的 API 覆盖面）
+3. **Image Generation / Completions Legacy / MCP 支持**（继续扩展开源网关的 API 与集成覆盖面）
 
 这三项可以并行开发，互不依赖，并且都能继续保持 Cloud 作为可选控制面。

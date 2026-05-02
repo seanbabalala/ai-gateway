@@ -2,6 +2,8 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
+v0.4.0 adds OpenAI-compatible embeddings ingress alongside the existing chat, responses, messages, models, health, and Dashboard APIs.
+
 ## Live Documentation
 
 When the gateway is running, the API documentation is available from the same HTTP server:

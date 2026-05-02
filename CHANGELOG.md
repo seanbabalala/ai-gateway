@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No changes yet.
+
+## 0.4.0 - 2026-05-02
+
 ### Added
 
 - v0.4 OpenAI-compatible `POST /v1/embeddings` endpoint for the open-source Data Plane.
