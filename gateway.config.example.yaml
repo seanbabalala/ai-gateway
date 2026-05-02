@@ -51,6 +51,13 @@ auth:
 # dashboard:
 #   password: "my-secret-password"
 
+# Configuration hot reload (optional)
+# Dashboard reload and SIGHUP are always available. File watching is disabled
+# by default so production mounts do not reload unexpectedly.
+# hot_reload:
+#   watch: false
+#   debounce_ms: 500
+
 # ============================================================
 # Nodes — upstream provider endpoints
 # ============================================================

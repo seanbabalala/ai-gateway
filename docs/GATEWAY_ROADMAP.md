@@ -23,14 +23,15 @@
 ### P0：核心可靠性
 
 #### 1. 配置热重载（Hot Reload）
-- **现状**：YAML 配置在启动时读取一次，修改需重启
+- **现状**：已在 v0.2 实现 Dashboard API、`SIGHUP`、可选文件 watcher 的热重载
 - **目标**：支持 `SIGHUP` 信号或 API 触发无中断重载
 - **实现方案**：
-  - 文件 watcher（chokidar）+ debounce
+  - 文件 watcher（默认关闭）+ debounce
   - ConfigService 重新解析 + 校验 → 原子替换内部引用
-  - 路由/节点/预算模块监听配置变更事件
+  - 失败时保留旧配置快照，并通过 Dashboard API 返回清晰错误
+  - 事件主题：`config.reload.success` / `config.reload.failed`
+  - 路由/节点/预算/capability/control-plane 模块读取或同步最新配置
   - Dashboard 提供 "Reload Config" 按钮
-  - 重载失败回滚到上一个有效配置
 - **抽象到企业版**：云控制面下发 Policy Bundle 时自动应用
 
 #### 2. 请求并发控制（Concurrency Limiter）

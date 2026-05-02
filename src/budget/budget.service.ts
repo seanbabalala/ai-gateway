@@ -6,9 +6,10 @@
 // Supports per-key budgets alongside global limits.
 // ===================================================================
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 
@@ -71,8 +72,9 @@ export class BudgetExceededError extends Error {
 }
 
 @Injectable()
-export class BudgetService implements OnModuleInit {
+export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BudgetService.name);
+  private configReloadSub?: Subscription;
 
   constructor(
     private readonly config: ConfigService,
@@ -81,60 +83,50 @@ export class BudgetService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.ensureDefaultRules();
-    await this.ensurePerKeyRules();
-    await this.deactivateOrphanedRules();
+    await this.syncRulesFromConfig();
+    this.configReloadSub = this.config.onReloadSuccess(() => this.syncRulesFromConfig());
+  }
+
+  onModuleDestroy(): void {
+    this.configReloadSub?.unsubscribe();
   }
 
   /**
    * Create default global budget rules from config if they don't exist yet.
    */
   private async ensureDefaultRules(): Promise<void> {
-    const existing = await this.loadActiveRules(null);
-    if (existing.length > 0) {
-      // Check if any need daily reset
-      await this.resetExpiredPeriods(existing);
-      return;
-    }
-
-    // Also check inactive global rules — if they exist, skip creation
     const allGlobal = await this.budgetRepo.find({
       where: { api_key_name: IsNull(), api_key_id: IsNull() },
     });
-    if (allGlobal.length > 0) {
-      await this.resetExpiredPeriods(allGlobal);
-      return;
-    }
-
     const budget = this.config.budget;
     const now = this.startOfDay(new Date());
-
-    const rules: Partial<BudgetRule>[] = [
-      {
-        type: 'daily_tokens',
-        limit_value: budget.daily_token_limit,
-        alert_threshold: budget.alert_threshold,
-        current_value: 0,
-        period_start: now,
-        is_active: true,
-        api_key_name: null,
-        api_key_id: null,
-      },
-      {
-        type: 'daily_cost',
-        limit_value: budget.daily_cost_limit,
-        alert_threshold: budget.alert_threshold,
-        current_value: 0,
-        period_start: now,
-        is_active: true,
-        api_key_name: null,
-        api_key_id: null,
-      },
+    const desired = [
+      { type: 'daily_tokens', limit: budget.daily_token_limit },
+      { type: 'daily_cost', limit: budget.daily_cost_limit },
     ];
 
-    for (const rule of rules) {
-      await this.budgetRepo.save(this.budgetRepo.create(rule));
+    for (const item of desired) {
+      const existing = allGlobal.find((rule) => rule.type === item.type);
+      if (existing) {
+        existing.limit_value = item.limit;
+        existing.alert_threshold = budget.alert_threshold;
+        existing.is_active = true;
+        await this.budgetRepo.save(existing);
+      } else {
+        await this.budgetRepo.save(this.budgetRepo.create({
+          type: item.type,
+          limit_value: item.limit,
+          alert_threshold: budget.alert_threshold,
+          current_value: 0,
+          period_start: now,
+          is_active: true,
+          api_key_name: null,
+          api_key_id: null,
+        }));
+      }
     }
+
+    await this.resetExpiredPeriods(allGlobal);
 
     this.logger.log(
       `Budget rules initialized: tokens=${budget.daily_token_limit}, cost=$${budget.daily_cost_limit}`,
@@ -230,6 +222,12 @@ export class BudgetService implements OnModuleInit {
         this.logger.log(`Deactivated orphaned per-key budget rule: ${rule.type} for key "${rule.api_key_name}"`);
       }
     }
+  }
+
+  private async syncRulesFromConfig(): Promise<void> {
+    await this.ensureDefaultRules();
+    await this.ensurePerKeyRules();
+    await this.deactivateOrphanedRules();
   }
 
   /**

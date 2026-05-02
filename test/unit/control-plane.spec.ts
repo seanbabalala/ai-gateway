@@ -70,6 +70,52 @@ describe('ControlPlaneClientService', () => {
     expect(JSON.stringify((init as RequestInit).body)).not.toContain('sk-');
     global.fetch = originalFetch;
   });
+
+  it('clears registration state after a successful config reload', async () => {
+    let reloadHandler: (() => void) | undefined;
+    const config = mockConfigService({
+      controlPlane: {
+        enabled: true,
+        url: 'https://cloud.example.com',
+        gateway_id: 'gw_prod',
+        registration_token: 'gw_reg_test',
+        telemetry: {
+          upload_interval_seconds: 30,
+          include_prompt: false,
+          include_response: false,
+        },
+      },
+      onReloadSuccess: jest.fn().mockImplementation((handler: () => void) => {
+        reloadHandler = handler;
+        return { unsubscribe: jest.fn() };
+      }),
+    });
+    const client = new ControlPlaneClientService(config);
+
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        workspace_id: 'ws_123',
+        gateway_id: 'gw_prod',
+        access_token: 'cp_access',
+      }),
+    }) as never;
+
+    try {
+      client.onModuleInit();
+      await client.register();
+      expect(client.state.registered).toBe(true);
+
+      reloadHandler?.();
+
+      expect(client.state.registered).toBe(false);
+    } finally {
+      global.fetch = originalFetch;
+      client.onModuleDestroy();
+    }
+  });
 });
 
 describe('TelemetryUploaderService', () => {

@@ -758,12 +758,23 @@ export class DashboardController {
 
   @Post('config/reload')
   reloadConfig() {
-    try {
-      this.config.reload();
-      return { success: true, message: 'Configuration reloaded' };
-    } catch (err) {
-      return { success: false, message: (err as Error).message };
+    const result = this.config.reload({
+      source: 'dashboard',
+      throwOnError: false,
+    });
+    if (!result.success) {
+      throw new HttpException(
+        {
+          success: false,
+          message: result.message,
+          error: result.error,
+          snapshot: result.current,
+          rolled_back: result.rolled_back,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
     }
+    return result;
   }
 
   // ══════════════════════════════════════════════════════

@@ -2,7 +2,8 @@
  * E2E tests — Dashboard API endpoints
  */
 
-import { createE2EHarness, E2EHarness, API_KEY } from './setup';
+import * as fs from 'fs';
+import { createE2EHarness, E2EHarness, API_KEY, FIXTURE_PATH } from './setup';
 
 describe('Dashboard (e2e)', () => {
   let harness: E2EHarness;
@@ -179,6 +180,28 @@ describe('Dashboard (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
+  });
+
+  it('POST /api/dashboard/config/reload → failure keeps previous config', async () => {
+    const original = fs.readFileSync(FIXTURE_PATH, 'utf8');
+    const before = await harness.agent.get('/api/dashboard/config');
+    const beforeNodeIds = before.body.nodes.map((node: any) => node.id);
+
+    try {
+      fs.writeFileSync(FIXTURE_PATH, 'nodes: [', 'utf8');
+      const res = await harness.agent.post('/api/dashboard/config/reload');
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.rolled_back).toBe(true);
+      expect(res.body.message).toContain('retained previous config');
+
+      const after = await harness.agent.get('/api/dashboard/config');
+      expect(after.body.nodes.map((node: any) => node.id)).toEqual(beforeNodeIds);
+    } finally {
+      fs.writeFileSync(FIXTURE_PATH, original, 'utf8');
+      await harness.agent.post('/api/dashboard/config/reload');
+    }
   });
 
   // ══════════════════════════════════════════════════════

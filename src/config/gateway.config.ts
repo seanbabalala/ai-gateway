@@ -24,8 +24,19 @@ export interface GatewayConfig {
   /** OpenTelemetry observability — disabled by default */
   telemetry?: TelemetryConfig;
 
+  /** Runtime config reload behavior — watcher disabled by default */
+  hot_reload?: HotReloadConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
+}
+
+// ===== Hot Reload =====
+export interface HotReloadConfig {
+  /** Watch gateway.config.yaml for changes (default: false) */
+  watch?: boolean;
+  /** Debounce file watcher reloads in milliseconds (default: 500) */
+  debounce_ms?: number;
 }
 
 // ===== Dashboard =====

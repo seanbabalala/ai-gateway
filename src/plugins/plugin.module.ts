@@ -7,6 +7,7 @@ import { PluginRegistryService } from './plugin-registry.service';
 import { PluginLoaderService } from './plugin-loader.service';
 import { HookExecutorService } from './hook-executor.service';
 import { EventBusService } from './event-bus.service';
+import { ConfigEventBridgeService } from '../config/config-event-bridge.service';
 
 @Global()
 @Module({
@@ -15,6 +16,7 @@ import { EventBusService } from './event-bus.service';
     PluginLoaderService,
     HookExecutorService,
     EventBusService,
+    ConfigEventBridgeService,
   ],
   exports: [
     PluginRegistryService,

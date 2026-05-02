@@ -58,7 +58,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
       budget: {},
       models_pricing: {},
     }),
-    reload: jest.fn(),
+    reload: jest.fn().mockReturnValue({
+      success: true,
+      message: 'Configuration reloaded',
+      current: { version: 2 },
+      previous: { version: 1 },
+      changed: {},
+      rolled_back: false,
+    }),
     addNode: jest.fn(),
     updateNode: jest.fn(),
     deleteNode: jest.fn(),
@@ -356,16 +363,27 @@ describe('DashboardController — config', () => {
     const { controller, config } = makeDashboard();
     const result = controller.reloadConfig();
     expect(result.success).toBe(true);
-    expect(config.reload).toHaveBeenCalled();
+    expect(config.reload).toHaveBeenCalledWith({
+      source: 'dashboard',
+      throwOnError: false,
+    });
   });
 
   it('should handle reload failure', () => {
     const { controller } = makeDashboard({
-      config: { reload: jest.fn().mockImplementation(() => { throw new Error('Invalid YAML'); }) },
+      config: {
+        reload: jest.fn().mockReturnValue({
+          success: false,
+          message: 'Configuration reload failed; retained previous config: Invalid YAML',
+          error: { name: 'YAMLException', message: 'Invalid YAML' },
+          current: { version: 1 },
+          previous: { version: 1 },
+          changed: {},
+          rolled_back: true,
+        }),
+      },
     });
-    const result = controller.reloadConfig();
-    expect(result.success).toBe(false);
-    expect(result.message).toContain('Invalid YAML');
+    expect(() => controller.reloadConfig()).toThrow(HttpException);
   });
 });
 

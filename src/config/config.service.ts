@@ -1,7 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { Subject, Subscription } from 'rxjs';
 import {
   GatewayConfig,
   NodeConfig,
@@ -10,12 +16,14 @@ import {
   BudgetConfig,
   CacheConfig,
   ControlPlaneConfig,
+  HotReloadConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
   AuthConfig,
   DashboardConfig,
 } from './gateway.config';
+import type { EventBusService } from '../plugins/event-bus.service';
 
 export type ConfigDiagnosticSeverity = 'warning';
 
@@ -40,11 +48,69 @@ export interface ConfigDiagnostic {
   target?: string;
 }
 
+export type ConfigReloadSource = 'manual' | 'dashboard' | 'sighup' | 'watcher';
+
+export interface ConfigSnapshot {
+  version: number;
+  loaded_at: string;
+  path: string;
+  node_count: number;
+  node_ids: string[];
+  route_tiers: string[];
+  control_plane_enabled: boolean;
+  hot_reload_watch: boolean;
+}
+
+export interface ConfigChangeSummary {
+  nodes_added: string[];
+  nodes_removed: string[];
+  nodes_changed: boolean;
+  routing_changed: boolean;
+  budget_changed: boolean;
+  pricing_changed: boolean;
+  control_plane_changed: boolean;
+  hot_reload_changed: boolean;
+}
+
+export interface ConfigReloadResult {
+  success: boolean;
+  source: ConfigReloadSource;
+  message: string;
+  previous: ConfigSnapshot;
+  current: ConfigSnapshot;
+  changed: ConfigChangeSummary;
+  rolled_back: boolean;
+  error?: {
+    name: string;
+    message: string;
+  };
+}
+
+export interface ConfigReloadOptions {
+  source?: ConfigReloadSource;
+  throwOnError?: boolean;
+}
+
+export class ConfigReloadError extends Error {
+  constructor(public readonly result: ConfigReloadResult) {
+    super(result.message);
+    this.name = 'ConfigReloadError';
+  }
+}
+
 @Injectable()
-export class ConfigService {
+export class ConfigService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ConfigService.name);
   private config!: GatewayConfig;
   private configPath!: string;
+  private configVersion = 0;
+  private loadedAt = new Date(0);
+  private eventBus?: EventBusService;
+  private readonly reloadSubject = new Subject<ConfigReloadResult>();
+  private sighupHandler?: NodeJS.SignalsListener;
+  private configWatcher?: fs.FSWatcher;
+  private watcherDebounceTimer?: NodeJS.Timeout;
+  private watcherDebounceMs = 0;
 
   constructor() {
     // Load eagerly in constructor so config is available during module initialization
@@ -52,25 +118,48 @@ export class ConfigService {
     this.loadConfig();
   }
 
+  onModuleInit(): void {
+    this.registerSighupHandler();
+    this.syncConfigWatcher();
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSighupHandler();
+    this.stopConfigWatcher();
+    this.reloadSubject.complete();
+  }
+
+  setEventBus(eventBus: EventBusService): void {
+    this.eventBus = eventBus;
+  }
+
   private loadConfig(): void {
-    this.configPath =
-      process.env.GATEWAY_CONFIG_PATH ||
-      path.resolve(process.cwd(), 'gateway.config.yaml');
-
-    if (!fs.existsSync(this.configPath)) {
-      throw new Error(`Configuration file not found: ${this.configPath}`);
-    }
-
-    const raw = fs.readFileSync(this.configPath, 'utf8');
-    const parsed = yaml.load(raw) as GatewayConfig;
-
-    // Resolve environment variables in string values
-    this.config = this.resolveEnvVars(parsed);
-    this.warnAboutNodeModelResolutionConflicts();
+    this.configPath = this.resolveConfigPath();
+    const nextConfig = this.loadConfigFromDisk();
+    this.commitConfig(nextConfig);
 
     this.logger.log(
       `Configuration loaded from ${this.configPath} — ${this.config.nodes.length} node(s) configured`,
     );
+  }
+
+  private resolveConfigPath(): string {
+    return (
+      process.env.GATEWAY_CONFIG_PATH ||
+      path.resolve(process.cwd(), 'gateway.config.yaml')
+    );
+  }
+
+  private loadConfigFromDisk(): GatewayConfig {
+    if (!fs.existsSync(this.configPath)) {
+      throw new Error(`Configuration file not found: ${this.configPath}`);
+    }
+    const raw = fs.readFileSync(this.configPath, 'utf8');
+    const parsed = yaml.load(raw) as GatewayConfig;
+    const resolved = this.resolveEnvVars(parsed) as GatewayConfig;
+    this.normalizeConfig(resolved);
+    this.validateConfigShape(resolved);
+    return resolved;
   }
 
   /**
@@ -109,10 +198,271 @@ export class ConfigService {
     return obj;
   }
 
-  /** Reload configuration from disk (useful for runtime updates) */
-  reload(): void {
-    this.loadConfig();
-    this.logger.log('Configuration reloaded');
+  private normalizeConfig(config: GatewayConfig): void {
+    if (config && typeof config === 'object') {
+      config.auth ??= { api_keys: [] };
+      config.models_pricing ??= {};
+      if (config.routing?.tiers) {
+        for (const tier of Object.values(config.routing.tiers)) {
+          tier.fallbacks ??= [];
+        }
+      }
+    }
+  }
+
+  private validateConfigShape(config: GatewayConfig): void {
+    if (!config || typeof config !== 'object') {
+      throw new Error('Invalid configuration: YAML root must be an object');
+    }
+    if (!config.server || typeof config.server !== 'object') {
+      throw new Error('Invalid configuration: server is required');
+    }
+    if (!config.database || typeof config.database !== 'object') {
+      throw new Error('Invalid configuration: database is required');
+    }
+    if (!Array.isArray(config.nodes) || config.nodes.length === 0) {
+      throw new Error('Invalid configuration: nodes must be a non-empty array');
+    }
+    for (const [idx, node] of config.nodes.entries()) {
+      if (!node?.id || !node.name || !node.protocol || !node.base_url || !node.endpoint) {
+        throw new Error(`Invalid configuration: nodes[${idx}] is missing required fields`);
+      }
+      if (!Array.isArray(node.models) || node.models.length === 0) {
+        throw new Error(`Invalid configuration: node "${node.id}" must define at least one model`);
+      }
+    }
+    if (!config.routing?.tiers || typeof config.routing.tiers !== 'object') {
+      throw new Error('Invalid configuration: routing.tiers is required');
+    }
+    if (!config.routing.scoring || typeof config.routing.scoring !== 'object') {
+      throw new Error('Invalid configuration: routing.scoring is required');
+    }
+    for (const [tierName, tier] of Object.entries(config.routing.tiers)) {
+      if (!tier?.primary?.node || !tier.primary.model) {
+        throw new Error(`Invalid configuration: routing.tiers.${tierName}.primary is required`);
+      }
+      if (!Array.isArray(tier.fallbacks)) {
+        throw new Error(`Invalid configuration: routing.tiers.${tierName}.fallbacks must be an array`);
+      }
+    }
+    if (!config.budget || typeof config.budget !== 'object') {
+      throw new Error('Invalid configuration: budget is required');
+    }
+  }
+
+  private commitConfig(config: GatewayConfig): void {
+    this.config = config;
+    this.configVersion += 1;
+    this.loadedAt = new Date();
+    this.warnAboutNodeModelResolutionConflicts();
+  }
+
+  /** Reload configuration from disk with atomic swap and rollback-on-failure semantics. */
+  reload(options: ConfigReloadOptions = {}): ConfigReloadResult {
+    const source = options.source ?? 'manual';
+    const throwOnError = options.throwOnError ?? true;
+    const previousConfig = this.config;
+    const previous = this.getSnapshot();
+
+    try {
+      const nextConfig = this.loadConfigFromDisk();
+      const changed = this.describeChanges(previousConfig, nextConfig);
+      this.commitConfig(nextConfig);
+      const current = this.getSnapshot();
+      const result: ConfigReloadResult = {
+        success: true,
+        source,
+        message: 'Configuration reloaded',
+        previous,
+        current,
+        changed,
+        rolled_back: false,
+      };
+
+      this.logger.log(
+        `Configuration reloaded from ${this.configPath} — version ${current.version}`,
+      );
+      this.emitReloadResult(result);
+      this.syncConfigWatcher();
+      return result;
+    } catch (err) {
+      const error = err as Error;
+      const current = this.getSnapshot();
+      const result: ConfigReloadResult = {
+        success: false,
+        source,
+        message: `Configuration reload failed; retained previous config: ${error.message}`,
+        previous,
+        current,
+        changed: this.emptyChangeSummary(),
+        rolled_back: true,
+        error: {
+          name: error.name || 'Error',
+          message: error.message,
+        },
+      };
+
+      this.logger.error(result.message);
+      this.emitReloadResult(result);
+      if (throwOnError) {
+        throw new ConfigReloadError(result);
+      }
+      return result;
+    }
+  }
+
+  onReload(
+    handler: (result: ConfigReloadResult) => void | Promise<void>,
+  ): Subscription {
+    return this.reloadSubject.subscribe((result) => {
+      try {
+        const maybePromise = handler(result);
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          maybePromise.catch((err) => {
+            this.logger.error(`Config reload handler failed: ${(err as Error).message}`);
+          });
+        }
+      } catch (err) {
+        this.logger.error(`Config reload handler failed: ${(err as Error).message}`);
+      }
+    });
+  }
+
+  onReloadSuccess(
+    handler: (result: ConfigReloadResult) => void | Promise<void>,
+  ): Subscription {
+    return this.onReload((result) => {
+      if (result.success) {
+        return handler(result);
+      }
+      return undefined;
+    });
+  }
+
+  onReloadFailed(
+    handler: (result: ConfigReloadResult) => void | Promise<void>,
+  ): Subscription {
+    return this.onReload((result) => {
+      if (!result.success) {
+        return handler(result);
+      }
+      return undefined;
+    });
+  }
+
+  getSnapshot(): ConfigSnapshot {
+    return {
+      version: this.configVersion,
+      loaded_at: this.loadedAt.toISOString(),
+      path: this.configPath,
+      node_count: this.config.nodes.length,
+      node_ids: this.config.nodes.map((node) => node.id),
+      route_tiers: Object.keys(this.config.routing.tiers || {}),
+      control_plane_enabled: Boolean(this.config.control_plane?.enabled),
+      hot_reload_watch: Boolean(this.config.hot_reload?.watch),
+    };
+  }
+
+  private emitReloadResult(result: ConfigReloadResult): void {
+    this.reloadSubject.next(result);
+    const topic = result.success ? 'config.reload.success' : 'config.reload.failed';
+    try {
+      this.eventBus?.emit(topic, result);
+    } catch (err) {
+      this.logger.error(`Failed to emit ${topic}: ${(err as Error).message}`);
+    }
+  }
+
+  private registerSighupHandler(): void {
+    if (this.sighupHandler) return;
+    this.sighupHandler = () => {
+      this.logger.log('SIGHUP received; reloading configuration');
+      this.reload({ source: 'sighup', throwOnError: false });
+    };
+    process.on('SIGHUP', this.sighupHandler);
+  }
+
+  private unregisterSighupHandler(): void {
+    if (!this.sighupHandler) return;
+    process.off('SIGHUP', this.sighupHandler);
+    this.sighupHandler = undefined;
+  }
+
+  private syncConfigWatcher(): void {
+    const hotReload = this.hotReload;
+    if (!hotReload.watch) {
+      this.stopConfigWatcher();
+      return;
+    }
+    if (this.configWatcher && this.watcherDebounceMs === hotReload.debounce_ms) {
+      return;
+    }
+    this.stopConfigWatcher();
+    this.startConfigWatcher(hotReload.debounce_ms);
+  }
+
+  private startConfigWatcher(debounceMs: number): void {
+    try {
+      this.configWatcher = fs.watch(this.configPath, { persistent: false }, () => {
+        if (this.watcherDebounceTimer) {
+          clearTimeout(this.watcherDebounceTimer);
+        }
+        this.watcherDebounceTimer = setTimeout(() => {
+          this.reload({ source: 'watcher', throwOnError: false });
+        }, debounceMs);
+        this.watcherDebounceTimer.unref?.();
+      });
+      this.configWatcher.on('error', (err) => {
+        this.logger.warn(`Config watcher error: ${err.message}`);
+      });
+      this.watcherDebounceMs = debounceMs;
+      this.logger.log(`Config file watcher enabled (${debounceMs}ms debounce)`);
+    } catch (err) {
+      this.logger.warn(`Failed to start config watcher: ${(err as Error).message}`);
+    }
+  }
+
+  private stopConfigWatcher(): void {
+    if (this.watcherDebounceTimer) {
+      clearTimeout(this.watcherDebounceTimer);
+      this.watcherDebounceTimer = undefined;
+    }
+    if (this.configWatcher) {
+      this.configWatcher.close();
+      this.configWatcher = undefined;
+      this.watcherDebounceMs = 0;
+    }
+  }
+
+  private describeChanges(
+    previous: GatewayConfig,
+    next: GatewayConfig,
+  ): ConfigChangeSummary {
+    const previousNodeIds = new Set(previous.nodes.map((node) => node.id));
+    const nextNodeIds = new Set(next.nodes.map((node) => node.id));
+    return {
+      nodes_added: [...nextNodeIds].filter((id) => !previousNodeIds.has(id)),
+      nodes_removed: [...previousNodeIds].filter((id) => !nextNodeIds.has(id)),
+      nodes_changed: JSON.stringify(previous.nodes) !== JSON.stringify(next.nodes),
+      routing_changed: JSON.stringify(previous.routing) !== JSON.stringify(next.routing),
+      budget_changed: JSON.stringify(previous.budget) !== JSON.stringify(next.budget),
+      pricing_changed: JSON.stringify(previous.models_pricing) !== JSON.stringify(next.models_pricing),
+      control_plane_changed: JSON.stringify(previous.control_plane || null) !== JSON.stringify(next.control_plane || null),
+      hot_reload_changed: JSON.stringify(previous.hot_reload || null) !== JSON.stringify(next.hot_reload || null),
+    };
+  }
+
+  private emptyChangeSummary(): ConfigChangeSummary {
+    return {
+      nodes_added: [],
+      nodes_removed: [],
+      nodes_changed: false,
+      routing_changed: false,
+      budget_changed: false,
+      pricing_changed: false,
+      control_plane_changed: false,
+      hot_reload_changed: false,
+    };
   }
 
   // ===== Accessors =====
@@ -179,6 +529,14 @@ export class ConfigService {
       ttl_seconds: c?.ttl_seconds ?? 300,
       max_entries: c?.max_entries ?? 1000,
       exclude_tool_use: c?.exclude_tool_use ?? true,
+    };
+  }
+
+  get hotReload(): Required<HotReloadConfig> {
+    const hotReload = this.config.hot_reload;
+    return {
+      watch: hotReload?.watch ?? false,
+      debounce_ms: hotReload?.debounce_ms ?? 500,
     };
   }
 

@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'js-yaml';
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '../../src/config/config.service';
+import { ConfigReloadError, ConfigService } from '../../src/config/config.service';
 
 function createTempConfig(config: Record<string, unknown>): string {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-test-'));
@@ -107,6 +107,103 @@ describe('ConfigService — updateNode', () => {
   it('should throw for unknown node', () => {
     const { svc } = loadConfigService();
     expect(() => svc.updateNode('nonexistent', { name: 'X' })).toThrow('not found');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// reload
+// ═══════════════════════════════════════════════════════════
+
+describe('ConfigService — reload', () => {
+  it('should atomically swap to a valid config and emit success', () => {
+    const { svc, configPath } = loadConfigService();
+    const eventBus = { emit: jest.fn() };
+    svc.setEventBus(eventBus as any);
+
+    const next = makeMinimalConfig({
+      nodes: [
+        {
+          id: 'openai',
+          name: 'OpenAI Reloaded',
+          protocol: 'chat_completions',
+          base_url: 'https://api.openai.com',
+          endpoint: '/v1/chat/completions',
+          api_key: 'sk-test',
+          models: ['gpt-4o'],
+        },
+      ],
+    });
+    fs.writeFileSync(configPath, yaml.dump(next), 'utf8');
+
+    const result = svc.reload({ source: 'manual' });
+
+    expect(result.success).toBe(true);
+    expect(result.previous.version).toBe(1);
+    expect(result.current.version).toBe(2);
+    expect(svc.getNode('openai')!.name).toBe('OpenAI Reloaded');
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      'config.reload.success',
+      expect.objectContaining({ success: true }),
+    );
+  });
+
+  it('should retain the previous config and emit failure when reload fails', () => {
+    const { svc, configPath } = loadConfigService();
+    const eventBus = { emit: jest.fn() };
+    svc.setEventBus(eventBus as any);
+
+    fs.writeFileSync(configPath, 'nodes: [', 'utf8');
+
+    expect(() => svc.reload()).toThrow(ConfigReloadError);
+    expect(svc.getNode('openai')).toBeDefined();
+    expect(svc.nodes).toHaveLength(2);
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      'config.reload.failed',
+      expect.objectContaining({
+        success: false,
+        rolled_back: true,
+      }),
+    );
+  });
+
+  it('should reload on SIGHUP without throwing on failure', () => {
+    const { svc, configPath } = loadConfigService();
+    const eventBus = { emit: jest.fn() };
+    svc.setEventBus(eventBus as any);
+    svc.onModuleInit();
+
+    try {
+      const next = makeMinimalConfig({
+        nodes: [
+          {
+            id: 'sighup-node',
+            name: 'SIGHUP Node',
+            protocol: 'chat_completions',
+            base_url: 'https://example.com',
+            endpoint: '/v1/chat/completions',
+            api_key: 'sk-test',
+            models: ['sighup-model'],
+          },
+        ],
+        routing: {
+          tiers: {
+            simple: { primary: { node: 'sighup-node', model: 'sighup-model' }, fallbacks: [] },
+          },
+          scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 },
+        },
+      });
+      fs.writeFileSync(configPath, yaml.dump(next), 'utf8');
+
+      process.emit('SIGHUP', 'SIGHUP');
+
+      expect(svc.getNode('sighup-node')).toBeDefined();
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        'config.reload.success',
+        expect.objectContaining({ source: 'sighup' }),
+      );
+    } finally {
+      svc.onModuleDestroy();
+    }
   });
 });
 
