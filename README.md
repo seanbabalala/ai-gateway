@@ -26,6 +26,8 @@
 
 ## What is SiftGate?
 
+Current open-source release: **v0.2.0**.
+
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in **any** of the three major API formats and intelligently routes them to the best provider based on request complexity, cost, and availability.
 
 **The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you a **single endpoint** that speaks all three formats and automatically picks the right provider.

@@ -266,7 +266,7 @@ describe('HealthController', () => {
     });
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, activeHealth, budget);
+    const controller = new HealthController(config, cb, makeConcurrencyLimiter(), activeHealth, budget);
     const result = await controller.check();
 
     expect(result.status).toBe('degraded');
