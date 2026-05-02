@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,6 +15,7 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 进行中 — 生产协议补齐 + 可解释路由 | 🚧 Active |
 
 ---
 
@@ -695,6 +696,51 @@
 
 ---
 
+## v0.6 — Protocol + Explainability（生产协议补齐 + 可解释路由）
+
+**v0.6 当前状态**：进入开发阶段。目标是在保持 OSS 单机 memory/SQLite 默认可用的前提下，补齐结构化输出、多模态入口、rerank/realtime 等生产协议能力，并把 explainable routing 做成 SiftGate 的核心产品差异。
+
+### P0：可解释路由
+
+#### 37. Route Decision Trace 后端
+
+- **状态**：🚧 v0.6 分支已实现后端基础能力
+- **目标**：每次请求都能回答“为什么选择这个 `node:model`”
+- **实现方案**：
+  - Pipeline/RoutingService 生成 privacy-safe trace
+  - trace 包含 `request_id`、`source_format`、tier、score、domain hints、candidate targets、过滤原因、成本/延迟/context 分数、circuit 状态、fallback chain、最终选择
+  - `route_decisions` 独立表存储 trace summary 与完整 JSON，兼容 SQLite/PostgreSQL
+  - Dashboard API：
+    - `GET /api/dashboard/route-decisions`
+    - `GET /api/dashboard/route-decisions/:requestId`
+  - 不保存 prompt、response、raw headers、provider keys
+- **下一步**：Dashboard 增加可视化“路线选择解释页”
+
+### P0：协议能力补齐
+
+#### 38. 结构化输出完整透传
+
+- **状态**：计划中
+- **目标**：OpenAI Chat Completions `response_format`、OpenAI Responses `text.format`、Anthropic Messages 兼容降级在跨协议路由中不丢失意图
+- **实现方案**：
+  - CanonicalRequest 增加统一 `response_format` / `structured_output`
+  - Provider 转发保持原始结构化输出参数
+  - schema parse/validation failure 可与 fallback policy 联动
+  - Dashboard call log 展示结构化输出意图、支持状态、fallback reason
+
+#### 39. Image / Audio / Rerank / Realtime 入口
+
+- **状态**：计划中
+- **目标**：缩小与 New API、LiteLLM 等网关在接口广度上的差距
+- **实现方案**：
+  - `/v1/rerank` OpenAI/常见兼容风格端点
+  - `/v1/images/generations`、`/v1/images/edits` 最小可用 pass-through + canonical metadata
+  - `/v1/audio/transcriptions`、`/v1/audio/speech` 主流 OpenAI-compatible provider 转发
+  - experimental realtime 入口默认关闭，只做安全代理、鉴权、连接限制、日志摘要
+  - 所有新入口覆盖 API key、namespace、budget、rate limit、call_log、telemetry
+
+---
+
 ## 功能优先级矩阵
 
 ### 按用户价值 × 实现难度排序
@@ -727,6 +773,7 @@
 | 33  | Embedding Batching |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    | ✅ v0.5 OSS |
 | 36  | 影子流量           |  ⭐⭐⭐⭐  |    中    | ✅ v0.5 OSS |
+| 37  | 可解释路由 Trace   | ⭐⭐⭐⭐⭐ |    中    | 🚧 v0.6    |
 
 ---
 
@@ -775,10 +822,10 @@
 
 ## 建议下一批启动项
 
-基于**用户价值最大 + 为后续功能奠基**的原则，v0.5.0 发布后建议优先启动：
+基于**用户价值最大 + 为后续功能奠基**的原则，v0.6 阶段建议优先完成：
 
-1. **内置 Playground**（最直观的用户体验提升）
-2. **结构化输出透传**（提升跨协议兼容性）
-3. **Image Generation / Completions Legacy / MCP 支持**（继续扩展开源网关的 API 与集成覆盖面）
+1. **Route Decision Trace + Dashboard 路线解释页**（把 explainable routing 做成核心差异）
+2. **结构化输出透传**（提升 OpenAI/Claude 生产应用兼容性）
+3. **Rerank / Image / Audio / Realtime 最小可用入口**（继续扩展开源网关的 API 覆盖面）
 
-这三项可以并行开发，互不依赖，并且都能继续保持 Cloud 作为可选控制面。
+这些能力都必须继续保持单机 OSS Data Plane 可用，Cloud 只作为可选控制面。

@@ -77,6 +77,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
+- **Explainable routing trace** — records privacy-safe route decision evidence so operators can inspect why a `node:model` was selected
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
 
 ### Cost & Budget Control
@@ -103,6 +104,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
+- **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -712,6 +714,18 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
+Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. It intentionally records only routing metadata: prompts, responses, raw headers, and provider keys are not stored.
+
+Use the Dashboard API to power an explainable routing page or inspect one request during incident response:
+
+```bash
+curl http://localhost:2099/api/dashboard/route-decisions \
+  -H "Authorization: Bearer <dashboard_jwt>"
+
+curl http://localhost:2099/api/dashboard/route-decisions/<request_id> \
+  -H "Authorization: Bearer <dashboard_jwt>"
+```
+
 ### Embeddings
 
 `POST /v1/embeddings` accepts OpenAI-compatible requests with `model`, `input`, optional `dimensions`, `encoding_format`, and `user`. `input` may be a string, array of strings, token array, or array of token arrays.
@@ -1034,6 +1048,8 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id`, legacy `api_key`, and `namespace` filters            |
 | `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id`, legacy `api_key`, and `namespace` filters              |
 | `GET`  | `/api/dashboard/logs/sse`                | Real-time log stream (SSE)                                                                         |
+| `GET`  | `/api/dashboard/route-decisions`         | Paginated explainable routing summaries with tier, node, source format, key, and namespace filters |
+| `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |

@@ -49,12 +49,16 @@ import {
   ResponsesStreamSerializer,
   MessagesStreamSerializer,
 } from '../providers/stream/stream-serializers';
-import { CallLog } from '../database/entities/call-log.entity';
+import { CallLog, RouteDecisionLog } from '../database/entities';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
 import { LogSinkService } from '../log-sinks/log-sink.service';
 import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
+import {
+  RouteDecisionTrace,
+  routeTargetKey,
+} from '../routing/route-decision-trace';
 
 export interface PipelineResult {
   body: Record<string, unknown>;
@@ -72,6 +76,7 @@ interface SmartRouteResolution {
   modalityHints?: string[];
   experimentGroup: string | null;
   experimentGroupsByTarget: Record<string, string>;
+  routeTrace: RouteDecisionTrace;
 }
 
 type FallbackReason =
@@ -152,6 +157,8 @@ export class PipelineService {
     private readonly telemetryUploader: TelemetryUploaderService,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
+    @InjectRepository(RouteDecisionLog)
+    private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly logSinks?: LogSinkService,
     @Optional() private readonly embeddingBatching?: EmbeddingBatchingService,
@@ -263,12 +270,18 @@ export class PipelineService {
 
           // ── Route Resolution ──
           currentPhase = 'routeResolution';
-          const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget } =
+          const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget, routeTrace } =
             await this.resolveSmartRoute(canonical, store);
           rootSpan.setAttributes({ 'gateway.tier': tier, 'gateway.score': score });
           const retryConfig = this.config.retry;
           const costDowngrade = this.applyCostDowngrade(canonical, route, tier);
           const activeRoute = costDowngrade.route;
+          const activeRouteTrace = this.applyCostDowngradeToTrace(
+            routeTrace,
+            route,
+            activeRoute,
+            costDowngrade.reason,
+          );
           const originalPrimary = route.primary;
 
           let canonicalResponse: CanonicalResponse | null = null;
@@ -369,6 +382,7 @@ export class PipelineService {
                 experimentGroup: resolvedExperimentGroup,
                 fallbackReason,
                 fallbackFromNode,
+                routeTrace: activeRouteTrace,
               });
               return {
                 body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
@@ -381,7 +395,7 @@ export class PipelineService {
               isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
               retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
               domainHint, modalityHints, fallbackReason,
-              fallbackFromNode });
+              fallbackFromNode, routeTrace: activeRouteTrace });
             return {
               body: this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
               statusCode: failureStatus,
@@ -456,7 +470,7 @@ export class PipelineService {
             statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
             usage: canonicalResponse.usage, error: null, retryCount: totalRetries,
             experimentGroup: resolvedExperimentGroup, domainHint, modalityHints,
-            fallbackReason, fallbackFromNode });
+            fallbackReason, fallbackFromNode, routeTrace: activeRouteTrace });
           this.shadowTraffic?.enqueueChat(
             requestId,
             canonical,
@@ -629,6 +643,7 @@ export class PipelineService {
               retryCount: totalRetries,
               fallbackReason,
               fallbackFromNode,
+              routeTrace: route.trace,
             });
             return {
               body: this.formatError('embeddings', failureStatus, errorMsg),
@@ -678,6 +693,7 @@ export class PipelineService {
             retryCount: totalRetries,
             fallbackReason,
             fallbackFromNode,
+            routeTrace: route.trace,
           });
           this.shadowTraffic?.enqueueEmbeddings(
             requestId,
@@ -1629,11 +1645,17 @@ export class PipelineService {
         }
       }
 
-      const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget } =
+      const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget, routeTrace } =
         await this.resolveSmartRoute(canonical, store);
       const retryConfig = this.config.retry;
       const costDowngrade = this.applyCostDowngrade(canonical, route, tier);
       const activeRoute = costDowngrade.route;
+      const activeRouteTrace = this.applyCostDowngradeToTrace(
+        routeTrace,
+        route,
+        activeRoute,
+        costDowngrade.reason,
+      );
       const originalPrimary = route.primary;
 
       const startTime = Date.now();
@@ -1695,6 +1717,7 @@ export class PipelineService {
             modalityHints,
             fallbackReason,
             fallbackFromNode,
+            routeTrace: activeRouteTrace,
           });
           this.writeSyntheticStreamResponse(
             res,
@@ -1826,7 +1849,7 @@ export class PipelineService {
                 statusCode: 200, isFallback, latencyMs, usage, error: null,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
-                fallbackFromNode });
+                fallbackFromNode, routeTrace: activeRouteTrace });
               if (accumulatedText.length > 0) {
                 this.shadowTraffic?.enqueueChat(
                   requestId,
@@ -1893,7 +1916,7 @@ export class PipelineService {
                 usage: { input_tokens: 0, output_tokens: 0 }, error: 'Client canceled stream',
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
-                fallbackFromNode });
+                fallbackFromNode, routeTrace: activeRouteTrace });
               rootSpan.end();
               return;
             }
@@ -1962,6 +1985,7 @@ export class PipelineService {
                   experimentGroup: resolvedExperimentGroup,
                   fallbackReason,
                   fallbackFromNode,
+                  routeTrace: activeRouteTrace,
                 });
                 this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
                 rootSpan.end();
@@ -1980,7 +2004,7 @@ export class PipelineService {
                 usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
-                fallbackFromNode });
+                fallbackFromNode, routeTrace: activeRouteTrace });
               this.telemetry.upstreamErrors.add(1, { node: target.node, reason: 'stream_error' });
               rootSpan.end();
               return;
@@ -2054,6 +2078,7 @@ export class PipelineService {
           experimentGroup: resolvedExperimentGroup,
           fallbackReason,
           fallbackFromNode,
+          routeTrace: activeRouteTrace,
         });
         this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
         rootSpan.end();
@@ -2064,7 +2089,7 @@ export class PipelineService {
         usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
         retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
         domainHint, modalityHints, fallbackReason,
-        fallbackFromNode });
+        fallbackFromNode, routeTrace: activeRouteTrace });
       this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
       res.status(failureStatus).json(
         this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
@@ -2317,17 +2342,26 @@ export class PipelineService {
         this.logger.log(
           `Pinned messages route: "${requestedModel || 'auto'}" → node "${pinnedNode.id}" (model: ${pinnedModel})`,
         );
+        const route = {
+          primary: { node: pinnedNode.id, model: pinnedModel },
+          fallbacks: [],
+        };
 
         return {
-          route: {
-            primary: { node: pinnedNode.id, model: pinnedModel },
-            fallbacks: [],
-          },
+          route,
           tier: 'direct',
           score: 0,
           domainHint: null,
           experimentGroup: null,
           experimentGroupsByTarget: {},
+          routeTrace: this.buildPipelineRouteTrace({
+            mode: 'pinned',
+            canonical,
+            tier: 'direct',
+            score: 0,
+            route,
+            reason: 'Anthropic Messages compatibility pin',
+          }),
         };
       }
     }
@@ -2367,16 +2401,26 @@ export class PipelineService {
           ),
         );
 
+        const route = {
+          primary: { node: resolved.nodeId, model: resolved.model },
+          fallbacks,
+        };
+
         return {
-          route: {
-            primary: { node: resolved.nodeId, model: resolved.model },
-            fallbacks,
-          },
+          route,
           tier: 'direct',
           score: 0,
           domainHint: null,
           experimentGroup: null,
           experimentGroupsByTarget: {},
+          routeTrace: this.buildPipelineRouteTrace({
+            mode: 'direct',
+            canonical,
+            tier: 'direct',
+            score: 0,
+            route,
+            reason: `direct model match for "${requestedModel}"`,
+          }),
         };
       }
 
@@ -2477,6 +2521,25 @@ export class PipelineService {
       primary: routeDecision.primary,
       fallbacks: routeDecision.fallbacks,
     });
+    const baseRouteTrace = routeDecision.trace || this.buildPipelineRouteTrace({
+      mode: 'auto',
+      canonical,
+      tier: routeDecision.tier,
+      score: scoringResult.score,
+      route: {
+        primary: routeDecision.primary,
+        fallbacks: routeDecision.fallbacks,
+      },
+      reason: 'automatic routing',
+      domainHint: routeDecision.domainHint || scoringResult.domainHint || null,
+      modalityHints: scoringResult.modalityHints,
+    });
+    const routeTrace = this.applyTargetFilterToTrace(
+      baseRouteTrace,
+      [constrainedRoute.primary, ...constrainedRoute.fallbacks],
+      'api_key_or_namespace_policy',
+      'API key or namespace policy removed this target from the automatic route',
+    );
 
     return {
       route: constrainedRoute,
@@ -2486,7 +2549,233 @@ export class PipelineService {
       modalityHints: scoringResult.modalityHints,
       experimentGroup: routeDecision.experimentGroup,
       experimentGroupsByTarget: routeDecision.experimentGroupsByTarget || {},
+      routeTrace,
     };
+  }
+
+  private buildPipelineRouteTrace(input: {
+    mode: RouteDecisionTrace['mode'];
+    canonical: LoggableCanonicalRequest;
+    tier: Tier;
+    score: number;
+    route: {
+      primary: RouteTarget;
+      fallbacks: RouteTarget[];
+    };
+    reason: string;
+    domainHint?: string | null;
+    modalityHints?: string[];
+  }): RouteDecisionTrace {
+    const targets = [input.route.primary, ...input.route.fallbacks];
+    const selectedKey = routeTargetKey(input.route.primary);
+    const tokenEstimate =
+      input.canonical.metadata.source_format === 'embeddings'
+        ? null
+        : estimateCanonicalRequestTokens(input.canonical as CanonicalRequest);
+
+    return {
+      version: 1,
+      requested_model: input.canonical.metadata.original_model || null,
+      mode: input.mode,
+      tier: input.tier,
+      score: input.score,
+      domain_hints: {
+        domain: input.domainHint || null,
+        modalities: input.modalityHints || this.modalitiesForLog(input.canonical),
+      },
+      scoring: {
+        tier: input.tier,
+        score: input.score,
+        momentum_adjusted: false,
+      },
+      constraints: {
+        estimated_input_tokens: tokenEstimate?.input_tokens ?? null,
+        estimated_output_tokens: tokenEstimate?.output_tokens ?? null,
+        estimated_context_tokens: tokenEstimate?.context_tokens ?? null,
+        requires_structured_output:
+          input.canonical.metadata.source_format !== 'embeddings' &&
+          this.requestRequiresStructuredOutput(input.canonical as CanonicalRequest),
+      },
+      candidate_targets: targets.map((target, index) => {
+        const capabilities =
+          this.capabilityService.resolveModelRoutingCapabilities?.(
+            target.node,
+            target.model,
+          ) || {};
+        const pricing = this.config.getModelPricing(target.model, target.node);
+        const estimatedCost =
+          pricing && tokenEstimate
+            ? this.calculateCost(
+                {
+                  input_tokens: tokenEstimate.input_tokens,
+                  output_tokens: tokenEstimate.output_tokens,
+                },
+                pricing,
+              )
+            : null;
+        const maxContextTokens = capabilities.max_context_tokens ?? null;
+        const contextTokens = tokenEstimate?.context_tokens;
+        return {
+          node: target.node,
+          model: target.model,
+          weight: null,
+          position: index,
+          circuit_state:
+            String(this.circuitBreaker.getCircuitState?.(target.node, target.model) || 'CLOSED'),
+          circuit_available:
+            String(this.circuitBreaker.getCircuitState?.(target.node, target.model) || 'CLOSED') !== 'OPEN',
+          selected: routeTargetKey(target) === selectedKey,
+          fallback: index > 0,
+          filter_reasons: [],
+          scores: {
+            cost:
+              estimatedCost === null
+                ? null
+                : Number((1 / (1 + estimatedCost)).toFixed(4)),
+            latency: null,
+            context:
+              contextTokens && maxContextTokens
+                ? Number(Math.max(0, 1 - contextTokens / maxContextTokens).toFixed(4))
+                : null,
+          },
+          metrics: {
+            estimated_cost_usd:
+              estimatedCost === null ? null : Number(estimatedCost.toFixed(6)),
+            avg_latency_ms: null,
+            p95_latency_ms: null,
+            max_context_tokens: maxContextTokens,
+            context_fit:
+              !contextTokens || !maxContextTokens
+                ? 'unknown'
+                : contextTokens > maxContextTokens
+                  ? 'overflow'
+                  : contextTokens > maxContextTokens * 0.8
+                    ? 'near_limit'
+                    : 'safe',
+            structured_output:
+              typeof capabilities.structured_output === 'boolean'
+                ? capabilities.structured_output
+                : null,
+          },
+        };
+      }),
+      filters: [],
+      load_balancing: {
+        strategy:
+          input.mode === 'embedding_auto' || input.mode === 'embedding_direct'
+            ? 'embedding'
+            : input.mode === 'cache'
+              ? 'cache'
+              : input.mode === 'hook'
+                ? 'hook'
+                : 'direct',
+        source:
+          input.mode === 'embedding_auto' || input.mode === 'embedding_direct'
+            ? 'embedding'
+            : input.mode === 'cache'
+              ? 'cache'
+              : input.mode === 'hook'
+                ? 'hook'
+                : 'direct',
+        selected: input.route.primary,
+        target_count: targets.length,
+        reason: input.reason,
+      },
+      fallback_chain: input.route.fallbacks,
+      cost_downgrade: null,
+      final_selection: {
+        node: input.route.primary.node,
+        model: input.route.primary.model,
+        reason: input.reason,
+        is_fallback: false,
+        fallback_reason: null,
+      },
+      privacy: {
+        prompt: false,
+        response: false,
+        raw_headers: false,
+        provider_keys: false,
+      },
+    };
+  }
+
+  private applyTargetFilterToTrace(
+    trace: RouteDecisionTrace,
+    allowedTargets: RouteTarget[],
+    reason: string,
+    message: string,
+  ): RouteDecisionTrace {
+    const next = this.cloneRouteTrace(trace);
+    const allowed = new Set(allowedTargets.map(routeTargetKey));
+    const selectedAllowedKey = allowedTargets[0] ? routeTargetKey(allowedTargets[0]) : null;
+    for (const candidate of next.candidate_targets) {
+      const key = `${candidate.node}:${candidate.model}`;
+      if (allowed.has(key)) continue;
+      if (!candidate.filter_reasons.includes(reason)) {
+        candidate.filter_reasons.push(reason);
+      }
+      next.filters.push({
+        node: candidate.node,
+        model: candidate.model,
+        stage: 'authorization',
+        reason: message,
+      });
+      candidate.selected = false;
+      candidate.fallback = false;
+    }
+    next.candidate_targets.forEach((candidate) => {
+      const key = `${candidate.node}:${candidate.model}`;
+      if (!allowed.has(key)) return;
+      candidate.selected = key === selectedAllowedKey;
+      candidate.fallback = allowed.has(key) && !candidate.selected;
+    });
+    if (allowedTargets[0]) {
+      next.load_balancing.selected = allowedTargets[0];
+      next.load_balancing.target_count = allowedTargets.length;
+      next.fallback_chain = allowedTargets.slice(1);
+      next.final_selection = {
+        node: allowedTargets[0].node,
+        model: allowedTargets[0].model,
+        reason: next.final_selection.reason,
+        is_fallback: false,
+        fallback_reason: null,
+      };
+    }
+    return next;
+  }
+
+  private applyCostDowngradeToTrace(
+    trace: RouteDecisionTrace,
+    originalRoute: { primary: RouteTarget; fallbacks: RouteTarget[] },
+    activeRoute: { primary: RouteTarget; fallbacks: RouteTarget[] },
+    reason: FallbackReason | null,
+  ): RouteDecisionTrace {
+    if (reason !== 'cost_downgrade') return trace;
+    const next = this.cloneRouteTrace(trace);
+    next.cost_downgrade = {
+      applied: true,
+      from: originalRoute.primary,
+      to: activeRoute.primary,
+      reason: 'estimated cost exceeded routing.fallback_policy.cost_downgrade.max_estimated_cost_usd',
+    };
+    next.final_selection = {
+      node: activeRoute.primary.node,
+      model: activeRoute.primary.model,
+      reason: 'cost downgrade selected a lower-cost configured fallback',
+      is_fallback: true,
+      fallback_reason: 'cost_downgrade',
+    };
+    next.fallback_chain = activeRoute.fallbacks;
+    for (const candidate of next.candidate_targets) {
+      const key = `${candidate.node}:${candidate.model}`;
+      candidate.selected = key === routeTargetKey(activeRoute.primary);
+      candidate.fallback = activeRoute.fallbacks.some((target) => routeTargetKey(target) === key);
+    }
+    return next;
+  }
+
+  private cloneRouteTrace(trace: RouteDecisionTrace): RouteDecisionTrace {
+    return JSON.parse(JSON.stringify(trace)) as RouteDecisionTrace;
   }
 
   private buildDirectFallbacks(
@@ -3045,6 +3334,7 @@ export class PipelineService {
     modalityHints?: string[];
     fallbackReason?: FallbackReason | null;
     fallbackFromNode?: string | null;
+    routeTrace?: RouteDecisionTrace;
   }): Promise<void> {
     await this.recordBudgetUsage(
       params.canonical,
@@ -3069,6 +3359,7 @@ export class PipelineService {
       modalityHints: params.modalityHints,
       fallbackReason: params.fallbackReason,
       fallbackFromNode: params.fallbackFromNode,
+      routeTrace: params.routeTrace,
     });
   }
 
@@ -3103,6 +3394,7 @@ export class PipelineService {
     modalityHints?: string[];
     fallbackReason?: FallbackReason | null;
     fallbackFromNode?: string | null;
+    routeTrace?: RouteDecisionTrace;
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model, params.nodeId);
@@ -3144,6 +3436,11 @@ export class PipelineService {
       });
       const saved = await this.callLogRepo.save(log);
 
+      try {
+        await this.saveRouteDecisionTrace(params);
+      } catch (err) {
+        this.logger.warn(`Failed to save route decision trace: ${(err as Error).message}`);
+      }
 
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);
@@ -3164,6 +3461,123 @@ export class PipelineService {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
     }
   }
+
+  private async saveRouteDecisionTrace(
+    params: {
+      requestId: string; canonical: LoggableCanonicalRequest; tier: Tier; score: number;
+      nodeId: string; model: string; statusCode: number; isFallback: boolean;
+      latencyMs: number; usage: TokenUsage; error: string | null;
+      retryCount?: number;
+      experimentGroup?: string | null;
+      domainHint?: string | null;
+      modalityHints?: string[];
+      fallbackReason?: FallbackReason | null;
+      fallbackFromNode?: string | null;
+      routeTrace?: RouteDecisionTrace;
+    },
+  ): Promise<void> {
+    const trace = this.finalizeRouteTrace(params);
+    const log = this.routeDecisionRepo.create({
+      request_id: params.requestId,
+      source_format: params.canonical.metadata.source_format,
+      tier: params.tier,
+      score: params.score,
+      route_mode: trace.mode,
+      strategy: String(trace.load_balancing.strategy),
+      selected_node_id: params.nodeId,
+      selected_model: params.model,
+      domain_hint: trace.domain_hints.domain,
+      candidate_count: trace.candidate_targets.length,
+      filtered_count: trace.filters.length,
+      status_code: params.statusCode,
+      is_fallback: params.isFallback,
+      fallback_reason: params.fallbackReason || null,
+      api_key_name: params.canonical.metadata.api_key_name || null,
+      api_key_id: params.canonical.metadata.api_key_id || null,
+      namespace_id: params.canonical.metadata.namespace_id || null,
+      trace_json: JSON.stringify(trace),
+    });
+    await this.routeDecisionRepo.save(log);
+  }
+
+  private finalizeRouteTrace(params: {
+    requestId: string; canonical: LoggableCanonicalRequest; tier: Tier; score: number;
+    nodeId: string; model: string; statusCode: number; isFallback: boolean;
+    error: string | null;
+    fallbackReason?: FallbackReason | null;
+    routeTrace?: RouteDecisionTrace;
+  }): RouteDecisionTrace {
+    const trace = params.routeTrace
+      ? this.cloneRouteTrace(params.routeTrace)
+      : this.buildPipelineRouteTrace({
+          mode:
+            params.nodeId === 'cache'
+              ? 'cache'
+              : params.nodeId === 'hook'
+                ? 'hook'
+                : params.canonical.metadata.source_format === 'embeddings'
+                  ? 'embedding_auto'
+                  : 'direct',
+          canonical: params.canonical,
+          tier: params.tier,
+          score: params.score,
+          route: {
+            primary: { node: params.nodeId, model: params.model },
+            fallbacks: [],
+          },
+          reason: 'minimal trace from call log metadata',
+        });
+
+    trace.request_id = params.requestId;
+    trace.source_format = params.canonical.metadata.source_format;
+    trace.requested_model = params.canonical.metadata.original_model || null;
+    trace.tier = params.tier;
+    trace.score = params.score;
+    trace.final_selection = {
+      node: params.nodeId,
+      model: params.model,
+      reason: params.isFallback
+        ? `final target was selected through fallback${params.fallbackReason ? `: ${params.fallbackReason}` : ''}`
+        : trace.final_selection.reason,
+      is_fallback: params.isFallback,
+      fallback_reason: params.fallbackReason || null,
+    };
+    trace.outcome = {
+      status_code: params.statusCode,
+      error: params.error ? this.sanitizeTraceError(params.error) : null,
+    };
+    trace.privacy = {
+      prompt: false,
+      response: false,
+      raw_headers: false,
+      provider_keys: false,
+    };
+
+    for (const candidate of trace.candidate_targets) {
+      const selected = candidate.node === params.nodeId && candidate.model === params.model;
+      candidate.selected = selected;
+      candidate.fallback = !selected && trace.fallback_chain.some((target) =>
+        target.node === candidate.node && target.model === candidate.model,
+      );
+    }
+    return trace;
+  }
+
+  private sanitizeTraceError(error: string): string {
+    const lower = error.toLowerCase();
+    if (lower.includes('budget')) return 'budget_rejected';
+    if (lower.includes('rate limit') || lower.includes('429')) return 'rate_limited';
+    if (lower.includes('timeout') || lower.includes('timed out')) return 'timeout';
+    if (lower.includes('structured') || lower.includes('schema') || lower.includes('json')) {
+      return 'structured_output_validation_failed';
+    }
+    if (lower.includes('circuit')) return 'circuit_open';
+    if (lower.includes('client canceled') || lower.includes('client cancelled')) {
+      return 'client_canceled';
+    }
+    return 'upstream_error_redacted';
+  }
+
   private metricModelLabel(nodeId: string, model: string): string {
     if (nodeId === 'cache' || nodeId === 'hook') {
       return nodeId;
