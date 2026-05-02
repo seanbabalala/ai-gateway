@@ -43,6 +43,9 @@ hardening visible without blocking local development.
 - YAML parse errors and unreadable/missing files.
 - Required top-level sections: `server`, `database`, `auth`, `nodes`,
   `routing`, `budget`, and `models_pricing`.
+- Database shape, including SQLite path, PostgreSQL URL, and boolean
+  `database.synchronize` when set. PostgreSQL configs warn unless production
+  schema synchronization is explicitly disabled.
 - Required node fields: `id`, `name`, `protocol`, `base_url`, `endpoint`,
   `api_key`, `models`, and `timeout_ms`.
 - Duplicate node ids and duplicate model ids inside the same node.

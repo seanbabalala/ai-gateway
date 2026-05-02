@@ -26,10 +26,12 @@ server:
 database:
   type: sqlite
   path: ./data/gateway.db
+  # synchronize: true       # TypeORM schema sync; fine for local SQLite/dev
   # log_retention_days: 30    # Auto-delete logs older than N days (default: 30, 0 = keep forever)
   # For PostgreSQL:
   # type: postgres
-  # url: "postgresql://user:pass@localhost:5432/ai_gateway"
+  # url: "${DATABASE_URL}"
+  # synchronize: false      # Recommended for production after schema migration/bootstrap
 
 auth:
   # Client Gateway API keys are generated and managed in the Dashboard.
