@@ -10,6 +10,7 @@ import {
   ToolUseBlock,
   ToolResultBlock,
 } from '../canonical.types';
+import { normalizeStructuredOutputFromBody } from '../structured-output';
 
 /**
  * Normalizes Anthropic Messages API format → Canonical format.
@@ -30,6 +31,7 @@ import {
 export class MessagesNormalizer implements Normalizer {
   normalize(body: unknown, headers: Record<string, string>): CanonicalRequest {
     const req = body as Record<string, unknown>;
+    const structured = normalizeStructuredOutputFromBody('messages', req);
 
     const messages: CanonicalMessage[] = [];
 
@@ -51,6 +53,7 @@ export class MessagesNormalizer implements Normalizer {
       temperature: req.temperature as number | undefined,
       top_p: req.top_p as number | undefined,
       stop: this.normalizeStop(req.stop_sequences),
+      ...structured,
       stream: Boolean(req.stream),
       metadata: {
         source_format: 'messages',

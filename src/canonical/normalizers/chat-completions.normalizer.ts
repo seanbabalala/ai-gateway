@@ -10,6 +10,7 @@ import {
   ToolUseBlock,
   ToolResultBlock,
 } from '../canonical.types';
+import { normalizeStructuredOutputFromBody } from '../structured-output';
 
 /**
  * Normalizes OpenAI Chat Completions format → Canonical format.
@@ -27,6 +28,10 @@ import {
 export class ChatCompletionsNormalizer implements Normalizer {
   normalize(body: unknown, headers: Record<string, string>): CanonicalRequest {
     const req = body as Record<string, unknown>;
+    const structured = normalizeStructuredOutputFromBody(
+      'chat_completions',
+      req,
+    );
 
     return {
       messages: this.normalizeMessages(req.messages as unknown[]),
@@ -42,6 +47,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
       temperature: req.temperature as number | undefined,
       top_p: req.top_p as number | undefined,
       stop: this.normalizeStop(req.stop),
+      ...structured,
       stream: Boolean(req.stream),
       metadata: {
         source_format: 'chat_completions',

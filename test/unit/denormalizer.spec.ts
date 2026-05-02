@@ -152,6 +152,46 @@ describe('ChatCompletionsDenormalizer', () => {
       expect(parts[1].type).toBe('image_url');
       expect(parts[1].image_url.url).toBe('https://example.com/img.jpg');
     });
+
+    it('should map Responses text.format json_schema to OpenAI Chat response_format', () => {
+      const schema = {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+      };
+      const canonical = makeCanonicalRequest({
+        metadata: {
+          source_format: 'responses',
+          original_model: 'auto',
+          raw_headers: {},
+        },
+        response_format: {
+          type: 'json_schema',
+          source: 'responses.text.format',
+          raw: { type: 'json_schema', name: 'Answer', schema, strict: true },
+          json_schema: { name: 'Answer', schema, strict: true },
+        },
+        structured_output: {
+          requested: true,
+          type: 'json_schema',
+          source: 'responses.text.format',
+          name: 'Answer',
+          schema,
+          strict: true,
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'gpt-4o');
+
+      expect(result.response_format).toEqual({
+        type: 'json_schema',
+        json_schema: {
+          name: 'Answer',
+          schema,
+          strict: true,
+        },
+      });
+    });
   });
 
   describe('Response denormalization', () => {
@@ -244,6 +284,44 @@ describe('ResponsesDenormalizer', () => {
       expect(input[0].type).toBe('function_call_output');
       expect(input[0].call_id).toBe('call_1');
       expect(input[0].output).toBe('22°C');
+    });
+
+    it('should map Chat response_format json_schema to Responses text.format', () => {
+      const schema = {
+        type: 'object',
+        properties: { answer: { type: 'string' } },
+        required: ['answer'],
+      };
+      const canonical = makeCanonicalRequest({
+        response_format: {
+          type: 'json_schema',
+          source: 'chat_completions.response_format',
+          raw: {
+            type: 'json_schema',
+            json_schema: { name: 'Answer', schema, strict: true },
+          },
+          json_schema: { name: 'Answer', schema, strict: true },
+        },
+        structured_output: {
+          requested: true,
+          type: 'json_schema',
+          source: 'chat_completions.response_format',
+          name: 'Answer',
+          schema,
+          strict: true,
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'gpt-4.1');
+
+      expect(result.text).toEqual({
+        format: {
+          type: 'json_schema',
+          name: 'Answer',
+          schema,
+          strict: true,
+        },
+      });
     });
 
     it('should convert tools to function type', () => {
@@ -367,6 +445,42 @@ describe('MessagesDenormalizer', () => {
       const canonical = makeCanonicalRequest({ stop: ['END', 'STOP'] });
       const result = denorm.denormalize(canonical, 'claude-sonnet-4-20250514');
       expect(result.stop_sequences).toEqual(['END', 'STOP']);
+    });
+
+    it('should map OpenAI structured output to Anthropic output_config.format', () => {
+      const schema = {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+      };
+      const canonical = makeCanonicalRequest({
+        response_format: {
+          type: 'json_schema',
+          source: 'chat_completions.response_format',
+          raw: {
+            type: 'json_schema',
+            json_schema: { name: 'Answer', schema, strict: true },
+          },
+          json_schema: { name: 'Answer', schema, strict: true },
+        },
+        structured_output: {
+          requested: true,
+          type: 'json_schema',
+          source: 'chat_completions.response_format',
+          name: 'Answer',
+          schema,
+          strict: true,
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'claude-sonnet-4-20250514');
+
+      expect(result.output_config).toEqual({
+        format: {
+          type: 'json_schema',
+          schema,
+        },
+      });
     });
   });
 

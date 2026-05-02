@@ -24,6 +24,11 @@ import {
 } from '../canonical/canonical.types';
 import { detectRequestModalities } from '../canonical/modality-detection';
 import {
+  normalizeStructuredOutputFromBody,
+  resolveStructuredOutputForwarding,
+  structuredOutputSchema,
+} from '../canonical/structured-output';
+import {
   ProviderClientService,
   ProviderError,
 } from '../providers/provider-client.service';
@@ -174,6 +179,10 @@ export class PipelineService {
         'gateway.model': canonical.metadata.original_model || 'auto',
         'gateway.session_key': canonical.metadata.session_key || '',
         'gateway.stream': false,
+        'gateway.structured_output.requested':
+          canonical.structured_output?.requested ?? false,
+        'gateway.structured_output.type':
+          canonical.structured_output?.type || '',
       },
       async (rootSpan) => {
         const store = new Map<string, unknown>();
@@ -1291,49 +1300,20 @@ export class PipelineService {
   private extractStructuredOutputIntent(
     canonical: CanonicalRequest,
   ): { schema?: Record<string, unknown> } | null {
-    const raw = canonical.metadata.raw_body;
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-    const body = raw as Record<string, unknown>;
-
-    const responseFormat = body.response_format;
-    if (
-      responseFormat &&
-      typeof responseFormat === 'object' &&
-      !Array.isArray(responseFormat)
-    ) {
-      const typedFormat = responseFormat as Record<string, unknown>;
-      if (typedFormat.type === 'json_object') return {};
-      if (typedFormat.type === 'json_schema') {
-        const jsonSchema =
-          typedFormat.json_schema &&
-          typeof typedFormat.json_schema === 'object' &&
-          !Array.isArray(typedFormat.json_schema)
-            ? (typedFormat.json_schema as Record<string, unknown>)
-            : {};
-        const schema = jsonSchema.schema;
-        return schema && typeof schema === 'object' && !Array.isArray(schema)
-          ? { schema: schema as Record<string, unknown> }
-          : {};
-      }
+    if (canonical.structured_output?.requested) {
+      const schema = structuredOutputSchema(canonical.response_format);
+      return schema ? { schema } : {};
     }
 
-    const text = body.text;
-    const textFormat =
-      text && typeof text === 'object' && !Array.isArray(text)
-        ? (text as Record<string, unknown>).format
-        : undefined;
-    if (
-      textFormat &&
-      typeof textFormat === 'object' &&
-      !Array.isArray(textFormat)
-    ) {
-      const typedFormat = textFormat as Record<string, unknown>;
-      if (typedFormat.type === 'json_object') return {};
-      if (typedFormat.type === 'json_schema') {
-        const schema = typedFormat.schema;
-        return schema && typeof schema === 'object' && !Array.isArray(schema)
-          ? { schema: schema as Record<string, unknown> }
-          : {};
+    const raw = canonical.metadata.raw_body;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const structured = normalizeStructuredOutputFromBody(
+        canonical.metadata.source_format,
+        raw as Record<string, unknown>,
+      );
+      if (structured.structured_output?.requested) {
+        const schema = structuredOutputSchema(structured.response_format);
+        return schema ? { schema } : {};
       }
     }
 
@@ -2641,12 +2621,7 @@ export class PipelineService {
   }
 
   private requestRequiresStructuredOutput(canonical: CanonicalRequest): boolean {
-    const requestLike = canonical as CanonicalRequest & {
-      response_format?: unknown;
-    };
-    if (requestLike.response_format !== undefined) {
-      return true;
-    }
+    if (canonical.structured_output?.requested) return true;
 
     const rawBody = canonical.metadata.raw_body;
     if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
@@ -3107,6 +3082,11 @@ export class PipelineService {
     try {
       const pricing = this.config.getModelPricing(params.model, params.nodeId);
       const costUsd = this.calculateCost(params.usage, pricing);
+      const structuredOutput = this.resolveStructuredOutputLogFields(
+        params.canonical,
+        params.nodeId,
+        params.model,
+      );
 
       const log = this.callLogRepo.create({
         request_id: params.requestId,
@@ -3119,6 +3099,15 @@ export class PipelineService {
         cost_usd: costUsd, latency_ms: params.latencyMs,
         status_code: params.statusCode, is_fallback: params.isFallback,
         fallback_reason: params.fallbackReason || null,
+        structured_output_requested:
+          structuredOutput.structured_output_requested,
+        structured_output_type: structuredOutput.structured_output_type,
+        structured_output_strategy:
+          structuredOutput.structured_output_strategy,
+        structured_output_supported:
+          structuredOutput.structured_output_supported,
+        structured_output_schema_name:
+          structuredOutput.structured_output_schema_name,
         session_key: params.canonical.metadata.session_key || null,
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
@@ -3163,6 +3152,62 @@ export class PipelineService {
     } catch (err) {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
     }
+  }
+
+  private resolveStructuredOutputLogFields(
+    canonical: LoggableCanonicalRequest,
+    nodeId: string,
+    model: string,
+  ): {
+    structured_output_requested: boolean;
+    structured_output_type: string | null;
+    structured_output_strategy: string | null;
+    structured_output_supported: boolean | null;
+    structured_output_schema_name: string | null;
+  } {
+    if (canonical.metadata.source_format === 'embeddings' || !('messages' in canonical)) {
+      return {
+        structured_output_requested: false,
+        structured_output_type: null,
+        structured_output_strategy: null,
+        structured_output_supported: null,
+        structured_output_schema_name: null,
+      };
+    }
+
+    const node = this.config.getNode(nodeId);
+    const declaredSupport = node
+      ? this.capabilityService.resolveModelRoutingCapabilities(
+          node.id,
+          model,
+        ).structured_output
+      : null;
+    const responseFormat =
+      canonical.response_format ||
+      (
+        canonical.metadata.raw_body &&
+        typeof canonical.metadata.raw_body === 'object' &&
+        !Array.isArray(canonical.metadata.raw_body)
+          ? normalizeStructuredOutputFromBody(
+              canonical.metadata.source_format,
+              canonical.metadata.raw_body as Record<string, unknown>,
+            ).response_format
+          : undefined
+      );
+    const forwarding = resolveStructuredOutputForwarding(
+      responseFormat,
+      canonical.metadata.source_format,
+      node?.protocol,
+      declaredSupport,
+    );
+
+    return {
+      structured_output_requested: forwarding.requested,
+      structured_output_type: forwarding.type,
+      structured_output_strategy: forwarding.strategy,
+      structured_output_supported: forwarding.supported,
+      structured_output_schema_name: forwarding.schema_name,
+    };
   }
   private metricModelLabel(nodeId: string, model: string): string {
     if (nodeId === 'cache' || nodeId === 'hook') {

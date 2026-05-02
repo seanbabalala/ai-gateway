@@ -53,11 +53,12 @@ Client Request
 
 ### Controllers
 
-The gateway accepts the three major AI API shapes:
+The gateway accepts the major AI API shapes supported by the open-source Data Plane:
 
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
 - `POST /v1/messages`
+- `POST /v1/embeddings`
 
 Each controller normalizes inbound requests into the canonical internal format before routing.
 
@@ -66,6 +67,8 @@ Each controller normalizes inbound requests into the canonical internal format b
 The canonical format lets the gateway translate between provider protocols without making the rest of the pipeline care about the original wire shape.
 
 Normalizers convert client input into canonical requests. Denormalizers convert canonical responses or stream events back into the caller's requested protocol.
+
+v0.6 adds canonical structured-output fields so the pipeline preserves OpenAI Chat `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing. Provider forwarding records whether the target received a native passthrough, a safe native mapping, or an explicit downgrade/unsupported strategy.
 
 ### Authentication And Governance
 
@@ -133,6 +136,7 @@ The gateway records call logs with:
 - latency
 - status code
 - fallback status and fallback reason
+- structured-output requested status, type, strategy, support flag, and schema name
 - retry count
 - cache token fields
 - experiment group

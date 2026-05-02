@@ -352,7 +352,8 @@ routing:
   #     threshold_ms: 30000               # Abort this upstream attempt, then fallback
   #     race_fallback: false              # Starts fallback in parallel; off by default to avoid extra cost
   #   structured_output:
-  #     enabled: true                     # Validate JSON for response_format/text.format requests
+  #     enabled: true                     # Validate JSON for Chat response_format,
+  #                                       # Responses text.format, and Messages output_config.format
   #     fallback_on_parse_error: true
   #     fallback_on_schema_error: true
   #   cost_downgrade:

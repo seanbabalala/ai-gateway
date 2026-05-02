@@ -582,8 +582,10 @@ export class DashboardController {
       'timestamp', 'request_id', 'tier', 'score', 'node_id', 'model',
       'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
       'latency_ms', 'status_code', 'is_fallback', 'session_key',
-      'fallback_reason', 'api_key_id', 'api_key_name', 'retry_count', 'error',
-      'namespace_id',
+      'fallback_reason', 'structured_output_requested',
+      'structured_output_type', 'structured_output_strategy',
+      'structured_output_supported', 'structured_output_schema_name',
+      'api_key_id', 'api_key_name', 'retry_count', 'error', 'namespace_id',
     ];
     const csvRows = [headers.join(',')];
 

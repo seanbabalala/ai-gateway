@@ -132,6 +132,11 @@ function createSqliteFixture(dir: string): string {
       status_code integer,
       is_fallback integer,
       fallback_reason varchar,
+      structured_output_requested integer,
+      structured_output_type varchar,
+      structured_output_strategy varchar,
+      structured_output_supported integer,
+      structured_output_schema_name varchar,
       session_key varchar,
       error text,
       api_key_name varchar,
@@ -207,11 +212,13 @@ function createSqliteFixture(dir: string): string {
     INSERT INTO call_logs (
       request_id, timestamp, source_format, tier, score, node_id, model,
       input_tokens, output_tokens, cost_usd, latency_ms, status_code,
-      is_fallback, fallback_reason, session_key, error, api_key_name,
-      api_key_id, retry_count, cache_creation_input_tokens,
-      cache_read_input_tokens, experiment_group
+      is_fallback, fallback_reason, structured_output_requested,
+      structured_output_type, structured_output_strategy,
+      structured_output_supported, structured_output_schema_name,
+      session_key, error, api_key_name, api_key_id, retry_count,
+      cache_creation_input_tokens, cache_read_input_tokens, experiment_group
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     "req-1",
@@ -228,6 +235,11 @@ function createSqliteFixture(dir: string): string {
     200,
     0,
     null,
+    1,
+    "json_schema",
+    "passthrough",
+    1,
+    "Answer",
     "session-1",
     null,
     "prod-key",
@@ -296,6 +308,8 @@ describe("SQLite to PostgreSQL migration", () => {
 
     const callLog = target.rows.get("call_logs")?.[0];
     expect(callLog?.is_fallback).toBe(false);
+    expect(callLog?.structured_output_requested).toBe(true);
+    expect(callLog?.structured_output_supported).toBe(true);
     expect(callLog?.timestamp).toBeInstanceOf(Date);
   });
 

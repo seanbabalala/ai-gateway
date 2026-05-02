@@ -266,6 +266,50 @@ describe('ProviderClientService', () => {
       expect(body.messages[0].content).toHaveLength(1);
       expect(body.messages[0].content[0].type).toBe('tool_use');
     });
+
+    it('should preserve native Anthropic structured-output output_config in passthrough', () => {
+      const schema = {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+      };
+      const svc = makeService();
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: false,
+        response_format: {
+          type: 'json_schema' as const,
+          source: 'messages.output_config.format' as const,
+          raw: { type: 'json_schema', schema },
+          json_schema: { schema },
+        },
+        structured_output: {
+          requested: true,
+          type: 'json_schema' as const,
+          source: 'messages.output_config.format' as const,
+          schema,
+        },
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: false,
+            messages: [{ role: 'user', content: 'Hi' }],
+            output_config: { format: { type: 'json_schema', schema } },
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.output_config).toEqual({
+        format: { type: 'json_schema', schema },
+      });
+      expect(body.response_format).toBeUndefined();
+      expect(body.text).toBeUndefined();
+    });
   });
 
   // ── Header extraction ──────────────────────────────────

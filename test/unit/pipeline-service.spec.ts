@@ -874,6 +874,9 @@ describe('PipelineService — fallback policies', () => {
     expect(mocks.providerClient.forward).toHaveBeenCalledTimes(2);
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.fallback_reason).toBe('structured_output_parse_failed');
+    expect(savedLog.structured_output_requested).toBe(true);
+    expect(savedLog.structured_output_type).toBe('json_object');
+    expect(savedLog.structured_output_strategy).toBe('native');
   });
 
   it('should fallback when structured output JSON schema validation fails', async () => {
@@ -921,6 +924,28 @@ describe('PipelineService — fallback policies', () => {
     expect(result.statusCode).toBe(200);
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.fallback_reason).toBe('structured_output_schema_failed');
+    expect(savedLog.structured_output_requested).toBe(true);
+    expect(savedLog.structured_output_type).toBe('json_schema');
+    expect(savedLog.structured_output_schema_name).toBe('Result');
+  });
+
+  it('should log structured output passthrough strategy for native OpenAI chat', async () => {
+    const { pipeline, mocks } = makePipeline();
+    mocks.providerClient.forward.mockResolvedValueOnce(makeCanonicalResponse({
+      model: 'gpt-4o',
+      content: [{ type: 'text', text: '{"ok":true}' }],
+    }));
+
+    const request = makeRequest('Return JSON', { originalModel: 'auto' });
+    request.metadata.raw_body = { response_format: { type: 'json_object' } };
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.structured_output_requested).toBe(true);
+    expect(savedLog.structured_output_type).toBe('json_object');
+    expect(savedLog.structured_output_strategy).toBe('passthrough');
+    expect(savedLog.structured_output_supported).toBe(true);
   });
 
   it('should downgrade to a cheaper fallback before upstream when estimated cost exceeds policy', async () => {

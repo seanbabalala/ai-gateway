@@ -15,6 +15,7 @@ import {
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
+import { toAnthropicMessagesOutputFormat } from '../canonical/structured-output';
 import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
@@ -464,6 +465,24 @@ export class ProviderClientService {
     const cloned = JSON.parse(JSON.stringify(rawBody)) as Record<string, unknown>;
     cloned.model = targetModel;
     cloned.stream = canonical.stream;
+    const outputFormat = toAnthropicMessagesOutputFormat(
+      canonical.response_format,
+    );
+    if (outputFormat) {
+      const outputConfig =
+        cloned.output_config &&
+        typeof cloned.output_config === 'object' &&
+        !Array.isArray(cloned.output_config)
+          ? (cloned.output_config as Record<string, unknown>)
+          : {};
+      cloned.output_config = {
+        ...outputConfig,
+        format: outputFormat,
+      };
+      delete cloned.output_format;
+      delete cloned.response_format;
+      delete cloned.text;
+    }
     return this.sanitizeNativeMessagesRequest(cloned);
   }
 

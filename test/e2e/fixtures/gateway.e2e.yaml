@@ -111,6 +111,11 @@ routing:
       - mock-openai
     math:
       - mock-claude
+  fallback_policy:
+    structured_output:
+      enabled: true
+      fallback_on_parse_error: true
+      fallback_on_schema_error: true
 budget:
   daily_token_limit: 5000000
   daily_cost_limit: 50
@@ -131,3 +136,4 @@ models_pricing:
   text-embedding-3-large:
     input: 0.13
     output: 0
+namespaces: []
