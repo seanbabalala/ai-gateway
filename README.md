@@ -100,6 +100,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Node prefix routing** — send `"gpt/my-custom-model"` to force routing to a specific node
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
+- **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Hot reload** — update `gateway.config.yaml` and reload without restarting
 
 ## Quick Start
@@ -161,6 +162,12 @@ Set your provider API key in `.env`:
 
 ```bash
 OPENAI_API_KEY=sk-...
+```
+
+Validate the file before starting the gateway:
+
+```bash
+npm run validate:config -- --config gateway.config.yaml
 ```
 
 ### 3. Build & Run
@@ -284,6 +291,18 @@ Do not silently rename a live node ID without checking routing rules, API key pe
 ## Configuration
 
 All configuration lives in `gateway.config.yaml`. Environment variables can be referenced as `${VAR}` or `${VAR:-default}`.
+
+Validate changes before restart or CI deploys:
+
+```bash
+npm run validate:config -- --config gateway.config.yaml
+
+# After building, the executable entrypoint is also available:
+npm run build
+node dist/cli/siftgate.js validate --config gateway.config.yaml
+```
+
+The validator checks YAML parsing, required sections, node/model naming conflicts, routing/fallback/split/targets references, pricing coverage warnings, environment-reference format, provider key hygiene, and optional `control_plane` safety. Errors return a non-zero exit code; warnings and info are printed without failing the command. See [Config Validation](docs/CONFIG_VALIDATION.md) for CI examples and the issue taxonomy.
 
 ### Server
 

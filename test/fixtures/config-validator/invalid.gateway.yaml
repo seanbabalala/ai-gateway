@@ -1,0 +1,64 @@
+server:
+  port: 2099
+  host: 0.0.0.0
+
+database:
+  type: sqlite
+  path: ./data/gateway.db
+
+auth:
+  api_keys: []
+
+nodes:
+  - id: openai
+    name: OpenAI
+    protocol: chat_completions
+    base_url: https://api.openai.com
+    endpoint: /v1/chat/completions
+    api_key: ${openai_key}
+    models:
+      - gpt-4o
+    timeout_ms: 60000
+  - id: openai
+    name: Duplicate OpenAI
+    protocol: responses
+    base_url: https://api.openai.com
+    endpoint: /v1/responses
+    api_key: sk-literal-secret-for-tests
+    models:
+      - gpt-4o
+    timeout_ms: 60000
+
+routing:
+  tiers:
+    simple:
+      primary: { node: missing-node, model: gpt-4o }
+      fallbacks:
+        - { node: openai, model: not-listed }
+      split:
+        - { node: openai, model: gpt-4o, weight: 70 }
+        - { node: openai, model: gpt-4o, weight: 20 }
+      targets:
+        - { node: openai, model: not-listed }
+  scoring:
+    simple_max: -0.1
+    standard_max: 0.08
+    complex_max: 0.35
+  domain_preferences:
+    frontend: [missing-node]
+
+budget:
+  daily_token_limit: 1000000
+  daily_cost_limit: 25
+  alert_threshold: 0.8
+
+models_pricing: {}
+
+control_plane:
+  enabled: true
+  url: http://cloud.example.com
+  gateway_id: local-gateway
+  registration_token: literal-registration-token
+  telemetry:
+    include_prompt: true
+    include_response: true

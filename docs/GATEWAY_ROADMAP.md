@@ -118,14 +118,15 @@
 - **抽象到企业版**：API 文档作为开发者门户的一部分
 
 #### 7. 配置校验 CLI
-- **现状**：配置错误只在运行时才发现
+- **状态**：✅ v0.2 已实现（`siftgate validate` / `npm run validate:config`）
+- **现状**：配置可在启动前和 CI 中校验，errors 返回非零退出码
 - **目标**：提供 `npx siftgate validate` 命令
 - **实现方案**：
-  - 独立 CLI 入口，加载 YAML → 校验 → 输出结果
-  - 复用 ConfigService 的诊断逻辑
-  - 彩色输出 warnings / errors
+  - 独立 CLI 入口，加载 YAML → 校验 → 输出 grouped errors / warnings / info
+  - 复用 ConfigService 的 node/model/routing/pricing 诊断逻辑
+  - 支持 `--config` 和 `--json`，便于本地排障和 CI 机器读取
   - CI 可用（exit code 非零 = 配置有误）
-  - 检查项：节点连通性（dry-run probe）、模型命名冲突、路由引用完整性、定价配置完整性
+  - 检查项：YAML 解析、必填字段、节点/模型命名冲突、routing/fallback/split/targets 引用完整性、split 权重、定价配置 warning、env 引用格式、control_plane 安全配置
 
 #### 8. 结构化输出透传（Structured Output）
 - **现状**：`response_format: { type: "json_schema" }` 在协议转换中可能丢失

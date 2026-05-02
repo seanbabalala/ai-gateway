@@ -7,6 +7,9 @@
 # Environment variables can be referenced as:
 #   ${VAR}            — required, fails if not set
 #   ${VAR:-default}   — optional, uses default if not set
+#
+# Validate before running:
+#   npm run validate:config -- --config gateway.config.yaml
 # ============================================================
 
 server:

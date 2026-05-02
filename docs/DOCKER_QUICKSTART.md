@@ -17,6 +17,13 @@ upstream model requests will fail until the relevant provider key is set.
 Gateway API keys are not stored in `.env`. Create them from the Dashboard after
 startup.
 
+If you are running from a source checkout with dependencies installed, validate
+the config before starting Compose:
+
+```bash
+npm run validate:config -- --config gateway.config.yaml
+```
+
 ## 2. Start
 
 ```bash

@@ -1,0 +1,49 @@
+server:
+  port: 2099
+  host: 0.0.0.0
+
+database:
+  type: sqlite
+  path: ./data/gateway.db
+
+auth:
+  api_keys: []
+
+nodes:
+  - id: openai
+    name: OpenAI
+    protocol: chat_completions
+    base_url: https://api.openai.com
+    endpoint: /v1/chat/completions
+    api_key: ${OPENAI_API_KEY:-test-key}
+    models:
+      - gpt-4o
+      - gpt-4o-mini
+    timeout_ms: 60000
+    model_aliases:
+      fast: gpt-4o-mini
+    model_prefixes:
+      - gpt
+
+routing:
+  tiers:
+    simple:
+      primary: { node: openai, model: gpt-4o-mini }
+      fallbacks: []
+    standard:
+      primary: { node: openai, model: gpt-4o }
+      fallbacks:
+        - { node: openai, model: gpt-4o-mini }
+  scoring:
+    simple_max: -0.1
+    standard_max: 0.08
+    complex_max: 0.35
+
+budget:
+  daily_token_limit: 1000000
+  daily_cost_limit: 25
+  alert_threshold: 0.8
+
+models_pricing:
+  gpt-4o: { input: 2.5, output: 10 }
+  gpt-4o-mini: { input: 0.15, output: 0.6 }

@@ -4,6 +4,9 @@
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,
+  "bin": {
+    "siftgate": "dist/cli/siftgate.js"
+  },
   "aiGatewayRelease": {
     "npmPackage": false,
     "distribution": "GitHub source and Docker image",
@@ -15,6 +18,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "validate:config": "ts-node src/cli/siftgate.ts validate",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest",
