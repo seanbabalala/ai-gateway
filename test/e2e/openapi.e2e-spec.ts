@@ -35,6 +35,7 @@ describe('OpenAPI documentation endpoints', () => {
       '/v1/messages',
       '/v1/models',
       '/health',
+      '/cluster/status',
       '/api/auth/login',
       '/api/auth/status',
       '/api/dashboard/stats',

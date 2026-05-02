@@ -62,6 +62,33 @@ auth:
 #   debounce_ms: 500
 
 # ============================================================
+# Cluster Mode — optional Redis Pub/Sub multi-instance inventory
+# ============================================================
+# SiftGate runs as a single local data plane by default. Enable Redis-backed
+# cluster mode only when running multiple gateway instances behind a load
+# balancer. There is no leader election; every instance handles requests
+# independently.
+#
+# Cluster mode starts when cluster.enabled=true or state.backend=redis.
+# GET /cluster/status is available only in that mode.
+# ============================================================
+# state:
+#   backend: memory                # memory (default) | redis
+#   redis:
+#     url: ${REDIS_URL:-redis://127.0.0.1:6379}
+#     prefix: siftgate:
+#
+# cluster:
+#   enabled: false                 # Explicit switch; state.backend=redis also enables it
+#   instance_id: ${SIFTGATE_INSTANCE_ID:-}
+#   heartbeat_interval_seconds: 10
+#   heartbeat_ttl_seconds: 30
+#   reload_broadcast: true         # Broadcast successful local reloads to peers
+#   redis:
+#     url: ${REDIS_URL:-redis://127.0.0.1:6379}
+#     prefix: siftgate:
+
+# ============================================================
 # Nodes — upstream provider endpoints
 # ============================================================
 # Each node represents one upstream provider account, deployment,

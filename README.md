@@ -90,6 +90,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Circuit breaker** — automatically stops sending requests to failing providers
 - **Per-node concurrency limits** — cap in-flight upstream requests and choose whether overflow waits, falls back, or returns 429
 - **Active health probing** — optional per-node probes catch upstream outages before user traffic hits them
+- **Optional Redis cluster mode** — register instances, publish heartbeats, and broadcast config reloads across a multi-instance deployment
 - **Health monitoring** — real-time health, probe, and circuit breaker status for all configured nodes
 - **Graceful degradation** — the system continues working even when some providers are down
 
@@ -388,6 +389,29 @@ hot_reload:
 ```
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
+### Cluster Mode
+
+SiftGate stays single-instance by default. For a multi-instance deployment behind a load balancer, enable Redis-backed cluster mode with `state.backend: redis` or `cluster.enabled: true`:
+
+```yaml
+state:
+  backend: redis
+  redis:
+    url: ${REDIS_URL:-redis://127.0.0.1:6379}
+    prefix: siftgate:
+
+cluster:
+  enabled: true
+  instance_id: ${SIFTGATE_INSTANCE_ID:-}
+  heartbeat_interval_seconds: 10
+  heartbeat_ttl_seconds: 30
+  reload_broadcast: true
+```
+
+Cluster mode uses Redis Pub/Sub for instance registration, heartbeats, and config reload broadcasts. A successful local reload publishes a `config.reload` event; peers then run their own local validation and rollback-safe reload using their local `gateway.config.yaml`. There is no leader election, and every instance continues to handle requests independently.
+
+`GET /cluster/status` is available only when `state.backend=redis` or `cluster.enabled=true`; in single-instance memory mode it returns `404`. See [Production Deployment](docs/PRODUCTION.md) for the Redis, load-balancer, and security notes.
 
 ### Plugins
 
@@ -880,6 +904,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
 | `POST` | `/api/dashboard/budget/:id/reset`        | Reset one budget rule by `budget_rule.id`                                                          |
 | `GET`  | `/health`                                | Gateway, budget, node circuit, active probe, and concurrency health                                |
+| `GET`  | `/cluster/status`                        | Redis-backed multi-instance inventory and reload broadcast status when cluster mode is enabled      |
 
 ## Dashboard
 

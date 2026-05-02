@@ -27,6 +27,12 @@ export interface GatewayConfig {
   /** Runtime config reload behavior — watcher disabled by default */
   hot_reload?: HotReloadConfig;
 
+  /** Optional shared state backend; memory remains the default single-node mode */
+  state?: StateBackendConfig;
+
+  /** Optional multi-instance cluster mode; enabled explicitly or by state.backend=redis */
+  cluster?: ClusterConfig;
+
   /** Optional OSS-local alerting channels — disabled by default */
   alerts?: AlertsConfig;
 
@@ -43,6 +49,35 @@ export interface HotReloadConfig {
   watch?: boolean;
   /** Debounce file watcher reloads in milliseconds (default: 500) */
   debounce_ms?: number;
+}
+
+// ===== Shared State / Cluster =====
+export interface RedisConnectionConfig {
+  /** Redis or Redis TLS URL. Defaults to redis://127.0.0.1:6379 when needed. */
+  url?: string;
+  /** Key/channel prefix. Defaults to siftgate:. */
+  prefix?: string;
+}
+
+export interface StateBackendConfig {
+  /** Local memory is the default. Redis enables shared-state capable features. */
+  backend?: 'memory' | 'redis';
+  redis?: RedisConnectionConfig;
+}
+
+export interface ClusterConfig {
+  /** Explicit cluster switch. state.backend=redis also enables cluster status/heartbeats. */
+  enabled?: boolean;
+  /** Stable instance id. Defaults to hostname + process id. */
+  instance_id?: string;
+  /** Redis override for cluster Pub/Sub. Falls back to state.redis. */
+  redis?: RedisConnectionConfig;
+  /** Heartbeat publish/write interval in seconds (default: 10). */
+  heartbeat_interval_seconds?: number;
+  /** Instance heartbeat TTL in seconds (default: max(30, interval*3)). */
+  heartbeat_ttl_seconds?: number;
+  /** Broadcast successful local config reloads to peers (default: true). */
+  reload_broadcast?: boolean;
 }
 
 // ===== Alerts =====

@@ -10,18 +10,20 @@ import { PluginModule } from './plugins/plugin.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { ControlPlaneModule } from './control-plane/control-plane.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { ClusterModule } from './cluster/cluster.module';
 
 @Module({
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'frontend', 'dist'),
-      exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}'],
+      exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}', '/cluster{/*path}'],
     }),
     ConfigModule,
     DatabaseModule,
     TelemetryModule,
     ControlPlaneModule,
     AlertsModule,
+    ClusterModule,
     PluginModule,
     AuthModule,
     IngestModule,

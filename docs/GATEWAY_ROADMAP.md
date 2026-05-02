@@ -543,13 +543,14 @@
 
 #### 29. 多实例集群模式
 
-- **现状**：单实例运行
+- **状态**：✅ v0.5 已实现开源 Data Plane 多实例集群模式；默认单实例行为不变
+- **现状**：默认仍为单实例 memory 模式；启用 `state.backend=redis` 或 `cluster.enabled=true` 后进入 Redis-backed cluster mode
 - **目标**：支持多实例部署 + 自动发现
 - **实现方案**：
-  - 基于 Redis Pub/Sub 的实例注册
-  - 配置变更广播（一个实例 reload → 通知所有实例）
-  - 集群健康端点：`GET /cluster/status`
-  - 无 Leader Election 需求（每个实例独立处理请求）
+  - ✅ 基于 Redis Pub/Sub 的实例注册、生命周期事件和心跳广播
+  - ✅ 配置变更广播（一个实例 reload → 通知所有实例本地校验并 reload；失败保留旧快照）
+  - ✅ 集群健康端点：`GET /cluster/status`，仅在 `state.backend=redis` 或 `cluster.enabled=true` 时启用
+  - ✅ 无 Leader Election 需求（每个实例独立处理请求）
   - 推荐部署：N 个无状态 Gateway + 共享 Redis + 负载均衡器
 
 #### 30. PostgreSQL 推荐 + 数据迁移
@@ -690,6 +691,7 @@
 | 25  | LiteLLM 配置兼容   |   ⭐⭐⭐   |    小    |  ✅ v0.4   |
 | 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v0.4 TS scaffold |
 | 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  🟣 v0.5   |
+| 29  | 多实例集群模式     | ⭐⭐⭐⭐⭐ |    中    |  ✅ v0.5   |
 | 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  🟣 v0.5   |
 | 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    |  🟣 v0.5   |
 
