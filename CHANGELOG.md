@@ -12,6 +12,11 @@
 - Smart-routing modality filtering that removes incompatible node:model targets for image/audio-style requests while preserving legacy `vision` compatibility.
 - Read-only Dashboard Nodes and Routing capability summaries for per-model modalities, streaming/realtime/rerank flags, context windows, dimensions, file-size limits, and pricing hints.
 - Config validation and docs for v0.6 capability fields, endpoint maps, and multimodal model metadata.
+- v0.6 OpenAI/common-compatible `POST /v1/rerank` endpoint for the open-source Data Plane.
+- Canonical rerank request/response types, normalizer, provider forwarding, routing, usage, cost, telemetry, and call-log support.
+- `nodes[].rerank_models` and optional `nodes[].rerank_endpoint` configuration with validation and example pricing.
+- Rerank routing that respects Gateway API key permissions, local namespace policy, circuit/health state, fallback, and cost-aware target ranking.
+- Unit and e2e coverage for rerank controller, normalizer, provider client, routing, pipeline behavior, config validation, and OpenAPI exposure.
 
 ### Changed
 

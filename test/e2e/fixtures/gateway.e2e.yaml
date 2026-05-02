@@ -21,6 +21,7 @@ nodes:
     base_url: http://mock-upstream.test
     endpoint: /v1/chat/completions
     embeddings_endpoint: /v1/embeddings
+    rerank_endpoint: /v1/rerank
     api_key: mock-openai-key
     models:
       - gpt-4o
@@ -28,6 +29,8 @@ nodes:
     embedding_models:
       - text-embedding-3-small
       - text-embedding-3-large
+    rerank_models:
+      - rerank-english-v3
     timeout_ms: 10000
     tags:
       - code
@@ -49,6 +52,10 @@ nodes:
           - 3072
         pricing:
           input: 0.13
+          output: 0
+      rerank-english-v3:
+        pricing:
+          input: 0.01
           output: 0
   - id: mock-claude
     name: Mock Claude
@@ -135,5 +142,8 @@ models_pricing:
     output: 0
   text-embedding-3-large:
     input: 0.13
+    output: 0
+  rerank-english-v3:
+    input: 0.01
     output: 0
 namespaces: []

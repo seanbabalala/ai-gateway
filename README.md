@@ -26,11 +26,11 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic.
+Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic. The v0.6 development line expands protocol coverage with structured-output polish and rerank ingress.
 
-SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
+SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, and rerank formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
-**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
+**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`, `rerank`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
 
 ```
 Your App ──▶ SiftGate ──▶ OpenAI (GPT)
@@ -64,8 +64,9 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Responses** (`/v1/responses`) — OpenAI's newer API format
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
+- **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
-- Full **streaming** support across all three protocols
+- Full **streaming** support across supported generative protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
 ### Smart Routing
@@ -525,10 +526,12 @@ nodes:
     base_url: "https://api.openai.com" # Provider base URL
     endpoint: "/v1/chat/completions" # API endpoint path
     embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
+    # rerank_endpoint: "/v1/rerank" # Optional rerank path for compatible upstreams/proxies
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
+    # rerank_models: ["rerank-english-v3"] # Models eligible for /v1/rerank
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -603,6 +606,8 @@ nodes:
 Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible before future v0.6 endpoints are enabled.
 
 See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
+
+`/v1/rerank` accepts OpenAI/common-compatible rerank requests and uses `nodes[].rerank_models`; chat and embedding models are not selected for rerank requests.
 
 ### Upstream Connection Pooling
 
@@ -850,6 +855,27 @@ Forwarding strategies are explicit in call logs and Dashboard details:
 
 When `routing.fallback_policy.structured_output.enabled` is true, non-streaming responses can fallback on JSON parse or schema validation failure. Streaming requests remain conservative: SiftGate will not change routes after SSE output has started.
 
+### Rerank
+
+`POST /v1/rerank` accepts OpenAI/common-compatible rerank requests with `model`, `query`, `documents`, optional `top_n`, and optional `return_documents`.
+
+For `model: "auto"`, SiftGate selects from configured `rerank_models`, filters by Gateway API key permissions, local namespace restrictions, health/circuit state, and then ranks eligible targets by configured input cost. Direct rerank requests use the same direct-routing permission checks as chat and embeddings and return a clear 400 if the requested model is not listed under any node's `rerank_models`.
+
+```bash
+curl http://localhost:2099/v1/rerank \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "query": "what is SiftGate?",
+    "documents": [
+      "SiftGate is a self-hosted AI traffic gateway.",
+      "SQLite is the default local database."
+    ],
+    "top_n": 1
+  }'
+```
+
 ### Stream Cache and Embedding Batching
 
 Both features are local OSS data-plane optimizations and are disabled by default.
@@ -1092,6 +1118,7 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/responses`        | OpenAI Responses format                       |
 | `POST` | `/v1/messages`         | Anthropic Messages format                     |
 | `POST` | `/v1/embeddings`       | OpenAI Embeddings format                      |
+| `POST` | `/v1/rerank`           | OpenAI/common-compatible rerank format        |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -1330,7 +1357,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings
+│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings, /v1/rerank
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -1362,7 +1389,7 @@ Client Request (any format)
 
 **Key components:**
 
-- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and embedding request/response shapes
+- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, embedding, and rerank request/response shapes
 - **Scoring Engine** — Evaluates request complexity across keyword, structural, and tool dimensions
 - **Router** — Tier-based node selection with circuit breaker, momentum, and domain-aware reordering
 - **Provider Client** — HTTP forwarder with streaming support (SSE parsing for each protocol)
@@ -1372,7 +1399,7 @@ Client Request (any format)
 
 - **Backend:** NestJS 11, TypeORM, SQLite (default) / PostgreSQL
 - **Frontend:** React 19, Vite, Tailwind CSS v4, TanStack Query, Recharts
-- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings
+- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings and common rerank ingress
 
 ## Troubleshooting
 

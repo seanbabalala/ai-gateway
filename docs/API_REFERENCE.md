@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6 adds canonical structured-output passthrough for OpenAI Chat Completions `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format`, with Dashboard log visibility for the forwarding strategy.
+v0.6 adds canonical structured-output passthrough for OpenAI Chat Completions `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format`, plus common rerank ingress under the same OSS Data Plane boundary.
 
 ## Live Documentation
 
@@ -34,6 +34,7 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/responses` | OpenAI Responses-compatible ingress |
 | `POST` | `/v1/messages` | Anthropic Messages-compatible ingress |
 | `POST` | `/v1/embeddings` | OpenAI Embeddings-compatible ingress |
+| `POST` | `/v1/rerank` | OpenAI/common-compatible rerank ingress |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
@@ -128,6 +129,25 @@ Call logs, CSV/JSON exports, external log sinks, and optional control-plane tele
 ```
 
 Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by API key permissions, active circuits, and requested dimensions, then prefers the lowest configured input price. Direct model requests must resolve to an embedding model; chat models listed only in `nodes[].models` are not selected for this endpoint. Responses preserve the OpenAI shape with `object: "list"`, embedding data, and `usage.prompt_tokens` / `usage.total_tokens`.
+
+### Rerank
+
+`POST /v1/rerank` accepts OpenAI/common-compatible rerank requests:
+
+```json
+{
+  "model": "auto",
+  "query": "what is SiftGate?",
+  "documents": [
+    "SiftGate is a self-hosted AI traffic gateway.",
+    "SQLite is the default local database."
+  ],
+  "top_n": 1,
+  "return_documents": true
+}
+```
+
+Rerank routing uses `nodes[].rerank_models`. `model: "auto"` filters by Gateway API key permissions, local namespace restrictions, circuit/health state, and configured model availability, then prefers the lowest configured input price. Direct model requests must resolve to a rerank model; chat models listed only in `nodes[].models` and embeddings listed only in `nodes[].embedding_models` are not selected for this endpoint. Responses preserve a common rerank shape with `object: "rerank"`, sorted `results`, `relevance_score`, optional `document`, and `usage.prompt_tokens` / `usage.total_tokens`.
 
 ## Health
 

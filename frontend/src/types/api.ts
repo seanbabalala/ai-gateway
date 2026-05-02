@@ -126,6 +126,7 @@ export interface NodeInfo {
   endpoints?: Record<string, string>
   models: string[]
   embedding_models?: string[]
+  rerank_models?: string[]
   capabilities: string[]
   modalities: string[]
   model_capabilities?: Record<string, ModelCapabilityInfo>

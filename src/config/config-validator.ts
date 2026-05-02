@@ -508,6 +508,9 @@ function validateNamespaces(
       for (const model of Array.isArray(node.embedding_models) ? node.embedding_models : []) {
         if (isNonEmptyString(model)) modelIds.add(model);
       }
+      for (const model of Array.isArray(node.rerank_models) ? node.rerank_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
     }
   }
 
@@ -780,6 +783,19 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    if (
+      node.rerank_endpoint !== undefined &&
+      (!isNonEmptyString(node.rerank_endpoint) || !node.rerank_endpoint.startsWith('/'))
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_endpoint',
+          'nodes[].rerank_endpoint should be a non-empty path starting with "/".',
+          `${basePath}.rerank_endpoint`,
+        ),
+      );
+    }
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -830,6 +846,7 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
       });
     }
     validateNodeEmbeddingModels(node, basePath, issues);
+    validateNodeRerankModels(node, basePath, issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
         issue(
@@ -969,6 +986,52 @@ function validateNodeEmbeddingModels(
   });
 }
 
+function validateNodeRerankModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.rerank_models === undefined) return;
+  if (!Array.isArray(node.rerank_models)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_rerank_models',
+        'nodes[].rerank_models must be an array of model ids when set.',
+        `${basePath}.rerank_models`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  node.rerank_models.forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.rerank_models[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          'Rerank model ids must be non-empty strings.',
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `Rerank model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
+  });
+}
+
 function validateNodeRoutingCapabilities(
   node: Record<string, unknown>,
   basePath: string,
@@ -1021,6 +1084,7 @@ function validateNodeRoutingCapabilities(
     [
       ...(Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.embedding_models) ? node.embedding_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.rerank_models) ? node.rerank_models.filter(isNonEmptyString) : []),
     ],
   );
 
@@ -2213,6 +2277,7 @@ function validateShadow(
       const models = [
         ...(Array.isArray(targetNode.models) ? targetNode.models : []),
         ...(Array.isArray(targetNode.embedding_models) ? targetNode.embedding_models : []),
+        ...(Array.isArray(targetNode.rerank_models) ? targetNode.rerank_models : []),
       ].filter(isNonEmptyString);
       if (models.length > 0 && !models.includes(shadow.target_model)) {
         issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));

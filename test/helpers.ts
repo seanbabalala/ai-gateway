@@ -154,6 +154,7 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       compare: { store_prompts: false, store_responses: false },
     },
     getNode: jest.fn().mockReturnValue(undefined),
+    resolveRerankModel: jest.fn().mockReturnValue(null),
     getNamespace: jest.fn((namespaceId?: string | null) =>
       namespaceId ? config.namespaces.find((namespace: { id: string }) => namespace.id === namespaceId) : undefined,
     ),

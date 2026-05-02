@@ -217,6 +217,35 @@ export class EmbeddingsRequestDto {
   user?: string;
 }
 
+export class RerankRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for cost-aware rerank routing or a configured rerank model.' })
+  model!: string;
+
+  @ApiProperty({ example: 'What is SiftGate?' })
+  query!: string;
+
+  @ApiProperty({
+    type: 'array',
+    items: {
+      oneOf: [
+        { type: 'string' },
+        { type: 'object' },
+      ],
+    },
+    example: [
+      'SiftGate is a self-hosted AI traffic gateway.',
+      'A database migration tool moves SQLite data into PostgreSQL.',
+    ],
+  })
+  documents!: Array<string | Record<string, unknown>>;
+
+  @ApiPropertyOptional({ example: 3 })
+  top_n?: number;
+
+  @ApiPropertyOptional({ example: true })
+  return_documents?: boolean;
+}
+
 export class ModelItemDto {
   @ApiProperty({ example: 'gpt-4o' })
   id!: string;

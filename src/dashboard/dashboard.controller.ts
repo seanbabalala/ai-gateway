@@ -1119,6 +1119,7 @@ export class DashboardController {
         endpoints,
         models: node.models,
         embedding_models: node.embedding_models || [],
+        rerank_models: node.rerank_models || [],
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         model_capabilities: modelCapabilities,

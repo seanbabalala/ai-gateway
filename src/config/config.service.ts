@@ -821,6 +821,33 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  /** Resolve a user-provided rerank model name to a node/model pair. */
+  resolveRerankModel(name: string): { nodeId: string; model: string } | null {
+    for (const node of this.config.nodes) {
+      if (node.rerank_models?.includes(name)) {
+        return { nodeId: node.id, model: name };
+      }
+    }
+
+    const nodeById = this.config.nodes.find((node) => node.id === name);
+    if (nodeById?.rerank_models?.length) {
+      return { nodeId: nodeById.id, model: nodeById.rerank_models[0] };
+    }
+
+    for (const separator of ['/', ':']) {
+      const idx = name.indexOf(separator);
+      if (idx <= 0) continue;
+      const prefix = name.substring(0, idx);
+      const modelPart = name.substring(idx + 1);
+      const prefixNode = this.config.nodes.find((node) => node.id === prefix);
+      if (prefixNode?.rerank_models?.length && modelPart) {
+        return { nodeId: prefixNode.id, model: modelPart };
+      }
+    }
+
+    return null;
+  }
+
   /** Get the full raw config (for dashboard API) */
   getFullConfig(): GatewayConfig {
     return this.config;
@@ -923,7 +950,11 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     }[] = [];
 
     for (const node of this.config.nodes) {
-      for (const modelId of node.models) {
+      for (const modelId of Array.from(new Set([
+        ...node.models,
+        ...(node.embedding_models || []),
+        ...(node.rerank_models || []),
+      ]))) {
         // Collect all aliases pointing to this model
         const aliases: string[] = [];
         if (node.model_aliases) {

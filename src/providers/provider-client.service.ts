@@ -6,6 +6,8 @@ import {
   CanonicalRequest,
   CanonicalEmbeddingRequest,
   CanonicalEmbeddingResponse,
+  CanonicalRerankRequest,
+  CanonicalRerankResponse,
   CanonicalResponse,
   CanonicalContentBlock,
   CanonicalStreamEvent,
@@ -163,6 +165,65 @@ export class ProviderClientService {
         const responseBody = await this.readJsonResponse(response, node);
         const canonicalResp = this.normalizeEmbeddingsResponse(
           responseBody as Record<string, unknown>,
+          routingMeta,
+          nodeId,
+          targetModel,
+          latencyMs,
+        );
+        span.setAttributes({
+          'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
+          'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
+          'gateway.upstream.latency_ms': latencyMs,
+        });
+        return canonicalResp;
+      },
+      SpanKind.CLIENT,
+    );
+  }
+
+  async forwardRerank(
+    canonical: CanonicalRerankRequest,
+    nodeId: string,
+    targetModel: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: ProviderRequestOptions = {},
+  ): Promise<CanonicalRerankResponse> {
+    return this.telemetry.withSpan(
+      'gateway.upstream.rerank',
+      {
+        'gateway.upstream.node': nodeId,
+        'gateway.upstream.model': targetModel,
+        'gateway.upstream.is_fallback': routingMeta.is_fallback,
+        'gen_ai.system': 'rerank',
+        'gen_ai.request.model': targetModel,
+      },
+      async (span) => {
+        const node = this.config.getNode(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+        const startTime = Date.now();
+        const requestBody = this.buildRerankRequest(canonical, targetModel);
+        const response = await this.sendRequest(
+          node,
+          requestBody,
+          undefined,
+          options.timeoutMs,
+          options.signal,
+          node.rerank_endpoint || '/v1/rerank',
+        );
+        const latencyMs = Date.now() - startTime;
+
+        this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
+
+        const responseBody = await this.readJsonResponse(response, node);
+        const canonicalResp = this.normalizeRerankResponse(
+          responseBody as Record<string, unknown>,
+          canonical,
           routingMeta,
           nodeId,
           targetModel,
@@ -444,6 +505,24 @@ export class ProviderClientService {
     return body;
   }
 
+  private buildRerankRequest(
+    canonical: CanonicalRerankRequest,
+    targetModel: string,
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      model: targetModel,
+      query: canonical.query,
+      documents: canonical.documents,
+    };
+    if (canonical.top_n !== undefined) {
+      body.top_n = canonical.top_n;
+    }
+    if (canonical.return_documents !== undefined) {
+      body.return_documents = canonical.return_documents;
+    }
+    return body;
+  }
+
   private shouldPassthroughNativeMessages(
     canonical: CanonicalRequest,
     protocol: NodeProtocol,
@@ -621,6 +700,70 @@ export class ProviderClientService {
           (usage.total_tokens as number) ||
           0,
         output_tokens: 0,
+      },
+      model: (body.model as string) || model,
+      routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
+    };
+  }
+
+  normalizeRerankResponse(
+    body: Record<string, unknown>,
+    canonical: CanonicalRerankRequest,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+  ): CanonicalRerankResponse {
+    const usage = (body.usage || body.meta || {}) as Record<string, unknown>;
+    const billedUnits = (usage.billed_units || {}) as Record<string, unknown>;
+    const results = Array.isArray(body.results)
+      ? body.results
+      : Array.isArray(body.data)
+        ? body.data
+        : [];
+
+    return {
+      id: (body.id as string) || `rerank_${Date.now()}`,
+      object: 'rerank',
+      results: results.map((item, index) => {
+        const entry =
+          item && typeof item === 'object'
+            ? (item as Record<string, unknown>)
+            : {};
+        const resultIndex =
+          typeof entry.index === 'number' && Number.isFinite(entry.index)
+            ? entry.index
+            : index;
+        return {
+          index: resultIndex,
+          relevance_score:
+            typeof entry.relevance_score === 'number' && Number.isFinite(entry.relevance_score)
+              ? entry.relevance_score
+              : typeof entry.score === 'number' && Number.isFinite(entry.score)
+                ? entry.score
+                : 0,
+          document:
+            entry.document !== undefined
+              ? (entry.document as CanonicalRerankResponse['results'][number]['document'])
+              : canonical.return_documents
+                ? canonical.documents[resultIndex]
+                : undefined,
+        };
+      }),
+      usage: {
+        input_tokens:
+          (usage.prompt_tokens as number) ||
+          (usage.input_tokens as number) ||
+          (usage.total_tokens as number) ||
+          (billedUnits.input_tokens as number) ||
+          (billedUnits.search_units as number) ||
+          0,
+        output_tokens: (usage.output_tokens as number) || 0,
       },
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },

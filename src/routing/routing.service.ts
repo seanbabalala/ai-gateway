@@ -91,6 +91,12 @@ export interface EmbeddingRouteDecision {
   mode: 'auto' | 'direct';
 }
 
+export interface RerankRouteDecision {
+  primary: RouteTarget;
+  fallbacks: RouteTarget[];
+  mode: 'auto' | 'direct';
+}
+
 interface SelectedRouteTarget {
   target: WeightedRouteTarget;
   strategy: EffectiveRoutingStrategy;
@@ -441,6 +447,56 @@ export class RoutingService {
     };
   }
 
+  resolveRerankRoute(
+    requestedModel: string | undefined,
+    targetFilter: (target: RouteTarget) => boolean = () => true,
+  ): RerankRouteDecision {
+    const model = requestedModel || 'auto';
+    const allTargets = this.getRerankTargets();
+
+    if (model !== 'auto') {
+      const resolved = this.config.resolveRerankModel(model);
+      if (!resolved) {
+        throw new RoutingConstraintError(
+          `Rerank model "${model}" is not configured. Use "auto" or configure nodes[].rerank_models.`,
+          400,
+        );
+      }
+      const primary = { node: resolved.nodeId, model: resolved.model };
+      if (!targetFilter(primary)) {
+        throw new RoutingConstraintError(
+          `This API key is not allowed to use ${primary.node}/${primary.model}.`,
+          403,
+        );
+      }
+      const fallbacks = this.rankRerankTargets(
+        this.filterRerankTargets(
+          allTargets.filter((target) =>
+            target.node !== primary.node || target.model !== primary.model,
+          ),
+          targetFilter,
+        ),
+      );
+      return { primary, fallbacks, mode: 'direct' };
+    }
+
+    const candidates = this.rankRerankTargets(
+      this.filterRerankTargets(allTargets, targetFilter),
+    );
+    if (candidates.length === 0) {
+      throw new RoutingConstraintError(
+        'No rerank models are configured.',
+        400,
+      );
+    }
+
+    return {
+      primary: candidates[0],
+      fallbacks: candidates.slice(1),
+      mode: 'auto',
+    };
+  }
+
   getRoutingStatus(): Record<string, RoutingTierStatus> {
     const result: Record<string, RoutingTierStatus> = {};
     for (const [tier, tierConfig] of Object.entries(this.config.routing.tiers || {})) {
@@ -713,6 +769,16 @@ export class RoutingService {
     return targets;
   }
 
+  private getRerankTargets(): RouteTarget[] {
+    const targets: RouteTarget[] = [];
+    for (const node of this.config.nodes) {
+      for (const model of node.rerank_models || []) {
+        targets.push({ node: node.id, model });
+      }
+    }
+    return targets;
+  }
+
   private filterEmbeddingTargets(
     targets: RouteTarget[],
     dimensions: number | undefined,
@@ -755,6 +821,32 @@ export class RoutingService {
       if (aCost !== bCost) return aCost - bCost;
       return targets.indexOf(a) - targets.indexOf(b);
     });
+  }
+
+  private filterRerankTargets(
+    targets: RouteTarget[],
+    targetFilter: (target: RouteTarget) => boolean,
+  ): RouteTarget[] {
+    return targets
+      .filter(targetFilter)
+      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+  }
+
+  private rankRerankTargets(targets: RouteTarget[]): RouteTarget[] {
+    return [...targets].sort((a, b) => {
+      const aCost = this.estimateRerankCost(a);
+      const bCost = this.estimateRerankCost(b);
+      if (aCost !== bCost) return aCost - bCost;
+      return targets.indexOf(a) - targets.indexOf(b);
+    });
+  }
+
+  private estimateRerankCost(target: RouteTarget): number {
+    const pricing = this.capabilityService.resolveModelRoutingCapabilities(
+      target.node,
+      target.model,
+    ).pricing;
+    return pricing ? pricing.input : Number.POSITIVE_INFINITY;
   }
 
   private estimateEmbeddingCost(target: RouteTarget): number {

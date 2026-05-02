@@ -135,6 +135,8 @@ auth:
 # Chat/Responses/Messages models are listed under nodes[].models.
 # Embedding-capable models for /v1/embeddings are listed under
 # nodes[].embedding_models and can use a separate embeddings_endpoint.
+# Rerank-capable models for /v1/rerank are listed under nodes[].rerank_models
+# and can use a separate rerank_endpoint.
 # Use model_prefixes when clients should direct-route future model family IDs
 # such as "claude-sonnet-..." or "gpt-..." through a stable upstream node ID.
 # Supported protocols:
@@ -150,9 +152,11 @@ nodes:
     base_url: "https://api.openai.com"
     endpoint: "/v1/chat/completions"
     embeddings_endpoint: "/v1/embeddings"
+    # rerank_endpoint: "/v1/rerank" # Enable only for compatible upstreams/proxies that expose rerank.
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
+    # rerank_models: ["rerank-english-v3"]
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true
@@ -196,6 +200,8 @@ nodes:
         output_types: ["embedding"]
         dimensions: [256, 1024, 3072]
         pricing: { input: 0.13, output: 0.00 }
+      # rerank-english-v3:
+      #   pricing: { input: 0.80, output: 0.00 }
     # Optional per-node upstream concurrency limiter.
     # Applies across all models routed through this node.
     # max_concurrency: 50
@@ -519,6 +525,7 @@ models_pricing:
   claude-sonnet-4-20250514: { input: 3.00, output: 15.00 }
   text-embedding-3-small: { input: 0.02, output: 0.00 }
   text-embedding-3-large: { input: 0.13, output: 0.00 }
+  # rerank-english-v3: { input: 0.80, output: 0.00 }
   # gemini-2.5-pro:          { input: 1.25, output: 10.00 }
 
 # ============================================================

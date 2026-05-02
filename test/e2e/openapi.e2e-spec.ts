@@ -31,6 +31,7 @@ describe('OpenAPI documentation endpoints', () => {
     expect(paths).toEqual(expect.arrayContaining([
       '/v1/chat/completions',
       '/v1/embeddings',
+      '/v1/rerank',
       '/v1/responses',
       '/v1/messages',
       '/v1/models',

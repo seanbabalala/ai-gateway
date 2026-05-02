@@ -8,6 +8,7 @@ function makeRoutingService(overrides: {
   optimization?: any;
   nodes?: any[];
   resolveEmbeddingModel?: any;
+  resolveRerankModel?: any;
   circuitBreaker?: any;
   momentum?: any;
   capabilityService?: any;
@@ -36,6 +37,14 @@ function makeRoutingService(overrides: {
   config.resolveEmbeddingModel = overrides.resolveEmbeddingModel || jest.fn().mockImplementation((model: string) => {
     for (const node of config.nodes) {
       if (node.embedding_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
+  });
+  config.resolveRerankModel = overrides.resolveRerankModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.rerank_models?.includes(model)) {
         return { nodeId: node.id, model };
       }
     }
@@ -548,5 +557,79 @@ describe('RoutingService — embeddings', () => {
 
     expect(route.mode).toBe('direct');
     expect(route.primary).toEqual({ node: 'cheap', model: 'text-embedding-3-small' });
+  });
+});
+
+describe('RoutingService — rerank', () => {
+  const rerankNodes = [
+    {
+      id: 'cheap',
+      tags: ['fast'],
+      rerank_models: ['rerank-small'],
+    },
+    {
+      id: 'quality',
+      tags: ['quality'],
+      rerank_models: ['rerank-large'],
+    },
+  ];
+
+  it('should choose the lowest priced healthy rerank target for auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: rerankNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          structured_output: null,
+          pricing: model.includes('small')
+            ? { input: 0.01, output: 0 }
+            : { input: 0.1, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveRerankRoute('auto');
+
+    expect(route.mode).toBe('auto');
+    expect(route.primary).toEqual({ node: 'cheap', model: 'rerank-small' });
+    expect(route.fallbacks).toEqual([{ node: 'quality', model: 'rerank-large' }]);
+  });
+
+  it('should filter rerank targets by API key/namespace permissions', () => {
+    const svc = makeRoutingService({
+      nodes: rerankNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          pricing: { input: 0.1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveRerankRoute('auto', (target) => target.node === 'quality');
+
+    expect(route.primary).toEqual({ node: 'quality', model: 'rerank-large' });
+    expect(route.fallbacks).toHaveLength(0);
+  });
+
+  it('should keep unhealthy rerank targets out of auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: rerankNodes,
+      circuitBreaker: {
+        isAvailable: jest.fn().mockImplementation((node: string) => node !== 'cheap'),
+      },
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          pricing: { input: 0.1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveRerankRoute('auto');
+
+    expect(route.primary).toEqual({ node: 'quality', model: 'rerank-large' });
   });
 });

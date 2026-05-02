@@ -441,6 +441,10 @@ export interface NodeConfig {
   embeddings_endpoint?: string;
   /** Embedding-capable model IDs exposed by this node. */
   embedding_models?: string[];
+  /** Optional OpenAI/common-compatible rerank endpoint path (default: /v1/rerank). */
+  rerank_endpoint?: string;
+  /** Rerank-capable model IDs exposed by this node. */
+  rerank_models?: string[];
   timeout_ms: number;
   max_concurrency?: number; // Optional per-node upstream concurrency limit
   queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set

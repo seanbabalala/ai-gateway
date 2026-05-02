@@ -9,6 +9,7 @@ import { ChatCompletionsController } from '../../src/ingest/chat-completions.con
 import { MessagesController } from '../../src/ingest/messages.controller';
 import { ResponsesController } from '../../src/ingest/responses.controller';
 import { EmbeddingsController } from '../../src/ingest/embeddings.controller';
+import { RerankController } from '../../src/ingest/rerank.controller';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 
 function mockReq(body: Record<string, unknown>, reqHeaders: Record<string, string> = {}): any {
@@ -36,6 +37,7 @@ function mockPipeline(overrides: Record<string, any> = {}): any {
   return {
     process: jest.fn().mockResolvedValue({ statusCode: 200, body: { id: 'test' } }),
     processEmbeddings: jest.fn().mockResolvedValue({ statusCode: 200, body: { object: 'list', data: [] } }),
+    processRerank: jest.fn().mockResolvedValue({ statusCode: 200, body: { object: 'rerank', results: [] } }),
     processStream: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -186,6 +188,39 @@ describe('EmbeddingsController', () => {
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ object: 'list', data: [] });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// RerankController
+// ═══════════════════════════════════════════════════════════
+
+describe('RerankController', () => {
+  it('should handle OpenAI/common-compatible rerank requests', async () => {
+    const pipeline = mockPipeline();
+    const controller = new RerankController(pipeline);
+
+    const req = mockReq({
+      model: 'auto',
+      query: 'what is siftgate?',
+      documents: ['gateway', 'database'],
+      top_n: 1,
+    });
+    const res = mockRes();
+
+    await controller.handle(req, res);
+
+    expect(pipeline.processRerank).toHaveBeenCalled();
+    const canonical = pipeline.processRerank.mock.calls[0][0];
+    expect(canonical).toMatchObject({
+      model: 'auto',
+      query: 'what is siftgate?',
+      documents: ['gateway', 'database'],
+      top_n: 1,
+      metadata: expect.objectContaining({ source_format: 'rerank' }),
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ object: 'rerank', results: [] });
   });
 });
 

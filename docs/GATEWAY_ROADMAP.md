@@ -19,7 +19,7 @@
 
 ---
 
-## v0.6 — Protocol + Explainability（生产协议能力 + 可解释路由）
+## v0.6 — Protocol + Explainability（生产协议补齐 + 可解释路由）
 
 **v0.6 发布目标**：补齐生产应用刚需协议能力，同时把 SiftGate 的路由决策解释做成开源 Data Plane 的核心亮点。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
@@ -41,20 +41,47 @@
   - Dashboard Call Log、CSV/JSON export、外部 log sink、可选 telemetry 展示 structured-output intent、strategy、support、schema name
 - **抽象到企业版**：控制面可聚合 structured-output 成功率、fallback 原因与模型兼容矩阵
 
-#### 2. Image / Audio / Rerank / Realtime 入口
+#### 2. 统一多模态 Capability Schema
+
+- **状态**：✅ 已在 `codex/v0.6-modality-capabilities` 实现
+- **目标**：为 image/audio/rerank/realtime 统一 node/model 能力声明，不破坏旧配置
+- **实现方案**：
+  - 扩展 `modalities`、`endpoints`、`input_types`、`output_types`、`max_file_size`
+  - 支持 `supports_streaming`、`supports_realtime`、`supports_rerank`、`pricing`
+  - 保持 `nodes[].models`、`nodes[].embedding_models`、旧 `model_capabilities` 字段兼容
+  - Config validation 校验 endpoint/pricing/capability 元数据
+  - RoutingService 按请求 modality 过滤候选 node:model
+  - Dashboard Nodes/Routing 只读展示能力摘要
+
+#### 3. Rerank 入口
+
+- **状态**：✅ 已在 `codex/v0.6-rerank-endpoint` 实现
+- **目标**：提供 OpenAI/common-compatible `POST /v1/rerank`，补齐检索增强、搜索排序、知识库重排场景
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: rerank-prod
+      base_url: https://rerank-provider.example
+      rerank_endpoint: /v1/rerank
+      rerank_models: [rerank-english-v3]
+  ```
+
+  - Canonical rerank request/response 类型
+  - `query`、`documents`、`top_n`、`return_documents` 归一化
+  - 按 Gateway API key、namespace、健康状态、fallback 和成本选择 rerank node:model
+  - usage/cost/call_log/telemetry 记录 `source_format=rerank`
+
+#### 4. Image / Audio / Realtime 入口
 
 - **状态**：计划中
-- **目标**：补齐 New API / LiteLLM 类项目的接口广度短板，优先实现高频生产入口
-- **边界**：开源版只做本地 Data Plane 入口、路由、日志、OpenAPI 和配置；不引入企业私有依赖
-- **候选范围**：
-  - `/v1/images/generations` 与必要的 image edit/variation 兼容路径
-  - `/v1/audio/transcriptions`、`/v1/audio/speech`
-  - `/v1/rerank` 或 OpenAI-compatible rerank adapter
-  - Realtime 可先做配置、鉴权、会话代理与文档化 experimental 边界
+- **目标**：继续补齐 OpenAI/LiteLLM/New API 常见接口广度短板
+- **实现方案**：
+  - Image/audio 先做 OpenAI-compatible 入口和 provider passthrough
+  - Realtime 先做明确边界和最小可用连接代理，避免破坏现有 HTTP/SSE 路径
 
 ### P0：可解释路由
 
-#### 3. 路由选择解释页
+#### 5. 路由选择解释页
 
 - **状态**：计划中
 - **目标**：让用户看到 SiftGate 为什么选择某个 node/model，而不只是知道最终路由结果

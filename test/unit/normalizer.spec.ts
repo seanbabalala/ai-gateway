@@ -1,6 +1,7 @@
 import { ChatCompletionsNormalizer } from '../../src/canonical/normalizers/chat-completions.normalizer';
 import { ResponsesNormalizer } from '../../src/canonical/normalizers/responses.normalizer';
 import { MessagesNormalizer } from '../../src/canonical/normalizers/messages.normalizer';
+import { RerankNormalizer } from '../../src/canonical/normalizers/rerank.normalizer';
 
 const headers = { 'content-type': 'application/json' };
 
@@ -645,5 +646,52 @@ describe('MessagesNormalizer', () => {
     const result = normalizer.normalize(body, headers);
 
     expect(result.metadata.raw_body).toEqual(body);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Rerank Normalizer
+// ═══════════════════════════════════════════════════════════
+
+describe('RerankNormalizer', () => {
+  const normalizer = new RerankNormalizer();
+
+  it('should normalize OpenAI/common-compatible rerank requests', () => {
+    const body = {
+      model: 'rerank-english-v3',
+      query: 'what is siftgate?',
+      documents: ['gateway', { text: 'database migration' }],
+      top_n: 1,
+      return_documents: true,
+    };
+
+    const result = normalizer.normalize(body, {
+      ...headers,
+      'x-session-id': 'sess-rerank',
+    });
+
+    expect(result).toMatchObject({
+      model: 'rerank-english-v3',
+      query: 'what is siftgate?',
+      documents: ['gateway', { text: 'database migration' }],
+      top_n: 1,
+      return_documents: true,
+      metadata: expect.objectContaining({
+        source_format: 'rerank',
+        original_model: 'rerank-english-v3',
+        session_key: 'sess-rerank',
+        raw_body: body,
+      }),
+    });
+  });
+
+  it('should default missing model to auto and drop invalid document entries', () => {
+    const result = normalizer.normalize(
+      { query: 'hello', documents: ['ok', 42, null] },
+      headers,
+    );
+
+    expect(result.model).toBe('auto');
+    expect(result.documents).toEqual(['ok']);
   });
 });
