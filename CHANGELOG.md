@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.4 LiteLLM migration CLI via `siftgate migrate --from litellm --config ./litellm_config.yaml`.
+- LiteLLM YAML migration for model names, provider/model mapping, API key environment references, fallbacks, router retry settings, known routing strategies, and optional pricing.
+- Human and JSON migration reports covering compatible, incompatible, and manual-review items.
+- LiteLLM migration fixtures and unit coverage.
 
 ## 0.3.0 - 2026-05-02
 

@@ -433,15 +433,17 @@
 ### P2：集成 & 兼容性
 
 #### 25. LiteLLM 配置兼容
-- **现状**：从 LiteLLM 迁移需手动重写配置
-- **目标**：提供迁移工具
+- **状态**：✅ v0.4 已交付
+- **现状**：已提供 `siftgate migrate --from litellm`，可从 LiteLLM YAML 生成 SiftGate `gateway.config.yaml` 草案和迁移报告
+- **目标**：降低从 LiteLLM 迁移到开源 Data Plane 的配置成本
 - **实现方案**：
   ```bash
-  npx siftgate migrate --from litellm --config ./litellm_config.yaml
+  npx siftgate migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
   ```
   - 解析 LiteLLM YAML → 生成 SiftGate `gateway.config.yaml`
-  - 映射 model names, API keys, fallback rules
-  - 输出迁移报告（兼容/不兼容功能列表）
+  - 映射 model names、provider、API key env 引用、fallback rules、router retry/settings 和可识别 pricing
+  - 输出迁移报告（兼容/不兼容/需人工处理）
+  - 默认不覆盖已有 `gateway.config.yaml`
 
 #### 26. SDK / 客户端库
 - **现状**：用户用原生 HTTP 或 OpenAI SDK（指向 gateway）
@@ -619,6 +621,7 @@
 | 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | ✅ v0.3.0 |
 | 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |
 | 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | 🔵 v0.4 |
+| 25 | LiteLLM 配置兼容 | ⭐⭐⭐ | 小 | ✅ v0.4 |
 | 28 | Redis 共享状态 | ⭐⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
 | 31 | HTTP/2 连接池 | ⭐⭐⭐ | 中 | 🟣 v0.5 |
 | 35 | 多租户隔离 | ⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
