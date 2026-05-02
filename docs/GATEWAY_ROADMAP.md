@@ -34,7 +34,7 @@
 - **抽象到企业版**：云控制面下发 Policy Bundle 时自动应用
 
 #### 2. 请求并发控制（Concurrency Limiter）
-- **现状**：无上游并发限制，高流量可能压垮 Provider
+- **现状**：已在 v0.2 实现开源 Data Plane 单机 per-node 并发控制
 - **目标**：每个 Node 可配置最大并发请求数
 - **实现方案**：
   ```yaml
@@ -42,9 +42,11 @@
     - id: openai-prod
       max_concurrency: 50
       queue_timeout_ms: 10000
+      queue_policy: wait  # wait | fallback | reject
   ```
-  - 超过并发上限 → 排队等待（带超时）或立即 fallback
-  - Dashboard 展示实时并发数和排队深度
+  - 超过并发上限 → 排队等待（带超时）、立即 fallback，或返回 429
+  - 成功、失败、stream 完成/中断均释放槽位
+  - `/health`、Dashboard Nodes API、OpenTelemetry gauges 展示实时并发数和排队深度
 - **抽象到企业版**：Fleet 级别并发配额分配
 
 #### 3. 主动健康检查（Active Health Probing）

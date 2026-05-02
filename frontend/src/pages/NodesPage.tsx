@@ -237,7 +237,7 @@ export function NodesPage() {
         />
       ) : (
         <CardStatic className="animate-fade-up overflow-hidden p-3">
-          <div className="hidden grid-cols-[minmax(210px,1.1fr)_minmax(260px,1.35fr)_minmax(190px,1fr)_135px_78px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
+          <div className="hidden grid-cols-[minmax(210px,1.1fr)_minmax(260px,1.35fr)_minmax(190px,1fr)_170px_78px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
             <span>{t('table.upstream')}</span>
             <span>{t('table.models')}</span>
             <span>{t('table.capabilities')}</span>
@@ -254,11 +254,12 @@ export function NodesPage() {
                 const circuit = node.modelCircuits?.[model]
                 return circuit && circuit.state !== 'CLOSED'
               })
+              const concurrency = node.concurrency
 
               return (
                 <div
                   key={node.id}
-                  className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[minmax(210px,1.1fr)_minmax(260px,1.35fr)_minmax(190px,1fr)_135px_78px] lg:items-center"
+                  className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[minmax(210px,1.1fr)_minmax(260px,1.35fr)_minmax(190px,1fr)_170px_78px] lg:items-center"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
@@ -374,6 +375,27 @@ export function NodesPage() {
 
                   <div className="flex flex-wrap items-center gap-2 lg:block lg:space-y-2">
                     <CircuitBadge state={node.circuit.state} />
+                    {concurrency && (
+                      <div className="min-w-[132px] rounded-md bg-[var(--background-secondary)] px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-[10px] font-semibold text-[var(--foreground-dim)]">
+                            {t('status.active')}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold text-[var(--foreground)]">
+                            {concurrency.active}
+                            {concurrency.max_concurrency ? ` / ${concurrency.max_concurrency}` : ''}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="truncate text-[10px] font-semibold text-[var(--foreground-dim)]">
+                            {t('status.queued')}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold text-[var(--foreground)]">
+                            {concurrency.queued}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     {node.circuit.consecutiveFailures > 0 && (
                       <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
                         {t('status.failures', { count: node.circuit.consecutiveFailures })}

@@ -109,6 +109,19 @@ describe('HealthController', () => {
     };
   }
 
+  function makeConcurrencyLimiter(): any {
+    return {
+      getNodeStats: jest.fn().mockImplementation((node: any) => ({
+        node: node.id,
+        max_concurrency: node.max_concurrency ?? null,
+        queue_timeout_ms: node.queue_timeout_ms ?? 10000,
+        queue_policy: node.queue_policy ?? 'wait',
+        active: 0,
+        queued: 0,
+      })),
+    };
+  }
+
   it('should return healthy when all nodes are CLOSED', async () => {
     const config = mockConfigService({
       nodes: [
@@ -119,13 +132,16 @@ describe('HealthController', () => {
     const cb = makeCircuitBreaker();
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, makeConcurrencyLimiter(), budget);
     const result = await controller.check();
 
     expect(result.status).toBe('healthy');
     expect(result.nodes).toHaveLength(2);
     expect(result.nodes[0].healthy).toBe(true);
     expect(result.nodes[1].healthy).toBe(true);
+    expect(result.nodes[0].concurrency).toEqual(
+      expect.objectContaining({ active: 0, queued: 0 }),
+    );
     expect(result.uptime_ms).toBeGreaterThanOrEqual(0);
     expect(result.uptime_human).toBeDefined();
     expect(result.timestamp).toBeDefined();
@@ -141,7 +157,7 @@ describe('HealthController', () => {
     const cb = makeCircuitBreaker({ openai: CircuitState.OPEN });
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, makeConcurrencyLimiter(), budget);
     const result = await controller.check();
 
     expect(result.status).toBe('degraded');
@@ -159,7 +175,7 @@ describe('HealthController', () => {
       { type: 'tokens', current: 500, limit: 1000, percentage: 0.5, isExceeded: false, isAlert: false },
     ]);
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, makeConcurrencyLimiter(), budget);
     const result = await controller.check();
 
     expect(result.budget).toHaveLength(1);
@@ -177,7 +193,7 @@ describe('HealthController', () => {
       getStatus: jest.fn().mockRejectedValue(new Error('DB down')),
     };
 
-    const controller = new HealthController(config, cb, budget as any);
+    const controller = new HealthController(config, cb, makeConcurrencyLimiter(), budget as any);
     const result = await controller.check();
 
     expect(result.status).toBe('healthy');
@@ -193,7 +209,7 @@ describe('HealthController', () => {
     const cb = makeCircuitBreaker();
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, makeConcurrencyLimiter(), budget);
     const result = await controller.check();
 
     expect(result.nodes[0].id).toBe('openai');

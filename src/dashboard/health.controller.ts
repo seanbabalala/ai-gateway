@@ -11,6 +11,7 @@
 import { Controller, Get, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
+import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
 import { BudgetService, BudgetStatus } from '../budget/budget.service';
 
 @Controller()
@@ -21,6 +22,7 @@ export class HealthController {
   constructor(
     private readonly config: ConfigService,
     private readonly circuitBreaker: CircuitBreakerService,
+    private readonly concurrencyLimiter: ConcurrencyLimiterService,
     private readonly budgetService: BudgetService,
   ) {}
 
@@ -29,6 +31,7 @@ export class HealthController {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
+      const concurrency = this.concurrencyLimiter.getNodeStats(node);
 
       // Build per-model circuit info
       const models: Record<string, {
@@ -56,6 +59,7 @@ export class HealthController {
           ? new Date(cbStatus.lastFailureAt).toISOString()
           : null,
         healthy: cbStatus.state !== CircuitState.OPEN,
+        concurrency,
         models,
       };
     });

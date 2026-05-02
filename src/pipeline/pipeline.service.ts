@@ -23,6 +23,11 @@ import {
 import { ScoringService } from '../scoring/scoring.service';
 import { RoutingService } from '../routing/routing.service';
 import { CircuitBreakerService } from '../routing/circuit-breaker.service';
+import {
+  ConcurrencyLease,
+  ConcurrencyLimitError,
+  ConcurrencyLimiterService,
+} from '../routing/concurrency-limiter.service';
 import { BudgetService, BudgetExceededError } from '../budget/budget.service';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { LogEventBus } from '../dashboard/log-event-bus';
@@ -82,6 +87,7 @@ export class PipelineService {
     private readonly scoringService: ScoringService,
     private readonly routingService: RoutingService,
     private readonly circuitBreaker: CircuitBreakerService,
+    private readonly concurrencyLimiter: ConcurrencyLimiterService,
     private readonly budgetService: BudgetService,
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
@@ -434,13 +440,31 @@ export class PipelineService {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const response = await this.providerClient.forward(
-          requestForNode, nodeId, model, routingMeta,
+        const response = await this.withConcurrencySlot(
+          nodeId,
+          model,
+          () =>
+            this.providerClient.forward(
+              requestForNode,
+              nodeId,
+              model,
+              routingMeta,
+            ),
         );
         this.circuitBreaker.recordSuccess(nodeId, model);
         return { response, lastError: null, retries };
       } catch (err) {
         lastError = err as Error;
+        if (lastError instanceof ConcurrencyLimitError) {
+          this.logger.warn(lastError.message);
+          if (!lastError.fallbackAllowed) {
+            throw new GatewayRequestRejectedError(
+              lastError.message,
+              lastError.statusCode,
+            );
+          }
+          return { response: null, lastError, retries };
+        }
         const statusCode = err instanceof ProviderError ? err.statusCode : 0;
         const isRetryable = retryConfig.retryable_status.includes(statusCode);
         const isLastAttempt = attempt >= maxAttempts - 1;
@@ -496,6 +520,28 @@ export class PipelineService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async withConcurrencySlot<T>(
+    nodeId: string,
+    model: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const lease = await this.acquireConcurrencySlot(nodeId, model);
+    try {
+      return await fn();
+    } finally {
+      lease.release();
+    }
+  }
+
+  private async acquireConcurrencySlot(
+    nodeId: string,
+    model: string,
+  ): Promise<ConcurrencyLease> {
+    const node = this.config.getNode(nodeId);
+    if (!node) throw new Error(`Node not found: ${nodeId}`);
+    return this.concurrencyLimiter.acquire(node, model);
   }
 
   // ══════════════════════════════════════════════════════
@@ -693,114 +739,148 @@ export class PipelineService {
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           try {
-            const stream = this.providerClient.forwardStream(
-              requestForTarget, target.node, target.model,
+            const lease = await this.acquireConcurrencySlot(
+              target.node,
+              target.model,
             );
+            try {
+              const stream = this.providerClient.forwardStream(
+                requestForTarget, target.node, target.model,
+              );
 
-            // Stream events to client
-            const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
-            const accumulatedText: string[] = []; // For cache store
-            let streamModel = '';
-            let streamId = '';
-            let streamStopReason = '';
+              // Stream events to client
+              const usage: TokenUsage = { input_tokens: 0, output_tokens: 0 };
+              const accumulatedText: string[] = []; // For cache store
+              let streamModel = '';
+              let streamId = '';
+              let streamStopReason = '';
 
-            currentPhase = 'upstreamStream';
-            for await (const event of stream) {
-              streamConnected = true;
-              connected = true;
-              usedNodeId = target.node;
-              usedModel = target.model;
-              isFallback = !isFirstTarget;
+              currentPhase = 'upstreamStream';
+              for await (const event of stream) {
+                streamConnected = true;
+                connected = true;
+                usedNodeId = target.node;
+                usedModel = target.model;
+                isFallback = !isFirstTarget;
 
-              // Accumulate for cache
-              if (event.type === 'start') {
-                streamModel = event.model;
-                streamId = event.id;
-              } else if (event.type === 'delta' && event.content.type === 'text') {
-                accumulatedText.push(event.content.text);
-              } else if (event.type === 'stop') {
-                usage.input_tokens = event.usage.input_tokens;
-                usage.output_tokens = event.usage.output_tokens;
-                if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
-                if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
-                streamStopReason = event.stop_reason;
-              }
-
-              // ── streamEvent Hook ──
-              let outputEvent = event;
-              if (!this.hooks.isEmpty()) {
-                const hookResult = await this.hooks.run(
-                  'streamEvent',
-                  { request: requestForTarget, event } as Record<string, unknown>,
-                  store,
-                  this.config.getFullConfig(),
-                );
-                if (hookResult.shortCircuit && (hookResult.shortCircuit as Record<string, unknown>).__drop) {
-                  continue; // Drop this event
+                // Accumulate for cache
+                if (event.type === 'start') {
+                  streamModel = event.model;
+                  streamId = event.id;
+                } else if (event.type === 'delta' && event.content.type === 'text') {
+                  accumulatedText.push(event.content.text);
+                } else if (event.type === 'stop') {
+                  usage.input_tokens = event.usage.input_tokens;
+                  usage.output_tokens = event.usage.output_tokens;
+                  if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
+                  if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
+                  streamStopReason = event.stop_reason;
                 }
-                outputEvent = (hookResult.data as { event: CanonicalStreamEvent }).event;
+
+                // ── streamEvent Hook ──
+                let outputEvent = event;
+                if (!this.hooks.isEmpty()) {
+                  const hookResult = await this.hooks.run(
+                    'streamEvent',
+                    { request: requestForTarget, event } as Record<string, unknown>,
+                    store,
+                    this.config.getFullConfig(),
+                  );
+                  if (hookResult.shortCircuit && (hookResult.shortCircuit as Record<string, unknown>).__drop) {
+                    continue; // Drop this event
+                  }
+                  outputEvent = (hookResult.data as { event: CanonicalStreamEvent }).event;
+                }
+
+                const sseText = serializer.serialize(outputEvent);
+                if (sseText) {
+                  ensureStreamHeaders();
+                  res.write(sseText);
+                }
               }
 
-              const sseText = serializer.serialize(outputEvent);
-              if (sseText) {
-                ensureStreamHeaders();
-                res.write(sseText);
+              // Stream completed successfully
+              const latencyMs = Date.now() - startTime;
+              this.circuitBreaker.recordSuccess(target.node, target.model);
+
+              // ── Cache Store (from stream accumulation) ──
+              if (this.cacheService.shouldCache(canonical) && accumulatedText.length > 0) {
+                const assembledResponse: CanonicalResponse = {
+                  id: streamId || `cache-${requestId}`,
+                  content: [{ type: 'text', text: accumulatedText.join('') }],
+                  stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
+                  usage: { ...usage },
+                  model: streamModel || usedModel,
+                  routing: { tier, node: usedNodeId, latency_ms: latencyMs, score, is_fallback: isFallback },
+                };
+                this.cacheService.store(canonical, assembledResponse);
               }
+
+              const { costUsd } = await this.recordBudgetUsage(canonical, usage, usedModel);
+
+              const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+                experimentGroupsByTarget,
+                usedNodeId,
+                usedModel,
+                experimentGroup,
+              );
+              await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+                statusCode: 200, isFallback, latencyMs, usage, error: null,
+                retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+                domainHint, modalityHints });
+
+              // ── Telemetry Metrics (stream success) ──
+              const streamTotalTokens = usage.input_tokens + usage.output_tokens;
+              rootSpan.setAttributes({
+                'gateway.tier': tier,
+                'gateway.node': usedNodeId,
+                'gateway.model': usedModel,
+                'gateway.is_fallback': isFallback,
+                'gen_ai.request.model': usedModel,
+                'gen_ai.usage.input_tokens': usage.input_tokens,
+                'gen_ai.usage.output_tokens': usage.output_tokens,
+              });
+              this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+              this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
+              this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+              if (costUsd > 0) {
+                this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+              }
+
+              res.end();
+              rootSpan.end();
+              return;
+            } finally {
+              lease.release();
             }
-
-            // Stream completed successfully
-            const latencyMs = Date.now() - startTime;
-            this.circuitBreaker.recordSuccess(target.node, target.model);
-
-            // ── Cache Store (from stream accumulation) ──
-            if (this.cacheService.shouldCache(canonical) && accumulatedText.length > 0) {
-              const assembledResponse: CanonicalResponse = {
-                id: streamId || `cache-${requestId}`,
-                content: [{ type: 'text', text: accumulatedText.join('') }],
-                stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
-                usage: { ...usage },
-                model: streamModel || usedModel,
-                routing: { tier, node: usedNodeId, latency_ms: latencyMs, score, is_fallback: isFallback },
-              };
-              this.cacheService.store(canonical, assembledResponse);
-            }
-
-            const { costUsd } = await this.recordBudgetUsage(canonical, usage, usedModel);
-
-            const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
-              experimentGroupsByTarget,
-              usedNodeId,
-              usedModel,
-              experimentGroup,
-            );
-            await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-              statusCode: 200, isFallback, latencyMs, usage, error: null,
-              retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
-              domainHint, modalityHints });
-
-            // ── Telemetry Metrics (stream success) ──
-            const streamTotalTokens = usage.input_tokens + usage.output_tokens;
-            rootSpan.setAttributes({
-              'gateway.tier': tier,
-              'gateway.node': usedNodeId,
-              'gateway.model': usedModel,
-              'gateway.is_fallback': isFallback,
-              'gen_ai.request.model': usedModel,
-              'gen_ai.usage.input_tokens': usage.input_tokens,
-              'gen_ai.usage.output_tokens': usage.output_tokens,
-            });
-            this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
-            this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
-            this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
-            if (costUsd > 0) {
-              this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
-            }
-
-            res.end();
-            rootSpan.end();
-            return;
           } catch (err) {
             lastError = err as Error;
+            if (lastError instanceof ConcurrencyLimitError) {
+              this.logger.warn(lastError.message);
+              if (!lastError.fallbackAllowed) {
+                if (!headersFlushed) {
+                  res.status(lastError.statusCode).json(
+                    this.formatError(
+                      canonical.metadata.source_format,
+                      lastError.statusCode,
+                      lastError.message,
+                    ),
+                  );
+                  rootSpan.end();
+                  return;
+                }
+                const errorEvent: CanonicalStreamEvent = {
+                  type: 'error',
+                  error: { message: lastError.message, code: 'concurrency_limited' },
+                };
+                ensureStreamHeaders();
+                res.write(serializer.serialize(errorEvent));
+                res.end();
+                rootSpan.end();
+                return;
+              }
+              break;
+            }
 
             if (connected || streamConnected) {
               // Transmission phase — don't retry, send error event
@@ -1405,6 +1485,9 @@ export class PipelineService {
 
   private resolveFailureStatus(err: Error | null | undefined): number {
     if (err instanceof ProviderError && err.statusCode > 0) {
+      return err.statusCode;
+    }
+    if (err instanceof ConcurrencyLimitError) {
       return err.statusCode;
     }
     return 502;

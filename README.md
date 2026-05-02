@@ -81,6 +81,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 ### Reliability
 
 - **Circuit breaker** — automatically stops sending requests to failing providers
+- **Per-node concurrency limits** — cap in-flight upstream requests and choose whether overflow waits, falls back, or returns 429
 - **Health monitoring** — real-time health status for all configured nodes
 - **Graceful degradation** — the system continues working even when some providers are down
 
@@ -88,7 +89,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
-- **Node health** — monitor provider status and circuit breaker state
+- **Node health** — monitor provider status, circuit breaker state, current concurrency, and queue depth
 - **Routing visualization** — see how tiers, scoring thresholds, and fallback chains are configured
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Light / Dark theme** — system-aware with manual toggle
@@ -335,6 +336,9 @@ nodes:
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     timeout_ms: 60000 # Request timeout
+    max_concurrency: 50 # Optional max in-flight upstream calls for this node
+    queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
+    queue_policy: wait # wait (default) | fallback | reject
     tags: ["code", "reasoning"] # Capability tags for domain routing
     model_aliases: # User-friendly shortcuts
       gpt4: gpt-4o
@@ -348,6 +352,18 @@ nodes:
 | `chat_completions` | OpenAI Chat Completions | OpenAI, Azure OpenAI, Google Gemini, any OpenAI-compatible API |
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
+
+### Per-Node Concurrency Control
+
+Set `max_concurrency` on a node to limit concurrent upstream requests across all models routed through that node. When the node is full, `queue_policy` controls overflow behavior:
+
+| Policy | Behavior |
+| ------ | -------- |
+| `wait` | Queue until a slot opens, then fall back with `503` if `queue_timeout_ms` expires |
+| `fallback` | Skip the saturated node immediately and try the next configured fallback |
+| `reject` | Return `429` without trying fallbacks |
+
+Slots are released after successful responses, provider errors, stream completion, or stream interruption. `/health`, `/api/dashboard/nodes`, and OpenTelemetry gauges expose `active` concurrency and queued depth per node.
 
 ### Routing
 
@@ -467,11 +483,11 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `POST` | `/api/dashboard/config/reload`    | Hot-reload config from disk                                                                        |
 | `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`         | Create a Gateway API key                                                                           |
-| `GET`  | `/api/dashboard/nodes`            | Node health + circuit breaker status                                                               |
+| `GET`  | `/api/dashboard/nodes`            | Node health, circuit breaker status, concurrency, and queue depth                                   |
 | `POST` | `/api/dashboard/nodes/:id/reset`  | Reset circuit breaker                                                                              |
 | `GET`  | `/api/dashboard/budget`           | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset one budget rule by `budget_rule.id`                                                          |
-| `GET`  | `/health`                         | Health check                                                                                       |
+| `GET`  | `/health`                         | Health check with per-node circuit and concurrency status                                          |
 
 ## Dashboard
 

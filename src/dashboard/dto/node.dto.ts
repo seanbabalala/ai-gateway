@@ -48,6 +48,23 @@ export class CreateNodeDto {
   timeout_ms!: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  max_concurrency?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  queue_timeout_ms?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['wait', 'fallback', 'reject'])
+  queue_policy?: 'wait' | 'fallback' | 'reject';
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   capabilities?: string[];
@@ -148,6 +165,23 @@ export class UpdateNodeDto {
   @Min(1)
   @Type(() => Number)
   timeout_ms?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  max_concurrency?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  queue_timeout_ms?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['wait', 'fallback', 'reject'])
+  queue_policy?: 'wait' | 'fallback' | 'reject';
 
   @IsOptional()
   @IsArray()

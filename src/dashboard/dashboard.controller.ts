@@ -29,6 +29,7 @@ import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
+import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
 import { BudgetService } from '../budget/budget.service';
 import { CallLog } from '../database/entities/call-log.entity';
 import { LogEventBus } from './log-event-bus';
@@ -52,6 +53,7 @@ export class DashboardController {
     private readonly config: ConfigService,
     private readonly capabilityService: CapabilityService,
     private readonly circuitBreaker: CircuitBreakerService,
+    private readonly concurrencyLimiter: ConcurrencyLimiterService,
     private readonly budgetService: BudgetService,
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
@@ -816,6 +818,7 @@ export class DashboardController {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
+      const concurrency = this.concurrencyLimiter.getNodeStats(node);
 
       // Build per-model circuit info
       const modelCircuits: Record<string, {
@@ -853,6 +856,7 @@ export class DashboardController {
             : null,
         },
         modelCircuits,
+        concurrency,
         healthy: cbStatus.state !== CircuitState.OPEN,
       };
     });
@@ -1087,6 +1091,9 @@ export class DashboardController {
         api_key: dto.api_key,
         models: dto.models,
         timeout_ms: dto.timeout_ms,
+        max_concurrency: dto.max_concurrency,
+        queue_timeout_ms: dto.queue_timeout_ms,
+        queue_policy: dto.queue_policy,
         capabilities: dto.capabilities,
         modalities: dto.modalities as Modality[] | undefined,
         tags: dto.tags,

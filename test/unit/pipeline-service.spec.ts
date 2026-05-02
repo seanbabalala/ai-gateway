@@ -9,6 +9,7 @@
 
 import { PipelineService } from '../../src/pipeline/pipeline.service';
 import { ProviderError } from '../../src/providers/provider-client.service';
+import { ConcurrencyLimitError } from '../../src/routing/concurrency-limiter.service';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 import { makeRequest, makeCanonicalResponse, mockConfigService } from '../helpers';
 import { createNoOpHookExecutor } from '../../src/plugins/testing';
@@ -39,6 +40,11 @@ function makePipeline(overrides: Record<string, any> = {}): {
     getModelPricing: jest.fn().mockReturnValue({ input: 5, output: 15 }),
     ...overrides.config,
   });
+  if (!overrides.config?.getNode) {
+    config.getNode.mockImplementation((nodeId: string) =>
+      config.nodes.find((node: { id: string }) => node.id === nodeId),
+    );
+  }
 
   const capabilityService = {
     resolveModelModalities: jest.fn().mockReturnValue(['text']),
@@ -85,6 +91,19 @@ function makePipeline(overrides: Record<string, any> = {}): {
     ...overrides.circuitBreaker,
   };
 
+  const concurrencyLimiter = {
+    acquire: jest.fn().mockResolvedValue({ release: jest.fn() }),
+    getNodeStats: jest.fn().mockReturnValue({
+      node: 'openai',
+      max_concurrency: null,
+      queue_timeout_ms: 10000,
+      queue_policy: 'wait',
+      active: 0,
+      queued: 0,
+    }),
+    ...overrides.concurrencyLimiter,
+  };
+
   const budgetService = {
     check: jest.fn().mockResolvedValue(undefined),
     record: jest.fn().mockResolvedValue(undefined),
@@ -123,6 +142,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     scoringService as any,
     routingService as any,
     circuitBreaker as any,
+    concurrencyLimiter as any,
     budgetService as any,
     cacheService as any,
     logEventBus as any,
@@ -136,7 +156,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     pipeline,
     mocks: {
       config, capabilityService, providerClient, scoringService,
-      routingService, circuitBreaker, budgetService, cacheService,
+      routingService, circuitBreaker, concurrencyLimiter, budgetService, cacheService,
       logEventBus, hooks, telemetryUploader, callLogRepo,
     },
   };
@@ -405,6 +425,108 @@ describe('PipelineService — retry and fallback', () => {
     await pipeline.process(request);
 
     expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Concurrency Limiter
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — concurrency limiter', () => {
+  it('should release the concurrency slot after a successful upstream call', async () => {
+    const release = jest.fn();
+    const { pipeline, mocks } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockResolvedValue({ release }),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    await pipeline.process(request);
+
+    expect(mocks.concurrencyLimiter.acquire).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'openai' }),
+      'gpt-4o',
+    );
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('should release the concurrency slot when upstream throws', async () => {
+    const release = jest.fn();
+    const { pipeline } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockResolvedValue({ release }),
+      },
+      providerClient: {
+        forward: jest.fn().mockRejectedValue(new ProviderError('Bad Request', 400, 'openai')),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    await pipeline.process(request);
+
+    expect(release).toHaveBeenCalledTimes(2);
+  });
+
+  it('should skip to fallback when a saturated node allows fallback', async () => {
+    const fallbackResponse = makeCanonicalResponse({ model: 'claude-3-opus' });
+    const { pipeline, mocks } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockImplementation((node: { id: string }, model: string) => {
+          if (node.id === 'openai') {
+            throw new ConcurrencyLimitError(
+              'openai saturated',
+              node.id,
+              model,
+              503,
+              'fallback',
+              true,
+            );
+          }
+          return Promise.resolve({ release: jest.fn() });
+        }),
+      },
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(fallbackResponse),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forward).toHaveBeenCalledWith(
+      expect.any(Object),
+      'claude',
+      'claude-3-opus',
+      expect.objectContaining({ is_fallback: true }),
+    );
+    expect(mocks.circuitBreaker.recordFailure).not.toHaveBeenCalledWith('openai', 'gpt-4o');
+  });
+
+  it('should return 429 when a saturated node rejects immediately', async () => {
+    const { pipeline, mocks } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockImplementation((node: { id: string }, model: string) => {
+          throw new ConcurrencyLimitError(
+            'openai saturated',
+            node.id,
+            model,
+            429,
+            'reject',
+            false,
+          );
+        }),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(429);
+    expect(mocks.providerClient.forward).not.toHaveBeenCalled();
   });
 });
 
@@ -765,6 +887,32 @@ describe('PipelineService — processStream', () => {
     expect(mocks.budgetService.record).toHaveBeenCalled();
   });
 
+  it('should release the concurrency slot after stream completion', async () => {
+    const release = jest.fn();
+    async function* mockStream() {
+      yield { type: 'start' as const, id: 'stream-release', model: 'gpt-4o' };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } };
+    }
+
+    const { pipeline } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockResolvedValue({ release }),
+      },
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it('should try fallback in stream mode when primary connection fails', async () => {
     let callCount = 0;
     async function* fallbackStream() {
@@ -792,6 +940,49 @@ describe('PipelineService — processStream', () => {
     expect(res.end).toHaveBeenCalled();
     // After primary exhausts retries (3 attempts for 502), recordFailure is called
     expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalled();
+  });
+
+  it('should try fallback in stream mode when primary is saturated', async () => {
+    async function* fallbackStream() {
+      yield { type: 'start' as const, id: 'fb-limiter', model: 'claude-3-opus' };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 5, output_tokens: 3 } };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockImplementation((node: { id: string }, model: string) => {
+          if (node.id === 'openai') {
+            throw new ConcurrencyLimitError(
+              'openai saturated',
+              node.id,
+              model,
+              503,
+              'fallback',
+              true,
+            );
+          }
+          return Promise.resolve({ release: jest.fn() });
+        }),
+      },
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(fallbackStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res.end).toHaveBeenCalled();
+    expect(mocks.providerClient.forwardStream).toHaveBeenCalledWith(
+      expect.any(Object),
+      'claude',
+      'claude-3-opus',
+    );
+    expect(mocks.circuitBreaker.recordFailure).not.toHaveBeenCalledWith('openai', 'gpt-4o');
   });
 
   it('should send error event when all stream nodes fail', async () => {
@@ -903,6 +1094,32 @@ describe('PipelineService — processStream transmission-phase errors', () => {
     await pipeline.processStream(request, res);
 
     expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalledWith('openai', 'gpt-4o');
+  });
+
+  it('should release the concurrency slot when stream transmission fails', async () => {
+    const release = jest.fn();
+    async function* breakingStream() {
+      yield { type: 'start' as const, id: 'break-release', model: 'gpt-4o' };
+      throw new Error('Stream reset');
+    }
+
+    const { pipeline } = makePipeline({
+      concurrencyLimiter: {
+        acquire: jest.fn().mockResolvedValue({ release }),
+      },
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(breakingStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it('should log statusCode 502 for transmission-phase errors', async () => {

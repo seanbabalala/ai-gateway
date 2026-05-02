@@ -65,6 +65,7 @@ describe('Claude routing compatibility', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       createNoOpHookExecutor() as never,
       new TelemetryService(),
       { enqueue: jest.fn() } as never,

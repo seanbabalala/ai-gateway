@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added per-node upstream concurrency limits with `max_concurrency`, `queue_timeout_ms`, and `queue_policy` (`wait`, `fallback`, `reject`).
+- Added health, dashboard API, and OpenTelemetry visibility for active concurrency and queue depth.
+- Added unit coverage for limiter queueing, fallback/reject overflow behavior, slot release on success/failure, streaming completion, streaming interruption, and fallback paths.
+
 ## 0.1.0 - Open Source Gateway
 
 Initial open-source release target.
