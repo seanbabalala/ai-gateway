@@ -54,6 +54,8 @@ const ALERT_EVENTS = new Set([
   'error_spike',
   'latency_spike',
 ]);
+const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
+const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
 const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
@@ -200,6 +202,7 @@ export function validateConfigObject(
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
   validateAlerts(config.alerts, issues);
+  validateLogging(config.logging, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
@@ -1703,6 +1706,348 @@ function validateAlertChannelRetry(
       ),
     );
   }
+}
+
+function validateLogging(
+  logging: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (logging === undefined) return;
+  if (!isRecord(logging)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'logging must be an object.',
+        'logging',
+      ),
+    );
+    return;
+  }
+
+  if (logging.enabled !== undefined && typeof logging.enabled !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_logging_config',
+        'logging.enabled must be a boolean.',
+        'logging.enabled',
+      ),
+    );
+  }
+
+  if (logging.sinks === undefined) return;
+  if (!Array.isArray(logging.sinks)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sinks',
+        'logging.sinks must be an array.',
+        'logging.sinks',
+      ),
+    );
+    return;
+  }
+
+  logging.sinks.forEach((sink, index) =>
+    validateLogSink(sink, `logging.sinks[${index}]`, issues),
+  );
+}
+
+function validateLogSink(
+  sink: unknown,
+  sinkPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isRecord(sink)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink',
+        'Log sink entries must be objects.',
+        sinkPath,
+      ),
+    );
+    return;
+  }
+
+  if (!isNonEmptyString(sink.type) || !LOG_SINK_TYPES.has(sink.type)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink_type',
+        'Log sink type must be one of file, webhook, s3, elasticsearch.',
+        `${sinkPath}.type`,
+      ),
+    );
+  }
+  if (sink.enabled !== undefined && typeof sink.enabled !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink',
+        'logging.sinks[].enabled must be a boolean.',
+        `${sinkPath}.enabled`,
+      ),
+    );
+  }
+  if (sink.name !== undefined && !isNonEmptyString(sink.name)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink',
+        'logging.sinks[].name must be a non-empty string when set.',
+        `${sinkPath}.name`,
+      ),
+    );
+  }
+  validatePositiveNumber(sink.batch_size, `${sinkPath}.batch_size`, 'invalid_log_sink_batching', issues);
+  validatePositiveNumber(sink.flush_interval_ms, `${sinkPath}.flush_interval_ms`, 'invalid_log_sink_batching', issues);
+  validatePositiveNumber(sink.max_queue, `${sinkPath}.max_queue`, 'invalid_log_sink_queue', issues);
+  if (
+    sink.overflow !== undefined &&
+    (!isNonEmptyString(sink.overflow) || !LOG_SINK_OVERFLOW_POLICIES.has(sink.overflow))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink_queue',
+        'logging.sinks[].overflow must be drop_oldest or drop_newest.',
+        `${sinkPath}.overflow`,
+      ),
+    );
+  }
+
+  validateLogSinkFields(sink.fields, `${sinkPath}.fields`, issues);
+  validateLogSinkFields(sink.exclude_fields, `${sinkPath}.exclude_fields`, issues);
+  validateLogSinkRetry(sink.retry, sinkPath, issues);
+
+  if (sink.type === 'file') {
+    if (!isNonEmptyString(sink.path)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_log_sink_field',
+          'file log sinks require path.',
+          `${sinkPath}.path`,
+        ),
+      );
+    }
+  } else if (sink.type === 'webhook') {
+    validateLogSinkUrl(sink.url, `${sinkPath}.url`, 'invalid_log_sink_url', issues);
+    validateLogSinkHeaders(sink.headers, `${sinkPath}.headers`, issues);
+  } else if (sink.type === 'elasticsearch') {
+    validateLogSinkUrl(sink.url, `${sinkPath}.url`, 'invalid_log_sink_url', issues);
+    if (!isNonEmptyString(sink.index)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_log_sink_field',
+          'elasticsearch log sinks require index.',
+          `${sinkPath}.index`,
+        ),
+      );
+    }
+    validateLogSinkHeaders(sink.headers, `${sinkPath}.headers`, issues);
+  } else if (sink.type === 's3') {
+    if (!isNonEmptyString(sink.bucket)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_log_sink_field',
+          's3 log sinks require bucket.',
+          `${sinkPath}.bucket`,
+        ),
+      );
+    }
+    if (sink.enabled !== false) {
+      issues.push(
+        issue(
+          'warning',
+          'log_sink_interface_only',
+          's3 log sink config is reserved as an interface placeholder in the OSS data plane.',
+          sinkPath,
+        ),
+      );
+    }
+  }
+}
+
+function validatePositiveNumber(
+  value: unknown,
+  valuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isFiniteNumber(value) || value <= 0) {
+    issues.push(
+      issue(
+        'error',
+        code,
+        `${valuePath} must be a positive number.`,
+        valuePath,
+      ),
+    );
+  }
+}
+
+function validateLogSinkUrl(
+  value: unknown,
+  valuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isNonEmptyString(value)) {
+    issues.push(
+      issue(
+        'error',
+        'missing_log_sink_field',
+        `${valuePath} is required.`,
+        valuePath,
+      ),
+    );
+    return;
+  }
+  if (!containsEnvReference(value)) {
+    validateHttpUrl(value, valuePath, code, issues);
+  }
+}
+
+function validateLogSinkHeaders(
+  headers: unknown,
+  headerPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (headers === undefined) return;
+  if (!isRecord(headers)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink_headers',
+        'log sink headers must be an object.',
+        headerPath,
+      ),
+    );
+    return;
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    if (!isNonEmptyString(key) || !isNonEmptyString(value)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_log_sink_headers',
+          'log sink headers must be non-empty string key/value pairs.',
+          `${headerPath}.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateLogSinkFields(
+  fields: unknown,
+  fieldPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (fields === undefined) return;
+  if (!Array.isArray(fields)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink_fields',
+        `${fieldPath} must be an array.`,
+        fieldPath,
+      ),
+    );
+    return;
+  }
+  fields.forEach((field, index) => {
+    const itemPath = `${fieldPath}[${index}]`;
+    if (!isNonEmptyString(field)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_log_sink_fields',
+          'log sink field names must be non-empty strings.',
+          itemPath,
+        ),
+      );
+      return;
+    }
+    if (isSensitiveLogField(field)) {
+      issues.push(
+        issue(
+          'warning',
+          'log_sink_sensitive_field_ignored',
+          `Sensitive log sink field "${field}" will be ignored by the sanitizer.`,
+          itemPath,
+        ),
+      );
+    }
+  });
+}
+
+function validateLogSinkRetry(
+  retry: unknown,
+  sinkPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (retry === undefined) return;
+  if (!isRecord(retry)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink_retry',
+        'logging.sinks[].retry must be an object.',
+        `${sinkPath}.retry`,
+      ),
+    );
+    return;
+  }
+  for (const key of ['attempts', 'timeout_ms']) {
+    validatePositiveNumber(
+      retry[key],
+      `${sinkPath}.retry.${key}`,
+      'invalid_log_sink_retry',
+      issues,
+    );
+  }
+  if (
+    retry.backoff_ms !== undefined &&
+    (!isFiniteNumber(retry.backoff_ms) || retry.backoff_ms < 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_log_sink_retry',
+        'logging.sinks[].retry.backoff_ms must be a non-negative number.',
+        `${sinkPath}.retry.backoff_ms`,
+      ),
+    );
+  }
+}
+
+function isSensitiveLogField(field: string): boolean {
+  const normalized = field.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return new Set([
+    'prompt',
+    'response',
+    'requestbody',
+    'responsebody',
+    'messages',
+    'content',
+    'rawheaders',
+    'headers',
+    'authorization',
+    'providerkey',
+    'providerapikey',
+    'apikey',
+    'password',
+    'secret',
+    'token',
+    'bearer',
+  ]).has(normalized);
 }
 
 function validatePricing(

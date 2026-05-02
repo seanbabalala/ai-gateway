@@ -112,6 +112,10 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
         include_response: false,
       },
     },
+    logSinks: {
+      enabled: false,
+      sinks: [],
+    },
     getNode: jest.fn().mockReturnValue(undefined),
     getModelPricing: jest.fn().mockReturnValue(undefined),
     getFullConfig: jest.fn(),

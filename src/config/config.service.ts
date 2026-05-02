@@ -15,6 +15,8 @@ import {
   RetryConfig,
   BudgetConfig,
   CacheConfig,
+  LoggingConfig,
+  LogSinkConfig,
   ControlPlaneConfig,
   HotReloadConfig,
   AlertsConfig,
@@ -225,10 +227,14 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     for (const [tierName, tier] of Object.entries(config.routing.tiers)) {
       const hasPrimary = Boolean(tier?.primary?.node && tier.primary.model);
       const hasTargets = Array.isArray(tier?.targets) && tier.targets.length > 0;
-      if (!hasPrimary && !hasTargets) {
-        throw new Error(`Invalid configuration: routing.tiers.${tierName} must define primary or targets`);
+      const hasSplit = Array.isArray(tier?.split) && tier.split.length > 0;
+      if (!hasPrimary && !hasTargets && !hasSplit) {
+        throw new Error(`Invalid configuration: routing.tiers.${tierName} must define primary, targets, or split`);
       }
-      if (!hasTargets && !Array.isArray(tier.fallbacks)) {
+      if (!hasTargets && !hasSplit && !Array.isArray(tier.fallbacks)) {
+        throw new Error(`Invalid configuration: routing.tiers.${tierName}.fallbacks must be an array`);
+      }
+      if (tier?.fallbacks !== undefined && !Array.isArray(tier.fallbacks)) {
         throw new Error(`Invalid configuration: routing.tiers.${tierName}.fallbacks must be an array`);
       }
     }
@@ -589,6 +595,15 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         min_requests: alerts?.latency_spike?.min_requests ?? 20,
         p95_ms: alerts?.latency_spike?.p95_ms ?? 10_000,
       },
+    };
+  }
+
+  /** Get external log sink config with safe disabled-by-default behavior. */
+  get logSinks(): Required<LoggingConfig> & { sinks: LogSinkConfig[] } {
+    const logging = this.config.logging;
+    return {
+      enabled: logging?.enabled ?? false,
+      sinks: logging?.sinks ?? [],
     };
   }
 

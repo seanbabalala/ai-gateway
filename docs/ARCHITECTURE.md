@@ -45,6 +45,7 @@ Client Request
   -> Provider Client
   -> Denormalizer
   -> Call Log
+  -> Optional External Log Sinks
   -> Optional Control-Plane Metadata Upload
 ```
 
@@ -136,6 +137,8 @@ These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook
 The open-source data plane includes an optional `alerts` subsystem. It listens to budget threshold/exceeded events, active health probe state, circuit breaker transitions, and the local call-log stream for error/latency spikes. Delivery runs from an in-memory asynchronous queue so webhook latency does not block AI proxy requests.
 
 Alert payloads are sanitized before dispatch. Prompts, responses, provider API keys, raw headers, configured webhook headers, passwords, secrets, and tokens are not included. Dashboard alert status is read from local memory through `GET /api/dashboard/alerts`; webhook URLs and headers are not exposed there.
+
+External log sinks can mirror sanitized `CallLog` metadata to JSONL files, webhook receivers, or a minimal Elasticsearch bulk endpoint. Sink delivery is asynchronous and starts only after the local database write succeeds. Export payloads do not include prompts, responses, provider keys, raw auth headers, or secret-bearing fields by default.
 
 ## Connected Gateway
 

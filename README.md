@@ -641,6 +641,38 @@ alerts:
 
 Alert payloads include event metadata, severity, message, and sanitized details only. They do not include prompts, responses, provider API keys, or raw headers. The Dashboard shows configured webhook channels plus recent delivery status and failure reasons. See [docs/WEBHOOK_ALERTS.md](docs/WEBHOOK_ALERTS.md) for payload shape and event details.
 
+### External Log Sinks
+
+SiftGate always writes accepted request metadata to the local `call_logs` table. External sinks are optional, asynchronous exports for SIEM, data lake, or ops pipelines; they never replace SQLite/Postgres logging and do not block the request path.
+
+```yaml
+logging:
+  enabled: true
+  sinks:
+    - type: file
+      name: local-jsonl
+      path: ./data/calls.jsonl
+      batch_size: 100
+      flush_interval_ms: 5000
+      max_queue: 10000
+      overflow: drop_oldest
+    - type: webhook
+      name: ops-pipeline
+      url: "${LOG_SINK_WEBHOOK_URL}"
+      headers:
+        Authorization: "Bearer ${LOG_SINK_WEBHOOK_TOKEN}"
+      fields: [request_id, timestamp, node_id, model, status_code, latency_ms, cost_usd]
+      retry:
+        attempts: 3
+        backoff_ms: 1000
+        timeout_ms: 5000
+```
+
+File sinks write JSONL, one sanitized call-log record per line. Webhook sinks send `siftgate.call_log_batch.v1` batches. S3 is currently a typed config placeholder, and Elasticsearch has a minimal `_bulk` exporter.
+
+By default exports include only safe call-log metadata and exclude prompt text, response text, provider API keys, raw headers, authorization values, and other secret-bearing fields. Use `fields` as an allow-list or `exclude_fields` as a deny-list for additional filtering. See [docs/LOG_SINKS.md](docs/LOG_SINKS.md).
+
+
 ## API Endpoints
 
 Live API docs are available when the gateway is running:

@@ -50,6 +50,7 @@ import {
 import { CallLog } from '../database/entities/call-log.entity';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
+import { LogSinkService } from '../log-sinks/log-sink.service';
 
 export interface PipelineResult {
   body: Record<string, unknown>;
@@ -139,6 +140,7 @@ export class PipelineService {
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
     @Optional() private readonly alerts?: AlertService,
+    @Optional() private readonly logSinks?: LogSinkService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -2550,6 +2552,11 @@ export class PipelineService {
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);
       this.alerts?.recordCall(saved);
+      try {
+        this.logSinks?.enqueue(saved);
+      } catch (err) {
+        this.logger.warn(`Failed to enqueue external log sinks: ${(err as Error).message}`);
+      }
 
       // Optional hosted control-plane metadata upload. This is privacy-preserving:
       // it derives metadata only from CallLog and never includes prompt/response bodies.

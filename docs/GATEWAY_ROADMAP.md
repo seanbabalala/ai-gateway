@@ -257,28 +257,34 @@
 ### P1：可观测性增强
 
 #### 15. 外部日志 Sink 支持
-- **现状**：日志仅存 SQLite，无法对接外部系统
+- **状态**：✅ v0.3 开发分支已实现（`codex/v0.3-log-sinks`）
+- **现状**：开源 Data Plane 已保留本地 SQLite/Postgres `call_logs`，并可选异步导出脱敏元数据
 - **目标**：支持多种日志输出目标
 - **实现方案**：
   ```yaml
   logging:
+    enabled: true
     sinks:
-      - type: elasticsearch
-        url: http://elastic:9200
-        index: siftgate-logs
-      - type: s3
-        bucket: ai-gateway-logs
-        region: us-east-1
       - type: webhook
         url: https://your-endpoint.com/logs
         batch_size: 100
       - type: file
         path: /var/log/siftgate/calls.jsonl
-        rotation: daily
+        max_queue: 10000
+        overflow: drop_oldest
+      - type: elasticsearch # minimal _bulk exporter
+        url: http://elastic:9200
+        index: siftgate-logs
+      - type: s3 # interface placeholder
+        enabled: false
+        bucket: ai-gateway-logs
+        region: us-east-1
   ```
-  - 批量异步写入，不阻塞请求流
-  - 可配置哪些字段包含（排除敏感信息）
-  - 支持过滤规则（只 sink 特定 tier/node/status 的日志）
+  - 批量异步写入，不阻塞请求流；失败按 sink 独立重试
+  - 每个 sink 支持 `batch_size`、`flush_interval_ms`、`max_queue`、`overflow`
+  - 支持字段 allow-list / deny-list，默认排除 prompt、response、provider key、raw auth headers
+  - 不影响现有 SQLite/Postgres `call_log`
+  - 单测覆盖文件写入、webhook、失败重试、脱敏和队列溢出
 
 #### 16. Webhook 告警系统
 - **状态**：✅ v0.3 开发分支已实现（`codex/v0.3-webhook-alerts`）

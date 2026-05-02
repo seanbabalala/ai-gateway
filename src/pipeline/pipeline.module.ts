@@ -9,6 +9,7 @@ import { CacheModule } from '../cache/cache.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { ControlPlaneModule } from '../control-plane/control-plane.module';
 import { AlertsModule } from '../alerts/alerts.module';
+import { LogSinksModule } from '../log-sinks/log-sinks.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
 @Module({
@@ -21,6 +22,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     DashboardModule,
     ControlPlaneModule,
     AlertsModule,
+    LogSinksModule,
     TypeOrmModule.forFeature([CallLog]),
   ],
   providers: [PipelineService],

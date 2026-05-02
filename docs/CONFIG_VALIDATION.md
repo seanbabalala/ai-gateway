@@ -62,6 +62,9 @@ hardening visible without blocking local development.
   per-model `pricing` overrides.
 - `alerts` webhook channel shape, supported event names, debounce values,
   retry controls, and spike detector thresholds.
+- Optional `logging.sinks` entries for file, webhook, S3 interface, and
+  Elasticsearch exports, including batching, retry, queue, URL/header, and
+  sensitive-field filter checks.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

@@ -336,6 +336,46 @@ budget:
 #     p95_ms: 10000
 
 # ============================================================
+# External Log Sinks — optional call-log export
+# ============================================================
+# Disabled by default. Sink delivery is asynchronous and never replaces
+# the local SQLite/Postgres call_logs table. Exported records are sanitized:
+# prompts, responses, provider keys, and raw auth headers are not included.
+# ============================================================
+# logging:
+#   enabled: false
+#   sinks:
+#     - type: file
+#       name: local-jsonl
+#       path: ./data/calls.jsonl
+#       batch_size: 100
+#       flush_interval_ms: 5000
+#       max_queue: 10000
+#       overflow: drop_oldest # drop_oldest | drop_newest
+#       fields: [request_id, timestamp, node_id, model, status_code, latency_ms, cost_usd]
+#     - type: webhook
+#       name: ops-pipeline
+#       url: "${LOG_SINK_WEBHOOK_URL}"
+#       headers:
+#         Authorization: "Bearer ${LOG_SINK_WEBHOOK_TOKEN}"
+#       batch_size: 100
+#       flush_interval_ms: 5000
+#       retry:
+#         attempts: 3
+#         backoff_ms: 1000
+#         timeout_ms: 5000
+#     # Interface placeholders for future/exporter-specific implementations:
+#     # - type: s3
+#     #   enabled: false
+#     #   bucket: siftgate-call-logs
+#     #   region: us-east-1
+#     #   prefix: production/
+#     # - type: elasticsearch
+#     #   enabled: false
+#     #   url: "http://elastic:9200"
+#     #   index: siftgate-call-logs
+
+# ============================================================
 # Model Pricing — Cost per 1M tokens (USD)
 # ============================================================
 # Used to calculate per-request costs and enforce budget limits.

@@ -18,6 +18,9 @@
 - v0.3 local webhook alerts via `alerts.channels` for budget, node health, circuit breaker, error spike, and latency spike events.
 - Asynchronous alert delivery with per-channel debounce, retry, timeout, sanitized payloads, and Dashboard delivery status.
 - Config validation and documentation for webhook alert channels and spike detector rules.
+- v0.3 external log sinks via `logging.sinks`, with JSONL file output, webhook batches, and a minimal Elasticsearch bulk exporter.
+- Asynchronous per-sink batching, retry, max queue, overflow handling, and sanitized field allow/deny filtering for exported call logs.
+- Config validation and documentation for external log sink settings, with S3 reserved as an interface placeholder.
 
 ### Changed
 
