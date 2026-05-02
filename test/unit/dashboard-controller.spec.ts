@@ -83,6 +83,22 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...overrides.circuitBreaker,
   };
 
+  const activeHealth = {
+    getNodeStatus: jest.fn().mockReturnValue({
+      enabled: false,
+      status: 'disabled',
+      method: null,
+      target: null,
+      last_checked_at: null,
+      last_success_at: null,
+      latency_ms: null,
+      failure_reason: null,
+      consecutive_failures: 0,
+    }),
+    refreshSchedules: jest.fn(),
+    ...overrides.activeHealth,
+  };
+
   const budgetService = {
     getStatus: jest.fn().mockResolvedValue([]),
     resetRule: jest.fn().mockResolvedValue(undefined),
@@ -122,6 +138,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     config,
     capabilityService as any,
     circuitBreaker as any,
+    activeHealth as any,
     budgetService as any,
     cacheService as any,
     logEventBus as any,
@@ -131,7 +148,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     callLogRepo as any,
   );
 
-  return { controller, config, circuitBreaker, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
+  return { controller, config, circuitBreaker, activeHealth, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -353,10 +370,11 @@ describe('DashboardController — config', () => {
   });
 
   it('should reload config', () => {
-    const { controller, config } = makeDashboard();
+    const { controller, config, activeHealth } = makeDashboard();
     const result = controller.reloadConfig();
     expect(result.success).toBe(true);
     expect(config.reload).toHaveBeenCalled();
+    expect(activeHealth.refreshSchedules).toHaveBeenCalled();
   });
 
   it('should handle reload failure', () => {
@@ -383,7 +401,31 @@ describe('DashboardController — nodes', () => {
     expect(result.nodes[0].healthy).toBe(true);
     expect(result.nodes[0].capabilities).toBeDefined();
     expect(result.nodes[0].modalities).toBeDefined();
+    expect(result.nodes[0].active_probe.status).toBe('disabled');
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it('should include active probe state in node list', () => {
+    const { controller } = makeDashboard({
+      activeHealth: {
+        getNodeStatus: jest.fn().mockReturnValue({
+          enabled: true,
+          status: 'unhealthy',
+          method: 'GET',
+          target: 'GET /ready',
+          last_checked_at: '2026-05-02T00:00:00.000Z',
+          last_success_at: null,
+          latency_ms: 42,
+          failure_reason: 'HTTP 503',
+          consecutive_failures: 2,
+        }),
+      },
+    });
+    const result = controller.getNodes();
+
+    expect(result.nodes[0].healthy).toBe(false);
+    expect(result.nodes[0].active_probe.failure_reason).toBe('HTTP 503');
+    expect(result.nodes[0].active_probe.last_checked_at).toBe('2026-05-02T00:00:00.000Z');
   });
 
   it('should show unhealthy when circuit is OPEN', () => {
@@ -410,6 +452,26 @@ describe('DashboardController — nodes', () => {
     const result = controller.resetNodeCircuit('openai', 'gpt-4o');
     expect(result.success).toBe(true);
     expect(circuitBreaker.reset).toHaveBeenCalledWith('openai', 'gpt-4o');
+  });
+
+  it('should refresh active health schedules after node mutations', () => {
+    const { controller, activeHealth } = makeDashboard();
+
+    controller.createNode({
+      id: 'new-node',
+      name: 'New Node',
+      protocol: 'chat_completions',
+      base_url: 'https://api.example.com',
+      endpoint: '/v1/chat/completions',
+      api_key: 'sk-test',
+      models: ['gpt-4o-mini'],
+      timeout_ms: 1000,
+      health_check: { enabled: true, method: 'HEAD', path: '/healthz' },
+    });
+    controller.updateNode('openai', { health_check: { enabled: false } });
+    controller.deleteNode('openai');
+
+    expect(activeHealth.refreshSchedules).toHaveBeenCalledTimes(3);
   });
 });
 

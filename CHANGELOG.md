@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added optional per-node active health probing with `enabled`, `interval_seconds`, `timeout_ms`, `method`, `path`, and `lightweight_model` configuration.
+- Added probe-to-circuit-breaker integration so failed probes immediately open node/model circuits and successful probes close recovered circuits.
+- Added active probe status, `last_checked_at`, and `failure_reason` to `/health` and Dashboard node responses.
+
 ## 0.1.0 - Open Source Gateway
 
 Initial open-source release target.

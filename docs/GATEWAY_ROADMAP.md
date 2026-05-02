@@ -48,7 +48,7 @@
 - **抽象到企业版**：Fleet 级别并发配额分配
 
 #### 3. 主动健康检查（Active Health Probing）
-- **现状**：仅被动健康检测（请求失败触发熔断）
+- **现状**：已在 v0.2 实现可选 per-node 主动探测，默认关闭
 - **目标**：定期主动探测 Node 可用性
 - **实现方案**：
   ```yaml
@@ -58,11 +58,14 @@
         enabled: true
         interval_seconds: 30
         timeout_ms: 5000
-        method: HEAD  # 或轻量 completion 请求
+        method: HEAD  # HEAD / GET / POST
+        path: /healthz
+        lightweight_model: gpt-4o-mini  # 可选，合成 1-token POST 探测
   ```
-  - 健康检查失败 → 提前标记 Node 不可用，路由绕开
-  - 与 Circuit Breaker 联动：探测恢复 → HALF_OPEN → CLOSED
-  - Dashboard 节点健康时间线
+  - 后台探测不发送真实用户内容；POST 使用合成 `health check` 小请求
+  - 健康检查失败或超时 → 立即打开对应 node:model circuit，路由绕开
+  - 探测恢复 → Circuit Breaker 进入恢复路径并关闭 circuit
+  - `/health` 与 Dashboard nodes 返回 `active_probe.status`、`last_checked_at`、`failure_reason`
 - **抽象到企业版**：Fleet 健康总览 + 异常告警推送
 
 #### 4. 负载均衡策略（Load Balancing）

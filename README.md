@@ -81,14 +81,15 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 ### Reliability
 
 - **Circuit breaker** — automatically stops sending requests to failing providers
-- **Health monitoring** — real-time health status for all configured nodes
+- **Active health probing** — optional per-node probes catch upstream outages before user traffic hits them
+- **Health monitoring** — real-time health, probe, and circuit breaker status for all configured nodes
 - **Graceful degradation** — the system continues working even when some providers are down
 
 ### Real-Time Dashboard
 
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
-- **Node health** — monitor provider status and circuit breaker state
+- **Node health** — monitor provider status, active probes, and circuit breaker state
 - **Routing visualization** — see how tiers, scoring thresholds, and fallback chains are configured
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Light / Dark theme** — system-aware with manual toggle
@@ -335,6 +336,13 @@ nodes:
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     timeout_ms: 60000 # Request timeout
+    health_check: # Optional active probe, disabled by default
+      enabled: false
+      interval_seconds: 30
+      timeout_ms: 5000
+      method: HEAD # HEAD | GET | POST
+      path: /healthz # Or omit and use endpoint
+      # lightweight_model: gpt-4o-mini # For synthetic 1-token POST probes
     tags: ["code", "reasoning"] # Capability tags for domain routing
     model_aliases: # User-friendly shortcuts
       gpt4: gpt-4o
@@ -348,6 +356,33 @@ nodes:
 | `chat_completions` | OpenAI Chat Completions | OpenAI, Azure OpenAI, Google Gemini, any OpenAI-compatible API |
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
+
+### Active Health Probing
+
+Active health probes are configured per node and are disabled by default. A probe never sends real user content; `POST` probes use a tiny synthetic `"health check"` prompt and `max_tokens`/`max_output_tokens: 1`.
+
+When a probe fails or times out, SiftGate immediately opens that node's model circuits so routing can avoid it. A later successful probe records recovery and closes the circuits again. `/health` and `/api/dashboard/nodes` include `active_probe.status`, `last_checked_at`, and `failure_reason`.
+
+Use `HEAD`/`GET` against a cheap readiness endpoint when your provider or proxy exposes one:
+
+```yaml
+health_check:
+  enabled: true
+  interval_seconds: 30
+  timeout_ms: 5000
+  method: HEAD
+  path: /healthz
+```
+
+For providers without a readiness endpoint, set a cheap `lightweight_model` for synthetic `POST` probes:
+
+```yaml
+health_check:
+  enabled: true
+  interval_seconds: 60
+  timeout_ms: 5000
+  lightweight_model: gpt-4o-mini
+```
 
 ### Routing
 
@@ -467,11 +502,11 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `POST` | `/api/dashboard/config/reload`    | Hot-reload config from disk                                                                        |
 | `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`         | Create a Gateway API key                                                                           |
-| `GET`  | `/api/dashboard/nodes`            | Node health + circuit breaker status                                                               |
+| `GET`  | `/api/dashboard/nodes`            | Node health + active probe + circuit breaker status                                                |
 | `POST` | `/api/dashboard/nodes/:id/reset`  | Reset circuit breaker                                                                              |
 | `GET`  | `/api/dashboard/budget`           | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset one budget rule by `budget_rule.id`                                                          |
-| `GET`  | `/health`                         | Health check                                                                                       |
+| `GET`  | `/health`                         | Gateway, budget, node circuit, and active probe health                                             |
 
 ## Dashboard
 

@@ -109,6 +109,25 @@ describe('HealthController', () => {
     };
   }
 
+  function makeActiveHealthService(
+    statuses: Record<string, any> = {},
+  ): any {
+    return {
+      getNodeStatus: jest.fn().mockImplementation((nodeId: string) => ({
+        enabled: false,
+        status: 'disabled',
+        method: null,
+        target: null,
+        last_checked_at: null,
+        last_success_at: null,
+        latency_ms: null,
+        failure_reason: null,
+        consecutive_failures: 0,
+        ...statuses[nodeId],
+      })),
+    };
+  }
+
   it('should return healthy when all nodes are CLOSED', async () => {
     const config = mockConfigService({
       nodes: [
@@ -117,9 +136,10 @@ describe('HealthController', () => {
       ],
     });
     const cb = makeCircuitBreaker();
+    const activeHealth = makeActiveHealthService();
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, activeHealth, budget);
     const result = await controller.check();
 
     expect(result.status).toBe('healthy');
@@ -139,9 +159,10 @@ describe('HealthController', () => {
       ],
     });
     const cb = makeCircuitBreaker({ openai: CircuitState.OPEN });
+    const activeHealth = makeActiveHealthService();
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, activeHealth, budget);
     const result = await controller.check();
 
     expect(result.status).toBe('degraded');
@@ -155,11 +176,12 @@ describe('HealthController', () => {
       nodes: [{ id: 'n1', name: 'N1', protocol: 'chat_completions', models: ['m1'] }],
     });
     const cb = makeCircuitBreaker();
+    const activeHealth = makeActiveHealthService();
     const budget = makeBudgetService([
       { type: 'tokens', current: 500, limit: 1000, percentage: 0.5, isExceeded: false, isAlert: false },
     ]);
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, activeHealth, budget);
     const result = await controller.check();
 
     expect(result.budget).toHaveLength(1);
@@ -173,11 +195,12 @@ describe('HealthController', () => {
       nodes: [{ id: 'n1', name: 'N1', protocol: 'chat_completions', models: ['m1'] }],
     });
     const cb = makeCircuitBreaker();
+    const activeHealth = makeActiveHealthService();
     const budget = {
       getStatus: jest.fn().mockRejectedValue(new Error('DB down')),
     };
 
-    const controller = new HealthController(config, cb, budget as any);
+    const controller = new HealthController(config, cb, activeHealth, budget as any);
     const result = await controller.check();
 
     expect(result.status).toBe('healthy');
@@ -191,14 +214,48 @@ describe('HealthController', () => {
       ],
     });
     const cb = makeCircuitBreaker();
+    const activeHealth = makeActiveHealthService({
+      openai: {
+        enabled: true,
+        status: 'healthy',
+        method: 'HEAD',
+        target: 'HEAD /health',
+        last_checked_at: '2026-05-02T00:00:00.000Z',
+      },
+    });
     const budget = makeBudgetService();
 
-    const controller = new HealthController(config, cb, budget);
+    const controller = new HealthController(config, cb, activeHealth, budget);
     const result = await controller.check();
 
     expect(result.nodes[0].id).toBe('openai');
     expect(result.nodes[0].name).toBe('OpenAI GPT');
     expect(result.nodes[0].protocol).toBe('chat_completions');
+    expect(result.nodes[0].active_probe.status).toBe('healthy');
+  });
+
+  it('should degrade when active health probing reports unhealthy', async () => {
+    const config = mockConfigService({
+      nodes: [{ id: 'n1', name: 'N1', protocol: 'chat_completions', models: ['m1'] }],
+    });
+    const cb = makeCircuitBreaker();
+    const activeHealth = makeActiveHealthService({
+      n1: {
+        enabled: true,
+        status: 'unhealthy',
+        method: 'HEAD',
+        target: 'HEAD /healthz',
+        failure_reason: 'HTTP 503',
+      },
+    });
+    const budget = makeBudgetService();
+
+    const controller = new HealthController(config, cb, activeHealth, budget);
+    const result = await controller.check();
+
+    expect(result.status).toBe('degraded');
+    expect(result.nodes[0].healthy).toBe(false);
+    expect(result.nodes[0].active_probe.failure_reason).toBe('HTTP 503');
   });
 });
 

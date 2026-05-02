@@ -29,6 +29,7 @@ import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
+import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
 import { BudgetService } from '../budget/budget.service';
 import { CallLog } from '../database/entities/call-log.entity';
 import { LogEventBus } from './log-event-bus';
@@ -52,6 +53,7 @@ export class DashboardController {
     private readonly config: ConfigService,
     private readonly capabilityService: CapabilityService,
     private readonly circuitBreaker: CircuitBreakerService,
+    private readonly activeHealth: ActiveHealthProbeService,
     private readonly budgetService: BudgetService,
     private readonly cacheService: PromptCacheService,
     private readonly logEventBus: LogEventBus,
@@ -760,6 +762,7 @@ export class DashboardController {
   reloadConfig() {
     try {
       this.config.reload();
+      this.activeHealth.refreshSchedules();
       return { success: true, message: 'Configuration reloaded' };
     } catch (err) {
       return { success: false, message: (err as Error).message };
@@ -816,6 +819,7 @@ export class DashboardController {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
+      const activeProbe = this.activeHealth.getNodeStatus(node.id);
 
       // Build per-model circuit info
       const modelCircuits: Record<string, {
@@ -853,7 +857,8 @@ export class DashboardController {
             : null,
         },
         modelCircuits,
-        healthy: cbStatus.state !== CircuitState.OPEN,
+        active_probe: activeProbe,
+        healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
       };
     });
 
@@ -1094,7 +1099,9 @@ export class DashboardController {
         model_prefixes: dto.model_prefixes,
         headers: dto.headers,
         auth_type: dto.auth_type,
+        health_check: dto.health_check,
       });
+      this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${dto.id}" created` };
     } catch (err) {
       throw new HttpException(
@@ -1115,6 +1122,7 @@ export class DashboardController {
         (updates as Record<string, unknown>)[key] = value;
       }
       this.config.updateNode(nodeId, updates as Parameters<typeof this.config.updateNode>[1]);
+      this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${nodeId}" updated` };
     } catch (err) {
       throw new HttpException(
@@ -1130,6 +1138,7 @@ export class DashboardController {
       // Reset circuit breaker for the node before deleting
       this.circuitBreaker.reset(nodeId);
       this.config.deleteNode(nodeId);
+      this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${nodeId}" deleted` };
     } catch (err) {
       const status = (err as Error).message.includes('last remaining')

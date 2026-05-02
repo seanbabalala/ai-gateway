@@ -7,10 +7,43 @@ import {
   IsNumber,
   IsOptional,
   IsObject,
+  IsBoolean,
+  ValidateNested,
   Min,
   ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class HealthCheckDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  interval_seconds?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  timeout_ms?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['HEAD', 'GET', 'POST'])
+  method?: 'HEAD' | 'GET' | 'POST';
+
+  @IsOptional()
+  @IsString()
+  path?: string;
+
+  @IsOptional()
+  @IsString()
+  lightweight_model?: string;
+}
 
 export class CreateNodeDto {
   @IsString()
@@ -79,6 +112,11 @@ export class CreateNodeDto {
   @IsString()
   @IsIn(['bearer', 'x-api-key'])
   auth_type?: 'bearer' | 'x-api-key';
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HealthCheckDto)
+  health_check?: HealthCheckDto;
 }
 
 export class TestNodeDto {
@@ -181,4 +219,9 @@ export class UpdateNodeDto {
   @IsString()
   @IsIn(['bearer', 'x-api-key'])
   auth_type?: 'bearer' | 'x-api-key';
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HealthCheckDto)
+  health_check?: HealthCheckDto;
 }
