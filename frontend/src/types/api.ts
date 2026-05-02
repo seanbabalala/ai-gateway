@@ -126,6 +126,7 @@ export type ConfigDiagnosticCode =
   | 'missing_model_pricing'
   | 'route_references_unknown_node'
   | 'route_references_unknown_model'
+  | 'split_overrides_targets'
 
 export interface ConfigDiagnostic {
   severity: 'warning'
@@ -183,10 +184,45 @@ export interface SplitVariant {
   name?: string
 }
 
+export type LoadBalancingStrategy = 'weighted' | 'round_robin' | 'least_latency' | 'random'
+
+export interface WeightedRouteTarget {
+  node: string
+  model: string
+  weight?: number
+  name?: string
+}
+
 export interface TierRoute {
-  primary: { node: string; model: string }
-  fallbacks: { node: string; model: string }[]
+  primary?: { node: string; model: string }
+  fallbacks?: { node: string; model: string }[]
+  strategy?: LoadBalancingStrategy
+  targets?: WeightedRouteTarget[]
   split?: SplitVariant[]
+}
+
+export interface RoutingTargetMetrics {
+  node: string
+  model: string
+  weight: number | null
+  samples: number
+  avg_latency_ms: number | null
+  p95_latency_ms: number | null
+  last_latency_ms: number | null
+  last_status_code: number | null
+}
+
+export interface RoutingTierStatus {
+  strategy: LoadBalancingStrategy | 'primary_fallback' | 'split'
+  source: 'primary_fallback' | 'targets' | 'split'
+  targets: RoutingTargetMetrics[]
+  last_selected: {
+    node: string
+    model: string
+    selected_at: string
+    strategy: LoadBalancingStrategy | 'primary_fallback' | 'split'
+    reason: string
+  } | null
 }
 
 export interface RoutingConfig {
@@ -218,6 +254,7 @@ export interface ConfigResponse {
     api_key: string
   }[]
   routing: RoutingConfig
+  routing_status?: Record<string, RoutingTierStatus>
   budget: {
     daily_token_limit: number
     daily_cost_limit: number

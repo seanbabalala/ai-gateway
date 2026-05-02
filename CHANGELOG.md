@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- v0.2 load balancing for OSS Data Plane routing tiers with `targets + strategy` schema supporting `weighted`, `round_robin`, `least_latency`, and `random`.
+- Local sliding-window latency feedback for `least_latency` target selection and Dashboard routing status.
+- Dashboard routing view for strategy, targets, weights, latency samples, p95, and recent target selection.
+
+### Changed
+
+- Preserved legacy `primary/fallbacks` routing as `primary_fallback` and documented that `split` overrides `targets` while experiment mode is enabled.
+- Config diagnostics now validate `targets` references and warn when `split` and `targets` are both configured.
+
 ## 0.1.0 - Open Source Gateway
 
 Initial open-source release target.

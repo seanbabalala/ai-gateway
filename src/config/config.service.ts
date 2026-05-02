@@ -30,7 +30,8 @@ export interface ConfigDiagnostic {
     | 'duplicate_model_prefix'
     | 'missing_model_pricing'
     | 'route_references_unknown_node'
-    | 'route_references_unknown_model';
+    | 'route_references_unknown_model'
+    | 'split_overrides_targets';
   message: string;
   nodes: string[];
   model?: string;
@@ -430,12 +431,12 @@ export class ConfigService {
 
     for (const [tierName, tierConfig] of Object.entries(tiers)) {
       // Remove from fallbacks
-      tierConfig.fallbacks = tierConfig.fallbacks.filter(
+      tierConfig.fallbacks = (tierConfig.fallbacks || []).filter(
         (fb) => fb.node !== deletedNodeId,
       );
 
       // If primary was the deleted node, promote
-      if (tierConfig.primary.node === deletedNodeId) {
+      if (tierConfig.primary?.node === deletedNodeId) {
         if (tierConfig.fallbacks.length > 0) {
           tierConfig.primary = tierConfig.fallbacks.shift()!;
         } else if (firstAvailableNodeId) {
@@ -462,6 +463,13 @@ export class ConfigService {
           if (total !== 100 && total > 0) {
             tierConfig.split.forEach(v => { v.weight = Math.round(v.weight * 100 / total); });
           }
+        }
+      }
+
+      if (tierConfig.targets) {
+        tierConfig.targets = tierConfig.targets.filter(t => t.node !== deletedNodeId);
+        if (tierConfig.targets.length === 0) {
+          delete tierConfig.targets;
         }
       }
     }
@@ -630,13 +638,27 @@ export class ConfigService {
     };
 
     for (const [tier, config] of Object.entries(this.config.routing?.tiers || {})) {
-      addRouteTargetDiagnostics(tier, config.primary, 'primary');
+      if (config.primary) {
+        addRouteTargetDiagnostics(tier, config.primary, 'primary');
+      }
       config.fallbacks?.forEach((fallback, idx) =>
         addRouteTargetDiagnostics(tier, fallback, `fallback[${idx}]`),
+      );
+      config.targets?.forEach((target, idx) =>
+        addRouteTargetDiagnostics(tier, target, `targets[${idx}]`),
       );
       config.split?.forEach((variant, idx) =>
         addRouteTargetDiagnostics(tier, variant, `split[${idx}]`),
       );
+      if (config.split?.length && config.targets?.length) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'split_overrides_targets',
+          message: `Routing tier "${tier}" defines both split and targets. Split is treated as experiment mode and overrides targets until split is removed.`,
+          nodes: config.targets.map((target) => target.node),
+          tier,
+        });
+      }
     }
 
     return diagnostics;
@@ -666,8 +688,10 @@ export class ConfigService {
   /** Update routing configuration (tiers, scoring thresholds, domain preferences). */
   updateRouting(updates: {
     tiers?: Record<string, {
-      primary: { node: string; model: string };
-      fallbacks: { node: string; model: string }[];
+      primary?: { node: string; model: string };
+      fallbacks?: { node: string; model: string }[];
+      strategy?: 'weighted' | 'round_robin' | 'least_latency' | 'random';
+      targets?: { node: string; model: string; weight?: number; name?: string }[];
       split?: { node: string; model: string; weight: number; name?: string }[];
     }>;
     scoring?: { simple_max: number; standard_max: number; complex_max: number };
@@ -676,8 +700,33 @@ export class ConfigService {
     if (updates.tiers) {
       // Validate all referenced nodes exist
       for (const [tierName, tier] of Object.entries(updates.tiers)) {
-        this.validateRouteTarget(tier.primary, tierName, 'primary');
-        tier.fallbacks.forEach((fb, i) => this.validateRouteTarget(fb, tierName, `fallback[${i}]`));
+        if (!tier.primary && (!tier.targets || tier.targets.length === 0)) {
+          throw new Error(`Tier "${tierName}" must define primary or targets`);
+        }
+        if (tier.strategy && !['weighted', 'round_robin', 'least_latency', 'random'].includes(tier.strategy)) {
+          throw new Error(`Tier "${tierName}" strategy "${tier.strategy}" is not supported`);
+        }
+        if (tier.primary) {
+          this.validateRouteTarget(tier.primary, tierName, 'primary');
+        }
+        (tier.fallbacks || []).forEach((fb, i) => this.validateRouteTarget(fb, tierName, `fallback[${i}]`));
+        if (tier.targets) {
+          if (tier.targets.length === 0) {
+            throw new Error(`Tier "${tierName}" targets must not be empty`);
+          }
+          let totalWeight = 0;
+          for (const [idx, target] of tier.targets.entries()) {
+            this.validateRouteTarget(target, tierName, `targets[${idx}]`);
+            const weight = target.weight ?? 1;
+            if (weight < 0) {
+              throw new Error(`Tier "${tierName}" targets[${idx}] weight must be >= 0`);
+            }
+            totalWeight += weight;
+          }
+          if ((tier.strategy || 'weighted') === 'weighted' && totalWeight <= 0) {
+            throw new Error(`Tier "${tierName}" weighted targets must have total weight > 0`);
+          }
+        }
 
         // Validate split variants if present
         if (tier.split) {

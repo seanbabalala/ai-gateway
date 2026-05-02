@@ -18,7 +18,13 @@ import { CapabilityService } from '../config/capability.service';
 import { Tier } from '../canonical/canonical.types';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
-import { RouteTarget, SplitVariant } from '../config/gateway.config';
+import {
+  LoadBalancingStrategy,
+  RouteTarget,
+  SplitVariant,
+  TierConfig,
+  WeightedRouteTarget,
+} from '../config/gateway.config';
 import { Modality } from '../config/modality';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -31,6 +37,40 @@ export interface RouteDecision {
   domainHint: 'frontend' | 'backend' | null;
   experimentGroup: string | null;  // A/B split: "tier:variantName" format, null when no split
   experimentGroupsByTarget: Record<string, string>;
+  loadBalancing: RouteLoadBalancingDecision;
+}
+
+export type EffectiveRoutingStrategy = LoadBalancingStrategy | 'primary_fallback' | 'split';
+
+export interface RouteLoadBalancingDecision {
+  strategy: EffectiveRoutingStrategy;
+  source: 'primary_fallback' | 'targets' | 'split';
+  selected: RouteTarget;
+  target_count: number;
+}
+
+export interface RouteTargetMetrics {
+  node: string;
+  model: string;
+  weight: number | null;
+  samples: number;
+  avg_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  last_latency_ms: number | null;
+  last_status_code: number | null;
+}
+
+export interface RoutingTierStatus {
+  strategy: EffectiveRoutingStrategy;
+  source: 'primary_fallback' | 'targets' | 'split';
+  targets: RouteTargetMetrics[];
+  last_selected: {
+    node: string;
+    model: string;
+    selected_at: string;
+    strategy: EffectiveRoutingStrategy;
+    reason: string;
+  } | null;
 }
 
 /**
@@ -49,6 +89,14 @@ function fnv1a32(str: string): number {
 @Injectable()
 export class RoutingService {
   private readonly logger = new Logger(RoutingService.name);
+  private readonly roundRobinCounters = new Map<string, number>();
+  private readonly latencyWindows = new Map<string, number[]>();
+  private readonly targetLastStatus = new Map<string, {
+    latencyMs: number;
+    statusCode: number;
+  }>();
+  private readonly lastSelections = new Map<string, RoutingTierStatus['last_selected']>();
+  private readonly latencyWindowSize = 50;
 
   constructor(
     private readonly config: ConfigService,
@@ -91,15 +139,23 @@ export class RoutingService {
         `No config for tier "${effectiveTier}", falling back to "${firstTier}"`,
       );
       const fallbackConfig = this.config.routing.tiers[firstTier];
+      const fallbackTargets = this.normalizeTierTargets(fallbackConfig).targets;
+      const selected = fallbackTargets[0];
       return {
-        primary: fallbackConfig.primary,
-        fallbacks: fallbackConfig.fallbacks || [],
+        primary: selected,
+        fallbacks: fallbackTargets.slice(1).map((target) => this.toRouteTarget(target)),
         tier: effectiveTier,
         score,
         momentumAdjusted: adjusted,
         domainHint: hint,
         experimentGroup: null,
         experimentGroupsByTarget: {},
+        loadBalancing: {
+          strategy: 'primary_fallback',
+          source: 'primary_fallback',
+          selected,
+          target_count: fallbackTargets.length,
+        },
       };
     }
 
@@ -150,6 +206,13 @@ export class RoutingService {
         splitResult.experimentGroupsByTarget,
         splitOrdered[0],
       );
+      this.recordSelection(
+        effectiveTier,
+        splitOrdered[0],
+        'split',
+        'split',
+        'A/B split experiment',
+      );
 
       return {
         primary: splitOrdered[0],
@@ -160,12 +223,18 @@ export class RoutingService {
         domainHint: hint,
         experimentGroup,
         experimentGroupsByTarget: splitResult.experimentGroupsByTarget,
+        loadBalancing: {
+          strategy: 'split',
+          source: 'split',
+          selected: splitOrdered[0],
+          target_count: splitOrdered.length,
+        },
       };
     }
 
-    // ── Step 3: Filter by circuit breaker (model-level) ──
-    const allTargets = [tierConfig.primary, ...(tierConfig.fallbacks || [])];
-    let availableTargets = allTargets.filter((t) =>
+    // ── Step 3: Normalize routing schema + filter by circuit breaker ──
+    const normalized = this.normalizeTierTargets(tierConfig);
+    let availableTargets = normalized.targets.filter((t) =>
       this.circuitBreaker.isAvailable(t.node, t.model),
     );
 
@@ -173,24 +242,15 @@ export class RoutingService {
       this.logger.warn(
         `All nodes for tier "${effectiveTier}" have open circuits. Using all targets as last resort.`,
       );
-      return {
-        primary: tierConfig.primary,
-        fallbacks: tierConfig.fallbacks || [],
-        tier: effectiveTier,
-        score,
-        momentumAdjusted: adjusted,
-        domainHint: hint,
-        experimentGroup: null,
-        experimentGroupsByTarget: {},
-      };
+      availableTargets = normalized.targets;
     }
 
     // ── Step 3.5: Modality-aware reordering ──
     // Compatible nodes (support all required modalities) go first.
     // Incompatible nodes are pushed to the end as last resort (not removed).
     if (modalityHints && modalityHints.length > 0) {
-      const compatible: RouteTarget[] = [];
-      const incompatible: RouteTarget[] = [];
+      const compatible: WeightedRouteTarget[] = [];
+      const incompatible: WeightedRouteTarget[] = [];
 
       for (const target of availableTargets) {
         const targetModalities = this.capabilityService.resolveModelModalities(
@@ -238,18 +298,33 @@ export class RoutingService {
       }
     }
 
-    // ── Step 5: Build final route ──
-    const primary = orderedTargets[0];
-    const fallbacks = orderedTargets.slice(1);
+    // ── Step 5: Apply load-balancing strategy and build final route ──
+    const primary = this.selectTargetByStrategy(
+      effectiveTier,
+      normalized.strategy,
+      orderedTargets,
+      sessionKey,
+    );
+    const fallbacks = orderedTargets
+      .filter((target) => target !== primary)
+      .map((target) => this.toRouteTarget(target));
 
-    if (primary.node !== tierConfig.primary.node && !hint) {
+    if (tierConfig.primary && primary.node !== tierConfig.primary.node && !hint) {
       this.logger.log(
         `Primary node "${tierConfig.primary.node}" unavailable (circuit OPEN), promoting "${primary.node}"`,
       );
     }
 
-    return {
+    this.recordSelection(
+      effectiveTier,
       primary,
+      normalized.strategy,
+      normalized.source,
+      this.selectionReason(normalized.strategy, primary),
+    );
+
+    return {
+      primary: this.toRouteTarget(primary),
       fallbacks,
       tier: effectiveTier,
       score,
@@ -257,7 +332,225 @@ export class RoutingService {
       domainHint: hint,
       experimentGroup: null,
       experimentGroupsByTarget: {},
+      loadBalancing: {
+        strategy: normalized.strategy,
+        source: normalized.source,
+        selected: this.toRouteTarget(primary),
+        target_count: orderedTargets.length,
+      },
     };
+  }
+
+  recordTargetResult(
+    node: string,
+    model: string,
+    latencyMs: number,
+    statusCode: number,
+  ): void {
+    const key = this.buildExperimentTargetKey(node, model);
+    this.targetLastStatus.set(key, { latencyMs, statusCode });
+    if (statusCode < 200 || statusCode >= 400 || latencyMs < 0) return;
+
+    const samples = this.latencyWindows.get(key) || [];
+    samples.push(latencyMs);
+    if (samples.length > this.latencyWindowSize) {
+      samples.splice(0, samples.length - this.latencyWindowSize);
+    }
+    this.latencyWindows.set(key, samples);
+  }
+
+  getRoutingStatus(): Record<string, RoutingTierStatus> {
+    const result: Record<string, RoutingTierStatus> = {};
+    for (const [tier, tierConfig] of Object.entries(this.config.routing.tiers || {})) {
+      const normalized = tierConfig.split?.length
+        ? {
+            strategy: 'split' as EffectiveRoutingStrategy,
+            source: 'split' as const,
+            targets: tierConfig.split.map((variant) => ({
+              node: variant.node,
+              model: variant.model,
+              weight: variant.weight,
+              name: variant.name,
+            })),
+          }
+        : this.normalizeTierTargets(tierConfig);
+
+      result[tier] = {
+        strategy: normalized.strategy,
+        source: normalized.source,
+        targets: normalized.targets.map((target) => this.buildTargetMetrics(target)),
+        last_selected: this.lastSelections.get(tier) || null,
+      };
+    }
+    return result;
+  }
+
+  private normalizeTierTargets(tierConfig: TierConfig): {
+    targets: WeightedRouteTarget[];
+    strategy: EffectiveRoutingStrategy;
+    source: 'primary_fallback' | 'targets';
+  } {
+    if (tierConfig.targets && tierConfig.targets.length > 0) {
+      return {
+        targets: tierConfig.targets.map((target) => ({ ...target, weight: target.weight ?? 1 })),
+        strategy: tierConfig.strategy || 'weighted',
+        source: 'targets',
+      };
+    }
+
+    const legacyTargets = [
+      tierConfig.primary,
+      ...(tierConfig.fallbacks || []),
+    ].filter(Boolean).map((target) => ({
+      ...(target as RouteTarget),
+      weight: 1,
+    }));
+
+    return {
+      targets: legacyTargets,
+      strategy: 'primary_fallback',
+      source: 'primary_fallback',
+    };
+  }
+
+  private selectTargetByStrategy(
+    tier: string,
+    strategy: EffectiveRoutingStrategy,
+    targets: WeightedRouteTarget[],
+    sessionKey?: string,
+  ): WeightedRouteTarget {
+    if (targets.length === 0) {
+      throw new Error(`No route targets available for tier "${tier}"`);
+    }
+    if (targets.length === 1 || strategy === 'primary_fallback' || strategy === 'split') {
+      return targets[0];
+    }
+
+    switch (strategy) {
+      case 'round_robin':
+        return this.selectRoundRobin(tier, targets);
+      case 'least_latency':
+        return this.selectLeastLatency(targets);
+      case 'random':
+        return targets[Math.floor(Math.random() * targets.length)] || targets[0];
+      case 'weighted':
+      default:
+        return this.selectWeighted(tier, targets, sessionKey);
+    }
+  }
+
+  private selectRoundRobin(
+    tier: string,
+    targets: WeightedRouteTarget[],
+  ): WeightedRouteTarget {
+    const index = this.roundRobinCounters.get(tier) || 0;
+    const selected = targets[index % targets.length];
+    this.roundRobinCounters.set(tier, index + 1);
+    return selected;
+  }
+
+  private selectWeighted(
+    tier: string,
+    targets: WeightedRouteTarget[],
+    sessionKey?: string,
+  ): WeightedRouteTarget {
+    const weights = targets.map((target) => Math.max(0, target.weight ?? 1));
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    if (total <= 0) return targets[0];
+
+    const seed = sessionKey ? fnv1a32(`${tier}:${sessionKey}`) / 0xffffffff : Math.random();
+    let bucket = seed * total;
+    for (let i = 0; i < targets.length; i++) {
+      bucket -= weights[i];
+      if (bucket < 0) return targets[i];
+    }
+    return targets[targets.length - 1];
+  }
+
+  private selectLeastLatency(targets: WeightedRouteTarget[]): WeightedRouteTarget {
+    const coldTarget = targets.find((target) =>
+      this.getLatencySamples(target.node, target.model).length === 0,
+    );
+    if (coldTarget) return coldTarget;
+
+    return [...targets].sort((a, b) => {
+      const aAvg = this.averageLatency(a.node, a.model) ?? Number.POSITIVE_INFINITY;
+      const bAvg = this.averageLatency(b.node, b.model) ?? Number.POSITIVE_INFINITY;
+      if (aAvg !== bAvg) return aAvg - bAvg;
+      return targets.indexOf(a) - targets.indexOf(b);
+    })[0];
+  }
+
+  private buildTargetMetrics(target: WeightedRouteTarget): RouteTargetMetrics {
+    const samples = this.getLatencySamples(target.node, target.model);
+    const lastStatus = this.targetLastStatus.get(this.buildExperimentTargetKey(target.node, target.model));
+    return {
+      node: target.node,
+      model: target.model,
+      weight: target.weight ?? null,
+      samples: samples.length,
+      avg_latency_ms: this.average(samples),
+      p95_latency_ms: this.percentile(samples, 0.95),
+      last_latency_ms: lastStatus?.latencyMs ?? null,
+      last_status_code: lastStatus?.statusCode ?? null,
+    };
+  }
+
+  private recordSelection(
+    tier: string,
+    target: RouteTarget,
+    strategy: EffectiveRoutingStrategy,
+    source: 'primary_fallback' | 'targets' | 'split',
+    reason: string,
+  ): void {
+    this.lastSelections.set(tier, {
+      node: target.node,
+      model: target.model,
+      selected_at: new Date().toISOString(),
+      strategy,
+      reason: `${source}: ${reason}`,
+    });
+  }
+
+  private selectionReason(
+    strategy: EffectiveRoutingStrategy,
+    target: RouteTarget,
+  ): string {
+    if (strategy === 'least_latency') {
+      const avg = this.averageLatency(target.node, target.model);
+      return avg === null ? 'cold-start ordered fallback' : `lowest local average latency (${avg}ms)`;
+    }
+    if (strategy === 'round_robin') return 'next round-robin slot';
+    if (strategy === 'random') return 'random target';
+    if (strategy === 'weighted') return 'weighted target selection';
+    return 'legacy primary/fallback order';
+  }
+
+  private toRouteTarget(target: RouteTarget): RouteTarget {
+    return { node: target.node, model: target.model };
+  }
+
+  private averageLatency(node: string, model: string): number | null {
+    return this.average(this.getLatencySamples(node, model));
+  }
+
+  private getLatencySamples(node: string, model: string): number[] {
+    return this.latencyWindows.get(this.buildExperimentTargetKey(node, model)) || [];
+  }
+
+  private average(samples: number[]): number | null {
+    if (samples.length === 0) return null;
+    return Math.round(samples.reduce((sum, value) => sum + value, 0) / samples.length);
+  }
+
+  private percentile(samples: number[], percentile: number): number | null {
+    if (samples.length === 0) return null;
+    const sorted = [...samples].sort((a, b) => a - b);
+    const index = Math.min(
+      sorted.length - 1,
+      Math.ceil(percentile * sorted.length) - 1,
+    );
+    return sorted[index];
   }
 
   /**
@@ -365,12 +658,12 @@ export class RoutingService {
    * Reorder targets so preferred nodes come first (while keeping their relative order).
    * Non-preferred targets maintain their original order after preferred ones.
    */
-  private reorderByPreference(
-    targets: RouteTarget[],
+  private reorderByPreference<T extends RouteTarget>(
+    targets: T[],
     preferredNodes: string[],
-  ): RouteTarget[] {
-    const preferred: RouteTarget[] = [];
-    const rest: RouteTarget[] = [];
+  ): T[] {
+    const preferred: T[] = [];
+    const rest: T[] = [];
 
     // Walk through preferred list in order to maintain priority
     for (const prefNode of preferredNodes) {

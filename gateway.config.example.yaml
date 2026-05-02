@@ -148,7 +148,11 @@ nodes:
 # ============================================================
 # The scoring engine analyzes each request and assigns a
 # complexity tier: simple → standard → complex → reasoning.
-# Each tier has a primary node and a fallback chain.
+# Each tier can use the legacy primary/fallback chain, or the
+# v0.2 targets + strategy schema for load balancing.
+# Supported strategies: weighted, round_robin, least_latency, random.
+# If split is configured on a tier, split remains experiment mode and
+# overrides targets until split is removed.
 # ============================================================
 routing:
   tiers:
@@ -157,9 +161,14 @@ routing:
       fallbacks:
         - { node: anthropic, model: claude-sonnet-4-20250514 }
     standard:
-      primary: { node: openai, model: gpt-4o }
-      fallbacks:
-        - { node: anthropic, model: claude-sonnet-4-20250514 }
+      strategy: weighted
+      targets:
+        - { node: openai, model: gpt-4o, weight: 70 }
+        - { node: anthropic, model: claude-sonnet-4-20250514, weight: 30 }
+      # Legacy primary/fallback remains valid; omit targets to use it.
+      # primary: { node: openai, model: gpt-4o }
+      # fallbacks:
+      #   - { node: anthropic, model: claude-sonnet-4-20250514 }
     complex:
       primary: { node: anthropic, model: claude-sonnet-4-20250514 }
       fallbacks:

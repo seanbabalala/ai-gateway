@@ -186,4 +186,132 @@ describe('RoutingService', () => {
     // Only n1 is available, no reordering possible
     expect(decision.primary.node).toBe('n1');
   });
+
+  // ── Unified targets + strategy schema ─────────────────────
+
+  it('should use targets schema when present', () => {
+    const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'weighted',
+          targets: [
+            { node: 'n1', model: 'fast-model', weight: 1 },
+            { node: 'n2', model: 'medium-model', weight: 1 },
+          ],
+          primary: { node: 'n2', model: 'medium-model' },
+          fallbacks: [],
+        },
+      },
+    });
+
+    const decision = svc.resolve('simple' as Tier, 0.1, 'sticky');
+
+    expect(['n1', 'n2']).toContain(decision.primary.node);
+    expect(decision.loadBalancing.source).toBe('targets');
+    expect(decision.loadBalancing.strategy).toBe('weighted');
+  });
+
+  it('should rotate targets with round_robin strategy', () => {
+    const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'round_robin',
+          targets: [
+            { node: 'n1', model: 'fast-model' },
+            { node: 'n2', model: 'medium-model' },
+          ],
+        },
+      },
+    });
+
+    expect(svc.resolve('simple' as Tier, 0.1).primary.node).toBe('n1');
+    expect(svc.resolve('simple' as Tier, 0.1).primary.node).toBe('n2');
+    expect(svc.resolve('simple' as Tier, 0.1).primary.node).toBe('n1');
+  });
+
+  it('should choose deterministic cold-start targets before least_latency metrics exist', () => {
+    const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'least_latency',
+          targets: [
+            { node: 'n1', model: 'fast-model' },
+            { node: 'n2', model: 'medium-model' },
+          ],
+        },
+      },
+    });
+
+    expect(svc.resolve('simple' as Tier, 0.1).primary.node).toBe('n1');
+    svc.recordTargetResult('n1', 'fast-model', 200, 200);
+    expect(svc.resolve('simple' as Tier, 0.1).primary.node).toBe('n2');
+  });
+
+  it('should choose the lowest sliding-window latency once least_latency is warm', () => {
+    const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'least_latency',
+          targets: [
+            { node: 'n1', model: 'fast-model' },
+            { node: 'n2', model: 'medium-model' },
+          ],
+        },
+      },
+    });
+
+    svc.recordTargetResult('n1', 'fast-model', 250, 200);
+    svc.recordTargetResult('n2', 'medium-model', 80, 200);
+    svc.recordTargetResult('n2', 'medium-model', 100, 200);
+
+    const decision = svc.resolve('simple' as Tier, 0.1);
+
+    expect(decision.primary.node).toBe('n2');
+    expect(decision.loadBalancing.strategy).toBe('least_latency');
+  });
+
+  it('should expose recent selection and latency status for dashboard', () => {
+    const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'least_latency',
+          targets: [
+            { node: 'n1', model: 'fast-model', weight: 30 },
+            { node: 'n2', model: 'medium-model', weight: 70 },
+          ],
+        },
+      },
+    });
+    svc.recordTargetResult('n1', 'fast-model', 120, 200);
+
+    svc.resolve('simple' as Tier, 0.1);
+    const status = svc.getRoutingStatus();
+
+    expect(status.simple.strategy).toBe('least_latency');
+    expect(status.simple.targets[0].avg_latency_ms).toBe(120);
+    expect(status.simple.last_selected?.node).toBe('n2');
+    expect(status.simple.last_selected?.reason).toContain('cold-start');
+  });
+
+  it('should keep split precedence over targets', () => {
+    const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'round_robin',
+          targets: [{ node: 'n2', model: 'medium-model', weight: 100 }],
+          primary: { node: 'n1', model: 'fast-model' },
+          fallbacks: [],
+          split: [
+            { node: 'n1', model: 'fast-model', weight: 100, name: 'legacy-split' },
+          ],
+        },
+      },
+    });
+
+    const decision = svc.resolve('simple' as Tier, 0.1, 'session');
+
+    expect(decision.primary.node).toBe('n1');
+    expect(decision.experimentGroup).toBe('simple:legacy-split');
+    expect(decision.loadBalancing.source).toBe('split');
+  });
 });
