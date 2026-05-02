@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,6 +15,63 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 进行中 — 协议广度 + 可解释路由 | 🚧 In Progress |
+
+---
+
+## v0.6 — Protocol + Explainability（生产协议补齐 + 路由解释）
+
+**v0.6 开发状态**：当前阶段聚焦结构化输出、更多 AI 协议入口，以及把 SiftGate 的路由决策解释能力产品化。所有能力继续保持单机 memory/sqlite 默认可用；Redis/Postgres/Cloud 只作为可选增强。
+
+### P0：生产协议能力
+
+#### 1. 结构化输出透传与 schema 验证
+
+- **状态**：🚧 v0.6 分支开发中
+- **目标**：完整保留 OpenAI Chat Completions `response_format`、OpenAI Responses `text.format` / JSON schema，以及 Anthropic Messages 的安全降级或 passthrough 策略。
+- **实现方向**：
+  - CanonicalRequest 增加统一 `response_format` / `structured_output` 意图字段
+  - provider 转发与跨协议转换不丢失结构化输出意图
+  - 结构化输出 parse/schema failure 与 fallback policy 联动
+  - Dashboard call log 展示 intent、支持状态和 fallback reason
+
+#### 2. Rerank 入口
+
+- **状态**：🚧 v0.6 分支开发中
+- **目标**：提供 OpenAI/common-compatible `POST /v1/rerank`，补齐检索增强、搜索排序、知识库重排场景。
+- **实现方向**：
+  ```yaml
+  nodes:
+    - id: rerank-prod
+      base_url: https://rerank-provider.example
+      rerank_endpoint: /v1/rerank
+      rerank_models: [rerank-english-v3]
+  ```
+
+  - Canonical rerank request/response 类型
+  - `query`、`documents`、`top_n`、`return_documents` 归一化
+  - 按 Gateway API key、namespace、健康状态、fallback 和成本选择 rerank node:model
+  - usage/cost/call_log/telemetry 记录 `source_format=rerank`
+
+#### 3. Image / Audio / Realtime 入口
+
+- **状态**：计划中
+- **目标**：继续补齐 OpenAI/LiteLLM/New API 常见接口广度短板。
+- **实现方向**：
+  - 先统一多模态 capability schema：`modalities`、`endpoints`、`input_types`、`output_types`、`supports_streaming`、`supports_realtime`
+  - Image/audio 先做 OpenAI-compatible 入口和 provider passthrough
+  - Realtime 先做明确边界和最小可用连接代理，避免破坏现有 HTTP/SSE 路径
+
+### P0：Explainable Routing
+
+#### 4. 路由选择解释页
+
+- **状态**：计划中
+- **目标**：让用户清楚看到为什么请求被分到某个 node/model，把 SiftGate 从普通 API proxy 中拉开。
+- **实现方向**：
+  - 记录 scoring 维度、permission 过滤、namespace 过滤、capability 过滤、health/circuit 过滤、成本/延迟排序和 fallback 原因
+  - Dashboard 增加只读 explain 页面和 call log drill-down
+  - 保持解释数据脱敏，不保存 prompt/response 原文，除非用户显式开启本地样本保存
 
 ---
 

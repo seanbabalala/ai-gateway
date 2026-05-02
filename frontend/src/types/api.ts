@@ -119,6 +119,8 @@ export interface NodeInfo {
   base_url: string
   endpoint: string
   models: string[]
+  embedding_models?: string[]
+  rerank_models?: string[]
   capabilities: string[]
   modalities: string[]
   tags: string[]

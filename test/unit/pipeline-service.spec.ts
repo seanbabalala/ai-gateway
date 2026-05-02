@@ -83,6 +83,20 @@ function makePipeline(overrides: Record<string, any> = {}): {
         is_fallback: false,
       },
     }),
+    forwardRerank: jest.fn().mockResolvedValue({
+      id: 'rerank-test',
+      object: 'rerank',
+      results: [{ index: 0, relevance_score: 0.97 }],
+      usage: { input_tokens: 12, output_tokens: 0 },
+      model: 'rerank-english-v3',
+      routing: {
+        tier: 'standard',
+        node: 'openai',
+        latency_ms: 35,
+        score: 0,
+        is_fallback: false,
+      },
+    }),
     forwardStream: jest.fn(),
     ...overrides.providerClient,
   };
@@ -116,6 +130,11 @@ function makePipeline(overrides: Record<string, any> = {}): {
     }),
     resolveEmbeddingRoute: jest.fn().mockReturnValue({
       primary: { node: 'openai', model: 'text-embedding-3-small' },
+      fallbacks: [],
+      mode: 'auto',
+    }),
+    resolveRerankRoute: jest.fn().mockReturnValue({
+      primary: { node: 'openai', model: 'rerank-english-v3' },
       fallbacks: [],
       mode: 'auto',
     }),
@@ -505,6 +524,131 @@ describe('PipelineService — embeddings', () => {
         is_fallback: true,
         fallback_reason: 'rate_limited',
         model: 'text-embedding-3-small',
+      }),
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Rerank
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — rerank', () => {
+  function makeRerankRequest(overrides: Record<string, any> = {}) {
+    return {
+      model: 'auto',
+      query: 'what is siftgate?',
+      documents: ['SiftGate routes AI traffic.', 'SQLite stores local logs.'],
+      top_n: 1,
+      metadata: {
+        source_format: 'rerank',
+        original_model: 'auto',
+        raw_headers: {},
+        api_key_name: 'test-key',
+        api_key_id: 'key_123',
+        api_key_permissions: {
+          allow_auto: true,
+          allow_direct: true,
+          allowed_nodes: [],
+          allowed_models: [],
+        },
+      },
+      ...overrides,
+    } as any;
+  }
+
+  it('should route rerank requests and record usage/cost/logs', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRerankRequest();
+
+    const result = await pipeline.processRerank(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toMatchObject({
+      object: 'rerank',
+      model: 'rerank-english-v3',
+      usage: { prompt_tokens: 12, total_tokens: 12 },
+    });
+    expect((result.body.results as any[])[0]).toMatchObject({
+      index: 0,
+      relevance_score: 0.97,
+    });
+    expect(mocks.routingService.resolveRerankRoute).toHaveBeenCalledWith(
+      'auto',
+      expect.any(Function),
+    );
+    expect(mocks.providerClient.forwardRerank).toHaveBeenCalledWith(
+      request,
+      'openai',
+      'rerank-english-v3',
+      expect.objectContaining({ tier: 'standard', is_fallback: false }),
+      {},
+    );
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_format: 'rerank',
+        node_id: 'openai',
+        model: 'rerank-english-v3',
+        input_tokens: 12,
+        output_tokens: 0,
+        status_code: 200,
+      }),
+    );
+  });
+
+  it('should return 400 for invalid rerank requests without calling upstream', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRerankRequest({ query: '', documents: [] });
+
+    const result = await pipeline.processRerank(request);
+
+    expect(result.statusCode).toBe(400);
+    expect(mocks.providerClient.forwardRerank).not.toHaveBeenCalled();
+  });
+
+  it('should try rerank fallbacks and preserve fallback_reason in call logs', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        retry: { max_retries: 0, backoff_base_ms: 10, backoff_max_ms: 100, retryable_status: [429, 502, 503] },
+      },
+      routingService: {
+        resolveRerankRoute: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'rerank-large' },
+          fallbacks: [{ node: 'openai', model: 'rerank-english-v3' }],
+          mode: 'auto',
+        }),
+      },
+      providerClient: {
+        forwardRerank: jest
+          .fn()
+          .mockRejectedValueOnce(new ProviderError('rate limited', 429, 'openai'))
+          .mockResolvedValueOnce({
+            id: 'rerank-fallback',
+            object: 'rerank',
+            results: [{ index: 1, relevance_score: 0.8 }],
+            usage: { input_tokens: 10, output_tokens: 0 },
+            model: 'rerank-english-v3',
+            routing: {
+              tier: 'standard',
+              node: 'openai',
+              latency_ms: 22,
+              score: 0,
+              is_fallback: true,
+              fallback_reason: 'rate_limited',
+            },
+          }),
+      },
+    });
+
+    const result = await pipeline.processRerank(makeRerankRequest());
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forwardRerank).toHaveBeenCalledTimes(2);
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        is_fallback: true,
+        fallback_reason: 'rate_limited',
+        model: 'rerank-english-v3',
       }),
     );
   });

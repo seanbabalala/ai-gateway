@@ -422,6 +422,109 @@ describe('config validator', () => {
     expect(codes(result.warnings)).not.toContain('missing_model_pricing');
   });
 
+  it('accepts rerank models, endpoint, pricing metadata, and namespace references', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        namespaces: [
+          {
+            id: 'search',
+            allowed_nodes: ['openai'],
+            allowed_models: ['rerank-english-v3'],
+          },
+        ],
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            rerank_endpoint: '/v1/rerank',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            rerank_models: ['rerank-english-v3'],
+            timeout_ms: 60000,
+            model_capabilities: {
+              'rerank-english-v3': {
+                pricing: { input: 0.01, output: 0 },
+              },
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).toHaveLength(0);
+    expect(codes(result.warnings)).not.toContain('missing_model_pricing');
+  });
+
+  it('rejects invalid rerank model config', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            rerank_endpoint: 'v1/rerank',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            rerank_models: ['rerank-english-v3', 'rerank-english-v3', ''],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_node_endpoint',
+        'duplicate_model_id_in_node',
+        'invalid_model_id',
+      ]),
+    );
+  });
+
   it('rejects invalid v0.3 routing optimization and capability metadata', () => {
     const result = validateConfigObject(
       {

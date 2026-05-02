@@ -1097,6 +1097,8 @@ export class DashboardController {
         base_url: node.base_url,
         endpoint: node.endpoint,
         models: node.models,
+        embedding_models: node.embedding_models || [],
+        rerank_models: node.rerank_models || [],
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         tags: node.tags || [],

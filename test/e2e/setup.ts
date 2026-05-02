@@ -215,6 +215,26 @@ export class FetchMock {
       });
     }
 
+    if (url.includes('/v1/rerank')) {
+      const documents = Array.isArray(body.documents) ? body.documents : [];
+      const topN = typeof body.top_n === 'number' ? body.top_n : documents.length;
+      return new Response(JSON.stringify({
+        id: 'rerank-e2e-test',
+        object: 'rerank',
+        model: (body.model as string) || 'rerank-english-v3',
+        results: documents
+          .map((_item, index) => ({
+            index,
+            relevance_score: Number((1 - index * 0.1).toFixed(2)),
+          }))
+          .slice(0, topN),
+        usage: { prompt_tokens: documents.length * 8, total_tokens: documents.length * 8 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     if (url.includes('/v1/messages')) {
       return new Response(JSON.stringify({
         id: 'msg-e2e-test',

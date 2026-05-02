@@ -441,6 +441,49 @@ describe('ProviderClientService', () => {
       });
     });
 
+    it('should forward rerank requests to the rerank endpoint', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'rerank-1',
+          object: 'rerank',
+          model: 'rerank-english-v3',
+          results: [{ index: 1, relevance_score: 0.92 }],
+          usage: { prompt_tokens: 18, total_tokens: 18 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        rerank_models: ['rerank-english-v3'],
+        rerank_endpoint: '/v1/rerank',
+      });
+      const result = await svc.forwardRerank(
+        {
+          model: 'rerank-english-v3',
+          query: 'what is siftgate?',
+          documents: ['gateway', 'migration'],
+          top_n: 1,
+          metadata: { source_format: 'rerank', raw_headers: {} },
+        } as any,
+        'openai',
+        'rerank-english-v3',
+        routingMeta,
+      );
+
+      expect(result.results[0]).toEqual({ index: 1, relevance_score: 0.92 });
+      expect(result.usage.input_tokens).toBe(18);
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.openai.com/v1/rerank');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        model: 'rerank-english-v3',
+        query: 'what is siftgate?',
+        documents: ['gateway', 'migration'],
+        top_n: 1,
+      });
+    });
+
     it('should throw ProviderError for non-OK response', async () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: false,

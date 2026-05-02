@@ -27,7 +27,7 @@ export class CallLog {
   timestamp!: Date;
 
   @Column({ type: 'varchar' })
-  source_format!: string; // chat_completions | responses | messages
+  source_format!: string; // chat_completions | responses | messages | embeddings | rerank
 
   @Column({ type: 'varchar' })
   tier!: string; // simple | standard | complex | reasoning

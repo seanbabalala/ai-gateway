@@ -16,6 +16,7 @@ import {
   LoginRequestDto,
   LoginResponseDto,
   ModelListResponseDto,
+  RerankRequestDto,
   ResponsesRequestDto,
   SanitizedConfigResponseDto,
 } from './openapi.dto';
@@ -64,6 +65,7 @@ export function setupOpenApi(app: INestApplication): void {
       LoginRequestDto,
       LoginResponseDto,
       ModelListResponseDto,
+      RerankRequestDto,
       ResponsesRequestDto,
       SanitizedConfigResponseDto,
     ],

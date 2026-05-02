@@ -16,6 +16,8 @@ import {
   CanonicalRequest,
   CanonicalEmbeddingRequest,
   CanonicalEmbeddingResponse,
+  CanonicalRerankRequest,
+  CanonicalRerankResponse,
   CanonicalResponse,
   CanonicalStreamEvent,
   SourceFormat,
@@ -97,6 +99,13 @@ interface EmbeddingAttemptResult {
   fallbackReason: FallbackReason | null;
 }
 
+interface RerankAttemptResult {
+  response: CanonicalRerankResponse | null;
+  lastError: Error | null;
+  retries: number;
+  fallbackReason: FallbackReason | null;
+}
+
 interface PrimaryAttemptResult extends NodeAttemptResult {
   usedTarget: RouteTarget;
   usedFallback: boolean;
@@ -126,7 +135,10 @@ class GatewayRequestRejectedError extends Error {
   }
 }
 
-type LoggableCanonicalRequest = CanonicalRequest | CanonicalEmbeddingRequest;
+type LoggableCanonicalRequest =
+  | CanonicalRequest
+  | CanonicalEmbeddingRequest
+  | CanonicalRerankRequest;
 
 @Injectable()
 export class PipelineService {
@@ -711,6 +723,194 @@ export class PipelineService {
     );
   }
 
+  async processRerank(
+    canonical: CanonicalRerankRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PipelineResult> {
+    const requestId = uuidv4();
+    const startTime = Date.now();
+    const requestedModel = canonical.model || canonical.metadata.original_model || 'auto';
+
+    return this.telemetry.withSpan(
+      'gateway.request',
+      {
+        'gateway.request_id': requestId,
+        'gateway.source_format': 'rerank',
+        'gateway.model': requestedModel,
+        'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.stream': false,
+      },
+      async (rootSpan) => {
+        try {
+          const validationError = this.validateRerankRequest(canonical);
+          if (validationError) {
+            return {
+              body: this.formatError('rerank', 400, validationError),
+              statusCode: 400,
+            };
+          }
+
+          try {
+            await this.checkBudget(canonical);
+          } catch (err) {
+            if (err instanceof BudgetExceededError) {
+              this.logger.warn(`Budget exceeded (rerank): ${err.message}`);
+              return {
+                body: this.formatBudgetError('rerank', err),
+                statusCode: 429,
+              };
+            }
+            throw err;
+          }
+
+          this.assertRouteModeAllowed(
+            canonical,
+            requestedModel === 'auto' ? 'auto' : 'direct',
+          );
+          const route = this.routingService.resolveRerankRoute(
+            requestedModel,
+            (target) => this.isTargetAllowed(canonical, target.node, target.model),
+          );
+          const tier: Tier = route.mode === 'direct' ? 'direct' : 'standard';
+          const targets = [route.primary, ...route.fallbacks];
+          const retryConfig = this.config.retry;
+          let response: CanonicalRerankResponse | null = null;
+          let lastError: Error | null = null;
+          let totalRetries = 0;
+          let usedNodeId = route.primary.node;
+          let usedModel = route.primary.model;
+          let isFallback = false;
+          let fallbackReason: FallbackReason | null = null;
+          let fallbackFromNode: string | null = null;
+
+          for (const [index, target] of targets.entries()) {
+            usedNodeId = target.node;
+            usedModel = target.model;
+            isFallback = index > 0;
+            if (isFallback && !fallbackFromNode) {
+              fallbackFromNode = route.primary.node;
+              this.logger.log(`Trying rerank fallback: ${target.node} (${target.model})`);
+            }
+
+            const attempt = await this.tryRerankNodeWithRetry(
+              canonical,
+              target.node,
+              target.model,
+              {
+                tier,
+                score: 0,
+                is_fallback: isFallback,
+                fallback_reason: isFallback ? fallbackReason || 'upstream_error' : null,
+              },
+              retryConfig,
+              options,
+            );
+            totalRetries += attempt.retries;
+            if (attempt.response) {
+              response = attempt.response;
+              fallbackReason = isFallback
+                ? fallbackReason || attempt.fallbackReason || 'upstream_error'
+                : attempt.fallbackReason;
+              break;
+            }
+            lastError = attempt.lastError;
+            fallbackReason = attempt.fallbackReason || fallbackReason;
+          }
+
+          if (!response) {
+            const errorMsg = lastError?.message || 'All rerank nodes failed';
+            const failureStatus = this.resolveFailureStatus(lastError);
+            this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
+            await this.logCall({
+              requestId,
+              canonical,
+              tier,
+              score: 0,
+              nodeId: usedNodeId,
+              model: usedModel,
+              statusCode: failureStatus,
+              isFallback,
+              latencyMs: Date.now() - startTime,
+              usage: { input_tokens: 0, output_tokens: 0 },
+              error: errorMsg,
+              retryCount: totalRetries,
+              fallbackReason,
+              fallbackFromNode,
+            });
+            return {
+              body: this.formatError('rerank', failureStatus, errorMsg),
+              statusCode: failureStatus,
+            };
+          }
+
+          if (response.usage.input_tokens === 0) {
+            response.usage.input_tokens = this.estimateRerankInputTokens(canonical);
+          }
+
+          const { costUsd, totalTokens } = await this.recordBudgetUsage(
+            canonical,
+            response.usage,
+            usedModel,
+            usedNodeId,
+          );
+          const durationMs = Date.now() - startTime;
+          rootSpan.setAttributes({
+            'gateway.node': usedNodeId,
+            'gateway.model': usedModel,
+            'gateway.is_fallback': isFallback,
+            'gateway.fallback_reason': fallbackReason || '',
+            'gen_ai.request.model': usedModel,
+            'gen_ai.usage.input_tokens': response.usage.input_tokens,
+            'gen_ai.usage.output_tokens': response.usage.output_tokens,
+          });
+          this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+          this.telemetry.requestDuration.record(durationMs, { tier, node: usedNodeId });
+          this.telemetry.tokensUsage.add(totalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+          if (costUsd > 0) {
+            this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+          }
+
+          await this.logCall({
+            requestId,
+            canonical,
+            tier,
+            score: 0,
+            nodeId: usedNodeId,
+            model: usedModel,
+            statusCode: 200,
+            isFallback,
+            latencyMs: response.routing.latency_ms,
+            usage: response.usage,
+            error: null,
+            retryCount: totalRetries,
+            fallbackReason,
+            fallbackFromNode,
+          });
+
+          return {
+            body: this.denormalizeRerankForClient(response),
+            statusCode: 200,
+          };
+        } catch (err) {
+          if (err instanceof GatewayRequestRejectedError) {
+            return {
+              body: this.formatError('rerank', err.statusCode, err.message),
+              statusCode: err.statusCode,
+            };
+          }
+          if (err instanceof RoutingConstraintError) {
+            return {
+              body: this.formatError('rerank', err.statusCode, err.message),
+              statusCode: err.statusCode,
+            };
+          }
+          throw err;
+        }
+      },
+      SpanKind.SERVER,
+    );
+  }
+
   // ══════════════════════════════════════════════════════
   // Retry Helper — try a single node with retries + backoff
   // ══════════════════════════════════════════════════════
@@ -1092,6 +1292,111 @@ export class PipelineService {
     };
   }
 
+  private async tryRerankNodeWithRetry(
+    canonical: CanonicalRerankRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    retryConfig: RetryConfig,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<RerankAttemptResult> {
+    const maxAttempts = 1 + retryConfig.max_retries;
+    let lastError: Error | null = null;
+    let retries = 0;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const attemptStart = Date.now();
+      try {
+        const response = await this.withConcurrencySlot(nodeId, model, () =>
+          this.forwardRerankWithFallbackTimeout(
+            canonical,
+            nodeId,
+            model,
+            routingMeta,
+            options,
+          ),
+        );
+        this.circuitBreaker.recordSuccess(nodeId, model);
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          response.routing.latency_ms,
+          200,
+        );
+        return { response, lastError: null, retries, fallbackReason: null };
+      } catch (err) {
+        lastError = err as Error;
+        const fallbackReason = this.resolveFallbackReason(lastError);
+        if (lastError instanceof ConcurrencyLimitError) {
+          this.logger.warn(lastError.message);
+          if (!lastError.fallbackAllowed) {
+            throw new GatewayRequestRejectedError(
+              lastError.message,
+              lastError.statusCode,
+            );
+          }
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason: 'concurrency_limited',
+          };
+        }
+
+        const statusCode = err instanceof ProviderError ? err.statusCode : 0;
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          Date.now() - attemptStart,
+          statusCode || 0,
+        );
+        const isRetryable = retryConfig.retryable_status.includes(statusCode);
+        const shouldImmediateFallback =
+          this.shouldImmediateFallback(lastError) || fallbackReason === 'timeout';
+        const isLastAttempt = attempt >= maxAttempts - 1;
+
+        if (!isRetryable || isLastAttempt || shouldImmediateFallback) {
+          this.logger.warn(
+            `Rerank node ${nodeId} failed (attempt ${attempt + 1}/${maxAttempts}): ${lastError.message}` +
+            (isLastAttempt && attempt > 0 ? ' — retries exhausted' : '') +
+            (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
+          );
+          this.circuitBreaker.recordFailure(nodeId, model);
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason,
+          };
+        }
+
+        retries++;
+        const delay = this.calculateBackoff(
+          attempt,
+          retryConfig,
+          statusCode === 429 ? lastError : undefined,
+        );
+        this.logger.warn(
+          `Rerank node ${nodeId} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
+          `retrying in ${delay}ms...`,
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    return {
+      response: null,
+      lastError,
+      retries,
+      fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+    };
+  }
+
   private shouldImmediateFallback(err: Error): boolean {
     return (
       err instanceof ProviderError &&
@@ -1173,6 +1478,37 @@ export class PipelineService {
       );
     }
     return this.providerClient.forwardEmbeddings(
+      canonical,
+      nodeId,
+      model,
+      routingMeta,
+      { timeoutMs, signal: options.signal },
+    );
+  }
+
+  private forwardRerankWithFallbackTimeout(
+    canonical: CanonicalRerankRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CanonicalRerankResponse> {
+    const timeoutMs = this.resolveFallbackTimeoutMs();
+    if (timeoutMs === undefined) {
+      return this.providerClient.forwardRerank(
+        canonical,
+        nodeId,
+        model,
+        routingMeta,
+        { signal: options.signal },
+      );
+    }
+    return this.providerClient.forwardRerank(
       canonical,
       nodeId,
       model,
@@ -2256,6 +2592,14 @@ export class PipelineService {
     return 0;
   }
 
+  private estimateRerankInputTokens(canonical: CanonicalRerankRequest): number {
+    const documentChars = canonical.documents.reduce((sum, document) => {
+      if (typeof document === 'string') return sum + document.length;
+      return sum + JSON.stringify(document).length;
+    }, 0);
+    return Math.max(1, Math.ceil((canonical.query.length + documentChars) / 4));
+  }
+
   private validateEmbeddingRequest(canonical: CanonicalEmbeddingRequest): string | null {
     if (!this.isValidEmbeddingInput(canonical.input)) {
       return 'Embeddings input must be a string, string array, token array, or array of token arrays.';
@@ -2265,6 +2609,28 @@ export class PipelineService {
       (!Number.isInteger(canonical.dimensions) || canonical.dimensions <= 0)
     ) {
       return 'Embeddings dimensions must be a positive integer when provided.';
+    }
+    return null;
+  }
+
+  private validateRerankRequest(canonical: CanonicalRerankRequest): string | null {
+    if (!canonical.query || canonical.query.trim().length === 0) {
+      return 'Rerank query must be a non-empty string.';
+    }
+    if (!Array.isArray(canonical.documents) || canonical.documents.length === 0) {
+      return 'Rerank documents must be a non-empty array.';
+    }
+    if (
+      canonical.top_n !== undefined &&
+      (!Number.isInteger(canonical.top_n) || canonical.top_n <= 0)
+    ) {
+      return 'Rerank top_n must be a positive integer when provided.';
+    }
+    if (
+      canonical.top_n !== undefined &&
+      canonical.top_n > canonical.documents.length
+    ) {
+      return 'Rerank top_n cannot exceed the number of documents.';
     }
     return null;
   }
@@ -2789,6 +3155,26 @@ export class PipelineService {
     };
   }
 
+  private denormalizeRerankForClient(
+    canonical: CanonicalRerankResponse,
+  ): Record<string, unknown> {
+    return {
+      id: canonical.id,
+      object: canonical.object,
+      model: canonical.model,
+      results: canonical.results.map((item) => ({
+        index: item.index,
+        relevance_score: item.relevance_score,
+        ...(item.document !== undefined ? { document: item.document } : {}),
+      })),
+      usage: {
+        prompt_tokens: canonical.usage.input_tokens,
+        total_tokens:
+          canonical.usage.input_tokens + canonical.usage.output_tokens,
+      },
+    };
+  }
+
   // ══════════════════════════════════════════════════════
   // Error Formatting
   // ══════════════════════════════════════════════════════
@@ -2798,6 +3184,7 @@ export class PipelineService {
       case 'chat_completions': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'responses': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'embeddings': return { error: { message, type: 'server_error', code: String(statusCode) } };
+      case 'rerank': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'messages': return { type: 'error', error: { type: 'api_error', message } };
       default: return { error: { message } };
     }
@@ -3170,13 +3557,22 @@ export class PipelineService {
     }
     const node = this.config.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return 'unknown';
-    if (node.models.includes(model) || node.embedding_models?.includes(model)) return model;
+    if (
+      node.models.includes(model) ||
+      node.embedding_models?.includes(model) ||
+      node.rerank_models?.includes(model)
+    ) {
+      return model;
+    }
     const prefix = node.model_prefixes?.find((value) => model.startsWith(value));
     return prefix ? `${node.id}:${prefix}*` : 'unlisted';
   }
 
   private modalitiesForLog(canonical: LoggableCanonicalRequest): string[] {
-    if (canonical.metadata.source_format === 'embeddings') {
+    if (
+      canonical.metadata.source_format === 'embeddings' ||
+      canonical.metadata.source_format === 'rerank'
+    ) {
       return ['text'];
     }
     return Array.from(detectRequestModalities(canonical as CanonicalRequest));

@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.6 OpenAI/common-compatible `POST /v1/rerank` endpoint for the open-source Data Plane.
+- Canonical rerank request/response types, normalizer, provider forwarding, routing, usage, cost, telemetry, and call-log support.
+- `nodes[].rerank_models` and optional `nodes[].rerank_endpoint` configuration with validation and example pricing.
+- Rerank routing that respects Gateway API key permissions, local namespace policy, circuit/health state, fallback, and cost-aware target ranking.
+- Unit and e2e coverage for rerank controller, normalizer, provider client, routing, pipeline behavior, config validation, and OpenAPI exposure.
 
 ## 0.5.0 - 2026-05-02
 

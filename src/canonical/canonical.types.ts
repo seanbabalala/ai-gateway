@@ -63,7 +63,12 @@ export type CanonicalToolChoice =
   | { name: string };
 
 // ===== Source Format =====
-export type SourceFormat = 'chat_completions' | 'responses' | 'messages' | 'embeddings';
+export type SourceFormat =
+  | 'chat_completions'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'rerank';
 
 // ===== Shared Request Metadata =====
 export interface CanonicalRequestMetadata {
@@ -153,6 +158,42 @@ export interface CanonicalEmbeddingResponse {
   id: string;
   object: 'list';
   data: CanonicalEmbedding[];
+  usage: TokenUsage;
+  model: string;
+  routing: {
+    tier: Tier;
+    node: string;
+    latency_ms: number;
+    score: number;
+    is_fallback: boolean;
+    fallback_reason?: string | null;
+  };
+}
+
+// ===== Rerank =====
+export type CanonicalRerankDocument =
+  | string
+  | Record<string, unknown>;
+
+export interface CanonicalRerankRequest {
+  model: string;
+  query: string;
+  documents: CanonicalRerankDocument[];
+  top_n?: number;
+  return_documents?: boolean;
+  metadata: CanonicalRequestMetadata;
+}
+
+export interface CanonicalRerankResult {
+  index: number;
+  relevance_score: number;
+  document?: CanonicalRerankDocument;
+}
+
+export interface CanonicalRerankResponse {
+  id: string;
+  object: 'rerank';
+  results: CanonicalRerankResult[];
   usage: TokenUsage;
   model: string;
   routing: {

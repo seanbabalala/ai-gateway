@@ -187,6 +187,51 @@ describe('Ingest (e2e)', () => {
   });
 
   // ══════════════════════════════════════════════════════
+  // Non-Streaming — Rerank
+  // ══════════════════════════════════════════════════════
+
+  it('POST /v1/rerank → 200 + rerank response format', async () => {
+    const res = await harness.agent
+      .post('/v1/rerank')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        query: 'what is SiftGate?',
+        documents: ['SiftGate routes AI traffic.', 'SQLite migration notes.'],
+        top_n: 1,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.object).toBe('rerank');
+    expect(res.body.model).toBe('rerank-english-v3');
+    expect(res.body.results).toEqual([
+      { index: 0, relevance_score: 1 },
+    ]);
+    expect(res.body.usage).toMatchObject({ prompt_tokens: 16, total_tokens: 16 });
+  });
+
+  it('POST /v1/rerank — routes to configured rerank endpoint', async () => {
+    await harness.agent
+      .post('/v1/rerank')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'rerank-english-v3',
+        query: 'gateway',
+        documents: ['gateway', 'database'],
+        top_n: 2,
+      });
+
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/rerank');
+    expect(call.body).toMatchObject({
+      model: 'rerank-english-v3',
+      query: 'gateway',
+      documents: ['gateway', 'database'],
+      top_n: 2,
+    });
+  });
+
+  // ══════════════════════════════════════════════════════
   // Validation
   // ══════════════════════════════════════════════════════
 
