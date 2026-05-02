@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ArrowRight, Pencil, Save, X, Plus, Trash2, GripVertical, FlaskConical, GitFork } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
@@ -51,19 +52,23 @@ function formatCapabilityNumber(value: number): string {
   return `${value}`
 }
 
-function routingCapabilityPills(capability?: ModelCapabilityInfo): string[] {
+function routingCapabilityPills(capability: ModelCapabilityInfo | undefined, t: TFunction): string[] {
   if (!capability) return []
   const pills = [
-    ...(capability.modalities || []).slice(0, 3),
+    ...(capability.modalities || []).slice(0, 3).map((modality) =>
+      t(`capabilityPills.modalities.${modality}`, { defaultValue: modality }),
+    ),
   ]
-  if (capability.supports_streaming) pills.push('stream')
-  if (capability.supports_realtime) pills.push('realtime')
-  if (capability.supports_rerank) pills.push('rerank')
-  if (capability.max_context_tokens) pills.push(`${formatCapabilityNumber(capability.max_context_tokens)} ctx`)
+  if (capability.supports_streaming) pills.push(t('capabilityPills.streaming'))
+  if (capability.supports_realtime) pills.push(t('capabilityPills.realtime'))
+  if (capability.supports_rerank) pills.push(t('capabilityPills.rerank'))
+  if (capability.max_context_tokens) pills.push(t('capabilityPills.context', { value: formatCapabilityNumber(capability.max_context_tokens) }))
   if (capability.dimensions) {
-    pills.push(Array.isArray(capability.dimensions)
-      ? `dim ${capability.dimensions.slice(0, 2).join('/')}${capability.dimensions.length > 2 ? '+' : ''}`
-      : `dim ${capability.dimensions}`)
+    pills.push(t('capabilityPills.dimensions', {
+      value: Array.isArray(capability.dimensions)
+        ? `${capability.dimensions.slice(0, 2).join('/')}${capability.dimensions.length > 2 ? '+' : ''}`
+        : capability.dimensions,
+    }))
   }
   return pills.slice(0, 5)
 }
@@ -182,7 +187,7 @@ export function RoutingPage() {
   }
 
   function renderTargetCapabilityPills(target: { node: string; model: string }) {
-    const pills = routingCapabilityPills(capabilityForTarget(target))
+    const pills = routingCapabilityPills(capabilityForTarget(target), t)
     if (pills.length === 0) return null
     return (
       <div className="mt-1 flex max-w-full flex-wrap gap-1">

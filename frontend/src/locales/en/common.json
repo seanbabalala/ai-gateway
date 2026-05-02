@@ -15,6 +15,7 @@
   "error.generic": "Something went wrong. Please try again.",
   "error.unauthorized": "Unauthorized",
   "error.unknown": "Unknown error",
+  "form.selectPlaceholder": "Select...",
   "header.gateway": "Gateway",
   "header.notificationsComingSoon": "Notifications coming soon",
   "header.searchPlaceholder": "Search logs, nodes, models...",

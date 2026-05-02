@@ -4,6 +4,13 @@
 
 No unreleased changes yet.
 
+## 0.6.1 - 2026-05-03
+
+### Changed
+
+- Tightened Dashboard localization coverage for v0.2-v0.6 OSS Data Plane surfaces, including Route Explanation, structured-output log details, namespace filters, shadow traffic, realtime status, multimodal capability badges, and adaptive routing recommendations.
+- Updated route explanation validation to assert localized empty/no-trace states instead of English-only copy.
+
 ## 0.6.0 - 2026-05-03
 
 ### Added

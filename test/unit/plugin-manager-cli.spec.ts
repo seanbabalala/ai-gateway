@@ -63,7 +63,7 @@ describe('siftgate plugin CLI', () => {
       required: true,
       gateway: {
         required: '>=0.6.0 <0.7.0',
-        checked_with: '0.6.0',
+        checked_with: '0.6.1',
       },
     });
     expect(fs.readFileSync(path.join(cwd, 'gateway.config.yaml'), 'utf8')).toBe('nodes: []\n');

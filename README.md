@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.6.0**. This release is the Protocol + Explainability milestone: structured-output passthrough and schema-aware fallback, unified multimodal capabilities, OpenAI/common-compatible rerank, minimal images/audio ingress, an experimental disabled-by-default Realtime preview, and privacy-safe route decision traces with a Dashboard Route Explanation page.
+Current open-source release: **v0.6.1**. This patch keeps the v0.6 Protocol + Explainability milestone intact and tightens Dashboard localization for the v0.2-v0.6 feature surfaces: structured-output logs, namespaces, shadow traffic, multimodal capability badges, adaptive routing recommendations, realtime status, and Route Explanation.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -115,6 +115,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
+- **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
 
 ### Developer Experience

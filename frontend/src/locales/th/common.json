@@ -15,6 +15,7 @@
   "error.generic": "มีบางอย่างผิดพลาดครับ โปรดลองอีกครั้ง",
   "error.unauthorized": "ยังไม่ได้รับอนุญาตครับ",
   "error.unknown": "ข้อผิดพลาดไม่ทราบสาเหตุครับ",
+  "form.selectPlaceholder": "เลือก...",
   "header.gateway": "Gateway",
   "header.notificationsComingSoon": "การแจ้งเตือนจะพร้อมใช้งานเร็วๆ นี้ครับ",
   "header.searchPlaceholder": "ค้นหา logs, nodes, models...",

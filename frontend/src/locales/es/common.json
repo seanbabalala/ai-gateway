@@ -15,6 +15,7 @@
   "error.generic": "Algo salió mal. Inténtalo de nuevo.",
   "error.unauthorized": "No autorizado",
   "error.unknown": "Error desconocido",
+  "form.selectPlaceholder": "Seleccionar...",
   "header.gateway": "Gateway",
   "header.notificationsComingSoon": "Notificaciones próximamente",
   "header.searchPlaceholder": "Buscar logs, nodes, modelos...",

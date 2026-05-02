@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 're
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, Check } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 export interface SelectOption {
@@ -22,10 +23,11 @@ export function CustomSelect({
   options,
   value,
   onChange,
-  placeholder = 'Select...',
+  placeholder,
   disabled = false,
   className,
 }: CustomSelectProps) {
+  const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -187,7 +189,7 @@ export function CustomSelect({
         )}
       >
         <span className={cn(!selectedOption && 'text-[var(--foreground-dim)]')}>
-          {selectedOption?.label ?? placeholder}
+          {selectedOption?.label ?? placeholder ?? t('form.selectPlaceholder')}
         </span>
         <ChevronDown
           className={cn(

@@ -15,6 +15,7 @@
   "error.generic": "問題が発生しました。もう一度お試しください。",
   "error.unauthorized": "認証されていません",
   "error.unknown": "不明なエラー",
+  "form.selectPlaceholder": "選択...",
   "header.gateway": "ゲートウェイ",
   "header.notificationsComingSoon": "通知は近日対応予定です",
   "header.searchPlaceholder": "ログ、ノード、モデルを検索...",

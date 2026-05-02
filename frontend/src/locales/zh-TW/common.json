@@ -15,6 +15,7 @@
   "error.generic": "發生問題，請再試一次。",
   "error.unauthorized": "未授權",
   "error.unknown": "未知錯誤",
+  "form.selectPlaceholder": "請選擇...",
   "header.gateway": "閘道",
   "header.notificationsComingSoon": "通知即將推出",
   "header.searchPlaceholder": "搜尋記錄、節點、模型...",

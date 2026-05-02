@@ -15,6 +15,7 @@
   "error.generic": "出了点问题，请重试。",
   "error.unauthorized": "未授权",
   "error.unknown": "未知错误",
+  "form.selectPlaceholder": "请选择...",
   "header.gateway": "网关",
   "header.notificationsComingSoon": "通知即将上线",
   "header.searchPlaceholder": "搜索日志、节点、模型...",

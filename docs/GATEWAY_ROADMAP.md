@@ -15,13 +15,13 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
-| v0.6 | Protocol + Explainability | 已发布 — v0.6.0 协议广度 + 可解释路由 | ✅ Released |
+| v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 
 ---
 
 ## v0.6 — Protocol + Explainability（生产协议补齐 + 可解释路由）
 
-**v0.6.0 发布状态**：已完成并发布 Structured Output 完整透传与 schema-aware fallback、多模态 capability schema、Rerank、Images/Audio 最小可用入口、Realtime experimental preview、Route Decision Trace 与 Dashboard Route Explanation。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.6.1 发布状态**：已完成并发布 Structured Output 完整透传与 schema-aware fallback、多模态 capability schema、Rerank、Images/Audio 最小可用入口、Realtime experimental preview、Route Decision Trace 与 Dashboard Route Explanation；v0.6.1 追加补齐 v0.2-v0.6 Dashboard 新增功能的 7 语言本地化体验。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：协议生产能力
 
