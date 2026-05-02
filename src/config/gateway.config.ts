@@ -34,6 +34,9 @@ export interface GatewayConfig {
   /** Optional OSS-local embeddings request batching — disabled by default */
   embedding_batching?: EmbeddingBatchingConfig;
 
+  /** Experimental OpenAI Realtime-compatible WebSocket preview — disabled by default */
+  realtime?: RealtimeConfig;
+
   /** Optional shared state backend; memory remains the default single-node mode */
   state?: StateBackendConfig;
 
@@ -457,6 +460,10 @@ export interface NodeConfig {
   audio_speech_endpoint?: string;
   /** Audio-capable model IDs exposed by this node. */
   audio_models?: string[];
+  /** Experimental OpenAI-compatible realtime WebSocket endpoint path (default: /v1/realtime). */
+  realtime_endpoint?: string;
+  /** Realtime-capable model IDs exposed by this node. */
+  realtime_models?: string[];
   timeout_ms: number;
   max_concurrency?: number; // Optional per-node upstream concurrency limit
   queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set
@@ -754,6 +761,28 @@ export interface EmbeddingBatchingConfig {
   max_queue?: number;
   /** Per-request queue/dispatch timeout. */
   timeout_ms?: number;
+}
+
+// ===== Experimental Realtime Preview =====
+export interface RealtimeConfig {
+  /** Master switch for the experimental WebSocket proxy. Disabled by default. */
+  enabled?: boolean;
+  /** Local WebSocket path exposed by the gateway (default: /v1/realtime). */
+  path?: string;
+  /** Maximum concurrent realtime client connections across this gateway instance. */
+  max_connections?: number;
+  /** Maximum concurrent realtime connections to a single upstream node. */
+  max_connections_per_node?: number;
+  /** Close idle client/upstream sessions after this many milliseconds. */
+  idle_timeout_ms?: number;
+  /** Timeout while opening the upstream realtime WebSocket. */
+  upstream_connect_timeout_ms?: number;
+  /** Hard cap for a realtime session lifetime. */
+  max_session_ms?: number;
+  /** Optional default node used when model=auto or no model is supplied. */
+  default_node?: string;
+  /** Optional default realtime model used when model=auto or no model is supplied. */
+  default_model?: string;
 }
 
 // ===== Telemetry (OpenTelemetry) =====

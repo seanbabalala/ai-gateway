@@ -214,6 +214,7 @@ export function validateConfigObject(
   validateBudget(config.budget, issues);
   validateCache(config.cache, issues);
   validateEmbeddingBatching(config.embedding_batching, issues);
+  validateRealtime(config.realtime, config.nodes, issues);
   validateShadow(config.shadow, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
@@ -802,6 +803,19 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    if (
+      node.realtime_endpoint !== undefined &&
+      !isValidRealtimeEndpoint(node.realtime_endpoint)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_endpoint',
+          'nodes[].realtime_endpoint should be a non-empty path starting with "/" or a ws/wss URL.',
+          `${basePath}.realtime_endpoint`,
+        ),
+      );
+    }
     validateOptionalEndpoint(node, basePath, 'images_generations_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'images_edits_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_transcriptions_endpoint', issues);
@@ -859,6 +873,7 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     validateNodeRerankModels(node, basePath, issues);
     validateNodeMediaModels(node, basePath, 'image_models', 'Image', issues);
     validateNodeMediaModels(node, basePath, 'audio_models', 'Audio', issues);
+    validateNodeRealtimeModels(node, basePath, issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
         issue(
@@ -1064,6 +1079,52 @@ function validateNodeRerankModels(
   });
 }
 
+function validateNodeRealtimeModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.realtime_models === undefined) return;
+  if (!Array.isArray(node.realtime_models)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_models',
+        'nodes[].realtime_models must be an array of model ids when set.',
+        `${basePath}.realtime_models`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  node.realtime_models.forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.realtime_models[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          'Realtime model ids must be non-empty strings.',
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `Realtime model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
+  });
+}
+
 function validateNodeMediaModels(
   node: Record<string, unknown>,
   basePath: string,
@@ -1167,6 +1228,7 @@ function validateNodeRoutingCapabilities(
       ...(Array.isArray(node.rerank_models) ? node.rerank_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.image_models) ? node.image_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.audio_models) ? node.audio_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.realtime_models) ? node.realtime_models.filter(isNonEmptyString) : []),
     ],
   );
 
@@ -2299,6 +2361,161 @@ function validateEmbeddingBatching(
         ),
       );
     }
+  }
+}
+
+function validateRealtime(
+  realtime: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (realtime === undefined) return;
+  if (!isRecord(realtime)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'realtime must be an object when set.',
+        'realtime',
+      ),
+    );
+    return;
+  }
+
+  if (realtime.enabled !== undefined && !isBoolean(realtime.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.enabled must be a boolean.',
+        'realtime.enabled',
+      ),
+    );
+  }
+  if (
+    realtime.path !== undefined &&
+    (!isNonEmptyString(realtime.path) || !realtime.path.startsWith('/'))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.path must be a non-empty path starting with "/".',
+        'realtime.path',
+      ),
+    );
+  }
+
+  for (const key of [
+    'max_connections',
+    'max_connections_per_node',
+    'idle_timeout_ms',
+    'upstream_connect_timeout_ms',
+    'max_session_ms',
+  ]) {
+    validateOptionalPositiveNumber(
+      realtime[key],
+      `realtime.${key}`,
+      'invalid_realtime_config',
+      issues,
+    );
+  }
+
+  if (realtime.default_node !== undefined && !isNonEmptyString(realtime.default_node)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.default_node must be a non-empty string when set.',
+        'realtime.default_node',
+      ),
+    );
+  }
+  if (realtime.default_model !== undefined && !isNonEmptyString(realtime.default_model)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_realtime_config',
+        'realtime.default_model must be a non-empty string when set.',
+        'realtime.default_model',
+      ),
+    );
+  }
+
+  const realtimeTargets: Array<{ node: string; model: string }> = [];
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (!isRecord(node) || !isNonEmptyString(node.id)) continue;
+      for (const model of Array.isArray(node.realtime_models) ? node.realtime_models : []) {
+        if (isNonEmptyString(model)) {
+          realtimeTargets.push({ node: node.id, model });
+        }
+      }
+    }
+  }
+
+  if (realtime.enabled === true && realtimeTargets.length === 0) {
+    issues.push(
+      issue(
+        'error',
+        'realtime_no_models',
+        'realtime.enabled requires at least one nodes[].realtime_models entry.',
+        'realtime.enabled',
+      ),
+    );
+  }
+
+  if (isNonEmptyString(realtime.default_node)) {
+    const nodeTargets = realtimeTargets.filter(
+      (target) => target.node === realtime.default_node,
+    );
+    if (nodeTargets.length === 0) {
+      issues.push(
+        issue(
+          'error',
+          'realtime_default_target_invalid',
+          `realtime.default_node "${realtime.default_node}" does not expose realtime_models.`,
+          'realtime.default_node',
+        ),
+      );
+    } else if (
+      isNonEmptyString(realtime.default_model) &&
+      realtime.default_model !== 'auto' &&
+      !nodeTargets.some((target) => target.model === realtime.default_model)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'realtime_default_target_invalid',
+          `realtime.default_model "${realtime.default_model}" is not listed under node "${realtime.default_node}" realtime_models.`,
+          'realtime.default_model',
+        ),
+      );
+    }
+  } else if (
+    isNonEmptyString(realtime.default_model) &&
+    realtime.default_model !== 'auto' &&
+    !realtimeTargets.some((target) => target.model === realtime.default_model)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'realtime_default_target_invalid',
+        `realtime.default_model "${realtime.default_model}" is not listed in any nodes[].realtime_models.`,
+        'realtime.default_model',
+      ),
+    );
+  }
+
+  if (realtime.enabled === true) {
+    issues.push(
+      issue(
+        'info',
+        'realtime_experimental',
+        'realtime is experimental: it performs WebSocket pass-through only and does not process audio locally.',
+        'realtime.enabled',
+      ),
+    );
   }
 }
 
@@ -3558,6 +3775,17 @@ function validateHttpUrl(
   } catch {
     issues.push(issue('error', code, 'Value must be a valid URL.', issuePath));
     return null;
+  }
+}
+
+function isValidRealtimeEndpoint(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  if (value.startsWith('/')) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'ws:' || url.protocol === 'wss:';
+  } catch {
+    return false;
   }
 }
 

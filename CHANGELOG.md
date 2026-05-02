@@ -22,6 +22,11 @@
 - `nodes[].image_models`, `nodes[].audio_models`, media endpoint path configuration, pricing validation, routing, budget, rate-limit, telemetry, and call-log coverage.
 - Multipart pass-through for image edits and audio transcriptions that rewrites/appends only the selected `model` field and avoids local media parsing/transcoding.
 - Unit and e2e coverage for media normalization, routing, provider forwarding, config validation, controllers, OpenAPI paths, multipart pass-through, and binary audio responses.
+- v0.6 experimental OpenAI Realtime-style WebSocket preview for the OSS Data Plane.
+- Disabled-by-default `realtime` config with `/v1/realtime` upgrade handling, Gateway API key auth, API key/namespace permission checks, global/per-node connection limits, idle/session timeouts, and close cleanup.
+- `nodes[].realtime_models` and `nodes[].realtime_endpoint` for realtime-capable upstreams, plus config validation and pricing diagnostics.
+- Dashboard nodes and `/health` realtime summaries with active connection counts, capability status, last close timestamps, and sanitized errors.
+- E2E coverage for realtime auth rejection, safe WebSocket proxying, close release, upstream failure handling, and provider-key redaction.
 
 ### Changed
 

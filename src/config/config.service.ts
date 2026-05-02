@@ -34,6 +34,7 @@ import {
   DashboardConfig,
   FallbackPolicyConfig,
   StateBackendConfig,
+  RealtimeConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -70,6 +71,7 @@ export interface ConfigChangeSummary {
   hot_reload_changed: boolean;
   state_changed: boolean;
   cluster_changed: boolean;
+  realtime_changed: boolean;
 }
 
 export interface ConfigReloadResult {
@@ -481,6 +483,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       hot_reload_changed: JSON.stringify(previous.hot_reload || null) !== JSON.stringify(next.hot_reload || null),
       state_changed: JSON.stringify(previous.state || null) !== JSON.stringify(next.state || null),
       cluster_changed: JSON.stringify(previous.cluster || null) !== JSON.stringify(next.cluster || null),
+      realtime_changed: JSON.stringify(previous.realtime || null) !== JSON.stringify(next.realtime || null),
     };
   }
 
@@ -496,6 +499,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       hot_reload_changed: false,
       state_changed: false,
       cluster_changed: false,
+      realtime_changed: false,
     };
   }
 
@@ -618,6 +622,24 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       max_input_items: batching?.max_input_items ?? 8,
       max_queue: batching?.max_queue ?? 1000,
       timeout_ms: batching?.timeout_ms ?? 10000,
+    };
+  }
+
+  /** Get experimental realtime preview config with conservative defaults. */
+  get realtime(): Required<RealtimeConfig> {
+    const realtime = this.config.realtime;
+    return {
+      enabled: realtime?.enabled ?? false,
+      path: realtime?.path ?? '/v1/realtime',
+      max_connections: realtime?.max_connections ?? 25,
+      max_connections_per_node:
+        realtime?.max_connections_per_node ?? realtime?.max_connections ?? 25,
+      idle_timeout_ms: realtime?.idle_timeout_ms ?? 300_000,
+      upstream_connect_timeout_ms:
+        realtime?.upstream_connect_timeout_ms ?? 10_000,
+      max_session_ms: realtime?.max_session_ms ?? 1_800_000,
+      default_node: realtime?.default_node ?? '',
+      default_model: realtime?.default_model ?? 'auto',
     };
   }
 
@@ -841,6 +863,33 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       const modelPart = name.substring(idx + 1);
       const prefixNode = this.config.nodes.find((node) => node.id === prefix);
       if (prefixNode?.rerank_models?.length && modelPart) {
+        return { nodeId: prefixNode.id, model: modelPart };
+      }
+    }
+
+    return null;
+  }
+
+  /** Resolve a user-provided realtime model name to a node/model pair. */
+  resolveRealtimeModel(name: string): { nodeId: string; model: string } | null {
+    for (const node of this.config.nodes) {
+      if (node.realtime_models?.includes(name)) {
+        return { nodeId: node.id, model: name };
+      }
+    }
+
+    const nodeById = this.config.nodes.find((node) => node.id === name);
+    if (nodeById?.realtime_models?.length) {
+      return { nodeId: nodeById.id, model: nodeById.realtime_models[0] };
+    }
+
+    for (const separator of ['/', ':']) {
+      const idx = name.indexOf(separator);
+      if (idx <= 0) continue;
+      const prefix = name.substring(0, idx);
+      const modelPart = name.substring(idx + 1);
+      const prefixNode = this.config.nodes.find((node) => node.id === prefix);
+      if (prefixNode?.realtime_models?.includes(modelPart)) {
         return { nodeId: prefixNode.id, model: modelPart };
       }
     }

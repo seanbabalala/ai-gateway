@@ -67,6 +67,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
 - **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`) — image-capable node routing with JSON and multipart pass-through
 - **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/speech`) — transcription and speech routing with multipart input and binary audio output support
+- **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - Full **streaming** support across supported generative protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
@@ -106,6 +107,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
+- **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
@@ -529,6 +531,7 @@ nodes:
     endpoint: "/v1/chat/completions" # API endpoint path
     embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
     # rerank_endpoint: "/v1/rerank" # Optional rerank path for compatible upstreams/proxies
+    realtime_endpoint: "/v1/realtime" # Optional experimental realtime WebSocket path or ws/wss URL
     images_generations_endpoint: "/v1/images/generations" # Optional image generation endpoint path
     images_edits_endpoint: "/v1/images/edits" # Optional image edit endpoint path
     audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
@@ -538,6 +541,7 @@ nodes:
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
     # rerank_models: ["rerank-english-v3"] # Models eligible for /v1/rerank
+    realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
     image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
     timeout_ms: 60000 # Request timeout
@@ -616,6 +620,31 @@ Routing uses these declarations for smart-routing constraints. For example, a re
 See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
 
 `/v1/rerank` accepts OpenAI/common-compatible rerank requests and uses `nodes[].rerank_models`; chat and embedding models are not selected for rerank requests.
+
+### Experimental Realtime Preview
+
+Realtime is an experimental v0.6 WebSocket proxy preview. It is disabled by default and only performs safe pass-through: Gateway API key authentication, API key/namespace node-model permission checks, connection limits, idle/session timeouts, close cleanup, sanitized error summaries, and Dashboard/health connection state. It does not parse, transcode, inspect, or persist audio frames.
+
+```yaml
+nodes:
+  - id: openai
+    base_url: "https://api.openai.com"
+    realtime_endpoint: "/v1/realtime"
+    realtime_models: ["gpt-4o-realtime-preview"]
+
+realtime:
+  enabled: true
+  path: /v1/realtime
+  max_connections: 25
+  max_connections_per_node: 25
+  idle_timeout_ms: 300000
+  upstream_connect_timeout_ms: 10000
+  max_session_ms: 1800000
+  default_node: openai
+  default_model: gpt-4o-realtime-preview
+```
+
+Clients connect to `ws://localhost:2099/v1/realtime?model=gpt-4o-realtime-preview` with `Authorization: Bearer <gateway-api-key>`. SiftGate forwards upstream with the provider API key and `OpenAI-Beta: realtime=v1`. Browser clients that cannot set an `Authorization` header should use a trusted backend to mint or proxy the connection; the preview intentionally does not accept Gateway API keys in query strings.
 
 ### Upstream Connection Pooling
 
@@ -1161,6 +1190,7 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/images/edits`     | OpenAI Images edits format with multipart pass-through |
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription format         |
 | `POST` | `/v1/audio/speech`     | OpenAI Audio speech format with binary responses |
+| `WS`   | `/v1/realtime`         | Experimental OpenAI Realtime-style pass-through |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -1399,7 +1429,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← chat, responses, messages, embeddings, rerank, images, audio
+│   Controller    │  ← chat, responses, messages, embeddings, rerank, images, audio, realtime WS
 └────────┬────────┘
          ▼
 ┌─────────────────┐

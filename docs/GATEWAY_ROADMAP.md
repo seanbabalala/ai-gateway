@@ -73,14 +73,18 @@
 
 #### 4. Image / Audio / Realtime 入口
 
-- **状态**：Image/Audio ✅ 已在 `codex/v0.6-images-audio-endpoints` 实现；Realtime 计划中
+- **状态**：Image/Audio ✅ 已在 `codex/v0.6-images-audio-endpoints` 实现；Realtime ✅ 已在 `codex/v0.6-realtime-preview` 实现 experimental preview
 - **目标**：继续补齐 OpenAI/LiteLLM/New API 常见接口广度短板
 - **实现方案**：
   - Image/audio 提供 `/v1/images/generations`、`/v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/speech`
   - JSON 请求直接透传并重写选中上游模型
   - multipart 请求只做安全 pass-through：保留文件字节，重写/补充 `model` 字段，不做图像/音频解析、转码或编辑抽象
   - API Key、namespace、budget、rate limit、call_log、telemetry、fallback、健康状态继续复用现有 Data Plane 管线
-  - Realtime 先做明确边界和最小可用连接代理，避免破坏现有 HTTP/SSE 路径
+  - Realtime 默认关闭，必须显式设置 `realtime.enabled=true`
+  - WebSocket 入口 `/v1/realtime?model=...`，优先兼容 OpenAI Realtime 风格
+  - 只做安全转发：Gateway API key 鉴权、API key/namespace 权限、连接数限制、idle/session timeout、关闭释放、脱敏错误摘要
+  - 不解析、不转码、不检查、不保存音频帧；不破坏现有 HTTP/SSE streaming
+  - `/health` 与 Dashboard Nodes API 展示 realtime capability、active connections、last closed/error 摘要
 
 ### P0：可解释路由
 

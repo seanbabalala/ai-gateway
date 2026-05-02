@@ -229,6 +229,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     shadowTraffic as any,
+    overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
   );

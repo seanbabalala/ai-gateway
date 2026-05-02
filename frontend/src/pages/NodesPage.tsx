@@ -17,6 +17,7 @@ import {
   Database,
   ListFilter,
   Radio,
+  RadioTower,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -506,6 +507,25 @@ export function NodesPage() {
                             {concurrency.queued}
                           </span>
                         </div>
+                      </div>
+                    )}
+                    {node.realtime?.supported && (
+                      <div className="min-w-[132px] rounded-md bg-[var(--background-secondary)] px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1 truncate text-[10px] font-semibold text-[var(--foreground-dim)]">
+                            <RadioTower className="h-3 w-3" />
+                            Realtime
+                          </span>
+                          <span className="font-mono text-[10px] font-bold text-[var(--foreground)]">
+                            {node.realtime.active_connections}
+                            {node.realtime.max_connections_per_node ? ` / ${node.realtime.max_connections_per_node}` : ''}
+                          </span>
+                        </div>
+                        {node.realtime.last_error && (
+                          <div className="mt-1 truncate text-[10px] font-semibold text-[var(--warning)]">
+                            {node.realtime.last_error}
+                          </div>
+                        )}
                       </div>
                     )}
                     {node.circuit.consecutiveFailures > 0 && (

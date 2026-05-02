@@ -140,6 +140,8 @@ auth:
 # Image and audio models are listed separately under nodes[].image_models
 # and nodes[].audio_models so media endpoints can route, budget, and
 # log independently from chat models.
+# Experimental realtime models are listed under nodes[].realtime_models and
+# require the top-level realtime.enabled switch below.
 # Use model_prefixes when clients should direct-route future model family IDs
 # such as "claude-sonnet-..." or "gpt-..." through a stable upstream node ID.
 # Supported protocols:
@@ -156,6 +158,7 @@ nodes:
     endpoint: "/v1/chat/completions"
     embeddings_endpoint: "/v1/embeddings"
     # rerank_endpoint: "/v1/rerank" # Enable only for compatible upstreams/proxies that expose rerank.
+    # realtime_endpoint: "/v1/realtime" # Optional ws/wss URL or path for experimental realtime proxy
     images_generations_endpoint: "/v1/images/generations"
     images_edits_endpoint: "/v1/images/edits"
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
@@ -164,6 +167,7 @@ nodes:
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     # rerank_models: ["rerank-english-v3"]
+    # realtime_models: ["gpt-4o-realtime-preview"]
     image_models: ["gpt-image-1"]
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"]
     timeout_ms: 60000
@@ -211,6 +215,8 @@ nodes:
         pricing: { input: 0.13, output: 0.00 }
       # rerank-english-v3:
       #   pricing: { input: 0.80, output: 0.00 }
+      # gpt-4o-realtime-preview:
+      #   pricing: { input: 5.00, output: 20.00 }
       gpt-image-1:
         pricing: { input: 5.00, output: 0.00 }
       gpt-4o-mini-transcribe:
@@ -316,6 +322,31 @@ nodes:
   #   models: ["llama3"]
   #   timeout_ms: 120000
   #   tags: ["fast", "cheap", "private"]
+
+# ============================================================
+# Experimental Realtime Preview — disabled by default
+# ============================================================
+# This is an OpenAI Realtime-style WebSocket pass-through preview.
+# It performs Gateway API key auth, permission checks, connection limits,
+# timeout/close cleanup, sanitized logging, and node status summaries.
+# It does not parse, transcode, or inspect audio frames locally.
+#
+# Clients connect with:
+#   wss://your-gateway.example/v1/realtime?model=gpt-4o-realtime-preview
+#   Authorization: Bearer <gateway-api-key>
+#
+# Keep disabled unless you have configured nodes[].realtime_models.
+# ============================================================
+# realtime:
+#   enabled: false
+#   path: /v1/realtime
+#   max_connections: 25
+#   max_connections_per_node: 25
+#   idle_timeout_ms: 300000
+#   upstream_connect_timeout_ms: 10000
+#   max_session_ms: 1800000
+#   # default_node: openai
+#   # default_model: gpt-4o-realtime-preview
 
 # ============================================================
 # Routing — How requests are assigned to nodes

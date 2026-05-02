@@ -299,6 +299,106 @@ describe('config validator', () => {
     );
   });
 
+  it('validates experimental realtime preview controls', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            realtime_endpoint: '/v1/realtime',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            realtime_models: ['gpt-4o-realtime-preview'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        realtime: {
+          enabled: true,
+          path: '/v1/realtime',
+          max_connections: 10,
+          max_connections_per_node: 5,
+          idle_timeout_ms: 300000,
+          upstream_connect_timeout_ms: 10000,
+          max_session_ms: 1800000,
+          default_node: 'openai',
+          default_model: 'gpt-4o-realtime-preview',
+        },
+        models_pricing: {
+          'gpt-4o': { input: 2.5, output: 10 },
+          'gpt-4o-realtime-preview': { input: 5, output: 20 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(codes(result.info)).toContain('realtime_experimental');
+  });
+
+  it('rejects realtime enabled without realtime models', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        realtime: { enabled: true },
+        models_pricing: { 'gpt-4o': { input: 2.5, output: 10 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('realtime_no_models');
+  });
+
   it('reports structural, routing, env, and control-plane issues', () => {
     const result = validateConfigFile({
       configPath: fixture('invalid.gateway.yaml'),

@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6 adds canonical structured-output passthrough, common rerank ingress, and minimal OpenAI-compatible images/audio ingress alongside the existing chat, responses, messages, embeddings, models, and health APIs.
+v0.6 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, and an experimental OpenAI Realtime-style WebSocket preview alongside the existing chat, responses, messages, embeddings, models, and health APIs.
 
 ## Live Documentation
 
@@ -39,6 +39,7 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/images/edits` | OpenAI Images edits-compatible ingress |
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
 | `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
+| `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
@@ -191,11 +192,24 @@ curl http://localhost:2099/v1/audio/transcriptions \
 
 When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged. Increase `server.body_limit` when image edit or audio transcription files are larger than the default `1mb`.
 
+### Experimental Realtime
+
+`WS /v1/realtime` is an experimental preview and is disabled unless `realtime.enabled: true` is set. It is intentionally a pass-through proxy for OpenAI Realtime-style providers:
+
+- Clients connect to `/v1/realtime?model=<realtime-model>` with `Authorization: Bearer <gateway-api-key>`.
+- Upstream targets come from `nodes[].realtime_models` and `nodes[].realtime_endpoint`.
+- The gateway enforces Gateway API key auth, API key/namespace node-model permissions, global and per-node connection limits, idle timeout, session timeout, and close cleanup.
+- The gateway forwards `OpenAI-Beta: realtime=v1` and the provider API key upstream.
+- It does not parse, transcode, inspect, persist, or validate audio frames.
+- Gateway API keys are not accepted in query strings; browser clients that cannot set headers should connect through a trusted backend.
+
+Connection state summaries are exposed through `/health` and `/api/dashboard/nodes` under each node's `realtime` field. Errors are sanitized and do not include provider keys, Gateway API keys, prompts, responses, raw headers, or audio payloads.
+
 ## Health
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Gateway health, uptime, node circuit state, model circuit state, and budget status |
+| `GET` | `/health` | Gateway health, uptime, node circuit state, realtime connection summary, model circuit state, and budget status |
 | `GET` | `/cluster/status` | Redis-backed cluster inventory, heartbeat status, and reload broadcast metadata when `state.backend=redis` or `cluster.enabled=true` |
 
 `/health` is intended for local health checks, Docker checks, and monitoring systems. `/cluster/status` returns `404` in the default single-instance memory mode.
@@ -227,7 +241,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
-| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, and circuit state |
+| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, and realtime capability/connection summary |
 | `POST` | `/api/dashboard/nodes/test` | Test an arbitrary node payload before saving |
 | `POST` | `/api/dashboard/nodes` | Create a node in local config |
 | `PUT` | `/api/dashboard/nodes/:id` | Update a node in local config |
