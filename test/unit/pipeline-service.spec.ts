@@ -142,6 +142,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     enqueue: jest.fn(),
     ...overrides.telemetryUploader,
   };
+  const telemetry = overrides.telemetry || new TelemetryService();
   const alerts = {
     recordCall: jest.fn(),
     ...overrides.alerts,
@@ -169,7 +170,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     cacheService as any,
     logEventBus as any,
     hooks as any,
-    new TelemetryService(),
+    telemetry as any,
     telemetryUploader as any,
     callLogRepo as any,
     alerts as any,
@@ -181,7 +182,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     mocks: {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, concurrencyLimiter, budgetService, cacheService,
-      logEventBus, hooks, telemetryUploader, callLogRepo, alerts, logSinks,
+      logEventBus, hooks, telemetry, telemetryUploader, callLogRepo, alerts, logSinks,
     },
   };
 }
@@ -935,6 +936,55 @@ describe('PipelineService — call logging', () => {
     // Should not throw
     const result = await pipeline.process(request);
     expect(result.statusCode).toBe(200);
+  });
+
+  it('should record business metrics from the call log path without API key labels', async () => {
+    const telemetry = new TelemetryService();
+    jest.spyOn(telemetry, 'recordCallMetrics');
+    const { pipeline, mocks } = makePipeline({ telemetry });
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.api_key_name = 'production-key';
+    request.metadata.api_key_id = 'key_secret_123';
+
+    await pipeline.process(request);
+
+    expect(mocks.telemetry.recordCallMetrics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tier: 'direct',
+        node: 'openai',
+        model: 'gpt-4o',
+        statusCode: 200,
+        inputTokens: 10,
+        outputTokens: 5,
+        isFallback: false,
+      }),
+    );
+    const metricInput = mocks.telemetry.recordCallMetrics.mock.calls[0][0];
+    expect(Object.keys(metricInput)).not.toContain('apiKeyName');
+    expect(Object.values(metricInput)).not.toContain('production-key');
+    expect(Object.values(metricInput)).not.toContain('key_secret_123');
+  });
+
+  it('should mark fallback responses in business metrics', async () => {
+    const telemetry = new TelemetryService();
+    jest.spyOn(telemetry, 'recordCallMetrics');
+    const { pipeline, mocks } = makePipeline({ telemetry });
+    mocks.providerClient.forward
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+      .mockResolvedValueOnce(makeCanonicalResponse({ model: 'claude-3-opus' }));
+
+    await pipeline.process(makeRequest('Hello', { originalModel: 'auto' }));
+
+    expect(mocks.telemetry.recordCallMetrics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node: 'claude',
+        model: 'claude-3-opus',
+        statusCode: 200,
+        isFallback: true,
+      }),
+    );
   });
 
   it('should attribute experiment group to the actual fallback target', async () => {

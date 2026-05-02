@@ -211,14 +211,15 @@ routing:
       fallbacks:
         - { node: anthropic, model: claude-sonnet-4-20250514 }
     standard:
+      primary: { node: openai, model: gpt-4o }
+      fallbacks:
+        - { node: anthropic, model: claude-sonnet-4-20250514 }
       strategy: weighted
       targets:
         - { node: openai, model: gpt-4o, weight: 70 }
         - { node: anthropic, model: claude-sonnet-4-20250514, weight: 30 }
-      # Legacy primary/fallback remains valid; omit targets to use it.
-      # primary: { node: openai, model: gpt-4o }
-      # fallbacks:
-      #   - { node: anthropic, model: claude-sonnet-4-20250514 }
+      # primary/fallbacks remains as a migration-safe fallback shape.
+      # targets + strategy controls live selection when targets is present.
     complex:
       primary: { node: anthropic, model: claude-sonnet-4-20250514 }
       fallbacks:
@@ -398,6 +399,24 @@ models_pricing:
 #   ttl_seconds: 300           # Cache TTL in seconds (default: 300 = 5 min)
 #   max_entries: 1000          # Max cached responses, LRU eviction (default: 1000)
 #   exclude_tool_use: true     # Don't cache tool_use responses (default: true)
+
+# ============================================================
+# Telemetry — OpenTelemetry and Prometheus metrics
+# ============================================================
+# Disabled by default. When enabled, SiftGate starts the existing
+# OpenTelemetry SDK and exposes Prometheus metrics at
+# http://localhost:9464/metrics unless prometheus_port is changed.
+# Business metric labels avoid API key IDs/names, prompts, responses,
+# provider keys, and raw auth headers.
+# ============================================================
+# telemetry:
+#   enabled: false
+#   service_name: "siftgate"
+#   traces:
+#     endpoint: "http://localhost:4318/v1/traces"
+#     sample_rate: 1.0
+#   metrics:
+#     prometheus_port: 9464
 
 # ============================================================
 # Connected Gateway — Cloud Control Plane (optional)

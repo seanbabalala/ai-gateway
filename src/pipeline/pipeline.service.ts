@@ -234,7 +234,7 @@ export class PipelineService {
             const cached = this.cacheService.lookup(canonical);
             if (cached) {
               const cacheLatency = Date.now() - cacheStart;
-              this.telemetry.cacheOperations.add(1, { operation: 'hit' });
+              this.telemetry.recordCacheHit();
               rootSpan.setAttribute('gateway.cache', 'hit');
               const responseBody = this.denormalizeForClient(cached, canonical.metadata.source_format);
               await this.recordBudgetUsage(canonical, cached.usage, cached.model);
@@ -243,7 +243,7 @@ export class PipelineService {
                 usage: cached.usage, error: null, retryCount: 0 });
               return { body: responseBody, statusCode: 200 };
             }
-            this.telemetry.cacheOperations.add(1, { operation: 'miss' });
+            this.telemetry.recordCacheMiss();
           }
 
           // ── Route Resolution ──
@@ -402,7 +402,7 @@ export class PipelineService {
           // ── Cache Store ──
           currentPhase = 'cacheStore';
           this.cacheService.store(canonical, canonicalResponse);
-          this.telemetry.cacheOperations.add(1, { operation: 'store' });
+          this.telemetry.recordCacheStore();
 
           // ── Budget Record ──
           currentPhase = 'budgetRecord';
@@ -1208,7 +1208,7 @@ export class PipelineService {
           await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
             model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
             usage: cached.usage, error: null, retryCount: 0 });
-          this.telemetry.cacheOperations.add(1, { operation: 'hit' });
+          this.telemetry.recordCacheHit();
           rootSpan.setAttribute('gateway.cache', 'hit');
           rootSpan.end();
           return;
@@ -2538,16 +2538,23 @@ export class PipelineService {
         retry_count: params.retryCount || 0,
         experiment_group: params.experimentGroup || null,
       });
+      this.telemetry.recordCallMetrics({
+        tier: params.tier,
+        node: params.nodeId,
+        model: this.metricModelLabel(params.nodeId, params.model),
+        statusCode: params.statusCode,
+        latencyMs: params.latencyMs,
+        inputTokens: params.usage.input_tokens || 0,
+        outputTokens: params.usage.output_tokens || 0,
+        cacheCreationInputTokens: params.usage.cache_creation_input_tokens || 0,
+        cacheReadInputTokens: params.usage.cache_read_input_tokens || 0,
+        costUsd,
+        isFallback: params.isFallback,
+        fallbackReason: params.fallbackReason || null,
+        fallbackFromNode: params.fallbackFromNode || null,
+      });
       const saved = await this.callLogRepo.save(log);
 
-      if (params.isFallback || params.fallbackReason) {
-        this.telemetry.fallbackTotal.add(1, {
-          tier: params.tier,
-          reason: params.fallbackReason || 'upstream_error',
-          from_node: params.fallbackFromNode || '',
-          to_node: params.nodeId,
-        });
-      }
 
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);
@@ -2568,4 +2575,15 @@ export class PipelineService {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
     }
   }
+  private metricModelLabel(nodeId: string, model: string): string {
+    if (nodeId === 'cache' || nodeId === 'hook') {
+      return nodeId;
+    }
+    const node = this.config.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return 'unknown';
+    if (node.models.includes(model)) return model;
+    const prefix = node.model_prefixes?.find((value) => model.startsWith(value));
+    return prefix ? `${node.id}:${prefix}*` : 'unlisted';
+  }
+
 }

@@ -140,6 +140,23 @@ Alert payloads are sanitized before dispatch. Prompts, responses, provider API k
 
 External log sinks can mirror sanitized `CallLog` metadata to JSONL files, webhook receivers, or a minimal Elasticsearch bulk endpoint. Sink delivery is asynchronous and starts only after the local database write succeeds. Export payloads do not include prompts, responses, provider keys, raw auth headers, or secret-bearing fields by default.
 
+OpenTelemetry is the data plane's metrics and tracing layer. When `telemetry.enabled` is set in `gateway.config.yaml`, the existing Prometheus exporter exposes scrapeable metrics on `telemetry.metrics.prometheus_port` at `/metrics`.
+
+Business metrics are emitted from the request pipeline and runtime services:
+
+- `siftgate_requests_total{tier,node,model,status}`
+- `siftgate_request_duration_seconds{tier,node,model,status}`
+- `siftgate_tokens_total{node,model,direction}`
+- `siftgate_cost_total{node,model}`
+- `siftgate_fallback_total{tier,node,model}`
+- `siftgate_cache_hits_total`
+- `siftgate_cache_misses_total`
+- `siftgate_budget_usage_ratio{scope,budget_type}`
+- `siftgate_concurrent_requests{node}`
+- `siftgate_circuit_breaker_state{node,model}`
+
+Labels are kept low-cardinality. Request status is a class such as `2xx`; budget usage is aggregated by `scope` and `budget_type`; API key names/IDs, prompt text, response text, provider keys, and raw headers are excluded from metric labels.
+
 ## Connected Gateway
 
 Connected Gateway is a data-plane client for a future hosted control plane. It is configured under:

@@ -15,6 +15,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AlertService } from '../alerts/alert.service';
+import { TelemetryService } from '../telemetry/telemetry.service';
 
 export enum CircuitState {
   CLOSED = 'CLOSED',
@@ -48,8 +49,12 @@ export class CircuitBreakerService {
   private readonly circuits = new Map<string, CircuitStatus>();
   private readonly config: CircuitBreakerConfig;
 
-  constructor(@Optional() private readonly alerts?: AlertService) {
+  constructor(
+    @Optional() private readonly alerts?: AlertService,
+    @Optional() private readonly telemetry?: TelemetryService,
+  ) {
     this.config = { ...DEFAULT_CONFIG };
+    this.registerMetrics();
   }
 
   /** Build the internal key for a node+model pair */
@@ -344,6 +349,39 @@ export class CircuitBreakerService {
       });
     }
     return this.circuits.get(key)!;
+  }
+
+  private registerMetrics(): void {
+    const gauge = this.telemetry?.meter.createObservableGauge(
+      'siftgate_circuit_breaker_state',
+      {
+        description: 'Circuit breaker state by node and model: CLOSED=0, HALF_OPEN=0.5, OPEN=1',
+        unit: '1',
+      },
+    );
+    gauge?.addCallback((observable) => {
+      for (const [key, status] of this.circuits.entries()) {
+        const { node, model } = this.parseKey(key);
+        observable.observe(this.stateValue(status.state), { node, model });
+      }
+    });
+  }
+
+  private parseKey(key: string): { node: string; model: string } {
+    const separator = key.indexOf(':');
+    if (separator < 0) {
+      return { node: key, model: 'all' };
+    }
+    return {
+      node: key.slice(0, separator),
+      model: key.slice(separator + 1) || 'unknown',
+    };
+  }
+
+  private stateValue(state: CircuitState): number {
+    if (state === CircuitState.OPEN) return 1;
+    if (state === CircuitState.HALF_OPEN) return 0.5;
+    return 0;
   }
 
   private alertCircuitOpen(

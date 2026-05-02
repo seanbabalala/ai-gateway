@@ -21,6 +21,9 @@
 - v0.3 external log sinks via `logging.sinks`, with JSONL file output, webhook batches, and a minimal Elasticsearch bulk exporter.
 - Asynchronous per-sink batching, retry, max queue, overflow handling, and sanitized field allow/deny filtering for exported call logs.
 - Config validation and documentation for external log sink settings, with S3 reserved as an interface placeholder.
+- v0.3 business Prometheus metrics through the existing OpenTelemetry exporter for requests, latency, tokens, cost, fallback, cache hit/miss, budget usage, concurrency, and circuit breaker state.
+- Low-cardinality metric labels that avoid API key names/IDs, prompts, responses, provider keys, and raw headers.
+- Unit coverage for telemetry helpers, pipeline metric recording, budget gauge aggregation, concurrency gauges, and circuit breaker gauges.
 
 ### Changed
 
