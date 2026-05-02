@@ -28,6 +28,7 @@ import {
   AuthConfig,
   DashboardConfig,
   FallbackPolicyConfig,
+  StateBackendConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -57,6 +58,7 @@ export interface ConfigChangeSummary {
   pricing_changed: boolean;
   control_plane_changed: boolean;
   hot_reload_changed: boolean;
+  state_changed: boolean;
 }
 
 export interface ConfigReloadResult {
@@ -240,6 +242,29 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     }
     if (!config.budget || typeof config.budget !== 'object') {
       throw new Error('Invalid configuration: budget is required');
+    }
+    if (config.state !== undefined) {
+      if (typeof config.state !== 'object' || Array.isArray(config.state)) {
+        throw new Error('Invalid configuration: state must be an object');
+      }
+      const backend = config.state.backend ?? 'memory';
+      if (backend !== 'memory' && backend !== 'redis') {
+        throw new Error('Invalid configuration: state.backend must be memory or redis');
+      }
+      const policy = config.state.unavailable_policy ?? 'fail_open';
+      if (policy !== 'fail_open' && policy !== 'fail_closed') {
+        throw new Error('Invalid configuration: state.unavailable_policy must be fail_open or fail_closed');
+      }
+      if (backend === 'redis' && config.state.redis?.url !== undefined) {
+        try {
+          const redisUrl = new URL(config.state.redis.url);
+          if (redisUrl.protocol !== 'redis:' && redisUrl.protocol !== 'rediss:') {
+            throw new Error('invalid protocol');
+          }
+        } catch {
+          throw new Error('Invalid configuration: state.redis.url must be redis:// or rediss://');
+        }
+      }
     }
   }
 
@@ -442,6 +467,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       pricing_changed: JSON.stringify(previous.models_pricing) !== JSON.stringify(next.models_pricing),
       control_plane_changed: JSON.stringify(previous.control_plane || null) !== JSON.stringify(next.control_plane || null),
       hot_reload_changed: JSON.stringify(previous.hot_reload || null) !== JSON.stringify(next.hot_reload || null),
+      state_changed: JSON.stringify(previous.state || null) !== JSON.stringify(next.state || null),
     };
   }
 
@@ -455,6 +481,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       pricing_changed: false,
       control_plane_changed: false,
       hot_reload_changed: false,
+      state_changed: false,
     };
   }
 
@@ -604,6 +631,28 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return {
       enabled: logging?.enabled ?? false,
       sinks: logging?.sinks ?? [],
+    };
+  }
+
+  /** Get shared state backend config with memory-safe defaults. */
+  get state(): Required<Omit<StateBackendConfig, 'redis'>> & {
+    redis: {
+      url: string;
+      prefix: string;
+      timeout_ms: number;
+      sync_interval_ms: number;
+    };
+  } {
+    const state = this.config.state;
+    return {
+      backend: state?.backend ?? 'memory',
+      unavailable_policy: state?.unavailable_policy ?? 'fail_open',
+      redis: {
+        url: state?.redis?.url ?? 'redis://localhost:6379',
+        prefix: state?.redis?.prefix ?? 'siftgate:state:',
+        timeout_ms: state?.redis?.timeout_ms ?? 500,
+        sync_interval_ms: state?.redis?.sync_interval_ms ?? 2000,
+      },
     };
   }
 

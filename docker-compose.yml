@@ -30,3 +30,22 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: siftgate-redis
+    profiles: ["redis"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis-data:

@@ -207,6 +207,37 @@ describe('PromptCacheService', () => {
     });
   });
 
+  describe('shared state backend', () => {
+    it('should read and write Redis shared cache entries when configured', async () => {
+      const config = mockConfigService();
+      const req = makeRequest('redis cache');
+      const resp = makeCanonicalResponse();
+      const state = {
+        isRedisConfigured: jest.fn().mockReturnValue(true),
+        getJson: jest.fn().mockResolvedValue({
+          response: resp,
+          createdAt: Date.now(),
+          sizeBytes: 100,
+        }),
+        setJson: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+        clearNamespace: jest.fn().mockResolvedValue(undefined),
+      };
+      const svc = new PromptCacheService(config, state as any);
+
+      await expect(svc.lookupAsync(req)).resolves.toEqual(resp);
+      await svc.storeAsync(req, resp);
+
+      expect(state.getJson).toHaveBeenCalledWith('prompt_cache', expect.any(String));
+      expect(state.setJson).toHaveBeenCalledWith(
+        'prompt_cache',
+        expect.any(String),
+        expect.objectContaining({ response: resp }),
+        300,
+      );
+    });
+  });
+
   // ── buildKey ─────────────────────────────────────────────
 
   describe('buildKey', () => {

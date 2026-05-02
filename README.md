@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.4.0**.
+Current open-source release: **v0.4.0**. The v0.5 development branch adds optional Redis shared runtime state for multi-instance deployments.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -90,6 +90,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Circuit breaker** — automatically stops sending requests to failing providers
 - **Per-node concurrency limits** — cap in-flight upstream requests and choose whether overflow waits, falls back, or returns 429
 - **Active health probing** — optional per-node probes catch upstream outages before user traffic hits them
+- **Shared runtime state** — optional Redis backend for circuit breakers, rate limits, prompt cache, and routing momentum
 - **Health monitoring** — real-time health, probe, and circuit breaker status for all configured nodes
 - **Graceful degradation** — the system continues working even when some providers are down
 
@@ -388,6 +389,25 @@ hot_reload:
 ```
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
+### Shared State Backend
+
+SiftGate defaults to local memory for all runtime state, so the open-source Data Plane stays single-node friendly and needs no extra services. For horizontally scaled deployments, enable Redis shared state:
+
+```yaml
+state:
+  backend: redis # memory | redis
+  unavailable_policy: fail_open # fail_open | fail_closed
+  redis:
+    url: ${REDIS_URL:-redis://localhost:6379}
+    prefix: siftgate:state:
+    timeout_ms: 500
+    sync_interval_ms: 2000
+```
+
+Redis-backed state shares API key/IP rate limits, prompt-cache entries, circuit breaker status, and routing momentum across gateway instances. `fail_open` keeps traffic flowing when Redis is unavailable; `fail_closed` rejects rate-limited paths and treats circuits as unavailable until Redis recovers.
+
+See [Shared State Backend](docs/STATE_BACKEND.md) for Docker and failure-policy details.
 
 ### Plugins
 
@@ -967,6 +987,12 @@ npm run smoke:docker
 ```
 
 It builds the image, starts a mock upstream, creates a Dashboard-managed Gateway API key, verifies `auto` and direct routing, checks billing attribution by `api_key_id`, and confirms SQLite persistence after restart.
+
+To try the optional Redis state backend locally, uncomment the `state` block in `gateway.config.yaml`, set `REDIS_URL=redis://redis:6379` in `.env`, and start Compose with the Redis profile:
+
+```bash
+docker compose --profile redis up -d --build
+```
 
 ### Using Dockerfile directly
 

@@ -379,3 +379,35 @@ describe('CircuitBreakerService — reset', () => {
     expect(cb.getCircuitState('claude', 'claude-3')).toBe(CircuitState.CLOSED);
   });
 });
+
+describe('CircuitBreakerService — shared state backend', () => {
+  it('should persist circuit state to shared backend when configured', () => {
+    const state = {
+      isRedisConfigured: jest.fn().mockReturnValue(true),
+      shouldFailClosed: jest.fn().mockReturnValue(false),
+      setHashJson: jest.fn().mockResolvedValue(undefined),
+      deleteHashField: jest.fn().mockResolvedValue(undefined),
+      clearHash: jest.fn().mockResolvedValue(undefined),
+    };
+    const cb = new CircuitBreakerService(undefined as any, undefined as any, state as any);
+
+    cb.recordFailure('openai', 'gpt-4o');
+
+    expect(state.setHashJson).toHaveBeenCalledWith(
+      'circuit_breaker',
+      'circuits',
+      'openai:gpt-4o',
+      expect.objectContaining({ consecutiveFailures: 1 }),
+    );
+  });
+
+  it('should fail closed when Redis state backend is unavailable', () => {
+    const state = {
+      isRedisConfigured: jest.fn().mockReturnValue(true),
+      shouldFailClosed: jest.fn().mockReturnValue(true),
+    };
+    const cb = new CircuitBreakerService(undefined as any, undefined as any, state as any);
+
+    expect(cb.isAvailable('openai', 'gpt-4o')).toBe(false);
+  });
+});

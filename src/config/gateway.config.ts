@@ -33,8 +33,34 @@ export interface GatewayConfig {
   /** Optional external call-log sinks — disabled by default */
   logging?: LoggingConfig;
 
+  /** Optional shared runtime state backend — memory by default */
+  state?: StateBackendConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
+}
+
+// ===== Shared State Backend =====
+export type StateBackendType = 'memory' | 'redis';
+export type StateUnavailablePolicy = 'fail_open' | 'fail_closed';
+
+export interface StateBackendConfig {
+  /** Runtime state backend (default: memory). Redis is optional for multi-instance deployments. */
+  backend?: StateBackendType;
+  /** Behavior when Redis is configured but unavailable (default: fail_open). */
+  unavailable_policy?: StateUnavailablePolicy;
+  redis?: RedisStateBackendConfig;
+}
+
+export interface RedisStateBackendConfig {
+  /** redis:// or rediss:// URL. May use ${REDIS_URL}. */
+  url?: string;
+  /** Key prefix used for all SiftGate runtime state (default: siftgate:state:). */
+  prefix?: string;
+  /** Per-command timeout in milliseconds (default: 500). */
+  timeout_ms?: number;
+  /** Poll interval for sync-only local mirrors such as circuit/momentum (default: 2000). */
+  sync_interval_ms?: number;
 }
 
 // ===== Hot Reload =====

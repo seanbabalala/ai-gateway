@@ -259,4 +259,38 @@ describe('RateLimitGuard', () => {
     const windows = (guard as any).windows as Map<string, unknown>;
     expect(windows.size).toBe(50);
   });
+
+  it('should use shared state backend when Redis is configured', async () => {
+    const config = mockConfigService({
+      auth: {
+        api_keys: [],
+        rate_limit: { requests_per_minute: 60, requests_per_minute_ip: 2 },
+      },
+    });
+    const state = {
+      isRedisConfigured: jest.fn().mockReturnValue(true),
+      shouldFailClosed: jest.fn().mockReturnValue(false),
+      hitRateLimit: jest.fn().mockResolvedValue({
+        allowed: false,
+        count: 3,
+        limit: 2,
+        remaining: 0,
+        resetAt: 123,
+        retryAfterSec: 30,
+        degraded: false,
+      }),
+    };
+    const guard = new RateLimitGuard(config, state as any);
+
+    await expect(
+      guard.canActivate(makeContext({ ip: '10.0.0.9' })) as Promise<boolean>,
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(state.hitRateLimit).toHaveBeenCalledWith(
+      'rate_limit',
+      'ip:10.0.0.9',
+      2,
+      60_000,
+      expect.any(Number),
+    );
+  });
 });

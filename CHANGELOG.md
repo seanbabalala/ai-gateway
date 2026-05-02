@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.5 optional Redis shared state backend for circuit breakers, rate limits, prompt cache, and routing momentum while keeping memory as the default backend.
+- `state.backend`, `state.unavailable_policy`, and `state.redis` configuration with validation, Docker Compose Redis profile, and shared state docs.
+- Unit coverage for memory/Redis state behavior, Redis fail-open/fail-closed rate limiting, circuit hash writes, prompt-cache Redis entries, and momentum sorted-set writes.
 
 ## 0.4.0 - 2026-05-02
 

@@ -10,6 +10,7 @@ import { PluginModule } from './plugins/plugin.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { ControlPlaneModule } from './control-plane/control-plane.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { StateModule } from './state/state.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AlertsModule } from './alerts/alerts.module';
       exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}'],
     }),
     ConfigModule,
+    StateModule,
     DatabaseModule,
     TelemetryModule,
     ControlPlaneModule,

@@ -6,8 +6,14 @@
 // to provide "momentum" — the session tends to stay at a similar tier.
 // ===================================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  Optional,
+} from '@nestjs/common';
 import { Tier } from '../canonical/canonical.types';
+import { StateBackendService } from '../state/state-backend.service';
 
 // Map tier to numeric value for averaging
 const TIER_VALUES: Record<Tier, number> = {
@@ -31,12 +37,12 @@ const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes — expire stale sessions
 const MOMENTUM_WEIGHT = 0.3;  // How much history influences current tier (0 = no momentum, 1 = full momentum)
 
 @Injectable()
-export class MomentumService {
+export class MomentumService implements OnModuleDestroy {
   private readonly logger = new Logger(MomentumService.name);
   private readonly sessions = new Map<string, SessionHistory>();
   private cleanupInterval: ReturnType<typeof setInterval>;
 
-  constructor() {
+  constructor(@Optional() private readonly stateBackend?: StateBackendService) {
     // Periodic cleanup of stale sessions
     this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
     this.cleanupInterval.unref?.();
@@ -100,22 +106,66 @@ export class MomentumService {
 
   private recordTier(sessionKey: string, tier: Tier): void {
     const history = this.getHistory(sessionKey);
-    history.tiers.push({ tier, timestamp: Date.now() });
-    history.lastAccess = Date.now();
+    const entry = { tier, timestamp: Date.now() };
+    history.tiers.push(entry);
+    history.lastAccess = entry.timestamp;
 
     // Keep only the last N entries
     if (history.tiers.length > MAX_HISTORY) {
       history.tiers = history.tiers.slice(-MAX_HISTORY);
+    }
+
+    if (this.stateBackend?.isRedisConfigured()) {
+      this.stateBackend
+        .addSortedJson(
+          'momentum',
+          sessionKey,
+          entry,
+          entry.timestamp,
+          MAX_HISTORY,
+          SESSION_TTL_MS,
+        )
+        .catch((err) =>
+          this.logger.warn(`Momentum state write skipped: ${(err as Error).message}`),
+        );
     }
   }
 
   private getHistory(sessionKey: string): SessionHistory {
     if (!this.sessions.has(sessionKey)) {
       this.sessions.set(sessionKey, { tiers: [], lastAccess: Date.now() });
+      this.hydrateSessionFromState(sessionKey);
     }
     const history = this.sessions.get(sessionKey)!;
     history.lastAccess = Date.now();
     return history;
+  }
+
+  private hydrateSessionFromState(sessionKey: string): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    this.stateBackend
+      .getSortedJson<{ tier: Tier; timestamp: number }>('momentum', sessionKey)
+      .then((entries) => {
+        const valid = entries.filter((entry) => this.isMomentumEntry(entry));
+        if (valid.length === 0) return;
+        this.sessions.set(sessionKey, {
+          tiers: valid.slice(-MAX_HISTORY),
+          lastAccess: Date.now(),
+        });
+      })
+      .catch((err) =>
+        this.logger.warn(`Momentum state read skipped: ${(err as Error).message}`),
+      );
+  }
+
+  private isMomentumEntry(value: unknown): value is { tier: Tier; timestamp: number } {
+    const entry = value as { tier: Tier; timestamp: number };
+    return (
+      entry !== null &&
+      typeof entry === 'object' &&
+      Object.prototype.hasOwnProperty.call(TIER_VALUES, entry.tier) &&
+      typeof entry.timestamp === 'number'
+    );
   }
 
   private cleanup(): void {

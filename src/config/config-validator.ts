@@ -56,6 +56,8 @@ const ALERT_EVENTS = new Set([
 ]);
 const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
+const STATE_BACKENDS = new Set(['memory', 'redis']);
+const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
 const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
@@ -203,6 +205,7 @@ export function validateConfigObject(
   validateBudget(config.budget, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
+  validateState(config.state, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
@@ -1856,6 +1859,150 @@ function validateLogging(
   logging.sinks.forEach((sink, index) =>
     validateLogSink(sink, `logging.sinks[${index}]`, issues),
   );
+}
+
+function validateState(
+  state: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (state === undefined) return;
+  if (!isRecord(state)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'state must be an object.',
+        'state',
+      ),
+    );
+    return;
+  }
+
+  const backend = state.backend ?? 'memory';
+  if (!isNonEmptyString(backend) || !STATE_BACKENDS.has(backend)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_backend',
+        'state.backend must be "memory" or "redis".',
+        'state.backend',
+      ),
+    );
+  }
+
+  if (
+    state.unavailable_policy !== undefined &&
+    (!isNonEmptyString(state.unavailable_policy) ||
+      !STATE_UNAVAILABLE_POLICIES.has(state.unavailable_policy))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_unavailable_policy',
+        'state.unavailable_policy must be "fail_open" or "fail_closed".',
+        'state.unavailable_policy',
+      ),
+    );
+  }
+
+  if (state.redis !== undefined && !isRecord(state.redis)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis',
+        'state.redis must be an object.',
+        'state.redis',
+      ),
+    );
+    return;
+  }
+
+  if (backend !== 'redis') return;
+
+  const redis = isRecord(state.redis) ? state.redis : undefined;
+  if (!redis || !isNonEmptyString(redis.url)) {
+    issues.push(
+      issue(
+        'error',
+        'missing_required_field',
+        'state.redis.url is required when state.backend is "redis".',
+        'state.redis.url',
+      ),
+    );
+  } else {
+    validateRedisStateUrl(redis.url, issues);
+  }
+
+  if (
+    redis?.prefix !== undefined &&
+    (!isNonEmptyString(redis.prefix) || redis.prefix.includes(' '))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis_prefix',
+        'state.redis.prefix must be a non-empty string without spaces.',
+        'state.redis.prefix',
+      ),
+    );
+  }
+
+  for (const field of ['timeout_ms', 'sync_interval_ms']) {
+    if (
+      redis?.[field] !== undefined &&
+      (!isFiniteNumber(redis[field]) || redis[field] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_state_redis_number',
+          `state.redis.${field} must be a positive number.`,
+          `state.redis.${field}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateRedisStateUrl(
+  value: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (HAS_ENV_REF_PATTERN.test(value)) return;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis_url',
+        'state.redis.url must be a valid redis:// or rediss:// URL.',
+        'state.redis.url',
+      ),
+    );
+    return;
+  }
+  if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis_url',
+        'state.redis.url must use redis:// or rediss://.',
+        'state.redis.url',
+      ),
+    );
+  }
+  if (url.protocol === 'redis:' && !isLocalhostUrl(url)) {
+    issues.push(
+      issue(
+        'warning',
+        'insecure_state_redis_url',
+        'state.redis.url uses plain redis:// outside localhost; use rediss:// or a private network for shared state.',
+        'state.redis.url',
+      ),
+    );
+  }
 }
 
 function validateLogSink(

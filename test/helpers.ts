@@ -116,6 +116,16 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       enabled: false,
       sinks: [],
     },
+    state: {
+      backend: 'memory',
+      unavailable_policy: 'fail_open',
+      redis: {
+        url: 'redis://localhost:6379',
+        prefix: 'siftgate:state:',
+        timeout_ms: 500,
+        sync_interval_ms: 2000,
+      },
+    },
     getNode: jest.fn().mockReturnValue(undefined),
     getModelPricing: jest.fn().mockReturnValue(undefined),
     getFullConfig: jest.fn(),
