@@ -8,8 +8,8 @@
 
 import { CircuitBreakerService, CircuitState } from '../../src/routing/circuit-breaker.service';
 
-function makeBreaker(): CircuitBreakerService {
-  return new CircuitBreakerService();
+function makeBreaker(alerts?: { emit: jest.Mock }): CircuitBreakerService {
+  return new CircuitBreakerService(alerts as any);
 }
 
 /** Trip the circuit for a node+model (3 consecutive failures = OPEN) */
@@ -42,6 +42,20 @@ describe('CircuitBreakerService — CLOSED → OPEN', () => {
     tripCircuit(cb, 'node1', 'gpt-4');
     expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.OPEN);
     expect(cb.isAvailable('node1', 'gpt-4')).toBe(false);
+  });
+
+  it('should emit circuit_open when the failure threshold trips', () => {
+    const alerts = { emit: jest.fn() };
+    const cb = makeBreaker(alerts);
+
+    tripCircuit(cb, 'node1', 'gpt-4');
+
+    expect(alerts.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'circuit_open',
+        dedupeKey: 'node1:gpt-4',
+      }),
+    );
   });
 
   it('should reset consecutive failures on success in CLOSED state', () => {
@@ -114,6 +128,21 @@ describe('CircuitBreakerService — HALF_OPEN', () => {
     cb.recordSuccess('node1', 'gpt-4');
     expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.CLOSED);
     expect(cb.isAvailable('node1', 'gpt-4')).toBe(true);
+  });
+
+  it('should emit circuit_close when HALF_OPEN recovers', () => {
+    const alerts = { emit: jest.fn() };
+    const cb = makeBreaker(alerts);
+    makeHalfOpen(cb, 'node1', 'gpt-4');
+
+    cb.recordSuccess('node1', 'gpt-4');
+
+    expect(alerts.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'circuit_close',
+        dedupeKey: 'node1:gpt-4',
+      }),
+    );
   });
 
   it('should transition HALF_OPEN → OPEN on failure', () => {

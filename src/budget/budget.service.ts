@@ -6,12 +6,13 @@
 // Supports per-key budgets alongside global limits.
 // ===================================================================
 
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
+import { AlertService } from '../alerts/alert.service';
 
 export interface BudgetStatus {
   id: number;
@@ -80,6 +81,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @InjectRepository(BudgetRule)
     private readonly budgetRepo: Repository<BudgetRule>,
+    @Optional() private readonly alerts?: AlertService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -348,6 +350,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private evaluateRules(rules: BudgetRule[], apiKeyName: string | null): void {
     for (const rule of rules) {
       if (rule.current_value >= rule.limit_value) {
+        this.alertBudgetExceeded(rule, apiKeyName);
         throw new BudgetExceededError(
           rule.type,
           rule.current_value,
@@ -389,6 +392,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(
           `Budget alert (${scope}): ${rule.type} at ${(pct * 100).toFixed(1)}% (${rule.current_value.toFixed(2)} / ${rule.limit_value})`,
         );
+        this.alertBudgetThreshold(rule, pct, apiKeyName, apiKeyId);
       }
 
       await this.budgetRepo.save(rule);
@@ -430,5 +434,66 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private sanitizeCounterValue(value: number): number {
     if (!Number.isFinite(value) || value < 0) return 0;
     return value;
+  }
+
+  private alertBudgetThreshold(
+    rule: BudgetRule,
+    percentage: number,
+    apiKeyName?: string | null,
+    apiKeyId?: string,
+  ): void {
+    this.alerts?.emit({
+      type: 'budget_threshold',
+      severity: 'warning',
+      message: `Budget threshold reached for ${rule.type}: ${(percentage * 100).toFixed(1)}%.`,
+      dedupeKey: this.budgetDedupeKey(rule, 'threshold'),
+      details: this.budgetAlertDetails(rule, apiKeyName, apiKeyId, percentage),
+    });
+  }
+
+  private alertBudgetExceeded(rule: BudgetRule, apiKeyName: string | null): void {
+    const percentage = rule.limit_value > 0
+      ? rule.current_value / rule.limit_value
+      : 0;
+    this.alerts?.emit({
+      type: 'budget_exceeded',
+      severity: 'critical',
+      message: `Budget exceeded for ${rule.type}: ${rule.current_value.toFixed(2)} / ${rule.limit_value.toFixed(2)}.`,
+      dedupeKey: this.budgetDedupeKey(rule, 'exceeded'),
+      details: this.budgetAlertDetails(
+        rule,
+        apiKeyName || rule.api_key_name,
+        rule.api_key_id || undefined,
+        percentage,
+      ),
+    });
+  }
+
+  private budgetAlertDetails(
+    rule: BudgetRule,
+    apiKeyName?: string | null,
+    apiKeyId?: string,
+    percentage?: number,
+  ): Record<string, unknown> {
+    return {
+      scope: apiKeyName || apiKeyId ? 'api_key' : 'global',
+      api_key_name: apiKeyName || null,
+      api_key_id: apiKeyId || null,
+      budget_type: rule.type,
+      current: Number(rule.current_value.toFixed(6)),
+      limit: Number(rule.limit_value.toFixed(6)),
+      percentage: Number(((percentage ?? 0) * 100).toFixed(2)),
+      alert_threshold: rule.alert_threshold,
+      reset_at: this.nextResetAt(rule)?.toISOString() || null,
+    };
+  }
+
+  private budgetDedupeKey(rule: BudgetRule, suffix: string): string {
+    return [
+      rule.api_key_id || rule.api_key_name || 'global',
+      rule.type,
+      suffix,
+      this.startOfDay(new Date(rule.period_start)).toISOString(),
+    ].join(':');
   }
 }

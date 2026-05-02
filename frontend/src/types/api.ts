@@ -187,6 +187,51 @@ export interface HealthResponse {
   budget: HealthBudgetStatus[]
 }
 
+// ── Alerts ──
+
+export type AlertEventType =
+  | 'budget_threshold'
+  | 'budget_exceeded'
+  | 'node_down'
+  | 'node_recovered'
+  | 'circuit_open'
+  | 'circuit_close'
+  | 'error_spike'
+  | 'latency_spike'
+
+export type AlertDeliveryState = 'queued' | 'sent' | 'failed' | 'debounced'
+
+export interface AlertDeliveryStatus {
+  id: string
+  event: AlertEventType
+  severity: 'info' | 'warning' | 'critical'
+  channel: string
+  status: AlertDeliveryState
+  attempts: number
+  timestamp: string
+  message: string
+  dedupe_key: string | null
+  last_error: string | null
+  sent_at: string | null
+}
+
+export interface AlertChannelStatus {
+  name: string
+  type: 'webhook'
+  events: AlertEventType[]
+  last_status: AlertDeliveryState | null
+  last_error: string | null
+  last_event: AlertEventType | null
+  last_sent_at: string | null
+}
+
+export interface AlertsResponse {
+  enabled: boolean
+  configured_channels: number
+  channels: AlertChannelStatus[]
+  recent: AlertDeliveryStatus[]
+}
+
 // ── Config ──
 
 export interface SplitVariant {

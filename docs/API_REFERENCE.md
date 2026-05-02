@@ -62,6 +62,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
+| `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
@@ -100,4 +101,3 @@ The OpenAPI schema is intentionally secret-safe:
 - Dashboard password input is marked `writeOnly`.
 - Dashboard password hashes and raw provider keys are not part of documented response DTOs.
 - Connected-gateway configuration remains optional and must not require private Cloud packages.
-

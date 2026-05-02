@@ -88,8 +88,9 @@ function makeService(overrides: Record<string, unknown> = {}) {
     },
   });
   const repo = mockBudgetRepo();
-  const svc = new BudgetService(config, repo as any);
-  return { svc, repo, config };
+  const alerts = (overrides as any).alerts || { emit: jest.fn() };
+  const svc = new BudgetService(config, repo as any, alerts as any);
+  return { svc, repo, config, alerts };
 }
 
 describe('BudgetService', () => {
@@ -178,7 +179,8 @@ describe('BudgetService', () => {
     });
 
     it('should throw BudgetExceededError when over budget', async () => {
-      const { svc, repo } = makeService();
+      const alerts = { emit: jest.fn() };
+      const { svc, repo } = makeService({ alerts });
       repo._store.push({
         id: 1,
         type: 'daily_tokens',
@@ -191,6 +193,12 @@ describe('BudgetService', () => {
       });
 
       await expect(svc.check()).rejects.toThrow(BudgetExceededError);
+      expect(alerts.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'budget_exceeded',
+          dedupeKey: expect.stringContaining('daily_tokens:exceeded'),
+        }),
+      );
     });
 
     it('should check only global rules when no apiKeyName passed', async () => {
@@ -379,6 +387,31 @@ describe('BudgetService', () => {
 
       expect(repo._store[0].current_value).toBe(1000);
       expect(repo._store[1].current_value).toBeCloseTo(0.05);
+    });
+
+    it('should emit budget_threshold when usage crosses the alert threshold', async () => {
+      const alerts = { emit: jest.fn() };
+      const { svc, repo } = makeService({ alerts });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100_000,
+        alert_threshold: 0.8,
+        current_value: 79_000,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+
+      await svc.record(2_000, 0);
+
+      expect(alerts.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'budget_threshold',
+          dedupeKey: expect.stringContaining('daily_tokens:threshold'),
+        }),
+      );
     });
 
     it('should only update global rules when no apiKeyName', async () => {

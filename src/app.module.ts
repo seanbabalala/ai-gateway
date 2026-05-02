@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { PluginModule } from './plugins/plugin.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { ControlPlaneModule } from './control-plane/control-plane.module';
+import { AlertsModule } from './alerts/alerts.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ControlPlaneModule } from './control-plane/control-plane.module';
     DatabaseModule,
     TelemetryModule,
     ControlPlaneModule,
+    AlertsModule,
     PluginModule,
     AuthModule,
     IngestModule,

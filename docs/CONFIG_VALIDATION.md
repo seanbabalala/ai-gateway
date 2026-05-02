@@ -54,6 +54,8 @@ hardening visible without blocking local development.
 - Split weights, which must sum to `100`.
 - `routing.domain_preferences` references to known node ids.
 - Pricing entries with numeric `input` and `output` values.
+- `alerts` webhook channel shape, supported event names, debounce values,
+  retry controls, and spike detector thresholds.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

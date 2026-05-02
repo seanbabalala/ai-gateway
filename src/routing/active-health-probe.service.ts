@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import {
   HealthCheckMethod,
@@ -6,6 +6,7 @@ import {
   NodeHealthCheckConfig,
 } from '../config/gateway.config';
 import { CircuitBreakerService } from './circuit-breaker.service';
+import { AlertService } from '../alerts/alert.service';
 
 export type ActiveProbeStatus = 'disabled' | 'unknown' | 'healthy' | 'unhealthy';
 
@@ -40,6 +41,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly circuitBreaker: CircuitBreakerService,
+    @Optional() private readonly alerts?: AlertService,
   ) {}
 
   onModuleInit(): void {
@@ -265,6 +267,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     check: NormalizedHealthCheck,
     latencyMs: number,
   ): ActiveHealthProbeSnapshot {
+    const previous = this.statuses.get(node.id);
     const now = new Date().toISOString();
     const snapshot: ActiveHealthProbeSnapshot = {
       enabled: true,
@@ -280,6 +283,21 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     this.statuses.set(node.id, snapshot);
     for (const model of this.modelsForCircuit(node)) {
       this.circuitBreaker.recordProbeSuccess(node.id, model);
+    }
+    if (previous?.status === 'unhealthy') {
+      this.alerts?.emit({
+        type: 'node_recovered',
+        severity: 'info',
+        message: `Node recovered: ${node.id}.`,
+        dedupeKey: node.id,
+        details: {
+          node_id: node.id,
+          method: check.method,
+          target: this.describeTarget(node, check),
+          latency_ms: latencyMs,
+          previous_failure_reason: previous.failure_reason,
+        },
+      });
     }
     return snapshot;
   }
@@ -305,6 +323,22 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     this.statuses.set(node.id, snapshot);
     for (const model of this.modelsForCircuit(node)) {
       this.circuitBreaker.markUnavailable(node.id, model, reason);
+    }
+    if (previous?.status !== 'unhealthy') {
+      this.alerts?.emit({
+        type: 'node_down',
+        severity: 'critical',
+        message: `Node down: ${node.id} (${reason}).`,
+        dedupeKey: node.id,
+        details: {
+          node_id: node.id,
+          method: check.method,
+          target: this.describeTarget(node, check),
+          latency_ms: latencyMs,
+          failure_reason: reason,
+          consecutive_failures: snapshot.consecutive_failures,
+        },
+      });
     }
     return snapshot;
   }

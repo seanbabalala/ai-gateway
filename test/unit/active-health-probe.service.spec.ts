@@ -20,14 +20,14 @@ function makeNode(overrides: Partial<NodeConfig> = {}): NodeConfig {
   };
 }
 
-function makeService(nodes: NodeConfig[]) {
+function makeService(nodes: NodeConfig[], alerts: { emit: jest.Mock } = { emit: jest.fn() }) {
   const config = {
     nodes,
     getNode: jest.fn((nodeId: string) => nodes.find((node) => node.id === nodeId)),
   };
   const circuitBreaker = new CircuitBreakerService();
-  const service = new ActiveHealthProbeService(config as any, circuitBreaker);
-  return { service, circuitBreaker, config };
+  const service = new ActiveHealthProbeService(config as any, circuitBreaker, alerts as any);
+  return { service, circuitBreaker, config, alerts };
 }
 
 function mockFetchResponse(status: number, body = ''): jest.Mock {
@@ -92,12 +92,13 @@ describe('ActiveHealthProbeService', () => {
 
   it('marks all node models unavailable when a probe fails', async () => {
     global.fetch = mockFetchResponse(503, 'maintenance') as any;
+    const alerts = { emit: jest.fn() };
     const { service, circuitBreaker } = makeService([
       makeNode({
         models: ['gpt-4o', 'gpt-4o-mini'],
         health_check: { enabled: true, method: 'GET', path: '/ready' },
       }),
-    ]);
+    ], alerts);
 
     const status = await service.probeNode('openai');
 
@@ -105,6 +106,12 @@ describe('ActiveHealthProbeService', () => {
     expect(status.failure_reason).toContain('HTTP 503');
     expect(circuitBreaker.getCircuitState('openai', 'gpt-4o')).toBe(CircuitState.OPEN);
     expect(circuitBreaker.getCircuitState('openai', 'gpt-4o-mini')).toBe(CircuitState.OPEN);
+    expect(alerts.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'node_down',
+        dedupeKey: 'openai',
+      }),
+    );
   });
 
   it('closes circuits again after a recovery probe succeeds', async () => {
@@ -119,11 +126,12 @@ describe('ActiveHealthProbeService', () => {
         ok: true,
         status: 200,
         text: jest.fn().mockResolvedValue('ok'),
-      });
+    });
     global.fetch = fetchMock as any;
+    const alerts = { emit: jest.fn() };
     const { service, circuitBreaker } = makeService([
       makeNode({ health_check: { enabled: true, method: 'GET', path: '/ready' } }),
-    ]);
+    ], alerts);
 
     await service.probeNode('openai');
     expect(circuitBreaker.getCircuitState('openai', 'gpt-4o')).toBe(CircuitState.OPEN);
@@ -132,6 +140,12 @@ describe('ActiveHealthProbeService', () => {
 
     expect(recovered.status).toBe('healthy');
     expect(circuitBreaker.getCircuitState('openai', 'gpt-4o')).toBe(CircuitState.CLOSED);
+    expect(alerts.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'node_recovered',
+        dedupeKey: 'openai',
+      }),
+    );
   });
 
   it('records timeout failures and opens the circuit', async () => {

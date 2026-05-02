@@ -17,6 +17,9 @@ import {
   CacheConfig,
   ControlPlaneConfig,
   HotReloadConfig,
+  AlertsConfig,
+  AlertSpikeRuleConfig,
+  AlertLatencySpikeRuleConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
@@ -518,6 +521,31 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return {
       watch: hotReload?.watch ?? false,
       debounce_ms: hotReload?.debounce_ms ?? 500,
+    };
+  }
+
+  /** Get local webhook alerting config with conservative defaults. */
+  get alerts(): Required<Omit<AlertsConfig, 'error_spike' | 'latency_spike'>> & {
+    error_spike: Required<AlertSpikeRuleConfig>;
+    latency_spike: Required<AlertLatencySpikeRuleConfig>;
+  } {
+    const alerts = this.config.alerts;
+    return {
+      enabled: alerts?.enabled ?? false,
+      channels: alerts?.channels ?? [],
+      history_size: alerts?.history_size ?? 50,
+      error_spike: {
+        enabled: alerts?.error_spike?.enabled ?? true,
+        window_seconds: alerts?.error_spike?.window_seconds ?? 300,
+        min_requests: alerts?.error_spike?.min_requests ?? 20,
+        error_rate: alerts?.error_spike?.error_rate ?? 0.1,
+      },
+      latency_spike: {
+        enabled: alerts?.latency_spike?.enabled ?? true,
+        window_seconds: alerts?.latency_spike?.window_seconds ?? 300,
+        min_requests: alerts?.latency_spike?.min_requests ?? 20,
+        p95_ms: alerts?.latency_spike?.p95_ms ?? 10_000,
+      },
     };
   }
 

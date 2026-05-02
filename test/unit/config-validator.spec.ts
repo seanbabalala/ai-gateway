@@ -117,6 +117,116 @@ describe('config validator', () => {
       expect.arrayContaining(['duplicate_model_id', 'missing_model_pricing']),
     );
   });
+
+  it('accepts targets-only load balancing tiers without legacy primary/fallbacks', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai-a',
+            name: 'OpenAI A',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o', 'gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              strategy: 'weighted',
+              targets: [
+                { node: 'openai-a', model: 'gpt-4o', weight: 70 },
+                { node: 'openai-a', model: 'gpt-4o-mini', weight: 30 },
+              ],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o': { input: 5, output: 15 },
+          'gpt-4o-mini': { input: 0.15, output: 0.6 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('validates webhook alert channels and spike rules', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai-a',
+            name: 'OpenAI A',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai-a', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        alerts: {
+          enabled: true,
+          channels: [
+            {
+              type: 'webhook',
+              url: 'ftp://hooks.example.test',
+              events: ['node_down', 'unknown_event'],
+              debounce_seconds: -1,
+              retry: { attempts: 0, backoff_ms: -1, timeout_ms: 0 },
+            },
+          ],
+          error_spike: { enabled: true, error_rate: 2 },
+          latency_spike: { p95_ms: 0 },
+        },
+        models_pricing: { 'gpt-4o': { input: 5, output: 15 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_alert_webhook_url',
+        'invalid_alert_channel_event',
+        'invalid_alert_channel',
+        'invalid_alert_channel_retry',
+        'invalid_alert_spike_rule',
+      ]),
+    );
+  });
 });
 
 describe('siftgate validate CLI', () => {

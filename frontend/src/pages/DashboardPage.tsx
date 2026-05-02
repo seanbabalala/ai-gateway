@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   KeyRound,
   Server,
+  BellRing,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -42,6 +43,7 @@ import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useCacheStats, useClearCache } from '@/hooks/use-cache'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useConfig } from '@/hooks/use-config'
+import { useAlerts } from '@/hooks/use-alerts'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -127,6 +129,7 @@ export function DashboardPage() {
   const clearCache = useClearCache()
   const { data: apiKeysData } = useApiKeys()
   const { data: configData } = useConfig()
+  const { data: alertsData } = useAlerts()
   const colors = useThemeColors()
 
   const apiKeyOptions = [
@@ -246,6 +249,90 @@ export function DashboardPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="animate-fade-up" style={{ animationDelay: '120ms' }}>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <BellRing className="h-4 w-4 text-[var(--accent)]" />
+              <CardTitle>{t('alerts.title')}</CardTitle>
+            </div>
+            <span
+              className={
+                alertsData?.enabled
+                  ? 'rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300'
+                  : 'rounded-md bg-[var(--background-tertiary)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--foreground-dim)]'
+              }
+            >
+              {alertsData?.enabled ? t('alerts.enabled') : t('alerts.disabled')}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('alerts.channels')}
+                </div>
+                <div className="mt-1 font-mono text-[20px] font-extrabold text-[var(--foreground)]">
+                  {alertsData?.configured_channels ?? 0}
+                </div>
+              </div>
+              <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('alerts.recent')}
+                </div>
+                <div className="mt-1 font-mono text-[20px] font-extrabold text-[var(--foreground)]">
+                  {alertsData?.recent.length ?? 0}
+                </div>
+              </div>
+            </div>
+            {!alertsData || alertsData.recent.length === 0 ? (
+              <div className="flex min-h-24 items-center justify-center rounded-lg bg-[var(--background-tertiary)] text-sm text-[var(--foreground-dim)]">
+                {alertsData?.enabled ? t('alerts.empty') : t('alerts.notConfigured')}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {alertsData.recent.slice(0, 4).map((alert) => (
+                  <div
+                    key={alert.id}
+                    className="grid gap-2 rounded-lg bg-[var(--background-tertiary)] px-3.5 py-2.5 text-xs sm:grid-cols-[96px_130px_1fr_auto]"
+                  >
+                    <span className="font-mono text-[var(--foreground-dim)]">
+                      {formatTimestamp(alert.timestamp)}
+                    </span>
+                    <span className="truncate font-mono font-bold text-[var(--foreground-muted)]">
+                      {alert.event}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-[var(--foreground)]">
+                        {alert.message}
+                      </div>
+                      {alert.last_error && (
+                        <div className="mt-1 truncate text-[11px] text-red-700 dark:text-red-300">
+                          {alert.last_error}
+                        </div>
+                      )}
+                    </div>
+                    <span
+                      className={
+                        alert.status === 'sent'
+                          ? 'w-fit rounded-md bg-emerald-500/10 px-2 py-1 font-mono font-bold text-emerald-700 dark:text-emerald-300'
+                          : alert.status === 'failed'
+                            ? 'w-fit rounded-md bg-red-500/10 px-2 py-1 font-mono font-bold text-red-700 dark:text-red-300'
+                            : 'w-fit rounded-md bg-[var(--background-secondary)] px-2 py-1 font-mono font-bold text-[var(--foreground-dim)]'
+                      }
+                    >
+                      {t(`alerts.status.${alert.status}`)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

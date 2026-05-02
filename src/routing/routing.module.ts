@@ -5,9 +5,10 @@ import { MomentumService } from './momentum.service';
 import { ConcurrencyLimiterService } from './concurrency-limiter.service';
 import { ActiveHealthProbeService } from './active-health-probe.service';
 import { ConfigModule } from '../config/config.module';
+import { AlertsModule } from '../alerts/alerts.module';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, AlertsModule],
   providers: [
     RoutingService,
     CircuitBreakerService,
