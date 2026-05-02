@@ -2620,10 +2620,21 @@ function validateState(
     return;
   }
 
-  if (backend !== 'redis') return;
-
   const redis = isRecord(state.redis) ? state.redis : undefined;
-  if (!redis || !isNonEmptyString(redis.url)) {
+  if (redis?.url !== undefined) {
+    if (isNonEmptyString(redis.url)) {
+      validateRedisStateUrl(redis.url, issues);
+    } else {
+      issues.push(
+        issue(
+          'error',
+          'invalid_state_redis_url',
+          'state.redis.url must be a non-empty redis:// or rediss:// URL.',
+          'state.redis.url',
+        ),
+      );
+    }
+  } else if (backend === 'redis') {
     issues.push(
       issue(
         'error',
@@ -2632,8 +2643,6 @@ function validateState(
         'state.redis.url',
       ),
     );
-  } else {
-    validateRedisStateUrl(redis.url, issues);
   }
 
   if (

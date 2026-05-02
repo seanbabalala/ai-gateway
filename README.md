@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.4.0**. The v0.5 development branch adds optional Redis shared runtime state for multi-instance deployments.
+Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 

@@ -56,3 +56,19 @@ Useful environment variables:
 The script prints JSON with success counts, status codes, RPS, and p50/p95/p99
 latency. Keep benchmark notes with the gateway commit, node config, machine,
 provider or mock upstream, and request body so future runs can be compared.
+
+## v0.5 Known Limits
+
+- `connection.http2` is experimental and should stay disabled until each
+  upstream has been tested with streaming and non-streaming traffic.
+- Stream cache is disabled by default and only stores completed deterministic
+  streams; interrupted or partial streams are intentionally not cached.
+- Embedding batching is disabled by default and only groups requests with the
+  same routing-relevant node, model, dimensions, encoding format, user, input
+  kind, and tenant context.
+- Redis-backed cluster inventory uses `KEYS` inside the configured cluster
+  prefix. Keep the prefix narrow and the instance count modest until this is
+  replaced with a cursor-based scan.
+- Shadow traffic is asynchronous and does not participate in primary latency,
+  budgets, or routing decisions. Treat shadow results as migration evidence,
+  not as a live correctness gate.

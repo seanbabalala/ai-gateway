@@ -593,7 +593,7 @@ describe('config validator', () => {
       expect.arrayContaining([
         'invalid_state_backend',
         'invalid_redis_url',
-        'invalid_redis_config',
+        'invalid_state_redis_prefix',
         'invalid_cluster_config',
       ]),
     );

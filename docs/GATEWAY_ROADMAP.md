@@ -14,7 +14,7 @@
 | v0.2 | Resilience   | 已发布 — v0.2.0 可靠性 + 开发者体验 | ✅ Released |
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
-| v0.5 | Scale        | 高可用 + 高性能 + 企业就绪          | In progress |
+| v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 
 ---
 
@@ -520,11 +520,13 @@
 
 ## v0.5 — Scale（高可用 + 高性能 + 企业就绪）
 
+**v0.5.0 发布状态**：已完成并发布 Redis 共享状态、PostgreSQL 迁移 CLI、上游连接池、流式缓存、Embedding batching、Redis-backed cluster mode、本地 namespace 与 shadow traffic。开源版继续保持单机 memory/SQLite 默认可用，Redis/PostgreSQL/cluster/shadow 均为可选能力。
+
 ### P0：高可用
 
 #### 28. Redis 共享状态
 
-- **状态**：🚧 v0.5 开发中，已实现可选 Redis backend；memory 仍为默认
+- **状态**：✅ v0.5.0 已发布；memory 仍为默认，Redis 为可选 backend
 - **现状**：单机默认使用 in-memory；Redis 可选用于多实例共享运行时状态
 - **目标**：支持 Redis 作为共享状态后端
 - **实现方案**：
@@ -773,7 +775,7 @@
 
 ## 建议下一批启动项
 
-基于**用户价值最大 + 为后续功能奠基**的原则，v0.4.0 发布后建议优先启动：
+基于**用户价值最大 + 为后续功能奠基**的原则，v0.5.0 发布后建议优先启动：
 
 1. **内置 Playground**（最直观的用户体验提升）
 2. **结构化输出透传**（提升跨协议兼容性）

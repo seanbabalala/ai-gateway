@@ -77,3 +77,6 @@ After generation:
 ```bash
 node dist/cli/siftgate.js validate --config ./gateway.generated.yaml
 ```
+
+For v0.5 database migration from local SQLite runtime data to PostgreSQL, see
+[Production Deployment](PRODUCTION.md).
