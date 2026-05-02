@@ -83,6 +83,11 @@ nodes:
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     timeout_ms: 60000
+    # Optional per-node upstream concurrency limiter.
+    # Applies across all models routed through this node.
+    # max_concurrency: 50
+    # queue_timeout_ms: 10000
+    # queue_policy: wait # wait | fallback | reject
     # modalities: ["text", "vision"]    # Explicit modality declaration (optional)
     #   If omitted, modalities are inferred from model names.
     #   Valid values: "text", "vision", "audio"

@@ -95,6 +95,8 @@ export type NodeProtocol = 'chat_completions' | 'responses' | 'messages';
 
 export type AuthType = 'bearer' | 'x-api-key';
 
+export type QueuePolicy = 'wait' | 'fallback' | 'reject';
+
 export interface NodeConfig {
   id: string;
   name: string;
@@ -105,6 +107,9 @@ export interface NodeConfig {
   auth_type?: AuthType; // Default: 'bearer' for chat_completions/responses, 'x-api-key' for messages
   models: string[];
   timeout_ms: number;
+  max_concurrency?: number; // Optional per-node upstream concurrency limit
+  queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set
+  queue_policy?: QueuePolicy; // wait (default) | fallback | reject
   headers?: Record<string, string>;
 
   /**

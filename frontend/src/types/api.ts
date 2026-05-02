@@ -99,6 +99,16 @@ export interface CircuitBreaker {
   lastFailureAt: string | null
 }
 
+export interface ConcurrencySnapshot {
+  node: string
+  model?: string
+  max_concurrency: number | null
+  queue_timeout_ms: number
+  queue_policy: 'wait' | 'fallback' | 'reject'
+  active: number
+  queued: number
+}
+
 export interface NodeInfo {
   id: string
   name: string
@@ -113,6 +123,7 @@ export interface NodeInfo {
   model_prefixes: string[]
   circuit: CircuitBreaker
   modelCircuits: Record<string, CircuitBreaker>
+  concurrency: ConcurrencySnapshot
   healthy: boolean
 }
 
@@ -154,6 +165,7 @@ export interface HealthNodeStatus {
   consecutiveFailures: number
   lastFailureAt: string | null
   healthy: boolean
+  concurrency: ConcurrencySnapshot
 }
 
 export interface HealthBudgetStatus {
@@ -302,6 +314,9 @@ export interface CreateNodeRequest {
   api_key: string
   models: string[]
   timeout_ms: number
+  max_concurrency?: number
+  queue_timeout_ms?: number
+  queue_policy?: 'wait' | 'fallback' | 'reject'
   capabilities?: string[]
   modalities?: string[]
   tags?: string[]
@@ -319,6 +334,9 @@ export interface UpdateNodeRequest {
   api_key?: string
   models?: string[]
   timeout_ms?: number
+  max_concurrency?: number
+  queue_timeout_ms?: number
+  queue_policy?: 'wait' | 'fallback' | 'reject'
   capabilities?: string[]
   modalities?: string[]
   tags?: string[]

@@ -23,6 +23,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   };
   const capabilityService = {} as any;
   const circuitBreaker = {} as any;
+  const concurrencyLimiter = {} as any;
   const budgetService = {} as any;
   const cacheService = {} as any;
   const logEventBus = {} as any;
@@ -37,7 +38,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   } as any;
 
   return new DashboardController(
-    config as any, capabilityService, circuitBreaker, budgetService,
+    config as any, capabilityService, circuitBreaker, concurrencyLimiter, budgetService,
     cacheService, logEventBus, new TelemetryService(), gatewayApiKeys, dataSource, callLogRepo,
   );
 }

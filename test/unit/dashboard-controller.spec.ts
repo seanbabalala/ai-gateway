@@ -83,6 +83,18 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...overrides.circuitBreaker,
   };
 
+  const concurrencyLimiter = {
+    getNodeStats: jest.fn().mockImplementation((node: any) => ({
+      node: node.id,
+      max_concurrency: node.max_concurrency ?? null,
+      queue_timeout_ms: node.queue_timeout_ms ?? 10000,
+      queue_policy: node.queue_policy ?? 'wait',
+      active: 0,
+      queued: 0,
+    })),
+    ...overrides.concurrencyLimiter,
+  };
+
   const budgetService = {
     getStatus: jest.fn().mockResolvedValue([]),
     resetRule: jest.fn().mockResolvedValue(undefined),
@@ -122,6 +134,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     config,
     capabilityService as any,
     circuitBreaker as any,
+    concurrencyLimiter as any,
     budgetService as any,
     cacheService as any,
     logEventBus as any,
@@ -131,7 +144,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     callLogRepo as any,
   );
 
-  return { controller, config, circuitBreaker, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
+  return { controller, config, circuitBreaker, concurrencyLimiter, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -383,6 +396,9 @@ describe('DashboardController — nodes', () => {
     expect(result.nodes[0].healthy).toBe(true);
     expect(result.nodes[0].capabilities).toBeDefined();
     expect(result.nodes[0].modalities).toBeDefined();
+    expect(result.nodes[0].concurrency).toEqual(
+      expect.objectContaining({ active: 0, queued: 0 }),
+    );
     expect(result.diagnostics).toEqual([]);
   });
 
@@ -420,11 +436,28 @@ describe('DashboardController — nodes', () => {
 describe('DashboardController — Node CRUD', () => {
   it('should create a node', () => {
     const { controller, config } = makeDashboard();
-    const dto = { id: 'new-node', name: 'New', protocol: 'chat_completions', base_url: 'https://example.com', endpoint: '/v1/chat/completions', api_key: 'sk-new', models: ['model-1'] } as any;
+    const dto = {
+      id: 'new-node',
+      name: 'New',
+      protocol: 'chat_completions',
+      base_url: 'https://example.com',
+      endpoint: '/v1/chat/completions',
+      api_key: 'sk-new',
+      models: ['model-1'],
+      max_concurrency: 3,
+      queue_timeout_ms: 250,
+      queue_policy: 'fallback',
+    } as any;
     const result = controller.createNode(dto);
 
     expect(result.success).toBe(true);
-    expect(config.addNode).toHaveBeenCalled();
+    expect(config.addNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        max_concurrency: 3,
+        queue_timeout_ms: 250,
+        queue_policy: 'fallback',
+      }),
+    );
   });
 
   it('should throw on duplicate node creation', () => {
