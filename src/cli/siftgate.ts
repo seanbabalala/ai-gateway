@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import * as path from 'path';
+import * as path from "path";
 import {
   ConfigValidationIssue,
   ConfigValidationResult,
   validateConfigFile,
-} from '../config/config-validator';
+} from "../config/config-validator";
+import {
+  LiteLlmMigrationResult,
+  formatMigrationReport,
+  migrateLiteLlmConfigFile,
+} from "./litellm-migrator";
 import {
   CommandRunner,
   DEFAULT_PLUGINS_CONFIG,
@@ -13,7 +18,7 @@ import {
   PluginManager,
   PluginRemoveResult,
   defaultCommandRunner,
-} from './plugin-manager';
+} from "./plugin-manager";
 
 interface CliIO {
   cwd: string;
@@ -31,7 +36,7 @@ interface ValidateArgs {
 }
 
 interface PluginArgs {
-  action?: 'install' | 'list' | 'remove';
+  action?: "install" | "list" | "remove";
   target?: string;
   configPath?: string;
   json: boolean;
@@ -39,6 +44,16 @@ interface PluginArgs {
   required?: boolean;
   force: boolean;
   npmInstall: boolean;
+}
+
+interface MigrateArgs {
+  from?: string;
+  configPath?: string;
+  outputPath?: string;
+  overwrite: boolean;
+  dryRun: boolean;
+  json: boolean;
+  help: boolean;
 }
 
 const DEFAULT_IO: CliIO = {
@@ -57,17 +72,21 @@ export async function runCli(
   const cli = { ...DEFAULT_IO, ...io };
   const [command, ...args] = argv;
 
-  if (!command || command === '--help' || command === '-h') {
+  if (!command || command === "--help" || command === "-h") {
     cli.stdout(formatUsage());
     return command ? 0 : 1;
   }
 
-  if (command === 'validate') {
+  if (command === "validate") {
     return runValidateCommand(args, cli);
   }
 
-  if (command === 'plugin') {
+  if (command === "plugin") {
     return runPluginCommand(args, cli);
+  }
+
+  if (command === "migrate") {
+    return runMigrateCommand(args, cli);
   }
 
   cli.stderr(`Unknown command: ${command}`);
@@ -80,7 +99,7 @@ function runValidateCommand(args: string[], cli: CliIO): number {
   try {
     parsedArgs = parseValidateArgs(args);
   } catch (error) {
-    cli.stderr(error instanceof Error ? error.message : 'Invalid arguments.');
+    cli.stderr(error instanceof Error ? error.message : "Invalid arguments.");
     cli.stderr(formatValidateUsage());
     return 1;
   }
@@ -110,7 +129,7 @@ async function runPluginCommand(args: string[], cli: CliIO): Promise<number> {
   try {
     parsedArgs = parsePluginArgs(args);
   } catch (error) {
-    cli.stderr(error instanceof Error ? error.message : 'Invalid arguments.');
+    cli.stderr(error instanceof Error ? error.message : "Invalid arguments.");
     cli.stderr(formatPluginUsage());
     return 1;
   }
@@ -129,9 +148,11 @@ async function runPluginCommand(args: string[], cli: CliIO): Promise<number> {
   });
 
   try {
-    if (parsedArgs.action === 'install') {
+    if (parsedArgs.action === "install") {
       if (!parsedArgs.target) {
-        throw new Error('plugin install requires a local path or npm package name.');
+        throw new Error(
+          "plugin install requires a local path or npm package name.",
+        );
       }
       const result = await manager.install(parsedArgs.target, {
         required: parsedArgs.required,
@@ -146,7 +167,7 @@ async function runPluginCommand(args: string[], cli: CliIO): Promise<number> {
       return 0;
     }
 
-    if (parsedArgs.action === 'list') {
+    if (parsedArgs.action === "list") {
       const result = manager.list();
       cli.stdout(
         parsedArgs.json
@@ -157,7 +178,9 @@ async function runPluginCommand(args: string[], cli: CliIO): Promise<number> {
     }
 
     if (!parsedArgs.target) {
-      throw new Error('plugin remove requires a plugin name, package, or path.');
+      throw new Error(
+        "plugin remove requires a plugin name, package, or path.",
+      );
     }
     const result = manager.remove(parsedArgs.target);
     cli.stdout(
@@ -167,9 +190,64 @@ async function runPluginCommand(args: string[], cli: CliIO): Promise<number> {
     );
     return 0;
   } catch (error) {
-    cli.stderr(error instanceof Error ? error.message : 'Plugin command failed.');
+    cli.stderr(
+      error instanceof Error ? error.message : "Plugin command failed.",
+    );
     return 1;
   }
+}
+
+async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
+  let parsedArgs: MigrateArgs;
+  try {
+    parsedArgs = parseMigrateArgs(args);
+  } catch (error) {
+    cli.stderr(error instanceof Error ? error.message : "Invalid arguments.");
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
+
+  if (parsedArgs.help) {
+    cli.stdout(formatMigrateUsage());
+    return 0;
+  }
+
+  if (parsedArgs.from !== "litellm") {
+    cli.stderr("Only --from litellm is supported.");
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
+  if (!parsedArgs.configPath) {
+    cli.stderr("--config is required for migrate.");
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
+
+  let result: LiteLlmMigrationResult;
+  try {
+    result = migrateLiteLlmConfigFile({
+      configPath: parsedArgs.configPath,
+      cwd: cli.cwd,
+      outputPath: parsedArgs.outputPath,
+      overwrite: parsedArgs.overwrite,
+      write: !parsedArgs.dryRun,
+    });
+  } catch (error) {
+    cli.stderr(error instanceof Error ? error.message : "Migration failed.");
+    return 1;
+  }
+
+  if (parsedArgs.json) {
+    cli.stdout(JSON.stringify(toJsonMigrationResult(result), null, 2));
+  } else {
+    cli.stdout(formatMigrationReport(result));
+    if (parsedArgs.dryRun) {
+      cli.stdout("");
+      cli.stdout(result.yaml);
+    }
+  }
+
+  return result.report.incompatible.length === 0 ? 0 : 2;
 }
 
 function parseValidateArgs(args: string[]): ValidateArgs {
@@ -177,27 +255,27 @@ function parseValidateArgs(args: string[]): ValidateArgs {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === '--help' || arg === '-h') {
+    if (arg === "--help" || arg === "-h") {
       parsed.help = true;
       continue;
     }
-    if (arg === '--json') {
+    if (arg === "--json") {
       parsed.json = true;
       continue;
     }
-    if (arg === '--config' || arg === '-c') {
+    if (arg === "--config" || arg === "-c") {
       const value = args[index + 1];
-      if (!value || value.startsWith('-')) {
+      if (!value || value.startsWith("-")) {
         throw new Error(`${arg} requires a path.`);
       }
       parsed.configPath = value;
       index += 1;
       continue;
     }
-    if (arg.startsWith('--config=')) {
-      const value = arg.slice('--config='.length);
+    if (arg.startsWith("--config=")) {
+      const value = arg.slice("--config=".length);
       if (!value) {
-        throw new Error('--config requires a path.');
+        throw new Error("--config requires a path.");
       }
       parsed.configPath = value;
       continue;
@@ -217,60 +295,60 @@ function parsePluginArgs(args: string[]): PluginArgs {
   };
   const [action, ...rest] = args;
 
-  if (!action || action === '--help' || action === '-h') {
-    parsed.help = action === '--help' || action === '-h';
+  if (!action || action === "--help" || action === "-h") {
+    parsed.help = action === "--help" || action === "-h";
     return parsed;
   }
 
-  if (!['install', 'list', 'remove'].includes(action)) {
+  if (!["install", "list", "remove"].includes(action)) {
     throw new Error(`Unknown plugin command: ${action}`);
   }
-  parsed.action = action as PluginArgs['action'];
+  parsed.action = action as PluginArgs["action"];
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
-    if (arg === '--help' || arg === '-h') {
+    if (arg === "--help" || arg === "-h") {
       parsed.help = true;
       continue;
     }
-    if (arg === '--json') {
+    if (arg === "--json") {
       parsed.json = true;
       continue;
     }
-    if (arg === '--optional') {
+    if (arg === "--optional") {
       parsed.required = false;
       continue;
     }
-    if (arg === '--required') {
+    if (arg === "--required") {
       parsed.required = true;
       continue;
     }
-    if (arg === '--force') {
+    if (arg === "--force") {
       parsed.force = true;
       continue;
     }
-    if (arg === '--no-npm-install') {
+    if (arg === "--no-npm-install") {
       parsed.npmInstall = false;
       continue;
     }
-    if (arg === '--config' || arg === '-c') {
+    if (arg === "--config" || arg === "-c") {
       const value = rest[index + 1];
-      if (!value || value.startsWith('-')) {
+      if (!value || value.startsWith("-")) {
         throw new Error(`${arg} requires a path.`);
       }
       parsed.configPath = value;
       index += 1;
       continue;
     }
-    if (arg.startsWith('--config=')) {
-      const value = arg.slice('--config='.length);
+    if (arg.startsWith("--config=")) {
+      const value = arg.slice("--config=".length);
       if (!value) {
-        throw new Error('--config requires a path.');
+        throw new Error("--config requires a path.");
       }
       parsed.configPath = value;
       continue;
     }
-    if (!parsed.target && !arg.startsWith('-')) {
+    if (!parsed.target && !arg.startsWith("-")) {
       parsed.target = arg;
       continue;
     }
@@ -280,21 +358,96 @@ function parsePluginArgs(args: string[]): PluginArgs {
   return parsed;
 }
 
+function parseMigrateArgs(args: string[]): MigrateArgs {
+  const parsed: MigrateArgs = {
+    overwrite: false,
+    dryRun: false,
+    json: false,
+    help: false,
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--help" || arg === "-h") {
+      parsed.help = true;
+      continue;
+    }
+    if (arg === "--json") {
+      parsed.json = true;
+      continue;
+    }
+    if (arg === "--overwrite") {
+      parsed.overwrite = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      parsed.dryRun = true;
+      continue;
+    }
+    if (arg === "--from") {
+      parsed.from = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--from=")) {
+      parsed.from = requireInlineValue(arg, "--from");
+      continue;
+    }
+    if (arg === "--config" || arg === "-c") {
+      parsed.configPath = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--config=")) {
+      parsed.configPath = requireInlineValue(arg, "--config");
+      continue;
+    }
+    if (arg === "--out" || arg === "-o") {
+      parsed.outputPath = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--out=")) {
+      parsed.outputPath = requireInlineValue(arg, "--out");
+      continue;
+    }
+    throw new Error(`Unknown migrate option: ${arg}`);
+  }
+
+  return parsed;
+}
+
+function requireValue(args: string[], index: number, flag: string): string {
+  const value = args[index + 1];
+  if (!value || value.startsWith("-")) {
+    throw new Error(`${flag} requires a value.`);
+  }
+  return value;
+}
+
+function requireInlineValue(arg: string, flag: string): string {
+  const value = arg.slice(`${flag}=`.length);
+  if (!value) {
+    throw new Error(`${flag} requires a value.`);
+  }
+  return value;
+}
+
 export function formatValidationResult(result: ConfigValidationResult): string {
   const lines = [
-    'SiftGate config validation',
+    "SiftGate config validation",
     `Config: ${path.resolve(result.configPath)}`,
-    '',
-    formatIssueGroup('Errors', result.errors),
-    '',
-    formatIssueGroup('Warnings', result.warnings),
-    '',
-    formatIssueGroup('Info', result.info),
-    '',
-    result.ok ? 'Result: OK' : 'Result: FAILED',
+    "",
+    formatIssueGroup("Errors", result.errors),
+    "",
+    formatIssueGroup("Warnings", result.warnings),
+    "",
+    formatIssueGroup("Info", result.info),
+    "",
+    result.ok ? "Result: OK" : "Result: FAILED",
   ];
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function formatIssueGroup(
@@ -308,30 +461,30 @@ function formatIssueGroup(
   return [
     `${label} (${issues.length})`,
     ...issues.map((item) => `  - ${formatIssue(item)}`),
-  ].join('\n');
+  ].join("\n");
 }
 
 function formatIssue(issue: ConfigValidationIssue): string {
-  const location = issue.path ? `${issue.path}: ` : '';
+  const location = issue.path ? `${issue.path}: ` : "";
   return `[${issue.code}] ${location}${issue.message}`;
 }
 
 function formatPluginInstallResult(result: PluginInstallResult): string {
   const lines = [
-    'SiftGate plugin install',
+    "SiftGate plugin install",
     `Config: ${result.configPath}`,
     `Plugin: ${entryLabel(result.entry)}`,
-    `Source: ${result.entry.source || 'unknown'}`,
+    `Source: ${result.entry.source || "unknown"}`,
     `Path: ${result.entry.path}`,
-    `Version: ${result.entry.version || 'unknown'}`,
-    `Required: ${result.entry.required !== false ? 'true' : 'false'}`,
-    `NPM installed: ${result.npmInstalled ? 'yes' : 'no'}`,
+    `Version: ${result.entry.version || "unknown"}`,
+    `Required: ${result.entry.required !== false ? "true" : "false"}`,
+    `NPM installed: ${result.npmInstalled ? "yes" : "no"}`,
   ];
   if (result.warnings.length > 0) {
-    lines.push('', 'Warnings:');
+    lines.push("", "Warnings:");
     lines.push(...result.warnings.map((warning) => `  - ${warning}`));
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function formatPluginListResult(
@@ -339,34 +492,32 @@ function formatPluginListResult(
   entries: ManagedPluginConfigEntry[],
 ): string {
   if (entries.length === 0) {
-    return [
-      'SiftGate plugins',
-      `Config: ${configPath}`,
-      'Plugins: none',
-    ].join('\n');
+    return ["SiftGate plugins", `Config: ${configPath}`, "Plugins: none"].join(
+      "\n",
+    );
   }
 
   return [
-    'SiftGate plugins',
+    "SiftGate plugins",
     `Config: ${configPath}`,
     ...entries.map((entry) =>
       [
         `- ${entryLabel(entry)}`,
-        `source=${entry.source || 'unknown'}`,
+        `source=${entry.source || "unknown"}`,
         `path=${entry.path}`,
-        `version=${entry.version || 'unknown'}`,
-        `required=${entry.required !== false ? 'true' : 'false'}`,
-      ].join(' '),
+        `version=${entry.version || "unknown"}`,
+        `required=${entry.required !== false ? "true" : "false"}`,
+      ].join(" "),
     ),
-  ].join('\n');
+  ].join("\n");
 }
 
 function formatPluginRemoveResult(result: PluginRemoveResult): string {
   return [
-    'SiftGate plugin remove',
+    "SiftGate plugin remove",
     `Config: ${result.configPath}`,
     ...result.removed.map((entry) => `Removed: ${entryLabel(entry)}`),
-  ].join('\n');
+  ].join("\n");
 }
 
 function entryLabel(entry: ManagedPluginConfigEntry): string {
@@ -375,7 +526,7 @@ function entryLabel(entry: ManagedPluginConfigEntry): string {
 
 function toJsonResult(
   result: ConfigValidationResult,
-): Omit<ConfigValidationResult, 'config'> {
+): Omit<ConfigValidationResult, "config"> {
   return {
     configPath: result.configPath,
     ok: result.ok,
@@ -386,48 +537,75 @@ function toJsonResult(
   };
 }
 
+function toJsonMigrationResult(result: LiteLlmMigrationResult): object {
+  return {
+    sourcePath: result.sourcePath,
+    outputPath: result.outputPath,
+    report: result.report,
+    config: result.config,
+  };
+}
+
 function formatUsage(): string {
   return [
-    'Usage:',
-    '  siftgate validate [--config gateway.config.yaml] [--json]',
+    "Usage:",
+    "  siftgate validate [--config gateway.config.yaml] [--json]",
     `  siftgate plugin install <path|@siftgate/plugin-name> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
-    '',
-    'Commands:',
-    '  validate   Validate a SiftGate gateway.config.yaml file',
-    '  plugin     Manage plugin declarations and npm/local installs',
-  ].join('\n');
+    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "",
+    "Commands:",
+    "  validate   Validate a SiftGate gateway.config.yaml file",
+    "  plugin     Manage plugin declarations and npm/local installs",
+    "  migrate    Migrate third-party gateway configs into SiftGate format",
+  ].join("\n");
 }
 
 function formatValidateUsage(): string {
   return [
-    'Usage:',
-    '  siftgate validate [--config gateway.config.yaml] [--json]',
-    '',
-    'Options:',
-    '  -c, --config <path>   Config file to validate',
-    '      --json            Print machine-readable JSON',
-    '  -h, --help            Show help',
-  ].join('\n');
+    "Usage:",
+    "  siftgate validate [--config gateway.config.yaml] [--json]",
+    "",
+    "Options:",
+    "  -c, --config <path>   Config file to validate",
+    "      --json            Print machine-readable JSON",
+    "  -h, --help            Show help",
+  ].join("\n");
 }
 
 function formatPluginUsage(): string {
   return [
-    'Usage:',
+    "Usage:",
     `  siftgate plugin install <path|@siftgate/plugin-name> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}] [--json]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
-    '',
-    'Options:',
+    "",
+    "Options:",
     `  -c, --config <path>   Plugin declaration file (default: ${DEFAULT_PLUGINS_CONFIG})`,
-    '      --json            Print machine-readable JSON',
-    '      --optional        Mark plugin as optional at gateway startup',
-    '      --required        Mark plugin as required at gateway startup',
-    '      --force           Replace an existing declaration for the same plugin',
-    '      --no-npm-install  Only write the declaration for npm packages',
-    '  -h, --help            Show help',
-  ].join('\n');
+    "      --json            Print machine-readable JSON",
+    "      --optional        Mark plugin as optional at gateway startup",
+    "      --required        Mark plugin as required at gateway startup",
+    "      --force           Replace an existing declaration for the same plugin",
+    "      --no-npm-install  Only write the declaration for npm packages",
+    "  -h, --help            Show help",
+  ].join("\n");
+}
+
+function formatMigrateUsage(): string {
+  return [
+    "Usage:",
+    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "",
+    "Options:",
+    '      --from <source>    Source config type. Currently only "litellm"',
+    "  -c, --config <path>   LiteLLM config file to migrate",
+    "  -o, --out <path>      Output SiftGate config path (default: gateway.config.yaml)",
+    "      --overwrite       Allow overwriting the output file",
+    "      --dry-run         Print generated YAML instead of writing it",
+    "      --json            Print machine-readable migration report",
+    "  -h, --help            Show help",
+  ].join("\n");
 }
 
 if (require.main === module) {

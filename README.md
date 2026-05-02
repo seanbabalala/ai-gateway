@@ -113,6 +113,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
+- **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 
@@ -319,6 +320,17 @@ The validator checks YAML parsing, required sections, node/model naming conflict
 
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 
+### LiteLLM Migration
+
+Generate a SiftGate config from an existing LiteLLM YAML file:
+
+```bash
+npm run build
+node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
+```
+
+The migrator maps `model_list`, provider/model names, API key environment references, fallbacks, router retry settings, and known routing strategies. It writes a migration report with compatible, incompatible, and manual-review items. Existing `gateway.config.yaml` is never overwritten unless `--overwrite` is passed. See [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
+
 ### Server
 
 ```yaml
@@ -382,12 +394,12 @@ SiftGate ships a lightweight MIT-licensed runtime plugin system for the open-sou
 
 The first official batch is:
 
-| Plugin | Purpose | Default behavior |
-|--------|---------|------------------|
-| `plugins/redis-cache` | Redis-backed response cache | Disabled; only stores responses when `store_responses: true` is explicit |
-| `plugins/analytics-sink` | Sanitized call-log analytics webhook | Disabled; safe metadata allow-list only |
-| `plugins/request-transform` | Local request rewrites before routing | Disabled; no-op until rules are configured |
-| `plugins/guardrails` | Local audit/block guardrails skeleton | Disabled; logs finding counts only |
+| Plugin                      | Purpose                               | Default behavior                                                         |
+| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------ |
+| `plugins/redis-cache`       | Redis-backed response cache           | Disabled; only stores responses when `store_responses: true` is explicit |
+| `plugins/analytics-sink`    | Sanitized call-log analytics webhook  | Disabled; safe metadata allow-list only                                  |
+| `plugins/request-transform` | Local request rewrites before routing | Disabled; no-op until rules are configured                               |
+| `plugins/guardrails`        | Local audit/block guardrails skeleton | Disabled; logs finding counts only                                       |
 
 Example:
 
@@ -456,11 +468,11 @@ nodes:
 
 Set `max_concurrency` on a node to limit concurrent upstream requests across all models routed through that node. When the node is full, `queue_policy` controls overflow behavior:
 
-| Policy | Behavior |
-| ------ | -------- |
-| `wait` | Queue until a slot opens, then fall back with `503` if `queue_timeout_ms` expires |
-| `fallback` | Skip the saturated node immediately and try the next configured fallback |
-| `reject` | Return `429` without trying fallbacks |
+| Policy     | Behavior                                                                          |
+| ---------- | --------------------------------------------------------------------------------- |
+| `wait`     | Queue until a slot opens, then fall back with `503` if `queue_timeout_ms` expires |
+| `fallback` | Skip the saturated node immediately and try the next configured fallback          |
+| `reject`   | Return `429` without trying fallbacks                                             |
 
 Slots are released after successful responses, provider errors, stream completion, or stream interruption. `/health`, `/api/dashboard/nodes`, and OpenTelemetry gauges expose `active` concurrency and queued depth per node.
 
@@ -551,8 +563,8 @@ nodes:
   - id: openai
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
-    max_context_tokens: 128000        # node-level default
-    structured_output: true           # node-level default
+    max_context_tokens: 128000 # node-level default
+    structured_output: true # node-level default
     model_capabilities:
       gpt-4o:
         max_context_tokens: 128000
@@ -726,7 +738,16 @@ logging:
       url: "${LOG_SINK_WEBHOOK_URL}"
       headers:
         Authorization: "Bearer ${LOG_SINK_WEBHOOK_TOKEN}"
-      fields: [request_id, timestamp, node_id, model, status_code, latency_ms, cost_usd]
+      fields:
+        [
+          request_id,
+          timestamp,
+          node_id,
+          model,
+          status_code,
+          latency_ms,
+          cost_usd,
+        ]
       retry:
         attempts: 3
         backoff_ms: 1000
@@ -736,7 +757,6 @@ logging:
 File sinks write JSONL, one sanitized call-log record per line. Webhook sinks send `siftgate.call_log_batch.v1` batches. S3 is currently a typed config placeholder, and Elasticsearch has a minimal `_bulk` exporter.
 
 By default exports include only safe call-log metadata and exclude prompt text, response text, provider API keys, raw headers, authorization values, and other secret-bearing fields. Use `fields` as an allow-list or `exclude_fields` as a deny-list for additional filtering. See [docs/LOG_SINKS.md](docs/LOG_SINKS.md).
-
 
 ## API Endpoints
 
@@ -811,23 +831,23 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 
 ### Dashboard API
 
-| Method | Endpoint                          | Description                                                                                        |
-| ------ | --------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/dashboard/stats`            | Aggregated statistics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys |
-| `GET`  | `/api/dashboard/logs`             | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
-| `GET`  | `/api/dashboard/logs/sse`         | Real-time log stream (SSE)                                                                         |
-| `GET`  | `/api/dashboard/analytics/cost`   | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
-| `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics               |
-| `GET`  | `/api/dashboard/alerts`           | Local webhook alert channels and recent delivery status                                            |
-| `GET`  | `/api/dashboard/config`           | Sanitized config (API keys masked)                                                                 |
-| `POST` | `/api/dashboard/config/reload`    | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
-| `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
-| `POST` | `/api/dashboard/api-keys`         | Create a Gateway API key                                                                           |
-| `GET`  | `/api/dashboard/nodes`            | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
-| `POST` | `/api/dashboard/nodes/:id/reset`  | Reset circuit breaker                                                                              |
-| `GET`  | `/api/dashboard/budget`           | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
-| `POST` | `/api/dashboard/budget/:id/reset` | Reset one budget rule by `budget_rule.id`                                                          |
-| `GET`  | `/health`                         | Gateway, budget, node circuit, active probe, and concurrency health                                |
+| Method | Endpoint                                 | Description                                                                                        |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys |
+| `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
+| `GET`  | `/api/dashboard/logs/sse`                | Real-time log stream (SSE)                                                                         |
+| `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
+| `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
+| `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
+| `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
+| `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
+| `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
+| `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
+| `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
+| `POST` | `/api/dashboard/nodes/:id/reset`         | Reset circuit breaker                                                                              |
+| `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
+| `POST` | `/api/dashboard/budget/:id/reset`        | Reset one budget rule by `budget_rule.id`                                                          |
+| `GET`  | `/health`                                | Gateway, budget, node circuit, active probe, and concurrency health                                |
 
 ## Dashboard
 

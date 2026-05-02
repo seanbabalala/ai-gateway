@@ -17,6 +17,10 @@
 - v0.4 official runtime plugin batch: `redis-cache`, `analytics-sink`, `request-transform`, and `guardrails`.
 - Plugin READMEs, example configs, safety notes, and official plugin documentation under `docs/plugins`.
 - Unit coverage for official plugin behavior plus plugin loader and hook executor edge cases.
+- v0.4 LiteLLM migration CLI via `siftgate migrate --from litellm --config ./litellm_config.yaml`.
+- LiteLLM YAML migration for model names, provider/model mapping, API key environment references, fallbacks, router retry settings, known routing strategies, and optional pricing.
+- Human and JSON migration reports covering compatible, incompatible, and manual-review items.
+- LiteLLM migration fixtures and unit coverage.
 
 ### Changed
 
