@@ -7,6 +7,7 @@ function makeRoutingService(overrides: {
   domainPreferences?: Record<string, string[]>;
   optimization?: any;
   nodes?: any[];
+  resolveEmbeddingModel?: any;
   circuitBreaker?: any;
   momentum?: any;
   capabilityService?: any;
@@ -31,6 +32,14 @@ function makeRoutingService(overrides: {
       { id: 'n1', tags: ['fast', 'frontend'] },
       { id: 'n2', tags: ['backend', 'reasoning'] },
     ],
+  });
+  config.resolveEmbeddingModel = overrides.resolveEmbeddingModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.embedding_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
   });
 
   const circuitBreaker = overrides.circuitBreaker || {
@@ -437,5 +446,81 @@ describe('RoutingService', () => {
         estimated_context_tokens: 5000,
       }),
     ).toThrow('No route targets for tier "standard" can fit');
+  });
+});
+
+describe('RoutingService — embeddings', () => {
+  const embeddingNodes = [
+    {
+      id: 'cheap',
+      tags: ['fast'],
+      embedding_models: ['text-embedding-3-small'],
+    },
+    {
+      id: 'quality',
+      tags: ['quality'],
+      embedding_models: ['text-embedding-3-large'],
+    },
+  ];
+
+  it('should choose the lowest priced embedding target for auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: embeddingNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          structured_output: null,
+          dimensions: model.includes('small') ? [512, 1536] : [1024, 3072],
+          pricing: model.includes('small')
+            ? { input: 0.02, output: 0 }
+            : { input: 0.13, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveEmbeddingRoute('auto', 1536);
+
+    expect(route.mode).toBe('auto');
+    expect(route.primary).toEqual({ node: 'cheap', model: 'text-embedding-3-small' });
+    expect(route.fallbacks).toHaveLength(0);
+  });
+
+  it('should filter embedding targets by requested dimensions', () => {
+    const svc = makeRoutingService({
+      nodes: embeddingNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          structured_output: null,
+          dimensions: model.includes('small') ? [512, 1536] : [1024, 3072],
+          pricing: model.includes('small')
+            ? { input: 0.02, output: 0 }
+            : { input: 0.13, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveEmbeddingRoute('auto', 3072);
+
+    expect(route.primary).toEqual({ node: 'quality', model: 'text-embedding-3-large' });
+  });
+
+  it('should resolve direct embedding models and keep compatible fallbacks', () => {
+    const svc = makeRoutingService({
+      nodes: embeddingNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          dimensions: [1536],
+          pricing: { input: 0.1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveEmbeddingRoute('text-embedding-3-small', 1536);
+
+    expect(route.mode).toBe('direct');
+    expect(route.primary).toEqual({ node: 'cheap', model: 'text-embedding-3-small' });
   });
 });

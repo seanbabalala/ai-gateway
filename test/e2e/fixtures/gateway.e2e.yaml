@@ -20,10 +20,14 @@ nodes:
     protocol: chat_completions
     base_url: http://mock-upstream.test
     endpoint: /v1/chat/completions
+    embeddings_endpoint: /v1/embeddings
     api_key: mock-openai-key
     models:
       - gpt-4o
       - gpt-4o-mini
+    embedding_models:
+      - text-embedding-3-small
+      - text-embedding-3-large
     timeout_ms: 10000
     tags:
       - code
@@ -31,6 +35,21 @@ nodes:
     model_aliases:
       gpt4: gpt-4o
       mini: gpt-4o-mini
+    model_capabilities:
+      text-embedding-3-small:
+        dimensions:
+          - 512
+          - 1536
+        pricing:
+          input: 0.02
+          output: 0
+      text-embedding-3-large:
+        dimensions:
+          - 1024
+          - 3072
+        pricing:
+          input: 0.13
+          output: 0
   - id: mock-claude
     name: Mock Claude
     protocol: messages
@@ -106,3 +125,9 @@ models_pricing:
   claude-sonnet-4-20250514:
     input: 3
     output: 15
+  text-embedding-3-small:
+    input: 0.02
+    output: 0
+  text-embedding-3-large:
+    input: 0.13
+    output: 0

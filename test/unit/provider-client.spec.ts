@@ -385,6 +385,46 @@ describe('ProviderClientService', () => {
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello!' });
     });
 
+    it('should forward embeddings to the embeddings endpoint', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          object: 'list',
+          model: 'text-embedding-3-small',
+          data: [{ object: 'embedding', index: 0, embedding: [0.1, 0.2] }],
+          usage: { prompt_tokens: 12, total_tokens: 12 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        embedding_models: ['text-embedding-3-small'],
+        embeddings_endpoint: '/v1/embeddings',
+      });
+      const result = await svc.forwardEmbeddings(
+        {
+          model: 'text-embedding-3-small',
+          input: ['hello', 'world'],
+          dimensions: 1536,
+          metadata: { source_format: 'embeddings', raw_headers: {} },
+        } as any,
+        'openai',
+        'text-embedding-3-small',
+        routingMeta,
+      );
+
+      expect(result.data[0]).toEqual({ index: 0, embedding: [0.1, 0.2] });
+      expect(result.usage.input_tokens).toBe(12);
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.openai.com/v1/embeddings');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        model: 'text-embedding-3-small',
+        input: ['hello', 'world'],
+        dimensions: 1536,
+      });
+    });
+
     it('should throw ProviderError for non-OK response', async () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: false,

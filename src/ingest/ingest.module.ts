@@ -3,6 +3,7 @@ import { ChatCompletionsController } from './chat-completions.controller';
 import { ResponsesController } from './responses.controller';
 import { MessagesController } from './messages.controller';
 import { ModelsController } from './models.controller';
+import { EmbeddingsController } from './embeddings.controller';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
@@ -13,6 +14,7 @@ import { AuthModule } from '../auth/auth.module';
     ChatCompletionsController,
     ResponsesController,
     MessagesController,
+    EmbeddingsController,
     ModelsController,
   ],
 })

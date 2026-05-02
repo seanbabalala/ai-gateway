@@ -198,6 +198,23 @@ export class FetchMock {
   // ── Default Handler ──
 
   private defaultHandler(url: string, body: Record<string, unknown>): Response {
+    if (url.includes('/v1/embeddings')) {
+      const inputs = Array.isArray(body.input) ? body.input : [body.input];
+      return new Response(JSON.stringify({
+        object: 'list',
+        model: (body.model as string) || 'text-embedding-3-small',
+        data: inputs.map((_item, index) => ({
+          object: 'embedding',
+          index,
+          embedding: [0.01 + index, 0.02 + index, 0.03 + index],
+        })),
+        usage: { prompt_tokens: inputs.length * 4, total_tokens: inputs.length * 4 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     if (url.includes('/v1/messages')) {
       return new Response(JSON.stringify({
         id: 'msg-e2e-test',
