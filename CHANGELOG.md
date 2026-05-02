@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.4 official runtime plugin batch: `redis-cache`, `analytics-sink`, `request-transform`, and `guardrails`.
+- Plugin READMEs, example configs, safety notes, and official plugin documentation under `docs/plugins`.
+- Unit coverage for official plugin behavior plus plugin loader and hook executor edge cases.
+
+### Changed
+
+- Plugin loader now resolves `plugins/<name>` directory declarations to `index.ts` in development, matching production `dist-runtime-plugins` behavior and avoiding duplicate loads.
 
 ## 0.3.0 - 2026-05-02
 

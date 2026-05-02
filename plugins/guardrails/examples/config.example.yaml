@@ -1,0 +1,11 @@
+plugins:
+  - path: plugins/guardrails
+    required: false
+    config:
+      enabled: true
+      mode: audit
+      input_patterns:
+        - "(?i)secret project"
+      output_patterns:
+        - "(?i)internal only"
+      blocked_message: This content is blocked by local guardrails policy.

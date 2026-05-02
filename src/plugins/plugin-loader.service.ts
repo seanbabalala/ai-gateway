@@ -224,10 +224,22 @@ export class PluginLoaderService implements OnModuleInit {
       ? pluginPath
       : path.resolve(process.cwd(), pluginPath);
 
-    const candidates = [absolute];
+    const looksLikeFile = path.extname(absolute) !== '';
+
+    const sourceDirectoryIndexes = [
+      path.join(absolute, 'index.js'),
+      path.join(absolute, 'index.cjs'),
+      path.join(absolute, 'index.mjs'),
+    ];
+    if (!this.isCompiledRuntime()) {
+      sourceDirectoryIndexes.push(path.join(absolute, 'index.ts'));
+    }
+    const candidates = looksLikeFile
+      ? [absolute, ...sourceDirectoryIndexes]
+      : [...sourceDirectoryIndexes, absolute];
 
     if (!this.isCompiledRuntime()) {
-      return candidates;
+      return Array.from(new Set(candidates));
     }
 
     const relativeToSource = path.isAbsolute(pluginPath)

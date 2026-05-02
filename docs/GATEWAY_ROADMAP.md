@@ -404,18 +404,19 @@
   - `plugins.config.yaml` 声明式管理
 
 #### 23. 官方插件集
-- **现状**：仅 1 个示例插件（pii-filter）
-- **目标**：提供 5-8 个高质量官方插件
-- **计划插件列表**：
+- **状态**：✅ v0.4 已交付第一批
+- **现状**：已交付首批官方插件：`redis-cache`、`analytics-sink`、`request-transform`、`guardrails` skeleton；每个插件包含 README、示例配置、测试和安全说明
+- **目标**：继续扩展到 5-8 个高质量官方插件
+- **插件列表**：
 
 | 插件名 | 功能 |
 |--------|------|
-| `@siftgate/plugin-redis-cache` | Redis 分布式缓存替代内存 LRU |
-| `@siftgate/plugin-guardrails` | 输入/输出内容安全检查 |
+| `plugins/redis-cache` | ✅ Redis 分布式缓存替代内存 LRU；默认不写响应，需显式 `store_responses: true` |
+| `plugins/guardrails` | ✅ 输入/输出内容安全检查 skeleton；默认本地 audit/no-op |
+| `plugins/request-transform` | ✅ 请求自定义变换；仅本地改写 |
+| `plugins/analytics-sink` | ✅ 安全 call-log 元数据推送到 webhook；默认不发送 prompt/response |
 | `@siftgate/plugin-prompt-template` | 系统 prompt 注入 / 模板管理 |
 | `@siftgate/plugin-cost-alerting` | 实时成本 webhook 通知 |
-| `@siftgate/plugin-request-transform` | 请求/响应自定义变换 |
-| `@siftgate/plugin-analytics-sink` | 日志推送到 ES/S3/Webhook |
 | `@siftgate/plugin-model-router` | 自定义路由逻辑覆盖 |
 | `@siftgate/plugin-rate-limit-advanced` | 滑动窗口 + Token-based 限流 |
 
@@ -618,7 +619,7 @@
 | 13 | 自适应路由 | ⭐⭐⭐⭐⭐ | 大 | ✅ v0.3.0 |
 | 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | ✅ v0.3.0 |
 | 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |
-| 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | 🔵 v0.4 |
+| 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | ✅ v0.4 |
 | 28 | Redis 共享状态 | ⭐⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
 | 31 | HTTP/2 连接池 | ⭐⭐⭐ | 中 | 🟣 v0.5 |
 | 35 | 多租户隔离 | ⭐⭐⭐⭐ | 大 | 🟣 v0.5 |

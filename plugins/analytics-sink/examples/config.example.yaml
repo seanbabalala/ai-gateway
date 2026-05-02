@@ -1,0 +1,11 @@
+plugins:
+  - path: plugins/analytics-sink
+    required: false
+    config:
+      enabled: true
+      endpoint: ${ANALYTICS_SINK_URL}
+      headers:
+        Authorization: Bearer ${ANALYTICS_SINK_TOKEN}
+      batch_size: 50
+      flush_interval_ms: 5000
+      timeout_ms: 3000

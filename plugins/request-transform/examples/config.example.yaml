@@ -1,0 +1,16 @@
+plugins:
+  - path: plugins/request-transform
+    required: false
+    config:
+      enabled: true
+      rules:
+        - name: low-temp-for-tools
+          when:
+            has_tools: true
+          set:
+            temperature: 0
+        - name: redact-local-ticket-prefix
+          replacements:
+            - pattern: "TICKET-[0-9]+"
+              with: "TICKET-[redacted]"
+              roles: ["user"]
