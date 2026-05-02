@@ -442,6 +442,14 @@ nodes:
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
     queue_policy: wait # wait (default) | fallback | reject
+    connection: # Optional undici pool; omit to keep default fetch behavior
+      enabled: true
+      keep_alive: true
+      pool_size: 10
+      keep_alive_ms: 60000
+      headers_timeout_ms: 30000
+      body_timeout_ms: 300000
+      http2: false # Experimental
     health_check: # Optional active probe, disabled by default
       enabled: false
       interval_seconds: 30
@@ -464,6 +472,25 @@ nodes:
 | `messages` | Anthropic Messages | Anthropic Claude |
 
 `/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+
+### Upstream Connection Pooling
+
+By default SiftGate keeps the existing `fetch` behavior. Add `nodes[].connection` when a high-throughput node should use an undici per-node pool:
+
+```yaml
+nodes:
+  - id: openai-prod
+    connection:
+      enabled: true
+      keep_alive: true
+      pool_size: 20
+      keep_alive_ms: 60000
+      headers_timeout_ms: 30000
+      body_timeout_ms: 300000
+      http2: false
+```
+
+`pool_size` caps open sockets for that upstream node, `headers_timeout_ms` limits the wait for response headers, and `body_timeout_ms` limits idle time between body chunks for both streaming and non-streaming responses. `http2: true` enables undici HTTP/2 ALPN support as an experimental opt-in.
 
 ### Per-Node Concurrency Control
 

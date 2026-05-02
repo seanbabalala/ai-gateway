@@ -35,6 +35,57 @@ describe('config validator', () => {
     expect(codes(result.errors)).toContain('yaml_parse_error');
   });
 
+  it('validates upstream connection pool settings', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+            connection: {
+              enabled: true,
+              keep_alive: true,
+              pool_size: 10,
+              keep_alive_ms: 60000,
+              headers_timeout_ms: 5000,
+              body_timeout_ms: 0,
+              http2: true,
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 2.5, output: 10 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_node_connection_value');
+    expect(codes(result.warnings)).toContain('experimental_http2_connection_pool');
+  });
+
   it('reports structural, routing, env, and control-plane issues', () => {
     const result = validateConfigFile({
       configPath: fixture('invalid.gateway.yaml'),

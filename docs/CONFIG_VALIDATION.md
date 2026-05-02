@@ -45,6 +45,9 @@ hardening visible without blocking local development.
   `routing`, `budget`, and `models_pricing`.
 - Required node fields: `id`, `name`, `protocol`, `base_url`, `endpoint`,
   `api_key`, `models`, and `timeout_ms`.
+- Optional `nodes[].connection` pool settings, including `pool_size`,
+  `keep_alive_ms`, `headers_timeout_ms`, `body_timeout_ms`, and experimental
+  `http2`.
 - Duplicate node ids and duplicate model ids inside the same node.
 - Shared ConfigService diagnostics for ambiguous node/model resolution,
   duplicate model ids across nodes, alias conflicts, duplicate prefixes,

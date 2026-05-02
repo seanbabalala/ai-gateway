@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.5 upstream connection pooling for the OSS Data Plane via optional `nodes[].connection` undici per-node dispatchers.
+- Keep-alive, pool size, headers timeout, body timeout, and experimental HTTP/2 connection settings for upstream provider calls.
+- Upstream benchmark script and performance notes for future forwarding regression checks.
+
+### Changed
+
+- Provider forwarding now shares the optional per-node dispatcher across streaming, non-streaming, and embeddings requests while leaving default `fetch` behavior unchanged when no connection pool is configured.
 
 ## 0.4.0 - 2026-05-02
 

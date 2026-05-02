@@ -31,6 +31,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "benchmark:upstream": "node scripts/benchmark-upstream.js",
     "smoke:docker": "bash scripts/docker-smoke.sh"
   },
   "dependencies": {
@@ -61,6 +62,7 @@
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.20",
+    "undici": "^6.25.0",
     "uuid": "^11.0.0"
   },
   "devDependencies": {

@@ -289,6 +289,23 @@ export interface NodeHealthCheckConfig {
   lightweight_model?: string;
 }
 
+export interface NodeConnectionConfig {
+  /** Enable undici per-node pooling when this block is present (default: true). */
+  enabled?: boolean;
+  /** Keep upstream sockets alive between requests (default: true). */
+  keep_alive?: boolean;
+  /** Maximum open upstream sockets for this node (default: 10). */
+  pool_size?: number;
+  /** Idle keep-alive timeout in milliseconds (default: 60000). */
+  keep_alive_ms?: number;
+  /** Timeout while waiting for upstream response headers in milliseconds. */
+  headers_timeout_ms?: number;
+  /** Timeout between upstream response body chunks in milliseconds; 0 disables. */
+  body_timeout_ms?: number;
+  /** Experimental HTTP/2 ALPN support through undici allowH2 (default: false). */
+  http2?: boolean;
+}
+
 export interface NodeConfig {
   id: string;
   name: string;
@@ -308,6 +325,8 @@ export interface NodeConfig {
   queue_policy?: QueuePolicy; // wait (default) | fallback | reject
   headers?: Record<string, string>;
   health_check?: NodeHealthCheckConfig;
+  /** Optional per-node upstream HTTP connection pooling and timeout controls. */
+  connection?: NodeConnectionConfig;
   /** Node-level default context window used when a model-specific value is omitted. */
   max_context_tokens?: number;
   /** Node-level default structured-output support flag. */
