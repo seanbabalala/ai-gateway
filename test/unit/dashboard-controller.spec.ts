@@ -156,6 +156,25 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     remove: jest.fn(),
     ...overrides.gatewayApiKeys,
   };
+  const shadowTraffic = {
+    getStatus: jest.fn().mockReturnValue({
+      enabled: false,
+      sample_rate: 0,
+      target_node: null,
+      target_model: null,
+      timeout_ms: null,
+      max_recent_results: 100,
+      compare: { store_prompts: false, store_responses: false },
+      privacy: {
+        stores_prompts: false,
+        stores_responses: false,
+        raw_headers: false,
+        provider_keys: false,
+      },
+    }),
+    recent: jest.fn().mockResolvedValue([]),
+    ...overrides.shadowTraffic,
+  };
 
   const routingRecommendations = {
     getRecommendations: jest.fn().mockResolvedValue({
@@ -187,11 +206,12 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     new TelemetryService(),
     routingRecommendations as any,
     gatewayApiKeys as any,
+    shadowTraffic as any,
     dataSource as any,
     callLogRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, callLogRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, qb, capabilityService, routingRecommendations };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -319,7 +339,7 @@ describe('DashboardController — exportLogs', () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs('json', 7, undefined, undefined, res);
+    await controller.exportLogs('json', 7, undefined, undefined, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json');
     expect(res.send).toHaveBeenCalled();
@@ -332,7 +352,7 @@ describe('DashboardController — exportLogs', () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs('csv', 7, undefined, undefined, res);
+    await controller.exportLogs('csv', 7, undefined, undefined, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv');
     const csv = res.send.mock.calls[0][0] as string;
@@ -796,6 +816,57 @@ describe('DashboardController — api_key filtering on logs', () => {
 
     expect(qb.andWhere).toHaveBeenCalledWith('log.api_key_id = :apiKeyId', { apiKeyId: 'key_123' });
     expect(qb.andWhere).not.toHaveBeenCalledWith('log.api_key_name = :apiKey', { apiKey: 'renamed-key' });
+  });
+
+  it('should apply namespace filter on getLogs', async () => {
+    const qb = mockQueryBuilder();
+    qb.getManyAndCount.mockResolvedValue([[], 0]);
+    const repo = mockRepo(qb);
+
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    await controller.getLogs(1, 50, undefined, undefined, undefined, undefined, undefined, 'team-alpha');
+
+    expect(qb.andWhere).toHaveBeenCalledWith('log.namespace_id = :namespaceId', { namespaceId: 'team-alpha' });
+  });
+});
+
+describe('DashboardController — namespaces and shadow traffic', () => {
+  it('should return local namespaces with budget status', async () => {
+    const { controller, budgetService } = makeDashboard({
+      config: {
+        namespaces: [
+          { id: 'team-alpha', name: 'Team Alpha', allowed_nodes: ['openai'] },
+        ],
+      },
+      budgetService: {
+        getStatus: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await controller.getNamespaces();
+
+    expect(result.mode).toBe('local_only');
+    expect(result.namespaces[0]).toEqual(expect.objectContaining({
+      id: 'team-alpha',
+      allowed_nodes: ['openai'],
+    }));
+    expect(budgetService.getStatus).toHaveBeenCalledWith(null, null, 'team-alpha');
+  });
+
+  it('should return read-only shadow traffic status and recent rows', async () => {
+    const { controller, shadowTraffic } = makeDashboard({
+      shadowTraffic: {
+        recent: jest.fn().mockResolvedValue([
+          { id: 1, status: 'sent', namespace_id: 'team-alpha' },
+        ]),
+      },
+    });
+
+    const result = await controller.getShadowTraffic('team-alpha', 10);
+
+    expect(shadowTraffic.recent).toHaveBeenCalledWith('team-alpha', 10);
+    expect(result.recent).toHaveLength(1);
+    expect(result.status.privacy.provider_keys).toBe(false);
   });
 });
 

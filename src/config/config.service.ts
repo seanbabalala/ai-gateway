@@ -22,6 +22,8 @@ import {
   AlertsConfig,
   AlertSpikeRuleConfig,
   AlertLatencySpikeRuleConfig,
+  NamespaceConfig,
+  ShadowTrafficConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
@@ -189,6 +191,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     if (config && typeof config === 'object') {
       config.auth ??= { api_keys: [] };
       config.models_pricing ??= {};
+      config.namespaces ??= [];
       if (config.routing?.tiers) {
         for (const tier of Object.values(config.routing.tiers)) {
           tier.fallbacks ??= [];
@@ -604,6 +607,38 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return {
       enabled: logging?.enabled ?? false,
       sinks: logging?.sinks ?? [],
+    };
+  }
+
+  get namespaces(): NamespaceConfig[] {
+    return this.config.namespaces ?? [];
+  }
+
+  getNamespace(namespaceId?: string | null): NamespaceConfig | undefined {
+    if (!namespaceId) return undefined;
+    return this.namespaces.find((namespace) => namespace.id === namespaceId);
+  }
+
+  get shadowTraffic(): Required<Omit<ShadowTrafficConfig, 'target_node' | 'target_model' | 'compare'>> & {
+    target_node?: string;
+    target_model?: string;
+    compare: {
+      store_prompts: boolean;
+      store_responses: boolean;
+    };
+  } {
+    const shadow = this.config.shadow;
+    return {
+      enabled: shadow?.enabled ?? false,
+      sample_rate: shadow?.sample_rate ?? 0,
+      target_node: shadow?.target_node,
+      target_model: shadow?.target_model,
+      timeout_ms: shadow?.timeout_ms ?? 0,
+      max_recent_results: shadow?.max_recent_results ?? 100,
+      compare: {
+        store_prompts: shadow?.compare?.store_prompts ?? false,
+        store_responses: shadow?.compare?.store_responses ?? false,
+      },
     };
   }
 

@@ -53,6 +53,7 @@ import { CallLog } from '../database/entities/call-log.entity';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
 import { LogSinkService } from '../log-sinks/log-sink.service';
+import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 
 export interface PipelineResult {
   body: Record<string, unknown>;
@@ -152,6 +153,7 @@ export class PipelineService {
     private readonly callLogRepo: Repository<CallLog>,
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly logSinks?: LogSinkService,
+    @Optional() private readonly shadowTraffic?: ShadowTrafficService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -453,6 +455,13 @@ export class PipelineService {
             usage: canonicalResponse.usage, error: null, retryCount: totalRetries,
             experimentGroup: resolvedExperimentGroup, domainHint, modalityHints,
             fallbackReason, fallbackFromNode });
+          this.shadowTraffic?.enqueueChat(
+            requestId,
+            canonical,
+            canonicalResponse,
+            usedNodeId,
+            usedModel,
+          );
 
           return { body: responseBody, statusCode: 200 };
         } catch (err) {
@@ -664,6 +673,13 @@ export class PipelineService {
             fallbackReason,
             fallbackFromNode,
           });
+          this.shadowTraffic?.enqueueEmbeddings(
+            requestId,
+            canonical,
+            response,
+            usedNodeId,
+            usedModel,
+          );
 
           return {
             body: this.denormalizeEmbeddingForClient(response),
@@ -1733,6 +1749,29 @@ export class PipelineService {
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
                 fallbackFromNode });
+              if (accumulatedText.length > 0) {
+                this.shadowTraffic?.enqueueChat(
+                  requestId,
+                  canonical,
+                  {
+                    id: streamId || `stream-${requestId}`,
+                    content: [{ type: 'text', text: accumulatedText.join('') }],
+                    stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
+                    usage: { ...usage },
+                    model: streamModel || usedModel,
+                    routing: {
+                      tier,
+                      node: usedNodeId,
+                      latency_ms: latencyMs,
+                      score,
+                      is_fallback: isFallback,
+                      fallback_reason: fallbackReason,
+                    },
+                  },
+                  usedNodeId,
+                  usedModel,
+                );
+              }
 
               // ── Telemetry Metrics (stream success) ──
               const streamTotalTokens = usage.input_tokens + usage.output_tokens;
@@ -2808,6 +2847,15 @@ export class PipelineService {
   // ══════════════════════════════════════════════════════
 
   private async checkBudget(canonical: LoggableCanonicalRequest): Promise<void> {
+    if (canonical.metadata.namespace_id) {
+      await this.budgetService.check(
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id || undefined,
+        canonical.metadata.namespace_id,
+      );
+      return;
+    }
+
     if (canonical.metadata.api_key_id) {
       await this.budgetService.check(
         canonical.metadata.api_key_name || undefined,
@@ -2829,7 +2877,15 @@ export class PipelineService {
     const costUsd = this.calculateCost(usage, pricing);
     const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
 
-    if (canonical.metadata.api_key_id) {
+    if (canonical.metadata.namespace_id) {
+      await this.budgetService.record(
+        totalTokens,
+        costUsd,
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id || undefined,
+        canonical.metadata.namespace_id,
+      );
+    } else if (canonical.metadata.api_key_id) {
       await this.budgetService.record(
         totalTokens,
         costUsd,
@@ -2940,6 +2996,7 @@ export class PipelineService {
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
         api_key_id: params.canonical.metadata.api_key_id || null,
+        namespace_id: params.canonical.metadata.namespace_id || null,
         retry_count: params.retryCount || 0,
         experiment_group: params.experimentGroup || null,
       });

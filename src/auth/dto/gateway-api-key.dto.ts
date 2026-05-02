@@ -45,6 +45,11 @@ export class CreateGatewayApiKeyDto {
   @IsString({ each: true })
   allowed_models?: string[];
 
+  @ApiPropertyOptional({ example: 'team-alpha', nullable: true, description: 'Optional local OSS namespace binding.' })
+  @IsOptional()
+  @IsString()
+  namespace_id?: string | null;
+
   @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
   @IsOptional()
   @IsNumber()
@@ -105,6 +110,11 @@ export class UpdateGatewayApiKeyDto {
   @IsArray()
   @IsString({ each: true })
   allowed_models?: string[];
+
+  @ApiPropertyOptional({ example: 'team-alpha', nullable: true, description: 'Optional local OSS namespace binding.' })
+  @IsOptional()
+  @IsString()
+  namespace_id?: string | null;
 
   @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
   @IsOptional()

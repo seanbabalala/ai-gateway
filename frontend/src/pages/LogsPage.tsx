@@ -22,6 +22,7 @@ import {
 import { useLogs } from '@/hooks/use-logs'
 import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useApiKeys } from '@/hooks/use-api-keys'
+import { useNamespaces } from '@/hooks/use-namespaces'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
 import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
@@ -49,6 +50,10 @@ function LogDetailRow({ log }: { log: CallLog }) {
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.apiKey')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">{log.api_key_name ?? t('common.na')}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">Namespace: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.namespace_id ?? t('common.na')}</span>
           </div>
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.sessionKey')}: </span>
@@ -87,11 +92,13 @@ export function LogsPage() {
   const [nodeFilter, setNodeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [apiKeyFilter, setApiKeyFilter] = useState('')
+  const [namespaceFilter, setNamespaceFilter] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [exportFormat, setExportFormat] = useState('csv')
   const [exportDays, setExportDays] = useState('7')
 
   const { data: apiKeysData } = useApiKeys()
+  const { data: namespacesData } = useNamespaces()
   const tierOptions = [
     { value: '', label: t('filters.allTiers') },
     { value: 'simple', label: t('tiers.simple') },
@@ -118,12 +125,20 @@ export function LogsPage() {
     { value: '', label: t('filters.allApiKeys') },
     ...(apiKeysData?.items || []).map((key) => ({ value: key.id, label: key.name })),
   ]
+  const namespaceOptions = [
+    { value: '', label: 'All namespaces' },
+    ...(namespacesData?.namespaces || []).map((namespace) => ({
+      value: namespace.id,
+      label: namespace.name || namespace.id,
+    })),
+  ]
 
   const { data: logsData, isLoading, isError, error, refetch } = useLogs(page, LIMIT, {
     tier: tierFilter || undefined,
     node: nodeFilter || undefined,
     status: statusFilter || undefined,
     api_key_id: apiKeyFilter || undefined,
+    namespace: namespaceFilter || undefined,
   })
 
   const { newCount, clearNewCount } = useSSELogs(100)
@@ -137,6 +152,7 @@ export function LogsPage() {
     const token = getAuthToken()
     const params = new URLSearchParams({ format: exportFormat, days: exportDays })
     if (apiKeyFilter) params.set('api_key_id', apiKeyFilter)
+    if (namespaceFilter) params.set('namespace', namespaceFilter)
     const url = `/api/dashboard/logs/export?${params.toString()}`
     // Use a hidden link with auth header via fetch + blob download
     fetch(url, {
@@ -230,6 +246,15 @@ export function LogsPage() {
               setPage(1)
             }}
             className="w-36"
+          />
+          <Select
+            options={namespaceOptions}
+            value={namespaceFilter}
+            onChange={(v) => {
+              setNamespaceFilter(v)
+              setPage(1)
+            }}
+            className="w-40"
           />
           <div className="ml-auto font-mono text-[11px] text-[var(--foreground-dim)]">
             {logsData?.pagination

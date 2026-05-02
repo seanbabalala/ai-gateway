@@ -70,7 +70,7 @@ export function makeCanonicalResponse(
 // ── ConfigService Mock ───────────────────────────────────────
 
 export function mockConfigService(overrides: Record<string, unknown> = {}): any {
-  return {
+  const config: any = {
     database: { type: 'sqlite', path: ':memory:' },
     auth: { api_keys: [], rate_limit: undefined },
     dashboardPasswordHash: undefined,
@@ -116,7 +116,20 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       enabled: false,
       sinks: [],
     },
+    namespaces: [],
+    shadowTraffic: {
+      enabled: false,
+      sample_rate: 0,
+      target_node: undefined,
+      target_model: undefined,
+      timeout_ms: 0,
+      max_recent_results: 100,
+      compare: { store_prompts: false, store_responses: false },
+    },
     getNode: jest.fn().mockReturnValue(undefined),
+    getNamespace: jest.fn((namespaceId?: string | null) =>
+      namespaceId ? config.namespaces.find((namespace: { id: string }) => namespace.id === namespaceId) : undefined,
+    ),
     getModelPricing: jest.fn().mockReturnValue(undefined),
     getFullConfig: jest.fn(),
     getNodeModelDiagnostics: jest.fn().mockReturnValue([]),
@@ -126,4 +139,5 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
     onReloadFailed: jest.fn().mockReturnValue({ unsubscribe: jest.fn() }),
     ...overrides,
   };
+  return config;
 }

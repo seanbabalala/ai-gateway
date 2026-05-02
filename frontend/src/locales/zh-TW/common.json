@@ -29,6 +29,7 @@
   "nav.monitor": "監控",
   "nav.nodes": "節點",
   "nav.routing": "路由",
+  "nav.shadow": "影子流量",
   "sidebar.productSubtitle": "AI 閘道",
   "sidebar.telemetryActive": "遙測已啟用",
   "sidebar.telemetryOff": "遙測已關閉",

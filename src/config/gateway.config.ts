@@ -33,6 +33,12 @@ export interface GatewayConfig {
   /** Optional external call-log sinks — disabled by default */
   logging?: LoggingConfig;
 
+  /** Optional OSS-local namespaces — no enterprise workspace/org features */
+  namespaces?: NamespaceConfig[];
+
+  /** Optional async shadow traffic mirror — disabled by default */
+  shadow?: ShadowTrafficConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
 }
@@ -234,6 +240,7 @@ export interface ApiKeyBudgetOverride {
 export interface ApiKeyEntry {
   key: string;
   name: string;
+  namespace_id?: string;
   budget?: ApiKeyBudgetOverride;  // optional per-key budget limits
 }
 
@@ -250,6 +257,52 @@ export interface RateLimitConfig {
   max_entries?: number;
   /** Max login attempts per IP per minute (default: 5) */
   login_requests_per_minute?: number;
+}
+
+// ===== Local Namespaces (OSS Data Plane) =====
+export interface NamespaceBudgetConfig {
+  daily_token_limit?: number;
+  daily_cost_limit?: number;
+  alert_threshold?: number;
+}
+
+export interface NamespaceRateLimitConfig {
+  requests_per_minute?: number;
+}
+
+export interface NamespaceConfig {
+  /** Stable local namespace id. This is not a Cloud workspace/org id. */
+  id: string;
+  name?: string;
+  allowed_nodes?: string[];
+  allowed_models?: string[];
+  budget?: NamespaceBudgetConfig;
+  rate_limit?: NamespaceRateLimitConfig;
+}
+
+// ===== Shadow Traffic =====
+export interface ShadowTrafficCompareConfig {
+  /** Store sanitized prompt/input samples for comparison. Default: false. */
+  store_prompts?: boolean;
+  /** Store sanitized response samples for comparison. Default: false. */
+  store_responses?: boolean;
+}
+
+export interface ShadowTrafficConfig {
+  /** Master switch. Disabled by default. */
+  enabled?: boolean;
+  /** 0-1 fraction of eligible successful requests to mirror. Default: 0. */
+  sample_rate?: number;
+  /** Test node that receives shadow traffic asynchronously. */
+  target_node?: string;
+  /** Optional target model. Defaults to the primary response/request model. */
+  target_model?: string;
+  /** Per-shadow request timeout. Default: target node timeout. */
+  timeout_ms?: number;
+  /** Recent result rows retained for Dashboard. Default: 100. */
+  max_recent_results?: number;
+  /** Explicit comparison storage opt-in. Defaults keep prompt/response out. */
+  compare?: ShadowTrafficCompareConfig;
 }
 
 // ===== Node (AI Provider) =====

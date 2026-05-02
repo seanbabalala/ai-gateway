@@ -38,6 +38,7 @@ Client Request
   -> Controller
   -> Normalizer
   -> API Key Guard
+  -> Local Namespace Policy
   -> Budget Check
   -> Prompt Cache Lookup
   -> Scoring
@@ -45,6 +46,7 @@ Client Request
   -> Provider Client
   -> Denormalizer
   -> Call Log
+  -> Optional Shadow Traffic Mirror
   -> Optional External Log Sinks
   -> Optional Control-Plane Metadata Upload
 ```
@@ -77,6 +79,9 @@ Gateway API keys can carry:
 - allowed models
 - per-key budgets
 - per-key rate limits
+- optional local namespace binding
+
+Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Namespace restrictions are intersected with API-key restrictions before routing.
 
 ### Routing
 
@@ -118,6 +123,7 @@ The gateway records call logs with:
 
 - request id
 - Gateway API key id and name
+- namespace id
 - source protocol
 - selected tier
 - upstream node and model
@@ -130,7 +136,13 @@ The gateway records call logs with:
 - cache token fields
 - experiment group
 
-These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, and optional connected-gateway metadata upload.
+These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
+
+## Shadow Traffic
+
+The open-source data plane includes optional shadow traffic for sampled test-node mirroring. When enabled, successful primary requests can enqueue an asynchronous copy to a configured shadow node/model. The primary response has already been produced, so shadow latency and failures do not affect the caller.
+
+Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
 
 ## Local Webhook Alerts
 

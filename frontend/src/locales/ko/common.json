@@ -29,6 +29,7 @@
   "nav.monitor": "모니터링",
   "nav.nodes": "노드",
   "nav.routing": "라우팅",
+  "nav.shadow": "섀도우",
   "sidebar.productSubtitle": "AI 게이트웨이",
   "sidebar.telemetryActive": "텔레메트리 활성",
   "sidebar.telemetryOff": "텔레메트리 꺼짐",

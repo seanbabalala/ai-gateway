@@ -176,6 +176,11 @@ function makePipeline(overrides: Record<string, any> = {}): {
     enqueue: jest.fn(),
     ...overrides.logSinks,
   };
+  const shadowTraffic = {
+    enqueueChat: jest.fn(),
+    enqueueEmbeddings: jest.fn(),
+    ...overrides.shadowTraffic,
+  };
 
   const callLogRepo = {
     create: jest.fn().mockImplementation((data: any) => data),
@@ -200,6 +205,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     callLogRepo as any,
     alerts as any,
     logSinks as any,
+    shadowTraffic as any,
   );
 
   return {
@@ -208,6 +214,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, concurrencyLimiter, budgetService, cacheService,
       logEventBus, hooks, telemetry, telemetryUploader, callLogRepo, alerts, logSinks,
+      shadowTraffic,
     },
   };
 }
@@ -289,6 +296,47 @@ describe('PipelineService — direct routing', () => {
         estimated_output_tokens: 25,
         estimated_context_tokens: expect.any(Number),
       }),
+    );
+  });
+});
+
+describe('PipelineService — namespace and shadow traffic', () => {
+  it('passes namespace scope to budget accounting and call logs', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.namespace_id = 'team-alpha';
+
+    await pipeline.process(request);
+
+    expect(mocks.budgetService.check).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      'team-alpha',
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      15,
+      expect.any(Number),
+      undefined,
+      undefined,
+      'team-alpha',
+    );
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ namespace_id: 'team-alpha' }),
+    );
+  });
+
+  it('enqueues shadow traffic after a successful non-stream request', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+
+    await pipeline.process(request);
+
+    expect(mocks.shadowTraffic.enqueueChat).toHaveBeenCalledWith(
+      expect.any(String),
+      request,
+      expect.objectContaining({ model: 'gpt-4o' }),
+      'openai',
+      'gpt-4o',
     );
   });
 });

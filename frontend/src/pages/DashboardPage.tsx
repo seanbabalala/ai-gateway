@@ -42,6 +42,7 @@ import { useStats } from '@/hooks/use-stats'
 import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useCacheStats, useClearCache } from '@/hooks/use-cache'
 import { useApiKeys } from '@/hooks/use-api-keys'
+import { useNamespaces } from '@/hooks/use-namespaces'
 import { useConfig } from '@/hooks/use-config'
 import { useAlerts } from '@/hooks/use-alerts'
 import { useThemeColors } from '@/lib/theme'
@@ -119,15 +120,18 @@ function SignalTooltip({
 export function DashboardPage() {
   const { t } = useTranslation('dashboard')
   const [apiKeyFilter, setApiKeyFilter] = useState('')
+  const [namespaceFilter, setNamespaceFilter] = useState('')
   const [activeTier, setActiveTier] = useState<string | null>(null)
   const [activeNode, setActiveNode] = useState<string | null>(null)
-  const { data: stats, isLoading, isError, error, refetch } = useStats(
-    apiKeyFilter ? { id: apiKeyFilter } : undefined,
-  )
+  const { data: stats, isLoading, isError, error, refetch } = useStats({
+    id: apiKeyFilter || undefined,
+    namespaceId: namespaceFilter || undefined,
+  })
   const { logs: recentLogs } = useSSELogs(5)
   const { data: cacheStats } = useCacheStats()
   const clearCache = useClearCache()
   const { data: apiKeysData } = useApiKeys()
+  const { data: namespacesData } = useNamespaces()
   const { data: configData } = useConfig()
   const { data: alertsData } = useAlerts()
   const colors = useThemeColors()
@@ -135,6 +139,13 @@ export function DashboardPage() {
   const apiKeyOptions = [
     { value: '', label: t('filters.allApiKeys') },
     ...(apiKeysData?.items || []).map((key) => ({ value: key.id, label: key.name })),
+  ]
+  const namespaceOptions = [
+    { value: '', label: 'All namespaces' },
+    ...(namespacesData?.namespaces || []).map((namespace) => ({
+      value: namespace.id,
+      label: namespace.name || namespace.id,
+    })),
   ]
 
   if (isError) {
@@ -184,12 +195,20 @@ export function DashboardPage() {
         description={t('dashboard.description')}
         icon={LayoutDashboard}
       >
-        <Select
-          options={apiKeyOptions}
-          value={apiKeyFilter}
-          onChange={(v) => setApiKeyFilter(v)}
-          className="w-40"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            options={namespaceOptions}
+            value={namespaceFilter}
+            onChange={(v) => setNamespaceFilter(v)}
+            className="w-44"
+          />
+          <Select
+            options={apiKeyOptions}
+            value={apiKeyFilter}
+            onChange={(v) => setApiKeyFilter(v)}
+            className="w-40"
+          />
+        </div>
       </PageHeader>
 
       <Card className="animate-fade-up overflow-hidden">

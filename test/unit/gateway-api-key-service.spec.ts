@@ -67,13 +67,14 @@ function makeCallLogRepo(raw: Record<string, unknown> = {}) {
   };
 }
 
-function makeService(seed: any[] = []) {
+function makeService(seed: any[] = [], configOverrides: Record<string, unknown> = {}) {
   const config = mockConfigService({
     budget: {
       daily_token_limit: 100_000,
       daily_cost_limit: 10,
       alert_threshold: 0.75,
     },
+    ...configOverrides,
   });
   const apiKeyRepo = makeRepo(seed);
   const budgetRepo = makeRepo<any>();
@@ -161,6 +162,62 @@ describe('GatewayApiKeyService', () => {
     expect(listed[0].last_used_ip).toBe('10.0.0.1');
     expect(listed[0].last_used_at).toBeInstanceOf(Date);
     await expect(service.findContextByPlainKey('gw_sk_live_wrong')).resolves.toBeNull();
+  });
+
+  it('applies local namespace restrictions and rate limit to API key context', async () => {
+    const { service } = makeService([], {
+      namespaces: [
+        {
+          id: 'team-alpha',
+          name: 'Team Alpha',
+          allowed_nodes: ['openai'],
+          allowed_models: ['gpt-4o'],
+          rate_limit: { requests_per_minute: 25 },
+        },
+      ],
+    });
+    const created = await service.create({
+      name: 'Namespaced',
+      namespace_id: 'team-alpha',
+      allowed_nodes: ['openai', 'anthropic'],
+      allowed_models: ['gpt-4o', 'claude-sonnet'],
+      rate_limit_per_minute: 100,
+    });
+
+    const context = await service.findContextByPlainKey(created.key);
+
+    expect(context).toEqual(expect.objectContaining({
+      namespace_id: 'team-alpha',
+      namespace_name: 'Team Alpha',
+      allowed_nodes: ['openai'],
+      allowed_models: ['gpt-4o'],
+      rate_limit_per_minute: 25,
+    }));
+  });
+
+  it('fails closed when a stored key references a namespace no longer in config', async () => {
+    const plainKey = 'gw_sk_live_stale_namespace_key';
+    const { service } = makeService([
+      {
+        id: 'key-stale',
+        name: 'Stale Namespace',
+        key_hash: createHash('sha256').update(plainKey).digest('hex'),
+        key_prefix: 'gw_sk_live_stale..._key',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: false,
+        allowed_nodes: [],
+        allowed_models: [],
+        namespace_id: 'deleted-namespace',
+        daily_token_limit: null,
+        daily_cost_limit: null,
+        rate_limit_per_minute: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]);
+
+    await expect(service.findContextByPlainKey(plainKey)).resolves.toBeNull();
   });
 
   it('renames and disables budget rules when key limits change or key is removed', async () => {

@@ -197,10 +197,12 @@ export function validateConfigObject(
   validateEnvReferences(config, env, issues);
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
-  validateAuth(config.auth, issues);
+  validateAuth(config.auth, config.namespaces, issues);
   validateNodes(config.nodes, issues);
+  validateNamespaces(config.namespaces, config.nodes, issues);
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
+  validateShadow(config.shadow, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validatePricing(config.models_pricing, issues);
@@ -342,7 +344,11 @@ function validateDatabase(
   }
 }
 
-function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {
+function validateAuth(
+  auth: unknown,
+  namespaces: unknown,
+  issues: ConfigValidationIssue[],
+): void {
   if (auth === undefined) return;
   if (!isRecord(auth)) {
     issues.push(
@@ -362,6 +368,15 @@ function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {
     );
     return;
   }
+
+  const namespaceIds = new Set<string>(
+    Array.isArray(namespaces)
+      ? namespaces
+          .filter(isRecord)
+          .map((namespace) => namespace.id)
+          .filter(isNonEmptyString)
+      : [],
+  );
 
   auth.api_keys.forEach((entry, index) => {
     const basePath = `auth.api_keys[${index}]`;
@@ -396,7 +411,186 @@ function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    if (entry.namespace_id !== undefined) {
+      if (!isNonEmptyString(entry.namespace_id)) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_namespace_reference',
+            'auth.api_keys[].namespace_id must be a non-empty string when set.',
+            `${basePath}.namespace_id`,
+          ),
+        );
+      } else if (!namespaceIds.has(entry.namespace_id)) {
+        issues.push(
+          issue(
+            'error',
+            'unknown_namespace_reference',
+            `API key "${entry.name || index}" references unknown namespace "${entry.namespace_id}".`,
+            `${basePath}.namespace_id`,
+          ),
+        );
+      }
+    }
   });
+}
+
+function validateNamespaces(
+  namespaces: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (namespaces === undefined) return;
+  if (!Array.isArray(namespaces)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'namespaces must be an array when set.',
+        'namespaces',
+      ),
+    );
+    return;
+  }
+
+  const nodeIds = new Set<string>(
+    Array.isArray(nodes)
+      ? nodes.filter(isRecord).map((node) => node.id).filter(isNonEmptyString)
+      : [],
+  );
+  const modelIds = new Set<string>();
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (!isRecord(node)) continue;
+      for (const model of Array.isArray(node.models) ? node.models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+      for (const model of Array.isArray(node.embedding_models) ? node.embedding_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  namespaces.forEach((namespace, index) => {
+    const basePath = `namespaces[${index}]`;
+    if (!isRecord(namespace)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_namespace_entry',
+          'Namespace entries must be objects.',
+          basePath,
+        ),
+      );
+      return;
+    }
+
+    if (!isNonEmptyString(namespace.id)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'namespaces[].id is required.',
+          `${basePath}.id`,
+        ),
+      );
+    } else {
+      if (seen.has(namespace.id)) {
+        issues.push(
+          issue(
+            'error',
+            'duplicate_namespace_id',
+            `Namespace id "${namespace.id}" is already used.`,
+            `${basePath}.id`,
+          ),
+        );
+      }
+      seen.add(namespace.id);
+    }
+
+    validateReferenceArray(
+      namespace.allowed_nodes,
+      `${basePath}.allowed_nodes`,
+      nodeIds,
+      'unknown_namespace_node',
+      'Namespace allowed_nodes references unknown node',
+      issues,
+    );
+    validateReferenceArray(
+      namespace.allowed_models,
+      `${basePath}.allowed_models`,
+      modelIds,
+      'unknown_namespace_model',
+      'Namespace allowed_models references unknown model',
+      issues,
+    );
+
+    if (namespace.budget !== undefined) {
+      if (!isRecord(namespace.budget)) {
+        issues.push(issue('error', 'invalid_namespace_budget', 'namespace.budget must be an object.', `${basePath}.budget`));
+      } else {
+        validateOptionalPositiveNumber(namespace.budget.daily_token_limit, `${basePath}.budget.daily_token_limit`, 'invalid_namespace_budget', issues);
+        validateOptionalPositiveNumber(namespace.budget.daily_cost_limit, `${basePath}.budget.daily_cost_limit`, 'invalid_namespace_budget', issues);
+        if (
+          namespace.budget.alert_threshold !== undefined &&
+          (!isFiniteNumber(namespace.budget.alert_threshold) ||
+            namespace.budget.alert_threshold <= 0 ||
+            namespace.budget.alert_threshold > 1)
+        ) {
+          issues.push(issue('error', 'invalid_namespace_budget', 'namespace.budget.alert_threshold must be between 0 and 1.', `${basePath}.budget.alert_threshold`));
+        }
+      }
+    }
+
+    if (namespace.rate_limit !== undefined) {
+      if (!isRecord(namespace.rate_limit)) {
+        issues.push(issue('error', 'invalid_namespace_rate_limit', 'namespace.rate_limit must be an object.', `${basePath}.rate_limit`));
+      } else {
+        const rpm = namespace.rate_limit.requests_per_minute;
+        if (rpm !== undefined && (!Number.isInteger(rpm) || typeof rpm !== 'number' || rpm < 1)) {
+          issues.push(issue('error', 'invalid_namespace_rate_limit', 'namespace.rate_limit.requests_per_minute must be a positive integer.', `${basePath}.rate_limit.requests_per_minute`));
+        }
+      }
+    }
+  });
+}
+
+function validateReferenceArray(
+  value: unknown,
+  issuePath: string,
+  knownValues: Set<string>,
+  code: string,
+  messagePrefix: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(issue('error', code, `${issuePath} must be an array.`, issuePath));
+    return;
+  }
+  value.forEach((item, index) => {
+    const itemPath = `${issuePath}[${index}]`;
+    if (!isNonEmptyString(item)) {
+      issues.push(issue('error', code, `${issuePath} entries must be non-empty strings.`, itemPath));
+      return;
+    }
+    if (!knownValues.has(item)) {
+      issues.push(issue('error', code, `${messagePrefix} "${item}".`, itemPath));
+    }
+  });
+}
+
+function validateOptionalPositiveNumber(
+  value: unknown,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isFiniteNumber(value) || value <= 0) {
+    issues.push(issue('error', code, `${issuePath} must be a positive number.`, issuePath));
+  }
 }
 
 function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
@@ -1494,6 +1688,87 @@ function validateBudget(
           `budget.${key}`,
         ),
       );
+    }
+  }
+}
+
+function validateShadow(
+  shadow: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (shadow === undefined) return;
+  if (!isRecord(shadow)) {
+    issues.push(issue('error', 'invalid_section_type', 'shadow must be an object.', 'shadow'));
+    return;
+  }
+
+  if (shadow.enabled !== undefined && !isBoolean(shadow.enabled)) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.enabled must be a boolean.', 'shadow.enabled'));
+  }
+  if (
+    shadow.sample_rate !== undefined &&
+    (!isFiniteNumber(shadow.sample_rate) || shadow.sample_rate < 0 || shadow.sample_rate > 1)
+  ) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.sample_rate must be between 0 and 1.', 'shadow.sample_rate'));
+  }
+  if (
+    shadow.timeout_ms !== undefined &&
+    (!isFiniteNumber(shadow.timeout_ms) || shadow.timeout_ms <= 0)
+  ) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.timeout_ms must be a positive number.', 'shadow.timeout_ms'));
+  }
+  if (shadow.max_recent_results !== undefined) {
+    const maxRecent = shadow.max_recent_results;
+    if (!Number.isInteger(maxRecent) || typeof maxRecent !== 'number' || maxRecent < 1) {
+      issues.push(issue('error', 'invalid_shadow_config', 'shadow.max_recent_results must be a positive integer.', 'shadow.max_recent_results'));
+    }
+  }
+
+  const nodeList = Array.isArray(nodes) ? nodes.filter(isRecord) : [];
+  const targetNode = isNonEmptyString(shadow.target_node)
+    ? nodeList.find((node) => node.id === shadow.target_node)
+    : undefined;
+
+  if (shadow.enabled === true) {
+    if (!isNonEmptyString(shadow.target_node)) {
+      issues.push(issue('error', 'missing_shadow_target', 'shadow.target_node is required when shadow.enabled is true.', 'shadow.target_node'));
+    } else if (!targetNode) {
+      issues.push(issue('error', 'unknown_shadow_target_node', `shadow.target_node references unknown node "${shadow.target_node}".`, 'shadow.target_node'));
+    }
+  } else if (shadow.target_node !== undefined && !isNonEmptyString(shadow.target_node)) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.target_node must be a non-empty string when set.', 'shadow.target_node'));
+  } else if (shadow.target_node !== undefined && !targetNode) {
+    issues.push(issue('error', 'unknown_shadow_target_node', `shadow.target_node references unknown node "${shadow.target_node}".`, 'shadow.target_node'));
+  }
+
+  if (shadow.target_model !== undefined) {
+    if (!isNonEmptyString(shadow.target_model)) {
+      issues.push(issue('error', 'invalid_shadow_config', 'shadow.target_model must be a non-empty string when set.', 'shadow.target_model'));
+    } else if (targetNode) {
+      const models = [
+        ...(Array.isArray(targetNode.models) ? targetNode.models : []),
+        ...(Array.isArray(targetNode.embedding_models) ? targetNode.embedding_models : []),
+      ].filter(isNonEmptyString);
+      if (models.length > 0 && !models.includes(shadow.target_model)) {
+        issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));
+      }
+    }
+  }
+
+  if (shadow.compare !== undefined) {
+    if (!isRecord(shadow.compare)) {
+      issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare must be an object.', 'shadow.compare'));
+    } else {
+      if (shadow.compare.store_prompts !== undefined && !isBoolean(shadow.compare.store_prompts)) {
+        issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.store_prompts must be a boolean.', 'shadow.compare.store_prompts'));
+      }
+      if (shadow.compare.store_responses !== undefined && !isBoolean(shadow.compare.store_responses)) {
+        issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.store_responses must be a boolean.', 'shadow.compare.store_responses'));
+      }
+      if (shadow.compare.store_prompts === true || shadow.compare.store_responses === true) {
+        issues.push(issue('warning', 'shadow_compare_storage_enabled', 'Shadow comparison storage is enabled. Prompts/responses are stored only because this was explicitly configured.', 'shadow.compare'));
+      }
     }
   }
 }

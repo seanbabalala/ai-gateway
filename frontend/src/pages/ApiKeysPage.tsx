@@ -18,6 +18,7 @@ import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Select } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ import { ErrorState } from '@/components/ui/error-state'
 import { SkeletonTable } from '@/components/ui/skeleton'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNodes } from '@/hooks/use-nodes'
+import { useNamespaces } from '@/hooks/use-namespaces'
 import {
   useCreateGatewayApiKey,
   useDeleteGatewayApiKey,
@@ -58,6 +60,7 @@ interface KeyFormState {
   allow_direct: boolean
   allowed_nodes: string[]
   allowed_models: string[]
+  namespace_id: string
   daily_token_limit: string
   daily_cost_limit: string
   rate_limit_per_minute: string
@@ -76,6 +79,7 @@ const emptyForm: KeyFormState = {
   allow_direct: false,
   allowed_nodes: [],
   allowed_models: [],
+  namespace_id: '',
   daily_token_limit: '',
   daily_cost_limit: '',
   rate_limit_per_minute: '',
@@ -95,6 +99,7 @@ function buildPayload(form: KeyFormState): CreateGatewayApiKeyRequest {
     allow_direct: form.allow_direct,
     allowed_nodes: form.allowed_nodes,
     allowed_models: form.allowed_models,
+    namespace_id: form.namespace_id || null,
     daily_token_limit: numberOrNull(form.daily_token_limit),
     daily_cost_limit: numberOrNull(form.daily_cost_limit),
     rate_limit_per_minute: numberOrNull(form.rate_limit_per_minute),
@@ -109,6 +114,7 @@ function formFromKey(key: GatewayApiKey): KeyFormState {
     allow_direct: key.allow_direct,
     allowed_nodes: key.allowed_nodes,
     allowed_models: key.allowed_models,
+    namespace_id: key.namespace_id || '',
     daily_token_limit: key.daily_token_limit?.toString() || '',
     daily_cost_limit: key.daily_cost_limit?.toString() || '',
     rate_limit_per_minute: key.rate_limit_per_minute?.toString() || '',
@@ -382,6 +388,7 @@ function KeyFormDialog({
   mode,
   initial,
   nodes,
+  namespaces,
   onClose,
   onSubmit,
   pending,
@@ -395,6 +402,7 @@ function KeyFormDialog({
     protocol: string
     models: string[]
   }[]
+  namespaces: { id: string; name?: string }[]
   onClose: () => void
   onSubmit: (form: KeyFormState) => void
   pending: boolean
@@ -432,6 +440,16 @@ function KeyFormDialog({
         description: Array.from(nodeIds).join(', '),
       }))
   }, [nodes, form.allowed_nodes])
+  const namespaceOptions = useMemo(
+    () => [
+      { value: '', label: 'No namespace' },
+      ...namespaces.map((namespace) => ({
+        value: namespace.id,
+        label: namespace.name || namespace.id,
+      })),
+    ],
+    [namespaces],
+  )
   const visibleModelValues = useMemo(() => new Set(modelOptions.map((opt) => opt.value)), [modelOptions])
 
   useEffect(() => {
@@ -476,6 +494,18 @@ function KeyFormDialog({
               value={form.description}
               onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
               placeholder={t('form.descriptionPlaceholder')}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              Namespace
+            </label>
+            <Select
+              options={namespaceOptions}
+              value={form.namespace_id}
+              onChange={(namespace_id) => setForm((prev) => ({ ...prev, namespace_id }))}
+              className="w-full"
             />
           </div>
 
@@ -606,6 +636,7 @@ export function ApiKeysPage() {
   const { t } = useTranslation('apiKeys')
   const { data, isLoading, isError, error, refetch } = useApiKeys()
   const { data: nodesData } = useNodes()
+  const { data: namespacesData } = useNamespaces()
   const createKey = useCreateGatewayApiKey()
   const updateKey = useUpdateGatewayApiKey()
   const rotateKey = useRotateGatewayApiKey()
@@ -616,6 +647,7 @@ export function ApiKeysPage() {
 
   const keys = data?.items || []
   const nodes = nodesData?.nodes || []
+  const namespaces = namespacesData?.namespaces || []
 
   const totals = keys.reduce(
     (acc, key) => ({
@@ -718,6 +750,7 @@ export function ApiKeysPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {key.allow_auto ? <Badge variant="emerald">{t('permissions.auto')}</Badge> : <Badge variant="zinc">{t('permissions.noAuto')}</Badge>}
                         {key.allow_direct ? <Badge variant="amber">{t('permissions.direct')}</Badge> : <Badge variant="zinc">{t('permissions.noDirect')}</Badge>}
+                        {key.namespace_id && <Badge variant="blue">{key.namespace_name || key.namespace_id}</Badge>}
                         {key.allowed_nodes.length > 0 && <Badge variant="blue">{t('permissions.upstreams', { count: key.allowed_nodes.length })}</Badge>}
                         {key.allowed_models.length > 0 && <Badge variant="purple">{t('permissions.models', { count: key.allowed_models.length })}</Badge>}
                       </div>
@@ -789,6 +822,7 @@ export function ApiKeysPage() {
         mode="create"
         initial={emptyForm}
         nodes={nodes}
+        namespaces={namespaces}
         pending={createKey.isPending}
         onClose={() => setCreateOpen(false)}
         onSubmit={(form) => {
@@ -806,6 +840,7 @@ export function ApiKeysPage() {
         mode="edit"
         initial={editing ? formFromKey(editing) : emptyForm}
         nodes={nodes}
+        namespaces={namespaces}
         pending={updateKey.isPending}
         onClose={() => setEditing(null)}
         onSubmit={(form) => {
