@@ -43,7 +43,8 @@ import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
 import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
 import { BudgetService } from '../budget/budget.service';
-import { CallLog } from '../database/entities/call-log.entity';
+import { CallLog, RouteDecisionLog } from '../database/entities';
+import type { RouteDecisionTrace } from '../routing/route-decision-trace';
 import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
 import { DashboardGuard } from '../auth/dashboard.guard';
@@ -91,6 +92,8 @@ export class DashboardController {
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
+    @InjectRepository(RouteDecisionLog)
+    private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -111,6 +114,12 @@ export class DashboardController {
     if (result.affected && result.affected > 0) {
       this.logger.log(`Log cleanup: deleted ${result.affected} logs older than ${retentionDays} days`);
     }
+
+    await this.routeDecisionRepo
+      .createQueryBuilder()
+      .delete()
+      .where('timestamp < :cutoff', { cutoff })
+      .execute();
   }
 
   /** Return a SQL expression that truncates a timestamp column to YYYY-MM-DD string */
@@ -148,6 +157,86 @@ export class DashboardController {
       qb[currentMethod]('log.namespace_id = :namespaceId', { namespaceId });
     }
     return qb;
+  }
+
+  private applyRouteDecisionScopeFilter<T extends { where: Function; andWhere: Function }>(
+    qb: T,
+    apiKey?: string,
+    apiKeyId?: string,
+    namespaceId?: string,
+    method: 'where' | 'andWhere' = 'andWhere',
+  ): T {
+    let currentMethod = method;
+    if (apiKeyId) {
+      qb[currentMethod]('decision.api_key_id = :apiKeyId', { apiKeyId });
+      currentMethod = 'andWhere';
+    } else if (apiKey) {
+      qb[currentMethod]('decision.api_key_name = :apiKey', { apiKey });
+      currentMethod = 'andWhere';
+    }
+    if (namespaceId) {
+      qb[currentMethod]('decision.namespace_id = :namespaceId', { namespaceId });
+    }
+    return qb;
+  }
+
+  private serializeRouteDecision(
+    decision: RouteDecisionLog,
+    includeTrace: boolean,
+  ) {
+    const trace = this.parseRouteDecisionTrace(decision.trace_json);
+    const finalSelection = trace?.final_selection || {
+      node: decision.selected_node_id,
+      model: decision.selected_model,
+      reason: null,
+      is_fallback: decision.is_fallback,
+      fallback_reason: decision.fallback_reason,
+    };
+
+    return {
+      id: decision.id,
+      request_id: decision.request_id,
+      timestamp: decision.timestamp,
+      source_format: decision.source_format,
+      tier: decision.tier,
+      score: decision.score,
+      route_mode: decision.route_mode,
+      strategy: decision.strategy,
+      selected: {
+        node: decision.selected_node_id,
+        model: decision.selected_model,
+      },
+      final_selection: finalSelection,
+      domain_hint: decision.domain_hint,
+      candidate_count: decision.candidate_count,
+      filtered_count: decision.filtered_count,
+      status_code: decision.status_code,
+      is_fallback: decision.is_fallback,
+      fallback_reason: decision.fallback_reason,
+      api_key_name: decision.api_key_name,
+      api_key_id: decision.api_key_id,
+      namespace_id: decision.namespace_id,
+      summary: {
+        reason: finalSelection.reason,
+        fallback_chain: trace?.fallback_chain || [],
+        filters: trace?.filters || [],
+        privacy: trace?.privacy || {
+          prompt: false,
+          response: false,
+          raw_headers: false,
+          provider_keys: false,
+        },
+      },
+      ...(includeTrace ? { trace } : {}),
+    };
+  }
+
+  private parseRouteDecisionTrace(value: string): RouteDecisionTrace | null {
+    try {
+      return JSON.parse(value) as RouteDecisionTrace;
+    } catch {
+      return null;
+    }
   }
 
   // ══════════════════════════════════════════════════════
@@ -540,6 +629,70 @@ export class DashboardController {
         totalPages: Math.ceil(total / safeLimit),
       },
     };
+  }
+
+  @Get('route-decisions')
+  @ApiOperation({ summary: 'List route decision traces for explainable routing' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 50 })
+  @ApiQuery({ name: 'tier', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiOkResponse({ description: 'Paginated route decision summaries.' })
+  async getRouteDecisions(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('tier') tier?: string,
+    @Query('node') node?: string,
+    @Query('source_format') sourceFormat?: string,
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
+  ) {
+    const qb = this.routeDecisionRepo
+      .createQueryBuilder('decision')
+      .orderBy('decision.timestamp', 'DESC');
+
+    if (tier) qb.andWhere('decision.tier = :tier', { tier });
+    if (node) qb.andWhere('decision.selected_node_id = :node', { node });
+    if (sourceFormat) {
+      qb.andWhere('decision.source_format = :sourceFormat', { sourceFormat });
+    }
+    this.applyRouteDecisionScopeFilter(qb, apiKey, apiKeyId, namespaceId);
+
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+    const safePage = Math.max(page, 1);
+    const [items, total] = await qb
+      .skip((safePage - 1) * safeLimit)
+      .take(safeLimit)
+      .getManyAndCount();
+
+    return {
+      data: items.map((item) => this.serializeRouteDecision(item, false)),
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
+  @Get('route-decisions/:requestId')
+  @ApiOperation({ summary: 'Get one route decision trace by request id' })
+  @ApiParam({ name: 'requestId' })
+  @ApiOkResponse({ description: 'Full route decision trace for one request.' })
+  async getRouteDecision(@Param('requestId') requestId: string) {
+    const item = await this.routeDecisionRepo.findOne({
+      where: { request_id: requestId },
+    });
+    if (!item) {
+      throw new HttpException('Route decision not found', HttpStatus.NOT_FOUND);
+    }
+    return this.serializeRouteDecision(item, true);
   }
 
   // ── Log Export ──────────────────────────────────────────

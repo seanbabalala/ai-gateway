@@ -28,6 +28,12 @@ import {
 } from '../config/gateway.config';
 import { Modality } from '../config/modality';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  RouteDecisionTrace,
+  RouteDecisionTraceCandidate,
+  RouteDecisionTraceFilter,
+  routeTargetKey,
+} from './route-decision-trace';
 
 export interface RouteDecision {
   primary: RouteTarget;
@@ -39,6 +45,7 @@ export interface RouteDecision {
   experimentGroup: string | null;  // A/B split: "tier:variantName" format, null when no split
   experimentGroupsByTarget: Record<string, string>;
   loadBalancing: RouteLoadBalancingDecision;
+  trace: RouteDecisionTrace;
 }
 
 export type EffectiveRoutingStrategy =
@@ -89,6 +96,7 @@ export interface EmbeddingRouteDecision {
   primary: RouteTarget;
   fallbacks: RouteTarget[];
   mode: 'auto' | 'direct';
+  trace?: RouteDecisionTrace;
 }
 
 interface SelectedRouteTarget {
@@ -173,12 +181,19 @@ export class RoutingService {
         `No config for tier "${effectiveTier}", falling back to "${firstTier}"`,
       );
       const fallbackConfig = this.config.routing.tiers[firstTier];
+      const normalizedFallback = this.normalizeTierTargets(fallbackConfig);
       const fallbackTargets = this.applyCapabilityConstraints(
         effectiveTier,
-        this.normalizeTierTargets(fallbackConfig).targets,
+        normalizedFallback.targets,
         selectionHints,
       );
       const selected = fallbackTargets[0];
+      const loadBalancing = {
+        strategy: 'primary_fallback' as EffectiveRoutingStrategy,
+        source: 'primary_fallback' as const,
+        selected,
+        target_count: fallbackTargets.length,
+      };
       return {
         primary: selected,
         fallbacks: fallbackTargets.slice(1).map((target) => this.toRouteTarget(target)),
@@ -188,12 +203,22 @@ export class RoutingService {
         domainHint: hint,
         experimentGroup: null,
         experimentGroupsByTarget: {},
-        loadBalancing: {
-          strategy: 'primary_fallback',
-          source: 'primary_fallback',
+        loadBalancing,
+        trace: this.buildRouteTrace({
+          mode: 'auto',
+          requestedTier: tier,
+          effectiveTier,
+          score,
+          momentumAdjusted: adjusted,
+          domainHint: hint,
+          modalityHints,
+          selectionHints,
+          initialTargets: normalizedFallback.targets,
+          finalTargets: fallbackTargets,
           selected,
-          target_count: fallbackTargets.length,
-        },
+          loadBalancing,
+          reason: `tier "${effectiveTier}" missing; fell back to "${firstTier}"`,
+        }),
       };
     }
 
@@ -257,6 +282,12 @@ export class RoutingService {
         'split',
         'A/B split experiment',
       );
+      const loadBalancing = {
+        strategy: 'split' as EffectiveRoutingStrategy,
+        source: 'split' as const,
+        selected: splitOrdered[0],
+        target_count: splitOrdered.length,
+      };
 
       return {
         primary: splitOrdered[0],
@@ -267,12 +298,22 @@ export class RoutingService {
         domainHint: hint,
         experimentGroup,
         experimentGroupsByTarget: splitResult.experimentGroupsByTarget,
-        loadBalancing: {
-          strategy: 'split',
-          source: 'split',
+        loadBalancing,
+        trace: this.buildRouteTrace({
+          mode: 'auto',
+          requestedTier: tier,
+          effectiveTier,
+          score,
+          momentumAdjusted: adjusted,
+          domainHint: hint,
+          modalityHints,
+          selectionHints,
+          initialTargets: splitAllTargets,
+          finalTargets: splitOrdered,
           selected: splitOrdered[0],
-          target_count: splitOrdered.length,
-        },
+          loadBalancing,
+          reason: 'A/B split experiment',
+        }),
       };
     }
 
@@ -375,6 +416,13 @@ export class RoutingService {
       this.selectionReason(selection.strategy, primary),
     );
 
+    const loadBalancing = {
+      strategy: selection.strategy,
+      source: normalized.source,
+      selected: this.toRouteTarget(primary),
+      target_count: orderedTargets.length,
+    };
+
     return {
       primary: this.toRouteTarget(primary),
       fallbacks,
@@ -384,12 +432,22 @@ export class RoutingService {
       domainHint: hint,
       experimentGroup: null,
       experimentGroupsByTarget: {},
-      loadBalancing: {
-        strategy: selection.strategy,
-        source: normalized.source,
+      loadBalancing,
+      trace: this.buildRouteTrace({
+        mode: 'auto',
+        requestedTier: tier,
+        effectiveTier,
+        score,
+        momentumAdjusted: adjusted,
+        domainHint: hint,
+        modalityHints,
+        selectionHints,
+        initialTargets: normalized.targets,
+        finalTargets: orderedTargets,
         selected: this.toRouteTarget(primary),
-        target_count: orderedTargets.length,
-      },
+        loadBalancing,
+        reason: this.selectionReason(selection.strategy, primary),
+      }),
     };
   }
 
@@ -449,7 +507,31 @@ export class RoutingService {
           targetFilter,
         ),
       );
-      return { primary, fallbacks, mode: 'direct' };
+      return {
+        primary,
+        fallbacks,
+        mode: 'direct',
+        trace: this.buildRouteTrace({
+          mode: 'embedding_direct',
+          requestedTier: 'direct',
+          effectiveTier: 'direct',
+          score: 0,
+          momentumAdjusted: false,
+          domainHint: null,
+          modalityHints: ['text'],
+          selectionHints: {},
+          initialTargets: allTargets,
+          finalTargets: [primary, ...fallbacks],
+          selected: primary,
+          loadBalancing: {
+            strategy: 'primary_fallback',
+            source: 'embedding',
+            selected: primary,
+            target_count: 1 + fallbacks.length,
+          },
+          reason: 'direct embedding model match',
+        }),
+      };
     }
 
     const candidates = this.rankEmbeddingTargets(
@@ -468,6 +550,28 @@ export class RoutingService {
       primary: candidates[0],
       fallbacks: candidates.slice(1),
       mode: 'auto',
+      trace: this.buildRouteTrace({
+        mode: 'embedding_auto',
+        requestedTier: 'standard',
+        effectiveTier: 'standard',
+        score: 0,
+        momentumAdjusted: false,
+        domainHint: null,
+        modalityHints: ['text'],
+        selectionHints: {},
+        initialTargets: allTargets,
+        finalTargets: candidates,
+        selected: candidates[0],
+        loadBalancing: {
+          strategy: 'cost',
+          source: 'embedding',
+          selected: candidates[0],
+          target_count: candidates.length,
+        },
+        reason: dimensions
+          ? `embedding capability and dimensions=${dimensions}`
+          : 'embedding capability and lowest configured input cost',
+      }),
     };
   }
 
@@ -719,10 +823,10 @@ export class RoutingService {
     target: RouteTarget,
     selectionHints: RouteSelectionHints,
   ): number | null {
-    const pricing = this.capabilityService.resolveModelRoutingCapabilities(
+    const pricing = this.capabilityService.resolveModelRoutingCapabilities?.(
       target.node,
       target.model,
-    ).pricing;
+    )?.pricing;
     if (!pricing) return null;
 
     const inputTokens = selectionHints.estimated_input_tokens ?? 1_000_000;
@@ -900,6 +1004,248 @@ export class RoutingService {
     if (strategy === 'random') return 'random target';
     if (strategy === 'weighted') return 'weighted target selection';
     return 'legacy primary/fallback order';
+  }
+
+  private buildRouteTrace(input: {
+    mode: RouteDecisionTrace['mode'];
+    requestedTier: Tier;
+    effectiveTier: Tier;
+    score: number;
+    momentumAdjusted: boolean;
+    domainHint: string | null;
+    modalityHints?: Modality[] | string[];
+    selectionHints: RouteSelectionHints;
+    initialTargets: RouteTarget[];
+    finalTargets: RouteTarget[];
+    selected: RouteTarget | null;
+    loadBalancing: {
+      strategy: RouteDecisionTrace['load_balancing']['strategy'];
+      source: RouteDecisionTrace['load_balancing']['source'];
+      selected: RouteTarget | null;
+      target_count: number;
+    };
+    reason: string;
+  }): RouteDecisionTrace {
+    const finalKeys = new Set(input.finalTargets.map(routeTargetKey));
+    const selectedKey = input.selected ? routeTargetKey(input.selected) : null;
+    const filters: RouteDecisionTraceFilter[] = [];
+
+    const candidates = input.initialTargets.map((target, index) => {
+      const reasons = this.inferFilterReasons(
+        target,
+        input.initialTargets,
+        finalKeys.has(routeTargetKey(target)),
+        input.modalityHints,
+        input.selectionHints,
+      );
+      for (const reason of reasons) {
+        filters.push({
+          node: target.node,
+          model: target.model,
+          stage: this.filterStage(reason),
+          reason,
+        });
+      }
+      return this.buildTraceCandidate(
+        target,
+        index,
+        routeTargetKey(target) === selectedKey,
+        finalKeys.has(routeTargetKey(target)) && routeTargetKey(target) !== selectedKey,
+        reasons,
+        input.selectionHints,
+      );
+    });
+
+    return {
+      version: 1,
+      mode: input.mode,
+      tier: input.effectiveTier,
+      score: input.score,
+      domain_hints: {
+        domain: input.domainHint,
+        modalities: (input.modalityHints || []).map(String),
+      },
+      scoring: {
+        tier: input.requestedTier,
+        score: input.score,
+        momentum_adjusted: input.momentumAdjusted,
+      },
+      constraints: {
+        estimated_input_tokens: input.selectionHints.estimated_input_tokens ?? null,
+        estimated_output_tokens: input.selectionHints.estimated_output_tokens ?? null,
+        estimated_context_tokens: input.selectionHints.estimated_context_tokens ?? null,
+        requires_structured_output: Boolean(input.selectionHints.requires_structured_output),
+      },
+      candidate_targets: candidates,
+      filters,
+      load_balancing: {
+        ...input.loadBalancing,
+        reason: input.reason,
+      },
+      fallback_chain: input.finalTargets
+        .filter((target) => routeTargetKey(target) !== selectedKey)
+        .map((target) => this.toRouteTarget(target)),
+      cost_downgrade: null,
+      final_selection: {
+        node: input.selected?.node ?? null,
+        model: input.selected?.model ?? null,
+        reason: input.reason,
+        is_fallback: false,
+        fallback_reason: null,
+      },
+      privacy: {
+        prompt: false,
+        response: false,
+        raw_headers: false,
+        provider_keys: false,
+      },
+    };
+  }
+
+  private buildTraceCandidate(
+    target: RouteTarget,
+    index: number,
+    selected: boolean,
+    fallback: boolean,
+    filterReasons: string[],
+    selectionHints: RouteSelectionHints,
+  ): RouteDecisionTraceCandidate {
+    const capabilities =
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) || {};
+    const estimatedCost = this.estimateTargetCost(target, selectionHints);
+    const avgLatencyMs = this.averageLatency(target.node, target.model);
+    const samples = this.getLatencySamples(target.node, target.model);
+    const maxContextTokens = capabilities.max_context_tokens ?? null;
+    const contextTokens = selectionHints.estimated_context_tokens;
+    const contextFit = this.contextFit(contextTokens, maxContextTokens);
+    const circuitState =
+      this.circuitBreaker.getCircuitState?.(target.node, target.model) || 'CLOSED';
+
+    return {
+      node: target.node,
+      model: target.model,
+      weight:
+        'weight' in target && typeof target.weight === 'number'
+          ? target.weight
+          : null,
+      position: index,
+      circuit_state: String(circuitState),
+      circuit_available: String(circuitState) !== 'OPEN',
+      selected,
+      fallback,
+      filter_reasons: filterReasons,
+      scores: {
+        cost: estimatedCost === null ? null : this.roundScore(1 / (1 + estimatedCost)),
+        latency: avgLatencyMs === null ? null : this.roundScore(1 / (1 + avgLatencyMs / 1000)),
+        context: this.contextScore(contextTokens, maxContextTokens),
+      },
+      metrics: {
+        estimated_cost_usd:
+          estimatedCost === null ? null : Number(estimatedCost.toFixed(6)),
+        avg_latency_ms: avgLatencyMs,
+        p95_latency_ms: this.percentile(samples, 0.95),
+        max_context_tokens: maxContextTokens,
+        context_fit: contextFit,
+        structured_output:
+          typeof capabilities.structured_output === 'boolean'
+            ? capabilities.structured_output
+            : null,
+      },
+    };
+  }
+
+  private inferFilterReasons(
+    target: RouteTarget,
+    initialTargets: RouteTarget[],
+    isFinalTarget: boolean,
+    modalityHints: Modality[] | string[] | undefined,
+    selectionHints: RouteSelectionHints,
+  ): string[] {
+    const reasons: string[] = [];
+    const capabilities =
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) || {};
+    const circuitState =
+      this.circuitBreaker.getCircuitState?.(target.node, target.model) || 'CLOSED';
+    if (!isFinalTarget && String(circuitState) === 'OPEN') {
+      reasons.push('circuit_open');
+    }
+
+    const estimatedContextTokens = selectionHints.estimated_context_tokens;
+    const maxContextTokens = capabilities.max_context_tokens;
+    if (
+      !isFinalTarget &&
+      estimatedContextTokens &&
+      maxContextTokens &&
+      estimatedContextTokens > maxContextTokens
+    ) {
+      reasons.push('context_window_exceeded');
+    }
+
+    if (
+      !isFinalTarget &&
+      selectionHints.requires_structured_output &&
+      capabilities.structured_output === false &&
+      initialTargets.some((candidate) =>
+        this.capabilityService.resolveModelRoutingCapabilities?.(
+          candidate.node,
+          candidate.model,
+        )?.structured_output === true,
+      )
+    ) {
+      reasons.push('structured_output_unsupported');
+    }
+
+    if (modalityHints && modalityHints.length > 0) {
+      const targetModalities =
+        this.capabilityService.resolveModelModalities?.(target.node, target.model) || [];
+      const supported = modalityHints.every((m) =>
+        targetModalities.includes(m as Modality),
+      );
+      if (!supported) {
+        reasons.push(isFinalTarget ? 'modality_demoted' : 'modality_unsupported');
+      }
+    }
+
+    if (!isFinalTarget && reasons.length === 0) {
+      reasons.push('routing_constraint_filtered');
+    }
+    return reasons;
+  }
+
+  private filterStage(reason: string): string {
+    if (reason.startsWith('circuit')) return 'circuit_breaker';
+    if (reason.startsWith('context')) return 'context_window';
+    if (reason.startsWith('structured')) return 'structured_output';
+    if (reason.startsWith('modality')) return 'modality';
+    return 'routing';
+  }
+
+  private contextFit(
+    contextTokens: number | undefined,
+    maxContextTokens: number | null,
+  ): 'safe' | 'near_limit' | 'overflow' | 'unknown' {
+    if (!contextTokens || !maxContextTokens) return 'unknown';
+    if (contextTokens > maxContextTokens) return 'overflow';
+    if (contextTokens > maxContextTokens * 0.8) return 'near_limit';
+    return 'safe';
+  }
+
+  private contextScore(
+    contextTokens: number | undefined,
+    maxContextTokens: number | null,
+  ): number | null {
+    if (!contextTokens || !maxContextTokens) return null;
+    return this.roundScore(Math.max(0, 1 - contextTokens / maxContextTokens));
+  }
+
+  private roundScore(value: number): number {
+    return Number(value.toFixed(4));
   }
 
   private applyCapabilityConstraints<T extends RouteTarget>(

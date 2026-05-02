@@ -6,6 +6,7 @@ import {
   CallLog,
   GatewayApiKey,
   NodeStatus,
+  RouteDecisionLog,
   ShadowTrafficResult,
 } from './entities';
 
@@ -21,6 +22,7 @@ import {
             NodeStatus,
             GatewayApiKey,
             ShadowTrafficResult,
+            RouteDecisionLog,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
           // Production PostgreSQL deployments should set database.synchronize=false.
@@ -43,7 +45,13 @@ import {
         };
       },
     }),
-    TypeOrmModule.forFeature([CallLog, BudgetRule, NodeStatus, ShadowTrafficResult]),
+    TypeOrmModule.forFeature([
+      CallLog,
+      BudgetRule,
+      NodeStatus,
+      ShadowTrafficResult,
+      RouteDecisionLog,
+    ]),
   ],
   exports: [TypeOrmModule],
 })

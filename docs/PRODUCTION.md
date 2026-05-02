@@ -72,7 +72,8 @@ node dist/cli/siftgate.js migrate-db \
 
 The migrator:
 
-- Reads `gateway_api_keys`, `budget_rules`, `node_status`, and `call_logs`.
+- Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`, and
+  `route_decisions`.
 - Creates a timestamped SQLite backup when `--backup` is set.
 - Creates/updates the PostgreSQL schema through the OSS TypeORM entities before
   import.

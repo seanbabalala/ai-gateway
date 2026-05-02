@@ -44,6 +44,7 @@ function makeRoutingService(overrides: {
 
   const circuitBreaker = overrides.circuitBreaker || {
     isAvailable: jest.fn().mockReturnValue(true),
+    getCircuitState: jest.fn().mockReturnValue('CLOSED'),
   };
 
   const momentum = overrides.momentum || {
@@ -95,6 +96,7 @@ describe('RoutingService', () => {
   it('should filter out nodes with open circuit breakers', () => {
     const circuitBreaker = {
       isAvailable: jest.fn().mockImplementation((node: string, _model: string) => node !== 'n1'),
+      getCircuitState: jest.fn().mockImplementation((node: string) => node === 'n1' ? 'OPEN' : 'CLOSED'),
     };
     const svc = makeRoutingService({ circuitBreaker });
     const decision = svc.resolve('simple' as Tier, 0.1);
@@ -107,6 +109,7 @@ describe('RoutingService', () => {
   it('should use all targets as last resort when all circuits are open', () => {
     const circuitBreaker = {
       isAvailable: jest.fn().mockReturnValue(false),
+      getCircuitState: jest.fn().mockReturnValue('OPEN'),
     };
     const svc = makeRoutingService({ circuitBreaker });
     const decision = svc.resolve('simple' as Tier, 0.1);
@@ -178,6 +181,80 @@ describe('RoutingService', () => {
     expect(decision.score).toBe(0.42);
   });
 
+  it('should include route decision trace candidates, filters, and scores', () => {
+    const circuitBreaker = {
+      isAvailable: jest.fn().mockImplementation((node: string) => node !== 'n2'),
+      getCircuitState: jest.fn().mockImplementation((node: string) => node === 'n2' ? 'OPEN' : 'CLOSED'),
+    };
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+        max_context_tokens: model === 'fast-model' ? 128000 : 1000,
+        structured_output: model === 'fast-model',
+        pricing: model === 'fast-model'
+          ? { input: 1, output: 2 }
+          : { input: 10, output: 20 },
+      })),
+    };
+    const svc = makeRoutingService({ circuitBreaker, capabilityService });
+    const decision = svc.resolve(
+      'simple' as Tier,
+      0.42,
+      'session-1',
+      'backend',
+      ['text'],
+      {
+        estimated_input_tokens: 100,
+        estimated_output_tokens: 50,
+        estimated_context_tokens: 1200,
+        requires_structured_output: true,
+      },
+    );
+
+    expect(decision.trace).toMatchObject({
+      mode: 'auto',
+      tier: 'simple',
+      score: 0.42,
+      domain_hints: { domain: 'backend', modalities: ['text'] },
+      constraints: {
+        estimated_context_tokens: 1200,
+        requires_structured_output: true,
+      },
+      final_selection: {
+        node: 'n1',
+        model: 'fast-model',
+      },
+      privacy: {
+        prompt: false,
+        response: false,
+        raw_headers: false,
+        provider_keys: false,
+      },
+    });
+    expect(decision.trace.candidate_targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node: 'n1',
+          selected: true,
+          scores: expect.objectContaining({
+            cost: expect.any(Number),
+            context: expect.any(Number),
+          }),
+        }),
+        expect.objectContaining({
+          node: 'n2',
+          circuit_state: 'OPEN',
+          filter_reasons: expect.arrayContaining(['circuit_open']),
+        }),
+      ]),
+    );
+    expect(decision.trace.filters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ node: 'n2', stage: 'circuit_breaker' }),
+      ]),
+    );
+  });
+
   // ── Null domain hint ─────────────────────────────────────
 
   it('should handle null domain hint', () => {
@@ -191,6 +268,7 @@ describe('RoutingService', () => {
   it('should not reorder when only one target is available', () => {
     const circuitBreaker = {
       isAvailable: jest.fn().mockImplementation((node: string) => node === 'n1'),
+      getCircuitState: jest.fn().mockImplementation((node: string) => node === 'n1' ? 'CLOSED' : 'OPEN'),
     };
     const svc = makeRoutingService({
       circuitBreaker,

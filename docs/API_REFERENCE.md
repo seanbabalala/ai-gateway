@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.5 adds optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results alongside the existing chat, responses, messages, embeddings, models, and health APIs.
+v0.5 adds optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results alongside the existing chat, responses, messages, embeddings, models, and health APIs. The v0.6 branch adds privacy-safe route decision traces for explainable routing.
 
 ## Live Documentation
 
@@ -76,6 +76,8 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/logs` | Paginated call logs |
 | `GET` | `/api/dashboard/logs/export` | Export logs as CSV or JSON |
 | `GET` | `/api/dashboard/logs/sse` | Server-Sent Events stream for live call logs |
+| `GET` | `/api/dashboard/route-decisions` | Paginated explainable routing summaries |
+| `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
@@ -101,6 +103,12 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/cache/stats` | Prompt-cache statistics |
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
 | `GET` | `/api/dashboard/telemetry-status` | Optional connected-gateway telemetry status |
+
+### Explainable Routing Traces
+
+`GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
+
+Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
 
 ## Gateway API Key Management
 
