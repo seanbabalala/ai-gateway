@@ -22,6 +22,16 @@ import {
   MessageEvent, ParseIntPipe, DefaultValuePipe, HttpException, HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
@@ -39,12 +49,23 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import type { Modality } from '../config/modality';
 import {
   CreateGatewayApiKeyDto,
-  GatewayApiKeyService,
   UpdateGatewayApiKeyDto,
-} from '../auth/gateway-api-key.service';
+} from '../auth/dto/gateway-api-key.dto';
+import { GatewayApiKeyService } from '../auth/gateway-api-key.service';
+import {
+  ActionResponseDto,
+  ErrorEnvelopeDto,
+  GatewayApiKeyCreatedResponseDto,
+  GatewayApiKeyListResponseDto,
+  GatewayApiKeyMutationResponseDto,
+  SanitizedConfigResponseDto,
+} from '../openapi/openapi.dto';
 
 @Controller('api/dashboard')
 @UseGuards(DashboardGuard)
+@ApiTags('Dashboard')
+@ApiBearerAuth('dashboardSession')
+@ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
 export class DashboardController {
   private readonly logger = new Logger(DashboardController.name);
 
@@ -115,6 +136,12 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('analytics/cost')
+  @ApiOperation({ summary: 'Get cost analytics for Dashboard charts' })
+  @ApiQuery({ name: 'period', required: false, example: '7d' })
+  @ApiQuery({ name: 'groupBy', required: false, example: 'model' })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiOkResponse({ description: 'Cost totals, daily trend, and grouped usage analytics.' })
   async getCostAnalytics(
     @Query('period') period: string = '7d',
     @Query('groupBy') groupBy: string = 'model',
@@ -252,6 +279,12 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('analytics/experiment')
+  @ApiOperation({ summary: 'Get A/B split experiment analytics' })
+  @ApiQuery({ name: 'period', required: false, example: '7d' })
+  @ApiQuery({ name: 'tier', required: false, example: 'standard' })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiOkResponse({ description: 'Experiment-group analytics and active split definitions.' })
   async getExperimentAnalytics(
     @Query('period') period: string = '7d',
     @Query('tier') tier?: string,
@@ -339,6 +372,10 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('stats')
+  @ApiOperation({ summary: 'Get Dashboard aggregate stats' })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiOkResponse({ description: 'Total calls, success rate, token usage, cost, latency, and distributions.' })
   async getStats(
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
@@ -432,6 +469,15 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('logs')
+  @ApiOperation({ summary: 'List paginated call logs' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 50 })
+  @ApiQuery({ name: 'tier', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiOkResponse({ description: 'Paginated call logs and pagination metadata.' })
   async getLogs(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -472,6 +518,12 @@ export class DashboardController {
   // ── Log Export ──────────────────────────────────────────
 
   @Get('logs/export')
+  @ApiOperation({ summary: 'Export call logs as CSV or JSON' })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'json'] })
+  @ApiQuery({ name: 'days', required: false, example: 7 })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiOkResponse({ description: 'A CSV or JSON file download.' })
   async exportLogs(
     @Query('format') format: string = 'csv',
     @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
@@ -529,6 +581,8 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Sse('logs/sse')
+  @ApiOperation({ summary: 'Stream call log events for the Dashboard' })
+  @ApiOkResponse({ description: 'Server-Sent Events with connected, log, and heartbeat events.' })
   streamLogs(): Observable<MessageEvent> {
     // Heartbeat every 30s to keep connection alive
     const heartbeat$ = interval(30_000).pipe(
@@ -555,6 +609,10 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('budget')
+  @ApiOperation({ summary: 'Get global and per-key budget status' })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiOkResponse({ description: 'Budget rules and current usage.' })
   async getBudget(
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
@@ -611,6 +669,8 @@ export class DashboardController {
   }
 
   @Get('budget/keys')
+  @ApiOperation({ summary: 'List API keys that have budget information' })
+  @ApiOkResponse({ description: 'Budget-aware Gateway API key names and summaries.' })
   async getBudgetKeys() {
     const budgetKeys = await this.budgetService.getKeysWithBudgets();
     const generatedKeys = await this.gatewayApiKeys.list();
@@ -631,6 +691,9 @@ export class DashboardController {
   }
 
   @Get('api-keys')
+  @ApiTags('API Keys')
+  @ApiOperation({ summary: 'List Dashboard-managed Gateway API keys' })
+  @ApiOkResponse({ type: GatewayApiKeyListResponseDto })
   async getApiKeyNames() {
     const items = await this.gatewayApiKeys.list();
     return {
@@ -640,6 +703,10 @@ export class DashboardController {
   }
 
   @Post('api-keys')
+  @ApiTags('API Keys')
+  @ApiOperation({ summary: 'Create a Gateway API key' })
+  @ApiBody({ type: CreateGatewayApiKeyDto })
+  @ApiOkResponse({ type: GatewayApiKeyCreatedResponseDto })
   async createApiKey(@Body() body: CreateGatewayApiKeyDto) {
     const created = await this.gatewayApiKeys.create(body);
     return {
@@ -651,6 +718,11 @@ export class DashboardController {
   }
 
   @Put('api-keys/:id')
+  @ApiTags('API Keys')
+  @ApiOperation({ summary: 'Update a Gateway API key policy' })
+  @ApiParam({ name: 'id', example: 'key_01h...' })
+  @ApiBody({ type: UpdateGatewayApiKeyDto })
+  @ApiOkResponse({ type: GatewayApiKeyMutationResponseDto })
   async updateApiKey(
     @Param('id') id: string,
     @Body() body: UpdateGatewayApiKeyDto,
@@ -663,6 +735,10 @@ export class DashboardController {
   }
 
   @Post('api-keys/:id/rotate')
+  @ApiTags('API Keys')
+  @ApiOperation({ summary: 'Rotate a Gateway API key secret' })
+  @ApiParam({ name: 'id', example: 'key_01h...' })
+  @ApiOkResponse({ type: GatewayApiKeyCreatedResponseDto })
   async rotateApiKey(@Param('id') id: string) {
     const rotated = await this.gatewayApiKeys.rotate(id);
     return {
@@ -674,12 +750,19 @@ export class DashboardController {
   }
 
   @Delete('api-keys/:id')
+  @ApiTags('API Keys')
+  @ApiOperation({ summary: 'Delete a Gateway API key' })
+  @ApiParam({ name: 'id', example: 'key_01h...' })
+  @ApiOkResponse({ type: ActionResponseDto })
   async deleteApiKey(@Param('id') id: string) {
     await this.gatewayApiKeys.remove(id);
     return { success: true, message: 'Gateway API key deleted' };
   }
 
   @Post('budget/:id/reset')
+  @ApiOperation({ summary: 'Reset a budget rule counter' })
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiOkResponse({ type: ActionResponseDto })
   async resetBudget(@Param('id', ParseIntPipe) id: number) {
     await this.budgetService.resetRule(id);
     return { success: true, message: `Budget rule ${id} reset` };
@@ -690,11 +773,15 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('cache')
+  @ApiOperation({ summary: 'Get prompt cache stats' })
+  @ApiOkResponse({ description: 'Prompt cache hit/miss and storage stats.' })
   getCacheStats() {
     return this.cacheService.getStats();
   }
 
   @Post('cache/clear')
+  @ApiOperation({ summary: 'Clear prompt cache' })
+  @ApiOkResponse({ type: ActionResponseDto })
   clearCache() {
     this.cacheService.clear();
     return { success: true, message: 'Cache cleared' };
@@ -705,6 +792,8 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('telemetry-status')
+  @ApiOperation({ summary: 'Get local telemetry configuration status' })
+  @ApiOkResponse({ description: 'Telemetry enabled state and non-secret endpoint configuration.' })
   getTelemetryStatus() {
     const fullConfig = this.config.getFullConfig();
     const telemetryCfg = fullConfig.telemetry;
@@ -730,6 +819,11 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('config')
+  @ApiOperation({
+    summary: 'Get sanitized gateway configuration',
+    description: 'Provider API keys are masked, legacy YAML auth keys are omitted, and dashboard password hashes are never returned.',
+  })
+  @ApiOkResponse({ type: SanitizedConfigResponseDto })
   getConfig() {
     const full = this.config.getFullConfig();
 
@@ -757,6 +851,8 @@ export class DashboardController {
   }
 
   @Post('config/reload')
+  @ApiOperation({ summary: 'Reload gateway.config.yaml from disk' })
+  @ApiOkResponse({ type: ActionResponseDto })
   reloadConfig() {
     try {
       this.config.reload();
@@ -772,12 +868,23 @@ export class DashboardController {
 
   /** Get all capability definitions */
   @Get('capabilities')
+  @ApiOperation({ summary: 'List known capability definitions' })
+  @ApiOkResponse({ description: 'Capability registry used by tier recommendation and routing suggestions.' })
   getCapabilities() {
     return { capabilities: this.capabilityService.getRegistry() };
   }
 
   /** Recommend tier suitability given a set of capabilities */
   @Post('capabilities/recommend-tiers')
+  @ApiOperation({ summary: 'Recommend tiers for a capability set' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { capabilities: { type: 'array', items: { type: 'string' } } },
+      example: { capabilities: ['coding', 'reasoning'] },
+    },
+  })
+  @ApiOkResponse({ description: 'Tier recommendations by capability.' })
   recommendTiers(@Body() body: { capabilities: string[] }) {
     const capabilities = body.capabilities || [];
     return { recommendations: this.capabilityService.recommendTiers(capabilities) };
@@ -785,12 +892,34 @@ export class DashboardController {
 
   /** Recommend full routing config based on all nodes' capabilities */
   @Post('routing/recommend')
+  @ApiOperation({ summary: 'Recommend routing config from node capabilities' })
+  @ApiOkResponse({ description: 'Suggested routing configuration.' })
   recommendRouting() {
     return { recommendations: this.capabilityService.recommendRouting() };
   }
 
   /** Update routing configuration (tiers, scoring, domain preferences) */
   @Put('routing')
+  @ApiOperation({ summary: 'Update routing tiers, scoring thresholds, and domain preferences' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tiers: { type: 'object' },
+        scoring: { type: 'object' },
+        domain_preferences: { type: 'object' },
+      },
+      example: {
+        tiers: {
+          standard: {
+            primary: { node: 'openai', model: 'gpt-4o' },
+            fallbacks: [{ node: 'anthropic', model: 'claude-sonnet-4-20250514' }],
+          },
+        },
+      },
+    },
+  })
+  @ApiOkResponse({ type: ActionResponseDto })
   updateRouting(@Body() body: {
     tiers?: Record<string, { primary: { node: string; model: string }; fallbacks: { node: string; model: string }[] }>;
     scoring?: { simple_max: number; standard_max: number; complex_max: number };
@@ -812,6 +941,8 @@ export class DashboardController {
   // ══════════════════════════════════════════════════════
 
   @Get('nodes')
+  @ApiOperation({ summary: 'List configured nodes, capabilities, and circuit status' })
+  @ApiOkResponse({ description: 'Node status list with no provider API key values.' })
   getNodes() {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
@@ -867,6 +998,9 @@ export class DashboardController {
 
   /** Test a new node before saving (provide all params) */
   @Post('nodes/test')
+  @ApiOperation({ summary: 'Test a node configuration before saving it' })
+  @ApiBody({ type: TestNodeDto })
+  @ApiOkResponse({ description: 'Connectivity result. Provider API key is accepted as write-only input and is not returned.' })
   async testNodeConnectivity(@Body() dto: TestNodeDto) {
     return this.runConnectivityTest({
       protocol: dto.protocol,
@@ -881,6 +1015,9 @@ export class DashboardController {
 
   /** Test an existing node using its saved config (no need to re-enter API key) */
   @Post('nodes/:id/test')
+  @ApiOperation({ summary: 'Test an existing saved node' })
+  @ApiParam({ name: 'id', example: 'openai' })
+  @ApiOkResponse({ description: 'Connectivity result using the saved provider key.' })
   async testExistingNode(@Param('id') nodeId: string) {
     const node = this.config.getNode(nodeId);
     if (!node) {
@@ -901,6 +1038,10 @@ export class DashboardController {
   }
 
   @Post('nodes/:id/reset')
+  @ApiOperation({ summary: 'Reset node or node:model circuit breaker state' })
+  @ApiParam({ name: 'id', example: 'openai' })
+  @ApiQuery({ name: 'model', required: false, example: 'gpt-4o' })
+  @ApiOkResponse({ type: ActionResponseDto })
   resetNodeCircuit(@Param('id') nodeId: string, @Query('model') model?: string) {
     if (model) {
       this.circuitBreaker.reset(nodeId, model);
@@ -1076,6 +1217,9 @@ export class DashboardController {
   // ── Node CRUD ──────────────────────────────────────────
 
   @Post('nodes')
+  @ApiOperation({ summary: 'Create a provider node' })
+  @ApiBody({ type: CreateNodeDto })
+  @ApiOkResponse({ type: ActionResponseDto })
   createNode(@Body() dto: CreateNodeDto) {
     try {
       this.config.addNode({
@@ -1105,6 +1249,10 @@ export class DashboardController {
   }
 
   @Put('nodes/:id')
+  @ApiOperation({ summary: 'Update a provider node' })
+  @ApiParam({ name: 'id', example: 'openai' })
+  @ApiBody({ type: UpdateNodeDto })
+  @ApiOkResponse({ type: ActionResponseDto })
   updateNode(@Param('id') nodeId: string, @Body() dto: UpdateNodeDto) {
     try {
       // Keep omitted fields intact. class-transformer may materialize optional
@@ -1125,6 +1273,9 @@ export class DashboardController {
   }
 
   @Delete('nodes/:id')
+  @ApiOperation({ summary: 'Delete a provider node' })
+  @ApiParam({ name: 'id', example: 'openai' })
+  @ApiOkResponse({ type: ActionResponseDto })
   deleteNode(@Param('id') nodeId: string) {
     try {
       // Reset circuit breaker for the node before deleting

@@ -1,7 +1,15 @@
 import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { ConfigService } from '../config/config.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
+import { ErrorEnvelopeDto, ModelListResponseDto } from '../openapi/openapi.dto';
 
 /**
  * GET /v1/models — OpenAI-compatible model listing endpoint.
@@ -9,12 +17,17 @@ import { RateLimitGuard } from '../auth/rate-limit.guard';
  */
 @Controller('v1')
 @UseGuards(ApiKeyGuard, RateLimitGuard)
+@ApiTags('Models')
+@ApiBearerAuth('gatewayApiKey')
 export class ModelsController {
   private readonly logger = new Logger(ModelsController.name);
 
   constructor(private readonly config: ConfigService) {}
 
   @Get('models')
+  @ApiOperation({ summary: 'List OpenAI-compatible models and SiftGate aliases' })
+  @ApiOkResponse({ type: ModelListResponseDto })
+  @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
   list() {
     const models = this.config.listModels();
 

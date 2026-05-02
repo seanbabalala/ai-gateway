@@ -9,11 +9,14 @@
 // ===================================================================
 
 import { Controller, Get, Logger } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '../config/config.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { BudgetService, BudgetStatus } from '../budget/budget.service';
+import { HealthResponseDto } from '../openapi/openapi.dto';
 
 @Controller()
+@ApiTags('Health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
   private readonly startedAt = Date.now();
@@ -25,6 +28,8 @@ export class HealthController {
   ) {}
 
   @Get('health')
+  @ApiOperation({ summary: 'Gateway health, budget, and circuit breaker status' })
+  @ApiOkResponse({ type: HealthResponseDto })
   async check() {
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);

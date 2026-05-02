@@ -247,6 +247,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   // Lazy-import AppModule so the config path is read at require time
   const { AppModule } = await import('../../src/app.module');
   const { PluginLoaderService } = await import('../../src/plugins/plugin-loader.service');
+  const { setupOpenApi } = await import('../../src/openapi/setup-openapi');
 
   const fetchMock = new FetchMock();
   fetchMock.install();
@@ -265,6 +266,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true }),
   );
+  setupOpenApi(app);
   app.use(helmet());
   app.enableCors({ origin: true, credentials: true });
   app.use(json({ limit: '1mb' }));

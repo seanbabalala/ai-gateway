@@ -8,10 +8,25 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import {
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { ConfigService } from '../config/config.service';
+import {
+  AuthStatusResponseDto,
+  ErrorEnvelopeDto,
+  LoginRequestDto,
+  LoginResponseDto,
+} from '../openapi/openapi.dto';
 
 @Controller('api/auth')
+@ApiTags('Dashboard Auth')
 export class AuthController {
   /** Per-IP sliding window for login attempts: ip → timestamp[] */
   private readonly loginAttempts = new Map<string, number[]>();
@@ -26,6 +41,11 @@ export class AuthController {
    * Verify password and return a JWT token.
    */
   @Post('login')
+  @ApiOperation({ summary: 'Login to the local Dashboard' })
+  @ApiBody({ type: LoginRequestDto })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
+  @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
   async login(@Req() req: any, @Body() body: { password?: string }) {
     const ip: string = req.ip || req.connection?.remoteAddress || 'unknown';
     this.checkLoginRate(ip);
@@ -56,6 +76,8 @@ export class AuthController {
    * No guard needed — this must be accessible without a token.
    */
   @Get('status')
+  @ApiOperation({ summary: 'Check whether Dashboard authentication is enabled' })
+  @ApiOkResponse({ type: AuthStatusResponseDto })
   getStatus() {
     return { authRequired: this.authService.isAuthRequired };
   }

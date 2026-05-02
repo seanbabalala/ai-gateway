@@ -1,13 +1,25 @@
 import { Controller, Post, Req, Res, Logger, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { MessagesNormalizer } from '../canonical/normalizers/messages.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
+import { AnthropicMessagesRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
 @UseGuards(ApiKeyGuard, RateLimitGuard)
+@ApiTags('AI Proxy')
+@ApiBearerAuth('gatewayApiKey')
 export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
   private readonly normalizer = new MessagesNormalizer();
@@ -15,6 +27,14 @@ export class MessagesController {
   constructor(private readonly pipeline: PipelineService) {}
 
   @Post('messages')
+  @ApiOperation({
+    summary: 'Anthropic Messages compatible ingress',
+    description: 'Routes Anthropic Messages requests through SiftGate. When stream=true, the response is Server-Sent Events.',
+  })
+  @ApiBody({ type: AnthropicMessagesRequestDto })
+  @ApiOkResponse({ description: 'Anthropic Messages-compatible response or SSE stream.' })
+  @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
+  @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
   async handle(@Req() req: Request, @Res() res: Response) {
     try {
       const headers = this.extractHeaders(req);
