@@ -117,11 +117,13 @@
 #### 6. OpenAPI 文档自动生成
 - **现状**：无正式 API 文档，用户需阅读源码
 - **目标**：自动生成 Swagger/OpenAPI 规范
+- **v0.2 状态**：已在开源 Data Plane 实现 `/docs` 与 `/openapi.json`，覆盖三类 AI 入口、`/v1/models`、`/health`、Dashboard API、API Key 管理和配置重载；DTO 示例会遮蔽 Provider API key 与 Dashboard secret。
 - **实现方案**：
   - 集成 `@nestjs/swagger`
   - 所有 Controller 加 DTO 装饰器
   - `/docs` 路径提供 Swagger UI
   - 导出 `openapi.json` 供客户端生成
+  - e2e 校验文档端点可访问且不会暴露真实 secret
 - **抽象到企业版**：API 文档作为开发者门户的一部分
 
 #### 7. 配置校验 CLI

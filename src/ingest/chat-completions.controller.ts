@@ -1,13 +1,25 @@
 import { Controller, Post, Req, Res, Logger, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { ChatCompletionsNormalizer } from '../canonical/normalizers/chat-completions.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
+import { ChatCompletionsRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
 @UseGuards(ApiKeyGuard, RateLimitGuard)
+@ApiTags('AI Proxy')
+@ApiBearerAuth('gatewayApiKey')
 export class ChatCompletionsController {
   private readonly logger = new Logger(ChatCompletionsController.name);
   private readonly normalizer = new ChatCompletionsNormalizer();
@@ -15,6 +27,14 @@ export class ChatCompletionsController {
   constructor(private readonly pipeline: PipelineService) {}
 
   @Post('chat/completions')
+  @ApiOperation({
+    summary: 'OpenAI Chat Completions compatible ingress',
+    description: 'Routes OpenAI-compatible chat requests through SiftGate. When stream=true, the response is Server-Sent Events.',
+  })
+  @ApiBody({ type: ChatCompletionsRequestDto })
+  @ApiOkResponse({ description: 'OpenAI-compatible chat completion response or SSE stream.' })
+  @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
+  @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
   async handle(@Req() req: Request, @Res() res: Response) {
     try {
       const headers = this.extractHeaders(req);

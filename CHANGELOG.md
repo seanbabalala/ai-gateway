@@ -18,6 +18,9 @@
 - v0.2 load balancing for OSS Data Plane routing tiers with `targets + strategy` schema supporting `weighted`, `round_robin`, `least_latency`, and `random`.
 - Local sliding-window latency feedback for `least_latency` target selection and Dashboard routing status.
 - Dashboard routing view for strategy, targets, weights, latency samples, p95, and recent target selection.
+- Added v0.2 OpenAPI/Swagger documentation for the OSS Data Plane at `/docs` and `/openapi.json`.
+- Documented AI proxy endpoints, health checks, Dashboard APIs, Gateway API key management, and config reload with secret-safe DTO examples.
+- Added e2e coverage to verify the OpenAPI endpoints are reachable and do not expose provider keys or dashboard password hashes.
 
 ### Changed
 

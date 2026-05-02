@@ -16,6 +16,7 @@
   <a href="#dashboard">Dashboard</a> &bull;
   <a href="#docker">Docker</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
+  <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
   <a href="docs/PRODUCT_ROADMAP.md">Roadmap</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
   <a href="#contributing">Contributing</a>
@@ -103,6 +104,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Node prefix routing** — send `"gpt/my-custom-model"` to force routing to a specific node
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
+- **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 
@@ -511,6 +513,12 @@ models_pricing: # Cost per 1M tokens (USD)
 ```
 
 ## API Endpoints
+
+Live API docs are available when the gateway is running:
+
+- Swagger UI: `http://localhost:2099/docs`
+- OpenAPI JSON: `http://localhost:2099/openapi.json`
+- Static reference: [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
 
 ### Proxy Endpoints (AI Requests)
 

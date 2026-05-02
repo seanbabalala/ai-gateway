@@ -13,6 +13,10 @@ import {
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { CallLog } from '../database/entities/call-log.entity';
 import { ConfigService } from '../config/config.service';
+import {
+  CreateGatewayApiKeyDto,
+  UpdateGatewayApiKeyDto,
+} from './dto/gateway-api-key.dto';
 
 export interface GatewayApiKeyContext {
   id: string;
@@ -23,31 +27,6 @@ export interface GatewayApiKeyContext {
   allowed_nodes: string[];
   allowed_models: string[];
   rate_limit_per_minute: number | null;
-}
-
-export interface CreateGatewayApiKeyDto {
-  name: string;
-  description?: string | null;
-  allow_auto?: boolean;
-  allow_direct?: boolean;
-  allowed_nodes?: string[];
-  allowed_models?: string[];
-  daily_token_limit?: number | null;
-  daily_cost_limit?: number | null;
-  rate_limit_per_minute?: number | null;
-}
-
-export interface UpdateGatewayApiKeyDto {
-  name?: string;
-  description?: string | null;
-  status?: GatewayApiKeyStatus;
-  allow_auto?: boolean;
-  allow_direct?: boolean;
-  allowed_nodes?: string[];
-  allowed_models?: string[];
-  daily_token_limit?: number | null;
-  daily_cost_limit?: number | null;
-  rate_limit_per_minute?: number | null;
 }
 
 export interface GatewayApiKeySummary {
