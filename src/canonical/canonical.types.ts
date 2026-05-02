@@ -74,6 +74,8 @@ export interface CanonicalRequestMetadata {
   raw_body?: unknown;
   api_key_name?: string;
   api_key_id?: string;
+  namespace_id?: string | null;
+  namespace_name?: string | null;
   api_key_permissions?: {
     allow_auto: boolean;
     allow_direct: boolean;

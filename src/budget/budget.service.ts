@@ -18,9 +18,10 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 export interface BudgetStatus {
   id: number;
   type: string;
-  scope: 'global' | 'api_key';
+  scope: 'global' | 'api_key' | 'namespace';
   apiKeyName: string | null;
   apiKeyId: string | null;
+  namespaceId: string | null;
   limit: number;
   current: number;
   percentage: number;
@@ -31,7 +32,7 @@ export interface BudgetStatus {
 }
 
 export class BudgetExceededError extends Error {
-  public readonly scope: 'global' | 'api_key';
+  public readonly scope: 'global' | 'api_key' | 'namespace';
   public readonly resetAt: Date | null;
 
   constructor(
@@ -40,16 +41,19 @@ export class BudgetExceededError extends Error {
     public readonly limit: number,
     public readonly apiKeyName?: string | null,
     public readonly apiKeyId?: string | null,
+    public readonly namespaceId?: string | null,
     periodStart?: Date | null,
   ) {
-    const scope = apiKeyName
+    const scope = namespaceId
+      ? `namespace "${namespaceId}"`
+      : apiKeyName
       ? `key "${apiKeyName}"`
       : apiKeyId
       ? `key id "${apiKeyId}"`
       : 'global';
     super(`Budget exceeded (${scope}): ${budgetType} (${current.toFixed(2)} / ${limit.toFixed(2)})`);
     this.name = 'BudgetExceededError';
-    this.scope = apiKeyName || apiKeyId ? 'api_key' : 'global';
+    this.scope = namespaceId ? 'namespace' : apiKeyName || apiKeyId ? 'api_key' : 'global';
     this.resetAt = periodStart ? BudgetExceededError.nextDailyReset(periodStart) : null;
   }
 
@@ -58,6 +62,7 @@ export class BudgetExceededError extends Error {
       scope: this.scope,
       api_key_id: this.apiKeyId || null,
       api_key_name: this.apiKeyName || null,
+      namespace_id: this.namespaceId || null,
       budget_type: this.budgetType,
       current: Number(this.current.toFixed(6)),
       limit: Number(this.limit.toFixed(6)),
@@ -79,7 +84,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private configReloadSub?: Subscription;
   private budgetMetricSnapshot: Array<{
     ratio: number;
-    attrs: { scope: 'global' | 'api_key'; budget_type: string };
+    attrs: { scope: 'global' | 'api_key' | 'namespace'; budget_type: string };
   }> = [];
 
   constructor(
@@ -106,7 +111,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    */
   private async ensureDefaultRules(): Promise<void> {
     const allGlobal = await this.budgetRepo.find({
-      where: { api_key_name: IsNull(), api_key_id: IsNull() },
+      where: { api_key_name: IsNull(), api_key_id: IsNull(), namespace_id: IsNull() },
     });
     const budget = this.config.budget;
     const now = this.startOfDay(new Date());
@@ -132,6 +137,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           is_active: true,
           api_key_name: null,
           api_key_id: null,
+          namespace_id: null,
         }));
       }
     }
@@ -157,7 +163,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       const keyBudget = keyEntry.budget;
 
       const existingRules = await this.budgetRepo.find({
-        where: { api_key_name: keyName, api_key_id: IsNull() },
+        where: { api_key_name: keyName, api_key_id: IsNull(), namespace_id: IsNull() },
       });
 
       // Upsert daily_token rule for this key
@@ -178,6 +184,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
             is_active: true,
             api_key_name: keyName,
             api_key_id: null,
+            namespace_id: null,
           }));
         }
       }
@@ -200,10 +207,83 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
             is_active: true,
             api_key_name: keyName,
             api_key_id: null,
+            namespace_id: null,
           }));
         }
       }
     }
+  }
+
+  /**
+   * Create local namespace budget rules from config. This is OSS-local only:
+   * namespaces are a lightweight policy scope, not enterprise workspaces.
+   */
+  private async ensureNamespaceRules(): Promise<void> {
+    const namespaces = this.config.namespaces || [];
+    const globalAlertThreshold = this.config.budget.alert_threshold;
+    const now = this.startOfDay(new Date());
+
+    for (const namespace of namespaces) {
+      const budget = namespace.budget;
+      const existingRules = await this.budgetRepo.find({
+        where: { namespace_id: namespace.id, is_active: true },
+      });
+
+      await this.upsertNamespaceRule(
+        namespace.id,
+        'daily_tokens',
+        budget?.daily_token_limit,
+        budget?.alert_threshold ?? globalAlertThreshold,
+        existingRules,
+        now,
+      );
+      await this.upsertNamespaceRule(
+        namespace.id,
+        'daily_cost',
+        budget?.daily_cost_limit,
+        budget?.alert_threshold ?? globalAlertThreshold,
+        existingRules,
+        now,
+      );
+    }
+  }
+
+  private async upsertNamespaceRule(
+    namespaceId: string,
+    type: string,
+    limit: number | undefined,
+    alertThreshold: number,
+    existingRules: BudgetRule[],
+    periodStart: Date,
+  ): Promise<void> {
+    const existing = existingRules.find((rule) => rule.type === type);
+    if (limit === undefined) {
+      if (existing) {
+        existing.is_active = false;
+        await this.budgetRepo.save(existing);
+      }
+      return;
+    }
+
+    if (existing) {
+      existing.limit_value = limit;
+      existing.alert_threshold = alertThreshold;
+      existing.is_active = true;
+      await this.budgetRepo.save(existing);
+      return;
+    }
+
+    await this.budgetRepo.save(this.budgetRepo.create({
+      type,
+      limit_value: limit,
+      alert_threshold: alertThreshold,
+      current_value: 0,
+      period_start: periodStart,
+      is_active: true,
+      api_key_name: null,
+      api_key_id: null,
+      namespace_id: namespaceId,
+    }));
   }
 
   /**
@@ -222,6 +302,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       .createQueryBuilder('rule')
       .where('rule.api_key_name IS NOT NULL')
       .andWhere('rule.api_key_id IS NULL')
+      .andWhere('rule.namespace_id IS NULL')
       .andWhere('rule.is_active = :active', { active: true })
       .getMany();
 
@@ -234,10 +315,30 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async deactivateOrphanedNamespaceRules(): Promise<void> {
+    const configNamespaces = new Set((this.config.namespaces || []).map((namespace) => namespace.id));
+    const namespaceRules = await this.budgetRepo
+      .createQueryBuilder('rule')
+      .where('rule.namespace_id IS NOT NULL')
+      .andWhere('rule.is_active = :active', { active: true })
+      .getMany();
+
+    for (const rule of namespaceRules) {
+      if (!rule.namespace_id || configNamespaces.has(rule.namespace_id)) {
+        continue;
+      }
+      rule.is_active = false;
+      await this.budgetRepo.save(rule);
+      this.logger.log(`Deactivated orphaned namespace budget rule: ${rule.type} for namespace "${rule.namespace_id}"`);
+    }
+  }
+
   private async syncRulesFromConfig(): Promise<void> {
     await this.ensureDefaultRules();
     await this.ensurePerKeyRules();
+    await this.ensureNamespaceRules();
     await this.deactivateOrphanedRules();
+    await this.deactivateOrphanedNamespaceRules();
     await this.refreshBudgetMetricSnapshot();
   }
 
@@ -246,17 +347,23 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * When apiKeyName is provided, checks both global AND per-key limits.
    * Throws BudgetExceededError if any active budget is exceeded.
    */
-  async check(apiKeyName?: string, apiKeyId?: string): Promise<void> {
+  async check(apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null): Promise<void> {
     // Check global rules
     const globalRules = await this.loadActiveRules(null);
     await this.resetExpiredPeriods(globalRules);
-    this.evaluateRules(globalRules, null);
+    this.evaluateRules(globalRules, null, null, null);
+
+    if (namespaceId) {
+      const namespaceRules = await this.loadActiveRules(null, null, namespaceId);
+      await this.resetExpiredPeriods(namespaceRules);
+      this.evaluateRules(namespaceRules, null, null, namespaceId);
+    }
 
     // Check per-key rules if applicable
     if (apiKeyName || apiKeyId) {
       const keyRules = await this.loadActiveRules(apiKeyName || null, apiKeyId);
       await this.resetExpiredPeriods(keyRules);
-      this.evaluateRules(keyRules, apiKeyName || null);
+      this.evaluateRules(keyRules, apiKeyName || null, apiKeyId || null, null);
     }
   }
 
@@ -264,10 +371,13 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Record token and cost usage after a successful call.
    * Updates both global rules and per-key rules if apiKeyName is provided.
    */
-  async record(tokens: number, costUsd: number, apiKeyName?: string, apiKeyId?: string): Promise<void> {
+  async record(tokens: number, costUsd: number, apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null): Promise<void> {
     const safeTokens = this.sanitizeCounterValue(tokens);
     const safeCostUsd = this.sanitizeCounterValue(costUsd);
     await this.recordAgainst(null, safeTokens, safeCostUsd);
+    if (namespaceId) {
+      await this.recordAgainst(null, safeTokens, safeCostUsd, null, namespaceId);
+    }
     if (apiKeyName || apiKeyId) {
       await this.recordAgainst(apiKeyName || null, safeTokens, safeCostUsd, apiKeyId);
     }
@@ -278,9 +388,11 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Get current budget status for rules.
    * No apiKeyName = global rules only; with apiKeyName = that key's rules.
    */
-  async getStatus(apiKeyName?: string | null, apiKeyId?: string | null): Promise<BudgetStatus[]> {
+  async getStatus(apiKeyName?: string | null, apiKeyId?: string | null, namespaceId?: string | null): Promise<BudgetStatus[]> {
     const targetKeyName = apiKeyName === undefined ? null : apiKeyName;
-    const rules = apiKeyId
+    const rules = namespaceId
+      ? await this.loadActiveRules(null, null, namespaceId)
+      : apiKeyId
       ? await this.loadActiveRules(null, apiKeyId)
       : targetKeyName === null
       ? await this.loadActiveRules(null)
@@ -291,9 +403,10 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     const statuses: BudgetStatus[] = rules.map((r) => ({
       id: r.id,
       type: r.type,
-      scope: r.api_key_id || r.api_key_name ? 'api_key' : 'global',
+      scope: r.namespace_id ? 'namespace' : r.api_key_id || r.api_key_name ? 'api_key' : 'global',
       apiKeyName: r.api_key_name,
       apiKeyId: r.api_key_id,
+      namespaceId: r.namespace_id,
       limit: r.limit_value,
       current: r.current_value,
       percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
@@ -329,6 +442,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       .createQueryBuilder('rule')
       .select('DISTINCT rule.api_key_name', 'api_key_name')
       .where('rule.api_key_name IS NOT NULL')
+      .andWhere('rule.namespace_id IS NULL')
       .andWhere('rule.is_active = :active', { active: true })
       .getRawMany();
 
@@ -340,7 +454,15 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Load active rules for a given scope (null = global, string = per-key).
    */
-  private async loadActiveRules(apiKeyName: string | null, apiKeyId?: string): Promise<BudgetRule[]> {
+  private async loadActiveRules(apiKeyName: string | null, apiKeyId?: string | null, namespaceId?: string | null): Promise<BudgetRule[]> {
+    if (namespaceId) {
+      return this.budgetRepo.find({
+        where: {
+          namespace_id: namespaceId,
+          is_active: true,
+        },
+      });
+    }
     if (apiKeyId) {
       return this.budgetRepo.find({
         where: {
@@ -353,6 +475,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       where: {
         api_key_name: apiKeyName === null ? IsNull() : apiKeyName,
         api_key_id: IsNull(),
+        namespace_id: IsNull(),
         is_active: true,
       },
     });
@@ -361,16 +484,22 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Evaluate a set of rules, throwing BudgetExceededError if any is exceeded.
    */
-  private evaluateRules(rules: BudgetRule[], apiKeyName: string | null): void {
+  private evaluateRules(
+    rules: BudgetRule[],
+    apiKeyName: string | null,
+    apiKeyId: string | null,
+    namespaceId: string | null,
+  ): void {
     for (const rule of rules) {
       if (rule.current_value >= rule.limit_value) {
-        this.alertBudgetExceeded(rule, apiKeyName);
+        this.alertBudgetExceeded(rule, apiKeyName, apiKeyId || undefined, namespaceId);
         throw new BudgetExceededError(
           rule.type,
           rule.current_value,
           rule.limit_value,
           apiKeyName || rule.api_key_name,
-          rule.api_key_id,
+          apiKeyId || rule.api_key_id,
+          namespaceId || rule.namespace_id,
           rule.period_start,
         );
       }
@@ -380,8 +509,14 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Record usage against rules for a specific scope.
    */
-  private async recordAgainst(apiKeyName: string | null, tokens: number, costUsd: number, apiKeyId?: string): Promise<void> {
-    const rules = await this.loadActiveRules(apiKeyName, apiKeyId);
+  private async recordAgainst(
+    apiKeyName: string | null,
+    tokens: number,
+    costUsd: number,
+    apiKeyId?: string | null,
+    namespaceId?: string | null,
+  ): Promise<void> {
+    const rules = await this.loadActiveRules(apiKeyName, apiKeyId, namespaceId);
     await this.resetExpiredPeriods(rules);
 
     for (const rule of rules) {
@@ -400,13 +535,15 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       const pct = rule.limit_value > 0 ? rule.current_value / rule.limit_value : 0;
       const previousPct = rule.limit_value > 0 ? previousValue / rule.limit_value : 0;
       if (previousPct < rule.alert_threshold && pct >= rule.alert_threshold) {
-        const scope = apiKeyName || apiKeyId
+        const scope = namespaceId
+          ? `namespace "${namespaceId}"`
+          : apiKeyName || apiKeyId
           ? `key "${apiKeyName || apiKeyId}"`
           : 'global';
         this.logger.warn(
           `Budget alert (${scope}): ${rule.type} at ${(pct * 100).toFixed(1)}% (${rule.current_value.toFixed(2)} / ${rule.limit_value})`,
         );
-        this.alertBudgetThreshold(rule, pct, apiKeyName, apiKeyId);
+        this.alertBudgetThreshold(rule, pct, apiKeyName, apiKeyId || undefined, namespaceId || undefined);
       }
 
       await this.budgetRepo.save(rule);
@@ -464,9 +601,10 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       const statuses: BudgetStatus[] = rules.map((r) => ({
         id: r.id,
         type: r.type,
-        scope: r.api_key_id || r.api_key_name ? 'api_key' as const : 'global' as const,
+        scope: r.namespace_id ? 'namespace' as const : r.api_key_id || r.api_key_name ? 'api_key' as const : 'global' as const,
         apiKeyName: r.api_key_name,
         apiKeyId: r.api_key_id,
+        namespaceId: r.namespace_id,
         limit: r.limit_value,
         current: r.current_value,
         percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
@@ -484,7 +622,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private updateBudgetMetricSnapshot(statuses: BudgetStatus[]): void {
     const aggregates = new Map<string, {
       ratio: number;
-      attrs: { scope: 'global' | 'api_key'; budget_type: string };
+      attrs: { scope: 'global' | 'api_key' | 'namespace'; budget_type: string };
     }>();
     for (const status of statuses) {
       const key = `${status.scope}:${status.type}`;
@@ -507,17 +645,23 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     percentage: number,
     apiKeyName?: string | null,
     apiKeyId?: string,
+    namespaceId?: string,
   ): void {
     this.alerts?.emit({
       type: 'budget_threshold',
       severity: 'warning',
       message: `Budget threshold reached for ${rule.type}: ${(percentage * 100).toFixed(1)}%.`,
       dedupeKey: this.budgetDedupeKey(rule, 'threshold'),
-      details: this.budgetAlertDetails(rule, apiKeyName, apiKeyId, percentage),
+      details: this.budgetAlertDetails(rule, apiKeyName, apiKeyId, namespaceId, percentage),
     });
   }
 
-  private alertBudgetExceeded(rule: BudgetRule, apiKeyName: string | null): void {
+  private alertBudgetExceeded(
+    rule: BudgetRule,
+    apiKeyName: string | null,
+    apiKeyId?: string,
+    namespaceId?: string | null,
+  ): void {
     const percentage = rule.limit_value > 0
       ? rule.current_value / rule.limit_value
       : 0;
@@ -529,7 +673,8 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       details: this.budgetAlertDetails(
         rule,
         apiKeyName || rule.api_key_name,
-        rule.api_key_id || undefined,
+        apiKeyId || rule.api_key_id || undefined,
+        namespaceId || rule.namespace_id || undefined,
         percentage,
       ),
     });
@@ -539,12 +684,14 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     rule: BudgetRule,
     apiKeyName?: string | null,
     apiKeyId?: string,
+    namespaceId?: string,
     percentage?: number,
   ): Record<string, unknown> {
     return {
-      scope: apiKeyName || apiKeyId ? 'api_key' : 'global',
+      scope: namespaceId || rule.namespace_id ? 'namespace' : apiKeyName || apiKeyId ? 'api_key' : 'global',
       api_key_name: apiKeyName || null,
       api_key_id: apiKeyId || null,
+      namespace_id: namespaceId || rule.namespace_id || null,
       budget_type: rule.type,
       current: Number(rule.current_value.toFixed(6)),
       limit: Number(rule.limit_value.toFixed(6)),
@@ -556,7 +703,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
   private budgetDedupeKey(rule: BudgetRule, suffix: string): string {
     return [
-      rule.api_key_id || rule.api_key_name || 'global',
+      rule.namespace_id || rule.api_key_id || rule.api_key_name || 'global',
       rule.type,
       suffix,
       this.startOfDay(new Date(rule.period_start)).toISOString(),

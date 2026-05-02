@@ -19,6 +19,10 @@
 - v0.5 Redis-backed cluster mode for OSS Data Plane instance registration, heartbeats, and config reload broadcasts.
 - `GET /cluster/status` for Redis-backed multi-instance inventory and reload broadcast status, enabled only when `state.backend=redis` or `cluster.enabled=true`.
 - Config validation, docs, and example config for `state` and `cluster` settings without requiring SiftGate Cloud.
+- v0.5 local OSS namespaces for Gateway API keys, with namespace-level node/model restrictions, budgets, rate limits, call-log attribution, and Dashboard filtering.
+- v0.5 asynchronous shadow traffic mirroring for sampled successful chat, stream, and embedding requests, disabled by default and shown in a read-only Dashboard view.
+- Privacy-safe shadow defaults that avoid storing prompts, responses, raw headers, or provider keys unless local comparison storage is explicitly enabled.
+- Config validation, example config, docs, and unit coverage for namespace references, policy intersection, namespace budgets, shadow config, sanitized shadow results, and Dashboard APIs.
 
 ### Changed
 

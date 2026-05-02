@@ -26,6 +26,8 @@ export interface GatewayApiKeyContext {
   allow_direct: boolean;
   allowed_nodes: string[];
   allowed_models: string[];
+  namespace_id: string | null;
+  namespace_name: string | null;
   rate_limit_per_minute: number | null;
 }
 
@@ -39,6 +41,8 @@ export interface GatewayApiKeySummary {
   allow_direct: boolean;
   allowed_nodes: string[];
   allowed_models: string[];
+  namespace_id: string | null;
+  namespace_name: string | null;
   daily_token_limit: number | null;
   daily_cost_limit: number | null;
   rate_limit_per_minute: number | null;
@@ -106,6 +110,9 @@ export class GatewayApiKeyService {
     if (!entity || entity.status !== 'active') {
       return null;
     }
+    if (entity.namespace_id && !this.config.getNamespace(entity.namespace_id)) {
+      return null;
+    }
 
     entity.last_used_at = new Date();
     entity.last_used_ip = ip || null;
@@ -167,15 +174,27 @@ export class GatewayApiKeyService {
   }
 
   private toContext(entity: GatewayApiKey): GatewayApiKeyContext {
+    const namespace = this.config.getNamespace(entity.namespace_id);
     return {
       id: entity.id,
       name: entity.name,
       status: entity.status,
       allow_auto: entity.allow_auto,
       allow_direct: entity.allow_direct,
-      allowed_nodes: entity.allowed_nodes || [],
-      allowed_models: entity.allowed_models || [],
-      rate_limit_per_minute: entity.rate_limit_per_minute,
+      allowed_nodes: this.combineRestrictions(
+        entity.allowed_nodes || [],
+        namespace?.allowed_nodes || [],
+      ),
+      allowed_models: this.combineRestrictions(
+        entity.allowed_models || [],
+        namespace?.allowed_models || [],
+      ),
+      namespace_id: entity.namespace_id || null,
+      namespace_name: namespace?.name || null,
+      rate_limit_per_minute: this.combineRateLimit(
+        entity.rate_limit_per_minute,
+        namespace?.rate_limit?.requests_per_minute,
+      ),
     };
   }
 
@@ -204,6 +223,8 @@ export class GatewayApiKeyService {
       allow_direct: entity.allow_direct,
       allowed_nodes: entity.allowed_nodes || [],
       allowed_models: entity.allowed_models || [],
+      namespace_id: entity.namespace_id || null,
+      namespace_name: this.config.getNamespace(entity.namespace_id)?.name || null,
       daily_token_limit: entity.daily_token_limit,
       daily_cost_limit: entity.daily_cost_limit,
       rate_limit_per_minute: entity.rate_limit_per_minute,
@@ -229,6 +250,7 @@ export class GatewayApiKeyService {
       allow_direct: dto.allow_direct ?? false,
       allowed_nodes: this.normalizeStringArray(dto.allowed_nodes),
       allowed_models: this.normalizeStringArray(dto.allowed_models),
+      namespace_id: this.normalizeNamespaceId(dto.namespace_id),
       daily_token_limit: this.normalizeOptionalLimit(dto.daily_token_limit),
       daily_cost_limit: this.normalizeOptionalLimit(dto.daily_cost_limit),
       rate_limit_per_minute: this.normalizeOptionalInteger(dto.rate_limit_per_minute),
@@ -249,6 +271,7 @@ export class GatewayApiKeyService {
     if (dto.allow_direct !== undefined) normalized.allow_direct = Boolean(dto.allow_direct);
     if (dto.allowed_nodes !== undefined) normalized.allowed_nodes = this.normalizeStringArray(dto.allowed_nodes);
     if (dto.allowed_models !== undefined) normalized.allowed_models = this.normalizeStringArray(dto.allowed_models);
+    if (dto.namespace_id !== undefined) normalized.namespace_id = this.normalizeNamespaceId(dto.namespace_id);
     if (dto.daily_token_limit !== undefined) normalized.daily_token_limit = this.normalizeOptionalLimit(dto.daily_token_limit);
     if (dto.daily_cost_limit !== undefined) normalized.daily_cost_limit = this.normalizeOptionalLimit(dto.daily_cost_limit);
     if (dto.rate_limit_per_minute !== undefined) normalized.rate_limit_per_minute = this.normalizeOptionalInteger(dto.rate_limit_per_minute);
@@ -274,6 +297,31 @@ export class GatewayApiKeyService {
   private normalizeStringArray(values: string[] | undefined): string[] {
     if (!Array.isArray(values)) return [];
     return [...new Set(values.map((v) => String(v).trim()).filter(Boolean))];
+  }
+
+  private normalizeNamespaceId(value: string | null | undefined): string | null {
+    const normalized = (value || '').trim();
+    if (!normalized) return null;
+    if (!this.config.getNamespace(normalized)) {
+      throw new BadRequestException(`Unknown namespace_id: ${normalized}`);
+    }
+    return normalized;
+  }
+
+  private combineRestrictions(keyValues: string[], namespaceValues: string[]): string[] {
+    if (keyValues.length === 0) return [...namespaceValues];
+    if (namespaceValues.length === 0) return [...keyValues];
+    const namespaceSet = new Set(namespaceValues);
+    return keyValues.filter((value) => namespaceSet.has(value));
+  }
+
+  private combineRateLimit(
+    keyLimit: number | null | undefined,
+    namespaceLimit: number | null | undefined,
+  ): number | null {
+    const limits = [keyLimit, namespaceLimit]
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    return limits.length > 0 ? Math.min(...limits) : null;
   }
 
   private normalizeOptionalLimit(value: number | null | undefined): number | null {

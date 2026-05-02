@@ -1,7 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '../config/config.service';
-import { CallLog, BudgetRule, NodeStatus, GatewayApiKey } from './entities';
+import {
+  BudgetRule,
+  CallLog,
+  GatewayApiKey,
+  NodeStatus,
+  ShadowTrafficResult,
+} from './entities';
 
 @Module({
   imports: [
@@ -9,7 +15,13 @@ import { CallLog, BudgetRule, NodeStatus, GatewayApiKey } from './entities';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const shared = {
-          entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey],
+          entities: [
+            CallLog,
+            BudgetRule,
+            NodeStatus,
+            GatewayApiKey,
+            ShadowTrafficResult,
+          ],
           // Default remains true for the OSS single-node SQLite/dev path.
           // Production PostgreSQL deployments should set database.synchronize=false.
           synchronize: config.database.synchronize ?? true,
@@ -31,7 +43,7 @@ import { CallLog, BudgetRule, NodeStatus, GatewayApiKey } from './entities';
         };
       },
     }),
-    TypeOrmModule.forFeature([CallLog, BudgetRule, NodeStatus]),
+    TypeOrmModule.forFeature([CallLog, BudgetRule, NodeStatus, ShadowTrafficResult]),
   ],
   exports: [TypeOrmModule],
 })

@@ -14,7 +14,7 @@
 | v0.2 | Resilience   | 已发布 — v0.2.0 可靠性 + 开发者体验 | ✅ Released |
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
-| v0.5 | Scale        | 高可用 + 高性能 + 企业就绪          | 6 周        |
+| v0.5 | Scale        | 高可用 + 高性能 + 企业就绪          | In progress |
 
 ---
 
@@ -644,44 +644,52 @@
 
 #### 35. 多租户隔离
 
-- **现状**：所有 API Key 共享同一套节点和路由
-- **目标**：支持 Namespace/Team 级别隔离
+- **状态**：✅ v0.5 OSS 本地 namespace 已实现；企业 workspace/SSO/SCIM/组织计费不在开源数据面内
+- **现状**：API Key 可绑定本地 namespace，并按 namespace 过滤 Dashboard 视图
+- **目标**：支持本地 Namespace/Team 级别隔离
 - **实现方案**：
   ```yaml
   namespaces:
-    - name: team-a
+    - id: team-a
+      name: "Team A"
       allowed_nodes: [openai-prod, anthropic-prod]
+      allowed_models: [gpt-4o, claude-sonnet]
       budget:
         daily_cost_limit: 100
       rate_limit:
         requests_per_minute: 120
-    - name: team-b
+    - id: team-b
       allowed_nodes: [openai-prod]
       budget:
         daily_cost_limit: 50
   ```
 
-  - 每个 namespace 有独立的节点权限、预算、限流
-  - API Key 绑定到 namespace
-  - Dashboard 支持 namespace 切换视图
+  - 每个 namespace 有独立的节点/模型权限、预算、限流
+  - API Key 绑定到 namespace，权限与 key 自身限制取交集
+  - Budget、call_log、Dashboard stats/logs/cost/budget 支持 namespace 维度
+  - Dashboard 支持 namespace 过滤视图，并明确 OSS 版不包含 workspace/SSO/SCIM/org billing
 
 #### 36. 请求重放 / 影子流量
 
-- **现状**：无法安全测试新模型/新 Provider
-- **目标**：将生产流量副本发送到测试 Node
+- **状态**：✅ v0.5 OSS shadow traffic 已实现，默认关闭，只读观测
+- **现状**：可按采样率将成功请求异步复制到测试 Node，不影响主路径
+- **目标**：将生产流量副本安全发送到测试 Node
 - **实现方案**：
   ```yaml
   shadow:
     enabled: true
-    targets:
-      - node: new-provider-test
-        model: new-model-v1
-        sample_rate: 0.1 # 10% 流量
-    compare: true # 是否记录对比结果
+    sample_rate: 0.1 # 10% 流量
+    target_node: new-provider-test
+    target_model: new-model-v1
+    compare:
+      store_prompts: false
+      store_responses: false
   ```
 
   - 异步发送，不影响主路径延迟
-  - 对比视图：主路径 vs 影子路径的延迟/成本/质量
+  - 默认不保存 prompt/response，启用本地对比样本时配置校验给出隐私警告
+  - Shadow 结果不写入主 call_log，不参与预算扣减
+  - Dashboard 提供只读对比视图：主路径 vs 影子路径的状态、延迟、token、错误原因
 
 ---
 
@@ -710,12 +718,13 @@
 | 23  | 官方插件集         |  ⭐⭐⭐⭐  |    大    |  ✅ v0.4   |
 | 25  | LiteLLM 配置兼容   |   ⭐⭐⭐   |    小    |  ✅ v0.4   |
 | 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v0.4 TS scaffold |
-| 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  🟣 v0.5   |
+| 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  ✅ v0.5   |
 | 29  | 多实例集群模式     | ⭐⭐⭐⭐⭐ |    中    |  ✅ v0.5   |
-| 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  🟣 v0.5   |
+| 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  ✅ v0.5 experimental |
 | 32  | 流式缓存           |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
 | 33  | Embedding Batching |   ⭐⭐⭐   |    中    |  ✅ v0.5   |
-| 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    |  🟣 v0.5   |
+| 35  | 多租户隔离         |  ⭐⭐⭐⭐  |    大    | ✅ v0.5 OSS |
+| 36  | 影子流量           |  ⭐⭐⭐⭐  |    中    | ✅ v0.5 OSS |
 
 ---
 

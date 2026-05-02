@@ -843,6 +843,131 @@ describe('config validator', () => {
       ]),
     );
   });
+
+  it('validates local namespaces, API key bindings, and shadow traffic config', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: {
+          api_keys: [
+            { key: 'gw_sk_dev_test', name: 'dev', namespace_id: 'team-alpha' },
+          ],
+        },
+        namespaces: [
+          {
+            id: 'team-alpha',
+            allowed_nodes: ['openai'],
+            allowed_models: ['gpt-4o-mini'],
+            budget: { daily_token_limit: 10000, daily_cost_limit: 2 },
+            rate_limit: { requests_per_minute: 60 },
+          },
+        ],
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        shadow: {
+          enabled: true,
+          sample_rate: 0.25,
+          target_node: 'openai',
+          target_model: 'gpt-4o-mini',
+          compare: { store_prompts: false, store_responses: false },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).toHaveLength(0);
+  });
+
+  it('rejects invalid namespace references and unsafe shadow settings', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: {
+          api_keys: [
+            { key: 'gw_sk_dev_test', name: 'dev', namespace_id: 'missing' },
+          ],
+        },
+        namespaces: [
+          {
+            id: 'team-alpha',
+            allowed_nodes: ['missing-node'],
+            budget: { daily_token_limit: -1 },
+          },
+        ],
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        shadow: {
+          enabled: true,
+          sample_rate: 2,
+          compare: { store_prompts: true },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'unknown_namespace_reference',
+        'unknown_namespace_node',
+        'invalid_namespace_budget',
+        'invalid_shadow_config',
+        'missing_shadow_target',
+      ]),
+    );
+    expect(codes(result.warnings)).toContain('shadow_compare_storage_enabled');
+  });
 });
 
 describe('siftgate validate CLI', () => {

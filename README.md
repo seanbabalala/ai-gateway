@@ -73,6 +73,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
@@ -103,6 +104,8 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
+- **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
+- **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
 - **Light / Dark theme** — system-aware with manual toggle
 
 ### Developer Experience
@@ -120,6 +123,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
+- **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
 
 ## Quick Start
 
@@ -384,7 +388,29 @@ Client applications call the proxy endpoints with a dashboard-generated Gateway 
 Authorization: Bearer gw_sk_live_...
 ```
 
-Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, rate limits, and daily token/cost budgets.
+Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, rate limits, daily token/cost budgets, and an optional local namespace.
+
+### Local Namespaces
+
+Namespaces are OSS-local policy labels for Gateway API keys. They are not enterprise workspaces and do not enable SSO, SCIM, RBAC, or organization billing.
+
+```yaml
+namespaces:
+  - id: team-a
+    name: "Team A"
+    allowed_nodes: [openai, anthropic]
+    allowed_models: [gpt-4o, gpt-4o-mini, claude-sonnet-4-20250514]
+    budget:
+      daily_token_limit: 1000000
+      daily_cost_limit: 25.00
+      alert_threshold: 0.8
+    rate_limit:
+      requests_per_minute: 120
+```
+
+Dashboard-managed keys can be assigned to a namespace when they are created or edited. YAML-defined keys can set `auth.api_keys[].namespace_id`.
+
+Namespace restrictions are intersected with API-key restrictions, namespace budgets are enforced alongside global/key budgets, and namespace rate limits apply when a key does not have a key-specific limit. Call logs store `namespace_id`, and Dashboard stats, logs, cost, and budget views support namespace filters. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
 
 ### Hot Reload
 
@@ -800,6 +826,25 @@ models_pricing: # Cost per 1M tokens (USD); used when node/model pricing is omit
   text-embedding-3-small: { input: 0.02, output: 0.00 }
 ```
 
+### Shadow Traffic
+
+Shadow traffic is disabled by default. When enabled, SiftGate mirrors a sampled copy of successful primary requests to a configured test node/model asynchronously. Shadow sends do not alter the primary route, do not block the caller, and do not count as primary call-log or budget usage.
+
+```yaml
+shadow:
+  enabled: true
+  sample_rate: 0.05
+  target_node: openai-staging
+  target_model: gpt-4o-mini
+  timeout_ms: 30000
+  max_recent_results: 100
+  compare:
+    store_prompts: false
+    store_responses: false
+```
+
+By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; config validation emits a warning when either is enabled. Raw headers and provider keys are never stored. The Dashboard Shadow page and `GET /api/dashboard/shadow` endpoint are read-only. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
+
 ### Webhook Alerts
 
 Webhook alerting is disabled by default and runs entirely inside the open-source data plane. When enabled, delivery is queued asynchronously so webhook latency or failures do not block proxy requests.
@@ -950,11 +995,11 @@ For each accepted request, the gateway applies the same accounting path:
 
 1. Authenticate the Gateway API key.
 2. Rate-limit by `api_key_id` when available.
-3. Check both global budgets and the key's own budgets.
+3. Check global budgets, the key's own budgets, and namespace budgets when the key is namespace-bound.
 4. Resolve `auto` or direct routing according to the key's permissions.
 5. Serve from gateway prompt cache or call the upstream provider.
 6. Compute token usage and estimated cost from node/model `pricing` overrides or `models_pricing`.
-7. Record usage against global budgets and, when present, the key budget.
+7. Record usage against global budgets and, when present, the key budget and namespace budget.
 8. Write a call log attributed to the same `api_key_id`.
 
 Embedding requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Their usage is recorded as input tokens with zero output tokens.
@@ -963,6 +1008,7 @@ The call log stores:
 
 - Gateway API key id
 - Gateway API key name
+- Namespace id when the key is namespace-bound
 - source protocol
 - selected tier
 - upstream node
@@ -985,19 +1031,21 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 
 | Method | Endpoint                                 | Description                                                                                        |
 | ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys |
-| `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
+| `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id`, legacy `api_key`, and `namespace` filters            |
+| `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id`, legacy `api_key`, and `namespace` filters              |
 | `GET`  | `/api/dashboard/logs/sse`                | Real-time log stream (SSE)                                                                         |
-| `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
+| `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
+| `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
+| `GET`  | `/api/dashboard/shadow`                  | Read-only shadow traffic status and recent sanitized results                                       |
 | `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
 | `POST` | `/api/dashboard/nodes/:id/reset`         | Reset circuit breaker                                                                              |
-| `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
+| `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id`, legacy `api_key`, and `namespace` filters                    |
 | `POST` | `/api/dashboard/budget/:id/reset`        | Reset one budget rule by `budget_rule.id`                                                          |
 | `GET`  | `/health`                                | Gateway, budget, node circuit, active probe, and concurrency health                                |
 | `GET`  | `/cluster/status`                        | Redis-backed multi-instance inventory and reload broadcast status when cluster mode is enabled      |
@@ -1010,10 +1058,11 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
+- **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
-- **API Keys** — Client Gateway API key generation, permissions, budgets, rate limits, rotation, and disable/delete controls
+- **API Keys** — Client Gateway API key generation, namespace binding, permissions, budgets, rate limits, rotation, and disable/delete controls
 
 ## Plugins
 

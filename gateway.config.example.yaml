@@ -48,6 +48,37 @@ auth:
   #   max_entries: 10000            # Max tracked IPs/keys (default: 10000, FIFO eviction)
   #   login_requests_per_minute: 5  # Login endpoint rate limit per IP (default: 5)
 
+# ============================================================
+# Local Namespaces — OSS Data Plane isolation (optional)
+# ============================================================
+# Namespaces are local labels for API key policy boundaries. They are not
+# enterprise workspaces and do not enable SSO, SCIM, RBAC, or org billing.
+# Bind a Gateway API key to a namespace in the Dashboard or via
+# auth.api_keys[].namespace_id for YAML-defined keys.
+#
+# Namespace allowed_nodes/allowed_models intersect with API-key restrictions.
+# Namespace budgets and rate limits are enforced in addition to global and
+# key-level limits. If omitted, all keys keep the existing global behavior.
+# ============================================================
+# namespaces:
+#   - id: team-a
+#     name: "Team A"
+#     allowed_nodes: [openai, anthropic]
+#     allowed_models: [gpt-4o, gpt-4o-mini, claude-sonnet-4-20250514]
+#     budget:
+#       daily_token_limit: 1000000
+#       daily_cost_limit: 25.00
+#       alert_threshold: 0.8
+#     rate_limit:
+#       requests_per_minute: 120
+#
+# Example YAML-defined Gateway key bound to a namespace:
+# auth:
+#   api_keys:
+#     - key: "${SIFTGATE_TEAM_A_KEY}"
+#       name: team-a-service
+#       namespace_id: team-a
+
 # Dashboard authentication (optional)
 # If set, the dashboard UI requires a password to access.
 # On first startup the plain-text password is auto-hashed with bcrypt
@@ -343,6 +374,29 @@ budget:
   daily_token_limit: 5000000 # 5M tokens per day
   daily_cost_limit: 50.00 # $50 per day
   alert_threshold: 0.8 # Alert at 80% usage
+
+# ============================================================
+# Shadow Traffic — async test-node mirroring (optional)
+# ============================================================
+# Disabled by default. When enabled, a sampled copy of successful requests is
+# sent asynchronously to a test node/model. Shadow failures never fail or slow
+# the primary request path, and shadow requests are not billed/logged as user
+# calls. Dashboard shows recent sanitized shadow outcomes read-only.
+#
+# By default SiftGate stores no prompt/input samples and no response samples.
+# Enable compare storage only when you intentionally want local comparison
+# samples, and review data-retention/privacy requirements first.
+# ============================================================
+# shadow:
+#   enabled: false
+#   sample_rate: 0.05        # 5% of eligible successful requests
+#   target_node: openai      # Prefer a staging/test node in production
+#   target_model: gpt-4o-mini
+#   timeout_ms: 30000
+#   max_recent_results: 100
+#   compare:
+#     store_prompts: false
+#     store_responses: false
 
 # ============================================================
 # Alerts — local webhook alerting (optional)

@@ -36,6 +36,14 @@ function mockBudgetRepo() {
           results = results.filter((r) => r.api_key_id === target);
         }
       }
+      if ('namespace_id' in where) {
+        const target = where.namespace_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          results = results.filter((r) => r.namespace_id === null || r.namespace_id === undefined);
+        } else {
+          results = results.filter((r) => r.namespace_id === target);
+        }
+      }
       return results;
     }),
     findOneBy: jest.fn(async (where: any) => {
@@ -76,7 +84,7 @@ function mockBudgetRepo() {
 }
 
 function makeService(overrides: Record<string, unknown> = {}) {
-  const { telemetry, api_keys, ...budgetOverrides } = overrides as any;
+  const { telemetry, api_keys, namespaces, ...budgetOverrides } = overrides as any;
   const config = mockConfigService({
     budget: {
       daily_token_limit: 100_000,
@@ -87,6 +95,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     auth: {
       api_keys: api_keys || [],
     },
+    namespaces: namespaces || [],
   });
   const repo = mockBudgetRepo();
   const alerts = (overrides as any).alerts || { emit: jest.fn() };
@@ -157,6 +166,40 @@ describe('BudgetService', () => {
 
       expect(repo._store.find((r: any) => r.type === 'daily_tokens').limit_value).toBe(250_000);
       expect(repo._store.find((r: any) => r.type === 'daily_cost').limit_value).toBe(12.5);
+    });
+
+    it('should create local namespace budget rules from config', async () => {
+      const { svc, repo } = makeService({
+        namespaces: [
+          {
+            id: 'team-alpha',
+            budget: {
+              daily_token_limit: 10_000,
+              daily_cost_limit: 2,
+              alert_threshold: 0.7,
+            },
+          },
+        ],
+      });
+
+      await svc.onModuleInit();
+
+      expect(repo._store).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          namespace_id: 'team-alpha',
+          type: 'daily_tokens',
+          limit_value: 10_000,
+          alert_threshold: 0.7,
+          is_active: true,
+        }),
+        expect.objectContaining({
+          namespace_id: 'team-alpha',
+          type: 'daily_cost',
+          limit_value: 2,
+          alert_threshold: 0.7,
+          is_active: true,
+        }),
+      ]));
     });
   });
 
@@ -315,6 +358,34 @@ describe('BudgetService', () => {
       }
     });
 
+    it('should check namespace rules when namespaceId is provided', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100_000,
+        alert_threshold: 0.8,
+        current_value: 1,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 10,
+        alert_threshold: 0.8,
+        current_value: 10,
+        period_start: new Date(),
+        is_active: true,
+        namespace_id: 'team-alpha',
+      });
+
+      await expect(svc.check(undefined, undefined, 'team-alpha')).rejects.toThrow(BudgetExceededError);
+    });
+
     it('should use api_key_id as the generated-key budget identity', async () => {
       const { svc, repo } = makeService();
       repo._store.push({
@@ -471,6 +542,37 @@ describe('BudgetService', () => {
 
       expect(repo._store[0].current_value).toBe(500); // global updated
       expect(repo._store[1].current_value).toBe(500); // per-key updated
+    });
+
+    it('should update namespace rules when namespaceId is provided', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 10_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        namespace_id: 'team-alpha',
+      });
+
+      await svc.record(500, 0.01, undefined, undefined, 'team-alpha');
+
+      expect(repo._store[0].current_value).toBe(500);
+      expect(repo._store[1].current_value).toBe(500);
     });
 
     it('should update generated-key rules by api_key_id, not mutable name', async () => {
@@ -825,7 +927,7 @@ describe('BudgetService', () => {
 
     it('should format per-key scope correctly', () => {
       const periodStart = new Date('2026-04-29T00:00:00.000Z');
-      const err = new BudgetExceededError('daily_cost', 6, 5, 'intern', 'key_123', periodStart);
+      const err = new BudgetExceededError('daily_cost', 6, 5, 'intern', 'key_123', null, periodStart);
       expect(err.message).toContain('key "intern"');
       expect(err.apiKeyName).toBe('intern');
       expect(err.toDetails()).toMatchObject({
@@ -836,6 +938,15 @@ describe('BudgetService', () => {
         current: 6,
         limit: 5,
         reset_at: expect.any(String),
+      });
+    });
+
+    it('should format namespace scope correctly', () => {
+      const err = new BudgetExceededError('daily_tokens', 12, 10, null, null, 'team-alpha');
+      expect(err.message).toContain('namespace "team-alpha"');
+      expect(err.toDetails()).toMatchObject({
+        scope: 'namespace',
+        namespace_id: 'team-alpha',
       });
     });
   });

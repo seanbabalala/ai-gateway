@@ -10,6 +10,8 @@ import {
 @Index(['api_key_name'])
 @Index(['api_key_id'])
 @Index(['api_key_id', 'type'])
+@Index(['namespace_id'])
+@Index(['namespace_id', 'type'])
 export class BudgetRule {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -37,4 +39,7 @@ export class BudgetRule {
 
   @Column({ type: 'varchar', nullable: true, default: null })
   api_key_id!: string | null;  // NULL = global rule, non-null = GatewayApiKey.id
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  namespace_id!: string | null;  // NULL = global/key rule, non-null = local namespace rule
 }

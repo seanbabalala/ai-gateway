@@ -8,6 +8,7 @@ import { RoutingModule } from '../routing/routing.module';
 import { BudgetModule } from '../budget/budget.module';
 import { CacheModule } from '../cache/cache.module';
 import { AuthModule } from '../auth/auth.module';
+import { ShadowModule } from '../shadow/shadow.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
 @Module({
@@ -17,6 +18,7 @@ import { CallLog } from '../database/entities/call-log.entity';
     BudgetModule,
     CacheModule,
     AuthModule,
+    ShadowModule,
     TypeOrmModule.forFeature([CallLog]),
   ],
   controllers: [HealthController, DashboardController],

@@ -9,6 +9,7 @@ import {
   BarChart3,
   FlaskConical,
   KeyRound,
+  GitCompareArrows,
   Zap,
   Activity,
   X,
@@ -28,6 +29,7 @@ const navGroups = [
       { to: '/logs', icon: ScrollText, labelKey: 'nav.logs' },
       { to: '/analytics', icon: BarChart3, labelKey: 'nav.analytics' },
       { to: '/experiments', icon: FlaskConical, labelKey: 'nav.experiments' },
+      { to: '/shadow', icon: GitCompareArrows, labelKey: 'nav.shadow' },
     ],
   },
   {
