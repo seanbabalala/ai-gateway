@@ -102,7 +102,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
-- **Hot reload** — update `gateway.config.yaml` and reload without restarting
+- **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 
 ## Quick Start
 
@@ -338,6 +338,30 @@ Authorization: Bearer gw_sk_live_...
 
 Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, rate limits, and daily token/cost budgets.
 
+### Hot Reload
+
+Configuration reloads are atomic: SiftGate parses and validates a fresh snapshot first, then swaps it into memory only after the new config is valid. If reload fails, the previous config stays active and the Dashboard API returns a clear error.
+
+Reload options:
+
+```bash
+# Dashboard API
+curl -X POST http://localhost:2099/api/dashboard/config/reload
+
+# Process signal
+kill -HUP <siftgate-pid>
+```
+
+Optional file watching is disabled by default. Enable it only when you want local config edits to reload automatically:
+
+```yaml
+hot_reload:
+  watch: false
+  debounce_ms: 500
+```
+
+Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
 ### Nodes (Upstream Providers)
 
 Each node represents one upstream provider account, deployment, proxy route, or API endpoint. A node can expose one or more models, and routing always targets a `node + model` pair.
@@ -499,7 +523,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/logs/sse`         | Real-time log stream (SSE)                                                                         |
 | `GET`  | `/api/dashboard/analytics/cost`   | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
 | `GET`  | `/api/dashboard/config`           | Sanitized config (API keys masked)                                                                 |
-| `POST` | `/api/dashboard/config/reload`    | Hot-reload config from disk                                                                        |
+| `POST` | `/api/dashboard/config/reload`    | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`         | Create a Gateway API key                                                                           |
 | `GET`  | `/api/dashboard/nodes`            | Node health, circuit breaker status, concurrency, and queue depth                                   |

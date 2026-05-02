@@ -100,6 +100,9 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
     getFullConfig: jest.fn(),
     getNodeModelDiagnostics: jest.fn().mockReturnValue([]),
     reload: jest.fn(),
+    onReload: jest.fn().mockReturnValue({ unsubscribe: jest.fn() }),
+    onReloadSuccess: jest.fn().mockReturnValue({ unsubscribe: jest.fn() }),
+    onReloadFailed: jest.fn().mockReturnValue({ unsubscribe: jest.fn() }),
     ...overrides,
   };
 }

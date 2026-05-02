@@ -138,6 +138,24 @@ describe('BudgetService', () => {
       // No new entities should be created
       expect(repo.create).not.toHaveBeenCalled();
     });
+
+    it('should sync configured budget limits after config reload', async () => {
+      let reloadHandler: (() => Promise<void> | void) | undefined;
+      const { svc, repo, config } = makeService();
+      config.onReloadSuccess.mockImplementation((handler: () => Promise<void> | void) => {
+        reloadHandler = handler;
+        return { unsubscribe: jest.fn() };
+      });
+
+      await svc.onModuleInit();
+      config.budget.daily_token_limit = 250_000;
+      config.budget.daily_cost_limit = 12.5;
+
+      await reloadHandler?.();
+
+      expect(repo._store.find((r: any) => r.type === 'daily_tokens').limit_value).toBe(250_000);
+      expect(repo._store.find((r: any) => r.type === 'daily_cost').limit_value).toBe(12.5);
+    });
   });
 
   // ── check ────────────────────────────────────────────────

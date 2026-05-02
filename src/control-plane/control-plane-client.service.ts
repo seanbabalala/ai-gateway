@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import type {
   ControlPlaneRegistrationResponse,
@@ -7,14 +8,25 @@ import type {
 } from './types';
 
 @Injectable()
-export class ControlPlaneClientService {
+export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ControlPlaneClientService.name);
   private workspaceId: string | null = null;
   private gatewayId: string | null = null;
   private accessToken: string | null = null;
   private registerInFlight: Promise<boolean> | null = null;
+  private configReloadSub?: Subscription;
 
   constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    this.configReloadSub = this.config.onReloadSuccess(() => {
+      this.resetSession();
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.configReloadSub?.unsubscribe();
+  }
 
   get enabled(): boolean {
     const cp = this.config.controlPlane;
@@ -32,6 +44,13 @@ export class ControlPlaneClientService {
       gatewayId: this.gatewayId || configuredGatewayId,
       registered: Boolean(this.accessToken),
     };
+  }
+
+  resetSession(): void {
+    this.workspaceId = null;
+    this.gatewayId = null;
+    this.accessToken = null;
+    this.registerInFlight = null;
   }
 
   async ensureRegistered(): Promise<boolean> {

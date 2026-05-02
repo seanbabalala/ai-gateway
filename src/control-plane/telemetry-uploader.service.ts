@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CallLog } from '../database/entities/call-log.entity';
 import { ControlPlaneClientService } from './control-plane-client.service';
@@ -17,7 +18,9 @@ export class TelemetryUploaderService implements OnModuleInit, OnModuleDestroy {
   private readonly maxQueueSize = 5000;
   private queue: ControlPlaneTelemetryEvent[] = [];
   private uploadTimer: NodeJS.Timeout | null = null;
+  private uploadIntervalMs = 0;
   private flushInFlight = false;
+  private configReloadSub?: Subscription;
 
   constructor(
     private readonly config: ConfigService,
@@ -25,23 +28,13 @@ export class TelemetryUploaderService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    if (!this.client.enabled) return;
-    const intervalMs = Math.max(
-      5,
-      this.config.controlPlane.telemetry.upload_interval_seconds,
-    ) * 1000;
-    this.uploadTimer = setInterval(() => {
-      void this.flush();
-    }, intervalMs);
-    this.uploadTimer.unref?.();
-    this.logger.log(`Control-plane telemetry upload enabled (${intervalMs / 1000}s interval)`);
+    this.syncUploadTimer();
+    this.configReloadSub = this.config.onReloadSuccess(() => this.syncUploadTimer());
   }
 
   onModuleDestroy(): void {
-    if (this.uploadTimer) {
-      clearInterval(this.uploadTimer);
-      this.uploadTimer = null;
-    }
+    this.configReloadSub?.unsubscribe();
+    this.stopUploadTimer();
   }
 
   enqueue(log: CallLog, context: TelemetryContext = {}): void {
@@ -103,5 +96,36 @@ export class TelemetryUploaderService implements OnModuleInit, OnModuleDestroy {
 
   private requeue(batch: ControlPlaneTelemetryEvent[]): void {
     this.queue = [...batch, ...this.queue].slice(0, this.maxQueueSize);
+  }
+
+  private syncUploadTimer(): void {
+    if (!this.client.enabled) {
+      this.stopUploadTimer();
+      return;
+    }
+    const intervalMs = Math.max(
+      5,
+      this.config.controlPlane.telemetry.upload_interval_seconds,
+    ) * 1000;
+    if (this.uploadTimer && this.uploadIntervalMs === intervalMs) {
+      return;
+    }
+
+    this.stopUploadTimer();
+    this.uploadIntervalMs = intervalMs;
+    this.uploadTimer = setInterval(() => {
+      void this.flush();
+    }, intervalMs);
+    this.uploadTimer.unref?.();
+    this.logger.log(`Control-plane telemetry upload enabled (${intervalMs / 1000}s interval)`);
+  }
+
+  private stopUploadTimer(): void {
+    if (this.uploadTimer) {
+      clearInterval(this.uploadTimer);
+      this.uploadTimer = null;
+      this.uploadIntervalMs = 0;
+      this.logger.log('Control-plane telemetry upload disabled');
+    }
   }
 }

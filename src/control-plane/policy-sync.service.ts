@@ -1,4 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Subscription } from 'rxjs';
+import { ConfigService } from '../config/config.service';
 import { ControlPlaneClientService } from './control-plane-client.service';
 import type { PolicyBundle } from './types';
 
@@ -7,23 +9,21 @@ export class PolicySyncService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PolicySyncService.name);
   private policyTimer: NodeJS.Timeout | null = null;
   private latestPolicy: PolicyBundle | null = null;
+  private configReloadSub?: Subscription;
 
-  constructor(private readonly client: ControlPlaneClientService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly client: ControlPlaneClientService,
+  ) {}
 
   onModuleInit(): void {
-    if (!this.client.enabled) return;
-    void this.refresh();
-    this.policyTimer = setInterval(() => {
-      void this.refresh();
-    }, 60_000);
-    this.policyTimer.unref?.();
+    this.syncPolicyTimer();
+    this.configReloadSub = this.config.onReloadSuccess(() => this.syncPolicyTimer());
   }
 
   onModuleDestroy(): void {
-    if (this.policyTimer) {
-      clearInterval(this.policyTimer);
-      this.policyTimer = null;
-    }
+    this.configReloadSub?.unsubscribe();
+    this.stopPolicyTimer();
   }
 
   get current(): PolicyBundle | null {
@@ -39,5 +39,25 @@ export class PolicySyncService implements OnModuleInit, OnModuleDestroy {
     }
     this.latestPolicy = policy;
     return policy;
+  }
+
+  private syncPolicyTimer(): void {
+    if (!this.client.enabled) {
+      this.stopPolicyTimer();
+      return;
+    }
+    if (this.policyTimer) return;
+    void this.refresh();
+    this.policyTimer = setInterval(() => {
+      void this.refresh();
+    }, 60_000);
+    this.policyTimer.unref?.();
+  }
+
+  private stopPolicyTimer(): void {
+    if (this.policyTimer) {
+      clearInterval(this.policyTimer);
+      this.policyTimer = null;
+    }
   }
 }

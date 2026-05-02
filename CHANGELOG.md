@@ -9,6 +9,9 @@
 - Added per-node upstream concurrency limits with `max_concurrency`, `queue_timeout_ms`, and `queue_policy` (`wait`, `fallback`, `reject`).
 - Added health, dashboard API, and OpenTelemetry visibility for active concurrency and queue depth.
 - Added unit coverage for limiter queueing, fallback/reject overflow behavior, slot release on success/failure, streaming completion, streaming interruption, and fallback paths.
+- Added atomic configuration reload snapshots with rollback on parse or validation failure.
+- Added `SIGHUP` reload support, optional `hot_reload.watch` file watching with debounce, and EventBus topics `config.reload.success` / `config.reload.failed`.
+- Added reload-aware budget and optional control-plane synchronization so runtime services use the latest committed config.
 
 ## 0.1.0 - Open Source Gateway
 
