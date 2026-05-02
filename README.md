@@ -64,6 +64,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Responses** (`/v1/responses`) — OpenAI's newer API format
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
+- **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - Full **streaming** support across all three protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
@@ -729,6 +730,85 @@ curl http://localhost:2099/v1/embeddings \
   }'
 ```
 
+### Structured Output
+
+SiftGate preserves structured-output intent in the canonical request so routing, fallback, logs, and provider forwarding all see the same request contract. The v0.6 behavior covers:
+
+- OpenAI Chat Completions `response_format` with `json_object` and `json_schema`
+- OpenAI Responses `text.format` with `json_object` and `json_schema`
+- Anthropic Messages `output_config.format` passthrough when the request and target are both Messages-compatible
+
+Chat Completions example:
+
+```json
+{
+  "model": "auto",
+  "messages": [{ "role": "user", "content": "Return whether deployment is safe." }],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "deployment_check",
+      "schema": {
+        "type": "object",
+        "required": ["safe"],
+        "properties": { "safe": { "type": "boolean" } },
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Responses example:
+
+```json
+{
+  "model": "auto",
+  "input": "Return a JSON object with ok=true.",
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "name": "answer",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Anthropic Messages example:
+
+```json
+{
+  "model": "auto",
+  "max_tokens": 1024,
+  "messages": [{ "role": "user", "content": "Return a compact JSON result." }],
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      }
+    }
+  }
+}
+```
+
+Forwarding strategies are explicit in call logs and Dashboard details:
+
+- `passthrough` means the request and target provider use the same native structured-output field.
+- `native` means SiftGate mapped the canonical intent to the target protocol's closest native field.
+- `downgraded` means no safe mapping exists or the selected node/model declares `structured_output: false`; the request is still forwarded conservatively and the log records unsupported status.
+
+When `routing.fallback_policy.structured_output.enabled` is true, non-streaming responses can fallback on JSON parse or schema validation failure. Streaming requests remain conservative: SiftGate will not change routes after SSE output has started.
+
 ### Stream Cache and Embedding Batching
 
 Both features are local OSS data-plane optimizations and are disabled by default.
@@ -782,7 +862,7 @@ routing:
 
 - `immediate_429` skips same-node retries for rate limits and tries the next fallback.
 - `timeout.threshold_ms` uses an upstream attempt timeout before moving on. `race_fallback` is off by default because it can create extra provider cost; when enabled it must have an explicit threshold.
-- `structured_output` checks OpenAI `response_format` and Responses `text.format` JSON output. Non-streaming responses can fallback on parse/schema failure; streaming responses stay conservative and never change routes after SSE starts.
+- `structured_output` checks OpenAI Chat `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` JSON output. Non-streaming responses can fallback on parse/schema failure; streaming responses stay conservative and never change routes after SSE starts.
 - `cost_downgrade` estimates request cost from local token heuristics and `models_pricing`, then uses a cheaper fallback when the primary estimate exceeds the configured limit.
 - Call logs, Dashboard log details/exports/SSE, OpenTelemetry, and optional connected-gateway telemetry include `fallback_reason`.
 

@@ -2,7 +2,17 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.6 canonical structured-output support that preserves OpenAI Chat Completions `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` intent across protocol conversion.
+- Provider forwarding strategies for structured output: native passthrough, cross-protocol native mapping, and explicit downgrade/unsupported metadata when a target cannot safely honor the request.
+- Structured-output call-log metadata for Dashboard details, CSV/JSON exports, external log sinks, and optional connected-gateway telemetry.
+- Unit coverage for Chat, Responses, Anthropic passthrough/downgrade behavior, provider forwarding, schema fallback, and streaming conservative behavior.
+
+### Changed
+
+- Structured-output fallback validation now reads canonical request fields first, with raw body fallback for older call paths.
+- Dashboard call log details now show structured-output requested status, type, strategy, and unsupported markers.
 
 ## 0.5.0 - 2026-05-02
 

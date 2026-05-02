@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.5 adds optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results alongside the existing chat, responses, messages, embeddings, models, and health APIs.
+v0.6 adds canonical structured-output passthrough for OpenAI Chat Completions `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format`, with Dashboard log visibility for the forwarding strategy.
 
 ## Live Documentation
 
@@ -39,6 +39,80 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
 
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
+
+### Structured Output
+
+Structured-output intent is preserved in the canonical request and forwarded to the selected provider when SiftGate has a safe protocol mapping.
+
+| Ingress | Supported Field | Behavior |
+| --- | --- | --- |
+| `/v1/chat/completions` | `response_format.type=json_object` or `json_schema` | Passed through to Chat targets or mapped to Responses `text.format` / Messages `output_config.format` when possible |
+| `/v1/responses` | `text.format.type=json_object` or `json_schema` | Passed through to Responses targets or mapped to Chat `response_format` / Messages `output_config.format` when possible |
+| `/v1/messages` | `output_config.format.type=json_schema` | Passed through for native Messages targets; mapped to OpenAI-compatible structured-output fields only when safe |
+
+Example Chat request:
+
+```json
+{
+  "model": "auto",
+  "messages": [{ "role": "user", "content": "Return a JSON status." }],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "status",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Example Responses request:
+
+```json
+{
+  "model": "auto",
+  "input": "Return a JSON status.",
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "name": "status",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      },
+      "strict": true
+    }
+  }
+}
+```
+
+Example Messages request:
+
+```json
+{
+  "model": "auto",
+  "max_tokens": 512,
+  "messages": [{ "role": "user", "content": "Return a JSON status." }],
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } }
+      }
+    }
+  }
+}
+```
+
+Call logs, CSV/JSON exports, external log sinks, and optional control-plane telemetry include structured-output metadata: requested status, type, strategy (`passthrough`, `native`, or `downgraded`), support flag, and schema name. If `routing.fallback_policy.structured_output.enabled` is true, non-streaming requests can fallback on JSON parse or schema validation failure. Streaming requests do not fallback after SSE output has started.
 
 ### Embeddings
 

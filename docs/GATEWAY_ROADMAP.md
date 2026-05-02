@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,12 +15,60 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 进行中 — 协议广度 + 可解释路由 | 🚧 Active |
+
+---
+
+## v0.6 — Protocol + Explainability（生产协议能力 + 可解释路由）
+
+**v0.6 发布目标**：补齐生产应用刚需协议能力，同时把 SiftGate 的路由决策解释做成开源 Data Plane 的核心亮点。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：协议生产能力
+
+#### 1. 结构化输出完整透传、降级和验证体验
+
+- **状态**：✅ 已在 `codex/v0.6-structured-output` 实现
+- **现状**：v0.3 已有 fallback policy 的基础 JSON/schema 校验，但结构化输出意图还没有成为正式 canonical 字段，跨协议映射和 Dashboard 可见性不足
+- **目标**：完整保留并适配 OpenAI/Anthropic 的结构化输出请求意图
+- **实现方案**：
+  - Canonical Request 增加 `response_format` 与 `structured_output`
+  - Chat Completions 支持 `response_format.type=json_object/json_schema`
+  - Responses 支持 `text.format.type=json_object/json_schema`
+  - Anthropic Messages 支持 `output_config.format` 原生透传；不能安全映射时记录 `downgraded` / unsupported
+  - Provider 转发跨协议映射到目标协议的 native 字段，避免丢失结构化输出意图
+  - 非 stream 响应可按 `routing.fallback_policy.structured_output` 在 parse/schema failure 后 fallback
+  - stream 请求保持保守，SSE 已开始后不因内容校验改道
+  - Dashboard Call Log、CSV/JSON export、外部 log sink、可选 telemetry 展示 structured-output intent、strategy、support、schema name
+- **抽象到企业版**：控制面可聚合 structured-output 成功率、fallback 原因与模型兼容矩阵
+
+#### 2. Image / Audio / Rerank / Realtime 入口
+
+- **状态**：计划中
+- **目标**：补齐 New API / LiteLLM 类项目的接口广度短板，优先实现高频生产入口
+- **边界**：开源版只做本地 Data Plane 入口、路由、日志、OpenAPI 和配置；不引入企业私有依赖
+- **候选范围**：
+  - `/v1/images/generations` 与必要的 image edit/variation 兼容路径
+  - `/v1/audio/transcriptions`、`/v1/audio/speech`
+  - `/v1/rerank` 或 OpenAI-compatible rerank adapter
+  - Realtime 可先做配置、鉴权、会话代理与文档化 experimental 边界
+
+### P0：可解释路由
+
+#### 3. 路由选择解释页
+
+- **状态**：计划中
+- **目标**：让用户看到 SiftGate 为什么选择某个 node/model，而不只是知道最终路由结果
+- **实现方案**：
+  - 记录 route decision trace：候选目标、过滤原因、score/tier、optimization、capability、budget、fallback/circuit/concurrency 状态
+  - Dashboard 增加 Explain 页或 Call Log 详情 tab
+  - API 提供只读 route explanation，不自动修改配置
+  - 默认不包含 prompt/response，必要摘要必须脱敏
 
 ---
 
 ## v0.2 — Resilience（生产环境可靠性 + 开发者体验）
 
-**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground、结构化输出透传与 P2 安全加固继续保留在后续 roadmap 中。
+**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground 与 P2 安全加固继续保留在后续 roadmap 中；结构化输出已转入 v0.6 Protocol 阶段。
 
 ### P0：核心可靠性
 
@@ -156,8 +204,8 @@
 
 #### 8. 结构化输出透传（Structured Output）
 
-- **状态**：未纳入 v0.2.0，保留为后续开发项
-- **现状**：`response_format: { type: "json_schema" }` 在协议转换中可能丢失
+- **状态**：已转入 v0.6 并完成 canonical 透传、降级和验证体验
+- **历史现状**：`response_format: { type: "json_schema" }` 在协议转换中可能丢失
 - **目标**：完整保留并适配各 Provider 的结构化输出能力
 - **实现方案**：
   - Canonical format 增加 `response_format` 字段

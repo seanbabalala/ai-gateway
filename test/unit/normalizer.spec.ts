@@ -203,6 +203,38 @@ describe('ChatCompletionsNormalizer', () => {
     );
     expect(result.metadata.session_key).toBe('sess_abc123');
   });
+
+  it('should normalize OpenAI response_format json_schema into canonical structured output', () => {
+    const schema = {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+    };
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Return JSON' }],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'Answer', schema, strict: true },
+        },
+      },
+      headers,
+    );
+
+    expect(result.response_format).toMatchObject({
+      type: 'json_schema',
+      source: 'chat_completions.response_format',
+      json_schema: { name: 'Answer', schema, strict: true },
+    });
+    expect(result.structured_output).toMatchObject({
+      requested: true,
+      type: 'json_schema',
+      name: 'Answer',
+      schema,
+      strict: true,
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -240,6 +272,41 @@ describe('ResponsesNormalizer', () => {
       content: 'You are a helpful assistant.',
     });
     expect(result.messages[1]).toEqual({ role: 'user', content: 'Hi' });
+  });
+
+  it('should normalize Responses text.format json_schema into canonical structured output', () => {
+    const schema = {
+      type: 'object',
+      properties: { label: { type: 'string' } },
+      required: ['label'],
+    };
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-4.1',
+        input: 'Classify this.',
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'Classification',
+            schema,
+            strict: true,
+          },
+        },
+      },
+      headers,
+    );
+
+    expect(result.response_format).toMatchObject({
+      type: 'json_schema',
+      source: 'responses.text.format',
+      json_schema: { name: 'Classification', schema, strict: true },
+    });
+    expect(result.structured_output).toMatchObject({
+      requested: true,
+      type: 'json_schema',
+      name: 'Classification',
+      schema,
+    });
   });
 
   it('should normalize array input with message items', () => {
@@ -521,6 +588,39 @@ describe('MessagesNormalizer', () => {
 
     const result = normalizer.normalize(body, headers);
     expect(result.stop).toEqual(['END', 'STOP']);
+  });
+
+  it('should normalize Anthropic output_config.format as canonical structured output', () => {
+    const schema = {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+    };
+    const result = normalizer.normalize(
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: 'Return JSON.' }],
+        output_config: {
+          format: {
+            type: 'json_schema',
+            schema,
+          },
+        },
+      },
+      headers,
+    );
+
+    expect(result.response_format).toMatchObject({
+      type: 'json_schema',
+      source: 'messages.output_config.format',
+      json_schema: { schema },
+    });
+    expect(result.structured_output).toMatchObject({
+      requested: true,
+      type: 'json_schema',
+      schema,
+    });
   });
 
   it('should default max_tokens to 4096 if not provided', () => {

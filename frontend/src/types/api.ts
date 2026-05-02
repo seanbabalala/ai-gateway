@@ -53,6 +53,11 @@ export interface CallLog {
   status_code: number
   is_fallback: boolean
   fallback_reason: string | null
+  structured_output_requested?: boolean
+  structured_output_type?: string | null
+  structured_output_strategy?: string | null
+  structured_output_supported?: boolean | null
+  structured_output_schema_name?: string | null
   session_key: string | null
   error: string | null
   api_key_id?: string | null

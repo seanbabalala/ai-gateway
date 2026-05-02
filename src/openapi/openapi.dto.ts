@@ -87,6 +87,21 @@ export class ChatCompletionsRequestDto {
     example: 'auto',
   })
   tool_choice?: unknown;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'OpenAI Chat Completions response_format, including json_object and json_schema.',
+    example: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'answer',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+        strict: true,
+      },
+    },
+  })
+  response_format?: unknown;
 }
 
 export class ResponsesRequestDto {
@@ -117,6 +132,21 @@ export class ResponsesRequestDto {
     description: 'OpenAI Responses tool definitions.',
   })
   tools?: unknown[];
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'OpenAI Responses text.format, including json_schema.',
+    example: {
+      format: {
+        type: 'json_schema',
+        name: 'answer',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+        strict: true,
+      },
+    },
+  })
+  text?: unknown;
 }
 
 export class AnthropicMessagesRequestDto {
@@ -147,6 +177,19 @@ export class AnthropicMessagesRequestDto {
 
   @ApiPropertyOptional({ type: [String], example: ['END'] })
   stop_sequences?: string[];
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Anthropic structured-output passthrough when using native Messages output_config.format.',
+    example: {
+      format: {
+        type: 'json_schema',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+      },
+    },
+  })
+  output_config?: unknown;
 }
 
 export class EmbeddingsRequestDto {

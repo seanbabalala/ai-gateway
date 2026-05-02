@@ -65,6 +65,49 @@ export type CanonicalToolChoice =
 // ===== Source Format =====
 export type SourceFormat = 'chat_completions' | 'responses' | 'messages' | 'embeddings';
 
+// ===== Structured Output =====
+export type StructuredOutputFormatType =
+  | 'text'
+  | 'json_object'
+  | 'json_schema'
+  | 'unknown';
+
+export type StructuredOutputSource =
+  | 'chat_completions.response_format'
+  | 'responses.text.format'
+  | 'messages.output_config.format'
+  | 'messages.output_format'
+  | 'canonical';
+
+export type StructuredOutputStrategy =
+  | 'native'
+  | 'passthrough'
+  | 'downgraded'
+  | 'none';
+
+export interface CanonicalJsonSchemaFormat {
+  name?: string;
+  description?: string;
+  schema?: Record<string, unknown>;
+  strict?: boolean;
+}
+
+export interface CanonicalResponseFormat {
+  type: StructuredOutputFormatType;
+  source: StructuredOutputSource;
+  raw: unknown;
+  json_schema?: CanonicalJsonSchemaFormat;
+}
+
+export interface CanonicalStructuredOutput {
+  requested: boolean;
+  type: StructuredOutputFormatType;
+  source: StructuredOutputSource;
+  name?: string;
+  schema?: Record<string, unknown>;
+  strict?: boolean;
+}
+
 // ===== Shared Request Metadata =====
 export interface CanonicalRequestMetadata {
   source_format: SourceFormat;
@@ -93,6 +136,8 @@ export interface CanonicalRequest {
   temperature?: number;
   top_p?: number;
   stop?: string[];
+  response_format?: CanonicalResponseFormat;
+  structured_output?: CanonicalStructuredOutput;
   stream: boolean;
 
   /** Original request metadata, preserved for response denormalization */

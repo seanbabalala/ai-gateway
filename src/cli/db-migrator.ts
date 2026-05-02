@@ -538,6 +538,8 @@ function normalizeRow(
     latency_ms: toNumber,
     status_code: toNumber,
     is_fallback: toBoolean,
+    structured_output_requested: toBoolean,
+    structured_output_supported: toNullableBoolean,
     retry_count: toNumber,
     cache_creation_input_tokens: toNumber,
     cache_read_input_tokens: toNumber,
@@ -559,6 +561,11 @@ function normalizeFields(
 
 function toBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function toNullableBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined || value === "") return null;
+  return toBoolean(value);
 }
 
 function toNumber(value: unknown): number {

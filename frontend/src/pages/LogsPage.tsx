@@ -68,6 +68,21 @@ function LogDetailRow({ log }: { log: CallLog }) {
             <span className="font-mono text-[var(--foreground-muted)]">{log.fallback_reason ?? t('common.na')}</span>
           </div>
           <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutput')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_requested ? t('common.yes') : t('common.no')}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputType')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_type ?? t('common.na')}</span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputStrategy')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.structured_output_strategy ?? t('common.na')}
+              {log.structured_output_supported === false ? ` / ${t('detail.unsupported')}` : ''}
+            </span>
+          </div>
+          <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.tokens')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
               {t('detail.tokensInOut', { input: log.input_tokens, output: log.output_tokens })}
