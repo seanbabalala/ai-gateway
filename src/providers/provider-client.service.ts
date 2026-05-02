@@ -19,6 +19,26 @@ import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
+import type { Dispatcher } from 'undici';
+
+type FetchOptionsWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
+
+function isUndiciTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const typed = error as { name?: string; code?: string };
+  return (
+    typed.name === 'HeadersTimeoutError' ||
+    typed.name === 'BodyTimeoutError' ||
+    typed.code === 'UND_ERR_HEADERS_TIMEOUT' ||
+    typed.code === 'UND_ERR_BODY_TIMEOUT'
+  );
+}
+
+interface ProviderRequestOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
 
 @Injectable()
 export class ProviderClientService {
@@ -37,6 +57,7 @@ export class ProviderClientService {
   constructor(
     private readonly config: ConfigService,
     private readonly telemetry: TelemetryService,
+    private readonly connectionPool?: UpstreamConnectionPoolService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -53,7 +74,7 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    options: { timeoutMs?: number } = {},
+    options: ProviderRequestOptions = {},
   ): Promise<CanonicalResponse> {
     return this.telemetry.withSpan(
       'gateway.upstream',
@@ -77,12 +98,13 @@ export class ProviderClientService {
           requestBody,
           canonical,
           options.timeoutMs,
+          options.signal,
         );
         const latencyMs = Date.now() - startTime;
 
         this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
 
-        const responseBody = await response.json();
+        const responseBody = await this.readJsonResponse(response, node);
         const canonical_resp = this.normalizeResponse(responseBody, node.protocol, routingMeta, nodeId, targetModel, latencyMs);
 
         // GenAI semantic attributes
@@ -108,7 +130,7 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    options: { timeoutMs?: number } = {},
+    options: ProviderRequestOptions = {},
   ): Promise<CanonicalEmbeddingResponse> {
     return this.telemetry.withSpan(
       'gateway.upstream.embeddings',
@@ -130,13 +152,14 @@ export class ProviderClientService {
           requestBody,
           undefined,
           options.timeoutMs,
+          options.signal,
           node.embeddings_endpoint || '/v1/embeddings',
         );
         const latencyMs = Date.now() - startTime;
 
         this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
 
-        const responseBody = await response.json();
+        const responseBody = await this.readJsonResponse(response, node);
         const canonicalResp = this.normalizeEmbeddingsResponse(
           responseBody as Record<string, unknown>,
           routingMeta,
@@ -170,7 +193,7 @@ export class ProviderClientService {
     canonical: CanonicalRequest,
     nodeId: string,
     targetModel: string,
-    options: { timeoutMs?: number } = {},
+    options: ProviderRequestOptions = {},
   ): AsyncGenerator<CanonicalStreamEvent> {
     const node = this.config.getNode(nodeId);
     if (!node) throw new Error(`Node not found: ${nodeId}`);
@@ -183,6 +206,7 @@ export class ProviderClientService {
       requestBody,
       canonical,
       options.timeoutMs,
+      options.signal,
     );
 
     if (!response.body) {
@@ -193,9 +217,20 @@ export class ProviderClientService {
     const parser = this.createStreamParser(node.protocol);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const cancelReader = () => {
+      void reader.cancel().catch(() => undefined);
+    };
+    if (options.signal?.aborted) {
+      cancelReader();
+    } else {
+      options.signal?.addEventListener('abort', cancelReader, { once: true });
+    }
 
     try {
       while (true) {
+        if (options.signal?.aborted) {
+          break;
+        }
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -214,6 +249,7 @@ export class ProviderClientService {
         },
       };
     } finally {
+      options.signal?.removeEventListener('abort', cancelReader);
       reader.releaseLock();
     }
   }
@@ -227,6 +263,7 @@ export class ProviderClientService {
     requestBody: Record<string, unknown>,
     canonical?: CanonicalRequest,
     timeoutMs?: number,
+    signal?: AbortSignal,
     endpointOverride?: string,
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
@@ -259,20 +296,32 @@ export class ProviderClientService {
     const controller = new AbortController();
     const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
     const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+    const abortFromExternal = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener('abort', abortFromExternal, { once: true });
+    }
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      const fetchOptions: FetchOptionsWithDispatcher = {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
         signal: controller.signal,
-      });
+      };
+      const dispatcher = this.connectionPool?.getDispatcher(node);
+      if (dispatcher) {
+        fetchOptions.dispatcher = dispatcher;
+      }
+
+      response = await fetch(url, fetchOptions);
     } catch (err: unknown) {
       clearTimeout(timeout);
       const message = err instanceof Error ? err.message : 'Unknown fetch error';
       const errorName = err instanceof Error ? err.name : '';
-      if (errorName === 'AbortError') {
+      if (errorName === 'AbortError' || isUndiciTimeoutError(err)) {
         throw new ProviderError(
           `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
           504,
@@ -288,6 +337,7 @@ export class ProviderClientService {
       );
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', abortFromExternal);
     }
 
     if (!response.ok) {
@@ -310,6 +360,25 @@ export class ProviderClientService {
     }
 
     return response;
+  }
+
+  private async readJsonResponse(
+    response: Response,
+    node: NodeConfig,
+  ): Promise<Record<string, unknown>> {
+    try {
+      return (await response.json()) as Record<string, unknown>;
+    } catch (err: unknown) {
+      if (isUndiciTimeoutError(err)) {
+        throw new ProviderError(
+          `Provider ${node.id} timed out while reading upstream response body`,
+          504,
+          node.id,
+          'timeout',
+        );
+      }
+      throw err;
+    }
   }
 
   // ══════════════════════════════════════════════════════

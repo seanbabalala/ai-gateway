@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PipelineService } from './pipeline.service';
+import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ProvidersModule } from '../providers/providers.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { RoutingModule } from '../routing/routing.module';
@@ -10,6 +11,7 @@ import { DashboardModule } from '../dashboard/dashboard.module';
 import { ControlPlaneModule } from '../control-plane/control-plane.module';
 import { AlertsModule } from '../alerts/alerts.module';
 import { LogSinksModule } from '../log-sinks/log-sinks.module';
+import { ShadowModule } from '../shadow/shadow.module';
 import { CallLog } from '../database/entities/call-log.entity';
 
 @Module({
@@ -23,9 +25,10 @@ import { CallLog } from '../database/entities/call-log.entity';
     ControlPlaneModule,
     AlertsModule,
     LogSinksModule,
+    ShadowModule,
     TypeOrmModule.forFeature([CallLog]),
   ],
-  providers: [PipelineService],
-  exports: [PipelineService],
+  providers: [PipelineService, EmbeddingBatchingService],
+  exports: [PipelineService, EmbeddingBatchingService],
 })
 export class PipelineModule {}

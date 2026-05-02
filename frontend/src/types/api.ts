@@ -57,6 +57,7 @@ export interface CallLog {
   error: string | null
   api_key_id?: string | null
   api_key_name?: string | null
+  namespace_id?: string | null
 }
 
 export interface LogsPagination {
@@ -76,9 +77,10 @@ export interface LogsResponse {
 export interface BudgetRule {
   id: number
   type: string
-  scope: 'global' | 'api_key'
+  scope: 'global' | 'api_key' | 'namespace'
   apiKeyName: string | null
   apiKeyId: string | null
+  namespaceId: string | null
   limit: number
   current: number
   percentage: number
@@ -318,6 +320,8 @@ export interface ConfigResponse {
     daily_cost_limit: number
     alert_threshold: number
   }
+  namespaces?: NamespaceInfo[]
+  shadow?: ShadowTrafficStatus
   models_pricing: Record<string, ModelPricing>
   diagnostics: ConfigDiagnostic[]
 }
@@ -629,6 +633,8 @@ export interface GatewayApiKey {
   allow_direct: boolean
   allowed_nodes: string[]
   allowed_models: string[]
+  namespace_id: string | null
+  namespace_name: string | null
   daily_token_limit: number | null
   daily_cost_limit: number | null
   rate_limit_per_minute: number | null
@@ -651,6 +657,7 @@ export interface CreateGatewayApiKeyRequest {
   allow_direct: boolean
   allowed_nodes: string[]
   allowed_models: string[]
+  namespace_id?: string | null
   daily_token_limit?: number | null
   daily_cost_limit?: number | null
   rate_limit_per_minute?: number | null
@@ -663,4 +670,78 @@ export type UpdateGatewayApiKeyRequest = Partial<CreateGatewayApiKeyRequest> & {
 export interface GatewayApiKeyMutationResponse extends ActionResponse {
   item: GatewayApiKey
   key?: string
+}
+
+// ── Local Namespaces + Shadow Traffic ──
+
+export interface NamespaceInfo {
+  id: string
+  name: string
+  allowed_nodes: string[]
+  allowed_models: string[]
+  rate_limit_per_minute: number | null
+  budget: {
+    daily_token_limit?: number
+    daily_cost_limit?: number
+    alert_threshold?: number
+  } | null
+  budget_status: BudgetRule[]
+}
+
+export interface NamespacesResponse {
+  namespaces: NamespaceInfo[]
+  mode: 'local_only'
+  enterprise_features: {
+    workspace: boolean
+    sso: boolean
+    scim: boolean
+    org_billing: boolean
+  }
+}
+
+export interface ShadowTrafficStatus {
+  enabled: boolean
+  sample_rate: number
+  target_node: string | null
+  target_model: string | null
+  timeout_ms: number | null
+  max_recent_results: number
+  compare: {
+    store_prompts: boolean
+    store_responses: boolean
+  }
+  privacy: {
+    stores_prompts: boolean
+    stores_responses: boolean
+    raw_headers: boolean
+    provider_keys: boolean
+  }
+}
+
+export interface ShadowTrafficResult {
+  id: number
+  timestamp: string
+  request_id: string
+  kind: 'chat' | 'embeddings'
+  namespace_id: string | null
+  api_key_id: string | null
+  api_key_name: string | null
+  source_format: string
+  primary_node: string
+  primary_model: string
+  shadow_node: string
+  shadow_model: string
+  status: 'sent' | 'failed' | 'skipped'
+  latency_ms: number | null
+  status_code: number | null
+  error: string | null
+  input_tokens: number
+  output_tokens: number
+  prompt_sample: string | null
+  response_sample: string | null
+}
+
+export interface ShadowTrafficResponse {
+  status: ShadowTrafficStatus
+  recent: ShadowTrafficResult[]
 }

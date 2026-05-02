@@ -11,6 +11,11 @@ import {
   migrateLiteLlmConfigFile,
 } from "./litellm-migrator";
 import {
+  DbMigrationResult,
+  formatDbMigrationReport,
+  migrateSqliteToPostgres,
+} from "./db-migrator";
+import {
   CommandRunner,
   DEFAULT_PLUGINS_CONFIG,
   ManagedPluginConfigEntry,
@@ -56,6 +61,20 @@ interface MigrateArgs {
   help: boolean;
 }
 
+interface MigrateDbArgs {
+  from?: string;
+  to?: string;
+  sqlitePath?: string;
+  postgresUrl?: string;
+  backup: boolean;
+  backupPath?: string;
+  force: boolean;
+  dryRun: boolean;
+  json: boolean;
+  help: boolean;
+  batchSize?: number;
+}
+
 const DEFAULT_IO: CliIO = {
   cwd: process.cwd(),
   env: process.env,
@@ -87,6 +106,10 @@ export async function runCli(
 
   if (command === "migrate") {
     return runMigrateCommand(args, cli);
+  }
+
+  if (command === "migrate-db") {
+    return runMigrateDbCommand(args, cli);
   }
 
   cli.stderr(`Unknown command: ${command}`);
@@ -248,6 +271,72 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
   }
 
   return result.report.incompatible.length === 0 ? 0 : 2;
+}
+
+async function runMigrateDbCommand(
+  args: string[],
+  cli: CliIO,
+): Promise<number> {
+  let parsedArgs: MigrateDbArgs;
+  try {
+    parsedArgs = parseMigrateDbArgs(args);
+  } catch (error) {
+    cli.stderr(error instanceof Error ? error.message : "Invalid arguments.");
+    cli.stderr(formatMigrateDbUsage());
+    return 1;
+  }
+
+  if (parsedArgs.help) {
+    cli.stdout(formatMigrateDbUsage());
+    return 0;
+  }
+
+  const from = parsedArgs.from ?? "sqlite";
+  const to = parsedArgs.to ?? "postgres";
+  if (from !== "sqlite" || to !== "postgres") {
+    cli.stderr("Only --from sqlite --to postgres is supported.");
+    cli.stderr(formatMigrateDbUsage());
+    return 1;
+  }
+
+  const sqlitePath = parsedArgs.sqlitePath ?? "./data/gateway.db";
+  const postgresUrl =
+    parsedArgs.postgresUrl ?? cli.env.DATABASE_URL ?? cli.env.POSTGRES_URL;
+  if (!postgresUrl) {
+    cli.stderr(
+      "--postgres-url is required unless DATABASE_URL or POSTGRES_URL is set.",
+    );
+    cli.stderr(formatMigrateDbUsage());
+    return 1;
+  }
+
+  let result: DbMigrationResult;
+  try {
+    result = await migrateSqliteToPostgres({
+      sqlitePath,
+      postgresUrl,
+      cwd: cli.cwd,
+      dryRun: parsedArgs.dryRun,
+      backup: parsedArgs.backup,
+      backupPath: parsedArgs.backupPath,
+      force: parsedArgs.force,
+      batchSize: parsedArgs.batchSize,
+      now: cli.now,
+    });
+  } catch (error) {
+    cli.stderr(
+      error instanceof Error ? error.message : "Database migration failed.",
+    );
+    return 1;
+  }
+
+  cli.stdout(
+    parsedArgs.json
+      ? JSON.stringify(result, null, 2)
+      : formatDbMigrationReport(result),
+  );
+
+  return result.validation.ok ? 0 : 2;
 }
 
 function parseValidateArgs(args: string[]): ValidateArgs {
@@ -417,6 +506,113 @@ function parseMigrateArgs(args: string[]): MigrateArgs {
   return parsed;
 }
 
+function parseMigrateDbArgs(args: string[]): MigrateDbArgs {
+  const parsed: MigrateDbArgs = {
+    backup: false,
+    force: false,
+    dryRun: false,
+    json: false,
+    help: false,
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--help" || arg === "-h") {
+      parsed.help = true;
+      continue;
+    }
+    if (arg === "--json") {
+      parsed.json = true;
+      continue;
+    }
+    if (arg === "--backup") {
+      parsed.backup = true;
+      continue;
+    }
+    if (arg === "--force") {
+      parsed.force = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      parsed.dryRun = true;
+      continue;
+    }
+    if (arg === "--from") {
+      parsed.from = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--from=")) {
+      parsed.from = requireInlineValue(arg, "--from");
+      continue;
+    }
+    if (arg === "--to") {
+      parsed.to = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--to=")) {
+      parsed.to = requireInlineValue(arg, "--to");
+      continue;
+    }
+    if (arg === "--sqlite" || arg === "--sqlite-path") {
+      parsed.sqlitePath = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--sqlite=")) {
+      parsed.sqlitePath = requireInlineValue(arg, "--sqlite");
+      continue;
+    }
+    if (arg.startsWith("--sqlite-path=")) {
+      parsed.sqlitePath = requireInlineValue(arg, "--sqlite-path");
+      continue;
+    }
+    if (arg === "--postgres" || arg === "--postgres-url") {
+      parsed.postgresUrl = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--postgres=")) {
+      parsed.postgresUrl = requireInlineValue(arg, "--postgres");
+      continue;
+    }
+    if (arg.startsWith("--postgres-url=")) {
+      parsed.postgresUrl = requireInlineValue(arg, "--postgres-url");
+      continue;
+    }
+    if (arg === "--backup-path") {
+      parsed.backupPath = requireValue(args, index, arg);
+      parsed.backup = true;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--backup-path=")) {
+      parsed.backupPath = requireInlineValue(arg, "--backup-path");
+      parsed.backup = true;
+      continue;
+    }
+    if (arg === "--batch-size") {
+      parsed.batchSize = parsePositiveInteger(
+        requireValue(args, index, arg),
+        arg,
+      );
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--batch-size=")) {
+      parsed.batchSize = parsePositiveInteger(
+        requireInlineValue(arg, "--batch-size"),
+        "--batch-size",
+      );
+      continue;
+    }
+    throw new Error(`Unknown migrate-db option: ${arg}`);
+  }
+
+  return parsed;
+}
+
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
   if (!value || value.startsWith("-")) {
@@ -431,6 +627,14 @@ function requireInlineValue(arg: string, flag: string): string {
     throw new Error(`${flag} requires a value.`);
   }
   return value;
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${flag} must be a positive integer.`);
+  }
+  return parsed;
 }
 
 export function formatValidationResult(result: ConfigValidationResult): string {
@@ -554,11 +758,13 @@ function formatUsage(): string {
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
     "",
     "Commands:",
     "  validate   Validate a SiftGate gateway.config.yaml file",
     "  plugin     Manage plugin declarations and npm/local installs",
     "  migrate    Migrate third-party gateway configs into SiftGate format",
+    "  migrate-db Move local SQLite runtime data into PostgreSQL",
   ].join("\n");
 }
 
@@ -605,6 +811,28 @@ function formatMigrateUsage(): string {
     "      --dry-run         Print generated YAML instead of writing it",
     "      --json            Print machine-readable migration report",
     "  -h, --help            Show help",
+  ].join("\n");
+}
+
+function formatMigrateDbUsage(): string {
+  return [
+    "Usage:",
+    "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
+    "",
+    "Options:",
+    '      --from <source>       Source database. Currently only "sqlite"',
+    '      --to <target>         Target database. Currently only "postgres"',
+    "      --sqlite-path <path>  SQLite database path (default: ./data/gateway.db)",
+    "      --sqlite <path>       Alias for --sqlite-path",
+    "      --postgres-url <url>  PostgreSQL connection URL (or DATABASE_URL / POSTGRES_URL)",
+    "      --postgres <url>      Alias for --postgres-url",
+    "      --backup             Copy the SQLite file before importing",
+    "      --backup-path <path>  Backup destination; implies --backup",
+    "      --force              Allow importing into non-empty target tables",
+    "      --dry-run            Inspect SQLite and validate arguments without writing PostgreSQL",
+    "      --batch-size <n>      Rows per TypeORM save chunk (default: 500)",
+    "      --json               Print machine-readable migration report",
+    "  -h, --help               Show help",
   ].join("\n");
 }
 

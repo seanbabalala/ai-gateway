@@ -77,6 +77,36 @@ The smoke workspace is created under `.docker-smoke/` inside the repository, not
 under `/tmp`, so Docker Desktop/Rancher Desktop bind mounts use a host directory
 that is normally shared with the Docker VM.
 
+## Optional Redis State Backend
+
+The default Compose stack runs the gateway with local memory state. To test the
+v0.5 Redis shared state backend for multi-instance deployments, enable the Redis
+profile and configure `state.backend: redis` in `gateway.config.yaml`:
+
+```bash
+printf '\nREDIS_URL=redis://redis:6379\n' >> .env
+docker compose --profile redis up -d --build
+```
+
+Redis shares rate limits, prompt cache, circuit breaker state, and routing
+momentum across gateway instances. See [Shared State Backend](STATE_BACKEND.md)
+for `fail_open` and `fail_closed` behavior.
+
+## Optional PostgreSQL Profile
+
+SQLite is the default Docker quickstart database and persists in `./data`. For a
+local production-like test, start the optional PostgreSQL service:
+
+```bash
+POSTGRES_PASSWORD=replace-me docker compose --profile postgres up -d postgres
+```
+
+Set `DATABASE_URL=postgresql://siftgate:replace-me@postgres:5432/siftgate` in
+`.env`, change `gateway.config.yaml` to `database.type: postgres`, and set
+`database.synchronize: false` after running the migration/bootstrap step. See
+[Production Deployment](PRODUCTION.md) for the SQLite to PostgreSQL migration
+workflow.
+
 ## 4. Create a Gateway API Key
 
 In the Dashboard, open **API Keys**, create a key, and copy it once. Then call

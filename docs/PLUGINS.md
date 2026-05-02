@@ -33,8 +33,8 @@ plugins:
     version: 1.0.0
     required: true
     gateway:
-      required: ^0.4.0
-      checked_with: 0.4.0
+      required: ^0.5.0
+      checked_with: 0.5.0
     installed_at: '2026-05-02T00:00:00.000Z'
 ```
 
@@ -71,15 +71,15 @@ Plugins should declare the supported gateway range in one of these package metad
   "name": "@siftgate/plugin-example",
   "version": "1.0.0",
   "peerDependencies": {
-    "siftgate": "^0.4.0"
+    "siftgate": "^0.5.0"
   },
   "siftgate": {
-    "gateway": "^0.4.0"
+    "gateway": "^0.5.0"
   }
 }
 ```
 
-The manager supports exact versions, `^`, `~`, wildcard `*`, and simple comparator ranges such as `>=0.4.0 <0.5.0`. Missing compatibility metadata is allowed with a warning; incompatible ranges fail before the declaration is written.
+The manager supports exact versions, `^`, `~`, wildcard `*`, and simple comparator ranges such as `>=0.5.0 <0.6.0`. Missing compatibility metadata is allowed with a warning; incompatible ranges fail before the declaration is written.
 
 ## Safety
 

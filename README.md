@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.4.0**.
+Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, and embeddings formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -73,6 +73,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
@@ -90,6 +91,8 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Circuit breaker** — automatically stops sending requests to failing providers
 - **Per-node concurrency limits** — cap in-flight upstream requests and choose whether overflow waits, falls back, or returns 429
 - **Active health probing** — optional per-node probes catch upstream outages before user traffic hits them
+- **Shared runtime state** — optional Redis backend for circuit breakers, rate limits, prompt cache, and routing momentum
+- **Optional Redis cluster mode** — register instances, publish heartbeats, and broadcast config reloads across a multi-instance deployment
 - **Health monitoring** — real-time health, probe, and circuit breaker status for all configured nodes
 - **Graceful degradation** — the system continues working even when some providers are down
 
@@ -101,6 +104,8 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
+- **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
+- **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
 - **Light / Dark theme** — system-aware with manual toggle
 
 ### Developer Experience
@@ -114,9 +119,11 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
+- **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
+- **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
 
 ## Quick Start
 
@@ -332,6 +339,22 @@ node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml 
 
 The migrator maps `model_list`, provider/model names, API key environment references, fallbacks, router retry settings, and known routing strategies. It writes a migration report with compatible, incompatible, and manual-review items. Existing `gateway.config.yaml` is never overwritten unless `--overwrite` is passed. See [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
 
+### Database Migration
+
+SQLite remains the default for local development. For production, PostgreSQL is recommended for backups, retention, and multi-instance deployments:
+
+```bash
+npm run build
+node dist/cli/siftgate.js migrate-db \
+  --from sqlite \
+  --to postgres \
+  --sqlite-path ./data/gateway.db \
+  --postgres-url "$DATABASE_URL" \
+  --backup
+```
+
+Use `--dry-run` in CI or before a maintenance window to inspect source row counts without writing PostgreSQL. The CLI refuses to import into non-empty target tables unless `--force` is set, copies the SQLite file when `--backup` is used, resets imported numeric sequences, and validates row counts after import. See [Production Deployment](docs/PRODUCTION.md).
+
 ### Server
 
 ```yaml
@@ -346,7 +369,9 @@ server:
 database:
   type: sqlite # sqlite or postgres
   path: ./data/gateway.db # SQLite file path
-  # url: postgresql://...       # PostgreSQL connection URL (if type: postgres)
+  # synchronize: true       # TypeORM schema sync; fine for local SQLite/dev
+  # url: postgresql://...   # PostgreSQL connection URL (if type: postgres)
+  # synchronize: false      # Recommended for production PostgreSQL after migration/bootstrap
 ```
 
 ### Authentication
@@ -363,7 +388,29 @@ Client applications call the proxy endpoints with a dashboard-generated Gateway 
 Authorization: Bearer gw_sk_live_...
 ```
 
-Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, rate limits, and daily token/cost budgets.
+Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, rate limits, daily token/cost budgets, and an optional local namespace.
+
+### Local Namespaces
+
+Namespaces are OSS-local policy labels for Gateway API keys. They are not enterprise workspaces and do not enable SSO, SCIM, RBAC, or organization billing.
+
+```yaml
+namespaces:
+  - id: team-a
+    name: "Team A"
+    allowed_nodes: [openai, anthropic]
+    allowed_models: [gpt-4o, gpt-4o-mini, claude-sonnet-4-20250514]
+    budget:
+      daily_token_limit: 1000000
+      daily_cost_limit: 25.00
+      alert_threshold: 0.8
+    rate_limit:
+      requests_per_minute: 120
+```
+
+Dashboard-managed keys can be assigned to a namespace when they are created or edited. YAML-defined keys can set `auth.api_keys[].namespace_id`.
+
+Namespace restrictions are intersected with API-key restrictions, namespace budgets are enforced alongside global/key budgets, and namespace rate limits apply when a key does not have a key-specific limit. Call logs store `namespace_id`, and Dashboard stats, logs, cost, and budget views support namespace filters. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
 
 ### Hot Reload
 
@@ -388,6 +435,48 @@ hot_reload:
 ```
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
+### Shared State Backend
+
+SiftGate defaults to local memory for all runtime state, so the open-source Data Plane stays single-node friendly and needs no extra services. For horizontally scaled deployments, enable Redis shared state:
+
+```yaml
+state:
+  backend: redis # memory | redis
+  unavailable_policy: fail_open # fail_open | fail_closed
+  redis:
+    url: ${REDIS_URL:-redis://localhost:6379}
+    prefix: siftgate:state:
+    timeout_ms: 500
+    sync_interval_ms: 2000
+```
+
+Redis-backed state shares API key/IP rate limits, prompt-cache entries, circuit breaker status, and routing momentum across gateway instances. `fail_open` keeps traffic flowing when Redis is unavailable; `fail_closed` rejects rate-limited paths and treats circuits as unavailable until Redis recovers.
+
+See [Shared State Backend](docs/STATE_BACKEND.md) for Docker and failure-policy details.
+
+### Cluster Mode
+
+SiftGate stays single-instance by default. For a multi-instance deployment behind a load balancer, enable Redis-backed cluster mode with `state.backend: redis` or `cluster.enabled: true`:
+
+```yaml
+state:
+  backend: redis
+  redis:
+    url: ${REDIS_URL:-redis://127.0.0.1:6379}
+    prefix: siftgate:
+
+cluster:
+  enabled: true
+  instance_id: ${SIFTGATE_INSTANCE_ID:-}
+  heartbeat_interval_seconds: 10
+  heartbeat_ttl_seconds: 30
+  reload_broadcast: true
+```
+
+Cluster mode uses Redis Pub/Sub for instance registration, heartbeats, and config reload broadcasts. A successful local reload publishes a `config.reload` event; peers then run their own local validation and rollback-safe reload using their local `gateway.config.yaml`. There is no leader election, and every instance continues to handle requests independently.
+
+`GET /cluster/status` is available only when `state.backend=redis` or `cluster.enabled=true`; in single-instance memory mode it returns `404`. See [Production Deployment](docs/PRODUCTION.md) for the Redis, load-balancer, and security notes.
 
 ### Plugins
 
@@ -442,6 +531,14 @@ nodes:
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
     queue_policy: wait # wait (default) | fallback | reject
+    connection: # Optional undici pool; omit to keep default fetch behavior
+      enabled: true
+      keep_alive: true
+      pool_size: 10
+      keep_alive_ms: 60000
+      headers_timeout_ms: 30000
+      body_timeout_ms: 300000
+      http2: false # Experimental
     health_check: # Optional active probe, disabled by default
       enabled: false
       interval_seconds: 30
@@ -464,6 +561,25 @@ nodes:
 | `messages` | Anthropic Messages | Anthropic Claude |
 
 `/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+
+### Upstream Connection Pooling
+
+By default SiftGate keeps the existing `fetch` behavior. Add `nodes[].connection` when a high-throughput node should use an undici per-node pool:
+
+```yaml
+nodes:
+  - id: openai-prod
+    connection:
+      enabled: true
+      keep_alive: true
+      pool_size: 20
+      keep_alive_ms: 60000
+      headers_timeout_ms: 30000
+      body_timeout_ms: 300000
+      http2: false
+```
+
+`pool_size` caps open sockets for that upstream node, `headers_timeout_ms` limits the wait for response headers, and `body_timeout_ms` limits idle time between body chunks for both streaming and non-streaming responses. `http2: true` enables undici HTTP/2 ALPN support as an experimental opt-in.
 
 ### Per-Node Concurrency Control
 
@@ -613,6 +729,36 @@ curl http://localhost:2099/v1/embeddings \
   }'
 ```
 
+### Stream Cache and Embedding Batching
+
+Both features are local OSS data-plane optimizations and are disabled by default.
+
+Stream cache requires the normal prompt cache plus explicit stream opt-in:
+
+```yaml
+cache:
+  enabled: true
+  ttl_seconds: 300
+  stream_cache:
+    enabled: true
+```
+
+The first deterministic streaming request is forwarded normally while SiftGate buffers the completed response. Later hits are replayed as SSE in the caller's protocol. Interrupted, canceled, or partial streams are not stored. Cache keys include request content, source protocol, routing-relevant headers, and Gateway API key identity where available, so different tenants do not share stream cache entries.
+
+Embedding batching collects small same-target `/v1/embeddings` requests for a short local window, sends one upstream batch, and splits the response back to each caller:
+
+```yaml
+embedding_batching:
+  enabled: true
+  window_ms: 10
+  max_batch_size: 64
+  max_input_items: 8
+  max_queue: 1000
+  timeout_ms: 10000
+```
+
+Batch groups are isolated by node, model, dimensions, encoding format, user, input shape, and Gateway API key identity. Batching can reduce provider round trips for many tiny embedding calls, but it intentionally adds up to `window_ms` of local wait time and should be tuned below your latency budget. See [Stream Cache and Embedding Batching](docs/STREAM_CACHE_BATCHING.md) for cancellation, timeout, partial failure, and cache safety notes.
+
 ### Fallback Policies
 
 SiftGate still supports the normal primary/fallback chain, and v0.3 adds optional local policies for cases where waiting for retries is the wrong move:
@@ -679,6 +825,25 @@ models_pricing: # Cost per 1M tokens (USD); used when node/model pricing is omit
   claude-opus-4: { input: 15.00, output: 75.00 }
   text-embedding-3-small: { input: 0.02, output: 0.00 }
 ```
+
+### Shadow Traffic
+
+Shadow traffic is disabled by default. When enabled, SiftGate mirrors a sampled copy of successful primary requests to a configured test node/model asynchronously. Shadow sends do not alter the primary route, do not block the caller, and do not count as primary call-log or budget usage.
+
+```yaml
+shadow:
+  enabled: true
+  sample_rate: 0.05
+  target_node: openai-staging
+  target_model: gpt-4o-mini
+  timeout_ms: 30000
+  max_recent_results: 100
+  compare:
+    store_prompts: false
+    store_responses: false
+```
+
+By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; config validation emits a warning when either is enabled. Raw headers and provider keys are never stored. The Dashboard Shadow page and `GET /api/dashboard/shadow` endpoint are read-only. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
 
 ### Webhook Alerts
 
@@ -830,11 +995,11 @@ For each accepted request, the gateway applies the same accounting path:
 
 1. Authenticate the Gateway API key.
 2. Rate-limit by `api_key_id` when available.
-3. Check both global budgets and the key's own budgets.
+3. Check global budgets, the key's own budgets, and namespace budgets when the key is namespace-bound.
 4. Resolve `auto` or direct routing according to the key's permissions.
 5. Serve from gateway prompt cache or call the upstream provider.
 6. Compute token usage and estimated cost from node/model `pricing` overrides or `models_pricing`.
-7. Record usage against global budgets and, when present, the key budget.
+7. Record usage against global budgets and, when present, the key budget and namespace budget.
 8. Write a call log attributed to the same `api_key_id`.
 
 Embedding requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Their usage is recorded as input tokens with zero output tokens.
@@ -843,6 +1008,7 @@ The call log stores:
 
 - Gateway API key id
 - Gateway API key name
+- Namespace id when the key is namespace-bound
 - source protocol
 - selected tier
 - upstream node
@@ -865,21 +1031,24 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 
 | Method | Endpoint                                 | Description                                                                                        |
 | ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys |
-| `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
+| `GET`  | `/api/dashboard/stats`                   | Aggregated statistics; supports `api_key_id`, legacy `api_key`, and `namespace` filters            |
+| `GET`  | `/api/dashboard/logs`                    | Paginated call logs; supports `api_key_id`, legacy `api_key`, and `namespace` filters              |
 | `GET`  | `/api/dashboard/logs/sse`                | Real-time log stream (SSE)                                                                         |
-| `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
+| `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
+| `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
+| `GET`  | `/api/dashboard/shadow`                  | Read-only shadow traffic status and recent sanitized results                                       |
 | `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
 | `POST` | `/api/dashboard/nodes/:id/reset`         | Reset circuit breaker                                                                              |
-| `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
+| `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id`, legacy `api_key`, and `namespace` filters                    |
 | `POST` | `/api/dashboard/budget/:id/reset`        | Reset one budget rule by `budget_rule.id`                                                          |
 | `GET`  | `/health`                                | Gateway, budget, node circuit, active probe, and concurrency health                                |
+| `GET`  | `/cluster/status`                        | Redis-backed multi-instance inventory and reload broadcast status when cluster mode is enabled      |
 
 ## Dashboard
 
@@ -889,10 +1058,11 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
+- **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
-- **API Keys** — Client Gateway API key generation, permissions, budgets, rate limits, rotation, and disable/delete controls
+- **API Keys** — Client Gateway API key generation, namespace binding, permissions, budgets, rate limits, rotation, and disable/delete controls
 
 ## Plugins
 
@@ -967,6 +1137,12 @@ npm run smoke:docker
 ```
 
 It builds the image, starts a mock upstream, creates a Dashboard-managed Gateway API key, verifies `auto` and direct routing, checks billing attribution by `api_key_id`, and confirms SQLite persistence after restart.
+
+To try the optional Redis state backend locally, uncomment the `state` block in `gateway.config.yaml`, set `REDIS_URL=redis://redis:6379` in `.env`, and start Compose with the Redis profile:
+
+```bash
+docker compose --profile redis up -d --build
+```
 
 ### Using Dockerfile directly
 

@@ -50,6 +50,7 @@ import { DashboardGuard } from '../auth/dashboard.guard';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
+import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import type { Modality } from '../config/modality';
 import {
   CreateGatewayApiKeyDto,
@@ -86,6 +87,7 @@ export class DashboardController {
     private readonly telemetry: TelemetryService,
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
+    private readonly shadowTraffic: ShadowTrafficService,
     private readonly dataSource: DataSource,
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
@@ -119,22 +121,31 @@ export class DashboardController {
     return `strftime('%Y-%m-%d', ${column})`;
   }
 
-  private apiKeyWhere(apiKey?: string, apiKeyId?: string): FindOptionsWhere<CallLog> | undefined {
-    if (apiKeyId) return { api_key_id: apiKeyId };
-    if (apiKey) return { api_key_name: apiKey };
-    return undefined;
+  private logWhere(apiKey?: string, apiKeyId?: string, namespaceId?: string): FindOptionsWhere<CallLog> | undefined {
+    const where: FindOptionsWhere<CallLog> = {};
+    if (apiKeyId) where.api_key_id = apiKeyId;
+    else if (apiKey) where.api_key_name = apiKey;
+    if (namespaceId) where.namespace_id = namespaceId;
+    return Object.keys(where).length > 0 ? where : undefined;
   }
 
-  private applyApiKeyLogFilter<T extends { where: Function; andWhere: Function }>(
+  private applyLogScopeFilter<T extends { where: Function; andWhere: Function }>(
     qb: T,
     apiKey?: string,
     apiKeyId?: string,
+    namespaceId?: string,
     method: 'where' | 'andWhere' = 'andWhere',
   ): T {
+    let currentMethod = method;
     if (apiKeyId) {
-      qb[method]('log.api_key_id = :apiKeyId', { apiKeyId });
+      qb[currentMethod]('log.api_key_id = :apiKeyId', { apiKeyId });
+      currentMethod = 'andWhere';
     } else if (apiKey) {
-      qb[method]('log.api_key_name = :apiKey', { apiKey });
+      qb[currentMethod]('log.api_key_name = :apiKey', { apiKey });
+      currentMethod = 'andWhere';
+    }
+    if (namespaceId) {
+      qb[currentMethod]('log.namespace_id = :namespaceId', { namespaceId });
     }
     return qb;
   }
@@ -149,12 +160,14 @@ export class DashboardController {
   @ApiQuery({ name: 'groupBy', required: false, example: 'model' })
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
   @ApiOkResponse({ description: 'Cost totals, daily trend, and grouped usage analytics.' })
   async getCostAnalytics(
     @Query('period') period: string = '7d',
     @Query('groupBy') groupBy: string = 'model',
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
   ) {
     // Parse period
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
@@ -171,7 +184,7 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .groupBy('date')
       .orderBy('date', 'ASC');
-    this.applyApiKeyLogFilter(dailyTrendQb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(dailyTrendQb, apiKey, apiKeyId, namespaceId);
     const dailyTrend = await dailyTrendQb.getRawMany();
 
     // Group by model
@@ -186,7 +199,7 @@ export class DashboardController {
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.model')
       .orderBy('cost', 'DESC');
-    this.applyApiKeyLogFilter(byModelQb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(byModelQb, apiKey, apiKeyId, namespaceId);
     const byModel = await byModelQb.getRawMany();
 
     // Group by node
@@ -201,7 +214,7 @@ export class DashboardController {
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.node_id')
       .orderBy('cost', 'DESC');
-    this.applyApiKeyLogFilter(byNodeQb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(byNodeQb, apiKey, apiKeyId, namespaceId);
     const byNode = await byNodeQb.getRawMany();
 
     // Group by tier
@@ -215,7 +228,7 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .groupBy('log.tier')
       .orderBy('cost', 'DESC');
-    this.applyApiKeyLogFilter(byTierQb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(byTierQb, apiKey, apiKeyId, namespaceId);
     const byTier = await byTierQb.getRawMany();
 
     // Total for the period
@@ -229,7 +242,7 @@ export class DashboardController {
       .addSelect('AVG(log.cost_usd)', 'avgCostPerCall')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
       .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
-    this.applyApiKeyLogFilter(totalQb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(totalQb, apiKey, apiKeyId, namespaceId);
     const totalAgg = await totalQb.getRawOne();
 
     return {
@@ -292,12 +305,14 @@ export class DashboardController {
   @ApiQuery({ name: 'tier', required: false, example: 'standard' })
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
   @ApiOkResponse({ description: 'Experiment-group analytics and active split definitions.' })
   async getExperimentAnalytics(
     @Query('period') period: string = '7d',
     @Query('tier') tier?: string,
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
   ) {
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
     const since = new Date(Date.now() - periodDays * 86_400_000);
@@ -309,7 +324,7 @@ export class DashboardController {
     if (tier) {
       qb = qb.andWhere('log.tier = :tier', { tier });
     }
-    qb = this.applyApiKeyLogFilter(qb, apiKey, apiKeyId);
+    qb = this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
 
     const byGroup = await qb
       .select('log.experiment_group', 'experimentGroup')
@@ -329,7 +344,7 @@ export class DashboardController {
     if (tier) {
       trendQb = trendQb.andWhere('log.tier = :tier', { tier });
     }
-    trendQb = this.applyApiKeyLogFilter(trendQb, apiKey, apiKeyId);
+    trendQb = this.applyLogScopeFilter(trendQb, apiKey, apiKeyId, namespaceId);
 
     const dailyTrend = await trendQb
       .select(this.dateTruncDay('log.timestamp'), 'date')
@@ -383,12 +398,14 @@ export class DashboardController {
   @ApiOperation({ summary: 'Get Dashboard aggregate stats' })
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
   @ApiOkResponse({ description: 'Total calls, success rate, token usage, cost, latency, and distributions.' })
   async getStats(
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
   ) {
-    const keyWhere = this.apiKeyWhere(apiKey, apiKeyId);
+    const keyWhere = this.logWhere(apiKey, apiKeyId, namespaceId);
     const totalCalls = keyWhere
       ? await this.callLogRepo.count({ where: keyWhere })
       : await this.callLogRepo.count();
@@ -407,7 +424,7 @@ export class DashboardController {
       .addSelect('COUNT(DISTINCT log.session_key)', 'uniqueSessions')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
       .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
-    this.applyApiKeyLogFilter(aggQb, apiKey, apiKeyId, 'where');
+    this.applyLogScopeFilter(aggQb, apiKey, apiKeyId, namespaceId, 'where');
     const agg = await aggQb.getRawOne();
 
     // Tier distribution
@@ -416,7 +433,7 @@ export class DashboardController {
       .select('log.tier', 'tier')
       .addSelect('COUNT(*)', 'count')
       .groupBy('log.tier');
-    this.applyApiKeyLogFilter(tierQb, apiKey, apiKeyId, 'where');
+    this.applyLogScopeFilter(tierQb, apiKey, apiKeyId, namespaceId, 'where');
     const tierDist = await tierQb.getRawMany();
 
     // Node distribution
@@ -426,7 +443,7 @@ export class DashboardController {
       .addSelect('COUNT(*)', 'count')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
       .groupBy('log.node_id');
-    this.applyApiKeyLogFilter(nodeQb, apiKey, apiKeyId, 'where');
+    this.applyLogScopeFilter(nodeQb, apiKey, apiKeyId, namespaceId, 'where');
     const nodeDist = await nodeQb.getRawMany();
 
     // Last 24h stats
@@ -437,7 +454,7 @@ export class DashboardController {
       .select('COUNT(*)', 'calls')
       .addSelect('SUM(log.cost_usd)', 'cost')
       .addSelect('SUM(log.input_tokens + log.output_tokens)', 'tokens');
-    this.applyApiKeyLogFilter(recentQb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(recentQb, apiKey, apiKeyId, namespaceId);
     const recentAgg = await recentQb.getRawOne();
 
     return {
@@ -485,6 +502,7 @@ export class DashboardController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
   @ApiOkResponse({ description: 'Paginated call logs and pagination metadata.' })
   async getLogs(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -494,6 +512,7 @@ export class DashboardController {
     @Query('status') status?: string,
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
   ) {
     const qb = this.callLogRepo
       .createQueryBuilder('log')
@@ -502,7 +521,7 @@ export class DashboardController {
     if (tier) qb.andWhere('log.tier = :tier', { tier });
     if (node) qb.andWhere('log.node_id = :node', { node });
     if (status) qb.andWhere('log.status_code = :status', { status: Number(status) });
-    this.applyApiKeyLogFilter(qb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
 
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     const safePage = Math.max(page, 1);
@@ -531,12 +550,14 @@ export class DashboardController {
   @ApiQuery({ name: 'days', required: false, example: 7 })
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
   @ApiOkResponse({ description: 'A CSV or JSON file download.' })
   async exportLogs(
     @Query('format') format: string = 'csv',
     @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
     @Query('api_key') apiKey: string | undefined,
     @Query('api_key_id') apiKeyId: string | undefined,
+    @Query('namespace') namespaceId: string | undefined,
     @Res() res: Response,
   ) {
     const safeDays = Math.min(Math.max(days, 1), 365);
@@ -546,7 +567,7 @@ export class DashboardController {
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
       .orderBy('log.timestamp', 'DESC');
-    this.applyApiKeyLogFilter(qb, apiKey, apiKeyId);
+    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
     const logs = await qb.getMany();
 
     if (format === 'json') {
@@ -562,6 +583,7 @@ export class DashboardController {
       'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
       'latency_ms', 'status_code', 'is_fallback', 'session_key',
       'fallback_reason', 'api_key_id', 'api_key_name', 'retry_count', 'error',
+      'namespace_id',
     ];
     const csvRows = [headers.join(',')];
 
@@ -620,11 +642,22 @@ export class DashboardController {
   @ApiOperation({ summary: 'Get global and per-key budget status' })
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
   @ApiOkResponse({ description: 'Budget rules and current usage.' })
   async getBudget(
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
   ) {
+    if (namespaceId) {
+      const globalStatus = await this.budgetService.getStatus();
+      const namespaceStatus = await this.budgetService.getStatus(null, null, namespaceId);
+      return {
+        rules: globalStatus.map((s) => this.serializeBudgetStatus(s)),
+        namespaceRules: namespaceStatus.map((s) => this.serializeBudgetStatus(s)),
+        namespaceId,
+      };
+    }
     if (apiKey || apiKeyId) {
       const globalStatus = await this.budgetService.getStatus();
       const keyStatus = await this.budgetService.getStatus(apiKey || null, apiKeyId || null);
@@ -645,9 +678,10 @@ export class DashboardController {
   private serializeBudgetStatus(s: {
     id: number;
     type: string;
-    scope: 'global' | 'api_key';
+    scope: 'global' | 'api_key' | 'namespace';
     apiKeyName: string | null;
     apiKeyId: string | null;
+    namespaceId: string | null;
     limit: number;
     current: number;
     percentage: number;
@@ -662,6 +696,7 @@ export class DashboardController {
       scope: s.scope,
       apiKeyName: s.apiKeyName,
       apiKeyId: s.apiKeyId,
+      namespaceId: s.namespaceId,
       limit: s.limit,
       current: this.serializeBudgetCurrent(s.type, s.current),
       percentage: Number((s.percentage * 100).toFixed(1)),
@@ -695,6 +730,52 @@ export class DashboardController {
         daily_cost_limit: key.daily_cost_limit,
         rate_limit_per_minute: key.rate_limit_per_minute,
       })),
+    };
+  }
+
+  @Get('namespaces')
+  @ApiOperation({ summary: 'List local OSS namespaces and read-only policy summary' })
+  @ApiOkResponse({ description: 'Local namespace policies with budget status summaries.' })
+  async getNamespaces() {
+    const namespaces = await Promise.all(
+      this.config.namespaces.map(async (namespace) => {
+        const budget = await this.budgetService.getStatus(null, null, namespace.id);
+        return {
+          id: namespace.id,
+          name: namespace.name || namespace.id,
+          allowed_nodes: namespace.allowed_nodes || [],
+          allowed_models: namespace.allowed_models || [],
+          rate_limit_per_minute: namespace.rate_limit?.requests_per_minute || null,
+          budget: namespace.budget || null,
+          budget_status: budget.map((item) => this.serializeBudgetStatus(item)),
+        };
+      }),
+    );
+
+    return {
+      namespaces,
+      mode: 'local_only',
+      enterprise_features: {
+        workspace: false,
+        sso: false,
+        scim: false,
+        org_billing: false,
+      },
+    };
+  }
+
+  @Get('shadow')
+  @ApiOperation({ summary: 'Read-only shadow traffic status and recent results' })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'limit', required: false, example: 50 })
+  @ApiOkResponse({ description: 'Shadow traffic configuration status and sanitized recent result rows.' })
+  async getShadowTraffic(
+    @Query('namespace') namespaceId?: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number = 50,
+  ) {
+    return {
+      status: this.shadowTraffic.getStatus(),
+      recent: await this.shadowTraffic.recent(namespaceId, limit),
     };
   }
 
@@ -854,6 +935,8 @@ export class DashboardController {
       routing: full.routing,
       routing_status: this.routingService.getRoutingStatus(),
       budget: full.budget,
+      namespaces: full.namespaces || [],
+      shadow: this.shadowTraffic.getStatus(),
       models_pricing: full.models_pricing,
       diagnostics: this.config.getNodeModelDiagnostics(),
     };

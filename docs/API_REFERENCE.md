@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.4.0 adds OpenAI-compatible embeddings ingress alongside the existing chat, responses, messages, models, health, and Dashboard APIs.
+v0.5 adds optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results alongside the existing chat, responses, messages, embeddings, models, and health APIs.
 
 ## Live Documentation
 
@@ -60,8 +60,9 @@ Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by AP
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/health` | Gateway health, uptime, node circuit state, model circuit state, and budget status |
+| `GET` | `/cluster/status` | Redis-backed cluster inventory, heartbeat status, and reload broadcast metadata when `state.backend=redis` or `cluster.enabled=true` |
 
-`/health` is intended for local health checks, Docker checks, and monitoring systems.
+`/health` is intended for local health checks, Docker checks, and monitoring systems. `/cluster/status` returns `404` in the default single-instance memory mode.
 
 ## Dashboard API
 
@@ -80,6 +81,8 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
+| `GET` | `/api/dashboard/namespaces` | Local namespace policies and budget summaries |
+| `GET` | `/api/dashboard/shadow` | Read-only shadow traffic status and sanitized recent results |
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |

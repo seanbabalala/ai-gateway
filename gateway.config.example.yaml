@@ -26,10 +26,12 @@ server:
 database:
   type: sqlite
   path: ./data/gateway.db
+  # synchronize: true       # TypeORM schema sync; fine for local SQLite/dev
   # log_retention_days: 30    # Auto-delete logs older than N days (default: 30, 0 = keep forever)
   # For PostgreSQL:
   # type: postgres
-  # url: "postgresql://user:pass@localhost:5432/ai_gateway"
+  # url: "${DATABASE_URL}"
+  # synchronize: false      # Recommended for production after schema migration/bootstrap
 
 auth:
   # Client Gateway API keys are generated and managed in the Dashboard.
@@ -46,6 +48,37 @@ auth:
   #   max_entries: 10000            # Max tracked IPs/keys (default: 10000, FIFO eviction)
   #   login_requests_per_minute: 5  # Login endpoint rate limit per IP (default: 5)
 
+# ============================================================
+# Local Namespaces — OSS Data Plane isolation (optional)
+# ============================================================
+# Namespaces are local labels for API key policy boundaries. They are not
+# enterprise workspaces and do not enable SSO, SCIM, RBAC, or org billing.
+# Bind a Gateway API key to a namespace in the Dashboard or via
+# auth.api_keys[].namespace_id for YAML-defined keys.
+#
+# Namespace allowed_nodes/allowed_models intersect with API-key restrictions.
+# Namespace budgets and rate limits are enforced in addition to global and
+# key-level limits. If omitted, all keys keep the existing global behavior.
+# ============================================================
+# namespaces:
+#   - id: team-a
+#     name: "Team A"
+#     allowed_nodes: [openai, anthropic]
+#     allowed_models: [gpt-4o, gpt-4o-mini, claude-sonnet-4-20250514]
+#     budget:
+#       daily_token_limit: 1000000
+#       daily_cost_limit: 25.00
+#       alert_threshold: 0.8
+#     rate_limit:
+#       requests_per_minute: 120
+#
+# Example YAML-defined Gateway key bound to a namespace:
+# auth:
+#   api_keys:
+#     - key: "${SIFTGATE_TEAM_A_KEY}"
+#       name: team-a-service
+#       namespace_id: team-a
+
 # Dashboard authentication (optional)
 # If set, the dashboard UI requires a password to access.
 # On first startup the plain-text password is auto-hashed with bcrypt
@@ -60,6 +93,33 @@ auth:
 # hot_reload:
 #   watch: false
 #   debounce_ms: 500
+
+# ============================================================
+# Cluster Mode — optional Redis Pub/Sub multi-instance inventory
+# ============================================================
+# SiftGate runs as a single local data plane by default. Enable Redis-backed
+# cluster mode only when running multiple gateway instances behind a load
+# balancer. There is no leader election; every instance handles requests
+# independently.
+#
+# Cluster mode starts when cluster.enabled=true or state.backend=redis.
+# GET /cluster/status is available only in that mode.
+# ============================================================
+# state:
+#   backend: memory                # memory (default) | redis
+#   redis:
+#     url: ${REDIS_URL:-redis://127.0.0.1:6379}
+#     prefix: siftgate:
+#
+# cluster:
+#   enabled: false                 # Explicit switch; state.backend=redis also enables it
+#   instance_id: ${SIFTGATE_INSTANCE_ID:-}
+#   heartbeat_interval_seconds: 10
+#   heartbeat_ttl_seconds: 30
+#   reload_broadcast: true         # Broadcast successful local reloads to peers
+#   redis:
+#     url: ${REDIS_URL:-redis://127.0.0.1:6379}
+#     prefix: siftgate:
 
 # ============================================================
 # Nodes — upstream provider endpoints
@@ -118,6 +178,16 @@ nodes:
     # max_concurrency: 50
     # queue_timeout_ms: 10000
     # queue_policy: wait # wait | fallback | reject
+    # Optional undici upstream connection pool. Omit this block to keep the
+    # default fetch behavior. HTTP/2 is experimental and disabled by default.
+    # connection:
+    #   enabled: true
+    #   keep_alive: true
+    #   pool_size: 10
+    #   keep_alive_ms: 60000
+    #   headers_timeout_ms: 30000
+    #   body_timeout_ms: 300000
+    #   http2: false
     # Active health probing is disabled by default. Prefer HEAD/GET against a
     # cheap provider/proxy readiness endpoint. Use lightweight_model only when
     # no readiness endpoint exists; probes send a synthetic 1-token request.
@@ -306,6 +376,29 @@ budget:
   alert_threshold: 0.8 # Alert at 80% usage
 
 # ============================================================
+# Shadow Traffic — async test-node mirroring (optional)
+# ============================================================
+# Disabled by default. When enabled, a sampled copy of successful requests is
+# sent asynchronously to a test node/model. Shadow failures never fail or slow
+# the primary request path, and shadow requests are not billed/logged as user
+# calls. Dashboard shows recent sanitized shadow outcomes read-only.
+#
+# By default SiftGate stores no prompt/input samples and no response samples.
+# Enable compare storage only when you intentionally want local comparison
+# samples, and review data-retention/privacy requirements first.
+# ============================================================
+# shadow:
+#   enabled: false
+#   sample_rate: 0.05        # 5% of eligible successful requests
+#   target_node: openai      # Prefer a staging/test node in production
+#   target_model: gpt-4o-mini
+#   timeout_ms: 30000
+#   max_recent_results: 100
+#   compare:
+#     store_prompts: false
+#     store_responses: false
+
+# ============================================================
 # Alerts — local webhook alerting (optional)
 # ============================================================
 # Disabled by default. Alert delivery is asynchronous and payloads are
@@ -400,9 +493,27 @@ models_pricing:
   # gemini-2.5-pro:          { input: 1.25, output: 10.00 }
 
 # ============================================================
+# Shared State Backend — optional multi-instance runtime state
+# ============================================================
+# Defaults to local memory so a single open-source gateway works without
+# extra services. Set backend: redis when running multiple gateway replicas
+# that should share circuit breakers, rate limits, prompt cache, and
+# routing momentum.
+# ============================================================
+# state:
+#   backend: memory              # memory | redis (default: memory)
+#   unavailable_policy: fail_open # fail_open | fail_closed when Redis is unavailable
+#   redis:
+#     url: ${REDIS_URL:-redis://localhost:6379}
+#     prefix: siftgate:state:
+#     timeout_ms: 500
+#     sync_interval_ms: 2000      # Circuit/momentum local mirror refresh
+
+# ============================================================
 # Cache — Prompt response caching
 # ============================================================
-# Caches deterministic responses (temperature=0) in memory.
+# Caches deterministic responses (temperature=0). With state.backend: redis,
+# cache entries are stored as shared Redis String+TTL values.
 # Identical requests return instantly from cache without hitting
 # the upstream provider, saving tokens and reducing latency.
 # ============================================================
@@ -411,6 +522,23 @@ models_pricing:
 #   ttl_seconds: 300           # Cache TTL in seconds (default: 300 = 5 min)
 #   max_entries: 1000          # Max cached responses, LRU eviction (default: 1000)
 #   exclude_tool_use: true     # Don't cache tool_use responses (default: true)
+#   stream_cache:
+#     enabled: false           # Opt-in stream cache + SSE replay (default: false)
+
+# ============================================================
+# Embedding Batching — optional /v1/embeddings request coalescing
+# ============================================================
+# Disabled by default. When enabled, small same-target embedding
+# requests are collected for a short window, sent upstream as one
+# batch, then split back into per-request responses.
+# ============================================================
+# embedding_batching:
+#   enabled: false             # Master switch (default: false)
+#   window_ms: 10              # Local collection window (default: 10)
+#   max_batch_size: 64         # Max upstream input items per batch
+#   max_input_items: 8         # Only batch small requests with <= this many items
+#   max_queue: 1000            # Max queued local embedding requests
+#   timeout_ms: 10000          # Per-request queue/dispatch timeout
 
 # ============================================================
 # Runtime Plugins — optional OSS Data Plane extensions

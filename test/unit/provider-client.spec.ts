@@ -21,6 +21,22 @@ function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderC
   } as any, new TelemetryService());
 }
 
+function makeServiceWithPool(
+  nodeOverrides: Record<string, any>,
+  pool: { getDispatcher: jest.Mock },
+): ProviderClientService {
+  const node = {
+    id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
+    base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
+    api_key: 'sk-test', models: ['gpt-4o'], model_aliases: {},
+    timeout_ms: 5000,
+    ...nodeOverrides,
+  };
+  return new ProviderClientService({
+    getNode: jest.fn().mockReturnValue(node),
+  } as any, new TelemetryService(), pool as any);
+}
+
 function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequest {
   return {
     messages: [{ role: 'user', content: 'Hi' }],
@@ -445,6 +461,63 @@ describe('ProviderClientService', () => {
         .rejects.toThrow(ProviderError);
     });
 
+    it('should pass a configured dispatcher to fetch', async () => {
+      const dispatcher = { dispatch: jest.fn() };
+      const pool = { getDispatcher: jest.fn().mockReturnValue(dispatcher) };
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl-test', model: 'gpt-4o',
+          choices: [{ message: { content: 'Hello!' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithPool({
+        connection: { pool_size: 4, keep_alive_ms: 30000 },
+      }, pool);
+      await svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta);
+
+      expect(pool.getDispatcher).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'openai' }),
+      );
+      expect(fetchMock.mock.calls[0][1].dispatcher).toBe(dispatcher);
+    });
+
+    it('should map undici headers/body timeouts to ProviderError timeouts', async () => {
+      const timeout = new Error('headers timeout');
+      (timeout as any).name = 'HeadersTimeoutError';
+      (timeout as any).code = 'UND_ERR_HEADERS_TIMEOUT';
+      global.fetch = jest.fn().mockRejectedValue(timeout) as any;
+
+      const svc = makeServiceWithNode();
+      await expect(svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta))
+        .rejects.toMatchObject({
+          statusCode: 504,
+          failureType: 'timeout',
+        });
+    });
+
+    it('should map body read timeouts to ProviderError timeouts', async () => {
+      const timeout = new Error('body timeout');
+      (timeout as any).name = 'BodyTimeoutError';
+      (timeout as any).code = 'UND_ERR_BODY_TIMEOUT';
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockRejectedValue(timeout),
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      await expect(svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta))
+        .rejects.toMatchObject({
+          statusCode: 504,
+          failureType: 'timeout',
+        });
+    });
+
     it('should throw for unknown node', async () => {
       const svc = new ProviderClientService({
         getNode: jest.fn().mockReturnValue(undefined),
@@ -525,6 +598,33 @@ describe('ProviderClientService', () => {
       }
       expect(events.length).toBeGreaterThanOrEqual(3);
       expect(events[0].type).toBe('start');
+    });
+
+    it('should stream through a configured dispatcher', async () => {
+      const dispatcher = { dispatch: jest.fn() };
+      const pool = { getDispatcher: jest.fn().mockReturnValue(dispatcher) };
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true, status: 200, body: stream,
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithPool({
+        connection: { pool_size: 4, body_timeout_ms: 300000 },
+      }, pool);
+      const events = [];
+      for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+        events.push(event);
+      }
+
+      expect(pool.getDispatcher).toHaveBeenCalled();
+      expect(fetchMock.mock.calls[0][1].dispatcher).toBe(dispatcher);
     });
 
     it('should throw for missing response body', async () => {

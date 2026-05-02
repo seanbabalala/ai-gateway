@@ -4,6 +4,35 @@
 
 No changes yet.
 
+## 0.5.0 - 2026-05-02
+
+### Added
+
+- v0.5 optional Redis shared state backend for circuit breakers, rate limits, prompt cache, and routing momentum while keeping memory as the default backend.
+- `state.backend`, `state.unavailable_policy`, and `state.redis` configuration with validation, Docker Compose Redis profile, and shared state docs.
+- Unit coverage for memory/Redis state behavior, Redis fail-open/fail-closed rate limiting, circuit hash writes, prompt-cache Redis entries, and momentum sorted-set writes.
+- v0.5 PostgreSQL production migration path for the OSS Data Plane via `siftgate migrate-db --from sqlite --to postgres`.
+- SQLite-to-PostgreSQL migrator with dry-run inspection, optional SQLite backup, non-empty target protection, row-count validation, sequence reset, and secret-redacted reports.
+- Production deployment documentation covering PostgreSQL recommendation, TypeORM schema strategy, Docker Compose PostgreSQL profile, and SQLite migration workflow.
+- v0.5 upstream connection pooling for the OSS Data Plane via optional `nodes[].connection` undici per-node dispatchers.
+- Keep-alive, pool size, headers timeout, body timeout, and experimental HTTP/2 connection settings for upstream provider calls.
+- Upstream benchmark script and performance notes for future forwarding regression checks.
+- v0.5 stream cache controls via `cache.stream_cache.enabled`, disabled by default and only storing fully completed deterministic streams for later SSE replay.
+- v0.5 local embedding batching via `embedding_batching`, disabled by default, with per-node/model safe grouping, queue limits, cancellation, timeout, and partial-response handling.
+- Config validation, unit coverage, and documentation for stream cache and embedding batching safety defaults.
+- v0.5 Redis-backed cluster mode for OSS Data Plane instance registration, heartbeats, and config reload broadcasts.
+- `GET /cluster/status` for Redis-backed multi-instance inventory and reload broadcast status, enabled only when `state.backend=redis` or `cluster.enabled=true`.
+- Config validation, docs, and example config for `state` and `cluster` settings without requiring SiftGate Cloud.
+- v0.5 local OSS namespaces for Gateway API keys, with namespace-level node/model restrictions, budgets, rate limits, call-log attribution, and Dashboard filtering.
+- v0.5 asynchronous shadow traffic mirroring for sampled successful chat, stream, and embedding requests, disabled by default and shown in a read-only Dashboard view.
+- Privacy-safe shadow defaults that avoid storing prompts, responses, raw headers, or provider keys unless local comparison storage is explicitly enabled.
+- Config validation, example config, docs, and unit coverage for namespace references, policy intersection, namespace budgets, shadow config, sanitized shadow results, and Dashboard APIs.
+
+### Changed
+
+- Added optional `database.synchronize` configuration so local SQLite development can keep schema sync while production PostgreSQL can run with synchronization disabled.
+- Provider forwarding now shares the optional per-node dispatcher across streaming, non-streaming, and embeddings requests while leaving default `fetch` behavior unchanged when no connection pool is configured.
+
 ## 0.4.0 - 2026-05-02
 
 ### Added

@@ -56,6 +56,8 @@ const ALERT_EVENTS = new Set([
 ]);
 const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
+const STATE_BACKENDS = new Set(['memory', 'redis']);
+const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
 const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
 const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
 const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
@@ -197,12 +199,18 @@ export function validateConfigObject(
   validateEnvReferences(config, env, issues);
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
-  validateAuth(config.auth, issues);
+  validateAuth(config.auth, config.namespaces, issues);
   validateNodes(config.nodes, issues);
+  validateNamespaces(config.namespaces, config.nodes, issues);
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
+  validateCache(config.cache, issues);
+  validateEmbeddingBatching(config.embedding_batching, issues);
+  validateShadow(config.shadow, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
+  validateState(config.state, issues);
+  validateCluster(config.cluster, config.state, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
@@ -340,9 +348,39 @@ function validateDatabase(
       ),
     );
   }
+  if (
+    database.synchronize !== undefined &&
+    !isBoolean(database.synchronize)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_database_synchronize',
+        'database.synchronize must be a boolean when set.',
+        'database.synchronize',
+      ),
+    );
+  }
+  if (
+    database.type === 'postgres' &&
+    database.synchronize !== false
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'postgres_synchronize_enabled',
+        'For production PostgreSQL, initialize/migrate schema first and set database.synchronize: false.',
+        'database.synchronize',
+      ),
+    );
+  }
 }
 
-function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {
+function validateAuth(
+  auth: unknown,
+  namespaces: unknown,
+  issues: ConfigValidationIssue[],
+): void {
   if (auth === undefined) return;
   if (!isRecord(auth)) {
     issues.push(
@@ -362,6 +400,15 @@ function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {
     );
     return;
   }
+
+  const namespaceIds = new Set<string>(
+    Array.isArray(namespaces)
+      ? namespaces
+          .filter(isRecord)
+          .map((namespace) => namespace.id)
+          .filter(isNonEmptyString)
+      : [],
+  );
 
   auth.api_keys.forEach((entry, index) => {
     const basePath = `auth.api_keys[${index}]`;
@@ -396,7 +443,186 @@ function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    if (entry.namespace_id !== undefined) {
+      if (!isNonEmptyString(entry.namespace_id)) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_namespace_reference',
+            'auth.api_keys[].namespace_id must be a non-empty string when set.',
+            `${basePath}.namespace_id`,
+          ),
+        );
+      } else if (!namespaceIds.has(entry.namespace_id)) {
+        issues.push(
+          issue(
+            'error',
+            'unknown_namespace_reference',
+            `API key "${entry.name || index}" references unknown namespace "${entry.namespace_id}".`,
+            `${basePath}.namespace_id`,
+          ),
+        );
+      }
+    }
   });
+}
+
+function validateNamespaces(
+  namespaces: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (namespaces === undefined) return;
+  if (!Array.isArray(namespaces)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'namespaces must be an array when set.',
+        'namespaces',
+      ),
+    );
+    return;
+  }
+
+  const nodeIds = new Set<string>(
+    Array.isArray(nodes)
+      ? nodes.filter(isRecord).map((node) => node.id).filter(isNonEmptyString)
+      : [],
+  );
+  const modelIds = new Set<string>();
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      if (!isRecord(node)) continue;
+      for (const model of Array.isArray(node.models) ? node.models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+      for (const model of Array.isArray(node.embedding_models) ? node.embedding_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  namespaces.forEach((namespace, index) => {
+    const basePath = `namespaces[${index}]`;
+    if (!isRecord(namespace)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_namespace_entry',
+          'Namespace entries must be objects.',
+          basePath,
+        ),
+      );
+      return;
+    }
+
+    if (!isNonEmptyString(namespace.id)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'namespaces[].id is required.',
+          `${basePath}.id`,
+        ),
+      );
+    } else {
+      if (seen.has(namespace.id)) {
+        issues.push(
+          issue(
+            'error',
+            'duplicate_namespace_id',
+            `Namespace id "${namespace.id}" is already used.`,
+            `${basePath}.id`,
+          ),
+        );
+      }
+      seen.add(namespace.id);
+    }
+
+    validateReferenceArray(
+      namespace.allowed_nodes,
+      `${basePath}.allowed_nodes`,
+      nodeIds,
+      'unknown_namespace_node',
+      'Namespace allowed_nodes references unknown node',
+      issues,
+    );
+    validateReferenceArray(
+      namespace.allowed_models,
+      `${basePath}.allowed_models`,
+      modelIds,
+      'unknown_namespace_model',
+      'Namespace allowed_models references unknown model',
+      issues,
+    );
+
+    if (namespace.budget !== undefined) {
+      if (!isRecord(namespace.budget)) {
+        issues.push(issue('error', 'invalid_namespace_budget', 'namespace.budget must be an object.', `${basePath}.budget`));
+      } else {
+        validateOptionalPositiveNumber(namespace.budget.daily_token_limit, `${basePath}.budget.daily_token_limit`, 'invalid_namespace_budget', issues);
+        validateOptionalPositiveNumber(namespace.budget.daily_cost_limit, `${basePath}.budget.daily_cost_limit`, 'invalid_namespace_budget', issues);
+        if (
+          namespace.budget.alert_threshold !== undefined &&
+          (!isFiniteNumber(namespace.budget.alert_threshold) ||
+            namespace.budget.alert_threshold <= 0 ||
+            namespace.budget.alert_threshold > 1)
+        ) {
+          issues.push(issue('error', 'invalid_namespace_budget', 'namespace.budget.alert_threshold must be between 0 and 1.', `${basePath}.budget.alert_threshold`));
+        }
+      }
+    }
+
+    if (namespace.rate_limit !== undefined) {
+      if (!isRecord(namespace.rate_limit)) {
+        issues.push(issue('error', 'invalid_namespace_rate_limit', 'namespace.rate_limit must be an object.', `${basePath}.rate_limit`));
+      } else {
+        const rpm = namespace.rate_limit.requests_per_minute;
+        if (rpm !== undefined && (!Number.isInteger(rpm) || typeof rpm !== 'number' || rpm < 1)) {
+          issues.push(issue('error', 'invalid_namespace_rate_limit', 'namespace.rate_limit.requests_per_minute must be a positive integer.', `${basePath}.rate_limit.requests_per_minute`));
+        }
+      }
+    }
+  });
+}
+
+function validateReferenceArray(
+  value: unknown,
+  issuePath: string,
+  knownValues: Set<string>,
+  code: string,
+  messagePrefix: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(issue('error', code, `${issuePath} must be an array.`, issuePath));
+    return;
+  }
+  value.forEach((item, index) => {
+    const itemPath = `${issuePath}[${index}]`;
+    if (!isNonEmptyString(item)) {
+      issues.push(issue('error', code, `${issuePath} entries must be non-empty strings.`, itemPath));
+      return;
+    }
+    if (!knownValues.has(item)) {
+      issues.push(issue('error', code, `${messagePrefix} "${item}".`, itemPath));
+    }
+  });
+}
+
+function validateOptionalPositiveNumber(
+  value: unknown,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isFiniteNumber(value) || value <= 0) {
+    issues.push(issue('error', code, `${issuePath} must be a positive number.`, issuePath));
+  }
 }
 
 function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
@@ -608,8 +834,85 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     }
 
     validateNodeAliases(node, basePath, issues);
+    validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
   });
+}
+
+function validateNodeConnection(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.connection === undefined) return;
+  if (!isRecord(node.connection)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_connection',
+        'nodes[].connection must be an object when set.',
+        `${basePath}.connection`,
+      ),
+    );
+    return;
+  }
+
+  const connection = node.connection;
+  for (const key of ['enabled', 'keep_alive', 'http2']) {
+    if (connection[key] !== undefined && !isBoolean(connection[key])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_connection_flag',
+          `nodes[].connection.${key} must be a boolean when set.`,
+          `${basePath}.connection.${key}`,
+        ),
+      );
+    }
+  }
+
+  for (const key of ['pool_size', 'keep_alive_ms']) {
+    if (
+      connection[key] !== undefined &&
+      (!isFiniteNumber(connection[key]) || connection[key] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_connection_value',
+          `nodes[].connection.${key} must be a positive number when set.`,
+          `${basePath}.connection.${key}`,
+        ),
+      );
+    }
+  }
+
+  for (const key of ['headers_timeout_ms', 'body_timeout_ms']) {
+    if (
+      connection[key] !== undefined &&
+      (!isFiniteNumber(connection[key]) || connection[key] < 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_connection_value',
+          `nodes[].connection.${key} must be a non-negative number when set.`,
+          `${basePath}.connection.${key}`,
+        ),
+      );
+    }
+  }
+
+  if (connection.http2 === true) {
+    issues.push(
+      issue(
+        'warning',
+        'experimental_http2_connection_pool',
+        'nodes[].connection.http2 is experimental; leave it disabled unless the upstream is known to work with undici HTTP/2.',
+        `${basePath}.connection.http2`,
+      ),
+    );
+  }
 }
 
 function validateNodeEmbeddingModels(
@@ -1498,6 +1801,409 @@ function validateBudget(
   }
 }
 
+function validateCache(
+  cache: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (cache === undefined) return;
+  if (!isRecord(cache)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'cache must be an object.',
+        'cache',
+      ),
+    );
+    return;
+  }
+
+  if (cache.enabled !== undefined && !isBoolean(cache.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.enabled must be a boolean.',
+        'cache.enabled',
+      ),
+    );
+  }
+  if (
+    cache.ttl_seconds !== undefined &&
+    (!isFiniteNumber(cache.ttl_seconds) || cache.ttl_seconds <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.ttl_seconds must be a positive number.',
+        'cache.ttl_seconds',
+      ),
+    );
+  }
+  if (
+    cache.max_entries !== undefined &&
+    (!isFiniteNumber(cache.max_entries) || cache.max_entries <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.max_entries must be a positive number.',
+        'cache.max_entries',
+      ),
+    );
+  }
+  if (
+    cache.exclude_tool_use !== undefined &&
+    !isBoolean(cache.exclude_tool_use)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_config',
+        'cache.exclude_tool_use must be a boolean.',
+        'cache.exclude_tool_use',
+      ),
+    );
+  }
+  if (cache.stream_cache !== undefined) {
+    if (!isRecord(cache.stream_cache)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_stream_cache_config',
+          'cache.stream_cache must be an object when set.',
+          'cache.stream_cache',
+        ),
+      );
+      return;
+    }
+    if (
+      cache.stream_cache.enabled !== undefined &&
+      !isBoolean(cache.stream_cache.enabled)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_stream_cache_config',
+          'cache.stream_cache.enabled must be a boolean.',
+          'cache.stream_cache.enabled',
+        ),
+      );
+    }
+  }
+}
+
+function validateEmbeddingBatching(
+  batching: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (batching === undefined) return;
+  if (!isRecord(batching)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_embedding_batching_config',
+        'embedding_batching must be an object.',
+        'embedding_batching',
+      ),
+    );
+    return;
+  }
+
+  if (batching.enabled !== undefined && !isBoolean(batching.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_embedding_batching_config',
+        'embedding_batching.enabled must be a boolean.',
+        'embedding_batching.enabled',
+      ),
+    );
+  }
+
+  for (const key of [
+    'window_ms',
+    'max_batch_size',
+    'max_input_items',
+    'max_queue',
+    'timeout_ms',
+  ]) {
+    if (
+      batching[key] !== undefined &&
+      (!isFiniteNumber(batching[key]) || batching[key] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_embedding_batching_config',
+          `embedding_batching.${key} must be a positive number.`,
+          `embedding_batching.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateShadow(
+  shadow: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (shadow === undefined) return;
+  if (!isRecord(shadow)) {
+    issues.push(issue('error', 'invalid_section_type', 'shadow must be an object.', 'shadow'));
+    return;
+  }
+
+  if (shadow.enabled !== undefined && !isBoolean(shadow.enabled)) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.enabled must be a boolean.', 'shadow.enabled'));
+  }
+  if (
+    shadow.sample_rate !== undefined &&
+    (!isFiniteNumber(shadow.sample_rate) || shadow.sample_rate < 0 || shadow.sample_rate > 1)
+  ) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.sample_rate must be between 0 and 1.', 'shadow.sample_rate'));
+  }
+  if (
+    shadow.timeout_ms !== undefined &&
+    (!isFiniteNumber(shadow.timeout_ms) || shadow.timeout_ms <= 0)
+  ) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.timeout_ms must be a positive number.', 'shadow.timeout_ms'));
+  }
+  if (shadow.max_recent_results !== undefined) {
+    const maxRecent = shadow.max_recent_results;
+    if (!Number.isInteger(maxRecent) || typeof maxRecent !== 'number' || maxRecent < 1) {
+      issues.push(issue('error', 'invalid_shadow_config', 'shadow.max_recent_results must be a positive integer.', 'shadow.max_recent_results'));
+    }
+  }
+
+  const nodeList = Array.isArray(nodes) ? nodes.filter(isRecord) : [];
+  const targetNode = isNonEmptyString(shadow.target_node)
+    ? nodeList.find((node) => node.id === shadow.target_node)
+    : undefined;
+
+  if (shadow.enabled === true) {
+    if (!isNonEmptyString(shadow.target_node)) {
+      issues.push(issue('error', 'missing_shadow_target', 'shadow.target_node is required when shadow.enabled is true.', 'shadow.target_node'));
+    } else if (!targetNode) {
+      issues.push(issue('error', 'unknown_shadow_target_node', `shadow.target_node references unknown node "${shadow.target_node}".`, 'shadow.target_node'));
+    }
+  } else if (shadow.target_node !== undefined && !isNonEmptyString(shadow.target_node)) {
+    issues.push(issue('error', 'invalid_shadow_config', 'shadow.target_node must be a non-empty string when set.', 'shadow.target_node'));
+  } else if (shadow.target_node !== undefined && !targetNode) {
+    issues.push(issue('error', 'unknown_shadow_target_node', `shadow.target_node references unknown node "${shadow.target_node}".`, 'shadow.target_node'));
+  }
+
+  if (shadow.target_model !== undefined) {
+    if (!isNonEmptyString(shadow.target_model)) {
+      issues.push(issue('error', 'invalid_shadow_config', 'shadow.target_model must be a non-empty string when set.', 'shadow.target_model'));
+    } else if (targetNode) {
+      const models = [
+        ...(Array.isArray(targetNode.models) ? targetNode.models : []),
+        ...(Array.isArray(targetNode.embedding_models) ? targetNode.embedding_models : []),
+      ].filter(isNonEmptyString);
+      if (models.length > 0 && !models.includes(shadow.target_model)) {
+        issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));
+      }
+    }
+  }
+
+  if (shadow.compare !== undefined) {
+    if (!isRecord(shadow.compare)) {
+      issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare must be an object.', 'shadow.compare'));
+    } else {
+      if (shadow.compare.store_prompts !== undefined && !isBoolean(shadow.compare.store_prompts)) {
+        issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.store_prompts must be a boolean.', 'shadow.compare.store_prompts'));
+      }
+      if (shadow.compare.store_responses !== undefined && !isBoolean(shadow.compare.store_responses)) {
+        issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.store_responses must be a boolean.', 'shadow.compare.store_responses'));
+      }
+      if (shadow.compare.store_prompts === true || shadow.compare.store_responses === true) {
+        issues.push(issue('warning', 'shadow_compare_storage_enabled', 'Shadow comparison storage is enabled. Prompts/responses are stored only because this was explicitly configured.', 'shadow.compare'));
+      }
+    }
+  }
+}
+
+function validateCluster(
+  cluster: unknown,
+  state: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (cluster === undefined) return;
+  if (!isRecord(cluster)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'cluster must be an object.',
+        'cluster',
+      ),
+    );
+    return;
+  }
+
+  if (cluster.enabled !== undefined && !isBoolean(cluster.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cluster_config',
+        'cluster.enabled must be a boolean.',
+        'cluster.enabled',
+      ),
+    );
+  }
+  if (
+    cluster.reload_broadcast !== undefined &&
+    !isBoolean(cluster.reload_broadcast)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cluster_config',
+        'cluster.reload_broadcast must be a boolean.',
+        'cluster.reload_broadcast',
+      ),
+    );
+  }
+  if (
+    cluster.instance_id !== undefined &&
+    !isNonEmptyString(cluster.instance_id)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cluster_config',
+        'cluster.instance_id must be a non-empty string when set.',
+        'cluster.instance_id',
+      ),
+    );
+  }
+
+  validatePositiveNumber(
+    cluster.heartbeat_interval_seconds,
+    'cluster.heartbeat_interval_seconds',
+    'invalid_cluster_config',
+    issues,
+  );
+  validatePositiveNumber(
+    cluster.heartbeat_ttl_seconds,
+    'cluster.heartbeat_ttl_seconds',
+    'invalid_cluster_config',
+    issues,
+  );
+
+  if (
+    isFiniteNumber(cluster.heartbeat_interval_seconds) &&
+    isFiniteNumber(cluster.heartbeat_ttl_seconds) &&
+    cluster.heartbeat_ttl_seconds <= cluster.heartbeat_interval_seconds
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'cluster_heartbeat_ttl_short',
+        'cluster.heartbeat_ttl_seconds should be greater than cluster.heartbeat_interval_seconds.',
+        'cluster.heartbeat_ttl_seconds',
+      ),
+    );
+  }
+
+  if (cluster.redis !== undefined) {
+    validateRedisConnection(cluster.redis, 'cluster.redis', issues);
+  }
+
+  const enabledByCluster = cluster.enabled === true;
+  const enabledByState = isRecord(state) && state.backend === 'redis';
+  if (enabledByCluster || enabledByState) {
+    const redis = isRecord(cluster.redis)
+      ? cluster.redis
+      : isRecord(state) && isRecord(state.redis)
+        ? state.redis
+        : undefined;
+    if (redis?.url !== undefined) {
+      validateRedisUrl(
+        redis.url,
+        enabledByCluster ? 'cluster.redis.url' : 'state.redis.url',
+        issues,
+      );
+    }
+  }
+}
+
+function validateRedisConnection(
+  redis: unknown,
+  redisPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isRecord(redis)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_config',
+        `${redisPath} must be an object.`,
+        redisPath,
+      ),
+    );
+    return;
+  }
+  if (redis.url !== undefined) {
+    validateRedisUrl(redis.url, `${redisPath}.url`, issues);
+  }
+  if (redis.prefix !== undefined && !isNonEmptyString(redis.prefix)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_config',
+        `${redisPath}.prefix must be a non-empty string when set.`,
+        `${redisPath}.prefix`,
+      ),
+    );
+  }
+}
+
+function validateRedisUrl(
+  value: unknown,
+  valuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isNonEmptyString(value)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_config',
+        `${valuePath} must be a non-empty Redis URL when set.`,
+        valuePath,
+      ),
+    );
+    return;
+  }
+  if (containsEnvReference(value)) return;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_redis_url',
+          `${valuePath} must use redis:// or rediss://.`,
+          valuePath,
+        ),
+      );
+    }
+  } catch {
+    issues.push(
+      issue(
+        'error',
+        'invalid_redis_url',
+        `${valuePath} must be a valid Redis URL.`,
+        valuePath,
+      ),
+    );
+  }
+}
+
 function validateAlerts(
   alerts: unknown,
   issues: ConfigValidationIssue[],
@@ -1856,6 +2562,159 @@ function validateLogging(
   logging.sinks.forEach((sink, index) =>
     validateLogSink(sink, `logging.sinks[${index}]`, issues),
   );
+}
+
+function validateState(
+  state: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (state === undefined) return;
+  if (!isRecord(state)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'state must be an object.',
+        'state',
+      ),
+    );
+    return;
+  }
+
+  const backend = state.backend ?? 'memory';
+  if (!isNonEmptyString(backend) || !STATE_BACKENDS.has(backend)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_backend',
+        'state.backend must be "memory" or "redis".',
+        'state.backend',
+      ),
+    );
+  }
+
+  if (
+    state.unavailable_policy !== undefined &&
+    (!isNonEmptyString(state.unavailable_policy) ||
+      !STATE_UNAVAILABLE_POLICIES.has(state.unavailable_policy))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_unavailable_policy',
+        'state.unavailable_policy must be "fail_open" or "fail_closed".',
+        'state.unavailable_policy',
+      ),
+    );
+  }
+
+  if (state.redis !== undefined && !isRecord(state.redis)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis',
+        'state.redis must be an object.',
+        'state.redis',
+      ),
+    );
+    return;
+  }
+
+  const redis = isRecord(state.redis) ? state.redis : undefined;
+  if (redis?.url !== undefined) {
+    if (isNonEmptyString(redis.url)) {
+      validateRedisStateUrl(redis.url, issues);
+    } else {
+      issues.push(
+        issue(
+          'error',
+          'invalid_state_redis_url',
+          'state.redis.url must be a non-empty redis:// or rediss:// URL.',
+          'state.redis.url',
+        ),
+      );
+    }
+  } else if (backend === 'redis') {
+    issues.push(
+      issue(
+        'error',
+        'missing_required_field',
+        'state.redis.url is required when state.backend is "redis".',
+        'state.redis.url',
+      ),
+    );
+  }
+
+  if (
+    redis?.prefix !== undefined &&
+    (!isNonEmptyString(redis.prefix) || redis.prefix.includes(' '))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis_prefix',
+        'state.redis.prefix must be a non-empty string without spaces.',
+        'state.redis.prefix',
+      ),
+    );
+  }
+
+  for (const field of ['timeout_ms', 'sync_interval_ms']) {
+    if (
+      redis?.[field] !== undefined &&
+      (!isFiniteNumber(redis[field]) || redis[field] <= 0)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_state_redis_number',
+          `state.redis.${field} must be a positive number.`,
+          `state.redis.${field}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateRedisStateUrl(
+  value: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (HAS_ENV_REF_PATTERN.test(value)) return;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis_url',
+        'state.redis.url must be a valid redis:// or rediss:// URL.',
+        'state.redis.url',
+      ),
+    );
+    return;
+  }
+  if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_state_redis_url',
+        'state.redis.url must use redis:// or rediss://.',
+        'state.redis.url',
+      ),
+    );
+  }
+  if (url.protocol === 'redis:' && !isLocalhostUrl(url)) {
+    issues.push(
+      issue(
+        'warning',
+        'insecure_state_redis_url',
+        'state.redis.url uses plain redis:// outside localhost; use rediss:// or a private network for shared state.',
+        'state.redis.url',
+      ),
+    );
+  }
 }
 
 function validateLogSink(

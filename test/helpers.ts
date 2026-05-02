@@ -70,7 +70,7 @@ export function makeCanonicalResponse(
 // ── ConfigService Mock ───────────────────────────────────────
 
 export function mockConfigService(overrides: Record<string, unknown> = {}): any {
-  return {
+  const config: any = {
     database: { type: 'sqlite', path: ':memory:' },
     auth: { api_keys: [], rate_limit: undefined },
     dashboardPasswordHash: undefined,
@@ -100,6 +100,33 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       ttl_seconds: 300,
       max_entries: 1000,
       exclude_tool_use: true,
+      stream_cache: { enabled: false },
+    },
+    embeddingBatching: {
+      enabled: false,
+      window_ms: 10,
+      max_batch_size: 64,
+      max_input_items: 8,
+      max_queue: 1000,
+      timeout_ms: 10000,
+    },
+    state: {
+      backend: 'memory',
+      unavailable_policy: 'fail_open',
+      redis: {
+        url: 'redis://localhost:6379',
+        prefix: 'siftgate:state:',
+        timeout_ms: 500,
+        sync_interval_ms: 2000,
+      },
+    },
+    cluster: {
+      enabled: false,
+      instance_id: 'test-instance',
+      redis: { url: 'redis://127.0.0.1:6379', prefix: 'siftgate:' },
+      heartbeat_interval_seconds: 10,
+      heartbeat_ttl_seconds: 30,
+      reload_broadcast: true,
     },
     controlPlane: {
       enabled: false,
@@ -116,9 +143,32 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       enabled: false,
       sinks: [],
     },
+    namespaces: [],
+    shadowTraffic: {
+      enabled: false,
+      sample_rate: 0,
+      target_node: undefined,
+      target_model: undefined,
+      timeout_ms: 0,
+      max_recent_results: 100,
+      compare: { store_prompts: false, store_responses: false },
+    },
     getNode: jest.fn().mockReturnValue(undefined),
+    getNamespace: jest.fn((namespaceId?: string | null) =>
+      namespaceId ? config.namespaces.find((namespace: { id: string }) => namespace.id === namespaceId) : undefined,
+    ),
     getModelPricing: jest.fn().mockReturnValue(undefined),
     getFullConfig: jest.fn(),
+    getSnapshot: jest.fn().mockReturnValue({
+      version: 1,
+      loaded_at: '2026-05-02T00:00:00.000Z',
+      path: '/tmp/gateway.config.yaml',
+      node_count: 0,
+      node_ids: [],
+      route_tiers: [],
+      control_plane_enabled: false,
+      hot_reload_watch: false,
+    }),
     getNodeModelDiagnostics: jest.fn().mockReturnValue([]),
     reload: jest.fn(),
     onReload: jest.fn().mockReturnValue({ unsubscribe: jest.fn() }),
@@ -126,4 +176,5 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
     onReloadFailed: jest.fn().mockReturnValue({ unsubscribe: jest.fn() }),
     ...overrides,
   };
+  return config;
 }

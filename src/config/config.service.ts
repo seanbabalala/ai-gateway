@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { Subject, Subscription } from 'rxjs';
@@ -19,15 +20,20 @@ import {
   LogSinkConfig,
   ControlPlaneConfig,
   HotReloadConfig,
+  EmbeddingBatchingConfig,
+  ClusterConfig,
   AlertsConfig,
   AlertSpikeRuleConfig,
   AlertLatencySpikeRuleConfig,
+  NamespaceConfig,
+  ShadowTrafficConfig,
   ModelPricing,
   ServerConfig,
   DatabaseConfig,
   AuthConfig,
   DashboardConfig,
   FallbackPolicyConfig,
+  StateBackendConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -35,7 +41,12 @@ import type { EventBusService } from '../plugins/event-bus.service';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
-export type ConfigReloadSource = 'manual' | 'dashboard' | 'sighup' | 'watcher';
+export type ConfigReloadSource =
+  | 'manual'
+  | 'dashboard'
+  | 'sighup'
+  | 'watcher'
+  | 'cluster';
 
 export interface ConfigSnapshot {
   version: number;
@@ -57,6 +68,8 @@ export interface ConfigChangeSummary {
   pricing_changed: boolean;
   control_plane_changed: boolean;
   hot_reload_changed: boolean;
+  state_changed: boolean;
+  cluster_changed: boolean;
 }
 
 export interface ConfigReloadResult {
@@ -189,6 +202,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     if (config && typeof config === 'object') {
       config.auth ??= { api_keys: [] };
       config.models_pricing ??= {};
+      config.namespaces ??= [];
       if (config.routing?.tiers) {
         for (const tier of Object.values(config.routing.tiers)) {
           tier.fallbacks ??= [];
@@ -240,6 +254,29 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     }
     if (!config.budget || typeof config.budget !== 'object') {
       throw new Error('Invalid configuration: budget is required');
+    }
+    if (config.state !== undefined) {
+      if (typeof config.state !== 'object' || Array.isArray(config.state)) {
+        throw new Error('Invalid configuration: state must be an object');
+      }
+      const backend = config.state.backend ?? 'memory';
+      if (backend !== 'memory' && backend !== 'redis') {
+        throw new Error('Invalid configuration: state.backend must be memory or redis');
+      }
+      const policy = config.state.unavailable_policy ?? 'fail_open';
+      if (policy !== 'fail_open' && policy !== 'fail_closed') {
+        throw new Error('Invalid configuration: state.unavailable_policy must be fail_open or fail_closed');
+      }
+      if (backend === 'redis' && config.state.redis?.url !== undefined) {
+        try {
+          const redisUrl = new URL(config.state.redis.url);
+          if (redisUrl.protocol !== 'redis:' && redisUrl.protocol !== 'rediss:') {
+            throw new Error('invalid protocol');
+          }
+        } catch {
+          throw new Error('Invalid configuration: state.redis.url must be redis:// or rediss://');
+        }
+      }
     }
   }
 
@@ -442,6 +479,8 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       pricing_changed: JSON.stringify(previous.models_pricing) !== JSON.stringify(next.models_pricing),
       control_plane_changed: JSON.stringify(previous.control_plane || null) !== JSON.stringify(next.control_plane || null),
       hot_reload_changed: JSON.stringify(previous.hot_reload || null) !== JSON.stringify(next.hot_reload || null),
+      state_changed: JSON.stringify(previous.state || null) !== JSON.stringify(next.state || null),
+      cluster_changed: JSON.stringify(previous.cluster || null) !== JSON.stringify(next.cluster || null),
     };
   }
 
@@ -455,6 +494,8 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       pricing_changed: false,
       control_plane_changed: false,
       hot_reload_changed: false,
+      state_changed: false,
+      cluster_changed: false,
     };
   }
 
@@ -562,6 +603,21 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       ttl_seconds: c?.ttl_seconds ?? 300,
       max_entries: c?.max_entries ?? 1000,
       exclude_tool_use: c?.exclude_tool_use ?? true,
+      stream_cache: {
+        enabled: c?.stream_cache?.enabled ?? false,
+      },
+    };
+  }
+
+  get embeddingBatching(): Required<EmbeddingBatchingConfig> {
+    const batching = this.config.embedding_batching;
+    return {
+      enabled: batching?.enabled ?? false,
+      window_ms: batching?.window_ms ?? 10,
+      max_batch_size: batching?.max_batch_size ?? 64,
+      max_input_items: batching?.max_input_items ?? 8,
+      max_queue: batching?.max_queue ?? 1000,
+      timeout_ms: batching?.timeout_ms ?? 10000,
     };
   }
 
@@ -607,8 +663,99 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** Get shared state backend config with memory-safe defaults. */
+  get state(): Required<Omit<StateBackendConfig, 'redis'>> & {
+    redis: {
+      url: string;
+      prefix: string;
+      timeout_ms: number;
+      sync_interval_ms: number;
+    };
+  } {
+    const state = this.config.state;
+    return {
+      backend: state?.backend ?? 'memory',
+      unavailable_policy: state?.unavailable_policy ?? 'fail_open',
+      redis: {
+        url: state?.redis?.url ?? 'redis://localhost:6379',
+        prefix: this.normalizeRedisPrefix(
+          state?.redis?.prefix,
+          'siftgate:state:',
+        ),
+        timeout_ms: state?.redis?.timeout_ms ?? 500,
+        sync_interval_ms: state?.redis?.sync_interval_ms ?? 2000,
+      },
+    };
+  }
+
+  get cluster(): Required<Omit<ClusterConfig, 'redis'>> & {
+    redis: {
+      url: string;
+      prefix: string;
+    };
+  } {
+    const state = this.state;
+    const cluster = this.config.cluster;
+    const heartbeatInterval = cluster?.heartbeat_interval_seconds ?? 10;
+    return {
+      enabled: cluster?.enabled ?? state.backend === 'redis',
+      instance_id:
+        cluster?.instance_id ||
+        process.env.SIFTGATE_INSTANCE_ID ||
+        `${os.hostname()}-${process.pid}`,
+      heartbeat_interval_seconds: heartbeatInterval,
+      heartbeat_ttl_seconds:
+        cluster?.heartbeat_ttl_seconds ?? Math.max(30, heartbeatInterval * 3),
+      reload_broadcast: cluster?.reload_broadcast ?? true,
+      redis: {
+        url: cluster?.redis?.url ?? state.redis.url,
+        prefix: this.normalizeRedisPrefix(
+          cluster?.redis?.prefix ?? state.redis.prefix,
+          state.redis.prefix,
+        ),
+      },
+    };
+  }
+
+  get namespaces(): NamespaceConfig[] {
+    return this.config.namespaces ?? [];
+  }
+
+  getNamespace(namespaceId?: string | null): NamespaceConfig | undefined {
+    if (!namespaceId) return undefined;
+    return this.namespaces.find((namespace) => namespace.id === namespaceId);
+  }
+
+  get shadowTraffic(): Required<Omit<ShadowTrafficConfig, 'target_node' | 'target_model' | 'compare'>> & {
+    target_node?: string;
+    target_model?: string;
+    compare: {
+      store_prompts: boolean;
+      store_responses: boolean;
+    };
+  } {
+    const shadow = this.config.shadow;
+    return {
+      enabled: shadow?.enabled ?? false,
+      sample_rate: shadow?.sample_rate ?? 0,
+      target_node: shadow?.target_node,
+      target_model: shadow?.target_model,
+      timeout_ms: shadow?.timeout_ms ?? 0,
+      max_recent_results: shadow?.max_recent_results ?? 100,
+      compare: {
+        store_prompts: shadow?.compare?.store_prompts ?? false,
+        store_responses: shadow?.compare?.store_responses ?? false,
+      },
+    };
+  }
+
   get modelsPricing(): Record<string, ModelPricing> {
     return this.config.models_pricing;
+  }
+
+  private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {
+    const value = prefix && prefix.length > 0 ? prefix : fallback;
+    return value.endsWith(':') ? value : `${value}:`;
   }
 
   /** Get hosted control-plane config with safe privacy-preserving defaults. */

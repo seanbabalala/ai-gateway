@@ -176,6 +176,12 @@ function makePipeline(overrides: Record<string, any> = {}): {
     enqueue: jest.fn(),
     ...overrides.logSinks,
   };
+  const embeddingBatching = overrides.embeddingBatching;
+  const shadowTraffic = {
+    enqueueChat: jest.fn(),
+    enqueueEmbeddings: jest.fn(),
+    ...overrides.shadowTraffic,
+  };
 
   const callLogRepo = {
     create: jest.fn().mockImplementation((data: any) => data),
@@ -200,6 +206,8 @@ function makePipeline(overrides: Record<string, any> = {}): {
     callLogRepo as any,
     alerts as any,
     logSinks as any,
+    embeddingBatching as any,
+    shadowTraffic as any,
   );
 
   return {
@@ -208,6 +216,8 @@ function makePipeline(overrides: Record<string, any> = {}): {
       config, capabilityService, providerClient, scoringService,
       routingService, circuitBreaker, concurrencyLimiter, budgetService, cacheService,
       logEventBus, hooks, telemetry, telemetryUploader, callLogRepo, alerts, logSinks,
+      embeddingBatching,
+      shadowTraffic,
     },
   };
 }
@@ -293,6 +303,47 @@ describe('PipelineService — direct routing', () => {
   });
 });
 
+describe('PipelineService — namespace and shadow traffic', () => {
+  it('passes namespace scope to budget accounting and call logs', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.namespace_id = 'team-alpha';
+
+    await pipeline.process(request);
+
+    expect(mocks.budgetService.check).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      'team-alpha',
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      15,
+      expect.any(Number),
+      undefined,
+      undefined,
+      'team-alpha',
+    );
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ namespace_id: 'team-alpha' }),
+    );
+  });
+
+  it('enqueues shadow traffic after a successful non-stream request', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+
+    await pipeline.process(request);
+
+    expect(mocks.shadowTraffic.enqueueChat).toHaveBeenCalledWith(
+      expect.any(String),
+      request,
+      expect.objectContaining({ model: 'gpt-4o' }),
+      'openai',
+      'gpt-4o',
+    );
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // Embeddings
 // ═══════════════════════════════════════════════════════════
@@ -346,6 +397,7 @@ describe('PipelineService — embeddings', () => {
       'openai',
       'text-embedding-3-small',
       expect.objectContaining({ tier: 'standard', is_fallback: false }),
+      {},
     );
     expect(mocks.budgetService.record).toHaveBeenCalledWith(
       8,
@@ -363,6 +415,36 @@ describe('PipelineService — embeddings', () => {
         status_code: 200,
       }),
     );
+  });
+
+  it('should use embedding batching service when configured', async () => {
+    const embeddingBatching = {
+      enqueue: jest.fn().mockImplementation(
+        async (
+          canonical: any,
+          nodeId: string,
+          model: string,
+          routingMeta: any,
+          dispatch: any,
+        ) => dispatch(canonical, nodeId, model, routingMeta),
+      ),
+    };
+    const { pipeline, mocks } = makePipeline({ embeddingBatching });
+    const request = makeEmbeddingRequest({ input: ['tiny'] });
+
+    const result = await pipeline.processEmbeddings(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(embeddingBatching.enqueue).toHaveBeenCalledWith(
+      request,
+      'openai',
+      'text-embedding-3-small',
+      expect.objectContaining({ tier: 'standard' }),
+      expect.any(Function),
+      {},
+    );
+    expect(mocks.concurrencyLimiter.acquire).toHaveBeenCalledTimes(1);
+    expect(mocks.providerClient.forwardEmbeddings).toHaveBeenCalledTimes(1);
   });
 
   it('should return 400 for invalid embeddings input without calling upstream', async () => {
@@ -518,6 +600,7 @@ describe('PipelineService — caching', () => {
     const { pipeline, mocks } = makePipeline({
       cacheService: {
         shouldCache: jest.fn().mockReturnValue(true),
+        shouldCacheStream: jest.fn().mockReturnValue(true),
         lookup: jest.fn().mockReturnValue(cachedResponse),
         store: jest.fn(),
       },
@@ -539,6 +622,7 @@ describe('PipelineService — caching', () => {
     const { pipeline, mocks } = makePipeline({
       cacheService: {
         shouldCache: jest.fn().mockReturnValue(true),
+        shouldCacheStream: jest.fn().mockReturnValue(true),
         lookup: jest.fn().mockReturnValue(null),
         store: jest.fn(),
       },
@@ -1307,16 +1391,39 @@ describe('PipelineService — messages pinning', () => {
 
 function mockResponse(): any {
   const chunks: string[] = [];
-  return {
+  const listeners = new Map<string, Function[]>();
+  const response: any = {
     status: jest.fn().mockReturnThis(),
     json: jest.fn(),
     setHeader: jest.fn(),
     flushHeaders: jest.fn(),
     write: jest.fn((chunk: string) => chunks.push(chunk)),
-    end: jest.fn(),
+    end: jest.fn(() => {
+      response.writableEnded = true;
+      response.emit('close');
+    }),
+    on: jest.fn((event: string, listener: Function) => {
+      listeners.set(event, [...(listeners.get(event) || []), listener]);
+      return response;
+    }),
+    off: jest.fn((event: string, listener: Function) => {
+      listeners.set(
+        event,
+        (listeners.get(event) || []).filter((item) => item !== listener),
+      );
+      return response;
+    }),
+    emit: jest.fn((event: string, ...args: unknown[]) => {
+      for (const listener of listeners.get(event) || []) {
+        listener(...args);
+      }
+      return true;
+    }),
     headersSent: false,
+    writableEnded: false,
     _chunks: chunks,
   };
+  return response;
 }
 
 describe('PipelineService — processStream', () => {
@@ -1350,6 +1457,7 @@ describe('PipelineService — processStream', () => {
     const { pipeline } = makePipeline({
       cacheService: {
         shouldCache: jest.fn().mockReturnValue(true),
+        shouldCacheStream: jest.fn().mockReturnValue(true),
         lookup: jest.fn().mockReturnValue(cachedResponse),
         store: jest.fn(),
       },
@@ -1369,6 +1477,40 @@ describe('PipelineService — processStream', () => {
     expect(res.end).toHaveBeenCalled();
     // Should NOT call provider
     expect(res._chunks.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should not use prompt cache for streams unless stream cache is enabled', async () => {
+    async function* mockStream() {
+      yield { type: 'start' as const, id: 'live-1', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Live' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 2, output_tokens: 1 } };
+    }
+    const cachedResponse = makeCanonicalResponse({
+      content: [{ type: 'text', text: 'Cached answer' }],
+    });
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+      cacheService: {
+        shouldCache: jest.fn().mockReturnValue(true),
+        shouldCacheStream: jest.fn().mockReturnValue(false),
+        lookup: jest.fn().mockReturnValue(cachedResponse),
+        store: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(mocks.cacheService.lookup).not.toHaveBeenCalled();
+    expect(mocks.cacheService.store).not.toHaveBeenCalled();
+    expect(mocks.providerClient.forwardStream).toHaveBeenCalled();
+    expect(res._chunks.join('')).toContain('Live');
   });
 
   it('should stream events from provider to response', async () => {
@@ -1492,6 +1634,7 @@ describe('PipelineService — processStream', () => {
       expect.any(Object),
       'claude',
       'claude-3-opus',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(mocks.circuitBreaker.recordFailure).not.toHaveBeenCalledWith('openai', 'gpt-4o');
   });
@@ -1532,6 +1675,7 @@ describe('PipelineService — processStream', () => {
       },
       cacheService: {
         shouldCache: jest.fn().mockReturnValue(true),
+        shouldCacheStream: jest.fn().mockReturnValue(true),
         lookup: jest.fn().mockReturnValue(null),
         store: jest.fn(),
       },
@@ -1548,6 +1692,56 @@ describe('PipelineService — processStream', () => {
       expect.objectContaining({
         content: [{ type: 'text', text: 'Cached text' }],
       }),
+    );
+  });
+
+  it('should not cache partial streams when the client disconnects', async () => {
+    async function* cancellableStream(
+      _request: any,
+      _nodeId: string,
+      _model: string,
+      options: { signal?: AbortSignal },
+    ) {
+      yield { type: 'start' as const, id: 'cancel-stream', model: 'gpt-4o' };
+      if (options.signal?.aborted) {
+        throw new Error('aborted');
+      }
+      await new Promise((_resolve, reject) => {
+        options.signal?.addEventListener(
+          'abort',
+          () => reject(new Error('aborted')),
+          { once: true },
+        );
+      });
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockImplementation(cancellableStream),
+      },
+      cacheService: {
+        shouldCache: jest.fn().mockReturnValue(true),
+        shouldCacheStream: jest.fn().mockReturnValue(true),
+        lookup: jest.fn().mockReturnValue(null),
+        store: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+    res.write.mockImplementation((chunk: string) => {
+      res._chunks.push(chunk);
+      res.emit('close');
+      return true;
+    });
+
+    await pipeline.processStream(request, res);
+
+    expect(mocks.cacheService.store).not.toHaveBeenCalled();
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ status_code: 499 }),
     );
   });
 

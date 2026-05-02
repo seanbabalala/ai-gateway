@@ -36,6 +36,14 @@ export class EmbeddingsController {
   @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
   @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
   async handle(@Req() req: Request, @Res() res: Response) {
+    const abortController = new AbortController();
+    const abort = () => abortController.abort();
+    const abortOnResponseClose = () => {
+      if (!res.writableEnded) abort();
+    };
+    req.on?.('aborted', abort);
+    res.on?.('close', abortOnResponseClose);
+
     try {
       const headers = this.extractHeaders(req);
       const canonical = this.normalizer.normalize(req.body, headers);
@@ -47,10 +55,14 @@ export class EmbeddingsController {
             allow_direct: boolean;
             allowed_nodes: string[];
             allowed_models: string[];
+            namespace_id?: string | null;
+            namespace_name?: string | null;
           }
         | undefined;
       canonical.metadata.api_key_name = gatewayKey?.name;
       canonical.metadata.api_key_id = gatewayKey?.id;
+      canonical.metadata.namespace_id = gatewayKey?.namespace_id || null;
+      canonical.metadata.namespace_name = gatewayKey?.namespace_name || null;
       canonical.metadata.api_key_permissions = gatewayKey
         ? {
             allow_auto: gatewayKey.allow_auto,
@@ -64,7 +76,9 @@ export class EmbeddingsController {
         `[embeddings] model=${canonical.model || 'auto'}, dimensions=${canonical.dimensions ?? 'default'}`,
       );
 
-      const result = await this.pipeline.processEmbeddings(canonical);
+      const result = await this.pipeline.processEmbeddings(canonical, {
+        signal: abortController.signal,
+      });
       res.status(result.statusCode).json(result.body);
     } catch (err) {
       this.logger.error(`[embeddings] Error: ${(err as Error).message}`);
@@ -88,6 +102,9 @@ export class EmbeddingsController {
           },
         });
       }
+    } finally {
+      req.off?.('aborted', abort);
+      res.off?.('close', abortOnResponseClose);
     }
   }
 

@@ -47,10 +47,14 @@ export class MessagesController {
             allow_direct: boolean;
             allowed_nodes: string[];
             allowed_models: string[];
+            namespace_id?: string | null;
+            namespace_name?: string | null;
           }
         | undefined;
       canonical.metadata.api_key_name = gatewayKey?.name;
       canonical.metadata.api_key_id = gatewayKey?.id;
+      canonical.metadata.namespace_id = gatewayKey?.namespace_id || null;
+      canonical.metadata.namespace_name = gatewayKey?.namespace_name || null;
       canonical.metadata.api_key_permissions = gatewayKey
         ? {
             allow_auto: gatewayKey.allow_auto,

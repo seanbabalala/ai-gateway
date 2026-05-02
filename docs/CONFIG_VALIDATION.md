@@ -43,8 +43,14 @@ hardening visible without blocking local development.
 - YAML parse errors and unreadable/missing files.
 - Required top-level sections: `server`, `database`, `auth`, `nodes`,
   `routing`, `budget`, and `models_pricing`.
+- Database shape, including SQLite path, PostgreSQL URL, and boolean
+  `database.synchronize` when set. PostgreSQL configs warn unless production
+  schema synchronization is explicitly disabled.
 - Required node fields: `id`, `name`, `protocol`, `base_url`, `endpoint`,
   `api_key`, `models`, and `timeout_ms`.
+- Optional `nodes[].connection` pool settings, including `pool_size`,
+  `keep_alive_ms`, `headers_timeout_ms`, `body_timeout_ms`, and experimental
+  `http2`.
 - Duplicate node ids and duplicate model ids inside the same node.
 - Shared ConfigService diagnostics for ambiguous node/model resolution,
   duplicate model ids across nodes, alias conflicts, duplicate prefixes,
@@ -60,11 +66,21 @@ hardening visible without blocking local development.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional
   per-model `pricing` overrides.
+- `cache` shape, including positive TTL/entry limits and explicit
+  `cache.stream_cache.enabled` boolean validation.
+- Optional `embedding_batching` shape, including boolean enablement and
+  positive queue/window/batch/timeout values.
 - `alerts` webhook channel shape, supported event names, debounce values,
   retry controls, and spike detector thresholds.
 - Optional `logging.sinks` entries for file, webhook, S3 interface, and
   Elasticsearch exports, including batching, retry, queue, URL/header, and
   sensitive-field filter checks.
+- Optional `state` backend configuration, including `memory`/`redis` backend
+  names, Redis URL scheme (`redis://` or `rediss://`), and non-empty key
+  prefixes.
+- Optional `cluster` configuration, including boolean switches, instance id
+  shape, heartbeat interval/TTL values, reload broadcast settings, and Redis
+  overrides used by multi-instance Pub/Sub.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

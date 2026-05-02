@@ -384,6 +384,12 @@ export class GatewayApiKeySummaryDto {
   allowed_models!: string[];
 
   @ApiProperty({ example: null, nullable: true })
+  namespace_id!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_name!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
   daily_token_limit!: number | null;
 
   @ApiProperty({ example: null, nullable: true })

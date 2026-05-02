@@ -13,9 +13,17 @@
 //   - All models CLOSED → node is "healthy"
 // ===================================================================
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { AlertService } from '../alerts/alert.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { ConfigService } from '../config/config.service';
+import { StateBackendService } from '../state/state-backend.service';
 
 export enum CircuitState {
   CLOSED = 'CLOSED',
@@ -44,17 +52,36 @@ const DEFAULT_CONFIG: CircuitBreakerConfig = {
 };
 
 @Injectable()
-export class CircuitBreakerService {
+export class CircuitBreakerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CircuitBreakerService.name);
   private readonly circuits = new Map<string, CircuitStatus>();
   private readonly config: CircuitBreakerConfig;
+  private syncInterval?: ReturnType<typeof setInterval>;
+  private lastFailClosedLogAt = 0;
 
   constructor(
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly telemetry?: TelemetryService,
+    @Optional() private readonly stateBackend?: StateBackendService,
+    @Optional() private readonly configService?: ConfigService,
   ) {
     this.config = { ...DEFAULT_CONFIG };
     this.registerMetrics();
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    await this.hydrateFromStateBackend();
+    const intervalMs = this.configService?.state.redis.sync_interval_ms ?? 2000;
+    this.syncInterval = setInterval(
+      () => void this.hydrateFromStateBackend(),
+      intervalMs,
+    );
+    this.syncInterval.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.syncInterval) clearInterval(this.syncInterval);
   }
 
   /** Build the internal key for a node+model pair */
@@ -67,6 +94,14 @@ export class CircuitBreakerService {
    * Returns true if requests should be forwarded.
    */
   isAvailable(nodeId: string, model?: string): boolean {
+    if (this.stateBackend?.shouldFailClosed()) {
+      const now = Date.now();
+      if (now - this.lastFailClosedLogAt > 30_000) {
+        this.lastFailClosedLogAt = now;
+        this.logger.warn('Circuit breaker unavailable because Redis state backend is fail_closed');
+      }
+      return false;
+    }
     const key = this.buildKey(nodeId, model);
     const status = this.getStatus(key);
 
@@ -80,6 +115,7 @@ export class CircuitBreakerService {
           status.state = CircuitState.HALF_OPEN;
           status.halfOpenProbes = 0;
           this.logger.log(`Circuit HALF_OPEN for "${key}" (cooldown elapsed)`);
+          this.persistStatus(key, status);
           return true;
         }
         return false;
@@ -88,6 +124,7 @@ export class CircuitBreakerService {
         // Allow limited probe requests
         if (status.halfOpenProbes < this.config.halfOpenMax) {
           status.halfOpenProbes++;
+          this.persistStatus(key, status);
           return true;
         }
         return false;
@@ -111,6 +148,9 @@ export class CircuitBreakerService {
     status.state = CircuitState.CLOSED;
     status.consecutiveFailures = 0;
     status.halfOpenProbes = 0;
+    status.lastFailureAt = 0;
+    status.openedAt = 0;
+    this.persistStatus(key, status);
 
     if (previousState !== CircuitState.CLOSED) {
       this.alerts?.emit({
@@ -141,6 +181,7 @@ export class CircuitBreakerService {
       status.state = CircuitState.HALF_OPEN;
       status.halfOpenProbes = 0;
       this.logger.log(`Circuit HALF_OPEN for "${key}" (active probe recovered)`);
+      this.persistStatus(key, status);
     }
 
     this.recordSuccess(nodeId, model);
@@ -162,6 +203,7 @@ export class CircuitBreakerService {
       status.state = CircuitState.OPEN;
       status.openedAt = Date.now();
       this.logger.warn(`Circuit re-OPENED for "${key}" (probe failed)`);
+      this.persistStatus(key, status);
       this.alertCircuitOpen(nodeId, model, key, status, previousState, 'probe failed');
       return;
     }
@@ -175,6 +217,7 @@ export class CircuitBreakerService {
       this.logger.warn(
         `Circuit OPENED for "${key}" (${status.consecutiveFailures} consecutive failures)`,
       );
+      this.persistStatus(key, status);
       this.alertCircuitOpen(
         nodeId,
         model,
@@ -183,6 +226,8 @@ export class CircuitBreakerService {
         previousState,
         `${status.consecutiveFailures} consecutive failures`,
       );
+    } else {
+      this.persistStatus(key, status);
     }
   }
 
@@ -204,6 +249,7 @@ export class CircuitBreakerService {
     status.openedAt = Date.now();
     status.halfOpenProbes = 0;
     this.logger.warn(`Circuit OPENED for "${key}" (${reason})`);
+    this.persistStatus(key, status);
     if (previousState !== CircuitState.OPEN) {
       this.alertCircuitOpen(nodeId, model, key, status, previousState, reason);
     }
@@ -313,6 +359,7 @@ export class CircuitBreakerService {
       // Reset specific model
       const key = this.buildKey(nodeId, model);
       this.circuits.delete(key);
+      this.deletePersistedStatus(key);
       this.logger.log(`Circuit reset for "${key}"`);
     } else {
       // Reset all models for this node
@@ -325,6 +372,7 @@ export class CircuitBreakerService {
       }
       for (const key of keysToDelete) {
         this.circuits.delete(key);
+        this.deletePersistedStatus(key);
       }
       this.logger.log(`Circuit reset for node "${nodeId}" (${keysToDelete.length} circuits cleared)`);
     }
@@ -335,6 +383,7 @@ export class CircuitBreakerService {
    */
   resetAll(): void {
     this.circuits.clear();
+    this.clearPersistedStatuses();
     this.logger.log('All circuits reset');
   }
 
@@ -349,6 +398,63 @@ export class CircuitBreakerService {
       });
     }
     return this.circuits.get(key)!;
+  }
+
+  private async hydrateFromStateBackend(): Promise<void> {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    try {
+      const statuses = await this.stateBackend.getHashAllJson<CircuitStatus>(
+        'circuit_breaker',
+        'circuits',
+      );
+      for (const [key, status] of statuses.entries()) {
+        if (this.isCircuitStatus(status)) {
+          this.circuits.set(key, status);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Circuit breaker state sync skipped: ${(err as Error).message}`);
+    }
+  }
+
+  private persistStatus(key: string, status: CircuitStatus): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    this.stateBackend
+      .setHashJson('circuit_breaker', 'circuits', key, status)
+      .catch((err) =>
+        this.logger.warn(`Circuit breaker state write skipped: ${(err as Error).message}`),
+      );
+  }
+
+  private deletePersistedStatus(key: string): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    this.stateBackend
+      .deleteHashField('circuit_breaker', 'circuits', key)
+      .catch((err) =>
+        this.logger.warn(`Circuit breaker state delete skipped: ${(err as Error).message}`),
+      );
+  }
+
+  private clearPersistedStatuses(): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    this.stateBackend
+      .clearHash('circuit_breaker', 'circuits')
+      .catch((err) =>
+        this.logger.warn(`Circuit breaker state clear skipped: ${(err as Error).message}`),
+      );
+  }
+
+  private isCircuitStatus(value: unknown): value is CircuitStatus {
+    const status = value as CircuitStatus;
+    return (
+      status !== null &&
+      typeof status === 'object' &&
+      Object.values(CircuitState).includes(status.state) &&
+      typeof status.consecutiveFailures === 'number' &&
+      typeof status.lastFailureAt === 'number' &&
+      typeof status.openedAt === 'number' &&
+      typeof status.halfOpenProbes === 'number'
+    );
   }
 
   private registerMetrics(): void {

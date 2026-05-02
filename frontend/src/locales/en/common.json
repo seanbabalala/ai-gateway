@@ -29,6 +29,7 @@
   "nav.monitor": "MONITOR",
   "nav.nodes": "Nodes",
   "nav.routing": "Routing",
+  "nav.shadow": "Shadow",
   "sidebar.productSubtitle": "AI Gateway",
   "sidebar.telemetryActive": "Telemetry active",
   "sidebar.telemetryOff": "Telemetry off",

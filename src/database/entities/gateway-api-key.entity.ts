@@ -13,6 +13,7 @@ export type GatewayApiKeyStatus = 'active' | 'disabled';
 @Index(['key_hash'], { unique: true })
 @Index(['name'], { unique: true })
 @Index(['status'])
+@Index(['namespace_id'])
 export class GatewayApiKey {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -43,6 +44,9 @@ export class GatewayApiKey {
 
   @Column({ type: 'simple-json', nullable: true })
   allowed_models!: string[] | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  namespace_id!: string | null;
 
   @Column({ type: 'real', nullable: true })
   daily_token_limit!: number | null;

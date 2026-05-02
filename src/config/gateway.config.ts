@@ -27,14 +27,52 @@ export interface GatewayConfig {
   /** Runtime config reload behavior — watcher disabled by default */
   hot_reload?: HotReloadConfig;
 
+  /** Optional OSS-local embeddings request batching — disabled by default */
+  embedding_batching?: EmbeddingBatchingConfig;
+
+  /** Optional shared state backend; memory remains the default single-node mode */
+  state?: StateBackendConfig;
+
+  /** Optional multi-instance cluster mode; enabled explicitly or by state.backend=redis */
+  cluster?: ClusterConfig;
+
   /** Optional OSS-local alerting channels — disabled by default */
   alerts?: AlertsConfig;
 
   /** Optional external call-log sinks — disabled by default */
   logging?: LoggingConfig;
 
+  /** Optional OSS-local namespaces — no enterprise workspace/org features */
+  namespaces?: NamespaceConfig[];
+
+  /** Optional async shadow traffic mirror — disabled by default */
+  shadow?: ShadowTrafficConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
+}
+
+// ===== Shared State Backend =====
+export type StateBackendType = 'memory' | 'redis';
+export type StateUnavailablePolicy = 'fail_open' | 'fail_closed';
+
+export interface StateBackendConfig {
+  /** Runtime state backend (default: memory). Redis is optional for multi-instance deployments. */
+  backend?: StateBackendType;
+  /** Behavior when Redis is configured but unavailable (default: fail_open). */
+  unavailable_policy?: StateUnavailablePolicy;
+  redis?: RedisStateBackendConfig;
+}
+
+export interface RedisStateBackendConfig {
+  /** redis:// or rediss:// URL. May use ${REDIS_URL}. */
+  url?: string;
+  /** Key prefix used for all SiftGate runtime state (default: siftgate:state:). */
+  prefix?: string;
+  /** Per-command timeout in milliseconds (default: 500). */
+  timeout_ms?: number;
+  /** Poll interval for sync-only local mirrors such as circuit/momentum (default: 2000). */
+  sync_interval_ms?: number;
 }
 
 // ===== Hot Reload =====
@@ -43,6 +81,22 @@ export interface HotReloadConfig {
   watch?: boolean;
   /** Debounce file watcher reloads in milliseconds (default: 500) */
   debounce_ms?: number;
+}
+
+// ===== Cluster =====
+export interface ClusterConfig {
+  /** Explicit cluster switch. state.backend=redis also enables cluster status/heartbeats. */
+  enabled?: boolean;
+  /** Stable instance id. Defaults to hostname + process id. */
+  instance_id?: string;
+  /** Redis override for cluster Pub/Sub. Falls back to state.redis. */
+  redis?: RedisStateBackendConfig;
+  /** Heartbeat publish/write interval in seconds (default: 10). */
+  heartbeat_interval_seconds?: number;
+  /** Instance heartbeat TTL in seconds (default: max(30, interval*3)). */
+  heartbeat_ttl_seconds?: number;
+  /** Broadcast successful local config reloads to peers (default: true). */
+  reload_broadcast?: boolean;
 }
 
 // ===== Alerts =====
@@ -216,6 +270,7 @@ export interface DatabaseConfig {
   type: 'sqlite' | 'postgres';
   path?: string; // SQLite file path
   url?: string; // PostgreSQL connection URL
+  synchronize?: boolean; // TypeORM schema sync; keep true for local dev, set false in production Postgres
   log_retention_days?: number; // Auto-delete logs older than N days (default: 30)
 }
 
@@ -234,6 +289,7 @@ export interface ApiKeyBudgetOverride {
 export interface ApiKeyEntry {
   key: string;
   name: string;
+  namespace_id?: string;
   budget?: ApiKeyBudgetOverride;  // optional per-key budget limits
 }
 
@@ -250,6 +306,52 @@ export interface RateLimitConfig {
   max_entries?: number;
   /** Max login attempts per IP per minute (default: 5) */
   login_requests_per_minute?: number;
+}
+
+// ===== Local Namespaces (OSS Data Plane) =====
+export interface NamespaceBudgetConfig {
+  daily_token_limit?: number;
+  daily_cost_limit?: number;
+  alert_threshold?: number;
+}
+
+export interface NamespaceRateLimitConfig {
+  requests_per_minute?: number;
+}
+
+export interface NamespaceConfig {
+  /** Stable local namespace id. This is not a Cloud workspace/org id. */
+  id: string;
+  name?: string;
+  allowed_nodes?: string[];
+  allowed_models?: string[];
+  budget?: NamespaceBudgetConfig;
+  rate_limit?: NamespaceRateLimitConfig;
+}
+
+// ===== Shadow Traffic =====
+export interface ShadowTrafficCompareConfig {
+  /** Store sanitized prompt/input samples for comparison. Default: false. */
+  store_prompts?: boolean;
+  /** Store sanitized response samples for comparison. Default: false. */
+  store_responses?: boolean;
+}
+
+export interface ShadowTrafficConfig {
+  /** Master switch. Disabled by default. */
+  enabled?: boolean;
+  /** 0-1 fraction of eligible successful requests to mirror. Default: 0. */
+  sample_rate?: number;
+  /** Test node that receives shadow traffic asynchronously. */
+  target_node?: string;
+  /** Optional target model. Defaults to the primary response/request model. */
+  target_model?: string;
+  /** Per-shadow request timeout. Default: target node timeout. */
+  timeout_ms?: number;
+  /** Recent result rows retained for Dashboard. Default: 100. */
+  max_recent_results?: number;
+  /** Explicit comparison storage opt-in. Defaults keep prompt/response out. */
+  compare?: ShadowTrafficCompareConfig;
 }
 
 // ===== Node (AI Provider) =====
@@ -289,6 +391,23 @@ export interface NodeHealthCheckConfig {
   lightweight_model?: string;
 }
 
+export interface NodeConnectionConfig {
+  /** Enable undici per-node pooling when this block is present (default: true). */
+  enabled?: boolean;
+  /** Keep upstream sockets alive between requests (default: true). */
+  keep_alive?: boolean;
+  /** Maximum open upstream sockets for this node (default: 10). */
+  pool_size?: number;
+  /** Idle keep-alive timeout in milliseconds (default: 60000). */
+  keep_alive_ms?: number;
+  /** Timeout while waiting for upstream response headers in milliseconds. */
+  headers_timeout_ms?: number;
+  /** Timeout between upstream response body chunks in milliseconds; 0 disables. */
+  body_timeout_ms?: number;
+  /** Experimental HTTP/2 ALPN support through undici allowH2 (default: false). */
+  http2?: boolean;
+}
+
 export interface NodeConfig {
   id: string;
   name: string;
@@ -308,6 +427,8 @@ export interface NodeConfig {
   queue_policy?: QueuePolicy; // wait (default) | fallback | reject
   headers?: Record<string, string>;
   health_check?: NodeHealthCheckConfig;
+  /** Optional per-node upstream HTTP connection pooling and timeout controls. */
+  connection?: NodeConnectionConfig;
   /** Node-level default context window used when a model-specific value is omitted. */
   max_context_tokens?: number;
   /** Node-level default structured-output support flag. */
@@ -557,6 +678,13 @@ export interface CacheConfig {
   max_entries: number;
   /** Skip caching responses with tool_use stop reason (default: true) */
   exclude_tool_use: boolean;
+  /** Explicit stream-cache controls. Disabled by default even when cache.enabled=true. */
+  stream_cache?: StreamCacheConfig;
+}
+
+export interface StreamCacheConfig {
+  /** Cache and replay completed stream responses as SSE (default: false). */
+  enabled?: boolean;
 }
 
 // ===== Model Pricing =====
@@ -565,6 +693,22 @@ export interface ModelPricing {
   output: number; // cost per 1M output tokens (USD)
   cache_creation_input?: number; // cost per 1M cache-write tokens (e.g. Anthropic: 1.25x input)
   cache_read_input?: number;     // cost per 1M cache-read tokens (e.g. Anthropic: 0.1x input; OpenAI: 0.5x)
+}
+
+// ===== Embedding Batching =====
+export interface EmbeddingBatchingConfig {
+  /** Master switch (default: false). */
+  enabled?: boolean;
+  /** Short collection window before dispatching a merged upstream batch. */
+  window_ms?: number;
+  /** Maximum upstream input items per merged batch. */
+  max_batch_size?: number;
+  /** Only requests with this many input items or fewer are batched. */
+  max_input_items?: number;
+  /** Maximum queued embedding requests across local in-memory batches. */
+  max_queue?: number;
+  /** Per-request queue/dispatch timeout. */
+  timeout_ms?: number;
 }
 
 // ===== Telemetry (OpenTelemetry) =====

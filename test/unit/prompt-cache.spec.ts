@@ -49,6 +49,21 @@ describe('PromptCacheService', () => {
     });
   });
 
+  describe('shouldCacheStream', () => {
+    it('should keep stream cache disabled by default even when prompt cache is enabled', () => {
+      const svc = makeService();
+      const req = makeRequest('hello', { temperature: 0 });
+      expect(svc.shouldCache(req)).toBe(true);
+      expect(svc.shouldCacheStream(req)).toBe(false);
+    });
+
+    it('should allow deterministic streams when explicitly enabled', () => {
+      const svc = makeService({ stream_cache: { enabled: true } });
+      const req = makeRequest('hello', { temperature: 0 });
+      expect(svc.shouldCacheStream(req)).toBe(true);
+    });
+  });
+
   // ── lookup ───────────────────────────────────────────────
 
   describe('lookup', () => {
@@ -207,6 +222,37 @@ describe('PromptCacheService', () => {
     });
   });
 
+  describe('shared state backend', () => {
+    it('should read and write Redis shared cache entries when configured', async () => {
+      const config = mockConfigService();
+      const req = makeRequest('redis cache');
+      const resp = makeCanonicalResponse();
+      const state = {
+        isRedisConfigured: jest.fn().mockReturnValue(true),
+        getJson: jest.fn().mockResolvedValue({
+          response: resp,
+          createdAt: Date.now(),
+          sizeBytes: 100,
+        }),
+        setJson: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+        clearNamespace: jest.fn().mockResolvedValue(undefined),
+      };
+      const svc = new PromptCacheService(config, state as any);
+
+      await expect(svc.lookupAsync(req)).resolves.toEqual(resp);
+      await svc.storeAsync(req, resp);
+
+      expect(state.getJson).toHaveBeenCalledWith('prompt_cache', expect.any(String));
+      expect(state.setJson).toHaveBeenCalledWith(
+        'prompt_cache',
+        expect.any(String),
+        expect.objectContaining({ response: resp }),
+        300,
+      );
+    });
+  });
+
   // ── buildKey ─────────────────────────────────────────────
 
   describe('buildKey', () => {
@@ -229,6 +275,16 @@ describe('PromptCacheService', () => {
       const req2 = makeRequest('hello');
       req1.metadata.api_key_name = 'team-a';
       req2.metadata.api_key_name = 'team-b';
+
+      expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
+    });
+
+    it('should isolate keys by api_key_id', () => {
+      const svc = makeService();
+      const req1 = makeRequest('hello');
+      const req2 = makeRequest('hello');
+      req1.metadata.api_key_id = 'key-a';
+      req2.metadata.api_key_id = 'key-b';
 
       expect(svc.buildKey(req1)).not.toBe(svc.buildKey(req2));
     });

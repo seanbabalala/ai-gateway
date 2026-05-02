@@ -8,6 +8,7 @@ export interface LogFilters {
   status?: string
   api_key?: string
   api_key_id?: string
+  namespace?: string
 }
 
 export function useLogs(page: number, limit: number, filters: LogFilters = {}) {
@@ -22,6 +23,7 @@ export function useLogs(page: number, limit: number, filters: LogFilters = {}) {
         status: filters.status,
         api_key_id: filters.api_key_id,
         api_key: filters.api_key,
+        namespace: filters.namespace,
       }),
   })
 }
