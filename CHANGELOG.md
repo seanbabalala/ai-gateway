@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.4 lightweight TypeScript SDK scaffold in `packages/client` with typed helpers for models, chat completions, responses, messages, embeddings, routing hints, raw response access, and Gateway API key auth.
+- TypeScript SDK package scripts and tests for build, typecheck, endpoint routing, errors, and request typing.
+- Python SDK design document covering planned client shape, auth, routing hints, errors, and streaming approach without implementing a Python package.
 
 ## 0.3.0 - 2026-05-02
 

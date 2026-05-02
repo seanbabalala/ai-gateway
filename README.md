@@ -112,6 +112,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
+- **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 
 ## Quick Start
 
@@ -672,6 +673,36 @@ File sinks write JSONL, one sanitized call-log record per line. Webhook sinks se
 
 By default exports include only safe call-log metadata and exclude prompt text, response text, provider API keys, raw headers, authorization values, and other secret-bearing fields. Use `fields` as an allow-list or `exclude_fields` as a deny-list for additional filtering. See [docs/LOG_SINKS.md](docs/LOG_SINKS.md).
 
+## TypeScript SDK
+
+The v0.4 SDK scaffold lives in [packages/client](packages/client). It is a lightweight fetch-based wrapper for the open-source data plane with typed helpers for models, chat completions, responses, messages, embeddings, and advisory routing hints.
+
+```ts
+import { SiftGateClient } from '@siftgate/client';
+
+const client = new SiftGateClient({
+  baseUrl: 'http://localhost:2099',
+  gatewayApiKey: process.env.SIFTGATE_API_KEY,
+});
+
+await client.chat.completions.create({
+  model: 'auto',
+  messages: [{ role: 'user', content: 'Return a concise answer.' }],
+});
+```
+
+Existing OpenAI SDK users do not need to switch SDKs. Point the SDK at SiftGate and use a dashboard-generated Gateway API key:
+
+```ts
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:2099/v1',
+  apiKey: process.env.SIFTGATE_API_KEY,
+});
+```
+
+See the [TypeScript SDK README](packages/client/README.md) for routing hints, raw streaming access, and the forward-compatible embeddings helper. The Python SDK is design-only for this milestone; see [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
 
 ## API Endpoints
 

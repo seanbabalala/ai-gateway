@@ -444,12 +444,13 @@
   - 输出迁移报告（兼容/不兼容功能列表）
 
 #### 26. SDK / 客户端库
-- **现状**：用户用原生 HTTP 或 OpenAI SDK（指向 gateway）
+- **状态**：🟡 v0.4 TypeScript SDK scaffold 已完成；Python SDK 保持设计文档阶段
+- **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），并可试用 `packages/client` 中的轻量 TypeScript SDK scaffold
 - **目标**：提供轻量 SDK 增强体验
 - **实现方案**：
-  - TypeScript SDK（`@siftgate/client`）
-  - Python SDK（`siftgate-python`）
-  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、错误重试
+  - ✅ TypeScript SDK（`@siftgate/client`）：支持 `baseUrl`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings helper、routing hint header、raw response access
+  - 📝 Python SDK（`siftgate-python`）：v0.4 先保留设计文档，不实现完整包
+  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、结构化错误
   - 与 OpenAI SDK 兼容（drop-in `base_url` 替换）
 
 #### 27. MCP (Model Context Protocol) 支持
@@ -618,6 +619,7 @@
 | 13 | 自适应路由 | ⭐⭐⭐⭐⭐ | 大 | ✅ v0.3.0 |
 | 15 | 外部日志 Sink | ⭐⭐⭐ | 中 | ✅ v0.3.0 |
 | 19 | Embeddings 端点 | ⭐⭐⭐ | 中 | 🔵 v0.4 |
+| 26 | SDK / 客户端库 | ⭐⭐⭐ | 小 | 🟡 v0.4 TS scaffold |
 | 23 | 官方插件集 | ⭐⭐⭐⭐ | 大 | 🔵 v0.4 |
 | 28 | Redis 共享状态 | ⭐⭐⭐⭐⭐ | 大 | 🟣 v0.5 |
 | 31 | HTTP/2 连接池 | ⭐⭐⭐ | 中 | 🟣 v0.5 |
