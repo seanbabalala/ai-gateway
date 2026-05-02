@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic. The v0.6 development line expands protocol coverage with structured-output polish, rerank ingress, and minimal OpenAI-compatible images/audio ingress.
+Current open-source release: **v0.6.0**. This release is the Protocol + Explainability milestone: structured-output passthrough and schema-aware fallback, unified multimodal capabilities, OpenAI/common-compatible rerank, minimal images/audio ingress, an experimental disabled-by-default Realtime preview, and privacy-safe route decision traces with a Dashboard Route Explanation page.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -583,7 +583,7 @@ nodes:
 
 ### Unified Model Capabilities
 
-v0.6 adds one capability schema that covers today’s chat/responses/messages/embeddings paths and prepares the OSS Data Plane for image, audio, rerank, and realtime endpoints without breaking old configs. Existing `nodes[].models`, `nodes[].embedding_models`, `max_context_tokens`, `structured_output`, and `pricing` remain valid.
+v0.6 adds one capability schema that covers chat/responses/messages/embeddings plus image, audio, rerank, and realtime routing without breaking old configs. Existing `nodes[].models`, `nodes[].embedding_models`, `max_context_tokens`, `structured_output`, and `pricing` remain valid.
 
 ```yaml
 nodes:
@@ -617,7 +617,7 @@ nodes:
         pricing: { input: 0.02, output: 0 }
 ```
 
-Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible before future v0.6 endpoints are enabled.
+Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible.
 
 See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
 

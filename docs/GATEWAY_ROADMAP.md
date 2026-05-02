@@ -15,19 +15,19 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
-| v0.6 | Protocol + Explainability | 进行中 — 协议广度 + 可解释路由 | 🚧 Active |
+| v0.6 | Protocol + Explainability | 已发布 — v0.6.0 协议广度 + 可解释路由 | ✅ Released |
 
 ---
 
 ## v0.6 — Protocol + Explainability（生产协议补齐 + 可解释路由）
 
-**v0.6 发布目标**：补齐生产应用刚需协议能力，同时把 SiftGate 的路由决策解释做成开源 Data Plane 的核心亮点。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.6.0 发布状态**：已完成并发布 Structured Output 完整透传与 schema-aware fallback、多模态 capability schema、Rerank、Images/Audio 最小可用入口、Realtime experimental preview、Route Decision Trace 与 Dashboard Route Explanation。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：协议生产能力
 
 #### 1. 结构化输出完整透传、降级和验证体验
 
-- **状态**：✅ 已在 `codex/v0.6-structured-output` 实现
+- **状态**：✅ v0.6.0 已发布
 - **现状**：v0.3 已有 fallback policy 的基础 JSON/schema 校验，但结构化输出意图还没有成为正式 canonical 字段，跨协议映射和 Dashboard 可见性不足
 - **目标**：完整保留并适配 OpenAI/Anthropic 的结构化输出请求意图
 - **实现方案**：
@@ -43,7 +43,7 @@
 
 #### 2. 统一多模态 Capability Schema
 
-- **状态**：✅ 已在 `codex/v0.6-modality-capabilities` 实现
+- **状态**：✅ v0.6.0 已发布
 - **目标**：为 image/audio/rerank/realtime 统一 node/model 能力声明，不破坏旧配置
 - **实现方案**：
   - 扩展 `modalities`、`endpoints`、`input_types`、`output_types`、`max_file_size`
@@ -55,7 +55,7 @@
 
 #### 3. Rerank 入口
 
-- **状态**：✅ 已在 `codex/v0.6-rerank-endpoint` 实现
+- **状态**：✅ v0.6.0 已发布
 - **目标**：提供 OpenAI/common-compatible `POST /v1/rerank`，补齐检索增强、搜索排序、知识库重排场景
 - **实现方案**：
   ```yaml
@@ -73,7 +73,7 @@
 
 #### 4. Image / Audio / Realtime 入口
 
-- **状态**：Image/Audio ✅ 已在 `codex/v0.6-images-audio-endpoints` 实现；Realtime ✅ 已在 `codex/v0.6-realtime-preview` 实现 experimental preview
+- **状态**：✅ v0.6.0 已发布；Realtime 为 experimental preview，默认关闭
 - **目标**：继续补齐 OpenAI/LiteLLM/New API 常见接口广度短板
 - **实现方案**：
   - Image/audio 提供 `/v1/images/generations`、`/v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/speech`
@@ -90,7 +90,7 @@
 
 #### 5. 路由选择解释页
 
-- **状态**：✅ 后端 Route Decision Trace 已在 `codex/v0.6-route-decision-trace` 实现；Dashboard 只读解释页已在 `codex/v0.6-route-explanation-dashboard` 实现
+- **状态**：✅ v0.6.0 已发布
 - **目标**：让用户看到 SiftGate 为什么选择某个 node/model，而不只是知道最终路由结果
 - **实现方案**：
   - Pipeline/RoutingService 生成 privacy-safe trace

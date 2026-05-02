@@ -5,6 +5,13 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
+v0.6.0 keeps that deployment shape while adding broader protocol ingress and
+explainable routing. Structured output, rerank, images, and audio use the same
+local auth, namespace, budget, routing, call-log, and telemetry path as chat
+traffic. The Realtime preview is experimental, disabled by default, and should
+only be enabled when the upstream provider, connection limits, and WebSocket
+load balancer behavior have been tested in your environment.
+
 ## Baseline Topology
 
 - Run one SiftGate instance for small deployments, or two or more instances

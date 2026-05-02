@@ -22,7 +22,7 @@ nodes:
     endpoint: /v1/chat/completions
     embeddings_endpoint: /v1/embeddings
     rerank_endpoint: /v1/rerank
-    realtime_endpoint: ${REALTIME_UPSTREAM_ENDPOINT:-/v1/realtime}
+    realtime_endpoint: /v1/realtime
     images_generations_endpoint: /v1/images/generations
     images_edits_endpoint: /v1/images/edits
     audio_transcriptions_endpoint: /v1/audio/transcriptions

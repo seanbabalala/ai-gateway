@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
+v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
 
 ## Live Documentation
 

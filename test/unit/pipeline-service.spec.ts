@@ -737,7 +737,8 @@ describe('PipelineService — rerank', () => {
       model: 'rerank-english-v3',
       usage: { prompt_tokens: 12, total_tokens: 12 },
     });
-    expect((result.body.results as any[])[0]).toMatchObject({
+    const body = result.body as any;
+    expect((body.results as any[])[0]).toMatchObject({
       index: 0,
       relevance_score: 0.97,
     });

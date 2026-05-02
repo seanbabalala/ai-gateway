@@ -911,16 +911,30 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
   }
 
   private sanitizeError(value: unknown): string {
-    const raw = value instanceof Error
-      ? value.message
-      : typeof value === 'string'
-        ? value
-        : 'websocket error';
+    const raw = this.errorMessage(value);
     return raw
       .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
       .replace(/gw_sk_[A-Za-z0-9._~+/-]+/gi, 'gw_sk_[redacted]')
       .replace(/sk-[A-Za-z0-9._~+/-]+/gi, 'sk-[redacted]')
       .slice(0, 300);
+  }
+
+  private errorMessage(value: unknown): string {
+    if (value instanceof Error) return value.message;
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object') {
+      const event = value as {
+        error?: unknown;
+        message?: unknown;
+        reason?: unknown;
+        type?: unknown;
+      };
+      if (event.error) return this.errorMessage(event.error);
+      if (typeof event.message === 'string') return event.message;
+      if (typeof event.reason === 'string') return event.reason;
+      if (typeof event.type === 'string') return `websocket ${event.type}`;
+    }
+    return 'websocket error';
   }
 
   private statusText(statusCode: number): string {
