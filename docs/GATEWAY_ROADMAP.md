@@ -555,11 +555,13 @@
 #### 30. PostgreSQL 推荐 + 数据迁移
 
 - **现状**：SQLite 为默认，PostgreSQL 已支持但非推荐
+- **状态**：✅ v0.5 已实现（`siftgate migrate-db --from sqlite --to postgres`）
 - **目标**：生产部署推荐 PostgreSQL，提供迁移工具
 - **实现方案**：
   - `npx siftgate migrate-db --from sqlite --to postgres`
   - 自动导出 SQLite 数据 → 导入 PostgreSQL
-  - 文档：生产部署最佳实践
+  - 支持 dry-run、SQLite 备份、非空目标保护、导入行数校验
+  - 文档：生产部署最佳实践与 TypeORM schema/migration 策略
 
 ---
 

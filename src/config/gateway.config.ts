@@ -216,6 +216,7 @@ export interface DatabaseConfig {
   type: 'sqlite' | 'postgres';
   path?: string; // SQLite file path
   url?: string; // PostgreSQL connection URL
+  synchronize?: boolean; // TypeORM schema sync; keep true for local dev, set false in production Postgres
   log_retention_days?: number; // Auto-delete logs older than N days (default: 30)
 }
 

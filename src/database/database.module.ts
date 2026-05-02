@@ -10,7 +10,9 @@ import { CallLog, BudgetRule, NodeStatus, GatewayApiKey } from './entities';
       useFactory: (config: ConfigService) => {
         const shared = {
           entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey],
-          synchronize: true, // Auto-create tables in dev; use migrations in prod
+          // Default remains true for the OSS single-node SQLite/dev path.
+          // Production PostgreSQL deployments should set database.synchronize=false.
+          synchronize: config.database.synchronize ?? true,
           logging: false,
         };
 

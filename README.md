@@ -114,6 +114,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
+- **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
@@ -332,6 +333,22 @@ node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml 
 
 The migrator maps `model_list`, provider/model names, API key environment references, fallbacks, router retry settings, and known routing strategies. It writes a migration report with compatible, incompatible, and manual-review items. Existing `gateway.config.yaml` is never overwritten unless `--overwrite` is passed. See [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
 
+### Database Migration
+
+SQLite remains the default for local development. For production, PostgreSQL is recommended for backups, retention, and multi-instance deployments:
+
+```bash
+npm run build
+node dist/cli/siftgate.js migrate-db \
+  --from sqlite \
+  --to postgres \
+  --sqlite-path ./data/gateway.db \
+  --postgres-url "$DATABASE_URL" \
+  --backup
+```
+
+Use `--dry-run` in CI or before a maintenance window to inspect source row counts without writing PostgreSQL. The CLI refuses to import into non-empty target tables unless `--force` is set, copies the SQLite file when `--backup` is used, resets imported numeric sequences, and validates row counts after import. See [Production Deployment](docs/PRODUCTION.md).
+
 ### Server
 
 ```yaml
@@ -346,7 +363,9 @@ server:
 database:
   type: sqlite # sqlite or postgres
   path: ./data/gateway.db # SQLite file path
-  # url: postgresql://...       # PostgreSQL connection URL (if type: postgres)
+  # synchronize: true       # TypeORM schema sync; fine for local SQLite/dev
+  # url: postgresql://...   # PostgreSQL connection URL (if type: postgres)
+  # synchronize: false      # Recommended for production PostgreSQL after migration/bootstrap
 ```
 
 ### Authentication

@@ -340,6 +340,32 @@ function validateDatabase(
       ),
     );
   }
+  if (
+    database.synchronize !== undefined &&
+    !isBoolean(database.synchronize)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_database_synchronize',
+        'database.synchronize must be a boolean when set.',
+        'database.synchronize',
+      ),
+    );
+  }
+  if (
+    database.type === 'postgres' &&
+    database.synchronize !== false
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'postgres_synchronize_enabled',
+        'For production PostgreSQL, initialize/migrate schema first and set database.synchronize: false.',
+        'database.synchronize',
+      ),
+    );
+  }
 }
 
 function validateAuth(auth: unknown, issues: ConfigValidationIssue[]): void {

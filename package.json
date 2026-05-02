@@ -23,6 +23,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "validate:config": "ts-node src/cli/siftgate.ts validate",
+    "migrate:db": "ts-node src/cli/siftgate.ts migrate-db",
     "typecheck:sdk": "npm --workspace @siftgate/client run typecheck",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
