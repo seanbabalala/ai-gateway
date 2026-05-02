@@ -365,6 +365,83 @@ describe('Ingest (e2e)', () => {
   });
 
   // ══════════════════════════════════════════════════════
+  // Non-Streaming — Images / Audio
+  // ══════════════════════════════════════════════════════
+
+  it('POST /v1/images/generations → 200 + OpenAI image response', async () => {
+    const res = await harness.agent
+      .post('/v1/images/generations')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        prompt: 'Draw SiftGate as a clean product render',
+        size: '1024x1024',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].url).toContain('generated.png');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/images/generations');
+    expect(call.body.model).toBe('gpt-image-1');
+  });
+
+  it('POST /v1/images/edits accepts multipart pass-through and preserves safe call flow', async () => {
+    const res = await harness.agent
+      .post('/v1/images/edits')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .field('model', 'gpt-image-1')
+      .field('prompt', 'Add a subtle blue accent')
+      .attach('image', Buffer.from('fake-image-bytes'), 'image.png');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].b64_json).toBeDefined();
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/images/edits');
+    expect(call.headers['Content-Type']).toContain('multipart/form-data');
+    expect(call.rawBody?.toString('latin1')).toContain('name="model"');
+  });
+
+  it('POST /v1/audio/transcriptions accepts multipart audio pass-through', async () => {
+    const res = await harness.agent
+      .post('/v1/audio/transcriptions')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .field('model', 'auto')
+      .attach('file', Buffer.from('fake-audio-bytes'), 'sample.wav');
+
+    expect(res.status).toBe(200);
+    expect(res.body.text).toBe('mock transcription');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/audio/transcriptions');
+    expect(call.headers['Content-Type']).toContain('multipart/form-data');
+    expect(call.rawBody?.toString('latin1')).toContain('gpt-4o-mini-transcribe');
+  });
+
+  it('POST /v1/audio/speech returns binary provider audio', async () => {
+    const res = await harness.agent
+      .post('/v1/audio/speech')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'tts-1',
+        input: 'hello from SiftGate',
+        voice: 'alloy',
+      })
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('audio/mpeg');
+    expect((res.body as Buffer).toString()).toBe('mock-mp3-bytes');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/audio/speech');
+    expect(call.body.model).toBe('tts-1');
+  });
+
+  // ══════════════════════════════════════════════════════
   // Validation
   // ══════════════════════════════════════════════════════
 

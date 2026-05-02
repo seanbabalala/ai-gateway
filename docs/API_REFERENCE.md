@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6 adds canonical structured-output passthrough for OpenAI Chat Completions `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format`, plus common rerank ingress under the same OSS Data Plane boundary.
+v0.6 adds canonical structured-output passthrough, common rerank ingress, and minimal OpenAI-compatible images/audio ingress alongside the existing chat, responses, messages, embeddings, models, and health APIs.
 
 ## Live Documentation
 
@@ -35,6 +35,10 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/messages` | Anthropic Messages-compatible ingress |
 | `POST` | `/v1/embeddings` | OpenAI Embeddings-compatible ingress |
 | `POST` | `/v1/rerank` | OpenAI/common-compatible rerank ingress |
+| `POST` | `/v1/images/generations` | OpenAI Images generation-compatible ingress |
+| `POST` | `/v1/images/edits` | OpenAI Images edits-compatible ingress |
+| `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
+| `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
@@ -133,7 +137,6 @@ Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by AP
 ### Rerank
 
 `POST /v1/rerank` accepts OpenAI/common-compatible rerank requests:
-
 ```json
 {
   "model": "auto",
@@ -148,6 +151,45 @@ Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by AP
 ```
 
 Rerank routing uses `nodes[].rerank_models`. `model: "auto"` filters by Gateway API key permissions, local namespace restrictions, circuit/health state, and configured model availability, then prefers the lowest configured input price. Direct model requests must resolve to a rerank model; chat models listed only in `nodes[].models` and embeddings listed only in `nodes[].embedding_models` are not selected for this endpoint. Responses preserve a common rerank shape with `object: "rerank"`, sorted `results`, `relevance_score`, optional `document`, and `usage.prompt_tokens` / `usage.total_tokens`.
+
+### Images
+
+`POST /v1/images/generations` accepts OpenAI-compatible JSON bodies and selects from `nodes[].image_models`:
+
+```json
+{
+  "model": "auto",
+  "prompt": "A clean product render of SiftGate",
+  "size": "1024x1024"
+}
+```
+
+`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as multipart status, byte size, and model.
+
+Image responses are returned in the upstream provider's OpenAI-compatible JSON shape.
+
+### Audio
+
+`POST /v1/audio/transcriptions` accepts JSON or `multipart/form-data` and selects from `nodes[].audio_models`. Multipart audio is pass-through: SiftGate rewrites/appends `model`, forwards the original file bytes, and does not decode or transcode media locally.
+
+```bash
+curl http://localhost:2099/v1/audio/transcriptions \
+  -H "Authorization: Bearer gw_sk_live_..." \
+  -F model=auto \
+  -F file=@sample.wav
+```
+
+`POST /v1/audio/speech` accepts OpenAI-compatible JSON and can return binary provider audio directly:
+
+```json
+{
+  "model": "tts-1",
+  "input": "Hello from SiftGate",
+  "voice": "alloy"
+}
+```
+
+When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged. Increase `server.body_limit` when image edit or audio transcription files are larger than the default `1mb`.
 
 ## Health
 

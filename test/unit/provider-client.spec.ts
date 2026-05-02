@@ -1,5 +1,5 @@
 import { ProviderClientService, ProviderError } from '../../src/providers/provider-client.service';
-import { Tier, CanonicalRequest } from '../../src/canonical/canonical.types';
+import { Tier, CanonicalMediaRequest, CanonicalRequest } from '../../src/canonical/canonical.types';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
 const routingMeta = { tier: 'standard' as Tier, score: 0.1, is_fallback: false };
@@ -42,6 +42,24 @@ function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequ
     messages: [{ role: 'user', content: 'Hi' }],
     stream: false,
     metadata: { source_format: 'chat_completions', raw_headers: {} },
+    ...overrides,
+  };
+}
+
+function makeMediaCanonical(
+  overrides: Partial<CanonicalMediaRequest> = {},
+): CanonicalMediaRequest {
+  return {
+    model: 'gpt-image-1',
+    source_format: 'image_generation',
+    payload: { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+    content_type: 'application/json',
+    is_multipart: false,
+    metadata: {
+      source_format: 'image_generation',
+      original_model: 'gpt-image-1',
+      raw_headers: {},
+    },
     ...overrides,
   };
 }
@@ -526,6 +544,72 @@ describe('ProviderClientService', () => {
         documents: ['gateway', 'migration'],
         top_n: 1,
       });
+    });
+
+    it('should forward image generation JSON to the configured media endpoint', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(new Response(JSON.stringify({
+        created: 123,
+        model: 'upstream-image-model',
+        data: [{ url: 'https://example.test/image.png' }],
+        usage: { prompt_tokens: 7, total_tokens: 7 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        image_models: ['gpt-image-1'],
+        images_generations_endpoint: '/v1/images/generations',
+      });
+      const result = await svc.forwardMedia(
+        makeMediaCanonical({ model: 'auto' }),
+        'openai',
+        'gpt-image-1',
+        routingMeta,
+      );
+
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.openai.com/v1/images/generations');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        model: 'gpt-image-1',
+        prompt: 'Draw SiftGate',
+      });
+      expect(result.body).toMatchObject({
+        data: [{ url: 'https://example.test/image.png' }],
+      });
+      expect(result.usage.input_tokens).toBe(7);
+    });
+
+    it('should return binary audio speech responses with content type', async () => {
+      global.fetch = jest.fn().mockResolvedValue(new Response(Buffer.from('audio-bytes'), {
+        status: 200,
+        headers: { 'Content-Type': 'audio/mpeg' },
+      })) as any;
+
+      const svc = makeServiceWithNode({
+        audio_models: ['tts-1'],
+        audio_speech_endpoint: '/v1/audio/speech',
+      });
+      const result = await svc.forwardMedia(
+        makeMediaCanonical({
+          model: 'tts-1',
+          source_format: 'audio_speech',
+          payload: { model: 'tts-1', input: 'hello', voice: 'alloy' },
+          metadata: {
+            source_format: 'audio_speech',
+            original_model: 'tts-1',
+            raw_headers: {},
+          },
+        }),
+        'openai',
+        'tts-1',
+        routingMeta,
+      );
+
+      expect(Buffer.isBuffer(result.body)).toBe(true);
+      expect(result.content_type).toBe('audio/mpeg');
+      expect((result.body as Buffer).toString()).toBe('audio-bytes');
     });
 
     it('should throw ProviderError for non-OK response', async () => {

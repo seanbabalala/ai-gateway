@@ -15,7 +15,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
-import { Tier } from '../canonical/canonical.types';
+import { CanonicalMediaSourceFormat, Tier } from '../canonical/canonical.types';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
 import {
@@ -92,6 +92,12 @@ export interface EmbeddingRouteDecision {
 }
 
 export interface RerankRouteDecision {
+  primary: RouteTarget;
+  fallbacks: RouteTarget[];
+  mode: 'auto' | 'direct';
+}
+
+export interface MediaRouteDecision {
   primary: RouteTarget;
   fallbacks: RouteTarget[];
   mode: 'auto' | 'direct';
@@ -497,6 +503,61 @@ export class RoutingService {
     };
   }
 
+  resolveMediaRoute(
+    sourceFormat: CanonicalMediaSourceFormat,
+    requestedModel: string | undefined,
+    targetFilter: (target: RouteTarget) => boolean = () => true,
+  ): MediaRouteDecision {
+    const model = requestedModel || 'auto';
+    const kind = this.mediaKind(sourceFormat);
+    const allTargets = this.getMediaTargets(kind);
+
+    if (model !== 'auto') {
+      const resolved =
+        kind === 'image'
+          ? this.config.resolveImageModel(model)
+          : this.config.resolveAudioModel(model);
+      if (!resolved) {
+        throw new RoutingConstraintError(
+          `${kind === 'image' ? 'Image' : 'Audio'} model "${model}" is not configured. Use "auto" or configure nodes[].${kind}_models.`,
+          400,
+        );
+      }
+      const primary = { node: resolved.nodeId, model: resolved.model };
+      if (!targetFilter(primary)) {
+        throw new RoutingConstraintError(
+          `This API key is not allowed to use ${primary.node}/${primary.model}.`,
+          403,
+        );
+      }
+      const fallbacks = this.rankMediaTargets(
+        this.filterMediaTargets(
+          allTargets.filter((target) =>
+            target.node !== primary.node || target.model !== primary.model,
+          ),
+          targetFilter,
+        ),
+      );
+      return { primary, fallbacks, mode: 'direct' };
+    }
+
+    const candidates = this.rankMediaTargets(
+      this.filterMediaTargets(allTargets, targetFilter),
+    );
+    if (candidates.length === 0) {
+      throw new RoutingConstraintError(
+        `No ${kind} models are configured.`,
+        400,
+      );
+    }
+
+    return {
+      primary: candidates[0],
+      fallbacks: candidates.slice(1),
+      mode: 'auto',
+    };
+  }
+
   getRoutingStatus(): Record<string, RoutingTierStatus> {
     const result: Record<string, RoutingTierStatus> = {};
     for (const [tier, tierConfig] of Object.entries(this.config.routing.tiers || {})) {
@@ -777,6 +838,49 @@ export class RoutingService {
       }
     }
     return targets;
+  }
+
+  private mediaKind(sourceFormat: CanonicalMediaSourceFormat): 'image' | 'audio' {
+    return sourceFormat === 'image_generation' || sourceFormat === 'image_edit'
+      ? 'image'
+      : 'audio';
+  }
+
+  private getMediaTargets(kind: 'image' | 'audio'): RouteTarget[] {
+    const targets: RouteTarget[] = [];
+    for (const node of this.config.nodes) {
+      const models = kind === 'image' ? node.image_models : node.audio_models;
+      for (const model of models || []) {
+        targets.push({ node: node.id, model });
+      }
+    }
+    return targets;
+  }
+
+  private filterMediaTargets(
+    targets: RouteTarget[],
+    targetFilter: (target: RouteTarget) => boolean,
+  ): RouteTarget[] {
+    return targets
+      .filter(targetFilter)
+      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+  }
+
+  private rankMediaTargets(targets: RouteTarget[]): RouteTarget[] {
+    return [...targets].sort((a, b) => {
+      const aCost = this.estimateMediaCost(a);
+      const bCost = this.estimateMediaCost(b);
+      if (aCost !== bCost) return aCost - bCost;
+      return targets.indexOf(a) - targets.indexOf(b);
+    });
+  }
+
+  private estimateMediaCost(target: RouteTarget): number {
+    const pricing = this.capabilityService.resolveModelRoutingCapabilities(
+      target.node,
+      target.model,
+    ).pricing;
+    return pricing ? pricing.input : Number.POSITIVE_INFINITY;
   }
 
   private filterEmbeddingTargets(

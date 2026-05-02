@@ -191,6 +191,114 @@ describe('config validator', () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it('validates image/audio models, endpoints, namespace references, and pricing warnings', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        namespaces: [
+          {
+            id: 'media-team',
+            allowed_models: ['gpt-image-1', 'gpt-4o-mini-transcribe'],
+          },
+        ],
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            images_generations_endpoint: '/v1/images/generations',
+            images_edits_endpoint: '/v1/images/edits',
+            audio_transcriptions_endpoint: '/v1/audio/transcriptions',
+            audio_speech_endpoint: '/v1/audio/speech',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            image_models: ['gpt-image-1'],
+            audio_models: ['gpt-4o-mini-transcribe'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o-mini': { input: 0.15, output: 0.6 },
+          'gpt-image-1': { input: 5, output: 0 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(codes(result.warnings)).toContain('missing_model_pricing');
+  });
+
+  it('rejects invalid media endpoint paths and model arrays', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            images_generations_endpoint: 'v1/images/generations',
+            audio_speech_endpoint: '',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            image_models: ['gpt-image-1', 'gpt-image-1'],
+            audio_models: 'tts-1',
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_node_endpoint',
+        'duplicate_model_id_in_node',
+        'invalid_audio_models',
+      ]),
+    );
+  });
+
   it('reports structural, routing, env, and control-plane issues', () => {
     const result = validateConfigFile({
       configPath: fixture('invalid.gateway.yaml'),

@@ -445,6 +445,18 @@ export interface NodeConfig {
   rerank_endpoint?: string;
   /** Rerank-capable model IDs exposed by this node. */
   rerank_models?: string[];
+  /** Optional OpenAI-compatible image generation endpoint path (default: /v1/images/generations). */
+  images_generations_endpoint?: string;
+  /** Optional OpenAI-compatible image edit endpoint path (default: /v1/images/edits). */
+  images_edits_endpoint?: string;
+  /** Image-capable model IDs exposed by this node. */
+  image_models?: string[];
+  /** Optional OpenAI-compatible audio transcription endpoint path (default: /v1/audio/transcriptions). */
+  audio_transcriptions_endpoint?: string;
+  /** Optional OpenAI-compatible text-to-speech endpoint path (default: /v1/audio/speech). */
+  audio_speech_endpoint?: string;
+  /** Audio-capable model IDs exposed by this node. */
+  audio_models?: string[];
   timeout_ms: number;
   max_concurrency?: number; // Optional per-node upstream concurrency limit
   queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set

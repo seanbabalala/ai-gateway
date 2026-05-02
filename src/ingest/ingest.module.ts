@@ -5,6 +5,7 @@ import { MessagesController } from './messages.controller';
 import { ModelsController } from './models.controller';
 import { EmbeddingsController } from './embeddings.controller';
 import { RerankController } from './rerank.controller';
+import { MediaController } from './media.controller';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module';
     MessagesController,
     EmbeddingsController,
     RerankController,
+    MediaController,
     ModelsController,
   ],
 })

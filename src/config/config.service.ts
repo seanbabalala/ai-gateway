@@ -848,6 +848,60 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  /** Resolve a user-provided image model name to a node/model pair. */
+  resolveImageModel(name: string): { nodeId: string; model: string } | null {
+    for (const node of this.config.nodes) {
+      if (node.image_models?.includes(name)) {
+        return { nodeId: node.id, model: name };
+      }
+    }
+
+    const nodeById = this.config.nodes.find((node) => node.id === name);
+    if (nodeById?.image_models?.length) {
+      return { nodeId: nodeById.id, model: nodeById.image_models[0] };
+    }
+
+    for (const separator of ['/', ':']) {
+      const idx = name.indexOf(separator);
+      if (idx <= 0) continue;
+      const prefix = name.substring(0, idx);
+      const modelPart = name.substring(idx + 1);
+      const prefixNode = this.config.nodes.find((node) => node.id === prefix);
+      if (prefixNode?.image_models?.length && modelPart) {
+        return { nodeId: prefixNode.id, model: modelPart };
+      }
+    }
+
+    return null;
+  }
+
+  /** Resolve a user-provided audio model name to a node/model pair. */
+  resolveAudioModel(name: string): { nodeId: string; model: string } | null {
+    for (const node of this.config.nodes) {
+      if (node.audio_models?.includes(name)) {
+        return { nodeId: node.id, model: name };
+      }
+    }
+
+    const nodeById = this.config.nodes.find((node) => node.id === name);
+    if (nodeById?.audio_models?.length) {
+      return { nodeId: nodeById.id, model: nodeById.audio_models[0] };
+    }
+
+    for (const separator of ['/', ':']) {
+      const idx = name.indexOf(separator);
+      if (idx <= 0) continue;
+      const prefix = name.substring(0, idx);
+      const modelPart = name.substring(idx + 1);
+      const prefixNode = this.config.nodes.find((node) => node.id === prefix);
+      if (prefixNode?.audio_models?.length && modelPart) {
+        return { nodeId: prefixNode.id, model: modelPart };
+      }
+    }
+
+    return null;
+  }
+
   /** Get the full raw config (for dashboard API) */
   getFullConfig(): GatewayConfig {
     return this.config;
@@ -954,6 +1008,8 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         ...node.models,
         ...(node.embedding_models || []),
         ...(node.rerank_models || []),
+        ...(node.image_models || []),
+        ...(node.audio_models || []),
       ]))) {
         // Collect all aliases pointing to this model
         const aliases: string[] = [];

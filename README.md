@@ -26,11 +26,11 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic. The v0.6 development line expands protocol coverage with structured-output polish and rerank ingress.
+Current open-source release: **v0.5.0**. This release completes the open-source Data Plane scale phase with optional Redis shared state, PostgreSQL migration, upstream connection pooling, stream cache, embedding batching, Redis-backed cluster status, local namespaces, and privacy-safe shadow traffic. The v0.6 development line expands protocol coverage with structured-output polish, rerank ingress, and minimal OpenAI-compatible images/audio ingress.
 
-SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, and rerank formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
+SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
-**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`, `rerank`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
+**The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
 
 ```
 Your App ──▶ SiftGate ──▶ OpenAI (GPT)
@@ -65,6 +65,8 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
 - **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
+- **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`) — image-capable node routing with JSON and multipart pass-through
+- **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/speech`) — transcription and speech routing with multipart input and binary audio output support
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - Full **streaming** support across supported generative protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
@@ -527,11 +529,17 @@ nodes:
     endpoint: "/v1/chat/completions" # API endpoint path
     embeddings_endpoint: "/v1/embeddings" # Optional embeddings endpoint path
     # rerank_endpoint: "/v1/rerank" # Optional rerank path for compatible upstreams/proxies
+    images_generations_endpoint: "/v1/images/generations" # Optional image generation endpoint path
+    images_edits_endpoint: "/v1/images/edits" # Optional image edit endpoint path
+    audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
+    audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
     embedding_models: ["text-embedding-3-small"] # Models eligible for /v1/embeddings
     # rerank_models: ["rerank-english-v3"] # Models eligible for /v1/rerank
+    image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
+    audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -565,7 +573,7 @@ nodes:
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
 
-`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests.
+`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests. Images and audio endpoints use `nodes[].image_models` and `nodes[].audio_models` so media traffic can be permitted, priced, logged, and routed independently from chat traffic.
 
 ### Unified Model Capabilities
 
@@ -876,6 +884,36 @@ curl http://localhost:2099/v1/rerank \
   }'
 ```
 
+### Images and Audio
+
+v0.6 adds minimal OpenAI-compatible media ingress for common provider/proxy APIs:
+
+| Endpoint | Models selected from | Request body |
+| --- | --- | --- |
+| `POST /v1/images/generations` | `nodes[].image_models` | JSON; multipart is accepted as pass-through |
+| `POST /v1/images/edits` | `nodes[].image_models` | JSON or `multipart/form-data` |
+| `POST /v1/audio/transcriptions` | `nodes[].audio_models` | JSON or `multipart/form-data` |
+| `POST /v1/audio/speech` | `nodes[].audio_models` | JSON; binary provider responses are returned unchanged |
+
+For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`multipart`, byte size, model), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, or validation. Increase `server.body_limit` if your edit or transcription payloads exceed the default `1mb`.
+
+```bash
+curl http://localhost:2099/v1/images/generations \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "prompt": "A clean product render of SiftGate as an AI gateway"
+  }'
+```
+
+```bash
+curl http://localhost:2099/v1/audio/transcriptions \
+  -H "Authorization: Bearer <gateway_api_key>" \
+  -F model=auto \
+  -F file=@sample.wav
+```
+
 ### Stream Cache and Embedding Batching
 
 Both features are local OSS data-plane optimizations and are disabled by default.
@@ -1119,6 +1157,10 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/messages`         | Anthropic Messages format                     |
 | `POST` | `/v1/embeddings`       | OpenAI Embeddings format                      |
 | `POST` | `/v1/rerank`           | OpenAI/common-compatible rerank format        |
+| `POST` | `/v1/images/generations` | OpenAI Images generation format             |
+| `POST` | `/v1/images/edits`     | OpenAI Images edits format with multipart pass-through |
+| `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription format         |
+| `POST` | `/v1/audio/speech`     | OpenAI Audio speech format with binary responses |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 
 All proxy endpoints require a dashboard-generated `Authorization: Bearer <gateway_api_key>` header.
@@ -1150,7 +1192,7 @@ For each accepted request, the gateway applies the same accounting path:
 7. Record usage against global budgets and, when present, the key budget and namespace budget.
 8. Write a call log attributed to the same `api_key_id`.
 
-Embedding requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Their usage is recorded as input tokens with zero output tokens.
+Embedding, images, and audio requests follow the same auth, budget, concurrency, fallback, telemetry, and call-log path as chat requests. Embedding and media usage is recorded from upstream `usage` when present, with lightweight local input estimation as a fallback for cost/budget accounting.
 
 The call log stores:
 
@@ -1357,7 +1399,7 @@ Client Request (any format)
          │
          ▼
 ┌─────────────────┐
-│   Controller    │  ← /v1/chat/completions, /v1/responses, /v1/messages, /v1/embeddings, /v1/rerank
+│   Controller    │  ← chat, responses, messages, embeddings, rerank, images, audio
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -1389,7 +1431,7 @@ Client Request (any format)
 
 **Key components:**
 
-- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, embedding, and rerank request/response shapes
+- **Normalizers / Denormalizers** — Bidirectional converters between OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, embeddings, rerank request/response shapes, and safe media pass-through metadata
 - **Scoring Engine** — Evaluates request complexity across keyword, structural, and tool dimensions
 - **Router** — Tier-based node selection with circuit breaker, momentum, and domain-aware reordering
 - **Provider Client** — HTTP forwarder with streaming support (SSE parsing for each protocol)
@@ -1399,7 +1441,7 @@ Client Request (any format)
 
 - **Backend:** NestJS 11, TypeORM, SQLite (default) / PostgreSQL
 - **Frontend:** React 19, Vite, Tailwind CSS v4, TanStack Query, Recharts
-- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings and common rerank ingress
+- **Protocols:** Full support for streaming and non-streaming chat traffic across the three generative API formats, plus OpenAI-compatible embeddings, rerank, images, and audio ingress
 
 ## Troubleshooting
 

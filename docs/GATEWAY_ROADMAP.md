@@ -73,10 +73,13 @@
 
 #### 4. Image / Audio / Realtime 入口
 
-- **状态**：计划中
+- **状态**：Image/Audio ✅ 已在 `codex/v0.6-images-audio-endpoints` 实现；Realtime 计划中
 - **目标**：继续补齐 OpenAI/LiteLLM/New API 常见接口广度短板
 - **实现方案**：
-  - Image/audio 先做 OpenAI-compatible 入口和 provider passthrough
+  - Image/audio 提供 `/v1/images/generations`、`/v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/speech`
+  - JSON 请求直接透传并重写选中上游模型
+  - multipart 请求只做安全 pass-through：保留文件字节，重写/补充 `model` 字段，不做图像/音频解析、转码或编辑抽象
+  - API Key、namespace、budget、rate limit、call_log、telemetry、fallback、健康状态继续复用现有 Data Plane 管线
   - Realtime 先做明确边界和最小可用连接代理，避免破坏现有 HTTP/SSE 路径
 
 ### P0：可解释路由

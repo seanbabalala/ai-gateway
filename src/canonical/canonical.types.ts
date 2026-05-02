@@ -68,7 +68,11 @@ export type SourceFormat =
   | 'responses'
   | 'messages'
   | 'embeddings'
-  | 'rerank';
+  | 'rerank'
+  | 'image_generation'
+  | 'image_edit'
+  | 'audio_transcription'
+  | 'audio_speech';
 
 // ===== Structured Output =====
 export type StructuredOutputFormatType =
@@ -112,7 +116,6 @@ export interface CanonicalStructuredOutput {
   schema?: Record<string, unknown>;
   strict?: boolean;
 }
-
 // ===== Shared Request Metadata =====
 export interface CanonicalRequestMetadata {
   source_format: SourceFormat;
@@ -239,6 +242,41 @@ export interface CanonicalRerankResponse {
   id: string;
   object: 'rerank';
   results: CanonicalRerankResult[];
+  usage: TokenUsage;
+  model: string;
+  routing: {
+    tier: Tier;
+    node: string;
+    latency_ms: number;
+    score: number;
+    is_fallback: boolean;
+    fallback_reason?: string | null;
+  };
+}
+
+// ===== Images / Audio =====
+export type CanonicalMediaSourceFormat =
+  | 'image_generation'
+  | 'image_edit'
+  | 'audio_transcription'
+  | 'audio_speech';
+
+export type CanonicalMediaPayload = Record<string, unknown> | Buffer;
+export type CanonicalMediaResponseBody = Record<string, unknown> | Buffer | string;
+
+export interface CanonicalMediaRequest {
+  model: string;
+  source_format: CanonicalMediaSourceFormat;
+  payload: CanonicalMediaPayload;
+  content_type: string;
+  is_multipart: boolean;
+  metadata: CanonicalRequestMetadata;
+}
+
+export interface CanonicalMediaResponse {
+  id: string;
+  body: CanonicalMediaResponseBody;
+  content_type: string;
   usage: TokenUsage;
   model: string;
   routing: {
