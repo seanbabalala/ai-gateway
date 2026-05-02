@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { SkeletonCard, Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/error-state'
 import { RoutingRecommendation } from '@/components/routing/RoutingRecommendation'
+import { AdaptiveRoutingRecommendations } from '@/components/routing/AdaptiveRoutingRecommendations'
 import { useConfig } from '@/hooks/use-config'
 import { useNodes } from '@/hooks/use-nodes'
 import { apiPut } from '@/lib/api'
@@ -654,7 +655,10 @@ export function RoutingPage() {
 
       {/* Routing Recommendation */}
       {!editing && nodesData && (
-        <RoutingRecommendation nodes={nodesData.nodes} />
+        <>
+          <AdaptiveRoutingRecommendations />
+          <RoutingRecommendation nodes={nodesData.nodes} />
+        </>
       )}
 
       {/* Tier Routing Flow */}

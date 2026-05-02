@@ -238,6 +238,20 @@ describe('Dashboard (e2e)', () => {
     expect(res.body.success).toBe(true);
   });
 
+  it('GET /api/dashboard/routing/recommendations → read-only recommendation mode', async () => {
+    const res = await harness.agent.get('/api/dashboard/routing/recommendations?window_hours=24&sample_limit=1000');
+
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe('recommendation_only');
+    expect(res.body.stats).toBeDefined();
+    expect(Array.isArray(res.body.stats.targets)).toBe(true);
+    expect(Array.isArray(res.body.recommendations)).toBe(true);
+    expect(res.body.recommendations[0]).toHaveProperty('reasons');
+    expect(res.body.recommendations[0]).toHaveProperty('confidence');
+    expect(res.body.recommendations[0]).toHaveProperty('potential_savings');
+    expect(res.body.recommendations[0]).toHaveProperty('risks');
+  });
+
   // ══════════════════════════════════════════════════════
   // Cache & Analytics
   // ══════════════════════════════════════════════════════

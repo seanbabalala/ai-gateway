@@ -11,6 +11,10 @@
 - v0.3 fallback policy controls via `routing.fallback_policy` for 429 immediate fallback, timeout fallback, structured-output parse/schema fallback, and cost downgrade.
 - `fallback_reason` in call logs, Dashboard log details/exports/SSE payloads, OpenTelemetry fallback metrics, and optional control-plane telemetry metadata.
 - Structured-output validation for OpenAI `response_format` and Responses `text.format` requests, with conservative stream behavior that never falls back after SSE has started.
+- v0.3 adaptive routing recommendation mode for the open-source Data Plane.
+- Local sliding-window node:model stats for success rate, p50/p95 latency, cost, and fallback rate.
+- Read-only Dashboard routing recommendations with reasons, confidence, potential savings, and risk notes.
+- `GET /api/dashboard/routing/recommendations` for local recommendation evidence without mutating routing config.
 
 ### Changed
 

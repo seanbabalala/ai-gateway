@@ -74,6 +74,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
+- **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
 
 ### Cost & Budget Control
@@ -97,6 +98,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
+- **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Light / Dark theme** — system-aware with manual toggle
 
@@ -561,6 +563,32 @@ routing:
 - `cost_downgrade` estimates request cost from local token heuristics and `models_pricing`, then uses a cheaper fallback when the primary estimate exceeds the configured limit.
 - Call logs, Dashboard log details/exports/SSE, OpenTelemetry, and optional connected-gateway telemetry include `fallback_reason`.
 
+### Adaptive Routing Recommendations
+
+SiftGate can generate local, read-only routing recommendations from recent `call_logs`. The recommendation engine uses a sliding window of observed node:model performance and reports:
+
+- success rate
+- p50 and p95 latency
+- average cost and potential cost savings
+- fallback rate
+- reasons, confidence, and risk notes
+
+The first version is recommendation-only. It never mutates `gateway.config.yaml`, never rewrites `routing.tiers`, and never applies a recommendation from the Dashboard. Operators can review the evidence on the Routing page and make manual config edits when they are comfortable with the tradeoff.
+
+The Dashboard API is:
+
+```bash
+curl http://localhost:2099/api/dashboard/routing/recommendations \
+  -H "Authorization: Bearer <dashboard-token>"
+```
+
+Optional query parameters:
+
+- `window_hours` — observation window, default `24`
+- `sample_limit` — max recent call logs to inspect, default `1000`
+
+See [Routing Recommendations](docs/ROUTING_RECOMMENDATIONS.md) for response shape and behavior.
+
 ### Budget
 
 ```yaml
@@ -650,6 +678,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/logs`             | Paginated call logs; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys   |
 | `GET`  | `/api/dashboard/logs/sse`         | Real-time log stream (SSE)                                                                         |
 | `GET`  | `/api/dashboard/analytics/cost`   | Cost analytics; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys        |
+| `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics               |
 | `GET`  | `/api/dashboard/config`           | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`    | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
@@ -669,7 +698,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
-- **Routing** — Visual tier configuration, scoring thresholds, and domain preferences
+- **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
 - **API Keys** — Client Gateway API key generation, permissions, budgets, rate limits, rotation, and disable/delete controls
 

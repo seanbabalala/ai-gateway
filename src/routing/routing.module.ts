@@ -1,19 +1,25 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { RoutingService } from './routing.service';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
 import { ConcurrencyLimiterService } from './concurrency-limiter.service';
 import { ActiveHealthProbeService } from './active-health-probe.service';
+import { AdaptiveRoutingStatsService } from './adaptive-routing-stats.service';
+import { RoutingRecommendationService } from './routing-recommendation.service';
 import { ConfigModule } from '../config/config.module';
+import { CallLog } from '../database/entities/call-log.entity';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, TypeOrmModule.forFeature([CallLog])],
   providers: [
     RoutingService,
     CircuitBreakerService,
     MomentumService,
     ConcurrencyLimiterService,
     ActiveHealthProbeService,
+    AdaptiveRoutingStatsService,
+    RoutingRecommendationService,
   ],
   exports: [
     RoutingService,
@@ -21,6 +27,8 @@ import { ConfigModule } from '../config/config.module';
     MomentumService,
     ConcurrencyLimiterService,
     ActiveHealthProbeService,
+    AdaptiveRoutingStatsService,
+    RoutingRecommendationService,
   ],
 })
 export class RoutingModule {}
