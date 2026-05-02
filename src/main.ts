@@ -2,7 +2,7 @@ import './telemetry/instrumentation'; // OTel SDK — must be first import
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { join } from 'path';
-import { json, urlencoded } from 'express';
+import { json, raw, urlencoded } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
@@ -37,6 +37,20 @@ async function bootstrap() {
 
   // Body size limit
   const bodyLimit = config.server.body_limit ?? '1mb';
+  const mediaBodyTypes = [
+    'multipart/form-data',
+    'application/octet-stream',
+    'audio/*',
+    'image/*',
+  ];
+  for (const route of [
+    '/v1/images/generations',
+    '/v1/images/edits',
+    '/v1/audio/transcriptions',
+    '/v1/audio/speech',
+  ]) {
+    app.use(route, raw({ type: mediaBodyTypes, limit: bodyLimit }));
+  }
   app.use(json({ limit: bodyLimit }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 

@@ -21,6 +21,10 @@ nodes:
     base_url: http://mock-upstream.test
     endpoint: /v1/chat/completions
     embeddings_endpoint: /v1/embeddings
+    images_generations_endpoint: /v1/images/generations
+    images_edits_endpoint: /v1/images/edits
+    audio_transcriptions_endpoint: /v1/audio/transcriptions
+    audio_speech_endpoint: /v1/audio/speech
     api_key: mock-openai-key
     models:
       - gpt-4o
@@ -28,6 +32,11 @@ nodes:
     embedding_models:
       - text-embedding-3-small
       - text-embedding-3-large
+    image_models:
+      - gpt-image-1
+    audio_models:
+      - gpt-4o-mini-transcribe
+      - tts-1
     timeout_ms: 10000
     tags:
       - code
@@ -131,3 +140,13 @@ models_pricing:
   text-embedding-3-large:
     input: 0.13
     output: 0
+  gpt-image-1:
+    input: 5
+    output: 0
+  gpt-4o-mini-transcribe:
+    input: 0.6
+    output: 0
+  tts-1:
+    input: 15
+    output: 0
+namespaces: []

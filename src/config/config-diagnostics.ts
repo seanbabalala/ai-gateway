@@ -99,6 +99,18 @@ export function buildNodeModelDiagnostics(
       modelOwners.set(model, owners);
     }
 
+    for (const model of stringArray(node.image_models)) {
+      const owners = modelOwners.get(model) || [];
+      owners.push(node.id);
+      modelOwners.set(model, owners);
+    }
+
+    for (const model of stringArray(node.audio_models)) {
+      const owners = modelOwners.get(model) || [];
+      owners.push(node.id);
+      modelOwners.set(model, owners);
+    }
+
     if (isRecord(node.model_aliases)) {
       for (const alias of Object.keys(node.model_aliases)) {
         if (!isNonEmptyString(alias)) continue;

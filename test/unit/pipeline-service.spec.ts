@@ -12,6 +12,7 @@ import { ProviderError } from '../../src/providers/provider-client.service';
 import { ConcurrencyLimitError } from '../../src/routing/concurrency-limiter.service';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 import { makeRequest, makeCanonicalResponse, mockConfigService } from '../helpers';
+import { CanonicalMediaRequest } from '../../src/canonical/canonical.types';
 import { createNoOpHookExecutor } from '../../src/plugins/testing';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
@@ -24,6 +25,8 @@ function makePipeline(overrides: Record<string, any> = {}): {
       {
         id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
         models: ['gpt-4o', 'gpt-4o-mini'], model_aliases: {},
+        image_models: ['gpt-image-1'],
+        audio_models: ['tts-1'],
       },
       {
         id: 'claude', name: 'Claude', protocol: 'messages',
@@ -40,6 +43,18 @@ function makePipeline(overrides: Record<string, any> = {}): {
     resolveEmbeddingModel: jest.fn().mockImplementation((model: string) => {
       if (model === 'text-embedding-3-small') {
         return { nodeId: 'openai', model: 'text-embedding-3-small' };
+      }
+      return null;
+    }),
+    resolveImageModel: jest.fn().mockImplementation((model: string) => {
+      if (model === 'gpt-image-1') {
+        return { nodeId: 'openai', model: 'gpt-image-1' };
+      }
+      return null;
+    }),
+    resolveAudioModel: jest.fn().mockImplementation((model: string) => {
+      if (model === 'tts-1') {
+        return { nodeId: 'openai', model: 'tts-1' };
       }
       return null;
     }),
@@ -83,6 +98,23 @@ function makePipeline(overrides: Record<string, any> = {}): {
         is_fallback: false,
       },
     }),
+    forwardMedia: jest.fn().mockResolvedValue({
+      id: 'media-test',
+      body: {
+        created: 123,
+        data: [{ url: 'https://example.test/generated.png' }],
+      },
+      content_type: 'application/json',
+      usage: { input_tokens: 6, output_tokens: 0 },
+      model: 'gpt-image-1',
+      routing: {
+        tier: 'standard',
+        node: 'openai',
+        latency_ms: 42,
+        score: 0,
+        is_fallback: false,
+      },
+    }),
     forwardStream: jest.fn(),
     ...overrides.providerClient,
   };
@@ -116,6 +148,11 @@ function makePipeline(overrides: Record<string, any> = {}): {
     }),
     resolveEmbeddingRoute: jest.fn().mockReturnValue({
       primary: { node: 'openai', model: 'text-embedding-3-small' },
+      fallbacks: [],
+      mode: 'auto',
+    }),
+    resolveMediaRoute: jest.fn().mockReturnValue({
+      primary: { node: 'openai', model: 'gpt-image-1' },
       fallbacks: [],
       mode: 'auto',
     }),
@@ -222,6 +259,24 @@ function makePipeline(overrides: Record<string, any> = {}): {
   };
 }
 
+function makeMediaRequest(
+  overrides: Partial<CanonicalMediaRequest> = {},
+): CanonicalMediaRequest {
+  return {
+    model: 'auto',
+    source_format: 'image_generation',
+    payload: { model: 'auto', prompt: 'Draw SiftGate' },
+    content_type: 'application/json',
+    is_multipart: false,
+    metadata: {
+      source_format: 'image_generation',
+      original_model: 'auto',
+      raw_headers: {},
+    },
+    ...overrides,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════
 // Direct Model Routing
 // ═══════════════════════════════════════════════════════════
@@ -278,7 +333,7 @@ describe('PipelineService — direct routing', () => {
     const result = await pipeline.process(request);
 
     expect(result.statusCode).toBe(400);
-    expect(String((result.body.error as any).message)).toContain('max_context_tokens=10');
+    expect(String(((result.body as Record<string, any>).error as any).message)).toContain('max_context_tokens=10');
     expect(mocks.providerClient.forward).not.toHaveBeenCalled();
   });
 
@@ -382,7 +437,7 @@ describe('PipelineService — embeddings', () => {
       model: 'text-embedding-3-small',
       usage: { prompt_tokens: 8, total_tokens: 8 },
     });
-    expect((result.body.data as any[])[0]).toMatchObject({
+    expect(((result.body as Record<string, any>).data as any[])[0]).toMatchObject({
       object: 'embedding',
       index: 0,
       embedding: [0.1, 0.2, 0.3],
@@ -1973,6 +2028,138 @@ describe('PipelineService — control-plane telemetry metadata', () => {
     expect(payload).not.toContain('messages');
     expect(payload).not.toContain('Build an API endpoint');
     expect(payload).not.toContain('sk-');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Images / Audio
+// ═══════════════════════════════════════════════════════════
+
+describe('PipelineService — images and audio', () => {
+  it('should process media requests through routing, budget, telemetry, and call logs', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeMediaRequest();
+
+    const result = await pipeline.processMedia(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toMatchObject({
+      data: [{ url: 'https://example.test/generated.png' }],
+    });
+    expect(mocks.budgetService.check).toHaveBeenCalled();
+    expect(mocks.routingService.resolveMediaRoute).toHaveBeenCalledWith(
+      'image_generation',
+      'auto',
+      expect.any(Function),
+    );
+    expect(mocks.providerClient.forwardMedia).toHaveBeenCalledWith(
+      request,
+      'openai',
+      'gpt-image-1',
+      expect.objectContaining({ tier: 'standard', is_fallback: false }),
+      expect.objectContaining({ signal: undefined }),
+    );
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_format: 'image_generation',
+        node_id: 'openai',
+        model: 'gpt-image-1',
+        status_code: 200,
+      }),
+    );
+  });
+
+  it('should pass binary audio speech bodies through with provider content type', async () => {
+    const { pipeline, mocks } = makePipeline({
+      routingService: {
+        resolveMediaRoute: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'tts-1' },
+          fallbacks: [],
+          mode: 'direct',
+        }),
+      },
+      providerClient: {
+        forwardMedia: jest.fn().mockResolvedValue({
+          id: 'speech-test',
+          body: Buffer.from('audio-bytes'),
+          content_type: 'audio/mpeg',
+          usage: { input_tokens: 4, output_tokens: 0 },
+          model: 'tts-1',
+          routing: {
+            tier: 'direct',
+            node: 'openai',
+            latency_ms: 25,
+            score: 0,
+            is_fallback: false,
+          },
+        }),
+      },
+    });
+    const request = makeMediaRequest({
+      model: 'tts-1',
+      source_format: 'audio_speech',
+      payload: { model: 'tts-1', input: 'hello', voice: 'alloy' },
+      metadata: {
+        source_format: 'audio_speech',
+        original_model: 'tts-1',
+        raw_headers: {},
+      },
+    });
+
+    const result = await pipeline.processMedia(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(Buffer.isBuffer(result.body)).toBe(true);
+    expect(result.contentType).toBe('audio/mpeg');
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ source_format: 'audio_speech' }),
+    );
+  });
+
+  it('should use fallback media targets after an upstream failure', async () => {
+    const { pipeline, mocks } = makePipeline({
+      routingService: {
+        resolveMediaRoute: jest.fn().mockReturnValue({
+          primary: { node: 'openai', model: 'gpt-image-1' },
+          fallbacks: [{ node: 'claude', model: 'fallback-image' }],
+          mode: 'auto',
+        }),
+      },
+      providerClient: {
+        forwardMedia: jest.fn()
+          .mockRejectedValueOnce(new ProviderError('temporary media failure', 502, 'openai'))
+          .mockResolvedValueOnce({
+            id: 'media-fallback',
+            body: { data: [{ url: 'https://example.test/fallback.png' }] },
+            content_type: 'application/json',
+            usage: { input_tokens: 8, output_tokens: 0 },
+            model: 'fallback-image',
+            routing: {
+              tier: 'standard',
+              node: 'claude',
+              latency_ms: 60,
+              score: 0,
+              is_fallback: true,
+              fallback_reason: 'upstream_error',
+            },
+          }),
+      },
+      config: {
+        retry: { max_retries: 0, backoff_base_ms: 1, backoff_max_ms: 1, retryable_status: [502] },
+      },
+    });
+
+    const result = await pipeline.processMedia(makeMediaRequest());
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forwardMedia).toHaveBeenCalledTimes(2);
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        is_fallback: true,
+        fallback_reason: 'upstream_error',
+        model: 'fallback-image',
+      }),
+    );
   });
 });
 

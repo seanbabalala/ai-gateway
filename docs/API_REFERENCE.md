@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.5 adds optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results alongside the existing chat, responses, messages, embeddings, models, and health APIs.
+v0.6 development adds minimal OpenAI-compatible images and audio ingress alongside the existing chat, responses, messages, embeddings, models, and health APIs. v0.5 added optional Redis-backed cluster status plus Dashboard APIs for OSS-local namespaces and read-only shadow traffic results.
 
 ## Live Documentation
 
@@ -34,6 +34,10 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/responses` | OpenAI Responses-compatible ingress |
 | `POST` | `/v1/messages` | Anthropic Messages-compatible ingress |
 | `POST` | `/v1/embeddings` | OpenAI Embeddings-compatible ingress |
+| `POST` | `/v1/images/generations` | OpenAI Images generation-compatible ingress |
+| `POST` | `/v1/images/edits` | OpenAI Images edits-compatible ingress |
+| `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
+| `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
@@ -54,6 +58,45 @@ The gateway preserves the caller-facing protocol while routing across configured
 ```
 
 Embedding routing uses `nodes[].embedding_models`. `model: "auto"` filters by API key permissions, active circuits, and requested dimensions, then prefers the lowest configured input price. Direct model requests must resolve to an embedding model; chat models listed only in `nodes[].models` are not selected for this endpoint. Responses preserve the OpenAI shape with `object: "list"`, embedding data, and `usage.prompt_tokens` / `usage.total_tokens`.
+
+### Images
+
+`POST /v1/images/generations` accepts OpenAI-compatible JSON bodies and selects from `nodes[].image_models`:
+
+```json
+{
+  "model": "auto",
+  "prompt": "A clean product render of SiftGate",
+  "size": "1024x1024"
+}
+```
+
+`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as multipart status, byte size, and model.
+
+Image responses are returned in the upstream provider's OpenAI-compatible JSON shape.
+
+### Audio
+
+`POST /v1/audio/transcriptions` accepts JSON or `multipart/form-data` and selects from `nodes[].audio_models`. Multipart audio is pass-through: SiftGate rewrites/appends `model`, forwards the original file bytes, and does not decode or transcode media locally.
+
+```bash
+curl http://localhost:2099/v1/audio/transcriptions \
+  -H "Authorization: Bearer gw_sk_live_..." \
+  -F model=auto \
+  -F file=@sample.wav
+```
+
+`POST /v1/audio/speech` accepts OpenAI-compatible JSON and can return binary provider audio directly:
+
+```json
+{
+  "model": "tts-1",
+  "input": "Hello from SiftGate",
+  "voice": "alloy"
+}
+```
+
+When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged. Increase `server.body_limit` when image edit or audio transcription files are larger than the default `1mb`.
 
 ## Health
 

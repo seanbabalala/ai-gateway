@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- v0.6 minimal OpenAI-compatible images and audio ingress for the OSS Data Plane.
+- `POST /v1/images/generations`, `POST /v1/images/edits`, `POST /v1/audio/transcriptions`, and `POST /v1/audio/speech` with canonical media metadata and provider pass-through forwarding.
+- `nodes[].image_models`, `nodes[].audio_models`, media endpoint path configuration, pricing validation, routing, budget, rate-limit, telemetry, and call-log coverage.
+- Multipart pass-through for image edits and audio transcriptions that rewrites/appends only the selected `model` field and avoids local media parsing/transcoding.
+- Unit and e2e coverage for media normalization, routing, provider forwarding, config validation, controllers, OpenAPI paths, multipart pass-through, and binary audio responses.
 
 ## 0.5.0 - 2026-05-02
 

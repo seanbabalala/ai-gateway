@@ -9,6 +9,7 @@ import { ChatCompletionsController } from '../../src/ingest/chat-completions.con
 import { MessagesController } from '../../src/ingest/messages.controller';
 import { ResponsesController } from '../../src/ingest/responses.controller';
 import { EmbeddingsController } from '../../src/ingest/embeddings.controller';
+import { MediaController } from '../../src/ingest/media.controller';
 import { BudgetExceededError } from '../../src/budget/budget.service';
 
 function mockReq(body: Record<string, unknown>, reqHeaders: Record<string, string> = {}): any {
@@ -23,6 +24,8 @@ function mockRes(): any {
   const res: any = {
     status: jest.fn().mockReturnThis(),
     json: jest.fn(),
+    type: jest.fn().mockReturnThis(),
+    send: jest.fn(),
     setHeader: jest.fn(),
     flushHeaders: jest.fn(),
     write: jest.fn(),
@@ -36,6 +39,7 @@ function mockPipeline(overrides: Record<string, any> = {}): any {
   return {
     process: jest.fn().mockResolvedValue({ statusCode: 200, body: { id: 'test' } }),
     processEmbeddings: jest.fn().mockResolvedValue({ statusCode: 200, body: { object: 'list', data: [] } }),
+    processMedia: jest.fn().mockResolvedValue({ statusCode: 200, body: { created: 123, data: [] }, contentType: 'application/json' }),
     processStream: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -186,6 +190,61 @@ describe('EmbeddingsController', () => {
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ object: 'list', data: [] });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// MediaController
+// ═══════════════════════════════════════════════════════════
+
+describe('MediaController', () => {
+  it('should handle image generation requests', async () => {
+    const pipeline = mockPipeline();
+    const controller = new MediaController(pipeline);
+    const req = mockReq({
+      model: 'auto',
+      prompt: 'Draw SiftGate',
+    });
+    const res = mockRes();
+
+    await controller.imageGenerations(req, res);
+
+    expect(pipeline.processMedia).toHaveBeenCalled();
+    const canonical = pipeline.processMedia.mock.calls[0][0];
+    expect(canonical).toMatchObject({
+      model: 'auto',
+      source_format: 'image_generation',
+      payload: { model: 'auto', prompt: 'Draw SiftGate' },
+      metadata: expect.objectContaining({ source_format: 'image_generation' }),
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ created: 123, data: [] });
+  });
+
+  it('should send binary audio speech responses with the provider content type', async () => {
+    const pipeline = mockPipeline({
+      processMedia: jest.fn().mockResolvedValue({
+        statusCode: 200,
+        body: Buffer.from('audio-bytes'),
+        contentType: 'audio/mpeg',
+      }),
+    });
+    const controller = new MediaController(pipeline);
+    const req = mockReq({
+      model: 'tts-1',
+      input: 'hello',
+      voice: 'alloy',
+    });
+    const res = mockRes();
+
+    await controller.audioSpeech(req, res);
+
+    expect(pipeline.processMedia).toHaveBeenCalled();
+    const canonical = pipeline.processMedia.mock.calls[0][0];
+    expect(canonical.source_format).toBe('audio_speech');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.type).toHaveBeenCalledWith('audio/mpeg');
+    expect(res.send).toHaveBeenCalledWith(Buffer.from('audio-bytes'));
   });
 });
 

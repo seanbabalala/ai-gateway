@@ -500,6 +500,12 @@ function validateNamespaces(
       for (const model of Array.isArray(node.embedding_models) ? node.embedding_models : []) {
         if (isNonEmptyString(model)) modelIds.add(model);
       }
+      for (const model of Array.isArray(node.image_models) ? node.image_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+      for (const model of Array.isArray(node.audio_models) ? node.audio_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
     }
   }
 
@@ -772,6 +778,10 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
         ),
       );
     }
+    validateOptionalEndpoint(node, basePath, 'images_generations_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'images_edits_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'audio_transcriptions_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'audio_speech_endpoint', issues);
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -822,6 +832,8 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
       });
     }
     validateNodeEmbeddingModels(node, basePath, issues);
+    validateNodeMediaModels(node, basePath, 'image_models', 'Image', issues);
+    validateNodeMediaModels(node, basePath, 'audio_models', 'Audio', issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
         issue(
@@ -915,6 +927,26 @@ function validateNodeConnection(
   }
 }
 
+function validateOptionalEndpoint(
+  node: Record<string, unknown>,
+  basePath: string,
+  key: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const value = node[key];
+  if (value === undefined) return;
+  if (!isNonEmptyString(value) || !value.startsWith('/')) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_endpoint',
+        `nodes[].${key} should be a non-empty path starting with "/".`,
+        `${basePath}.${key}`,
+      ),
+    );
+  }
+}
+
 function validateNodeEmbeddingModels(
   node: Record<string, unknown>,
   basePath: string,
@@ -953,6 +985,54 @@ function validateNodeEmbeddingModels(
           'error',
           'duplicate_model_id_in_node',
           `Embedding model "${model}" is listed more than once in this node.`,
+          modelPath,
+        ),
+      );
+    }
+    modelIds.add(model);
+  });
+}
+
+function validateNodeMediaModels(
+  node: Record<string, unknown>,
+  basePath: string,
+  key: 'image_models' | 'audio_models',
+  label: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node[key] === undefined) return;
+  if (!Array.isArray(node[key])) {
+    issues.push(
+      issue(
+        'error',
+        `invalid_${key}`,
+        `nodes[].${key} must be an array of model ids when set.`,
+        `${basePath}.${key}`,
+      ),
+    );
+    return;
+  }
+
+  const modelIds = new Set<string>();
+  (node[key] as unknown[]).forEach((model, modelIndex) => {
+    const modelPath = `${basePath}.${key}[${modelIndex}]`;
+    if (!isNonEmptyString(model)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_id',
+          `${label} model ids must be non-empty strings.`,
+          modelPath,
+        ),
+      );
+      return;
+    }
+    if (modelIds.has(model)) {
+      issues.push(
+        issue(
+          'error',
+          'duplicate_model_id_in_node',
+          `${label} model "${model}" is listed more than once in this node.`,
           modelPath,
         ),
       );
@@ -1011,6 +1091,8 @@ function validateNodeRoutingCapabilities(
     [
       ...(Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.embedding_models) ? node.embedding_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.image_models) ? node.image_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.audio_models) ? node.audio_models.filter(isNonEmptyString) : []),
     ],
   );
 
@@ -2003,6 +2085,8 @@ function validateShadow(
       const models = [
         ...(Array.isArray(targetNode.models) ? targetNode.models : []),
         ...(Array.isArray(targetNode.embedding_models) ? targetNode.embedding_models : []),
+        ...(Array.isArray(targetNode.image_models) ? targetNode.image_models : []),
+        ...(Array.isArray(targetNode.audio_models) ? targetNode.audio_models : []),
       ].filter(isNonEmptyString);
       if (models.length > 0 && !models.includes(shadow.target_model)) {
         issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));

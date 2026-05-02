@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-02
+> 最后更新：2026-05-03
 
 ---
 
@@ -15,6 +15,66 @@
 | v0.3 | Intelligence | 已发布 — v0.3.0 智能路由 + 可观测性 | ✅ Released |
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
+| v0.6 | Protocol + Explainability | 开发中 — 协议广度 + 可解释路由 | 🚧 In Progress |
+
+---
+
+## v0.6 — Protocol + Explainability（生产协议能力 + 可解释路由）
+
+**v0.6 当前状态**：开发中。本阶段保持 MIT 开源 Data Plane 单机 SQLite/memory 默认可用，Redis/PostgreSQL/Cloud 继续作为可选能力；重点是补齐生产协议入口，并把路由决策解释做成产品亮点。
+
+### P0：协议广度
+
+#### 29. Images 与 Audio 最小可用入口
+
+- **状态**：🚧 当前分支实现中
+- **目标**：补齐 OpenAI-compatible 图片和音频生产入口，缩小与 New API/LiteLLM 在接口广度上的差距
+- **实现方案**：
+  ```yaml
+  nodes:
+    - id: openai
+      images_generations_endpoint: /v1/images/generations
+      images_edits_endpoint: /v1/images/edits
+      audio_transcriptions_endpoint: /v1/audio/transcriptions
+      audio_speech_endpoint: /v1/audio/speech
+      image_models: [gpt-image-1]
+      audio_models: [gpt-4o-mini-transcribe, tts-1]
+  ```
+
+  - 新增 `/v1/images/generations`、`/v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/speech`
+  - JSON 请求直接透传并重写选中上游模型
+  - multipart 请求只做安全 pass-through：保留文件字节，重写/补充 `model` 字段，不做图像/音频解析、转码或编辑抽象
+  - API Key、namespace、budget、rate limit、call_log、telemetry、fallback、健康状态继续复用现有 Data Plane 管线
+  - Dashboard logs 通过 `source_format=image_generation|image_edit|audio_transcription|audio_speech` 识别媒体流量
+
+#### 30. Structured Output 完整透传与 schema 验证体验
+
+- **状态**：规划中
+- **目标**：让 OpenAI Chat `response_format`、OpenAI Responses `text.format`、Anthropic Messages 兼容降级在协议转换中不丢失意图
+- **实现方案**：
+  - CanonicalRequest 保留统一 `response_format` / `structured_output`
+  - provider 转发和跨协议转换明确 passthrough / downgraded 策略
+  - 与 fallback policy 联动 parse/schema failure
+  - Dashboard call log 展示结构化输出意图、支持状态和 fallback reason
+
+#### 31. Rerank 与 Realtime 铺底
+
+- **状态**：规划中
+- **目标**：继续补齐常见兼容 API 的入口广度
+- **实现方案**：
+  - `/v1/rerank` canonical request/response、capability、pricing、call_log
+  - Realtime 先明确协议边界和可选 experimental 模式，避免破坏默认 HTTP 数据面
+
+### P0：Explainable Routing
+
+#### 32. 路由选择解释页
+
+- **状态**：规划中
+- **目标**：把“为什么选这个 node/model”从日志细节升级成 Dashboard 产品亮点
+- **实现方案**：
+  - 保存轻量 route decision trace：候选目标、过滤原因、排序信号、最终选择
+  - Dashboard 为每次请求展示权限、健康、成本、延迟、context、capability、fallback 的解释
+  - 不记录 prompt/response 内容；只记录可解释的结构化元数据
 
 ---
 

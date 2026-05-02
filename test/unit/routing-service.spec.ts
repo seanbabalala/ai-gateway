@@ -8,6 +8,8 @@ function makeRoutingService(overrides: {
   optimization?: any;
   nodes?: any[];
   resolveEmbeddingModel?: any;
+  resolveImageModel?: any;
+  resolveAudioModel?: any;
   circuitBreaker?: any;
   momentum?: any;
   capabilityService?: any;
@@ -36,6 +38,22 @@ function makeRoutingService(overrides: {
   config.resolveEmbeddingModel = overrides.resolveEmbeddingModel || jest.fn().mockImplementation((model: string) => {
     for (const node of config.nodes) {
       if (node.embedding_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
+  });
+  config.resolveImageModel = overrides.resolveImageModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.image_models?.includes(model)) {
+        return { nodeId: node.id, model };
+      }
+    }
+    return null;
+  });
+  config.resolveAudioModel = overrides.resolveAudioModel || jest.fn().mockImplementation((model: string) => {
+    for (const node of config.nodes) {
+      if (node.audio_models?.includes(model)) {
         return { nodeId: node.id, model };
       }
     }
@@ -522,5 +540,75 @@ describe('RoutingService — embeddings', () => {
 
     expect(route.mode).toBe('direct');
     expect(route.primary).toEqual({ node: 'cheap', model: 'text-embedding-3-small' });
+  });
+});
+
+describe('RoutingService — images and audio', () => {
+  const mediaNodes = [
+    {
+      id: 'cheap-media',
+      tags: ['fast'],
+      image_models: ['gpt-image-mini'],
+      audio_models: ['tts-mini'],
+    },
+    {
+      id: 'quality-media',
+      tags: ['quality'],
+      image_models: ['gpt-image-1'],
+      audio_models: ['gpt-4o-mini-transcribe'],
+    },
+  ];
+
+  it('should choose the lowest priced image target for auto routing', () => {
+    const svc = makeRoutingService({
+      nodes: mediaNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['vision']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          structured_output: null,
+          pricing: model.includes('mini')
+            ? { input: 0.5, output: 0 }
+            : { input: 5, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveMediaRoute('image_generation', 'auto');
+
+    expect(route.mode).toBe('auto');
+    expect(route.primary).toEqual({ node: 'cheap-media', model: 'gpt-image-mini' });
+    expect(route.fallbacks[0]).toEqual({ node: 'quality-media', model: 'gpt-image-1' });
+  });
+
+  it('should resolve direct audio models and apply target permissions', () => {
+    const svc = makeRoutingService({ nodes: mediaNodes });
+
+    expect(() =>
+      svc.resolveMediaRoute(
+        'audio_speech',
+        'tts-mini',
+        (target) => target.node !== 'cheap-media',
+      ),
+    ).toThrow('This API key is not allowed');
+  });
+
+  it('should skip unavailable media targets when healthy alternatives exist', () => {
+    const svc = makeRoutingService({
+      nodes: mediaNodes,
+      circuitBreaker: {
+        isAvailable: jest.fn().mockImplementation((node: string) => node !== 'cheap-media'),
+      },
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['audio']),
+        resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+          structured_output: null,
+          pricing: { input: 1, output: 0 },
+        }),
+      },
+    });
+
+    const route = svc.resolveMediaRoute('audio_transcription', 'auto');
+
+    expect(route.primary).toEqual({ node: 'quality-media', model: 'gpt-4o-mini-transcribe' });
   });
 });

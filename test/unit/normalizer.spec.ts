@@ -1,6 +1,7 @@
 import { ChatCompletionsNormalizer } from '../../src/canonical/normalizers/chat-completions.normalizer';
 import { ResponsesNormalizer } from '../../src/canonical/normalizers/responses.normalizer';
 import { MessagesNormalizer } from '../../src/canonical/normalizers/messages.normalizer';
+import { MediaNormalizer } from '../../src/canonical/normalizers/media.normalizer';
 
 const headers = { 'content-type': 'application/json' };
 
@@ -346,6 +347,61 @@ describe('ResponsesNormalizer', () => {
     expect(result.messages[0]).toEqual({ role: 'user', content: 'First message' });
     expect(result.messages[1]).toEqual({ role: 'assistant', content: 'Response' });
     expect(result.messages[2]).toEqual({ role: 'user', content: 'Follow up' });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Media Normalizer
+// ═══════════════════════════════════════════════════════════
+describe('MediaNormalizer', () => {
+  const normalizer = new MediaNormalizer();
+
+  it('should normalize image generation JSON requests without hiding intent', () => {
+    const result = normalizer.normalize(
+      { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+      headers,
+      'image_generation',
+    );
+
+    expect(result).toMatchObject({
+      model: 'gpt-image-1',
+      source_format: 'image_generation',
+      is_multipart: false,
+      payload: { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+      metadata: {
+        source_format: 'image_generation',
+        original_model: 'gpt-image-1',
+      },
+    });
+  });
+
+  it('should keep multipart bytes and log only safe shape metadata', () => {
+    const boundary = 'sg-boundary';
+    const body = Buffer.from(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="model"\r\n\r\n' +
+        'gpt-4o-mini-transcribe\r\n' +
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="sample.wav"\r\n' +
+        'Content-Type: audio/wav\r\n\r\n' +
+        'fake-audio\r\n' +
+        `--${boundary}--\r\n`,
+      'latin1',
+    );
+
+    const result = normalizer.normalize(
+      body,
+      { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      'audio_transcription',
+    );
+
+    expect(result.model).toBe('gpt-4o-mini-transcribe');
+    expect(Buffer.isBuffer(result.payload)).toBe(true);
+    expect(result.metadata.raw_body).toEqual({
+      multipart: true,
+      size_bytes: body.length,
+      model: 'gpt-4o-mini-transcribe',
+    });
   });
 });
 

@@ -16,6 +16,8 @@ import {
   CanonicalRequest,
   CanonicalEmbeddingRequest,
   CanonicalEmbeddingResponse,
+  CanonicalMediaRequest,
+  CanonicalMediaResponse,
   CanonicalResponse,
   CanonicalStreamEvent,
   SourceFormat,
@@ -57,8 +59,9 @@ import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 
 export interface PipelineResult {
-  body: Record<string, unknown>;
+  body: Record<string, unknown> | Buffer | string;
   statusCode: number;
+  contentType?: string;
 }
 
 interface SmartRouteResolution {
@@ -97,6 +100,13 @@ interface EmbeddingAttemptResult {
   fallbackReason: FallbackReason | null;
 }
 
+interface MediaAttemptResult {
+  response: CanonicalMediaResponse | null;
+  lastError: Error | null;
+  retries: number;
+  fallbackReason: FallbackReason | null;
+}
+
 interface PrimaryAttemptResult extends NodeAttemptResult {
   usedTarget: RouteTarget;
   usedFallback: boolean;
@@ -126,7 +136,10 @@ class GatewayRequestRejectedError extends Error {
   }
 }
 
-type LoggableCanonicalRequest = CanonicalRequest | CanonicalEmbeddingRequest;
+type LoggableCanonicalRequest =
+  | CanonicalRequest
+  | CanonicalEmbeddingRequest
+  | CanonicalMediaRequest;
 
 @Injectable()
 export class PipelineService {
@@ -711,6 +724,196 @@ export class PipelineService {
     );
   }
 
+  async processMedia(
+    canonical: CanonicalMediaRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PipelineResult> {
+    const requestId = uuidv4();
+    const startTime = Date.now();
+    const requestedModel = canonical.model || canonical.metadata.original_model || 'auto';
+
+    return this.telemetry.withSpan(
+      'gateway.request',
+      {
+        'gateway.request_id': requestId,
+        'gateway.source_format': canonical.source_format,
+        'gateway.model': requestedModel,
+        'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.stream': false,
+      },
+      async (rootSpan) => {
+        try {
+          const validationError = this.validateMediaRequest(canonical);
+          if (validationError) {
+            return {
+              body: this.formatError(canonical.source_format, 400, validationError),
+              statusCode: 400,
+            };
+          }
+
+          try {
+            await this.checkBudget(canonical);
+          } catch (err) {
+            if (err instanceof BudgetExceededError) {
+              this.logger.warn(`Budget exceeded (${canonical.source_format}): ${err.message}`);
+              return {
+                body: this.formatBudgetError(canonical.source_format, err),
+                statusCode: 429,
+              };
+            }
+            throw err;
+          }
+
+          this.assertRouteModeAllowed(
+            canonical,
+            requestedModel === 'auto' ? 'auto' : 'direct',
+          );
+          const route = this.routingService.resolveMediaRoute(
+            canonical.source_format,
+            requestedModel,
+            (target) => this.isTargetAllowed(canonical, target.node, target.model),
+          );
+          const tier: Tier = route.mode === 'direct' ? 'direct' : 'standard';
+          const targets = [route.primary, ...route.fallbacks];
+          const retryConfig = this.config.retry;
+          let response: CanonicalMediaResponse | null = null;
+          let lastError: Error | null = null;
+          let totalRetries = 0;
+          let usedNodeId = route.primary.node;
+          let usedModel = route.primary.model;
+          let isFallback = false;
+          let fallbackReason: FallbackReason | null = null;
+          let fallbackFromNode: string | null = null;
+
+          for (const [index, target] of targets.entries()) {
+            usedNodeId = target.node;
+            usedModel = target.model;
+            isFallback = index > 0;
+            if (isFallback && !fallbackFromNode) {
+              fallbackFromNode = route.primary.node;
+              this.logger.log(`Trying ${canonical.source_format} fallback: ${target.node} (${target.model})`);
+            }
+
+            const attempt = await this.tryMediaNodeWithRetry(
+              canonical,
+              target.node,
+              target.model,
+              {
+                tier,
+                score: 0,
+                is_fallback: isFallback,
+                fallback_reason: isFallback ? fallbackReason || 'upstream_error' : null,
+              },
+              retryConfig,
+              options,
+            );
+            totalRetries += attempt.retries;
+            if (attempt.response) {
+              response = attempt.response;
+              fallbackReason = isFallback
+                ? fallbackReason || attempt.fallbackReason || 'upstream_error'
+                : attempt.fallbackReason;
+              break;
+            }
+            lastError = attempt.lastError;
+            fallbackReason = attempt.fallbackReason || fallbackReason;
+          }
+
+          if (!response) {
+            const errorMsg = lastError?.message || `All ${canonical.source_format} nodes failed`;
+            const failureStatus = this.resolveFailureStatus(lastError);
+            this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
+            await this.logCall({
+              requestId,
+              canonical,
+              tier,
+              score: 0,
+              nodeId: usedNodeId,
+              model: usedModel,
+              statusCode: failureStatus,
+              isFallback,
+              latencyMs: Date.now() - startTime,
+              usage: { input_tokens: 0, output_tokens: 0 },
+              error: errorMsg,
+              retryCount: totalRetries,
+              fallbackReason,
+              fallbackFromNode,
+            });
+            return {
+              body: this.formatError(canonical.source_format, failureStatus, errorMsg),
+              statusCode: failureStatus,
+            };
+          }
+
+          if (response.usage.input_tokens === 0 && response.usage.output_tokens === 0) {
+            response.usage.input_tokens = this.estimateMediaInputTokens(canonical);
+          }
+
+          const { costUsd, totalTokens } = await this.recordBudgetUsage(
+            canonical,
+            response.usage,
+            usedModel,
+            usedNodeId,
+          );
+          const durationMs = Date.now() - startTime;
+          rootSpan.setAttributes({
+            'gateway.node': usedNodeId,
+            'gateway.model': usedModel,
+            'gateway.is_fallback': isFallback,
+            'gateway.fallback_reason': fallbackReason || '',
+            'gen_ai.request.model': usedModel,
+            'gen_ai.usage.input_tokens': response.usage.input_tokens,
+            'gen_ai.usage.output_tokens': response.usage.output_tokens,
+          });
+          this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+          this.telemetry.requestDuration.record(durationMs, { tier, node: usedNodeId });
+          this.telemetry.tokensUsage.add(totalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+          if (costUsd > 0) {
+            this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+          }
+
+          await this.logCall({
+            requestId,
+            canonical,
+            tier,
+            score: 0,
+            nodeId: usedNodeId,
+            model: usedModel,
+            statusCode: 200,
+            isFallback,
+            latencyMs: response.routing.latency_ms,
+            usage: response.usage,
+            error: null,
+            retryCount: totalRetries,
+            fallbackReason,
+            fallbackFromNode,
+          });
+
+          return {
+            body: response.body,
+            statusCode: 200,
+            contentType: response.content_type,
+          };
+        } catch (err) {
+          if (err instanceof GatewayRequestRejectedError) {
+            return {
+              body: this.formatError(canonical.source_format, err.statusCode, err.message),
+              statusCode: err.statusCode,
+            };
+          }
+          if (err instanceof RoutingConstraintError) {
+            return {
+              body: this.formatError(canonical.source_format, err.statusCode, err.message),
+              statusCode: err.statusCode,
+            };
+          }
+          throw err;
+        }
+      },
+      SpanKind.SERVER,
+    );
+  }
+
   // ══════════════════════════════════════════════════════
   // Retry Helper — try a single node with retries + backoff
   // ══════════════════════════════════════════════════════
@@ -1092,6 +1295,111 @@ export class PipelineService {
     };
   }
 
+  private async tryMediaNodeWithRetry(
+    canonical: CanonicalMediaRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    retryConfig: RetryConfig,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<MediaAttemptResult> {
+    const maxAttempts = 1 + retryConfig.max_retries;
+    let lastError: Error | null = null;
+    let retries = 0;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const attemptStart = Date.now();
+      try {
+        const response = await this.withConcurrencySlot(nodeId, model, () =>
+          this.forwardMediaWithFallbackTimeout(
+            canonical,
+            nodeId,
+            model,
+            routingMeta,
+            options,
+          ),
+        );
+        this.circuitBreaker.recordSuccess(nodeId, model);
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          response.routing.latency_ms,
+          200,
+        );
+        return { response, lastError: null, retries, fallbackReason: null };
+      } catch (err) {
+        lastError = err as Error;
+        const fallbackReason = this.resolveFallbackReason(lastError);
+        if (lastError instanceof ConcurrencyLimitError) {
+          this.logger.warn(lastError.message);
+          if (!lastError.fallbackAllowed) {
+            throw new GatewayRequestRejectedError(
+              lastError.message,
+              lastError.statusCode,
+            );
+          }
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason: 'concurrency_limited',
+          };
+        }
+
+        const statusCode = err instanceof ProviderError ? err.statusCode : 0;
+        this.routingService.recordTargetResult?.(
+          nodeId,
+          model,
+          Date.now() - attemptStart,
+          statusCode || 0,
+        );
+        const isRetryable = retryConfig.retryable_status.includes(statusCode);
+        const shouldImmediateFallback =
+          this.shouldImmediateFallback(lastError) || fallbackReason === 'timeout';
+        const isLastAttempt = attempt >= maxAttempts - 1;
+
+        if (!isRetryable || isLastAttempt || shouldImmediateFallback) {
+          this.logger.warn(
+            `${canonical.source_format} node ${nodeId} failed (attempt ${attempt + 1}/${maxAttempts}): ${lastError.message}` +
+            (isLastAttempt && attempt > 0 ? ' — retries exhausted' : '') +
+            (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
+          );
+          this.circuitBreaker.recordFailure(nodeId, model);
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason,
+          };
+        }
+
+        retries++;
+        const delay = this.calculateBackoff(
+          attempt,
+          retryConfig,
+          statusCode === 429 ? lastError : undefined,
+        );
+        this.logger.warn(
+          `${canonical.source_format} node ${nodeId} returned ${statusCode} (attempt ${attempt + 1}/${maxAttempts}), ` +
+          `retrying in ${delay}ms...`,
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    return {
+      response: null,
+      lastError,
+      retries,
+      fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+    };
+  }
+
   private shouldImmediateFallback(err: Error): boolean {
     return (
       err instanceof ProviderError &&
@@ -1173,6 +1481,37 @@ export class PipelineService {
       );
     }
     return this.providerClient.forwardEmbeddings(
+      canonical,
+      nodeId,
+      model,
+      routingMeta,
+      { timeoutMs, signal: options.signal },
+    );
+  }
+
+  private forwardMediaWithFallbackTimeout(
+    canonical: CanonicalMediaRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CanonicalMediaResponse> {
+    const timeoutMs = this.resolveFallbackTimeoutMs();
+    if (timeoutMs === undefined) {
+      return this.providerClient.forwardMedia(
+        canonical,
+        nodeId,
+        model,
+        routingMeta,
+        { signal: options.signal },
+      );
+    }
+    return this.providerClient.forwardMedia(
       canonical,
       nodeId,
       model,
@@ -2256,6 +2595,22 @@ export class PipelineService {
     return 0;
   }
 
+  private estimateMediaInputTokens(canonical: CanonicalMediaRequest): number {
+    if (Buffer.isBuffer(canonical.payload)) {
+      const model = canonical.metadata.original_model || canonical.model || '';
+      return Math.max(1, Math.ceil(model.length / 4));
+    }
+
+    const payload = canonical.payload as Record<string, unknown>;
+    const textFields = ['prompt', 'input', 'text'];
+    const text = textFields
+      .map((field) => payload[field])
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n');
+    if (!text) return 1;
+    return Math.max(1, Math.ceil(text.length / 4));
+  }
+
   private validateEmbeddingRequest(canonical: CanonicalEmbeddingRequest): string | null {
     if (!this.isValidEmbeddingInput(canonical.input)) {
       return 'Embeddings input must be a string, string array, token array, or array of token arrays.';
@@ -2265,6 +2620,31 @@ export class PipelineService {
       (!Number.isInteger(canonical.dimensions) || canonical.dimensions <= 0)
     ) {
       return 'Embeddings dimensions must be a positive integer when provided.';
+    }
+    return null;
+  }
+
+  private validateMediaRequest(canonical: CanonicalMediaRequest): string | null {
+    if (!canonical.model || canonical.model.trim().length === 0) {
+      return 'Media model must be a non-empty string or "auto".';
+    }
+    if (canonical.is_multipart) {
+      return null;
+    }
+    if (Buffer.isBuffer(canonical.payload)) {
+      return 'Raw media payloads must use multipart/form-data.';
+    }
+    if (
+      canonical.source_format === 'image_generation' &&
+      typeof canonical.payload.prompt !== 'string'
+    ) {
+      return 'Image generation requests must include a string prompt.';
+    }
+    if (
+      canonical.source_format === 'audio_speech' &&
+      typeof canonical.payload.input !== 'string'
+    ) {
+      return 'Audio speech requests must include a string input.';
     }
     return null;
   }
@@ -2798,6 +3178,11 @@ export class PipelineService {
       case 'chat_completions': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'responses': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'embeddings': return { error: { message, type: 'server_error', code: String(statusCode) } };
+      case 'image_generation':
+      case 'image_edit':
+      case 'audio_transcription':
+      case 'audio_speech':
+        return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'messages': return { type: 'error', error: { type: 'api_error', message } };
       default: return { error: { message } };
     }
@@ -3170,7 +3555,12 @@ export class PipelineService {
     }
     const node = this.config.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return 'unknown';
-    if (node.models.includes(model) || node.embedding_models?.includes(model)) return model;
+    if (
+      node.models.includes(model) ||
+      node.embedding_models?.includes(model) ||
+      node.image_models?.includes(model) ||
+      node.audio_models?.includes(model)
+    ) return model;
     const prefix = node.model_prefixes?.find((value) => model.startsWith(value));
     return prefix ? `${node.id}:${prefix}*` : 'unlisted';
   }
@@ -3178,6 +3568,18 @@ export class PipelineService {
   private modalitiesForLog(canonical: LoggableCanonicalRequest): string[] {
     if (canonical.metadata.source_format === 'embeddings') {
       return ['text'];
+    }
+    if (
+      canonical.metadata.source_format === 'image_generation' ||
+      canonical.metadata.source_format === 'image_edit'
+    ) {
+      return ['vision'];
+    }
+    if (
+      canonical.metadata.source_format === 'audio_transcription' ||
+      canonical.metadata.source_format === 'audio_speech'
+    ) {
+      return ['audio'];
     }
     return Array.from(detectRequestModalities(canonical as CanonicalRequest));
   }
