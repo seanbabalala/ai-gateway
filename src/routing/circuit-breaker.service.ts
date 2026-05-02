@@ -107,6 +107,24 @@ export class CircuitBreakerService {
   }
 
   /**
+   * Record a successful active health probe.
+   * OPEN circuits briefly transition through HALF_OPEN before closing so the
+   * recovery path stays aligned with the normal breaker state machine.
+   */
+  recordProbeSuccess(nodeId: string, model?: string): void {
+    const key = this.buildKey(nodeId, model);
+    const status = this.getStatus(key);
+
+    if (status.state === CircuitState.OPEN) {
+      status.state = CircuitState.HALF_OPEN;
+      status.halfOpenProbes = 0;
+      this.logger.log(`Circuit HALF_OPEN for "${key}" (active probe recovered)`);
+    }
+
+    this.recordSuccess(nodeId, model);
+  }
+
+  /**
    * Record a failed request to a node+model.
    * May trigger OPEN state if threshold is reached.
    */
@@ -134,6 +152,25 @@ export class CircuitBreakerService {
         `Circuit OPENED for "${key}" (${status.consecutiveFailures} consecutive failures)`,
       );
     }
+  }
+
+  /**
+   * Mark a node+model unavailable from an active health probe.
+   * This opens the circuit immediately because probes are already out-of-band
+   * and should prevent routing to a known-unhealthy upstream.
+   */
+  markUnavailable(nodeId: string, model?: string, reason = 'active probe failed'): void {
+    const key = this.buildKey(nodeId, model);
+    const status = this.getStatus(key);
+    status.state = CircuitState.OPEN;
+    status.consecutiveFailures = Math.max(
+      status.consecutiveFailures + 1,
+      this.config.failureThreshold,
+    );
+    status.lastFailureAt = Date.now();
+    status.openedAt = Date.now();
+    status.halfOpenProbes = 0;
+    this.logger.warn(`Circuit OPENED for "${key}" (${reason})`);
   }
 
   /**

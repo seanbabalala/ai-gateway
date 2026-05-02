@@ -108,6 +108,23 @@ export type AuthType = 'bearer' | 'x-api-key';
 
 export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 
+export type HealthCheckMethod = 'HEAD' | 'GET' | 'POST';
+
+export interface NodeHealthCheckConfig {
+  /** Enable active background probes for this node (default: false) */
+  enabled?: boolean;
+  /** Probe interval in seconds (default: 30) */
+  interval_seconds?: number;
+  /** Probe timeout in milliseconds (default: min(node.timeout_ms, 5000)) */
+  timeout_ms?: number;
+  /** Probe HTTP method (default: POST when lightweight_model is set, otherwise HEAD) */
+  method?: HealthCheckMethod;
+  /** Probe path relative to base_url (default: node.endpoint) */
+  path?: string;
+  /** Optional cheap model to probe with a synthetic 1-token request */
+  lightweight_model?: string;
+}
+
 export interface NodeConfig {
   id: string;
   name: string;
@@ -122,6 +139,7 @@ export interface NodeConfig {
   queue_timeout_ms?: number; // Default: 10000 when max_concurrency is set
   queue_policy?: QueuePolicy; // wait (default) | fallback | reject
   headers?: Record<string, string>;
+  health_check?: NodeHealthCheckConfig;
 
   /**
    * Structured capability tags — describe what this node is good at.

@@ -95,6 +95,16 @@ nodes:
     # max_concurrency: 50
     # queue_timeout_ms: 10000
     # queue_policy: wait # wait | fallback | reject
+    # Active health probing is disabled by default. Prefer HEAD/GET against a
+    # cheap provider/proxy readiness endpoint. Use lightweight_model only when
+    # no readiness endpoint exists; probes send a synthetic 1-token request.
+    # health_check:
+    #   enabled: false
+    #   interval_seconds: 30
+    #   timeout_ms: 5000
+    #   method: HEAD        # HEAD | GET | POST
+    #   path: /healthz      # Defaults to endpoint when omitted
+    #   lightweight_model: gpt-4o-mini
     # modalities: ["text", "vision"]    # Explicit modality declaration (optional)
     #   If omitted, modalities are inferred from model names.
     #   Valid values: "text", "vision", "audio"

@@ -89,6 +89,8 @@ describe('Dashboard (e2e)', () => {
     const nodeIds = res.body.nodes.map((n: any) => n.id);
     expect(nodeIds).toContain('mock-openai');
     expect(nodeIds).toContain('mock-claude');
+    expect(res.body.nodes[0].active_probe).toBeDefined();
+    expect(res.body.nodes[0].active_probe.status).toBeDefined();
   });
 
   it('POST /api/dashboard/nodes → create + GET verify + DELETE', async () => {

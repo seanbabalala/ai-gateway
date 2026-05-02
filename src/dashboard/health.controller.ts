@@ -12,6 +12,7 @@ import { Controller, Get, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
+import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
 import { BudgetService, BudgetStatus } from '../budget/budget.service';
 
 @Controller()
@@ -23,6 +24,7 @@ export class HealthController {
     private readonly config: ConfigService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly concurrencyLimiter: ConcurrencyLimiterService,
+    private readonly activeHealth: ActiveHealthProbeService,
     private readonly budgetService: BudgetService,
   ) {}
 
@@ -32,6 +34,7 @@ export class HealthController {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
       const concurrency = this.concurrencyLimiter.getNodeStats(node);
+      const activeProbe = this.activeHealth.getNodeStatus(node.id);
 
       // Build per-model circuit info
       const models: Record<string, {
@@ -58,8 +61,9 @@ export class HealthController {
         lastFailureAt: cbStatus.lastFailureAt
           ? new Date(cbStatus.lastFailureAt).toISOString()
           : null,
-        healthy: cbStatus.state !== CircuitState.OPEN,
         concurrency,
+        healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
+        active_probe: activeProbe,
         models,
       };
     });

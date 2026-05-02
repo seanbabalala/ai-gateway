@@ -82,14 +82,15 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 - **Circuit breaker** — automatically stops sending requests to failing providers
 - **Per-node concurrency limits** — cap in-flight upstream requests and choose whether overflow waits, falls back, or returns 429
-- **Health monitoring** — real-time health status for all configured nodes
+- **Active health probing** — optional per-node probes catch upstream outages before user traffic hits them
+- **Health monitoring** — real-time health, probe, and circuit breaker status for all configured nodes
 - **Graceful degradation** — the system continues working even when some providers are down
 
 ### Real-Time Dashboard
 
 - **Live metrics** — total calls, tokens, cost, latency at a glance
 - **SSE log stream** — see requests flowing through the gateway in real time
-- **Node health** — monitor provider status, circuit breaker state, current concurrency, and queue depth
+- **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Routing visualization** — see how tiers, scoring thresholds, and fallback chains are configured
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Light / Dark theme** — system-aware with manual toggle
@@ -382,6 +383,13 @@ nodes:
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
     queue_policy: wait # wait (default) | fallback | reject
+    health_check: # Optional active probe, disabled by default
+      enabled: false
+      interval_seconds: 30
+      timeout_ms: 5000
+      method: HEAD # HEAD | GET | POST
+      path: /healthz # Or omit and use endpoint
+      # lightweight_model: gpt-4o-mini # For synthetic 1-token POST probes
     tags: ["code", "reasoning"] # Capability tags for domain routing
     model_aliases: # User-friendly shortcuts
       gpt4: gpt-4o
@@ -407,6 +415,33 @@ Set `max_concurrency` on a node to limit concurrent upstream requests across all
 | `reject` | Return `429` without trying fallbacks |
 
 Slots are released after successful responses, provider errors, stream completion, or stream interruption. `/health`, `/api/dashboard/nodes`, and OpenTelemetry gauges expose `active` concurrency and queued depth per node.
+
+### Active Health Probing
+
+Active health probes are configured per node and are disabled by default. A probe never sends real user content; `POST` probes use a tiny synthetic `"health check"` prompt and `max_tokens`/`max_output_tokens: 1`.
+
+When a probe fails or times out, SiftGate immediately opens that node's model circuits so routing can avoid it. A later successful probe records recovery and closes the circuits again. `/health` and `/api/dashboard/nodes` include `active_probe.status`, `last_checked_at`, and `failure_reason`.
+
+Use `HEAD`/`GET` against a cheap readiness endpoint when your provider or proxy exposes one:
+
+```yaml
+health_check:
+  enabled: true
+  interval_seconds: 30
+  timeout_ms: 5000
+  method: HEAD
+  path: /healthz
+```
+
+For providers without a readiness endpoint, set a cheap `lightweight_model` for synthetic `POST` probes:
+
+```yaml
+health_check:
+  enabled: true
+  interval_seconds: 60
+  timeout_ms: 5000
+  lightweight_model: gpt-4o-mini
+```
 
 ### Routing
 
@@ -526,11 +561,11 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `POST` | `/api/dashboard/config/reload`    | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/api-keys`         | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`         | Create a Gateway API key                                                                           |
-| `GET`  | `/api/dashboard/nodes`            | Node health, circuit breaker status, concurrency, and queue depth                                   |
+| `GET`  | `/api/dashboard/nodes`            | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
 | `POST` | `/api/dashboard/nodes/:id/reset`  | Reset circuit breaker                                                                              |
 | `GET`  | `/api/dashboard/budget`           | Budget status; supports `api_key_id` for generated keys and `api_key` for legacy YAML keys         |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset one budget rule by `budget_rule.id`                                                          |
-| `GET`  | `/health`                         | Health check with per-node circuit and concurrency status                                          |
+| `GET`  | `/health`                         | Gateway, budget, node circuit, active probe, and concurrency health                                |
 
 ## Dashboard
 

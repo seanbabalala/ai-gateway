@@ -37,6 +37,10 @@ describe('Health (e2e)', () => {
     expect(node.protocol).toBeDefined();
     expect(typeof node.healthy).toBe('boolean');
     expect(node.circuit).toBeDefined();
+    expect(node.active_probe).toBeDefined();
+    expect(node.active_probe.status).toBeDefined();
+    expect(node.active_probe.last_checked_at).toBeDefined();
+    expect(node.active_probe.failure_reason).toBeDefined();
   });
 
   it('GET /health — response includes helmet security headers', async () => {

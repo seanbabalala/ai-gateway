@@ -12,6 +12,9 @@
 - Added atomic configuration reload snapshots with rollback on parse or validation failure.
 - Added `SIGHUP` reload support, optional `hot_reload.watch` file watching with debounce, and EventBus topics `config.reload.success` / `config.reload.failed`.
 - Added reload-aware budget and optional control-plane synchronization so runtime services use the latest committed config.
+- Added optional per-node active health probing with `enabled`, `interval_seconds`, `timeout_ms`, `method`, `path`, and `lightweight_model` configuration.
+- Added probe-to-circuit-breaker integration so failed probes immediately open node/model circuits and successful probes close recovered circuits.
+- Added active probe status, `last_checked_at`, and `failure_reason` to `/health` and Dashboard node responses.
 
 ## 0.1.0 - Open Source Gateway
 
