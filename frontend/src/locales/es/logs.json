@@ -5,6 +5,7 @@
   "detail.apiKey": "API Key",
   "detail.error": "Error",
   "detail.fallback": "Fallback",
+  "detail.fallbackReason": "Motivo de fallback",
   "detail.requestId": "Request ID",
   "detail.score": "Puntuación",
   "detail.sessionKey": "Session Key",

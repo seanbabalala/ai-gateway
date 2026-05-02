@@ -117,6 +117,62 @@ describe('config validator', () => {
       expect.arrayContaining(['duplicate_model_id', 'missing_model_pricing']),
     );
   });
+
+  it('validates fallback policy shape and cost/race safety requirements', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+          fallback_policy: {
+            immediate_429: 'yes',
+            timeout: { enabled: true, race_fallback: true },
+            structured_output: { enabled: 'yes' },
+            cost_downgrade: { enabled: true },
+          },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o': { input: 2.5, output: 10 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_fallback_policy',
+        'fallback_race_requires_threshold',
+        'invalid_structured_output_fallback_policy',
+        'cost_downgrade_requires_limit',
+      ]),
+    );
+  });
 });
 
 describe('siftgate validate CLI', () => {

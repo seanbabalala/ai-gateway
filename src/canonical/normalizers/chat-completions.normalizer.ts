@@ -50,6 +50,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
           | string
           | undefined,
         raw_headers: headers,
+        raw_body: req,
       },
     };
   }

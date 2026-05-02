@@ -5,6 +5,7 @@
   "detail.apiKey": "API Key",
   "detail.error": "錯誤",
   "detail.fallback": "降級",
+  "detail.fallbackReason": "降級原因",
   "detail.requestId": "請求 ID",
   "detail.score": "分數",
   "detail.sessionKey": "工作階段 Key",

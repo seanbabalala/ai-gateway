@@ -104,7 +104,7 @@ The router then applies tier config, domain preferences, modality compatibility,
 The data plane protects request flow with:
 
 - retry with backoff
-- provider fallback chains
+- provider fallback chains and optional v0.3 fallback policies for 429, timeout, structured-output validation, and cost downgrade
 - model-level circuit breakers
 - prompt cache
 - graceful shutdown
@@ -124,7 +124,7 @@ The gateway records call logs with:
 - estimated cost
 - latency
 - status code
-- fallback status
+- fallback status and fallback reason
 - retry count
 - cache token fields
 - experiment group

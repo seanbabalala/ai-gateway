@@ -77,6 +77,16 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
     setDashboardPasswordHash: jest.fn(),
     nodes: [],
     routing: { tiers: {}, scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 } },
+    fallbackPolicy: {
+      immediate_429: false,
+      timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },
+      structured_output: {
+        enabled: false,
+        fallback_on_parse_error: true,
+        fallback_on_schema_error: true,
+      },
+      cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
+    },
     budget: { daily_token_limit: 1_000_000, daily_cost_limit: 10, alert_threshold: 0.8 },
     cache: {
       enabled: true,

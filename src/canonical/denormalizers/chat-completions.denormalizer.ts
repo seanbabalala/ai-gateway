@@ -50,7 +50,47 @@ export class ChatCompletionsDenormalizer implements RequestDenormalizer {
     if (canonical.top_p !== undefined) body.top_p = canonical.top_p;
     if (canonical.stop !== undefined) body.stop = canonical.stop;
 
+    const responseFormat = this.resolveResponseFormat(canonical);
+    if (responseFormat) body.response_format = responseFormat;
+
     return body;
+  }
+
+  private resolveResponseFormat(canonical: CanonicalRequest): unknown {
+    const raw = this.rawBody(canonical);
+    if (raw?.response_format) return raw.response_format;
+
+    const text = raw?.text;
+    const format =
+      text && typeof text === 'object' && !Array.isArray(text)
+        ? (text as Record<string, unknown>).format
+        : undefined;
+    if (!format || typeof format !== 'object' || Array.isArray(format)) {
+      return undefined;
+    }
+
+    const typedFormat = format as Record<string, unknown>;
+    if (typedFormat.type === 'json_schema') {
+      return {
+        type: 'json_schema',
+        json_schema: {
+          name: typedFormat.name || 'response',
+          schema: typedFormat.schema,
+          strict: typedFormat.strict,
+        },
+      };
+    }
+    if (typedFormat.type === 'json_object') {
+      return { type: 'json_object' };
+    }
+    return undefined;
+  }
+
+  private rawBody(canonical: CanonicalRequest): Record<string, unknown> | null {
+    const raw = canonical.metadata.raw_body;
+    return raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : null;
   }
 
   private denormalizeMessage(msg: CanonicalMessage): Record<string, unknown> {

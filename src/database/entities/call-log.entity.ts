@@ -14,6 +14,7 @@ import {
 @Index(['experiment_group'])
 @Index(['api_key_name'])
 @Index(['api_key_id'])
+@Index(['fallback_reason'])
 export class CallLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -56,6 +57,9 @@ export class CallLog {
 
   @Column({ type: 'boolean', default: false })
   is_fallback!: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  fallback_reason!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   session_key!: string | null;

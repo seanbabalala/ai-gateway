@@ -53,6 +53,8 @@ hardening visible without blocking local development.
   `targets` entries.
 - Split weights, which must sum to `100`.
 - `routing.domain_preferences` references to known node ids.
+- `routing.fallback_policy` shape, including explicit timeout race thresholds
+  and cost-downgrade limits when those policies are enabled.
 - Pricing entries with numeric `input` and `output` values.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.

@@ -59,6 +59,10 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
 function isLocalhostUrl(url: URL): boolean {
   return ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
 }
@@ -725,7 +729,214 @@ function validateRouting(
     }
   }
 
+  validateFallbackPolicy(routing.fallback_policy, issues);
   validateDomainPreferences(routing.domain_preferences, nodes, issues);
+}
+
+function validateFallbackPolicy(
+  fallbackPolicy: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (fallbackPolicy === undefined) return;
+  const basePath = 'routing.fallback_policy';
+  if (!isRecord(fallbackPolicy)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_fallback_policy',
+        'routing.fallback_policy must be an object when configured.',
+        basePath,
+      ),
+    );
+    return;
+  }
+
+  if (
+    fallbackPolicy.immediate_429 !== undefined &&
+    !isBoolean(fallbackPolicy.immediate_429)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_fallback_policy',
+        'routing.fallback_policy.immediate_429 must be a boolean.',
+        `${basePath}.immediate_429`,
+      ),
+    );
+  }
+
+  validateTimeoutFallbackPolicy(fallbackPolicy.timeout, issues);
+  validateStructuredOutputFallbackPolicy(
+    fallbackPolicy.structured_output,
+    issues,
+  );
+  validateCostDowngradeFallbackPolicy(
+    fallbackPolicy.cost_downgrade,
+    issues,
+  );
+}
+
+function validateTimeoutFallbackPolicy(
+  timeoutPolicy: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (timeoutPolicy === undefined) return;
+  const basePath = 'routing.fallback_policy.timeout';
+  if (!isRecord(timeoutPolicy)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_fallback_timeout_policy',
+        'routing.fallback_policy.timeout must be an object.',
+        basePath,
+      ),
+    );
+    return;
+  }
+
+  if (
+    timeoutPolicy.enabled !== undefined &&
+    !isBoolean(timeoutPolicy.enabled)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_fallback_timeout_policy',
+        'routing.fallback_policy.timeout.enabled must be a boolean.',
+        `${basePath}.enabled`,
+      ),
+    );
+  }
+  if (
+    timeoutPolicy.race_fallback !== undefined &&
+    !isBoolean(timeoutPolicy.race_fallback)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_fallback_timeout_policy',
+        'routing.fallback_policy.timeout.race_fallback must be a boolean.',
+        `${basePath}.race_fallback`,
+      ),
+    );
+  }
+  if (
+    timeoutPolicy.threshold_ms !== undefined &&
+    (!isFiniteNumber(timeoutPolicy.threshold_ms) ||
+      timeoutPolicy.threshold_ms <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_fallback_timeout_policy',
+        'routing.fallback_policy.timeout.threshold_ms must be a positive number.',
+        `${basePath}.threshold_ms`,
+      ),
+    );
+  }
+  if (timeoutPolicy.race_fallback === true && timeoutPolicy.threshold_ms === undefined) {
+    issues.push(
+      issue(
+        'error',
+        'fallback_race_requires_threshold',
+        'routing.fallback_policy.timeout.race_fallback requires an explicit threshold_ms because it can create extra upstream cost.',
+        `${basePath}.threshold_ms`,
+      ),
+    );
+  }
+}
+
+function validateStructuredOutputFallbackPolicy(
+  structuredPolicy: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (structuredPolicy === undefined) return;
+  const basePath = 'routing.fallback_policy.structured_output';
+  if (!isRecord(structuredPolicy)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_structured_output_fallback_policy',
+        'routing.fallback_policy.structured_output must be an object.',
+        basePath,
+      ),
+    );
+    return;
+  }
+
+  for (const key of [
+    'enabled',
+    'fallback_on_parse_error',
+    'fallback_on_schema_error',
+  ]) {
+    if (
+      structuredPolicy[key] !== undefined &&
+      !isBoolean(structuredPolicy[key])
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_structured_output_fallback_policy',
+          `routing.fallback_policy.structured_output.${key} must be a boolean.`,
+          `${basePath}.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateCostDowngradeFallbackPolicy(
+  costPolicy: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (costPolicy === undefined) return;
+  const basePath = 'routing.fallback_policy.cost_downgrade';
+  if (!isRecord(costPolicy)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cost_downgrade_policy',
+        'routing.fallback_policy.cost_downgrade must be an object.',
+        basePath,
+      ),
+    );
+    return;
+  }
+
+  if (costPolicy.enabled !== undefined && !isBoolean(costPolicy.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cost_downgrade_policy',
+        'routing.fallback_policy.cost_downgrade.enabled must be a boolean.',
+        `${basePath}.enabled`,
+      ),
+    );
+  }
+  if (
+    costPolicy.max_estimated_cost_usd !== undefined &&
+    (!isFiniteNumber(costPolicy.max_estimated_cost_usd) ||
+      costPolicy.max_estimated_cost_usd <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cost_downgrade_policy',
+        'routing.fallback_policy.cost_downgrade.max_estimated_cost_usd must be a positive number.',
+        `${basePath}.max_estimated_cost_usd`,
+      ),
+    );
+  }
+  if (costPolicy.enabled === true && costPolicy.max_estimated_cost_usd === undefined) {
+    issues.push(
+      issue(
+        'error',
+        'cost_downgrade_requires_limit',
+        'routing.fallback_policy.cost_downgrade.enabled requires max_estimated_cost_usd.',
+        `${basePath}.max_estimated_cost_usd`,
+      ),
+    );
+  }
 }
 
 function validateTier(
@@ -746,9 +957,12 @@ function validateTier(
     return;
   }
 
-  validateRouteTargetShape(tierValue.primary, `${tierPath}.primary`, issues);
+  const usesTargets = tierValue.targets !== undefined;
+  if (!usesTargets || tierValue.primary !== undefined) {
+    validateRouteTargetShape(tierValue.primary, `${tierPath}.primary`, issues);
+  }
 
-  if (!Array.isArray(tierValue.fallbacks)) {
+  if (!usesTargets && !Array.isArray(tierValue.fallbacks)) {
     issues.push(
       issue(
         'error',
@@ -757,7 +971,18 @@ function validateTier(
         `${tierPath}.fallbacks`,
       ),
     );
-  } else {
+  } else if (tierValue.fallbacks !== undefined) {
+    if (!Array.isArray(tierValue.fallbacks)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'Routing tier fallbacks must be an array.',
+          `${tierPath}.fallbacks`,
+        ),
+      );
+      return;
+    }
     tierValue.fallbacks.forEach((fallback, index) =>
       validateRouteTargetShape(
         fallback,

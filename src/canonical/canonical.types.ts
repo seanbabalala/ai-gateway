@@ -119,6 +119,7 @@ export interface CanonicalResponse {
     latency_ms: number;
     score: number;
     is_fallback: boolean;
+    fallback_reason?: string | null;
   };
 }
 

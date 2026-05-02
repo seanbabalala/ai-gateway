@@ -6,7 +6,12 @@ import { Response as ExpressResponse } from 'express';
 import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
-import { RetryConfig, ModelPricing, NodeConfig } from '../config/gateway.config';
+import {
+  RetryConfig,
+  ModelPricing,
+  NodeConfig,
+  RouteTarget,
+} from '../config/gateway.config';
 import {
   CanonicalRequest,
   CanonicalResponse,
@@ -60,6 +65,41 @@ interface SmartRouteResolution {
   modalityHints?: string[];
   experimentGroup: string | null;
   experimentGroupsByTarget: Record<string, string>;
+}
+
+type FallbackReason =
+  | 'upstream_error'
+  | 'rate_limited'
+  | 'timeout'
+  | 'structured_output_parse_failed'
+  | 'structured_output_schema_failed'
+  | 'cost_downgrade'
+  | 'concurrency_limited';
+
+interface NodeAttemptResult {
+  response: CanonicalResponse | null;
+  lastError: Error | null;
+  retries: number;
+  fallbackReason: FallbackReason | null;
+}
+
+interface PrimaryAttemptResult extends NodeAttemptResult {
+  usedTarget: RouteTarget;
+  usedFallback: boolean;
+  fallbackFromNode: string | null;
+  remainingFallbacks: RouteTarget[];
+}
+
+class StructuredOutputValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly fallbackReason:
+      | 'structured_output_parse_failed'
+      | 'structured_output_schema_failed',
+  ) {
+    super(message);
+    this.name = 'StructuredOutputValidationError';
+  }
 }
 
 class GatewayRequestRejectedError extends Error {
@@ -207,48 +247,76 @@ export class PipelineService {
             await this.resolveSmartRoute(canonical, store);
           rootSpan.setAttributes({ 'gateway.tier': tier, 'gateway.score': score });
           const retryConfig = this.config.retry;
+          const costDowngrade = this.applyCostDowngrade(canonical, route, tier);
+          const activeRoute = costDowngrade.route;
+          const originalPrimary = route.primary;
 
           let canonicalResponse: CanonicalResponse | null = null;
-          let usedNodeId = route.primary.node;
-          let usedModel = route.primary.model;
-          let isFallback = false;
+          let usedNodeId = activeRoute.primary.node;
+          let usedModel = activeRoute.primary.model;
+          let isFallback = costDowngrade.reason !== null;
           let lastError: Error | null = null;
           let totalRetries = 0;
+          let fallbackReason: FallbackReason | null = costDowngrade.reason;
+          let fallbackFromNode: string | null = costDowngrade.reason
+            ? originalPrimary.node
+            : null;
+          let fallbacksToTry = activeRoute.fallbacks;
 
           // Try primary with retries
           currentPhase = 'preUpstream';
-          const primaryResult = await this.tryNodeWithRetry(
-            canonical, route.primary.node, route.primary.model,
-            { tier, score, is_fallback: false }, retryConfig, store,
+          const primaryResult = await this.tryPrimaryWithOptionalTimeoutRace(
+            canonical,
+            activeRoute.primary,
+            fallbacksToTry,
+            { tier, score, is_fallback: isFallback, fallback_reason: fallbackReason },
+            retryConfig,
+            store,
           );
           totalRetries += primaryResult.retries;
-          usedNodeId = route.primary.node;
-          usedModel = route.primary.model;
+          usedNodeId = primaryResult.usedTarget.node;
+          usedModel = primaryResult.usedTarget.model;
+          fallbacksToTry = primaryResult.remainingFallbacks;
 
           if (primaryResult.response) {
             canonicalResponse = primaryResult.response;
+            isFallback = isFallback || primaryResult.usedFallback;
+            fallbackReason = primaryResult.fallbackReason || fallbackReason;
+            fallbackFromNode = primaryResult.fallbackFromNode || fallbackFromNode;
           } else {
             lastError = primaryResult.lastError;
+            fallbackReason = primaryResult.fallbackReason;
+            fallbackFromNode = primaryResult.fallbackFromNode || activeRoute.primary.node;
           }
 
           // Try fallbacks with retries
-          if (!canonicalResponse && route.fallbacks.length > 0) {
-            for (const fb of route.fallbacks) {
+          if (!canonicalResponse && fallbacksToTry.length > 0) {
+            for (const fb of fallbacksToTry) {
               this.logger.log(`Trying fallback: ${fb.node} (${fb.model})`);
               usedNodeId = fb.node;
               usedModel = fb.model;
               currentPhase = 'preUpstream';
               const fbResult = await this.tryNodeWithRetry(
                 canonical, fb.node, fb.model,
-                { tier, score, is_fallback: true }, retryConfig, store,
+                {
+                  tier,
+                  score,
+                  is_fallback: true,
+                  fallback_reason: fallbackReason || 'upstream_error',
+                },
+                retryConfig,
+                store,
               );
               totalRetries += fbResult.retries;
 
               if (fbResult.response) {
                 canonicalResponse = fbResult.response;
                 isFallback = true;
+                fallbackReason = fallbackReason || 'upstream_error';
                 break;
               }
+              fallbackFromNode = fb.node;
+              fallbackReason = fbResult.fallbackReason || fallbackReason;
               lastError = fbResult.lastError;
             }
           }
@@ -279,6 +347,8 @@ export class PipelineService {
                 latencyMs: Date.now() - startTime,
                 retryCount: totalRetries,
                 experimentGroup: resolvedExperimentGroup,
+                fallbackReason,
+                fallbackFromNode,
               });
               return {
                 body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
@@ -290,7 +360,8 @@ export class PipelineService {
               statusCode: failureStatus,
               isFallback, latencyMs: 0, usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
               retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
-              domainHint, modalityHints });
+              domainHint, modalityHints, fallbackReason,
+              fallbackFromNode });
             return {
               body: this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
               statusCode: failureStatus,
@@ -342,6 +413,7 @@ export class PipelineService {
             'gateway.node': usedNodeId,
             'gateway.model': usedModel,
             'gateway.is_fallback': isFallback,
+            'gateway.fallback_reason': fallbackReason || '',
             'gen_ai.request.model': usedModel,
             'gen_ai.usage.input_tokens': canonicalResponse.usage.input_tokens,
             'gen_ai.usage.output_tokens': canonicalResponse.usage.output_tokens,
@@ -362,7 +434,8 @@ export class PipelineService {
           await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
             statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
             usage: canonicalResponse.usage, error: null, retryCount: totalRetries,
-            experimentGroup: resolvedExperimentGroup, domainHint, modalityHints });
+            experimentGroup: resolvedExperimentGroup, domainHint, modalityHints,
+            fallbackReason, fallbackFromNode });
 
           return { body: responseBody, statusCode: 200 };
         } catch (err) {
@@ -408,14 +481,167 @@ export class PipelineService {
   // Retry Helper — try a single node with retries + backoff
   // ══════════════════════════════════════════════════════
 
+  private async tryPrimaryWithOptionalTimeoutRace(
+    canonical: CanonicalRequest,
+    primary: RouteTarget,
+    fallbacks: RouteTarget[],
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    retryConfig: RetryConfig,
+    store?: Map<string, unknown>,
+  ): Promise<PrimaryAttemptResult> {
+    const primaryPromise = this.tryNodeWithRetry(
+      canonical,
+      primary.node,
+      primary.model,
+      routingMeta,
+      retryConfig,
+      store,
+    );
+
+    const timeoutPolicy = this.config.fallbackPolicy.timeout;
+    const shouldRace =
+      timeoutPolicy.enabled &&
+      timeoutPolicy.race_fallback &&
+      timeoutPolicy.threshold_ms !== undefined &&
+      fallbacks.length > 0;
+
+    if (!shouldRace) {
+      const result = await primaryPromise;
+      return {
+        ...result,
+        usedTarget: primary,
+        usedFallback: false,
+        fallbackFromNode: result.fallbackReason ? primary.node : null,
+        remainingFallbacks: fallbacks,
+      };
+    }
+
+    const primaryWrapped = primaryPromise.then((result) => ({
+      kind: 'primary' as const,
+      result,
+    }));
+    const timeoutWrapped = this.sleep(timeoutPolicy.threshold_ms!).then(() => ({
+      kind: 'timeout' as const,
+    }));
+    const first = await Promise.race([primaryWrapped, timeoutWrapped]);
+    if (first.kind === 'primary') {
+      return {
+        ...first.result,
+        usedTarget: primary,
+        usedFallback: false,
+        fallbackFromNode: first.result.fallbackReason ? primary.node : null,
+        remainingFallbacks: fallbacks,
+      };
+    }
+
+    const fallback = fallbacks[0];
+    this.logger.warn(
+      `Timeout race fallback: ${primary.node}/${primary.model} exceeded ` +
+        `${timeoutPolicy.threshold_ms}ms; starting ${fallback.node}/${fallback.model}`,
+    );
+
+    const fallbackPromise = this.tryNodeWithRetry(
+      canonical,
+      fallback.node,
+      fallback.model,
+      {
+        ...routingMeta,
+        is_fallback: true,
+        fallback_reason: 'timeout',
+      },
+      retryConfig,
+      store,
+    );
+    primaryPromise.catch(() => undefined);
+    fallbackPromise.catch(() => undefined);
+
+    const fallbackWrapped = fallbackPromise.then((result) => ({
+      kind: 'fallback' as const,
+      result,
+    }));
+    const winner = await Promise.race([primaryWrapped, fallbackWrapped]);
+    const remainingFallbacks = fallbacks.slice(1);
+
+    if (winner.kind === 'fallback') {
+      if (winner.result.response) {
+        return {
+          ...winner.result,
+          usedTarget: fallback,
+          usedFallback: true,
+          fallbackReason: 'timeout',
+          fallbackFromNode: primary.node,
+          remainingFallbacks,
+        };
+      }
+      const primaryResult = await primaryPromise;
+      if (primaryResult.response) {
+        return {
+          ...primaryResult,
+          usedTarget: primary,
+          usedFallback: false,
+          fallbackFromNode: primaryResult.fallbackReason ? primary.node : null,
+          remainingFallbacks,
+        };
+      }
+      return {
+        ...winner.result,
+        usedTarget: fallback,
+        usedFallback: true,
+        fallbackReason: winner.result.fallbackReason || 'timeout',
+        fallbackFromNode: primary.node,
+        remainingFallbacks,
+      };
+    }
+
+    if (winner.result.response) {
+      return {
+        ...winner.result,
+        usedTarget: primary,
+        usedFallback: false,
+        fallbackFromNode: winner.result.fallbackReason ? primary.node : null,
+        remainingFallbacks,
+      };
+    }
+    const fallbackResult = await fallbackPromise;
+    if (fallbackResult.response) {
+      return {
+        ...fallbackResult,
+        usedTarget: fallback,
+        usedFallback: true,
+        fallbackReason: 'timeout',
+        fallbackFromNode: primary.node,
+        remainingFallbacks,
+      };
+    }
+
+    return {
+      ...fallbackResult,
+      usedTarget: fallback,
+      usedFallback: true,
+      fallbackReason: fallbackResult.fallbackReason || 'timeout',
+      fallbackFromNode: primary.node,
+      remainingFallbacks,
+    };
+  }
+
   private async tryNodeWithRetry(
     canonical: CanonicalRequest,
     nodeId: string,
     model: string,
-    routingMeta: { tier: Tier; score: number; is_fallback: boolean },
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
     retryConfig: RetryConfig,
     store?: Map<string, unknown>,
-  ): Promise<{ response: CanonicalResponse | null; lastError: Error | null; retries: number }> {
+  ): Promise<NodeAttemptResult> {
     const maxAttempts = 1 + retryConfig.max_retries; // 1 initial + N retries
     let lastError: Error | null = null;
     let retries = 0;
@@ -433,6 +659,7 @@ export class PipelineService {
           response: preUpstreamResult.shortCircuit,
           lastError: null,
           retries,
+          fallbackReason: null,
         };
       }
       requestForNode = preUpstreamResult.request;
@@ -445,13 +672,14 @@ export class PipelineService {
           nodeId,
           model,
           () =>
-            this.providerClient.forward(
+            this.forwardWithFallbackTimeout(
               requestForNode,
               nodeId,
               model,
               routingMeta,
             ),
         );
+        this.assertStructuredOutputResponse(requestForNode, response);
         this.circuitBreaker.recordSuccess(nodeId, model);
         this.routingService.recordTargetResult?.(
           nodeId,
@@ -459,9 +687,10 @@ export class PipelineService {
           response.routing.latency_ms,
           200,
         );
-        return { response, lastError: null, retries };
+        return { response, lastError: null, retries, fallbackReason: null };
       } catch (err) {
         lastError = err as Error;
+        const fallbackReason = this.resolveFallbackReason(lastError);
         if (lastError instanceof ConcurrencyLimitError) {
           this.logger.warn(lastError.message);
           if (!lastError.fallbackAllowed) {
@@ -470,7 +699,12 @@ export class PipelineService {
               lastError.statusCode,
             );
           }
-          return { response: null, lastError, retries };
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason: 'concurrency_limited',
+          };
         }
         const statusCode = err instanceof ProviderError ? err.statusCode : 0;
         this.routingService.recordTargetResult?.(
@@ -480,16 +714,26 @@ export class PipelineService {
           statusCode || 0,
         );
         const isRetryable = retryConfig.retryable_status.includes(statusCode);
+        const shouldImmediateFallback =
+          this.shouldImmediateFallback(lastError) || fallbackReason === 'timeout';
         const isLastAttempt = attempt >= maxAttempts - 1;
 
-        if (!isRetryable || isLastAttempt) {
+        if (!isRetryable || isLastAttempt || shouldImmediateFallback) {
           // Not retryable or exhausted retries — record failure and give up
           this.logger.warn(
             `Node ${nodeId} failed (attempt ${attempt + 1}/${maxAttempts}): ${lastError.message}` +
-            (isLastAttempt && attempt > 0 ? ' — retries exhausted' : ''),
+            (isLastAttempt && attempt > 0 ? ' — retries exhausted' : '') +
+            (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
           );
-          this.circuitBreaker.recordFailure(nodeId, model);
-          return { response: null, lastError, retries };
+          if (!(lastError instanceof StructuredOutputValidationError)) {
+            this.circuitBreaker.recordFailure(nodeId, model);
+          }
+          return {
+            response: null,
+            lastError,
+            retries,
+            fallbackReason,
+          };
         }
 
         // Retryable — backoff and retry
@@ -503,7 +747,284 @@ export class PipelineService {
       }
     }
 
-    return { response: null, lastError, retries };
+    return {
+      response: null,
+      lastError,
+      retries,
+      fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+    };
+  }
+
+  private shouldImmediateFallback(err: Error): boolean {
+    return (
+      err instanceof ProviderError &&
+      err.statusCode === 429 &&
+      this.config.fallbackPolicy.immediate_429
+    );
+  }
+
+  private resolveFallbackReason(err: Error): FallbackReason {
+    if (err instanceof ConcurrencyLimitError) return 'concurrency_limited';
+    if (err instanceof StructuredOutputValidationError) {
+      return err.fallbackReason;
+    }
+    if (err instanceof ProviderError) {
+      if (err.statusCode === 429 || err.failureType === 'rate_limited') {
+        return 'rate_limited';
+      }
+      if (err.failureType === 'timeout') return 'timeout';
+    }
+    return 'upstream_error';
+  }
+
+  private resolveFallbackTimeoutMs(): number | undefined {
+    const timeoutPolicy = this.config.fallbackPolicy.timeout;
+    if (!timeoutPolicy.enabled) return undefined;
+    if (timeoutPolicy.race_fallback) return undefined;
+    return timeoutPolicy.threshold_ms;
+  }
+
+  private forwardWithFallbackTimeout(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+  ): Promise<CanonicalResponse> {
+    const timeoutMs = this.resolveFallbackTimeoutMs();
+    if (timeoutMs === undefined) {
+      return this.providerClient.forward(
+        canonical,
+        nodeId,
+        model,
+        routingMeta,
+      );
+    }
+    return this.providerClient.forward(
+      canonical,
+      nodeId,
+      model,
+      routingMeta,
+      { timeoutMs },
+    );
+  }
+
+  private forwardStreamWithFallbackTimeout(
+    canonical: CanonicalRequest,
+    nodeId: string,
+    model: string,
+  ): AsyncGenerator<CanonicalStreamEvent> {
+    const timeoutMs = this.resolveFallbackTimeoutMs();
+    if (timeoutMs === undefined) {
+      return this.providerClient.forwardStream(canonical, nodeId, model);
+    }
+    return this.providerClient.forwardStream(
+      canonical,
+      nodeId,
+      model,
+      { timeoutMs },
+    );
+  }
+
+  private assertStructuredOutputResponse(
+    canonical: CanonicalRequest,
+    response: CanonicalResponse,
+  ): void {
+    const policy = this.config.fallbackPolicy.structured_output;
+    if (!policy.enabled) return;
+
+    const intent = this.extractStructuredOutputIntent(canonical);
+    if (!intent) return;
+
+    const text = response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => (block as { text: string }).text)
+      .join('')
+      .trim();
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      if (policy.fallback_on_parse_error) {
+        throw new StructuredOutputValidationError(
+          'Structured output response was not valid JSON.',
+          'structured_output_parse_failed',
+        );
+      }
+      return;
+    }
+
+    if (intent.schema && policy.fallback_on_schema_error) {
+      const errors = this.validateSimpleJsonSchema(parsed, intent.schema);
+      if (errors.length > 0) {
+        throw new StructuredOutputValidationError(
+          `Structured output response failed schema validation: ${errors.join('; ')}`,
+          'structured_output_schema_failed',
+        );
+      }
+    }
+  }
+
+  private extractStructuredOutputIntent(
+    canonical: CanonicalRequest,
+  ): { schema?: Record<string, unknown> } | null {
+    const raw = canonical.metadata.raw_body;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const body = raw as Record<string, unknown>;
+
+    const responseFormat = body.response_format;
+    if (
+      responseFormat &&
+      typeof responseFormat === 'object' &&
+      !Array.isArray(responseFormat)
+    ) {
+      const typedFormat = responseFormat as Record<string, unknown>;
+      if (typedFormat.type === 'json_object') return {};
+      if (typedFormat.type === 'json_schema') {
+        const jsonSchema =
+          typedFormat.json_schema &&
+          typeof typedFormat.json_schema === 'object' &&
+          !Array.isArray(typedFormat.json_schema)
+            ? (typedFormat.json_schema as Record<string, unknown>)
+            : {};
+        const schema = jsonSchema.schema;
+        return schema && typeof schema === 'object' && !Array.isArray(schema)
+          ? { schema: schema as Record<string, unknown> }
+          : {};
+      }
+    }
+
+    const text = body.text;
+    const textFormat =
+      text && typeof text === 'object' && !Array.isArray(text)
+        ? (text as Record<string, unknown>).format
+        : undefined;
+    if (
+      textFormat &&
+      typeof textFormat === 'object' &&
+      !Array.isArray(textFormat)
+    ) {
+      const typedFormat = textFormat as Record<string, unknown>;
+      if (typedFormat.type === 'json_object') return {};
+      if (typedFormat.type === 'json_schema') {
+        const schema = typedFormat.schema;
+        return schema && typeof schema === 'object' && !Array.isArray(schema)
+          ? { schema: schema as Record<string, unknown> }
+          : {};
+      }
+    }
+
+    return null;
+  }
+
+  private validateSimpleJsonSchema(
+    value: unknown,
+    schema: Record<string, unknown>,
+    path = '$',
+  ): string[] {
+    const errors: string[] = [];
+    const type = schema.type;
+    if (typeof type === 'string' && !this.matchesJsonSchemaType(value, type)) {
+      errors.push(`${path} must be ${type}`);
+      return errors;
+    }
+    if (
+      Array.isArray(type) &&
+      !type.some((item) => typeof item === 'string' && this.matchesJsonSchemaType(value, item))
+    ) {
+      errors.push(`${path} must match one of ${type.join(', ')}`);
+      return errors;
+    }
+
+    if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+      errors.push(`${path} must be one of the configured enum values`);
+    }
+    if (schema.const !== undefined && schema.const !== value) {
+      errors.push(`${path} must equal the configured const value`);
+    }
+
+    if (this.isPlainObject(value)) {
+      const properties = this.isPlainObject(schema.properties)
+        ? schema.properties
+        : {};
+      if (Array.isArray(schema.required)) {
+        for (const requiredKey of schema.required) {
+          if (
+            typeof requiredKey === 'string' &&
+            !(requiredKey in value)
+          ) {
+            errors.push(`${path}.${requiredKey} is required`);
+          }
+        }
+      }
+
+      for (const [key, childSchema] of Object.entries(properties)) {
+        if (
+          key in value &&
+          this.isPlainObject(childSchema)
+        ) {
+          errors.push(
+            ...this.validateSimpleJsonSchema(
+              value[key],
+              childSchema,
+              `${path}.${key}`,
+            ),
+          );
+        }
+      }
+
+      if (schema.additionalProperties === false) {
+        for (const key of Object.keys(value)) {
+          if (!(key in properties)) {
+            errors.push(`${path}.${key} is not allowed`);
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(value) && this.isPlainObject(schema.items)) {
+      value.forEach((item, index) => {
+        errors.push(
+          ...this.validateSimpleJsonSchema(
+            item,
+            schema.items as Record<string, unknown>,
+            `${path}[${index}]`,
+          ),
+        );
+      });
+    }
+
+    return errors;
+  }
+
+  private matchesJsonSchemaType(value: unknown, type: string): boolean {
+    switch (type) {
+      case 'object':
+        return this.isPlainObject(value);
+      case 'array':
+        return Array.isArray(value);
+      case 'string':
+        return typeof value === 'string';
+      case 'number':
+        return typeof value === 'number' && Number.isFinite(value);
+      case 'integer':
+        return Number.isInteger(value);
+      case 'boolean':
+        return typeof value === 'boolean';
+      case 'null':
+        return value === null;
+      default:
+        return true;
+    }
+  }
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 
   /**
@@ -681,6 +1202,9 @@ export class PipelineService {
       const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget } =
         await this.resolveSmartRoute(canonical, store);
       const retryConfig = this.config.retry;
+      const costDowngrade = this.applyCostDowngrade(canonical, route, tier);
+      const activeRoute = costDowngrade.route;
+      const originalPrimary = route.primary;
 
       const startTime = Date.now();
 
@@ -688,20 +1212,24 @@ export class PipelineService {
       const serializer = this.createSerializer(canonical.metadata.source_format);
 
       // Try primary + fallbacks (connection-phase fallback + retry)
-      const targets = [route.primary, ...route.fallbacks];
+      const targets = [activeRoute.primary, ...activeRoute.fallbacks];
       let streamConnected = false;
-      let usedNodeId = route.primary.node;
-      let usedModel = route.primary.model;
-      let isFallback = false;
+      let usedNodeId = activeRoute.primary.node;
+      let usedModel = activeRoute.primary.model;
+      let isFallback = costDowngrade.reason !== null;
       let lastError: Error | null = null;
       let totalRetries = 0;
+      let fallbackReason: FallbackReason | null = costDowngrade.reason;
+      let fallbackFromNode: string | null = costDowngrade.reason
+        ? originalPrimary.node
+        : null;
 
       for (let i = 0; i < targets.length; i++) {
         const target = targets[i];
         const isFirstTarget = i === 0;
         usedNodeId = target.node;
         usedModel = target.model;
-        isFallback = !isFirstTarget;
+        isFallback = !isFirstTarget || costDowngrade.reason !== null;
 
         currentPhase = 'preUpstream';
         const preUpstreamResult = await this.runPreUpstreamHooks(
@@ -727,7 +1255,7 @@ export class PipelineService {
             nodeId: target.node,
             model: scResponse.model,
             statusCode: 200,
-            isFallback: !isFirstTarget,
+            isFallback,
             latencyMs: Date.now() - startTime,
             usage: scResponse.usage,
             error: null,
@@ -735,6 +1263,8 @@ export class PipelineService {
             experimentGroup: resolvedExperimentGroup,
             domainHint,
             modalityHints,
+            fallbackReason,
+            fallbackFromNode,
           });
           this.writeSyntheticStreamResponse(
             res,
@@ -757,8 +1287,10 @@ export class PipelineService {
               target.model,
             );
             try {
-              const stream = this.providerClient.forwardStream(
-                requestForTarget, target.node, target.model,
+              const stream = this.forwardStreamWithFallbackTimeout(
+                requestForTarget,
+                target.node,
+                target.model,
               );
 
               // Stream events to client
@@ -774,7 +1306,7 @@ export class PipelineService {
                 connected = true;
                 usedNodeId = target.node;
                 usedModel = target.model;
-                isFallback = !isFirstTarget;
+                isFallback = !isFirstTarget || costDowngrade.reason !== null;
 
                 // Accumulate for cache
                 if (event.type === 'start') {
@@ -824,7 +1356,14 @@ export class PipelineService {
                   stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
                   usage: { ...usage },
                   model: streamModel || usedModel,
-                  routing: { tier, node: usedNodeId, latency_ms: latencyMs, score, is_fallback: isFallback },
+                  routing: {
+                    tier,
+                    node: usedNodeId,
+                    latency_ms: latencyMs,
+                    score,
+                    is_fallback: isFallback,
+                    fallback_reason: fallbackReason,
+                  },
                 };
                 this.cacheService.store(canonical, assembledResponse);
               }
@@ -840,7 +1379,8 @@ export class PipelineService {
               await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
                 statusCode: 200, isFallback, latencyMs, usage, error: null,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
-                domainHint, modalityHints });
+                domainHint, modalityHints, fallbackReason,
+                fallbackFromNode });
 
               // ── Telemetry Metrics (stream success) ──
               const streamTotalTokens = usage.input_tokens + usage.output_tokens;
@@ -849,6 +1389,7 @@ export class PipelineService {
                 'gateway.node': usedNodeId,
                 'gateway.model': usedModel,
                 'gateway.is_fallback': isFallback,
+                'gateway.fallback_reason': fallbackReason || '',
                 'gen_ai.request.model': usedModel,
                 'gen_ai.usage.input_tokens': usage.input_tokens,
                 'gen_ai.usage.output_tokens': usage.output_tokens,
@@ -868,6 +1409,7 @@ export class PipelineService {
             }
           } catch (err) {
             lastError = err as Error;
+            const attemptFallbackReason = this.resolveFallbackReason(lastError);
             if (lastError instanceof ConcurrencyLimitError) {
               this.logger.warn(lastError.message);
               if (!lastError.fallbackAllowed) {
@@ -892,6 +1434,8 @@ export class PipelineService {
                 rootSpan.end();
                 return;
               }
+              fallbackReason = 'concurrency_limited';
+              fallbackFromNode = target.node;
               break;
             }
 
@@ -925,10 +1469,12 @@ export class PipelineService {
                   tier,
                   score,
                   nodeId: 'hook',
-                  isFallback: !isFirstTarget,
+                  isFallback,
                   latencyMs: Date.now() - startTime,
                   retryCount: totalRetries,
                   experimentGroup: resolvedExperimentGroup,
+                  fallbackReason,
+                  fallbackFromNode,
                 });
                 this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
                 rootSpan.end();
@@ -943,10 +1489,11 @@ export class PipelineService {
               res.end();
 
               await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
-                statusCode: 502, isFallback: !isFirstTarget, latencyMs: Date.now() - startTime,
+                statusCode: 502, isFallback, latencyMs: Date.now() - startTime,
                 usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
-                domainHint, modalityHints });
+                domainHint, modalityHints, fallbackReason,
+                fallbackFromNode });
               this.telemetry.upstreamErrors.add(1, { node: target.node, reason: 'stream_error' });
               rootSpan.end();
               return;
@@ -961,9 +1508,12 @@ export class PipelineService {
               statusCode || 0,
             );
             const isRetryable = retryConfig.retryable_status.includes(statusCode);
+            const shouldImmediateFallback =
+              this.shouldImmediateFallback(lastError) ||
+              attemptFallbackReason === 'timeout';
             const isLastAttempt = attempt >= maxAttempts - 1;
 
-            if (isRetryable && !isLastAttempt) {
+            if (isRetryable && !isLastAttempt && !shouldImmediateFallback) {
               totalRetries++;
               const delay = this.calculateBackoff(attempt, retryConfig, statusCode === 429 ? lastError : undefined);
               this.logger.warn(
@@ -977,9 +1527,12 @@ export class PipelineService {
             // Not retryable or exhausted — move to next fallback
             this.logger.warn(
               `${isFirstTarget ? 'Primary' : 'Fallback'} node ${target.node} stream failed: ${lastError.message}` +
-              (attempt > 0 ? ` (after ${attempt + 1} attempts)` : ''),
+              (attempt > 0 ? ` (after ${attempt + 1} attempts)` : '') +
+              (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
             );
             this.circuitBreaker.recordFailure(target.node, target.model);
+            fallbackReason = attemptFallbackReason;
+            fallbackFromNode = target.node;
             break; // break retry loop, continue to next target
           }
         }
@@ -1012,6 +1565,8 @@ export class PipelineService {
           latencyMs: Date.now() - startTime,
           retryCount: totalRetries,
           experimentGroup: resolvedExperimentGroup,
+          fallbackReason,
+          fallbackFromNode,
         });
         this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
         rootSpan.end();
@@ -1021,7 +1576,8 @@ export class PipelineService {
         statusCode: failureStatus, isFallback, latencyMs: Date.now() - startTime,
         usage: { input_tokens: 0, output_tokens: 0 }, error: errorMsg,
         retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
-        domainHint, modalityHints });
+        domainHint, modalityHints, fallbackReason,
+        fallbackFromNode });
       this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
       res.status(failureStatus).json(
         this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
@@ -1076,6 +1632,100 @@ export class PipelineService {
         throw err;
       }
     }
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Fallback Policy Helpers
+  // ══════════════════════════════════════════════════════
+
+  private applyCostDowngrade(
+    canonical: CanonicalRequest,
+    route: {
+      primary: RouteTarget;
+      fallbacks: RouteTarget[];
+    },
+    tier: Tier,
+  ): {
+    route: {
+      primary: RouteTarget;
+      fallbacks: RouteTarget[];
+    };
+    reason: FallbackReason | null;
+  } {
+    const policy = this.config.fallbackPolicy.cost_downgrade;
+    if (
+      tier === 'direct' ||
+      !policy.enabled ||
+      !policy.max_estimated_cost_usd
+    ) {
+      return { route, reason: null };
+    }
+
+    const allTargets = [route.primary, ...route.fallbacks];
+    if (allTargets.length <= 1) return { route, reason: null };
+
+    const estimates = allTargets.map((target) => ({
+      target,
+      estimatedCost: this.estimateRequestCostUsd(canonical, target.model),
+    }));
+    const primaryEstimate = estimates[0].estimatedCost;
+    if (
+      primaryEstimate === null ||
+      primaryEstimate <= policy.max_estimated_cost_usd
+    ) {
+      return { route, reason: null };
+    }
+
+    const downgrade = estimates
+      .slice(1)
+      .filter((item) =>
+        item.estimatedCost !== null &&
+        item.estimatedCost < primaryEstimate &&
+        item.estimatedCost <= policy.max_estimated_cost_usd!,
+      )
+      .sort((a, b) => (a.estimatedCost ?? 0) - (b.estimatedCost ?? 0))[0];
+
+    if (!downgrade) return { route, reason: null };
+
+    this.logger.log(
+      `Cost downgrade: estimated ${primaryEstimate.toFixed(6)} USD for ` +
+        `${route.primary.node}/${route.primary.model}, routing to ` +
+        `${downgrade.target.node}/${downgrade.target.model} instead`,
+    );
+
+    return {
+      route: {
+        primary: downgrade.target,
+        fallbacks: allTargets.filter((target) => target !== downgrade.target),
+      },
+      reason: 'cost_downgrade',
+    };
+  }
+
+  private estimateRequestCostUsd(
+    canonical: CanonicalRequest,
+    model: string,
+  ): number | null {
+    const pricing = this.config.getModelPricing(model);
+    if (!pricing) return null;
+    const estimatedInputTokens = this.estimateRequestTokens(canonical);
+    const estimatedOutputTokens = canonical.max_tokens ?? 1024;
+    return (
+      (estimatedInputTokens / 1_000_000) * pricing.input +
+      (estimatedOutputTokens / 1_000_000) * pricing.output
+    );
+  }
+
+  private estimateRequestTokens(canonical: CanonicalRequest): number {
+    const text = canonical.messages
+      .map((message) =>
+        typeof message.content === 'string'
+          ? message.content
+          : JSON.stringify(message.content),
+      )
+      .join('\n');
+    const toolChars = canonical.tools ? JSON.stringify(canonical.tools).length : 0;
+    return Math.max(1, Math.ceil((text.length + toolChars) / 4));
   }
 
   // ══════════════════════════════════════════════════════
@@ -1515,6 +2165,9 @@ export class PipelineService {
     if (err instanceof ConcurrencyLimitError) {
       return err.statusCode;
     }
+    if (err instanceof StructuredOutputValidationError) {
+      return 422;
+    }
     return 502;
   }
 
@@ -1681,6 +2334,8 @@ export class PipelineService {
     experimentGroup?: string | null;
     domainHint?: string | null;
     modalityHints?: string[];
+    fallbackReason?: FallbackReason | null;
+    fallbackFromNode?: string | null;
   }): Promise<void> {
     await this.recordBudgetUsage(
       params.canonical,
@@ -1703,6 +2358,8 @@ export class PipelineService {
       experimentGroup: params.experimentGroup || null,
       domainHint: params.domainHint,
       modalityHints: params.modalityHints,
+      fallbackReason: params.fallbackReason,
+      fallbackFromNode: params.fallbackFromNode,
     });
   }
 
@@ -1735,6 +2392,8 @@ export class PipelineService {
     experimentGroup?: string | null;
     domainHint?: string | null;
     modalityHints?: string[];
+    fallbackReason?: FallbackReason | null;
+    fallbackFromNode?: string | null;
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model);
@@ -1750,6 +2409,7 @@ export class PipelineService {
         cache_read_input_tokens: params.usage.cache_read_input_tokens || 0,
         cost_usd: costUsd, latency_ms: params.latencyMs,
         status_code: params.statusCode, is_fallback: params.isFallback,
+        fallback_reason: params.fallbackReason || null,
         session_key: params.canonical.metadata.session_key || null,
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
@@ -1758,6 +2418,15 @@ export class PipelineService {
         experiment_group: params.experimentGroup || null,
       });
       const saved = await this.callLogRepo.save(log);
+
+      if (params.isFallback || params.fallbackReason) {
+        this.telemetry.fallbackTotal.add(1, {
+          tier: params.tier,
+          reason: params.fallbackReason || 'upstream_error',
+          from_node: params.fallbackFromNode || '',
+          to_node: params.nodeId,
+        });
+      }
 
       // Push to SSE stream for real-time dashboard
       this.logEventBus.emit(saved);

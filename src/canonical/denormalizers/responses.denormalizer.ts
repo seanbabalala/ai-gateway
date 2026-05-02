@@ -61,7 +61,56 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
       body.temperature = canonical.temperature;
     if (canonical.top_p !== undefined) body.top_p = canonical.top_p;
 
+    const textFormat = this.resolveTextFormat(canonical);
+    if (textFormat) body.text = { format: textFormat };
+
     return body;
+  }
+
+  private resolveTextFormat(canonical: CanonicalRequest): unknown {
+    const raw = this.rawBody(canonical);
+    const text = raw?.text;
+    const existingFormat =
+      text && typeof text === 'object' && !Array.isArray(text)
+        ? (text as Record<string, unknown>).format
+        : undefined;
+    if (existingFormat) return existingFormat;
+
+    const responseFormat = raw?.response_format;
+    if (
+      !responseFormat ||
+      typeof responseFormat !== 'object' ||
+      Array.isArray(responseFormat)
+    ) {
+      return undefined;
+    }
+
+    const typedFormat = responseFormat as Record<string, unknown>;
+    if (typedFormat.type === 'json_schema') {
+      const jsonSchema =
+        typedFormat.json_schema &&
+        typeof typedFormat.json_schema === 'object' &&
+        !Array.isArray(typedFormat.json_schema)
+          ? (typedFormat.json_schema as Record<string, unknown>)
+          : {};
+      return {
+        type: 'json_schema',
+        name: jsonSchema.name || 'response',
+        schema: jsonSchema.schema,
+        strict: jsonSchema.strict,
+      };
+    }
+    if (typedFormat.type === 'json_object') {
+      return { type: 'json_object' };
+    }
+    return undefined;
+  }
+
+  private rawBody(canonical: CanonicalRequest): Record<string, unknown> | null {
+    const raw = canonical.metadata.raw_body;
+    return raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : null;
   }
 
   private denormalizeInput(

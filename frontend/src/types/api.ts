@@ -52,6 +52,7 @@ export interface CallLog {
   latency_ms: number
   status_code: number
   is_fallback: boolean
+  fallback_reason: string | null
   session_key: string | null
   error: string | null
   api_key_id?: string | null
