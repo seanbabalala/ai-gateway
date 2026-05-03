@@ -2,7 +2,40 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+## 0.8.0 - 2026-05-04
+
+### Added
+
+- v0.8 local Provider / Model Catalog for the OSS Data Plane, covering provider metadata, models, modalities, endpoints, auth type, pricing source, capabilities, and limits.
+- Built-in static catalog entries for OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
+- Dashboard catalog APIs `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` with provider/modality/endpoint filters and built-in + local override merge metadata.
+- Config validation warnings for catalog unknown models, endpoint/modality mismatches, and placeholder pricing that still needs operator review.
+- v0.8 Dashboard Add Node wizard backed by the local catalog, with provider/proxy/custom selection, capability selection, model bucket editing, endpoint/auth/header/pricing confirmation, and connection test/save flow.
+- `nodes[].video_models`, `video_generations_endpoint`, and `video_status_endpoint` config surface for video-capable providers and the experimental async video gateway preview.
+- v0.8 media endpoint hardening for the OSS Data Plane with OpenAI-compatible `POST /v1/images/variations` and `POST /v1/audio/translations`.
+- Canonical media metadata for images/audio requests: media type, operation, multipart flag, file count, byte size, requested format, response format, and provider response content type.
+- Dashboard call-log visibility, CSV/JSON export fields, external log sink fields, and optional connected-gateway telemetry metadata for media operations without storing file contents.
+- Node config support for `images_variations_endpoint` and `audio_translations_endpoint`, plus validation and OpenAPI docs for the new media endpoints.
+- v0.8 provider compatibility test matrix for the OSS Data Plane Dashboard, covering chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capabilities.
+- Local `provider_compatibility_results` metadata storage for configured/tested state, last status, timestamp, latency, HTTP status, and sanitized failure reason without storing prompts, responses, raw headers, provider keys, media bytes, or realtime frames.
+- Safe provider test policy: tiny synthetic requests for text/embedding/rerank and endpoint/auth probes for media, video, and realtime by default.
+- Dashboard Nodes compatibility matrix, safe test action, and non-blocking compatibility diagnostics.
+- Experimental video capability config fields (`video_models`, `video_endpoint`, `video_status_endpoint`, `video_content_endpoint`, `video_cancel_endpoint`) for provider compatibility checks and future async video routing.
+- `siftgate catalog list/show/validate/export/import` plus `npm run catalog` for managing `catalog.override.yaml` without network updates.
+- Config validation warnings for secret-like catalog override fields/values.
+- v0.8 multimodal route decision evidence for image, audio, video, rerank, and embedding requests.
+- Route Decision Trace `modality_evidence` and per-candidate `capability_evidence` covering requested modality, input/output types, file count, byte size, required capabilities, capability/file-size filters, endpoint strategy/status, pricing source, and catalog source.
+- Dashboard Route Explanation capability badges, endpoint status, pricing/catalog source badges, and 7-language localization for the new read-only evidence.
+- Unit coverage for routing trace evidence, pipeline trace persistence, and Dashboard route decision API shape.
+- Experimental async video generation preview with `POST /v1/videos/generations`, status/content/cancel routes, video route evidence, and local `video_jobs` metadata storage that does not persist prompts, source media, or video bytes.
+
+### Changed
+
+- Dashboard Add Node provider presets now load from the catalog API instead of a hardcoded frontend list.
+- Dashboard Add Node now supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` in one localized wizard while preserving advanced local Data Plane fields.
+- Config validation now allows specialized-only nodes with `models: []` when embedding/rerank/media/realtime model buckets are configured.
+- Images/audio ingress now documents production pass-through behavior for JSON and multipart requests across generations, edits, variations, transcriptions, translations, and speech.
+- `gateway.config.yaml` now supports optional `catalog.override_file` while keeping the static built-in catalog as the default.
 
 ## 0.6.1 - 2026-05-03
 

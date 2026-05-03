@@ -206,6 +206,67 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     }),
     ...overrides.routingRecommendations,
   };
+  const catalog = {
+    load: jest.fn().mockReturnValue({
+      catalog: {
+        providers: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            base_url: 'https://api.openai.com',
+            auth_type: 'bearer',
+            endpoints: { chat_completions: '/v1/chat/completions' },
+            models: [
+              {
+                id: 'gpt-4o',
+                provider: 'openai',
+                modalities: ['text', 'vision'],
+                endpoints: { chat_completions: '/v1/chat/completions' },
+                capabilities: ['streaming'],
+                source: 'builtin',
+                overridden: false,
+              },
+              {
+                id: 'text-embedding-3-small',
+                provider: 'openai',
+                modalities: ['embedding'],
+                endpoints: { embeddings: '/v1/embeddings' },
+                capabilities: ['embedding'],
+                source: 'builtin',
+                overridden: false,
+              },
+            ],
+            source: 'builtin',
+            overridden: false,
+          },
+          {
+            id: 'anthropic',
+            name: 'Anthropic',
+            base_url: 'https://api.anthropic.com',
+            auth_type: 'x-api-key',
+            endpoints: { messages: '/v1/messages' },
+            models: [],
+            source: 'builtin',
+            overridden: false,
+          },
+          {
+            id: 'openai-compatible',
+            name: 'OpenAI Compatible',
+            base_url: 'https://provider.example',
+            auth_type: 'bearer',
+            endpoints: { chat_completions: '/v1/chat/completions' },
+            models: [],
+            source: 'builtin',
+            overridden: false,
+          },
+        ],
+      },
+      overridePath: 'catalog.override.yaml',
+      overrideFound: false,
+      issues: [],
+    }),
+    ...overrides.catalog,
+  };
 
   const dataSource = {
     options: { type: 'better-sqlite3' },
@@ -217,6 +278,18 @@ function makeDashboard(overrides: Record<string, any> = {}) {
   const routeDecisionRepo = overrides.routeDecisionRepo || {
     ...mockRepo(qb),
     findOne: jest.fn().mockResolvedValue(null),
+  };
+  const providerCompatibility = {
+    matrixForNodes: jest.fn().mockResolvedValue({}),
+    compatibilityDiagnostics: jest.fn().mockReturnValue([]),
+    runNodeMatrix: jest.fn().mockResolvedValue({
+      success: true,
+      status: 200,
+      latency_ms: 1,
+      message: 'Compatibility checks completed',
+      matrix: [],
+    }),
+    ...overrides.providerCompatibility,
   };
 
   const controller = new DashboardController(
@@ -233,13 +306,15 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     shadowTraffic as any,
+    providerCompatibility as any,
+    catalog as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -368,6 +443,17 @@ describe('DashboardController — route decisions', () => {
       estimated_context_tokens: 112,
       requires_structured_output: false,
     },
+    modality_evidence: {
+      requested_modality: 'image',
+      input_types: ['text'],
+      output_types: ['image'],
+      file_count: 1,
+      byte_size: 2048,
+      required_capabilities: ['image'],
+      endpoint_strategy: 'image_generation',
+      filtered_by_capability: [],
+      filtered_by_file_size: [],
+    },
     candidate_targets: [
       {
         node: 'openai',
@@ -387,6 +473,25 @@ describe('DashboardController — route decisions', () => {
           max_context_tokens: 128000,
           context_fit: 'safe',
           structured_output: true,
+        },
+        capability_evidence: {
+          requested_modality: 'image',
+          supported_modalities: ['text', 'vision', 'image'],
+          input_types: ['text', 'image'],
+          output_types: ['image'],
+          required_capabilities: ['image'],
+          matched_capabilities: ['image'],
+          missing_capabilities: [],
+          endpoint_strategy: 'image_generation',
+          endpoint_status: 'default',
+          endpoint: '/v1/images/generations',
+          file_count: 1,
+          byte_size: 2048,
+          max_file_size: 10_000_000,
+          filtered_by_capability: false,
+          filtered_by_file_size: false,
+          pricing_source: 'config',
+          catalog_source: 'config',
         },
       },
     ],
@@ -501,6 +606,10 @@ describe('DashboardController — route decisions', () => {
       where: { request_id: 'req-1' },
     });
     expect(result.trace).toMatchObject({
+      modality_evidence: {
+        requested_modality: 'image',
+        byte_size: 2048,
+      },
       candidate_targets: expect.any(Array),
       privacy: {
         prompt: false,
@@ -509,6 +618,34 @@ describe('DashboardController — route decisions', () => {
         provider_keys: false,
       },
     });
+  });
+});
+
+describe('DashboardController — catalog', () => {
+  it('returns merged provider catalog metadata for Dashboard forms', () => {
+    const { controller } = makeDashboard();
+
+    const result = controller.getCatalogProviders();
+
+    expect(result.override_file).toBe('catalog.override.yaml');
+    expect(result.override_found).toBe(false);
+    expect(result.providers[0]).toMatchObject({
+      id: 'openai',
+      overridden: false,
+    });
+  });
+
+  it('filters catalog models by provider and modality', () => {
+    const { controller } = makeDashboard();
+
+    const result = controller.getCatalogModels('openai', 'vision');
+
+    expect(result.models).toEqual([
+      expect.objectContaining({
+        id: 'gpt-4o',
+        provider: 'openai',
+      }),
+    ]);
   });
 });
 
@@ -653,9 +790,9 @@ describe('DashboardController — config', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — nodes', () => {
-  it('should return node list with circuit and capability info', () => {
+  it('should return node list with circuit and capability info', async () => {
     const { controller } = makeDashboard();
-    const result = controller.getNodes();
+    const result = await controller.getNodes();
 
     expect(result.nodes).toHaveLength(2);
     expect(result.nodes[0].id).toBe('openai');
@@ -686,10 +823,11 @@ describe('DashboardController — nodes', () => {
       expect.objectContaining({ active: 0, queued: 0 }),
     );
     expect(result.nodes[0].active_probe.status).toBe('disabled');
+    expect(result.nodes[0].compatibility_matrix).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
 
-  it('should include active probe state in node list', () => {
+  it('should include active probe state in node list', async () => {
     const { controller } = makeDashboard({
       activeHealth: {
         getNodeStatus: jest.fn().mockReturnValue({
@@ -705,14 +843,14 @@ describe('DashboardController — nodes', () => {
         }),
       },
     });
-    const result = controller.getNodes();
+    const result = await controller.getNodes();
 
     expect(result.nodes[0].healthy).toBe(false);
     expect(result.nodes[0].active_probe.failure_reason).toBe('HTTP 503');
     expect(result.nodes[0].active_probe.last_checked_at).toBe('2026-05-02T00:00:00.000Z');
   });
 
-  it('should show unhealthy when circuit is OPEN', () => {
+  it('should show unhealthy when circuit is OPEN', async () => {
     const { controller } = makeDashboard({
       circuitBreaker: {
         getNodeStatus: jest.fn().mockReturnValue({ state: CircuitState.OPEN, consecutiveFailures: 3, lastFailureAt: Date.now() }),
@@ -720,7 +858,7 @@ describe('DashboardController — nodes', () => {
         reset: jest.fn(),
       },
     });
-    const result = controller.getNodes();
+    const result = await controller.getNodes();
     expect(result.nodes[0].healthy).toBe(false);
   });
 
@@ -774,6 +912,12 @@ describe('DashboardController — Node CRUD', () => {
       endpoint: '/v1/chat/completions',
       api_key: 'sk-new',
       models: ['model-1'],
+      video_generations_endpoint: '/v1/videos/generations',
+      video_status_endpoint: '/v1/videos/{id}',
+      video_models: ['video-1'],
+      model_capabilities: {
+        'video-1': { pricing: { input: 0.1, output: 0.2 } },
+      },
       max_concurrency: 3,
       queue_timeout_ms: 250,
       queue_policy: 'fallback',
@@ -786,6 +930,12 @@ describe('DashboardController — Node CRUD', () => {
         max_concurrency: 3,
         queue_timeout_ms: 250,
         queue_policy: 'fallback',
+        video_generations_endpoint: '/v1/videos/generations',
+        video_status_endpoint: '/v1/videos/{id}',
+        video_models: ['video-1'],
+        model_capabilities: {
+          'video-1': { pricing: { input: 0.1, output: 0.2 } },
+        },
       }),
     );
   });
@@ -833,6 +983,29 @@ describe('DashboardController — Node CRUD', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — capabilities & routing', () => {
+  it('should return provider catalog entries', () => {
+    const { controller } = makeDashboard();
+    const result = controller.getCatalogProviders();
+    expect(result.source).toBe('builtin_static');
+    expect(result.auto_update).toBe(false);
+    expect(result.providers.map((provider) => provider.id)).toEqual(
+      expect.arrayContaining(['openai', 'anthropic', 'openai-compatible']),
+    );
+  });
+
+  it('should return filtered catalog models', () => {
+    const { controller } = makeDashboard();
+    const result = controller.getCatalogModels('openai', 'embedding');
+    expect(result.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider_id: 'openai',
+          modalities: expect.arrayContaining(['embedding']),
+        }),
+      ]),
+    );
+  });
+
   it('should return capabilities registry', () => {
     const { controller } = makeDashboard();
     const result = controller.getCapabilities();

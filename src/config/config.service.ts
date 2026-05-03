@@ -951,6 +951,33 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  /** Resolve a user-provided video model name to a node/model pair. */
+  resolveVideoModel(name: string): { nodeId: string; model: string } | null {
+    for (const node of this.config.nodes) {
+      if (node.video_models?.includes(name)) {
+        return { nodeId: node.id, model: name };
+      }
+    }
+
+    const nodeById = this.config.nodes.find((node) => node.id === name);
+    if (nodeById?.video_models?.length) {
+      return { nodeId: nodeById.id, model: nodeById.video_models[0] };
+    }
+
+    for (const separator of ['/', ':']) {
+      const idx = name.indexOf(separator);
+      if (idx <= 0) continue;
+      const prefix = name.substring(0, idx);
+      const modelPart = name.substring(idx + 1);
+      const prefixNode = this.config.nodes.find((node) => node.id === prefix);
+      if (prefixNode?.video_models?.length && modelPart) {
+        return { nodeId: prefixNode.id, model: modelPart };
+      }
+    }
+
+    return null;
+  }
+
   /** Get the full raw config (for dashboard API) */
   getFullConfig(): GatewayConfig {
     return this.config;
@@ -1059,6 +1086,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         ...(node.rerank_models || []),
         ...(node.image_models || []),
         ...(node.audio_models || []),
+        ...(node.video_models || []),
       ]))) {
         // Collect all aliases pointing to this model
         const aliases: string[] = [];

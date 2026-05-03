@@ -1,12 +1,17 @@
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
   validateConfigFile,
   validateConfigObject,
 } from '../../src/config/config-validator';
 import { runCli } from '../../src/cli/siftgate';
+import { loadMergedCatalog } from '../../src/catalog/catalog.service';
 
 const fixture = (name: string) =>
   path.resolve(__dirname, '../fixtures/config-validator', name);
+const catalogFixture = (name: string) =>
+  path.resolve(__dirname, '../fixtures/catalog', name);
 
 const codes = (issues: { code: string }[]) => issues.map((item) => item.code);
 
@@ -200,7 +205,7 @@ describe('config validator', () => {
         namespaces: [
           {
             id: 'media-team',
-            allowed_models: ['gpt-image-1', 'gpt-4o-mini-transcribe'],
+            allowed_models: ['gpt-image-1', 'gpt-4o-mini-transcribe', 'veo-3-preview'],
           },
         ],
         nodes: [
@@ -212,12 +217,17 @@ describe('config validator', () => {
             endpoint: '/v1/chat/completions',
             images_generations_endpoint: '/v1/images/generations',
             images_edits_endpoint: '/v1/images/edits',
+            images_variations_endpoint: '/v1/images/variations',
             audio_transcriptions_endpoint: '/v1/audio/transcriptions',
+            audio_translations_endpoint: '/v1/audio/translations',
             audio_speech_endpoint: '/v1/audio/speech',
+            video_endpoint: '/v1/videos/generations',
+            video_status_endpoint: '/v1/videos/:id',
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o-mini'],
             image_models: ['gpt-image-1'],
             audio_models: ['gpt-4o-mini-transcribe'],
+            video_models: ['veo-3-preview'],
             timeout_ms: 60000,
           },
         ],
@@ -238,6 +248,7 @@ describe('config validator', () => {
         models_pricing: {
           'gpt-4o-mini': { input: 0.15, output: 0.6 },
           'gpt-image-1': { input: 5, output: 0 },
+          'veo-3-preview': { input: 20, output: 0 },
         },
       },
       { env: {} },
@@ -246,6 +257,97 @@ describe('config validator', () => {
     expect(result.ok).toBe(true);
     expect(result.errors).toHaveLength(0);
     expect(codes(result.warnings)).toContain('missing_model_pricing');
+  });
+
+  it('adds provider catalog warnings for unknown known-provider models', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o', 'not-a-known-openai-model'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o': { input: 2.5, output: 10 },
+          'not-a-known-openai-model': { input: 1, output: 2 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toContain('catalog_unknown_model');
+  });
+
+  it('adds provider catalog warnings for modality/endpoint mismatches and placeholder pricing', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'anthropic',
+            name: 'Anthropic',
+            protocol: 'messages',
+            base_url: 'https://api.anthropic.com',
+            endpoint: '/v1/messages',
+            api_key: '${ANTHROPIC_API_KEY:-test}',
+            models: ['claude-sonnet-4-20250514'],
+            image_models: ['claude-sonnet-4-20250514'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'anthropic', model: 'claude-sonnet-4-20250514' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'catalog_endpoint_modality_mismatch',
+        'catalog_pricing_manual_review',
+      ]),
+    );
   });
 
   it('rejects invalid media endpoint paths and model arrays', () => {
@@ -262,11 +364,22 @@ describe('config validator', () => {
             base_url: 'https://api.openai.com',
             endpoint: '/v1/chat/completions',
             images_generations_endpoint: 'v1/images/generations',
+            images_variations_endpoint: 'v1/images/variations',
+            audio_translations_endpoint: 'audio/translations',
             audio_speech_endpoint: '',
+            video_generations_endpoint: 'v1/videos/generations',
+            video_endpoint: 'v1/videos/generations',
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o-mini'],
             image_models: ['gpt-image-1', 'gpt-image-1'],
             audio_models: 'tts-1',
+            video_models: ['veo-3.1-generate-preview', 'veo-3.1-generate-preview'],
+            model_capabilities: {
+              'gpt-image-1': {
+                max_file_size: 0,
+                pricing: { input: -1, output: 0 },
+              },
+            },
             timeout_ms: 60000,
           },
         ],
@@ -295,8 +408,58 @@ describe('config validator', () => {
         'invalid_node_endpoint',
         'duplicate_model_id_in_node',
         'invalid_audio_models',
+        'invalid_max_file_size',
+        'invalid_pricing_entry',
       ]),
     );
+  });
+
+  it('accepts specialized-only catalog nodes when models is an empty array', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'voyage',
+            name: 'Voyage AI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.voyageai.com',
+            endpoint: '/v1/chat/completions',
+            embeddings_endpoint: '/v1/embeddings',
+            rerank_endpoint: '/v1/rerank',
+            api_key: '${VOYAGE_API_KEY:-test}',
+            models: [],
+            embedding_models: ['voyage-3-large'],
+            rerank_models: ['rerank-2'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'voyage', model: 'voyage-3-large' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'voyage-3-large': { input: 0.12, output: 0 },
+          'rerank-2': { input: 0.05, output: 0 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('missing_required_field');
   });
 
   it('validates experimental realtime preview controls', () => {
@@ -427,6 +590,182 @@ describe('config validator', () => {
         'control_plane_response_upload_enabled',
       ]),
     );
+  });
+
+  it('warns when node models are missing from the merged provider catalog', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['custom-chat-latest'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'custom-chat-latest' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'custom-chat-latest': { input: 0.25, output: 0.75 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toContain('catalog_unknown_model');
+  });
+
+  it('uses catalog overrides to recognize custom provider models', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: path.dirname(catalogFixture('catalog.override.yaml')),
+      overridePath: catalogFixture('catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI Proxy',
+            protocol: 'chat_completions',
+            base_url: 'https://proxy.example/openai',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['custom-chat-latest'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'custom-chat-latest' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'custom-chat-latest': { input: 0.25, output: 0.75 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
+  });
+
+  it('warns when configured endpoints differ from the catalog provider preset', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/custom/chat',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 2.5, output: 10 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toContain('catalog_endpoint_mismatch');
+  });
+
+  it('surfaces catalog override secret diagnostics through config validation', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-config-catalog-'));
+    const configPath = path.join(cwd, 'gateway.config.yaml');
+    fs.writeFileSync(
+      configPath,
+      [
+        'server: { port: 2099, host: 0.0.0.0 }',
+        'database: { type: sqlite, path: ":memory:" }',
+        'auth: { api_keys: [] }',
+        `catalog: { override_file: ${catalogFixture('secret.catalog.override.yaml')} }`,
+        'nodes:',
+        '  - id: openai',
+        '    name: OpenAI',
+        '    protocol: chat_completions',
+        '    base_url: https://api.openai.com',
+        '    endpoint: /v1/chat/completions',
+        '    api_key: ${OPENAI_API_KEY:-test}',
+        '    models: [gpt-4o]',
+        'routing:',
+        '  tiers:',
+        '    standard:',
+        '      primary: { node: openai, model: gpt-4o }',
+        '      fallbacks: []',
+        '  scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 }',
+        'budget: { daily_token_limit: 1000000, daily_cost_limit: 25, alert_threshold: 0.8 }',
+        'models_pricing: { gpt-4o: { input: 2.5, output: 10 } }',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = validateConfigFile({ configPath, cwd, env: {} });
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('catalog_override_secret_field');
+    expect(codes(result.warnings)).toContain('catalog_override_secret_value');
   });
 
   it('reuses shared node/model diagnostics for pricing and ambiguous names', () => {

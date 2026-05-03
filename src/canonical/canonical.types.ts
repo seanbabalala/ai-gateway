@@ -71,8 +71,31 @@ export type SourceFormat =
   | 'rerank'
   | 'image_generation'
   | 'image_edit'
+  | 'image_variation'
   | 'audio_transcription'
-  | 'audio_speech';
+  | 'audio_translation'
+  | 'audio_speech'
+  | 'video_generation';
+
+export type CanonicalMediaType = 'image' | 'audio' | 'video';
+
+export type CanonicalMediaOperation =
+  | 'generation'
+  | 'edit'
+  | 'variation'
+  | 'transcription'
+  | 'translation'
+  | 'speech';
+
+export interface CanonicalMediaMetadata {
+  media_type: CanonicalMediaType;
+  operation: CanonicalMediaOperation;
+  multipart: boolean;
+  file_count: number;
+  byte_size: number;
+  requested_format?: string | null;
+  response_format?: string | null;
+}
 
 // ===== Structured Output =====
 export type StructuredOutputFormatType =
@@ -123,6 +146,7 @@ export interface CanonicalRequestMetadata {
   session_key?: string;
   raw_headers: Record<string, string>;
   raw_body?: unknown;
+  media?: CanonicalMediaMetadata;
   api_key_name?: string;
   api_key_id?: string;
   namespace_id?: string | null;
@@ -258,8 +282,11 @@ export interface CanonicalRerankResponse {
 export type CanonicalMediaSourceFormat =
   | 'image_generation'
   | 'image_edit'
+  | 'image_variation'
   | 'audio_transcription'
-  | 'audio_speech';
+  | 'audio_translation'
+  | 'audio_speech'
+  | 'video_generation';
 
 export type CanonicalMediaPayload = Record<string, unknown> | Buffer;
 export type CanonicalMediaResponseBody = Record<string, unknown> | Buffer | string;
@@ -270,6 +297,7 @@ export interface CanonicalMediaRequest {
   payload: CanonicalMediaPayload;
   content_type: string;
   is_multipart: boolean;
+  media: CanonicalMediaMetadata;
   metadata: CanonicalRequestMetadata;
 }
 
@@ -277,6 +305,7 @@ export interface CanonicalMediaResponse {
   id: string;
   body: CanonicalMediaResponseBody;
   content_type: string;
+  provider_response_type: string;
   usage: TokenUsage;
   model: string;
   routing: {

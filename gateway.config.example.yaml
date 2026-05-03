@@ -95,6 +95,22 @@ auth:
 #   debounce_ms: 500
 
 # ============================================================
+# Provider / Model Catalog Overrides (optional)
+# ============================================================
+# SiftGate ships a built-in static provider/model catalog for Dashboard
+# presets and config warnings. Keep provider API keys in nodes[].api_key
+# or environment variables, never in catalog.override.yaml.
+#
+# CLI:
+#   npm run catalog -- list
+#   npm run catalog -- show openai
+#   npm run catalog -- import --file ./catalog.override.yaml
+#   npm run catalog -- validate
+# ============================================================
+# catalog:
+#   override_file: ./catalog.override.yaml
+
+# ============================================================
 # Cluster Mode — optional Redis Pub/Sub multi-instance inventory
 # ============================================================
 # SiftGate runs as a single local data plane by default. Enable Redis-backed
@@ -127,6 +143,12 @@ auth:
 # Each node represents one upstream provider account, deployment,
 # proxy route, or API endpoint. A node can expose one or more models.
 #
+# v0.8 includes a local static Provider / Model Catalog used by Dashboard
+# Add Node and `npm run validate:config`. The catalog is advisory and does
+# not auto-update online. Pricing entries in the catalog are often marked
+# manual_review_required, so keep production cost routing values in
+# models_pricing or model_capabilities[].pricing below.
+#
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
 #   id: azure-prod        name: "Azure OpenAI Production"
@@ -137,9 +159,10 @@ auth:
 # nodes[].embedding_models and can use a separate embeddings_endpoint.
 # Rerank-capable models for /v1/rerank are listed under nodes[].rerank_models
 # and can use a separate rerank_endpoint.
-# Image and audio models are listed separately under nodes[].image_models
-# and nodes[].audio_models so media endpoints can route, budget, and
+# Image, audio, and video models are listed separately under nodes[].image_models,
+# nodes[].audio_models, and nodes[].video_models so media endpoints can route, budget, and
 # log independently from chat models.
+# Video support is experimental; compatibility tests only probe endpoint/auth by default.
 # Experimental realtime models are listed under nodes[].realtime_models and
 # require the top-level realtime.enabled switch below.
 # Use model_prefixes when clients should direct-route future model family IDs
@@ -161,8 +184,15 @@ nodes:
     # realtime_endpoint: "/v1/realtime" # Optional ws/wss URL or path for experimental realtime proxy
     images_generations_endpoint: "/v1/images/generations"
     images_edits_endpoint: "/v1/images/edits"
+    images_variations_endpoint: "/v1/images/variations"
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
+    audio_translations_endpoint: "/v1/audio/translations"
     audio_speech_endpoint: "/v1/audio/speech"
+    # video_generations_endpoint: "/v1/videos/generations" # Experimental async video generation path
+    # video_endpoint: "/v1/videos/generations"             # Experimental compatibility-test alias
+    # video_status_endpoint: "/v1/videos/:id"              # Optional async video status endpoint
+    # video_content_endpoint: "/v1/videos/:id/content"
+    # video_cancel_endpoint: "/v1/videos/:id/cancel"
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
@@ -170,16 +200,20 @@ nodes:
     # realtime_models: ["gpt-4o-realtime-preview"]
     image_models: ["gpt-image-1"]
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"]
+    # video_models: ["veo-3.1-generate-preview"]
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true
     modalities: ["text", "vision"]    # Backward-compatible with image-capable chat models
     endpoints:
-      image: "/v1/images/generations" # Future v0.6 image entrypoint support
+      image: "/v1/images/generations"
+      image_variation: "/v1/images/variations"
       audio: "/v1/audio/transcriptions"
+      audio_translation: "/v1/audio/translations"
+      video: "/v1/videos/generations"
       realtime: "/v1/realtime"        # Use wss://... for absolute realtime URLs if needed
-    input_types: ["text", "image", "audio"]
-    output_types: ["text", "image", "events"]
+    input_types: ["text", "image", "audio", "video"]
+    output_types: ["text", "image", "video", "events"]
     max_file_size: 20000000           # Bytes; applies as a node-level default
     supports_streaming: true
     supports_realtime: false
@@ -217,6 +251,8 @@ nodes:
       #   pricing: { input: 0.80, output: 0.00 }
       # gpt-4o-realtime-preview:
       #   pricing: { input: 5.00, output: 20.00 }
+      # veo-3-preview:
+      #   pricing: { input: 20.00, output: 0.00 }
       gpt-image-1:
         pricing: { input: 5.00, output: 0.00 }
       gpt-4o-mini-transcribe:
@@ -249,7 +285,7 @@ nodes:
     #   path: /healthz      # Defaults to endpoint when omitted
     #   lightweight_model: gpt-4o-mini
     # Unified v0.6 capability schema is optional.
-    # Valid modalities: text, vision, image, audio, embedding, rerank, realtime.
+    # Valid modalities: text, vision, image, audio, video, embedding, rerank, realtime.
     # "vision" is kept as the legacy image-input alias and matches "image".
     # Per-model model_capabilities override node-level defaults.
     tags: ["code", "reasoning", "creative"]

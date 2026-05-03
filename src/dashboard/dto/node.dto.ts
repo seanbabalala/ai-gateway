@@ -10,7 +10,6 @@ import {
   IsBoolean,
   ValidateNested,
   Min,
-  ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -85,8 +84,87 @@ export class CreateNodeDto {
   @ApiProperty({ type: [String], example: ['gpt-4o', 'gpt-4o-mini'] })
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
   models!: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  embedding_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/embeddings' })
+  @IsOptional()
+  @IsString()
+  embeddings_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['rerank-v3.5'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rerank_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/rerank' })
+  @IsOptional()
+  @IsString()
+  rerank_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-image-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  image_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/images/generations' })
+  @IsOptional()
+  @IsString()
+  images_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/edits' })
+  @IsOptional()
+  @IsString()
+  images_edits_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/variations' })
+  @IsOptional()
+  @IsString()
+  images_variations_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  audio_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
+  @IsOptional()
+  @IsString()
+  audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/translations' })
+  @IsOptional()
+  @IsString()
+  audio_translations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/speech' })
+  @IsOptional()
+  @IsString()
+  audio_speech_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['veo-3.1-generate-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  video_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/{id}' })
+  @IsOptional()
+  @IsString()
+  video_status_endpoint?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
   @IsOptional()
@@ -98,6 +176,21 @@ export class CreateNodeDto {
   @IsOptional()
   @IsString()
   realtime_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/content' })
+  @IsOptional()
+  @IsString()
+  video_content_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/cancel' })
+  @IsOptional()
+  @IsString()
+  video_cancel_endpoint?: string;
 
   @ApiProperty({ example: 60000, minimum: 1 })
   @IsNumber()
@@ -160,6 +253,16 @@ export class CreateNodeDto {
   @IsObject()
   headers?: Record<string, string>;
 
+  @ApiPropertyOptional({
+    type: 'object',
+    description: 'Optional per-model capability and pricing overrides keyed by model id.',
+    additionalProperties: { type: 'object' },
+    example: { 'gpt-4o-mini': { pricing: { input: 0.15, output: 0.6 } } },
+  })
+  @IsOptional()
+  @IsObject()
+  model_capabilities?: Record<string, unknown>;
+
   @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
   @IsOptional()
   @IsString()
@@ -217,6 +320,25 @@ export class TestNodeDto {
   @IsOptional()
   @IsObject()
   headers?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: ['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime'],
+    description: 'Optional provider capabilities to test. Omit to test the primary protocol capability for unsaved nodes.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsIn(['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime'], { each: true })
+  capabilities?: Array<'chat' | 'responses' | 'messages' | 'embeddings' | 'rerank' | 'images' | 'audio' | 'video' | 'realtime'>;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Must be true before running expensive generation or long-connection compatibility tests.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirm_expensive?: boolean;
 }
 
 export class UpdateNodeDto {
@@ -258,8 +380,87 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
   models?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  embedding_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/embeddings' })
+  @IsOptional()
+  @IsString()
+  embeddings_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['rerank-v3.5'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rerank_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/rerank' })
+  @IsOptional()
+  @IsString()
+  rerank_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-image-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  image_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/images/generations' })
+  @IsOptional()
+  @IsString()
+  images_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/edits' })
+  @IsOptional()
+  @IsString()
+  images_edits_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/variations' })
+  @IsOptional()
+  @IsString()
+  images_variations_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  audio_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
+  @IsOptional()
+  @IsString()
+  audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/translations' })
+  @IsOptional()
+  @IsString()
+  audio_translations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/speech' })
+  @IsOptional()
+  @IsString()
+  audio_speech_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['veo-3.1-generate-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  video_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/{id}' })
+  @IsOptional()
+  @IsString()
+  video_status_endpoint?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
   @IsOptional()
@@ -271,6 +472,21 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsString()
   realtime_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/content' })
+  @IsOptional()
+  @IsString()
+  video_content_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/cancel' })
+  @IsOptional()
+  @IsString()
+  video_cancel_endpoint?: string;
 
   @ApiPropertyOptional({ example: 60000, minimum: 1 })
   @IsOptional()
@@ -333,6 +549,16 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsObject()
   headers?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    description: 'Optional per-model capability and pricing overrides keyed by model id.',
+    additionalProperties: { type: 'object' },
+    example: { 'gpt-4o-mini': { pricing: { input: 0.15, output: 0.6 } } },
+  })
+  @IsOptional()
+  @IsObject()
+  model_capabilities?: Record<string, unknown>;
 
   @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
   @IsOptional()

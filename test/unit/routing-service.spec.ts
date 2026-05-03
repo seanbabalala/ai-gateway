@@ -674,8 +674,12 @@ describe('RoutingService — rerank', () => {
     const svc = makeRoutingService({
       nodes: rerankNodes,
       capabilityService: {
-        resolveModelModalities: jest.fn().mockReturnValue(['text']),
+        resolveModelModalities: jest.fn().mockReturnValue(['rerank']),
         resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+          modalities: ['rerank'],
+          input_types: ['text', 'documents'],
+          output_types: ['ranked_documents'],
+          supports_rerank: true,
           structured_output: null,
           pricing: model.includes('small')
             ? { input: 0.01, output: 0 }
@@ -689,6 +693,18 @@ describe('RoutingService — rerank', () => {
     expect(route.mode).toBe('auto');
     expect(route.primary).toEqual({ node: 'cheap', model: 'rerank-small' });
     expect(route.fallbacks).toEqual([{ node: 'quality', model: 'rerank-large' }]);
+    expect(route.trace?.modality_evidence).toMatchObject({
+      requested_modality: 'rerank',
+      input_types: ['text', 'documents'],
+      output_types: ['ranked_documents'],
+      required_capabilities: ['rerank'],
+    });
+    expect(route.trace?.candidate_targets[0].capability_evidence).toMatchObject({
+      requested_modality: 'rerank',
+      filtered_by_capability: false,
+      pricing_source: 'config',
+      catalog_source: 'config',
+    });
   });
 
   it('should filter rerank targets by API key/namespace permissions', () => {
@@ -765,6 +781,10 @@ describe('RoutingService — images and audio', () => {
     expect(route.mode).toBe('auto');
     expect(route.primary).toEqual({ node: 'cheap-media', model: 'gpt-image-mini' });
     expect(route.fallbacks[0]).toEqual({ node: 'quality-media', model: 'gpt-image-1' });
+    expect(svc.resolveMediaRoute('image_variation', 'auto').primary).toEqual({
+      node: 'cheap-media',
+      model: 'gpt-image-mini',
+    });
   });
 
   it('should resolve direct audio models and apply target permissions', () => {
@@ -797,5 +817,63 @@ describe('RoutingService — images and audio', () => {
     const route = svc.resolveMediaRoute('audio_transcription', 'auto');
 
     expect(route.primary).toEqual({ node: 'quality-media', model: 'gpt-4o-mini-transcribe' });
+    expect(svc.resolveMediaRoute('audio_translation', 'auto').primary).toEqual({
+      node: 'quality-media',
+      model: 'gpt-4o-mini-transcribe',
+    });
+  });
+
+  it('should record modality evidence and file-size filters for media route traces', () => {
+    const svc = makeRoutingService({
+      nodes: mediaNodes,
+      capabilityService: {
+        resolveModelModalities: jest.fn().mockReturnValue(['image']),
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation((node: string, model: string) => ({
+          modalities: ['image'],
+          input_types: ['text'],
+          output_types: ['image'],
+          max_file_size: node === 'cheap-media' ? 100 : 10_000,
+          structured_output: null,
+          pricing: model.includes('mini')
+            ? { input: 0.5, output: 0 }
+            : { input: 5, output: 0 },
+        })),
+      },
+    });
+
+    const route = svc.resolveMediaRoute(
+      'image_generation',
+      'auto',
+      () => true,
+      {
+        requested_modality: 'image',
+        input_types: ['text'],
+        output_types: ['image'],
+        file_count: 1,
+        byte_size: 2048,
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_generation',
+        source_format: 'image_generation',
+      },
+    );
+
+    expect(route.primary).toEqual({ node: 'quality-media', model: 'gpt-image-1' });
+    expect(route.trace?.modality_evidence).toMatchObject({
+      requested_modality: 'image',
+      file_count: 1,
+      byte_size: 2048,
+    });
+    expect(route.trace?.modality_evidence?.filtered_by_file_size).toEqual([
+      expect.objectContaining({
+        node: 'cheap-media',
+        model: 'gpt-image-mini',
+        max_file_size: 100,
+      }),
+    ]);
+    expect(route.trace?.candidate_targets[0].filter_reasons).toContain('file_size_exceeded');
+    expect(route.trace?.candidate_targets[0].capability_evidence).toMatchObject({
+      endpoint_status: 'default',
+      filtered_by_file_size: true,
+    });
   });
 });

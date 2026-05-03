@@ -1,6 +1,6 @@
 {
   "name": "siftgate",
-  "version": "0.6.1",
+  "version": "0.8.0",
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,
@@ -23,6 +23,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "validate:config": "ts-node src/cli/siftgate.ts validate",
+    "catalog": "ts-node src/cli/siftgate.ts catalog",
     "migrate:db": "ts-node src/cli/siftgate.ts migrate-db",
     "typecheck:sdk": "npm --workspace @siftgate/client run typecheck",
     "lint": "eslint \"{src,test}/**/*.ts\"",

@@ -27,7 +27,7 @@ export class CallLog {
   timestamp!: Date;
 
   @Column({ type: 'varchar' })
-  source_format!: string; // chat_completions | responses | messages | embeddings | rerank | image_* | audio_*
+  source_format!: string; // chat_completions | responses | messages | embeddings | rerank | image_* | audio_* | video_*
 
   @Column({ type: 'varchar' })
   tier!: string; // simple | standard | complex | reasoning
@@ -76,6 +76,30 @@ export class CallLog {
 
   @Column({ type: 'varchar', nullable: true })
   structured_output_schema_name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_type!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_operation!: string | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  media_multipart!: boolean | null;
+
+  @Column({ type: 'integer', nullable: true })
+  media_file_count!: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  media_byte_size!: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_requested_format!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_response_format!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_provider_response_type!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   session_key!: string | null;

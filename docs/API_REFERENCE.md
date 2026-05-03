@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
+v0.8 hardens the OpenAI-compatible images/audio ingress added in v0.6 with image variations, audio translations, richer media metadata, production log visibility, and an experimental async video generation preview. Media files and video bytes remain pass-through only and are not persisted by SiftGate.
 
 ## Live Documentation
 
@@ -37,8 +37,14 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/rerank` | OpenAI/common-compatible rerank ingress |
 | `POST` | `/v1/images/generations` | OpenAI Images generation-compatible ingress |
 | `POST` | `/v1/images/edits` | OpenAI Images edits-compatible ingress |
+| `POST` | `/v1/images/variations` | OpenAI Images variations-compatible ingress |
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
+| `POST` | `/v1/audio/translations` | OpenAI Audio translation-compatible ingress |
 | `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
+| `POST` | `/v1/videos/generations` | Experimental async video generation preview |
+| `GET` | `/v1/videos/:id` | Experimental video job status |
+| `GET` | `/v1/videos/:id/content` | Experimental video content proxy |
+| `POST` | `/v1/videos/:id/cancel` | Experimental video cancel proxy |
 | `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
@@ -165,7 +171,9 @@ Rerank routing uses `nodes[].rerank_models`. `model: "auto"` filters by Gateway 
 }
 ```
 
-`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as multipart status, byte size, and model.
+`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as media type, operation, multipart status, file count, byte size, requested/response format, and upstream response content type.
+
+`POST /v1/images/variations` uses the same image-capable route pool and multipart pass-through behavior. If an upstream does not implement image variations, keep `images_variations_endpoint` pointed at a compatible proxy that does, or let the provider return its native unsupported-operation error; SiftGate will surface it as a normal provider failure/fallback without storing image bytes.
 
 Image responses are returned in the upstream provider's OpenAI-compatible JSON shape.
 
@@ -180,6 +188,16 @@ curl http://localhost:2099/v1/audio/transcriptions \
   -F file=@sample.wav
 ```
 
+`POST /v1/audio/translations` follows the same route, budget, fallback, and multipart pass-through path as transcriptions:
+
+```bash
+curl http://localhost:2099/v1/audio/translations \
+  -H "Authorization: Bearer gw_sk_live_..." \
+  -F model=auto \
+  -F response_format=json \
+  -F file=@sample.wav
+```
+
 `POST /v1/audio/speech` accepts OpenAI-compatible JSON and can return binary provider audio directly:
 
 ```json
@@ -190,7 +208,24 @@ curl http://localhost:2099/v1/audio/transcriptions \
 }
 ```
 
-When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged. Increase `server.body_limit` when image edit or audio transcription files are larger than the default `1mb`.
+When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged and records only the provider response content type. Increase `server.body_limit` when image edit/variation or audio transcription/translation files are larger than the default `1mb`.
+
+### Experimental Video
+
+`POST /v1/videos/generations` is an experimental async preview. It accepts JSON bodies, selects from `nodes[].video_models`, rewrites `model` to the chosen upstream model, and forwards provider-specific fields such as `prompt`, `input_reference`, `duration`, `size`, `aspect_ratio`, `quality`, and `metadata`.
+
+```json
+{
+  "model": "auto",
+  "prompt": "A five second product demo clip",
+  "duration": 5,
+  "aspect_ratio": "16:9"
+}
+```
+
+SiftGate stores only `video_jobs` metadata: local request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error. It does not persist prompts, source images, generated video bytes, raw headers, or provider keys.
+
+`GET /v1/videos/:id` returns local job metadata and refreshes from `video_status_endpoint` when configured. `GET /v1/videos/:id/content` and `POST /v1/videos/:id/cancel` proxy to `video_content_endpoint` and `video_cancel_endpoint` only when the selected node declares those endpoints.
 
 ### Experimental Realtime
 
@@ -243,12 +278,12 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
-| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, and realtime capability/connection summary |
+| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, realtime summary, and provider compatibility matrix |
 | `POST` | `/api/dashboard/nodes/test` | Test an arbitrary node payload before saving |
 | `POST` | `/api/dashboard/nodes` | Create a node in local config |
 | `PUT` | `/api/dashboard/nodes/:id` | Update a node in local config |
 | `DELETE` | `/api/dashboard/nodes/:id` | Delete a node from local config |
-| `POST` | `/api/dashboard/nodes/:id/test` | Test a configured node |
+| `POST` | `/api/dashboard/nodes/:id/test` | Run safe provider compatibility checks for a configured node |
 | `POST` | `/api/dashboard/nodes/:id/reset` | Reset a node circuit breaker |
 | `GET` | `/api/dashboard/cache/stats` | Prompt-cache statistics |
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
@@ -258,7 +293,38 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 
 `GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
 
-Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
+Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status.
+
+For multimodal and capability-specific requests, traces may include:
+
+- `modality_evidence.requested_modality`
+- `modality_evidence.input_types` / `output_types`
+- `modality_evidence.file_count` / `byte_size`
+- `modality_evidence.required_capabilities`
+- `modality_evidence.endpoint_strategy`
+- `modality_evidence.filtered_by_capability`
+- `modality_evidence.filtered_by_file_size`
+- `candidate_targets[].capability_evidence.supported_modalities`
+- `candidate_targets[].capability_evidence.endpoint_status`
+- `candidate_targets[].capability_evidence.pricing_source`
+- `candidate_targets[].capability_evidence.catalog_source`
+
+These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.
+
+### Provider Compatibility Matrix
+
+`GET /api/dashboard/nodes` includes `compatibility_matrix` for every node. Each row contains `capability`, `configured`, `tested`, `last_status`, `last_checked_at`, `failure_reason`, `latency_ms`, `status_code`, `test_mode`, and `requires_confirmation`.
+
+`POST /api/dashboard/nodes/:id/test` accepts an optional body:
+
+```json
+{
+  "capabilities": ["chat", "embeddings", "images", "video", "realtime"],
+  "confirm_expensive": false
+}
+```
+
+Supported capabilities are `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, and `realtime`. Text, embedding, and rerank checks send tiny synthetic requests. Media, video, and realtime checks default to endpoint/auth probes; video/realtime generation or long-lived sessions are not started unless a future explicit confirmation flow enables it. Results are local metadata only and never include prompt text, response bodies, raw headers, or provider API keys.
 
 ## Gateway API Key Management
 

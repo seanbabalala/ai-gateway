@@ -15,6 +15,8 @@ const TABLES: DbMigrationTableName[] = [
   "node_status",
   "call_logs",
   "route_decisions",
+  "provider_compatibility_results",
+  "video_jobs",
 ];
 
 class MemoryPostgresTarget implements PostgresMigrationTarget {
@@ -170,6 +172,39 @@ function createSqliteFixture(dir: string): string {
       namespace_id varchar,
       trace_json text
     );
+
+    CREATE TABLE provider_compatibility_results (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      node_id varchar,
+      capability varchar,
+      configured integer,
+      tested integer,
+      last_status varchar,
+      last_checked_at datetime,
+      latency_ms integer,
+      status_code integer,
+      failure_reason text,
+      test_mode varchar,
+      created_at datetime,
+      updated_at datetime
+    );
+
+    CREATE TABLE video_jobs (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      request_id varchar,
+      provider_job_id varchar,
+      node_id varchar,
+      model varchar,
+      api_key_id varchar,
+      api_key_name varchar,
+      namespace_id varchar,
+      namespace_name varchar,
+      status varchar,
+      error text,
+      expires_at text,
+      created_at datetime,
+      updated_at datetime
+    );
   `);
 
   db.prepare(
@@ -306,6 +341,53 @@ function createSqliteFixture(dir: string): string {
     JSON.stringify({ version: 1, privacy: { prompt: false, response: false } }),
   );
 
+  db.prepare(
+    `
+    INSERT INTO provider_compatibility_results (
+      node_id, capability, configured, tested, last_status, last_checked_at,
+      latency_ms, status_code, failure_reason, test_mode, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "openai",
+    "video",
+    1,
+    1,
+    "ok",
+    "2026-05-01T00:02:00.000Z",
+    42,
+    200,
+    null,
+    "probe",
+    "2026-05-01T00:02:00.000Z",
+    "2026-05-01T00:02:00.000Z",
+  );
+
+  db.prepare(
+    `
+    INSERT INTO video_jobs (
+      request_id, provider_job_id, node_id, model, api_key_id, api_key_name,
+      namespace_id, namespace_name, status, error, expires_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "req-video-1",
+    "vid-job-1",
+    "openai",
+    "veo-3-preview",
+    "key-1",
+    "prod-key",
+    "team-alpha",
+    "Team Alpha",
+    "queued",
+    null,
+    "2026-05-02T00:00:00.000Z",
+    "2026-05-01T00:03:00.000Z",
+    "2026-05-01T00:03:00.000Z",
+  );
+
   db.close();
   return dbPath;
 }
@@ -329,7 +411,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(5);
+    expect(result.totals.source_rows).toBe(7);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -372,6 +454,19 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(routeDecision?.is_fallback).toBe(false);
     expect(routeDecision?.candidate_count).toBe(2);
     expect(routeDecision?.timestamp).toBeInstanceOf(Date);
+
+    const compatibility = target.rows.get("provider_compatibility_results")?.[0];
+    expect(compatibility?.configured).toBe(true);
+    expect(compatibility?.tested).toBe(true);
+    expect(compatibility?.last_checked_at).toBe("2026-05-01T00:02:00.000Z");
+    expect(compatibility?.created_at).toBeInstanceOf(Date);
+
+    const videoJob = target.rows.get("video_jobs")?.[0];
+    expect(videoJob?.request_id).toBe("req-video-1");
+    expect(videoJob?.api_key_id).toBe("key-1");
+    expect(videoJob?.namespace_id).toBe("team-alpha");
+    expect(videoJob?.status).toBe("queued");
+    expect(videoJob?.created_at).toBeInstanceOf(Date);
   });
 
   it("refuses non-empty PostgreSQL targets unless force is explicit", async () => {
@@ -403,7 +498,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(5);
+    expect(result.validation.mismatches).toHaveLength(7);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

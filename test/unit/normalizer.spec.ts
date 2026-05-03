@@ -436,9 +436,22 @@ describe('MediaNormalizer', () => {
       source_format: 'image_generation',
       is_multipart: false,
       payload: { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
+      media: {
+        media_type: 'image',
+        operation: 'generation',
+        multipart: false,
+        file_count: 0,
+        requested_format: null,
+        response_format: null,
+      },
       metadata: {
         source_format: 'image_generation',
         original_model: 'gpt-image-1',
+        media: expect.objectContaining({
+          media_type: 'image',
+          operation: 'generation',
+          multipart: false,
+        }),
       },
     });
   });
@@ -468,7 +481,44 @@ describe('MediaNormalizer', () => {
     expect(result.metadata.raw_body).toEqual({
       multipart: true,
       size_bytes: body.length,
+      file_count: 1,
       model: 'gpt-4o-mini-transcribe',
+      media_type: 'audio',
+      operation: 'transcription',
+      requested_format: null,
+      response_format: null,
+    });
+    expect(result.media).toMatchObject({
+      media_type: 'audio',
+      operation: 'transcription',
+      multipart: true,
+      file_count: 1,
+      byte_size: body.length,
+    });
+  });
+
+  it('should normalize production image/audio operations with safe format metadata', () => {
+    const variation = normalizer.normalize(
+      { model: 'auto', size: '1024x1024', response_format: 'b64_json' },
+      headers,
+      'image_variation',
+    );
+    const translation = normalizer.normalize(
+      { model: 'auto', response_format: 'verbose_json' },
+      headers,
+      'audio_translation',
+    );
+
+    expect(variation.media).toMatchObject({
+      media_type: 'image',
+      operation: 'variation',
+      requested_format: '1024x1024',
+      response_format: 'b64_json',
+    });
+    expect(translation.media).toMatchObject({
+      media_type: 'audio',
+      operation: 'translation',
+      response_format: 'verbose_json',
     });
   });
 });

@@ -263,6 +263,10 @@ export class ProviderClientService {
         'gateway.upstream.is_fallback': routingMeta.is_fallback,
         'gen_ai.system': canonical.source_format,
         'gen_ai.request.model': targetModel,
+        'gateway.media.type': canonical.media.media_type,
+        'gateway.media.operation': canonical.media.operation,
+        'gateway.media.multipart': canonical.media.multipart,
+        'gateway.media.byte_size': canonical.media.byte_size,
       },
       async (span) => {
         const node = this.config.getNode(nodeId);
@@ -677,10 +681,16 @@ export class ProviderClientService {
         return node.images_generations_endpoint || '/v1/images/generations';
       case 'image_edit':
         return node.images_edits_endpoint || '/v1/images/edits';
+      case 'image_variation':
+        return node.images_variations_endpoint || '/v1/images/variations';
       case 'audio_transcription':
         return node.audio_transcriptions_endpoint || '/v1/audio/transcriptions';
+      case 'audio_translation':
+        return node.audio_translations_endpoint || '/v1/audio/translations';
       case 'audio_speech':
         return node.audio_speech_endpoint || '/v1/audio/speech';
+      case 'video_generation':
+        return node.video_endpoint || node.video_generations_endpoint || '/v1/videos/generations';
       default:
         return node.endpoint;
     }
@@ -1002,6 +1012,7 @@ export class ProviderClientService {
     latencyMs: number,
   ): Promise<CanonicalMediaResponse> {
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const providerResponseType = contentType.split(';')[0].trim().toLowerCase() || contentType;
     if (contentType.includes('application/json')) {
       const body = (await response.json()) as Record<string, unknown>;
       const usage = (body.usage || {}) as Record<string, unknown>;
@@ -1009,6 +1020,7 @@ export class ProviderClientService {
         id: (body.id as string) || `${canonical.source_format}_${Date.now()}`,
         body,
         content_type: contentType,
+        provider_response_type: providerResponseType,
         usage: {
           input_tokens:
             (usage.prompt_tokens as number) ||
@@ -1030,6 +1042,7 @@ export class ProviderClientService {
       id: `${canonical.source_format}_${Date.now()}`,
       body: Buffer.from(arrayBuffer),
       content_type: contentType,
+      provider_response_type: providerResponseType,
       usage: { input_tokens: 0, output_tokens: 0 },
       model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },

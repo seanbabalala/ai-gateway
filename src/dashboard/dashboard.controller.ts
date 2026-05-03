@@ -53,7 +53,10 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
+import { CatalogService } from '../catalog/catalog.service';
 import type { Modality } from '../config/modality';
+import type { ProviderCompatibilityCapability } from '../database/entities';
+import { ProviderCompatibilityService } from './provider-compatibility.service';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -90,6 +93,8 @@ export class DashboardController {
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
+    private readonly providerCompatibility: ProviderCompatibilityService,
+    private readonly catalog: CatalogService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -742,6 +747,9 @@ export class DashboardController {
       'fallback_reason', 'structured_output_requested',
       'structured_output_type', 'structured_output_strategy',
       'structured_output_supported', 'structured_output_schema_name',
+      'media_type', 'media_operation', 'media_multipart',
+      'media_file_count', 'media_byte_size', 'media_requested_format',
+      'media_response_format', 'media_provider_response_type',
       'api_key_id', 'api_key_name', 'retry_count', 'error', 'namespace_id',
     ];
     const csvRows = [headers.join(',')];
@@ -1138,7 +1146,7 @@ export class DashboardController {
   }
 
   // ══════════════════════════════════════════════════════
-  // Capabilities
+  // Catalog & Capabilities
   // ══════════════════════════════════════════════════════
 
   /** Get all capability definitions */
@@ -1163,6 +1171,58 @@ export class DashboardController {
   recommendTiers(@Body() body: { capabilities: string[] }) {
     const capabilities = body.capabilities || [];
     return { recommendations: this.capabilityService.recommendTiers(capabilities) };
+  }
+
+  @Get('catalog/providers')
+  @ApiOperation({ summary: 'List merged built-in and local provider catalog entries' })
+  @ApiOkResponse({ description: 'Provider catalog entries with overridden markers.' })
+  getCatalogProviders() {
+    const loaded = this.catalog.load();
+    return {
+      source: 'builtin_static',
+      auto_update: false,
+      providers: loaded.catalog.providers,
+      override_file: loaded.overridePath,
+      override_found: loaded.overrideFound,
+      issues: loaded.issues,
+    };
+  }
+
+  @Get('catalog/models')
+  @ApiOperation({ summary: 'List merged built-in and local model catalog entries' })
+  @ApiQuery({ name: 'provider', required: false })
+  @ApiQuery({ name: 'modality', required: false })
+  @ApiQuery({ name: 'endpoint', required: false })
+  @ApiOkResponse({ description: 'Flattened model catalog entries with overridden markers.' })
+  getCatalogModels(
+    @Query('provider') provider?: string,
+    @Query('modality') modality?: string,
+    @Query('endpoint') endpoint?: string,
+  ) {
+    const loaded = this.catalog.load();
+    let models = loaded.catalog.providers.flatMap((entry) =>
+      entry.models.map((model) => ({
+        ...model,
+        provider_id: model.provider,
+      })),
+    );
+    if (provider) models = models.filter((model) => model.provider === provider);
+    if (modality) {
+      models = models.filter((model) =>
+        (model.modalities as string[]).includes(modality),
+      );
+    }
+    if (endpoint) {
+      models = models.filter((model) => model.endpoints[endpoint] !== undefined);
+    }
+    return {
+      source: 'builtin_static',
+      auto_update: false,
+      models,
+      override_file: loaded.overridePath,
+      override_found: loaded.overrideFound,
+      issues: loaded.issues,
+    };
   }
 
   /** Recommend full routing config based on all nodes' capabilities */
@@ -1238,7 +1298,10 @@ export class DashboardController {
   @Get('nodes')
   @ApiOperation({ summary: 'List configured nodes, capabilities, and circuit status' })
   @ApiOkResponse({ description: 'Node status list with no provider API key values.' })
-  getNodes() {
+  async getNodes() {
+    const compatibility = await this.providerCompatibility.matrixForNodes(
+      this.config.nodes,
+    );
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
@@ -1247,6 +1310,11 @@ export class DashboardController {
       const modelIds = Array.from(new Set([
         ...node.models,
         ...(node.embedding_models || []),
+        ...(node.rerank_models || []),
+        ...(node.image_models || []),
+        ...(node.audio_models || []),
+        ...(node.video_models || []),
+        ...(node.realtime_models || []),
       ]));
       const modelCapabilities = Object.fromEntries(
         modelIds.map((model) => [
@@ -1260,6 +1328,29 @@ export class DashboardController {
       const endpoints = {
         default: node.endpoint,
         ...(node.embeddings_endpoint ? { embeddings: node.embeddings_endpoint } : {}),
+        ...(node.rerank_endpoint ? { rerank: node.rerank_endpoint } : {}),
+        ...(node.images_generations_endpoint ? { image_generations: node.images_generations_endpoint } : {}),
+        ...(node.images_edits_endpoint ? { image_edits: node.images_edits_endpoint } : {}),
+        ...(node.images_variations_endpoint ? { image_variations: node.images_variations_endpoint } : {}),
+        ...(node.audio_transcriptions_endpoint ? { audio_transcriptions: node.audio_transcriptions_endpoint } : {}),
+        ...(node.audio_translations_endpoint ? { audio_translations: node.audio_translations_endpoint } : {}),
+        ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
+        ...(node.video_generations_endpoint ? { video_generations: node.video_generations_endpoint } : {}),
+        ...(node.video_status_endpoint ? { video_status: node.video_status_endpoint } : {}),
+        ...(node.realtime_endpoint ? { realtime: node.realtime_endpoint } : {}),
+        ...(node.images_generations_endpoint ? { image_generation: node.images_generations_endpoint } : {}),
+        ...(node.images_edits_endpoint ? { image_edit: node.images_edits_endpoint } : {}),
+        ...(node.images_variations_endpoint ? { image_variation: node.images_variations_endpoint } : {}),
+        ...(node.audio_transcriptions_endpoint ? { audio_transcription: node.audio_transcriptions_endpoint } : {}),
+        ...(node.audio_translations_endpoint ? { audio_translation: node.audio_translations_endpoint } : {}),
+        ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
+        ...(node.images_generations_endpoint ? { images: node.images_generations_endpoint } : {}),
+        ...(node.audio_transcriptions_endpoint ? { audio: node.audio_transcriptions_endpoint } : {}),
+        ...(node.video_endpoint || node.video_generations_endpoint ? { video: node.video_endpoint || node.video_generations_endpoint } : {}),
+        ...(node.video_endpoint ? { video_endpoint: node.video_endpoint } : {}),
+        ...(node.video_content_endpoint ? { video_content: node.video_content_endpoint } : {}),
+        ...(node.video_cancel_endpoint ? { video_cancel: node.video_cancel_endpoint } : {}),
+        ...(node.realtime_endpoint ? { realtime: node.realtime_endpoint } : {}),
         ...(node.endpoints || {}),
       };
 
@@ -1293,9 +1384,17 @@ export class DashboardController {
         image_models: node.image_models || [],
         images_generations_endpoint: node.images_generations_endpoint || null,
         images_edits_endpoint: node.images_edits_endpoint || null,
+        images_variations_endpoint: node.images_variations_endpoint || null,
         audio_models: node.audio_models || [],
         audio_transcriptions_endpoint: node.audio_transcriptions_endpoint || null,
+        audio_translations_endpoint: node.audio_translations_endpoint || null,
         audio_speech_endpoint: node.audio_speech_endpoint || null,
+        video_models: node.video_models || [],
+        video_generations_endpoint: node.video_generations_endpoint || null,
+        video_endpoint: node.video_endpoint || null,
+        video_status_endpoint: node.video_status_endpoint || null,
+        video_content_endpoint: node.video_content_endpoint || null,
+        video_cancel_endpoint: node.video_cancel_endpoint || null,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         model_capabilities: modelCapabilities,
@@ -1324,13 +1423,17 @@ export class DashboardController {
           last_closed_at: null,
           last_error: null,
         },
+        compatibility_matrix: compatibility[node.id] || [],
         healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
       };
     });
 
     return {
       nodes,
-      diagnostics: this.config.getNodeModelDiagnostics(),
+      diagnostics: [
+        ...this.config.getNodeModelDiagnostics(),
+        ...this.providerCompatibility.compatibilityDiagnostics(compatibility),
+      ],
     };
   }
 
@@ -1358,7 +1461,10 @@ export class DashboardController {
   @ApiOperation({ summary: 'Test an existing saved node' })
   @ApiParam({ name: 'id', example: 'openai' })
   @ApiOkResponse({ description: 'Connectivity result using the saved provider key.' })
-  async testExistingNode(@Param('id') nodeId: string) {
+  async testExistingNode(
+    @Param('id') nodeId: string,
+    @Body() dto?: Pick<TestNodeDto, 'capabilities' | 'confirm_expensive'>,
+  ) {
     const node = this.config.getNode(nodeId);
     if (!node) {
       throw new HttpException(
@@ -1366,14 +1472,9 @@ export class DashboardController {
         HttpStatus.NOT_FOUND,
       );
     }
-    return this.runConnectivityTest({
-      protocol: node.protocol,
-      base_url: node.base_url,
-      endpoint: node.endpoint,
-      api_key: node.api_key,
-      model: node.models[0],
-      auth_type: node.auth_type,
-      headers: node.headers,
+    return this.providerCompatibility.runNodeMatrix(node, {
+      capabilities: dto?.capabilities as ProviderCompatibilityCapability[] | undefined,
+      confirm_expensive: dto?.confirm_expensive,
     });
   }
 
@@ -1570,6 +1671,24 @@ export class DashboardController {
         endpoint: dto.endpoint,
         api_key: dto.api_key,
         models: dto.models,
+        embeddings_endpoint: dto.embeddings_endpoint,
+        embedding_models: dto.embedding_models,
+        rerank_endpoint: dto.rerank_endpoint,
+        rerank_models: dto.rerank_models,
+        images_generations_endpoint: dto.images_generations_endpoint,
+        images_edits_endpoint: dto.images_edits_endpoint,
+        images_variations_endpoint: dto.images_variations_endpoint,
+        image_models: dto.image_models,
+        audio_transcriptions_endpoint: dto.audio_transcriptions_endpoint,
+        audio_translations_endpoint: dto.audio_translations_endpoint,
+        audio_speech_endpoint: dto.audio_speech_endpoint,
+        audio_models: dto.audio_models,
+        video_generations_endpoint: dto.video_generations_endpoint,
+        video_endpoint: dto.video_endpoint,
+        video_status_endpoint: dto.video_status_endpoint,
+        video_content_endpoint: dto.video_content_endpoint,
+        video_cancel_endpoint: dto.video_cancel_endpoint,
+        video_models: dto.video_models,
         realtime_models: dto.realtime_models,
         realtime_endpoint: dto.realtime_endpoint,
         timeout_ms: dto.timeout_ms,
@@ -1583,6 +1702,7 @@ export class DashboardController {
         model_prefixes: dto.model_prefixes,
         headers: dto.headers,
         auth_type: dto.auth_type,
+        model_capabilities: dto.model_capabilities as any,
         health_check: dto.health_check,
       });
       this.activeHealth.refreshSchedules();

@@ -19,9 +19,11 @@ import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
   AudioSpeechRequestDto,
   AudioTranscriptionRequestDto,
+  AudioTranslationRequestDto,
   ErrorEnvelopeDto,
   ImageEditRequestDto,
   ImageGenerationRequestDto,
+  ImageVariationRequestDto,
 } from '../openapi/openapi.dto';
 
 interface GatewayKeyContext {
@@ -73,6 +75,20 @@ export class MediaController {
     await this.handleMedia(req, res, 'image_edit');
   }
 
+  @Post('images/variations')
+  @ApiOperation({
+    summary: 'OpenAI Images variations compatible ingress',
+    description: 'Passes OpenAI-compatible image variation requests through SiftGate image-capable nodes. Multipart file contents are not inspected or transformed.',
+  })
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiBody({ type: ImageVariationRequestDto })
+  @ApiOkResponse({ description: 'OpenAI-compatible image variation response.' })
+  @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
+  @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
+  async imageVariations(@Req() req: Request, @Res() res: Response) {
+    await this.handleMedia(req, res, 'image_variation');
+  }
+
   @Post('audio/transcriptions')
   @ApiOperation({
     summary: 'OpenAI Audio transcription compatible ingress',
@@ -85,6 +101,20 @@ export class MediaController {
   @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
   async audioTranscriptions(@Req() req: Request, @Res() res: Response) {
     await this.handleMedia(req, res, 'audio_transcription');
+  }
+
+  @Post('audio/translations')
+  @ApiOperation({
+    summary: 'OpenAI Audio translation compatible ingress',
+    description: 'Passes OpenAI-compatible audio translation requests through SiftGate audio-capable nodes. Multipart file contents are not inspected or transformed.',
+  })
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiBody({ type: AudioTranslationRequestDto })
+  @ApiOkResponse({ description: 'OpenAI-compatible translation response.' })
+  @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
+  @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
+  async audioTranslations(@Req() req: Request, @Res() res: Response) {
+    await this.handleMedia(req, res, 'audio_translation');
   }
 
   @Post('audio/speech')
@@ -120,7 +150,9 @@ export class MediaController {
       this.applyGatewayKey(req, canonical);
 
       this.logger.log(
-        `[${this.sourcePath(sourceFormat)}] model=${canonical.model || 'auto'}, multipart=${canonical.is_multipart}`,
+        `[${this.sourcePath(sourceFormat)}] model=${canonical.model || 'auto'}, ` +
+          `operation=${canonical.media.operation}, multipart=${canonical.is_multipart}, ` +
+          `files=${canonical.media.file_count}, bytes=${canonical.media.byte_size}`,
       );
 
       const result = await this.pipeline.processMedia(canonical, {
@@ -194,8 +226,12 @@ export class MediaController {
         return 'images/generations';
       case 'image_edit':
         return 'images/edits';
+      case 'image_variation':
+        return 'images/variations';
       case 'audio_transcription':
         return 'audio/transcriptions';
+      case 'audio_translation':
+        return 'audio/translations';
       case 'audio_speech':
         return 'audio/speech';
       default:

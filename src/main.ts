@@ -46,7 +46,9 @@ async function bootstrap() {
   for (const route of [
     '/v1/images/generations',
     '/v1/images/edits',
+    '/v1/images/variations',
     '/v1/audio/transcriptions',
+    '/v1/audio/translations',
     '/v1/audio/speech',
   ]) {
     app.use(route, raw({ type: mediaBodyTypes, limit: bodyLimit }));

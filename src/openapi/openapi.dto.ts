@@ -294,6 +294,27 @@ export class ImageEditRequestDto {
   size?: string;
 }
 
+export class ImageVariationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate image routing or a configured image model.' })
+  model!: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Multipart source image. SiftGate passes multipart bytes through and only rewrites/appends the model field.',
+  })
+  image?: unknown;
+
+  @ApiPropertyOptional({ example: 1 })
+  n?: number;
+
+  @ApiPropertyOptional({ example: '1024x1024' })
+  size?: string;
+
+  @ApiPropertyOptional({ example: 'url', enum: ['url', 'b64_json'] })
+  response_format?: string;
+}
+
 export class AudioTranscriptionRequestDto {
   @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured audio model.' })
   model!: string;
@@ -312,6 +333,24 @@ export class AudioTranscriptionRequestDto {
   language?: string;
 }
 
+export class AudioTranslationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured audio model.' })
+  model!: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Multipart audio file. SiftGate passes multipart bytes through and only rewrites/appends the model field.',
+  })
+  file?: unknown;
+
+  @ApiPropertyOptional({ example: 'json' })
+  response_format?: string;
+
+  @ApiPropertyOptional({ example: 'Translate this audio to English when the upstream supports OpenAI-compatible translations.' })
+  prompt?: string;
+}
+
 export class AudioSpeechRequestDto {
   @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured speech model.' })
   model!: string;
@@ -327,6 +366,32 @@ export class AudioSpeechRequestDto {
 
   @ApiPropertyOptional({ example: 1 })
   speed?: number;
+}
+
+export class VideoGenerationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate video routing or a configured video model.' })
+  model!: string;
+
+  @ApiProperty({ example: 'A short product demo clip of a self-hosted AI gateway dashboard.' })
+  prompt!: string;
+
+  @ApiPropertyOptional({ example: '16:9' })
+  aspect_ratio?: string;
+
+  @ApiPropertyOptional({ example: '1280x720' })
+  size?: string;
+
+  @ApiPropertyOptional({ example: 5 })
+  duration?: number;
+
+  @ApiPropertyOptional({ example: 'standard' })
+  quality?: string;
+
+  @ApiPropertyOptional({ description: 'Optional provider-specific image or asset reference. SiftGate forwards it but does not persist it.' })
+  input_reference?: unknown;
+
+  @ApiPropertyOptional({ description: 'Optional client metadata forwarded to the provider.' })
+  metadata?: Record<string, unknown>;
 }
 
 export class ModelItemDto {
@@ -519,11 +584,17 @@ export class SanitizedNodeConfigDto {
   @ApiPropertyOptional({ example: '/v1/images/edits' })
   images_edits_endpoint?: string;
 
+  @ApiPropertyOptional({ example: '/v1/images/variations' })
+  images_variations_endpoint?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
   audio_models?: string[];
 
   @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
   audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/translations' })
+  audio_translations_endpoint?: string;
 
   @ApiPropertyOptional({ example: '/v1/audio/speech' })
   audio_speech_endpoint?: string;

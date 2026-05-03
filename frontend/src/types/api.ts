@@ -58,6 +58,14 @@ export interface CallLog {
   structured_output_strategy?: string | null
   structured_output_supported?: boolean | null
   structured_output_schema_name?: string | null
+  media_type?: string | null
+  media_operation?: string | null
+  media_multipart?: boolean | null
+  media_file_count?: number | null
+  media_byte_size?: number | null
+  media_requested_format?: string | null
+  media_response_format?: string | null
+  media_provider_response_type?: string | null
   session_key: string | null
   error: string | null
   api_key_id?: string | null
@@ -107,6 +115,25 @@ export interface RouteDecisionCandidate {
     context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown'
     structured_output: boolean | null
   }
+  capability_evidence?: {
+    requested_modality: string | null
+    supported_modalities: string[]
+    input_types: string[]
+    output_types: string[]
+    required_capabilities: string[]
+    matched_capabilities: string[]
+    missing_capabilities: string[]
+    endpoint_strategy: string | null
+    endpoint_status: string
+    endpoint: string | null
+    file_count: number | null
+    byte_size: number | null
+    max_file_size: number | null
+    filtered_by_capability: boolean
+    filtered_by_file_size: boolean
+    pricing_source: string | null
+    catalog_source: string | null
+  }
 }
 
 export interface RouteDecisionFilter {
@@ -139,6 +166,31 @@ export interface RouteDecisionTrace {
     estimated_output_tokens: number | null
     estimated_context_tokens: number | null
     requires_structured_output: boolean
+  }
+  modality_evidence?: {
+    requested_modality: string | null
+    input_types: string[]
+    output_types: string[]
+    file_count: number | null
+    byte_size: number | null
+    required_capabilities: string[]
+    endpoint_strategy: string | null
+    filtered_by_capability: Array<{
+      node: string
+      model: string
+      reason: string
+      missing_capabilities?: string[]
+      byte_size?: number | null
+      max_file_size?: number | null
+    }>
+    filtered_by_file_size: Array<{
+      node: string
+      model: string
+      reason: string
+      missing_capabilities?: string[]
+      byte_size?: number | null
+      max_file_size?: number | null
+    }>
   }
   candidate_targets: RouteDecisionCandidate[]
   filters: RouteDecisionFilter[]
@@ -262,6 +314,32 @@ export interface RealtimeNodeStatus {
   last_error: string | null
 }
 
+export type ProviderCompatibilityCapability =
+  | 'chat'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'rerank'
+  | 'images'
+  | 'audio'
+  | 'video'
+  | 'realtime'
+
+export type ProviderCompatibilityStatus = 'pass' | 'warning' | 'fail' | 'skipped'
+
+export interface ProviderCompatibilityMatrixItem {
+  capability: ProviderCompatibilityCapability
+  configured: boolean
+  tested: boolean
+  last_status: ProviderCompatibilityStatus | null
+  last_checked_at: string | null
+  failure_reason: string | null
+  latency_ms: number | null
+  status_code: number | null
+  test_mode: string | null
+  requires_confirmation: boolean
+}
+
 export interface NodeInfo {
   id: string
   name: string
@@ -270,8 +348,26 @@ export interface NodeInfo {
   endpoint: string
   endpoints?: Record<string, string>
   models: string[]
+  embeddings_endpoint?: string | null
   embedding_models?: string[]
+  rerank_endpoint?: string | null
   rerank_models?: string[]
+  images_generations_endpoint?: string | null
+  images_edits_endpoint?: string | null
+  images_variations_endpoint?: string | null
+  image_models?: string[]
+  audio_transcriptions_endpoint?: string | null
+  audio_translations_endpoint?: string | null
+  audio_speech_endpoint?: string | null
+  audio_models?: string[]
+  video_generations_endpoint?: string | null
+  video_endpoint?: string | null
+  video_status_endpoint?: string | null
+  video_content_endpoint?: string | null
+  video_cancel_endpoint?: string | null
+  video_models?: string[]
+  realtime_endpoint?: string | null
+  realtime_models?: string[]
   capabilities: string[]
   modalities: string[]
   model_capabilities?: Record<string, ModelCapabilityInfo>
@@ -282,6 +378,7 @@ export interface NodeInfo {
   modelCircuits: Record<string, CircuitBreaker>
   concurrency: ConcurrencySnapshot
   realtime?: RealtimeNodeStatus
+  compatibility_matrix?: ProviderCompatibilityMatrixItem[]
   healthy: boolean
 }
 
@@ -312,6 +409,8 @@ export type ConfigDiagnosticCode =
   | 'route_references_unknown_node'
   | 'route_references_unknown_model'
   | 'split_overrides_targets'
+  | 'provider_compatibility_failed'
+  | 'provider_compatibility_untested'
 
 export interface ConfigDiagnostic {
   severity: 'warning'
@@ -323,6 +422,7 @@ export interface ConfigDiagnostic {
   matchingNodes?: string[]
   tier?: string
   target?: string
+  capability?: string
 }
 
 export interface NodesResponse {
@@ -484,6 +584,11 @@ export interface ConfigResponse {
     base_url: string
     models: string[]
     embedding_models?: string[]
+    rerank_models?: string[]
+    image_models?: string[]
+    audio_models?: string[]
+    video_models?: string[]
+    realtime_models?: string[]
     model_capabilities?: Record<string, ModelCapabilityInfo>
     tags: string[]
     api_key: string
@@ -575,8 +680,26 @@ export interface CreateNodeRequest {
   endpoint: string
   api_key: string
   models: string[]
+  embeddings_endpoint?: string
+  embedding_models?: string[]
+  rerank_endpoint?: string
+  rerank_models?: string[]
+  images_generations_endpoint?: string
+  images_edits_endpoint?: string
+  images_variations_endpoint?: string
+  image_models?: string[]
+  audio_transcriptions_endpoint?: string
+  audio_translations_endpoint?: string
+  audio_speech_endpoint?: string
+  audio_models?: string[]
+  video_generations_endpoint?: string
+  video_status_endpoint?: string
+  video_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
+  video_endpoint?: string
+  video_content_endpoint?: string
+  video_cancel_endpoint?: string
   timeout_ms: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -587,7 +710,9 @@ export interface CreateNodeRequest {
   model_aliases?: Record<string, string>
   model_prefixes?: string[]
   headers?: Record<string, string>
+  model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>
   auth_type?: 'bearer' | 'x-api-key'
+  health_check?: HealthCheckRequest
 }
 
 export interface UpdateNodeRequest {
@@ -597,8 +722,26 @@ export interface UpdateNodeRequest {
   endpoint?: string
   api_key?: string
   models?: string[]
+  embeddings_endpoint?: string
+  embedding_models?: string[]
+  rerank_endpoint?: string
+  rerank_models?: string[]
+  images_generations_endpoint?: string
+  images_edits_endpoint?: string
+  images_variations_endpoint?: string
+  image_models?: string[]
+  audio_transcriptions_endpoint?: string
+  audio_translations_endpoint?: string
+  audio_speech_endpoint?: string
+  audio_models?: string[]
+  video_generations_endpoint?: string
+  video_status_endpoint?: string
+  video_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
+  video_endpoint?: string
+  video_content_endpoint?: string
+  video_cancel_endpoint?: string
   timeout_ms?: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -609,7 +752,18 @@ export interface UpdateNodeRequest {
   model_aliases?: Record<string, string>
   model_prefixes?: string[]
   headers?: Record<string, string>
+  model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>
   auth_type?: 'bearer' | 'x-api-key'
+  health_check?: HealthCheckRequest
+}
+
+export interface HealthCheckRequest {
+  enabled?: boolean
+  interval_seconds?: number
+  timeout_ms?: number
+  method?: 'HEAD' | 'GET' | 'POST'
+  path?: string
+  lightweight_model?: string
 }
 
 export interface TestNodeRequest {
@@ -620,6 +774,8 @@ export interface TestNodeRequest {
   model: string
   auth_type?: 'bearer' | 'x-api-key'
   headers?: Record<string, string>
+  capabilities?: ProviderCompatibilityCapability[]
+  confirm_expensive?: boolean
 }
 
 export interface TestNodeResponse {
@@ -627,6 +783,117 @@ export interface TestNodeResponse {
   status: number
   latency_ms: number
   message: string
+  matrix?: ProviderCompatibilityMatrixItem[]
+}
+
+// ── Provider / Model Catalog ──
+
+export type CatalogModality =
+  | 'text'
+  | 'vision'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'embedding'
+  | 'rerank'
+  | 'realtime'
+
+export type CatalogEndpoint =
+  | 'chat_completions'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'image_generations'
+  | 'image_edits'
+  | 'audio_transcriptions'
+  | 'audio_speech'
+  | 'video_generations'
+  | 'video_status'
+  | 'rerank'
+  | 'realtime'
+
+export type CatalogAuthType =
+  | 'bearer'
+  | 'x-api-key'
+  | 'api-key-header'
+  | 'query-key'
+  | 'none'
+  | 'custom'
+
+export interface CatalogPricing {
+  input?: number | null
+  output?: number | null
+  unit: string
+  currency: string
+  source: string
+  last_updated: string
+  manual_review_required: boolean
+  notes?: string
+}
+
+export interface CatalogModel {
+  id: string
+  name?: string
+  provider_id: string
+  modalities: CatalogModality[]
+  endpoints: CatalogEndpoint[]
+  input_types: string[]
+  output_types: string[]
+  capabilities: string[]
+  limits?: {
+    max_context_tokens?: number
+    max_output_tokens?: number
+    max_file_size?: number
+    dimensions?: number[]
+  }
+  pricing: CatalogPricing
+  structured_output?: boolean
+  supports_streaming?: boolean
+  supports_realtime?: boolean
+  supports_rerank?: boolean
+  manual_review_required?: boolean
+  notes?: string
+}
+
+export interface CatalogProvider {
+  id: string
+  name: string
+  description?: string
+  base_url: string
+  base_url_matchers: string[]
+  protocols: Array<'chat_completions' | 'responses' | 'messages'>
+  default_protocol: 'chat_completions' | 'responses' | 'messages'
+  endpoints: Partial<Record<CatalogEndpoint, string>>
+  auth_type: CatalogAuthType
+  key_placeholder?: string
+  modalities: CatalogModality[]
+  capabilities: string[]
+  pricing: {
+    source: string
+    last_updated: string
+    manual_review_required: boolean
+  }
+  model_prefixes?: string[]
+  tags?: string[]
+  allows_unknown_models?: boolean
+  manual_review_required?: boolean
+  models: CatalogModel[]
+}
+
+export interface CatalogProvidersResponse {
+  version: string
+  source: 'builtin_static'
+  last_updated: string
+  auto_update: false
+  providers: CatalogProvider[]
+}
+
+export interface CatalogModelsResponse {
+  version: string
+  source: 'builtin_static'
+  last_updated: string
+  auto_update: false
+  models: CatalogModel[]
 }
 
 // ── Capabilities ──

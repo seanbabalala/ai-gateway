@@ -281,6 +281,34 @@ describe('MediaController', () => {
     expect(res.type).toHaveBeenCalledWith('audio/mpeg');
     expect(res.send).toHaveBeenCalledWith(Buffer.from('audio-bytes'));
   });
+
+  it('should route image variations and audio translations through the media pipeline', async () => {
+    const pipeline = mockPipeline();
+    const controller = new MediaController(pipeline);
+    const imageReq = mockReq({ model: 'auto', size: '1024x1024' });
+    const audioReq = mockReq({ model: 'auto', response_format: 'json' });
+    const res = mockRes();
+
+    await controller.imageVariations(imageReq, res);
+    await controller.audioTranslations(audioReq, res);
+
+    expect(pipeline.processMedia).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        source_format: 'image_variation',
+        media: expect.objectContaining({ media_type: 'image', operation: 'variation' }),
+      }),
+      expect.any(Object),
+    );
+    expect(pipeline.processMedia).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        source_format: 'audio_translation',
+        media: expect.objectContaining({ media_type: 'audio', operation: 'translation' }),
+      }),
+      expect.any(Object),
+    );
+  });
 });
 
 // ═══════════════════════════════════════════════════════════

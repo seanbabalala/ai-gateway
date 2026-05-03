@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.6.1**. This patch keeps the v0.6 Protocol + Explainability milestone intact and tightens Dashboard localization for the v0.2-v0.6 feature surfaces: structured-output logs, namespaces, shadow traffic, multimodal capability badges, adaptive routing recommendations, realtime status, and Route Explanation.
+Current open-source release: **v0.8.0**. This release focuses on Provider Catalog + Add Node Wizard + Multimodal Expansion + Video Preview: local provider/model presets, safer Dashboard node setup, hardened images/audio ingress, experimental async video jobs, provider compatibility checks, catalog overrides, and richer multimodal route explanation.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -65,8 +65,9 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
 - **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
-- **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`) — image-capable node routing with JSON and multipart pass-through
-- **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/speech`) — transcription and speech routing with multipart input and binary audio output support
+- **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`, `/v1/images/variations`) — image-capable node routing with JSON and multipart pass-through
+- **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/speech`) — transcription, translation, and speech routing with multipart input and binary audio output support
+- **Experimental Video** (`/v1/videos/generations`, `/v1/videos/:id`) — async video job preview with local metadata only; prompts, source media, and video bytes are not persisted
 - **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - Full **streaming** support across supported generative protocols
@@ -83,7 +84,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
-- **Explainable routing trace** — records privacy-safe route decision evidence so operators can inspect why a `node:model` was selected
+- **Explainable routing trace** — records privacy-safe route decision evidence, including multimodal capability matching, so operators can inspect why a `node:model` was selected or filtered
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
 
 ### Cost & Budget Control
@@ -109,9 +110,10 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
+- **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
-- **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
+- **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -126,7 +128,9 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
+- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog APIs, and config validation warnings without automatic network updates
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
+- **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
@@ -134,6 +138,22 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
+
+### Provider Catalog
+
+v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. It is a static, reviewable data source for provider presets and model metadata; it does not phone home or auto-update. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
+
+Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatible proxy, select capabilities, pick/edit model buckets, confirm endpoints/auth/headers/pricing/capabilities, then test and save to the local Data Plane config. It supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` without connecting to SiftGate Cloud.
+
+- Dashboard APIs:
+  - `GET /api/dashboard/catalog/providers`
+  - `GET /api/dashboard/catalog/models?provider=openai&modality=embedding`
+- Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
+- Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
+- Pricing entries include `source`, `last_updated`, and `manual_review_required`. Use local `models_pricing` or `model_capabilities[].pricing` for production cost routing.
+- Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
+
+See [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) for the schema and validation behavior.
 
 ## Quick Start
 
@@ -336,6 +356,22 @@ node dist/cli/siftgate.js validate --config gateway.config.yaml
 
 The validator checks YAML parsing, required sections, node/model naming conflicts, routing/fallback/split/targets references, pricing coverage warnings, environment-reference format, provider key hygiene, and optional `control_plane` safety. Errors return a non-zero exit code; warnings and info are printed without failing the command. See [Config Validation](docs/CONFIG_VALIDATION.md) for CI examples and the issue taxonomy.
 
+### Provider & Model Catalog
+
+SiftGate ships a local provider/model catalog for Dashboard Add Node presets, config warnings, and multimodal routing metadata. It is intentionally static: the gateway does not fetch provider websites or update prices over the network.
+
+Use the catalog CLI to inspect the built-in catalog and manage local overrides:
+
+```bash
+npm run catalog -- list
+npm run catalog -- show openai
+npm run catalog -- export --out ./catalog.merged.yaml
+npm run catalog -- import --file ./catalog.override.yaml
+npm run catalog -- validate
+```
+
+Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate` and `siftgate validate` flag suspicious secret fields and values. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
+
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 
 ### LiteLLM Migration
@@ -537,8 +573,15 @@ nodes:
     realtime_endpoint: "/v1/realtime" # Optional experimental realtime WebSocket path or ws/wss URL
     images_generations_endpoint: "/v1/images/generations" # Optional image generation endpoint path
     images_edits_endpoint: "/v1/images/edits" # Optional image edit endpoint path
+    images_variations_endpoint: "/v1/images/variations" # Optional image variation endpoint path
     audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
+    audio_translations_endpoint: "/v1/audio/translations" # Optional translation endpoint path
     audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
+    # video_generations_endpoint: "/v1/videos/generations" # Experimental async video generation path
+    video_endpoint: "/v1/videos/generations" # Optional experimental compatibility-test path
+    video_status_endpoint: "/v1/videos/:id" # Optional async video status path
+    video_content_endpoint: "/v1/videos/:id/content" # Optional async video content path
+    video_cancel_endpoint: "/v1/videos/:id/cancel" # Optional async video cancel path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
@@ -547,6 +590,7 @@ nodes:
     realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
     image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
+    video_models: ["veo-3-preview"] # Experimental models eligible for /v1/videos/*
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -580,7 +624,7 @@ nodes:
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
 
-`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests. Images and audio endpoints use `nodes[].image_models` and `nodes[].audio_models` so media traffic can be permitted, priced, logged, and routed independently from chat traffic.
+`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests. Images, audio, and experimental video capability declarations use `nodes[].image_models`, `nodes[].audio_models`, and `nodes[].video_models` so media traffic can be permitted, priced, logged, tested, and routed independently from chat traffic.
 
 ### Unified Model Capabilities
 
@@ -594,11 +638,13 @@ nodes:
     modalities: ["text", "vision"] # legacy image-input alias; compatible with "image"
     endpoints:
       image: "/v1/images/generations"
+      image_variation: "/v1/images/variations"
       audio: "/v1/audio/transcriptions"
+      audio_translation: "/v1/audio/translations"
       rerank: "/v1/rerank"
       realtime: "wss://api.openai.com/v1/realtime"
-    input_types: ["text", "image", "audio"]
-    output_types: ["text", "image", "events"]
+    input_types: ["text", "image", "audio", "video"]
+    output_types: ["text", "image", "video", "events"]
     max_file_size: 20000000
     supports_streaming: true
     supports_realtime: false
@@ -619,6 +665,12 @@ nodes:
 ```
 
 Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible.
+
+### Provider Compatibility Matrix
+
+Dashboard Nodes includes a compatibility matrix for every configured upstream. `POST /api/dashboard/nodes/:id/test` can run safe checks for `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, and `realtime`.
+
+Text, embedding, and rerank checks use tiny synthetic requests such as `ping`. Images, audio, video, and realtime default to endpoint/auth probes so SiftGate does not trigger expensive media generation or long-lived sessions without an explicit future confirmation flow. The saved result is local metadata only: capability, configured/tested state, status, timestamp, latency, HTTP status, and sanitized failure reason. Prompt text, provider responses, raw headers, and provider API keys are never stored.
 
 See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
 
@@ -799,7 +851,7 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
-Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. It intentionally records only routing metadata: prompts, responses, raw headers, and provider keys are not stored.
+Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. For image, audio, video, rerank, and embeddings traffic, the trace also records a compact `modality_evidence` block: requested modality, input/output types, file count, byte size, required capabilities, endpoint strategy, capability filters, and file-size filters. Each candidate includes capability badges for supported modalities, endpoint status, pricing source, and catalog source. It intentionally records only routing metadata: prompts, responses, file contents, raw headers, and provider keys are not stored.
 
 Use the Dashboard API to power an explainable routing page or inspect one request during incident response:
 
@@ -930,16 +982,24 @@ curl http://localhost:2099/v1/rerank \
 
 ### Images and Audio
 
-v0.6 adds minimal OpenAI-compatible media ingress for common provider/proxy APIs:
+v0.8 hardens the v0.6 OpenAI-compatible media ingress for production provider/proxy APIs:
 
 | Endpoint | Models selected from | Request body |
 | --- | --- | --- |
 | `POST /v1/images/generations` | `nodes[].image_models` | JSON; multipart is accepted as pass-through |
 | `POST /v1/images/edits` | `nodes[].image_models` | JSON or `multipart/form-data` |
+| `POST /v1/images/variations` | `nodes[].image_models` | JSON or `multipart/form-data`; default strategy is OpenAI-compatible pass-through |
 | `POST /v1/audio/transcriptions` | `nodes[].audio_models` | JSON or `multipart/form-data` |
+| `POST /v1/audio/translations` | `nodes[].audio_models` | JSON or `multipart/form-data` |
 | `POST /v1/audio/speech` | `nodes[].audio_models` | JSON; binary provider responses are returned unchanged |
+| `POST /v1/videos/generations` | `nodes[].video_models` | JSON only; experimental async job preview |
+| `GET /v1/videos/:id` | stored `video_jobs` metadata | Status lookup with optional provider refresh |
+| `GET /v1/videos/:id/content` | stored `video_jobs` metadata | Provider content proxy only when configured |
+| `POST /v1/videos/:id/cancel` | stored `video_jobs` metadata | Provider cancel proxy only when configured |
 
-For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`multipart`, byte size, model), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, or validation. Increase `server.body_limit` if your edit or transcription payloads exceed the default `1mb`.
+v0.8 also includes an experimental async video preview. `POST /v1/videos/generations` routes JSON requests to `nodes[].video_models`, stores only local job metadata in `video_jobs`, and returns the provider response. `GET /v1/videos/:id` reads local status and refreshes from `video_status_endpoint` when configured. `GET /v1/videos/:id/content` and `POST /v1/videos/:id/cancel` proxy only when the node declares `video_content_endpoint` or `video_cancel_endpoint`; job lookup stays bound to the creating Gateway API key/namespace.
+
+For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`media_type`, `operation`, `multipart`, file count, byte size, requested/response format, provider response type), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, compression, or validation. Increase `server.body_limit` if your edit, variation, transcription, or translation payloads exceed the default `1mb`.
 
 ```bash
 curl http://localhost:2099/v1/images/generations \
@@ -1203,7 +1263,9 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/rerank`           | OpenAI/common-compatible rerank format        |
 | `POST` | `/v1/images/generations` | OpenAI Images generation format             |
 | `POST` | `/v1/images/edits`     | OpenAI Images edits format with multipart pass-through |
+| `POST` | `/v1/images/variations` | OpenAI Images variations format with multipart pass-through |
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription format         |
+| `POST` | `/v1/audio/translations` | OpenAI Audio translation format           |
 | `POST` | `/v1/audio/speech`     | OpenAI Audio speech format with binary responses |
 | `WS`   | `/v1/realtime`         | Experimental OpenAI Realtime-style pass-through |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |

@@ -7,7 +7,9 @@ import {
   CallLog,
   GatewayApiKey,
   NodeStatus,
+  ProviderCompatibilityResult,
   RouteDecisionLog,
+  VideoJob,
 } from "../database/entities";
 
 export type DbMigrationTableName =
@@ -15,7 +17,9 @@ export type DbMigrationTableName =
   | "budget_rules"
   | "node_status"
   | "call_logs"
-  | "route_decisions";
+  | "route_decisions"
+  | "provider_compatibility_results"
+  | "video_jobs";
 
 interface MigrationTableDefinition {
   table: DbMigrationTableName;
@@ -29,6 +33,16 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
   { table: "route_decisions", entity: RouteDecisionLog, generatedSequenceColumn: "id" },
+  {
+    table: "provider_compatibility_results",
+    entity: ProviderCompatibilityResult,
+    generatedSequenceColumn: "id",
+  },
+  {
+    table: "video_jobs",
+    entity: VideoJob,
+    generatedSequenceColumn: "id",
+  },
 ];
 
 export interface DbMigrationWarning {
@@ -160,7 +174,15 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
     this.dataSource = new DataSource({
       type: "postgres",
       url: this.postgresUrl,
-      entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey, RouteDecisionLog],
+      entities: [
+        CallLog,
+        BudgetRule,
+        NodeStatus,
+        GatewayApiKey,
+        RouteDecisionLog,
+        ProviderCompatibilityResult,
+        VideoJob,
+      ],
       synchronize: false,
       logging: false,
     });
@@ -540,6 +562,26 @@ function normalizeRow(
       filtered_count: toNumber,
       status_code: toNumber,
       is_fallback: toBoolean,
+    });
+  }
+
+  if (table === "provider_compatibility_results") {
+    return normalizeFields(row, {
+      id: toNumber,
+      configured: toBoolean,
+      tested: toBoolean,
+      latency_ms: toNullableNumber,
+      status_code: toNullableNumber,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "video_jobs") {
+    return normalizeFields(row, {
+      id: toNumber,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
     });
   }
 

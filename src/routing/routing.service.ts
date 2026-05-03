@@ -14,12 +14,16 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
-import { CapabilityService } from '../config/capability.service';
+import {
+  CapabilityService,
+  ResolvedModelRoutingCapabilities,
+} from '../config/capability.service';
 import { CanonicalMediaSourceFormat, Tier } from '../canonical/canonical.types';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
 import {
   LoadBalancingStrategy,
+  NodeConfig,
   RouteTarget,
   RoutingOptimization,
   SplitVariant,
@@ -30,6 +34,7 @@ import { Modality, supportsModalities } from '../config/modality';
 import { v4 as uuidv4 } from 'uuid';
 import {
   RouteDecisionTrace,
+  RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionTraceCandidate,
   RouteDecisionTraceFilter,
   routeTargetKey,
@@ -90,6 +95,14 @@ export interface RouteSelectionHints {
   estimated_output_tokens?: number;
   estimated_context_tokens?: number;
   requires_structured_output?: boolean;
+  requested_modality?: string | null;
+  input_types?: string[];
+  output_types?: string[];
+  file_count?: number | null;
+  byte_size?: number | null;
+  required_capabilities?: string[];
+  endpoint_strategy?: string | null;
+  source_format?: string | null;
 }
 
 export interface EmbeddingRouteDecision {
@@ -103,12 +116,14 @@ export interface RerankRouteDecision {
   primary: RouteTarget;
   fallbacks: RouteTarget[];
   mode: 'auto' | 'direct';
+  trace?: RouteDecisionTrace;
 }
 
 export interface MediaRouteDecision {
   primary: RouteTarget;
   fallbacks: RouteTarget[];
   mode: 'auto' | 'direct';
+  trace?: RouteDecisionTrace;
 }
 
 interface SelectedRouteTarget {
@@ -457,6 +472,7 @@ export class RoutingService {
   ): EmbeddingRouteDecision {
     const model = requestedModel || 'auto';
     const allTargets = this.getEmbeddingTargets();
+    const selectionHints = this.embeddingSelectionHints(dimensions);
 
     if (model !== 'auto') {
       const resolved = this.config.resolveEmbeddingModel(model);
@@ -499,8 +515,8 @@ export class RoutingService {
           score: 0,
           momentumAdjusted: false,
           domainHint: null,
-          modalityHints: ['text'],
-          selectionHints: {},
+          modalityHints: ['embedding'],
+          selectionHints,
           initialTargets: allTargets,
           finalTargets: [primary, ...fallbacks],
           selected: primary,
@@ -536,12 +552,12 @@ export class RoutingService {
         requestedTier: 'standard',
         effectiveTier: 'standard',
         score: 0,
-        momentumAdjusted: false,
-        domainHint: null,
-        modalityHints: ['text'],
-        selectionHints: {},
-        initialTargets: allTargets,
-        finalTargets: candidates,
+          momentumAdjusted: false,
+          domainHint: null,
+          modalityHints: ['embedding'],
+          selectionHints,
+          initialTargets: allTargets,
+          finalTargets: candidates,
         selected: candidates[0],
         loadBalancing: {
           strategy: 'cost',
@@ -559,9 +575,11 @@ export class RoutingService {
   resolveRerankRoute(
     requestedModel: string | undefined,
     targetFilter: (target: RouteTarget) => boolean = () => true,
+    selectionHints: RouteSelectionHints = this.rerankSelectionHints(),
   ): RerankRouteDecision {
     const model = requestedModel || 'auto';
     const allTargets = this.getRerankTargets();
+    const evidenceHints = this.withDefaultRerankSelectionHints(selectionHints);
 
     if (model !== 'auto') {
       const resolved = this.config.resolveRerankModel(model);
@@ -586,7 +604,31 @@ export class RoutingService {
           targetFilter,
         ),
       );
-      return { primary, fallbacks, mode: 'direct' };
+      return {
+        primary,
+        fallbacks,
+        mode: 'direct',
+        trace: this.buildRouteTrace({
+          mode: 'rerank_direct',
+          requestedTier: 'direct',
+          effectiveTier: 'direct',
+          score: 0,
+          momentumAdjusted: false,
+          domainHint: null,
+          modalityHints: ['rerank'],
+          selectionHints: evidenceHints,
+          initialTargets: allTargets,
+          finalTargets: [primary, ...fallbacks],
+          selected: primary,
+          loadBalancing: {
+            strategy: 'rerank',
+            source: 'rerank',
+            selected: primary,
+            target_count: 1 + fallbacks.length,
+          },
+          reason: 'direct rerank model match',
+        }),
+      };
     }
 
     const candidates = this.rankRerankTargets(
@@ -603,6 +645,26 @@ export class RoutingService {
       primary: candidates[0],
       fallbacks: candidates.slice(1),
       mode: 'auto',
+      trace: this.buildRouteTrace({
+        mode: 'rerank_auto',
+        requestedTier: 'standard',
+        effectiveTier: 'standard',
+        score: 0,
+        momentumAdjusted: false,
+        domainHint: null,
+        modalityHints: ['rerank'],
+        selectionHints: evidenceHints,
+        initialTargets: allTargets,
+        finalTargets: candidates,
+        selected: candidates[0],
+        loadBalancing: {
+          strategy: 'rerank',
+          source: 'rerank',
+          selected: candidates[0],
+          target_count: candidates.length,
+        },
+        reason: 'rerank capability and lowest configured input cost',
+      }),
     };
   }
 
@@ -610,19 +672,23 @@ export class RoutingService {
     sourceFormat: CanonicalMediaSourceFormat,
     requestedModel: string | undefined,
     targetFilter: (target: RouteTarget) => boolean = () => true,
+    selectionHints: RouteSelectionHints = this.mediaSelectionHints(sourceFormat),
   ): MediaRouteDecision {
     const model = requestedModel || 'auto';
     const kind = this.mediaKind(sourceFormat);
     const allTargets = this.getMediaTargets(kind);
+    const evidenceHints = this.withDefaultMediaSelectionHints(sourceFormat, selectionHints);
 
     if (model !== 'auto') {
       const resolved =
         kind === 'image'
           ? this.config.resolveImageModel(model)
-          : this.config.resolveAudioModel(model);
+          : kind === 'audio'
+            ? this.config.resolveAudioModel(model)
+            : this.config.resolveVideoModel(model);
       if (!resolved) {
         throw new RoutingConstraintError(
-          `${kind === 'image' ? 'Image' : 'Audio'} model "${model}" is not configured. Use "auto" or configure nodes[].${kind}_models.`,
+          `${kind === 'image' ? 'Image' : kind === 'audio' ? 'Audio' : 'Video'} model "${model}" is not configured. Use "auto" or configure nodes[].${kind}_models.`,
           400,
         );
       }
@@ -639,13 +705,38 @@ export class RoutingService {
             target.node !== primary.node || target.model !== primary.model,
           ),
           targetFilter,
+          evidenceHints,
         ),
       );
-      return { primary, fallbacks, mode: 'direct' };
+      return {
+        primary,
+        fallbacks,
+        mode: 'direct',
+        trace: this.buildRouteTrace({
+          mode: 'media_direct',
+          requestedTier: 'direct',
+          effectiveTier: 'direct',
+          score: 0,
+          momentumAdjusted: false,
+          domainHint: null,
+          modalityHints: [kind],
+          selectionHints: evidenceHints,
+          initialTargets: allTargets,
+          finalTargets: [primary, ...fallbacks],
+          selected: primary,
+          loadBalancing: {
+            strategy: 'media',
+            source: 'media',
+            selected: primary,
+            target_count: 1 + fallbacks.length,
+          },
+          reason: `direct ${kind} model match`,
+        }),
+      };
     }
 
     const candidates = this.rankMediaTargets(
-      this.filterMediaTargets(allTargets, targetFilter),
+      this.filterMediaTargets(allTargets, targetFilter, evidenceHints),
     );
     if (candidates.length === 0) {
       throw new RoutingConstraintError(
@@ -658,6 +749,26 @@ export class RoutingService {
       primary: candidates[0],
       fallbacks: candidates.slice(1),
       mode: 'auto',
+      trace: this.buildRouteTrace({
+        mode: 'media_auto',
+        requestedTier: 'standard',
+        effectiveTier: 'standard',
+        score: 0,
+        momentumAdjusted: false,
+        domainHint: null,
+        modalityHints: [kind],
+        selectionHints: evidenceHints,
+        initialTargets: allTargets,
+        finalTargets: candidates,
+        selected: candidates[0],
+        loadBalancing: {
+          strategy: 'media',
+          source: 'media',
+          selected: candidates[0],
+          target_count: candidates.length,
+        },
+        reason: `${kind} capability and lowest configured input cost`,
+      }),
     };
   }
 
@@ -943,16 +1054,26 @@ export class RoutingService {
     return targets;
   }
 
-  private mediaKind(sourceFormat: CanonicalMediaSourceFormat): 'image' | 'audio' {
-    return sourceFormat === 'image_generation' || sourceFormat === 'image_edit'
+  private mediaKind(sourceFormat: CanonicalMediaSourceFormat): 'image' | 'audio' | 'video' {
+    if (sourceFormat === 'video_generation') return 'video';
+    return (
+      sourceFormat === 'image_generation' ||
+      sourceFormat === 'image_edit' ||
+      sourceFormat === 'image_variation'
+    )
       ? 'image'
       : 'audio';
   }
 
-  private getMediaTargets(kind: 'image' | 'audio'): RouteTarget[] {
+  private getMediaTargets(kind: 'image' | 'audio' | 'video'): RouteTarget[] {
     const targets: RouteTarget[] = [];
     for (const node of this.config.nodes) {
-      const models = kind === 'image' ? node.image_models : node.audio_models;
+      const models =
+        kind === 'image'
+          ? node.image_models
+          : kind === 'audio'
+            ? node.audio_models
+            : node.video_models;
       for (const model of models || []) {
         targets.push({ node: node.id, model });
       }
@@ -963,10 +1084,22 @@ export class RoutingService {
   private filterMediaTargets(
     targets: RouteTarget[],
     targetFilter: (target: RouteTarget) => boolean,
+    selectionHints: RouteSelectionHints = {},
   ): RouteTarget[] {
-    return targets
+    const allowed = targets
       .filter(targetFilter)
       .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+    const byteSize = selectionHints.byte_size;
+    if (byteSize === null || byteSize === undefined || byteSize <= 0) return allowed;
+
+    const compatible = allowed.filter((target) => {
+      const maxFileSize = this.capabilityService.resolveModelRoutingCapabilities(
+        target.node,
+        target.model,
+      ).max_file_size;
+      return !maxFileSize || byteSize <= maxFileSize;
+    });
+    return compatible.length > 0 ? compatible : allowed;
   }
 
   private rankMediaTargets(targets: RouteTarget[]): RouteTarget[] {
@@ -1241,6 +1374,11 @@ export class RoutingService {
         estimated_context_tokens: input.selectionHints.estimated_context_tokens ?? null,
         requires_structured_output: Boolean(input.selectionHints.requires_structured_output),
       },
+      modality_evidence: this.buildTraceModalityEvidence(
+        input.selectionHints,
+        input.modalityHints,
+        candidates,
+      ),
       candidate_targets: candidates,
       filters,
       load_balancing: {
@@ -1288,6 +1426,10 @@ export class RoutingService {
     const contextFit = this.contextFit(contextTokens, maxContextTokens);
     const circuitState =
       this.circuitBreaker.getCircuitState?.(target.node, target.model) || 'CLOSED';
+    const capabilityEvidence = this.buildCandidateCapabilityEvidence(
+      target,
+      selectionHints,
+    );
 
     return {
       node: target.node,
@@ -1319,7 +1461,447 @@ export class RoutingService {
             ? capabilities.structured_output
             : null,
       },
+      capability_evidence: capabilityEvidence,
     };
+  }
+
+  private buildTraceModalityEvidence(
+    selectionHints: RouteSelectionHints,
+    modalityHints: Modality[] | string[] | undefined,
+    candidates: RouteDecisionTraceCandidate[],
+  ) {
+    const requestedModality =
+      selectionHints.requested_modality ||
+      (modalityHints && modalityHints.length > 0 ? String(modalityHints[0]) : null);
+    const filteredByCapability = candidates
+      .filter((candidate) => candidate.capability_evidence?.filtered_by_capability)
+      .map((candidate) => ({
+        node: candidate.node,
+        model: candidate.model,
+        reason: 'capability_unsupported',
+        missing_capabilities:
+          candidate.capability_evidence?.missing_capabilities || [],
+      }));
+    const filteredByFileSize = candidates
+      .filter((candidate) => candidate.capability_evidence?.filtered_by_file_size)
+      .map((candidate) => ({
+        node: candidate.node,
+        model: candidate.model,
+        reason: 'file_size_exceeded',
+        byte_size: candidate.capability_evidence?.byte_size ?? null,
+        max_file_size: candidate.capability_evidence?.max_file_size ?? null,
+      }));
+
+    return {
+      requested_modality: requestedModality,
+      input_types: this.uniqueStrings(selectionHints.input_types || []),
+      output_types: this.uniqueStrings(selectionHints.output_types || []),
+      file_count: selectionHints.file_count ?? null,
+      byte_size: selectionHints.byte_size ?? null,
+      required_capabilities: this.uniqueStrings(
+        selectionHints.required_capabilities ||
+          (requestedModality ? [requestedModality] : []),
+      ),
+      endpoint_strategy: selectionHints.endpoint_strategy ?? null,
+      filtered_by_capability: filteredByCapability,
+      filtered_by_file_size: filteredByFileSize,
+    };
+  }
+
+  private buildCandidateCapabilityEvidence(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+  ): RouteDecisionCandidateCapabilityEvidence {
+    const capabilities =
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) || {
+        modalities: this.capabilityService.resolveModelModalities?.(
+          target.node,
+          target.model,
+        ) || [],
+        structured_output: null,
+      };
+    const supportedModalities = this.uniqueStrings(
+      capabilities.modalities ||
+        this.capabilityService.resolveModelModalities?.(target.node, target.model) ||
+        [],
+    );
+    const inputTypes = this.uniqueStrings(
+      capabilities.input_types || this.inferInputTypesFromModalities(supportedModalities),
+    );
+    const outputTypes = this.uniqueStrings(
+      capabilities.output_types || this.inferOutputTypesFromModalities(supportedModalities),
+    );
+    const requestedModality = selectionHints.requested_modality ?? null;
+    const requiredCapabilities = this.uniqueStrings(
+      selectionHints.required_capabilities ||
+        (requestedModality ? [requestedModality] : []),
+    );
+    const matchedCapabilities = requiredCapabilities.filter((requirement) =>
+      this.candidateSupportsRequirement(
+        requirement,
+        capabilities,
+        supportedModalities,
+        inputTypes,
+        outputTypes,
+      ),
+    );
+    const missingCapabilities = requiredCapabilities.filter(
+      (requirement) => !matchedCapabilities.includes(requirement),
+    );
+    const byteSize = selectionHints.byte_size ?? null;
+    const maxFileSize = capabilities.max_file_size ?? null;
+    const filteredByFileSize =
+      byteSize !== null &&
+      maxFileSize !== null &&
+      Number.isFinite(byteSize) &&
+      Number.isFinite(maxFileSize) &&
+      byteSize > maxFileSize;
+    const endpoint = this.resolveEndpointEvidence(
+      target,
+      requestedModality,
+      selectionHints.source_format,
+      capabilities,
+    );
+
+    return {
+      requested_modality: requestedModality,
+      supported_modalities: supportedModalities,
+      input_types: inputTypes,
+      output_types: outputTypes,
+      required_capabilities: requiredCapabilities,
+      matched_capabilities: matchedCapabilities,
+      missing_capabilities: missingCapabilities,
+      endpoint_strategy: selectionHints.endpoint_strategy || endpoint.strategy,
+      endpoint_status: endpoint.status,
+      endpoint: endpoint.path,
+      file_count: selectionHints.file_count ?? null,
+      byte_size: byteSize,
+      max_file_size: maxFileSize,
+      filtered_by_capability: missingCapabilities.length > 0,
+      filtered_by_file_size: filteredByFileSize,
+      pricing_source: this.resolvePricingSource(capabilities),
+      catalog_source: this.resolveCatalogSource(capabilities),
+    };
+  }
+
+  private candidateSupportsRequirement(
+    requirement: string,
+    capabilities: Partial<ResolvedModelRoutingCapabilities>,
+    supportedModalities: string[],
+    inputTypes: string[],
+    outputTypes: string[],
+  ): boolean {
+    const normalized = requirement.toLowerCase();
+    if (normalized === 'image' || normalized === 'vision') {
+      return supportsModalities(supportedModalities as Modality[], ['image']);
+    }
+    if (normalized === 'audio') {
+      return supportedModalities.includes('audio') ||
+        inputTypes.includes('audio') ||
+        outputTypes.includes('audio');
+    }
+    if (normalized === 'embedding' || normalized === 'embeddings') {
+      return supportedModalities.includes('embedding') ||
+        inputTypes.includes('embedding') ||
+        outputTypes.includes('embedding') ||
+        capabilities.dimensions !== undefined;
+    }
+    if (normalized === 'rerank') {
+      return supportedModalities.includes('rerank') ||
+        capabilities.supports_rerank === true ||
+        Boolean(capabilities.endpoints?.rerank);
+    }
+    if (normalized === 'realtime') {
+      return supportedModalities.includes('realtime') ||
+        capabilities.supports_realtime === true ||
+        Boolean(capabilities.endpoints?.realtime);
+    }
+    if (normalized === 'streaming') {
+      return capabilities.supports_streaming === true;
+    }
+    if (normalized === 'video') {
+      return supportedModalities.includes('video') ||
+        inputTypes.includes('video') ||
+        outputTypes.includes('video') ||
+        Boolean((capabilities.endpoints as Record<string, string> | undefined)?.video);
+    }
+    return (
+      supportedModalities.includes(normalized) ||
+      inputTypes.includes(normalized) ||
+      outputTypes.includes(normalized)
+    );
+  }
+
+  private resolveEndpointEvidence(
+    target: RouteTarget,
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+    capabilities: Partial<ResolvedModelRoutingCapabilities>,
+  ): { strategy: string; status: string; path: string | null } {
+    const node = this.config.getNode(target.node);
+    const explicit = this.explicitCapabilityEndpoint(
+      requestedModality,
+      sourceFormat,
+      capabilities,
+    );
+    if (explicit) {
+      return { strategy: 'native', status: 'configured', path: explicit };
+    }
+
+    const legacy = this.legacyNodeEndpoint(node, requestedModality, sourceFormat);
+    if (legacy) {
+      return { strategy: 'configured', status: 'configured', path: legacy };
+    }
+
+    const defaultPath = this.defaultEndpointPath(requestedModality, sourceFormat);
+    if (defaultPath) {
+      return { strategy: 'default', status: 'default', path: defaultPath };
+    }
+
+    if (node?.endpoint) {
+      return { strategy: 'passthrough', status: 'fallback', path: node.endpoint };
+    }
+
+    return { strategy: 'missing', status: 'missing', path: null };
+  }
+
+  private explicitCapabilityEndpoint(
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+    capabilities: Partial<ResolvedModelRoutingCapabilities>,
+  ): string | null {
+    const endpoints = capabilities.endpoints as Record<string, string> | undefined;
+    if (!endpoints) return null;
+    const key = this.endpointKey(requestedModality, sourceFormat);
+    return (key && endpoints[key]) || null;
+  }
+
+  private legacyNodeEndpoint(
+    node: NodeConfig | undefined,
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+  ): string | null {
+    if (!node) return null;
+    if (sourceFormat === 'image_generation') return node.images_generations_endpoint || null;
+    if (sourceFormat === 'image_edit') return node.images_edits_endpoint || null;
+    if (sourceFormat === 'audio_transcription') return node.audio_transcriptions_endpoint || null;
+    if (sourceFormat === 'audio_speech') return node.audio_speech_endpoint || null;
+    if (requestedModality === 'embedding') return node.embeddings_endpoint || null;
+    if (requestedModality === 'rerank') return node.rerank_endpoint || null;
+    if (requestedModality === 'realtime') return node.realtime_endpoint || null;
+    return null;
+  }
+
+  private defaultEndpointPath(
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+  ): string | null {
+    if (sourceFormat === 'image_generation') return '/v1/images/generations';
+    if (sourceFormat === 'image_edit') return '/v1/images/edits';
+    if (sourceFormat === 'audio_transcription') return '/v1/audio/transcriptions';
+    if (sourceFormat === 'audio_speech') return '/v1/audio/speech';
+    if (requestedModality === 'embedding') return '/v1/embeddings';
+    if (requestedModality === 'rerank') return '/v1/rerank';
+    if (requestedModality === 'realtime') return '/v1/realtime';
+    return null;
+  }
+
+  private endpointKey(
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+  ): string | null {
+    if (sourceFormat === 'image_generation' || sourceFormat === 'image_edit') return 'image';
+    if (sourceFormat === 'audio_transcription' || sourceFormat === 'audio_speech') return 'audio';
+    if (requestedModality === 'embedding') return 'embeddings';
+    if (requestedModality === 'rerank') return 'rerank';
+    if (requestedModality === 'realtime') return 'realtime';
+    if (requestedModality === 'image' || requestedModality === 'vision') return 'image';
+    if (requestedModality === 'audio') return 'audio';
+    if (requestedModality === 'video') return 'video';
+    return null;
+  }
+
+  private resolvePricingSource(
+    capabilities: Partial<ResolvedModelRoutingCapabilities>,
+  ): string | null {
+    const pricing = capabilities.pricing as
+      | (ResolvedModelRoutingCapabilities['pricing'] & { source?: string })
+      | undefined;
+    if (!pricing) return 'missing';
+    return pricing.source || 'config';
+  }
+
+  private resolveCatalogSource(
+    capabilities: Partial<ResolvedModelRoutingCapabilities>,
+  ): string | null {
+    const metadata = capabilities as {
+      catalog_source?: string;
+      source?: string;
+      overridden?: boolean;
+    };
+    if (metadata.catalog_source) return metadata.catalog_source;
+    if (metadata.overridden) return 'override';
+    if (metadata.source) return metadata.source;
+    return 'config';
+  }
+
+  private inferInputTypesFromModalities(modalities: readonly string[]): string[] {
+    const inputTypes = new Set<string>();
+    if (modalities.includes('text') || modalities.includes('embedding') || modalities.includes('rerank')) {
+      inputTypes.add('text');
+    }
+    if (modalities.includes('vision') || modalities.includes('image')) {
+      inputTypes.add('image');
+    }
+    if (modalities.includes('audio')) {
+      inputTypes.add('audio');
+    }
+    if (modalities.includes('rerank')) {
+      inputTypes.add('documents');
+    }
+    if (modalities.includes('realtime')) {
+      inputTypes.add('events');
+    }
+    return Array.from(inputTypes);
+  }
+
+  private inferOutputTypesFromModalities(modalities: readonly string[]): string[] {
+    const outputTypes = new Set<string>();
+    if (modalities.includes('text') || modalities.includes('vision')) {
+      outputTypes.add('text');
+    }
+    if (modalities.includes('image')) {
+      outputTypes.add('image');
+    }
+    if (modalities.includes('audio')) {
+      outputTypes.add('audio');
+    }
+    if (modalities.includes('embedding')) {
+      outputTypes.add('embedding');
+    }
+    if (modalities.includes('rerank')) {
+      outputTypes.add('ranked_documents');
+    }
+    if (modalities.includes('realtime')) {
+      outputTypes.add('events');
+    }
+    return Array.from(outputTypes);
+  }
+
+  private embeddingSelectionHints(dimensions?: number): RouteSelectionHints {
+    return {
+      requested_modality: 'embedding',
+      input_types: ['text'],
+      output_types: ['embedding'],
+      required_capabilities: ['embedding'],
+      endpoint_strategy: 'embeddings',
+      source_format: 'embeddings',
+      estimated_output_tokens: dimensions,
+    };
+  }
+
+  private rerankSelectionHints(): RouteSelectionHints {
+    return {
+      requested_modality: 'rerank',
+      input_types: ['text', 'documents'],
+      output_types: ['ranked_documents'],
+      file_count: 0,
+      byte_size: null,
+      required_capabilities: ['rerank'],
+      endpoint_strategy: 'rerank',
+      source_format: 'rerank',
+    };
+  }
+
+  private withDefaultRerankSelectionHints(
+    selectionHints: RouteSelectionHints,
+  ): RouteSelectionHints {
+    return {
+      ...this.rerankSelectionHints(),
+      ...selectionHints,
+      input_types: selectionHints.input_types || ['text', 'documents'],
+      output_types: selectionHints.output_types || ['ranked_documents'],
+      required_capabilities: selectionHints.required_capabilities || ['rerank'],
+      requested_modality: selectionHints.requested_modality || 'rerank',
+      endpoint_strategy: selectionHints.endpoint_strategy || 'rerank',
+      source_format: selectionHints.source_format || 'rerank',
+    };
+  }
+
+  private mediaSelectionHints(
+    sourceFormat: CanonicalMediaSourceFormat,
+  ): RouteSelectionHints {
+    if (sourceFormat === 'image_generation') {
+      return {
+        requested_modality: 'image',
+        input_types: ['text'],
+        output_types: ['image'],
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_generation',
+        source_format: sourceFormat,
+      };
+    }
+    if (sourceFormat === 'image_edit') {
+      return {
+        requested_modality: 'image',
+        input_types: ['text', 'image', 'file'],
+        output_types: ['image'],
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_edit',
+        source_format: sourceFormat,
+      };
+    }
+    if (sourceFormat === 'audio_transcription') {
+      return {
+        requested_modality: 'audio',
+        input_types: ['audio', 'file'],
+        output_types: ['text'],
+        required_capabilities: ['audio'],
+        endpoint_strategy: 'audio_transcription',
+        source_format: sourceFormat,
+      };
+    }
+    return {
+      requested_modality: 'audio',
+      input_types: ['text'],
+      output_types: ['audio'],
+      required_capabilities: ['audio'],
+      endpoint_strategy: 'audio_speech',
+      source_format: sourceFormat,
+    };
+  }
+
+  private withDefaultMediaSelectionHints(
+    sourceFormat: CanonicalMediaSourceFormat,
+    selectionHints: RouteSelectionHints,
+  ): RouteSelectionHints {
+    const defaults = this.mediaSelectionHints(sourceFormat);
+    return {
+      ...defaults,
+      ...selectionHints,
+      input_types: selectionHints.input_types || defaults.input_types,
+      output_types: selectionHints.output_types || defaults.output_types,
+      required_capabilities:
+        selectionHints.required_capabilities || defaults.required_capabilities,
+      requested_modality:
+        selectionHints.requested_modality || defaults.requested_modality,
+      endpoint_strategy:
+        selectionHints.endpoint_strategy || defaults.endpoint_strategy,
+      source_format: selectionHints.source_format || sourceFormat,
+    };
+  }
+
+  private uniqueStrings(values: readonly unknown[]): string[] {
+    return Array.from(
+      new Set(
+        values
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          .map((value) => value.toLowerCase()),
+      ),
+    );
   }
 
   private inferFilterReasons(
@@ -1369,12 +1951,28 @@ export class RoutingService {
     if (modalityHints && modalityHints.length > 0) {
       const targetModalities =
         this.capabilityService.resolveModelModalities?.(target.node, target.model) || [];
-      const supported = modalityHints.every((m) =>
-        targetModalities.includes(m as Modality),
+      const supported = supportsModalities(
+        targetModalities,
+        modalityHints as Modality[],
       );
       if (!supported) {
         reasons.push(isFinalTarget ? 'modality_demoted' : 'modality_unsupported');
       }
+    }
+
+    const capabilityEvidence = this.buildCandidateCapabilityEvidence(
+      target,
+      selectionHints,
+    );
+    if (
+      capabilityEvidence.filtered_by_capability &&
+      !reasons.includes('modality_unsupported') &&
+      !reasons.includes('modality_demoted')
+    ) {
+      reasons.push(isFinalTarget ? 'capability_demoted' : 'capability_unsupported');
+    }
+    if (capabilityEvidence.filtered_by_file_size) {
+      reasons.push(isFinalTarget ? 'file_size_demoted' : 'file_size_exceeded');
     }
 
     if (!isFinalTarget && reasons.length === 0) {
@@ -1388,6 +1986,8 @@ export class RoutingService {
     if (reason.startsWith('context')) return 'context_window';
     if (reason.startsWith('structured')) return 'structured_output';
     if (reason.startsWith('modality')) return 'modality';
+    if (reason.startsWith('capability')) return 'capability';
+    if (reason.startsWith('file_size')) return 'file_size';
     return 'routing';
   }
 

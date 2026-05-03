@@ -15,6 +15,8 @@ import * as request from 'supertest';
 import { createHash } from 'crypto';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
+import { CallLog } from '../../src/database/entities/call-log.entity';
+import type { Repository } from 'typeorm';
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -264,6 +266,18 @@ export class FetchMock {
       });
     }
 
+    if (url.includes('/v1/images/variations')) {
+      return new Response(JSON.stringify({
+        created: Math.floor(Date.now() / 1000),
+        model: (body.model as string) || 'gpt-image-1',
+        data: [{ b64_json: 'dmFyaWF0aW9u' }],
+        usage: { prompt_tokens: 5, total_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     if (url.includes('/v1/audio/transcriptions')) {
       return new Response(JSON.stringify({
         text: 'mock transcription',
@@ -275,10 +289,63 @@ export class FetchMock {
       });
     }
 
+    if (url.includes('/v1/audio/translations')) {
+      return new Response(JSON.stringify({
+        text: 'mock translation',
+        model: (body.model as string) || 'gpt-4o-mini-transcribe',
+        usage: { input_tokens: 10, output_tokens: 4 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     if (url.includes('/v1/audio/speech')) {
       return new Response(Buffer.from('mock-mp3-bytes'), {
         status: 200,
         headers: { 'Content-Type': 'audio/mpeg' },
+      });
+    }
+
+    if (url.includes('/v1/videos/generations')) {
+      return new Response(JSON.stringify({
+        id: 'vid-e2e-job-1',
+        object: 'video.generation.job',
+        model: (body.model as string) || 'veo-3-preview',
+        status: 'queued',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/videos/') && url.includes('/content')) {
+      return new Response(Buffer.from('mock-video-bytes'), {
+        status: 200,
+        headers: { 'Content-Type': 'video/mp4' },
+      });
+    }
+
+    if (url.includes('/v1/videos/') && url.includes('/cancel')) {
+      return new Response(JSON.stringify({
+        id: url.split('/').slice(-2, -1)[0],
+        object: 'video.generation.job',
+        status: 'cancelled',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/videos/')) {
+      return new Response(JSON.stringify({
+        id: url.split('/').pop(),
+        object: 'video.generation.job',
+        model: 'veo-3-preview',
+        status: 'completed',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
@@ -321,6 +388,7 @@ export interface E2EHarness {
   app: INestApplication;
   agent: request.Agent;
   fetchMock: FetchMock;
+  callLogRepo: Repository<CallLog>;
   close: () => Promise<void>;
 }
 
@@ -362,7 +430,9 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   for (const route of [
     '/v1/images/generations',
     '/v1/images/edits',
+    '/v1/images/variations',
     '/v1/audio/transcriptions',
+    '/v1/audio/translations',
     '/v1/audio/speech',
   ]) {
     app.use(route, raw({ type: mediaBodyTypes, limit: '1mb' }));
@@ -373,6 +443,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   await app.init();
 
   const apiKeyRepo = app.get(getRepositoryToken(GatewayApiKey));
+  const callLogRepo = app.get<Repository<CallLog>>(getRepositoryToken(CallLog));
   await apiKeyRepo.save([
     apiKeyRepo.create({
       name: 'test-default',
@@ -405,6 +476,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     app,
     agent,
     fetchMock,
+    callLogRepo,
     close: async () => {
       fetchMock.restore();
       await app.close();

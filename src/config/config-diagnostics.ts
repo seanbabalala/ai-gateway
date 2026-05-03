@@ -42,6 +42,19 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter(isNonEmptyString) : [];
 }
 
+function nodeModelIds(node: PartialNodeConfig | undefined): string[] {
+  if (!node) return [];
+  return [
+    ...stringArray(node.models),
+    ...stringArray(node.embedding_models),
+    ...stringArray(node.rerank_models),
+    ...stringArray(node.image_models),
+    ...stringArray(node.audio_models),
+    ...stringArray(node.video_models),
+    ...stringArray(node.realtime_models),
+  ];
+}
+
 function nodesFromConfig(config: PartialGatewayConfig): PartialNodeConfig[] {
   return Array.isArray(config.nodes)
     ? (config.nodes.filter(isRecord) as PartialNodeConfig[])
@@ -112,6 +125,12 @@ export function buildNodeModelDiagnostics(
     }
 
     for (const model of stringArray(node.audio_models)) {
+      const owners = modelOwners.get(model) || [];
+      owners.push(node.id);
+      modelOwners.set(model, owners);
+    }
+
+    for (const model of stringArray(node.video_models)) {
       const owners = modelOwners.get(model) || [];
       owners.push(node.id);
       modelOwners.set(model, owners);
@@ -251,7 +270,7 @@ export function buildNodeModelDiagnostics(
       return;
     }
 
-    if (!stringArray(node.models).includes(targetModel)) {
+    if (!nodeModelIds(node).includes(targetModel)) {
       diagnostics.push({
         severity: 'warning',
         code: 'route_references_unknown_model',

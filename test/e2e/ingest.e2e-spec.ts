@@ -5,7 +5,7 @@
  * HTTP → Guard → Normalize → Score → Route → Provider(mock) → Denormalize → Response
  */
 
-import { createE2EHarness, E2EHarness, API_KEY } from './setup';
+import { createE2EHarness, E2EHarness, API_KEY, API_KEY_2 } from './setup';
 
 describe('Ingest (e2e)', () => {
   let harness: E2EHarness;
@@ -402,6 +402,30 @@ describe('Ingest (e2e)', () => {
     expect(call.rawBody?.toString('latin1')).toContain('name="model"');
   });
 
+  it('POST /v1/images/variations accepts multipart pass-through and logs safe media metadata', async () => {
+    const res = await harness.agent
+      .post('/v1/images/variations')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .field('model', 'auto')
+      .field('response_format', 'b64_json')
+      .attach('image', Buffer.from('fake-variation-bytes'), 'source.png');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].b64_json).toBeDefined();
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/images/variations');
+    expect(call.rawBody?.toString('latin1')).toContain('gpt-image-1');
+
+    const log = await harness.callLogRepo.findOneByOrFail({ source_format: 'image_variation' });
+    expect(log.media_type).toBe('image');
+    expect(log.media_operation).toBe('variation');
+    expect(log.media_multipart).toBe(true);
+    expect(log.media_file_count).toBe(1);
+    expect(log.media_byte_size).toBeGreaterThan(0);
+    expect(log.media_response_format).toBe('b64_json');
+    expect(log.media_provider_response_type).toBe('application/json');
+  });
+
   it('POST /v1/audio/transcriptions accepts multipart audio pass-through', async () => {
     const res = await harness.agent
       .post('/v1/audio/transcriptions')
@@ -413,6 +437,22 @@ describe('Ingest (e2e)', () => {
     expect(res.body.text).toBe('mock transcription');
     const call = harness.fetchMock.calls[0];
     expect(call.url).toBe('http://mock-upstream.test/v1/audio/transcriptions');
+    expect(call.headers['Content-Type']).toContain('multipart/form-data');
+    expect(call.rawBody?.toString('latin1')).toContain('gpt-4o-mini-transcribe');
+  });
+
+  it('POST /v1/audio/translations accepts multipart audio pass-through', async () => {
+    const res = await harness.agent
+      .post('/v1/audio/translations')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .field('model', 'auto')
+      .field('response_format', 'json')
+      .attach('file', Buffer.from('fake-audio-bytes'), 'sample.wav');
+
+    expect(res.status).toBe(200);
+    expect(res.body.text).toBe('mock translation');
+    const call = harness.fetchMock.calls[0];
+    expect(call.url).toBe('http://mock-upstream.test/v1/audio/translations');
     expect(call.headers['Content-Type']).toContain('multipart/form-data');
     expect(call.rawBody?.toString('latin1')).toContain('gpt-4o-mini-transcribe');
   });
@@ -439,6 +479,59 @@ describe('Ingest (e2e)', () => {
     const call = harness.fetchMock.calls[0];
     expect(call.url).toBe('http://mock-upstream.test/v1/audio/speech');
     expect(call.body.model).toBe('tts-1');
+  });
+
+  it('POST /v1/videos/generations creates async job metadata and exposes status', async () => {
+    const create = await harness.agent
+      .post('/v1/videos/generations')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        model: 'auto',
+        prompt: 'A short product animation of SiftGate routing AI traffic',
+        duration: 4,
+        size: '1280x720',
+        quality: 'standard',
+      });
+
+    expect(create.status).toBe(200);
+    expect(create.body).toMatchObject({
+      id: 'vid-e2e-job-1',
+      object: 'video.generation.job',
+      model: 'veo-3-preview',
+      status: 'queued',
+    });
+
+    const createCall = harness.fetchMock.calls[0];
+    expect(createCall.url).toBe('http://mock-upstream.test/v1/videos/generations');
+    expect(createCall.body.model).toBe('veo-3-preview');
+    expect(createCall.body.prompt).toBe('A short product animation of SiftGate routing AI traffic');
+
+    const log = await harness.callLogRepo.findOneByOrFail({ source_format: 'video_generation' });
+    expect(log.media_type).toBe('video');
+    expect(log.media_operation).toBe('generation');
+    expect(log.media_multipart).toBe(false);
+    expect(log.media_file_count).toBe(0);
+    expect(log.media_byte_size).toBeGreaterThan(0);
+    expect(log.media_provider_response_type).toBe('application/json');
+
+    const status = await harness.agent
+      .get('/v1/videos/vid-e2e-job-1')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .expect(200);
+
+    expect(status.body).toMatchObject({
+      id: 'vid-e2e-job-1',
+      object: 'video.generation.job',
+      status: 'completed',
+      node: 'mock-openai',
+      model: 'veo-3-preview',
+    });
+    expect(harness.fetchMock.calls[1].url).toBe('http://mock-upstream.test/v1/videos/vid-e2e-job-1');
+
+    await harness.agent
+      .get('/v1/videos/vid-e2e-job-1')
+      .set('Authorization', `Bearer ${API_KEY_2}`)
+      .expect(404);
   });
 
   // ══════════════════════════════════════════════════════

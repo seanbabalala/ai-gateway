@@ -40,10 +40,24 @@ for (const forbidden of ['apiPost', 'apiPut', 'apiDelete', 'updateRouting', 'con
 for (const key of [
   "t('routeExplanation.empty.noTraceTitle')",
   "t('routeExplanation.empty.noDecisionsTitle')",
+  "t('routeExplanation.sections.modalityEvidence')",
+  "t('routeExplanation.table.capability')",
 ]) {
   if (!page.includes(key)) {
     throw new Error(`Route Explanation page must keep localized empty/no-trace compatibility state: ${key}`)
   }
 }
 
-console.log('Open-source Dashboard route explanation validated: routes, hooks, log deep link, and read-only page are present.')
+for (const field of [
+  'trace.modality_evidence',
+  'candidate.capability_evidence',
+  'pricing_source',
+  'catalog_source',
+  'endpoint_status',
+]) {
+  if (!page.includes(field)) {
+    throw new Error(`Route Explanation page must render multimodal routing evidence field: ${field}`)
+  }
+}
+
+console.log('Open-source Dashboard route explanation validated: routes, hooks, log deep link, multimodal evidence, and read-only page are present.')

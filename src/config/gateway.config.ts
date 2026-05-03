@@ -16,6 +16,7 @@ export interface GatewayConfig {
   database: DatabaseConfig;
   auth: AuthConfig;
   dashboard?: DashboardConfig;
+  catalog?: CatalogConfig;
   nodes: NodeConfig[];
   routing: RoutingConfig;
   budget: BudgetConfig;
@@ -57,6 +58,11 @@ export interface GatewayConfig {
 
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
+}
+
+export interface CatalogConfig {
+  /** Local model/provider catalog override file. Defaults to catalog.override.yaml. */
+  override_file?: string;
 }
 
 // ===== Shared State Backend =====
@@ -452,14 +458,30 @@ export interface NodeConfig {
   images_generations_endpoint?: string;
   /** Optional OpenAI-compatible image edit endpoint path (default: /v1/images/edits). */
   images_edits_endpoint?: string;
+  /** Optional OpenAI-compatible image variation endpoint path (default: /v1/images/variations). */
+  images_variations_endpoint?: string;
   /** Image-capable model IDs exposed by this node. */
   image_models?: string[];
   /** Optional OpenAI-compatible audio transcription endpoint path (default: /v1/audio/transcriptions). */
   audio_transcriptions_endpoint?: string;
+  /** Optional OpenAI-compatible audio translation endpoint path (default: /v1/audio/translations). */
+  audio_translations_endpoint?: string;
   /** Optional OpenAI-compatible text-to-speech endpoint path (default: /v1/audio/speech). */
   audio_speech_endpoint?: string;
   /** Audio-capable model IDs exposed by this node. */
   audio_models?: string[];
+  /** Optional OpenAI-compatible video generation endpoint path reserved for video-capable providers. */
+  video_generations_endpoint?: string;
+  /** Experimental video generation endpoint path (default: /v1/videos/generations). */
+  video_endpoint?: string;
+  /** Optional endpoint path for async video job status lookups. */
+  video_status_endpoint?: string;
+  /** Optional endpoint path for async video content retrieval. */
+  video_content_endpoint?: string;
+  /** Optional endpoint path for async video job cancellation. */
+  video_cancel_endpoint?: string;
+  /** Video-capable model IDs exposed by this node. */
+  video_models?: string[];
   /** Experimental OpenAI-compatible realtime WebSocket endpoint path (default: /v1/realtime). */
   realtime_endpoint?: string;
   /** Realtime-capable model IDs exposed by this node. */
@@ -503,7 +525,7 @@ export interface NodeConfig {
    * Explicitly declare which modalities this node supports.
    * When set, this takes highest priority over model-name inference and capability fallback.
    *
-   * Valid modalities: "text", "vision", "image", "audio", "embedding", "rerank", "realtime"
+   * Valid modalities: "text", "vision", "image", "audio", "video", "embedding", "rerank", "realtime"
    * "vision" is kept for backwards compatibility and is treated as compatible with "image".
    *
    * If omitted, modalities are inferred from model names or capabilities.
