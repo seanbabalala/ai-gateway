@@ -1280,6 +1280,7 @@ export class DashboardController {
         ...(node.rerank_models || []),
         ...(node.image_models || []),
         ...(node.audio_models || []),
+        ...(node.video_models || []),
         ...(node.realtime_models || []),
       ]));
       const modelCapabilities = Object.fromEntries(
@@ -1299,6 +1300,8 @@ export class DashboardController {
         ...(node.images_edits_endpoint ? { image_edits: node.images_edits_endpoint } : {}),
         ...(node.audio_transcriptions_endpoint ? { audio_transcriptions: node.audio_transcriptions_endpoint } : {}),
         ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
+        ...(node.video_generations_endpoint ? { video_generations: node.video_generations_endpoint } : {}),
+        ...(node.video_status_endpoint ? { video_status: node.video_status_endpoint } : {}),
         ...(node.realtime_endpoint ? { realtime: node.realtime_endpoint } : {}),
         ...(node.endpoints || {}),
       };
@@ -1336,6 +1339,9 @@ export class DashboardController {
         audio_models: node.audio_models || [],
         audio_transcriptions_endpoint: node.audio_transcriptions_endpoint || null,
         audio_speech_endpoint: node.audio_speech_endpoint || null,
+        video_models: node.video_models || [],
+        video_generations_endpoint: node.video_generations_endpoint || null,
+        video_status_endpoint: node.video_status_endpoint || null,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         model_capabilities: modelCapabilities,
@@ -1620,6 +1626,9 @@ export class DashboardController {
         audio_transcriptions_endpoint: dto.audio_transcriptions_endpoint,
         audio_speech_endpoint: dto.audio_speech_endpoint,
         audio_models: dto.audio_models,
+        video_generations_endpoint: dto.video_generations_endpoint,
+        video_status_endpoint: dto.video_status_endpoint,
+        video_models: dto.video_models,
         realtime_models: dto.realtime_models,
         realtime_endpoint: dto.realtime_endpoint,
         timeout_ms: dto.timeout_ms,
@@ -1633,6 +1642,7 @@ export class DashboardController {
         model_prefixes: dto.model_prefixes,
         headers: dto.headers,
         auth_type: dto.auth_type,
+        model_capabilities: dto.model_capabilities as any,
         health_check: dto.health_check,
       });
       this.activeHealth.refreshSchedules();

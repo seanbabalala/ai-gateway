@@ -19,6 +19,7 @@ import {
   ListFilter,
   Radio,
   RadioTower,
+  Video,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -83,6 +84,13 @@ const MODALITY_DISPLAY: Record<string, {
     borderClass: 'border-rose-500/30',
     textClass: 'text-rose-700 dark:text-rose-400',
   },
+  video: {
+    labelKey: 'modalities.video',
+    icon: Video,
+    bgClass: 'bg-teal-500/10',
+    borderClass: 'border-teal-500/30',
+    textClass: 'text-teal-700 dark:text-teal-400',
+  },
   embedding: {
     labelKey: 'modalities.embedding',
     icon: Database,
@@ -110,6 +118,11 @@ function modelIdsForNode(node: NodeInfo): string[] {
   return Array.from(new Set([
     ...node.models,
     ...(node.embedding_models || []),
+    ...(node.rerank_models || []),
+    ...(node.image_models || []),
+    ...(node.audio_models || []),
+    ...(node.video_models || []),
+    ...(node.realtime_models || []),
   ]))
 }
 

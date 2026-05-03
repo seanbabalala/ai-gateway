@@ -22,7 +22,7 @@
 
 ## v0.8 — Provider Breadth（Provider / Model Catalog + 接口广度）
 
-**v0.8 当前状态**：Prompt 46 已完成本地 Provider / Model Catalog 的 feature branch 实现。目标是把 provider/model 能力从 Dashboard 表单硬编码中抽离，成为 Add Node、配置校验和后续多模态路由的统一数据源。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.8 当前状态**：Prompt 46 已完成本地 Provider / Model Catalog；Prompt 47 已进入 Add Node Wizard 实现，目标是把 provider/model 能力从 Dashboard 表单硬编码中抽离，成为 Add Node、配置校验和后续多模态路由的统一数据源。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：Provider / Model Catalog
 
@@ -36,6 +36,21 @@
   - Dashboard Add Node 从 catalog API 读取 provider preset，不再在组件中硬编码 provider/model 列表
   - Config validation 使用 catalog 输出 warning：未知模型、endpoint/modality 不匹配、pricing 需要人工确认
   - pricing 可为 placeholder，但必须包含 `source`、`last_updated`、`manual_review_required`
+
+### P0：Dashboard Add Node Wizard
+
+- **状态**：✅ Prompt 47 feature branch 已完成
+- **目标**：把 Add Node 从单页长表单升级为 catalog-backed 分步向导，减少 provider/model 配置错误，同时保留高级 YAML 能力
+- **实现方案**：
+  - Step 1 选择 provider、OpenAI-compatible proxy 或 custom upstream
+  - Step 2 选择能力：Chat、Responses、Messages、Embeddings、Rerank、Images、Audio、Video、Realtime
+  - Step 3 编辑模型桶：`models`、`embedding_models`、`rerank_models`、`image_models`、`audio_models`、`video_models`、`realtime_models`
+  - Step 4 确认 `base_url`、endpoint、auth、headers、model aliases、prefixes、pricing、capability tags、health check、concurrency/queue controls
+  - Step 5 针对 Chat/Text 模型执行连接测试并保存到本地 `gateway.config.yaml`
+  - Provider 选择后自动填充 `base_url`、`auth_type`、endpoint、suggested models、`model_prefixes`、capability flags 和 pricing metadata
+  - 新增 `video_models`、`video_generations_endpoint`、`video_status_endpoint` 配置面，为后续公开 video endpoint 铺底
+  - Dashboard 新增文案继续保持 English、简体中文、繁体中文、日文、韩文、泰文、西班牙文 7 语言同步
+  - 不接入 Cloud，不自动联网更新 catalog，不自动修改 routing 配置
 
 ---
 

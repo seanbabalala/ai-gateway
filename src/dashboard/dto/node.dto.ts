@@ -10,7 +10,6 @@ import {
   IsBoolean,
   ValidateNested,
   Min,
-  ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -85,7 +84,6 @@ export class CreateNodeDto {
   @ApiProperty({ type: [String], example: ['gpt-4o', 'gpt-4o-mini'] })
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
   models!: string[];
 
   @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
@@ -141,6 +139,22 @@ export class CreateNodeDto {
   @IsOptional()
   @IsString()
   audio_speech_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['veo-3.1-generate-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  video_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/{id}' })
+  @IsOptional()
+  @IsString()
+  video_status_endpoint?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
   @IsOptional()
@@ -213,6 +227,16 @@ export class CreateNodeDto {
   @IsOptional()
   @IsObject()
   headers?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    description: 'Optional per-model capability and pricing overrides keyed by model id.',
+    additionalProperties: { type: 'object' },
+    example: { 'gpt-4o-mini': { pricing: { input: 0.15, output: 0.6 } } },
+  })
+  @IsOptional()
+  @IsObject()
+  model_capabilities?: Record<string, unknown>;
 
   @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
   @IsOptional()
@@ -312,7 +336,6 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
   models?: string[];
 
   @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
@@ -368,6 +391,22 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsString()
   audio_speech_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['veo-3.1-generate-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  video_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/{id}' })
+  @IsOptional()
+  @IsString()
+  video_status_endpoint?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
   @IsOptional()
@@ -441,6 +480,16 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsObject()
   headers?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    description: 'Optional per-model capability and pricing overrides keyed by model id.',
+    additionalProperties: { type: 'object' },
+    example: { 'gpt-4o-mini': { pricing: { input: 0.15, output: 0.6 } } },
+  })
+  @IsOptional()
+  @IsObject()
+  model_capabilities?: Record<string, unknown>;
 
   @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
   @IsOptional()

@@ -270,10 +270,20 @@ export interface NodeInfo {
   endpoint: string
   endpoints?: Record<string, string>
   models: string[]
+  embeddings_endpoint?: string | null
   embedding_models?: string[]
+  rerank_endpoint?: string | null
   rerank_models?: string[]
+  images_generations_endpoint?: string | null
+  images_edits_endpoint?: string | null
   image_models?: string[]
+  audio_transcriptions_endpoint?: string | null
+  audio_speech_endpoint?: string | null
   audio_models?: string[]
+  video_generations_endpoint?: string | null
+  video_status_endpoint?: string | null
+  video_models?: string[]
+  realtime_endpoint?: string | null
   realtime_models?: string[]
   capabilities: string[]
   modalities: string[]
@@ -487,6 +497,11 @@ export interface ConfigResponse {
     base_url: string
     models: string[]
     embedding_models?: string[]
+    rerank_models?: string[]
+    image_models?: string[]
+    audio_models?: string[]
+    video_models?: string[]
+    realtime_models?: string[]
     model_capabilities?: Record<string, ModelCapabilityInfo>
     tags: string[]
     api_key: string
@@ -588,6 +603,9 @@ export interface CreateNodeRequest {
   audio_transcriptions_endpoint?: string
   audio_speech_endpoint?: string
   audio_models?: string[]
+  video_generations_endpoint?: string
+  video_status_endpoint?: string
+  video_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
   timeout_ms: number
@@ -600,7 +618,9 @@ export interface CreateNodeRequest {
   model_aliases?: Record<string, string>
   model_prefixes?: string[]
   headers?: Record<string, string>
+  model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>
   auth_type?: 'bearer' | 'x-api-key'
+  health_check?: HealthCheckRequest
 }
 
 export interface UpdateNodeRequest {
@@ -620,6 +640,9 @@ export interface UpdateNodeRequest {
   audio_transcriptions_endpoint?: string
   audio_speech_endpoint?: string
   audio_models?: string[]
+  video_generations_endpoint?: string
+  video_status_endpoint?: string
+  video_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
   timeout_ms?: number
@@ -632,7 +655,18 @@ export interface UpdateNodeRequest {
   model_aliases?: Record<string, string>
   model_prefixes?: string[]
   headers?: Record<string, string>
+  model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>
   auth_type?: 'bearer' | 'x-api-key'
+  health_check?: HealthCheckRequest
+}
+
+export interface HealthCheckRequest {
+  enabled?: boolean
+  interval_seconds?: number
+  timeout_ms?: number
+  method?: 'HEAD' | 'GET' | 'POST'
+  path?: string
+  lightweight_model?: string
 }
 
 export interface TestNodeRequest {

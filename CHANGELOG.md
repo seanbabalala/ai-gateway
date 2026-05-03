@@ -8,10 +8,14 @@
 - Built-in static catalog entries for OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
 - Dashboard catalog APIs `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` with provider/modality/endpoint filters.
 - Config validation warnings for catalog unknown models, endpoint/modality mismatches, and placeholder pricing that still needs operator review.
+- v0.8 Dashboard Add Node wizard backed by the local catalog, with provider/proxy/custom selection, capability selection, model bucket editing, endpoint/auth/header/pricing confirmation, and connection test/save flow.
+- `nodes[].video_models`, `video_generations_endpoint`, and `video_status_endpoint` config surface for video-capable providers ahead of a public video gateway endpoint.
 
 ### Changed
 
 - Dashboard Add Node provider presets now load from the catalog API instead of a hardcoded frontend list.
+- Dashboard Add Node now supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` in one localized wizard while preserving advanced local Data Plane fields.
+- Config validation now allows specialized-only nodes with `models: []` when embedding/rerank/media/realtime model buckets are configured.
 
 ## 0.6.1 - 2026-05-03
 

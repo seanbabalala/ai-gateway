@@ -28,6 +28,7 @@ const MODEL_FIELDS: Array<{
   { key: 'rerank_models', modality: 'rerank', endpoint: 'rerank', label: 'rerank' },
   { key: 'image_models', modality: 'image', endpoint: 'image_generations', label: 'image' },
   { key: 'audio_models', modality: 'audio', endpoint: 'audio_transcriptions', label: 'audio' },
+  { key: 'video_models', modality: 'video', endpoint: 'video_generations', label: 'video' },
   { key: 'realtime_models', modality: 'realtime', endpoint: 'realtime', label: 'realtime' },
 ];
 

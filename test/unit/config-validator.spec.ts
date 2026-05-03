@@ -354,10 +354,12 @@ describe('config validator', () => {
             endpoint: '/v1/chat/completions',
             images_generations_endpoint: 'v1/images/generations',
             audio_speech_endpoint: '',
+            video_generations_endpoint: 'v1/videos/generations',
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o-mini'],
             image_models: ['gpt-image-1', 'gpt-image-1'],
             audio_models: 'tts-1',
+            video_models: ['veo-3.1-generate-preview', 'veo-3.1-generate-preview'],
             timeout_ms: 60000,
           },
         ],
@@ -388,6 +390,54 @@ describe('config validator', () => {
         'invalid_audio_models',
       ]),
     );
+  });
+
+  it('accepts specialized-only catalog nodes when models is an empty array', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'voyage',
+            name: 'Voyage AI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.voyageai.com',
+            endpoint: '/v1/chat/completions',
+            embeddings_endpoint: '/v1/embeddings',
+            rerank_endpoint: '/v1/rerank',
+            api_key: '${VOYAGE_API_KEY:-test}',
+            models: [],
+            embedding_models: ['voyage-3-large'],
+            rerank_models: ['rerank-2'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'voyage', model: 'voyage-3-large' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'voyage-3-large': { input: 0.12, output: 0 },
+          'rerank-2': { input: 0.05, output: 0 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('missing_required_field');
   });
 
   it('validates experimental realtime preview controls', () => {
