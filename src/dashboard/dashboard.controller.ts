@@ -1179,6 +1179,8 @@ export class DashboardController {
   getCatalogProviders() {
     const loaded = this.catalog.load();
     return {
+      source: 'builtin_static',
+      auto_update: false,
       providers: loaded.catalog.providers,
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
@@ -1198,7 +1200,12 @@ export class DashboardController {
     @Query('endpoint') endpoint?: string,
   ) {
     const loaded = this.catalog.load();
-    let models = loaded.catalog.providers.flatMap((entry) => entry.models);
+    let models = loaded.catalog.providers.flatMap((entry) =>
+      entry.models.map((model) => ({
+        ...model,
+        provider_id: model.provider,
+      })),
+    );
     if (provider) models = models.filter((model) => model.provider === provider);
     if (modality) {
       models = models.filter((model) =>
@@ -1209,6 +1216,8 @@ export class DashboardController {
       models = models.filter((model) => model.endpoints[endpoint] !== undefined);
     }
     return {
+      source: 'builtin_static',
+      auto_update: false,
       models,
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,

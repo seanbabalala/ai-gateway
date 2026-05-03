@@ -37,7 +37,9 @@ export function extractMultipartTextField(
 }
 
 function mediaTypeFor(sourceFormat: CanonicalMediaSourceFormat): CanonicalMediaMetadata['media_type'] {
-  return sourceFormat.startsWith('image_') ? 'image' : 'audio';
+  if (sourceFormat.startsWith('image_')) return 'image';
+  if (sourceFormat.startsWith('video_')) return 'video';
+  return 'audio';
 }
 
 function operationFor(sourceFormat: CanonicalMediaSourceFormat): CanonicalMediaMetadata['operation'] {

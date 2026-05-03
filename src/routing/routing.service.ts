@@ -683,10 +683,12 @@ export class RoutingService {
       const resolved =
         kind === 'image'
           ? this.config.resolveImageModel(model)
-          : this.config.resolveAudioModel(model);
+          : kind === 'audio'
+            ? this.config.resolveAudioModel(model)
+            : this.config.resolveVideoModel(model);
       if (!resolved) {
         throw new RoutingConstraintError(
-          `${kind === 'image' ? 'Image' : 'Audio'} model "${model}" is not configured. Use "auto" or configure nodes[].${kind}_models.`,
+          `${kind === 'image' ? 'Image' : kind === 'audio' ? 'Audio' : 'Video'} model "${model}" is not configured. Use "auto" or configure nodes[].${kind}_models.`,
           400,
         );
       }
@@ -1052,7 +1054,8 @@ export class RoutingService {
     return targets;
   }
 
-  private mediaKind(sourceFormat: CanonicalMediaSourceFormat): 'image' | 'audio' {
+  private mediaKind(sourceFormat: CanonicalMediaSourceFormat): 'image' | 'audio' | 'video' {
+    if (sourceFormat === 'video_generation') return 'video';
     return (
       sourceFormat === 'image_generation' ||
       sourceFormat === 'image_edit' ||
@@ -1062,10 +1065,15 @@ export class RoutingService {
       : 'audio';
   }
 
-  private getMediaTargets(kind: 'image' | 'audio'): RouteTarget[] {
+  private getMediaTargets(kind: 'image' | 'audio' | 'video'): RouteTarget[] {
     const targets: RouteTarget[] = [];
     for (const node of this.config.nodes) {
-      const models = kind === 'image' ? node.image_models : node.audio_models;
+      const models =
+        kind === 'image'
+          ? node.image_models
+          : kind === 'audio'
+            ? node.audio_models
+            : node.video_models;
       for (const model of models || []) {
         targets.push({ node: node.id, model });
       }

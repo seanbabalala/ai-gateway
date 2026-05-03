@@ -229,7 +229,9 @@ export function validateConfigObject(
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
   validateAuth(config.auth, config.namespaces, issues);
-  validateNodes(config.nodes, issues, config.models_pricing);
+  validateNodes(config.nodes, issues, config.models_pricing, {
+    skipLegacyCatalogDiagnostics: Boolean(options.catalog),
+  });
   validateNamespaces(config.namespaces, config.nodes, issues);
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
@@ -677,6 +679,7 @@ function validateNodes(
   nodes: unknown,
   issues: ConfigValidationIssue[],
   modelsPricing?: unknown,
+  options: { skipLegacyCatalogDiagnostics?: boolean } = {},
 ): void {
   if (nodes === undefined) return;
   if (!Array.isArray(nodes)) {
@@ -950,14 +953,16 @@ function validateNodes(
     validateNodeAliases(node, basePath, issues);
     validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
-    addCatalogDiagnostics(
-      node,
-      basePath,
-      isRecord(modelsPricing)
-        ? (modelsPricing as Record<string, unknown>)
-        : undefined,
-      issues,
-    );
+    if (!options.skipLegacyCatalogDiagnostics) {
+      addCatalogDiagnostics(
+        node,
+        basePath,
+        isRecord(modelsPricing)
+          ? (modelsPricing as Record<string, unknown>)
+          : undefined,
+        issues,
+      );
+    }
   });
 }
 

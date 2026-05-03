@@ -26,7 +26,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.6.1**. This patch keeps the v0.6 Protocol + Explainability milestone intact and tightens Dashboard localization for the v0.2-v0.6 feature surfaces: structured-output logs, namespaces, shadow traffic, multimodal capability badges, adaptive routing recommendations, realtime status, and Route Explanation.
+Current open-source release: **v0.8.0**. This release focuses on Provider Catalog + Add Node Wizard + Multimodal Expansion + Video Preview: local provider/model presets, safer Dashboard node setup, hardened images/audio ingress, experimental async video jobs, provider compatibility checks, catalog overrides, and richer multimodal route explanation.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -67,6 +67,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
 - **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`, `/v1/images/variations`) — image-capable node routing with JSON and multipart pass-through
 - **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/speech`) — transcription, translation, and speech routing with multipart input and binary audio output support
+- **Experimental Video** (`/v1/videos/generations`, `/v1/videos/:id`) — async video job preview with local metadata only; prompts, source media, and video bytes are not persisted
 - **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - Full **streaming** support across supported generative protocols
@@ -150,7 +151,7 @@ Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatib
 - Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
 - Pricing entries include `source`, `last_updated`, and `manual_review_required`. Use local `models_pricing` or `model_capabilities[].pricing` for production cost routing.
-- Video is available as a catalog/config capability through `video_models` and video endpoint fields; a public `/v1/video` gateway endpoint is still a later protocol task.
+- Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
 
 See [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) for the schema and validation behavior.
 
@@ -576,7 +577,7 @@ nodes:
     audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
     audio_translations_endpoint: "/v1/audio/translations" # Optional translation endpoint path
     audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
-    # video_generations_endpoint: "/v1/videos/generations" # Reserved for video-capable compatible providers
+    # video_generations_endpoint: "/v1/videos/generations" # Experimental async video generation path
     video_endpoint: "/v1/videos/generations" # Optional experimental compatibility-test path
     video_status_endpoint: "/v1/videos/:id" # Optional async video status path
     video_content_endpoint: "/v1/videos/:id/content" # Optional async video content path
@@ -589,7 +590,7 @@ nodes:
     realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
     image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
-    video_models: ["veo-3-preview"] # Experimental models eligible for future /v1/videos/*
+    video_models: ["veo-3-preview"] # Experimental models eligible for /v1/videos/*
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -850,7 +851,7 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
-Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. For image, audio, rerank, embeddings, and future video-style traffic, the trace also records a compact `modality_evidence` block: requested modality, input/output types, file count, byte size, required capabilities, endpoint strategy, capability filters, and file-size filters. Each candidate includes capability badges for supported modalities, endpoint status, pricing source, and catalog source. It intentionally records only routing metadata: prompts, responses, file contents, raw headers, and provider keys are not stored.
+Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. For image, audio, video, rerank, and embeddings traffic, the trace also records a compact `modality_evidence` block: requested modality, input/output types, file count, byte size, required capabilities, endpoint strategy, capability filters, and file-size filters. Each candidate includes capability badges for supported modalities, endpoint status, pricing source, and catalog source. It intentionally records only routing metadata: prompts, responses, file contents, raw headers, and provider keys are not stored.
 
 Use the Dashboard API to power an explainable routing page or inspect one request during incident response:
 
@@ -991,8 +992,12 @@ v0.8 hardens the v0.6 OpenAI-compatible media ingress for production provider/pr
 | `POST /v1/audio/transcriptions` | `nodes[].audio_models` | JSON or `multipart/form-data` |
 | `POST /v1/audio/translations` | `nodes[].audio_models` | JSON or `multipart/form-data` |
 | `POST /v1/audio/speech` | `nodes[].audio_models` | JSON; binary provider responses are returned unchanged |
+| `POST /v1/videos/generations` | `nodes[].video_models` | JSON only; experimental async job preview |
+| `GET /v1/videos/:id` | stored `video_jobs` metadata | Status lookup with optional provider refresh |
+| `GET /v1/videos/:id/content` | stored `video_jobs` metadata | Provider content proxy only when configured |
+| `POST /v1/videos/:id/cancel` | stored `video_jobs` metadata | Provider cancel proxy only when configured |
 
-v0.8 catalog and Dashboard configuration also recognize `video_models`, `video_generations_endpoint`, and `video_status_endpoint` so operators can prepare video-capable provider nodes. SiftGate does not expose a public video gateway endpoint yet.
+v0.8 also includes an experimental async video preview. `POST /v1/videos/generations` routes JSON requests to `nodes[].video_models`, stores only local job metadata in `video_jobs`, and returns the provider response. `GET /v1/videos/:id` reads local status and refreshes from `video_status_endpoint` when configured. `GET /v1/videos/:id/content` and `POST /v1/videos/:id/cancel` proxy only when the node declares `video_content_endpoint` or `video_cancel_endpoint`; job lookup stays bound to the creating Gateway API key/namespace.
 
 For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`media_type`, `operation`, `multipart`, file count, byte size, requested/response format, provider response type), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, compression, or validation. Increase `server.body_limit` if your edit, variation, transcription, or translation payloads exceed the default `1mb`.
 

@@ -9,6 +9,7 @@ import {
   NodeStatus,
   ProviderCompatibilityResult,
   RouteDecisionLog,
+  VideoJob,
 } from "../database/entities";
 
 export type DbMigrationTableName =
@@ -17,7 +18,8 @@ export type DbMigrationTableName =
   | "node_status"
   | "call_logs"
   | "route_decisions"
-  | "provider_compatibility_results";
+  | "provider_compatibility_results"
+  | "video_jobs";
 
 interface MigrationTableDefinition {
   table: DbMigrationTableName;
@@ -34,6 +36,11 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   {
     table: "provider_compatibility_results",
     entity: ProviderCompatibilityResult,
+    generatedSequenceColumn: "id",
+  },
+  {
+    table: "video_jobs",
+    entity: VideoJob,
     generatedSequenceColumn: "id",
   },
 ];
@@ -174,6 +181,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         GatewayApiKey,
         RouteDecisionLog,
         ProviderCompatibilityResult,
+        VideoJob,
       ],
       synchronize: false,
       logging: false,
@@ -554,6 +562,26 @@ function normalizeRow(
       filtered_count: toNumber,
       status_code: toNumber,
       is_fallback: toBoolean,
+    });
+  }
+
+  if (table === "provider_compatibility_results") {
+    return normalizeFields(row, {
+      id: toNumber,
+      configured: toBoolean,
+      tested: toBoolean,
+      latency_ms: toNullableNumber,
+      status_code: toNullableNumber,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "video_jobs") {
+    return normalizeFields(row, {
+      id: toNumber,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
     });
   }
 

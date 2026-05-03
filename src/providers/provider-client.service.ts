@@ -689,6 +689,8 @@ export class ProviderClientService {
         return node.audio_translations_endpoint || '/v1/audio/translations';
       case 'audio_speech':
         return node.audio_speech_endpoint || '/v1/audio/speech';
+      case 'video_generation':
+        return node.video_endpoint || node.video_generations_endpoint || '/v1/videos/generations';
       default:
         return node.endpoint;
     }

@@ -188,7 +188,7 @@ nodes:
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
     audio_translations_endpoint: "/v1/audio/translations"
     audio_speech_endpoint: "/v1/audio/speech"
-    # video_generations_endpoint: "/v1/videos/generations" # Reserved for video-capable compatible providers
+    # video_generations_endpoint: "/v1/videos/generations" # Experimental async video generation path
     # video_endpoint: "/v1/videos/generations"             # Experimental compatibility-test alias
     # video_status_endpoint: "/v1/videos/:id"              # Optional async video status endpoint
     # video_content_endpoint: "/v1/videos/:id/content"
@@ -198,7 +198,6 @@ nodes:
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     # rerank_models: ["rerank-english-v3"]
     # realtime_models: ["gpt-4o-realtime-preview"]
-    # video_models: ["veo-3-preview"]
     image_models: ["gpt-image-1"]
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"]
     # video_models: ["veo-3.1-generate-preview"]

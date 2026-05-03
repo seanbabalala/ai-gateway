@@ -5,6 +5,7 @@ export { GatewayApiKey } from './gateway-api-key.entity';
 export { ShadowTrafficResult } from './shadow-traffic-result.entity';
 export { RouteDecisionLog } from './route-decision-log.entity';
 export { ProviderCompatibilityResult } from './provider-compatibility-result.entity';
+export { VideoJob } from './video-job.entity';
 export type {
   ProviderCompatibilityCapability,
   ProviderCompatibilityStatus,

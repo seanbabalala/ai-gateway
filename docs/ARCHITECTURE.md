@@ -66,6 +66,10 @@ The gateway accepts the major AI API shapes supported by the open-source Data Pl
 - `POST /v1/audio/transcriptions`
 - `POST /v1/audio/translations`
 - `POST /v1/audio/speech`
+- `POST /v1/videos/generations`
+- `GET /v1/videos/:id`
+- `GET /v1/videos/:id/content`
+- `POST /v1/videos/:id/cancel`
 - `WS /v1/realtime` when the experimental realtime preview is enabled
 
 Each controller normalizes inbound requests into the canonical internal format before routing.
@@ -154,6 +158,8 @@ These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook
 For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
 
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
+
+The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
 ## Shadow Traffic
 

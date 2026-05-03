@@ -307,6 +307,48 @@ export class FetchMock {
       });
     }
 
+    if (url.includes('/v1/videos/generations')) {
+      return new Response(JSON.stringify({
+        id: 'vid-e2e-job-1',
+        object: 'video.generation.job',
+        model: (body.model as string) || 'veo-3-preview',
+        status: 'queued',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/videos/') && url.includes('/content')) {
+      return new Response(Buffer.from('mock-video-bytes'), {
+        status: 200,
+        headers: { 'Content-Type': 'video/mp4' },
+      });
+    }
+
+    if (url.includes('/v1/videos/') && url.includes('/cancel')) {
+      return new Response(JSON.stringify({
+        id: url.split('/').slice(-2, -1)[0],
+        object: 'video.generation.job',
+        status: 'cancelled',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/videos/')) {
+      return new Response(JSON.stringify({
+        id: url.split('/').pop(),
+        object: 'video.generation.job',
+        model: 'veo-3-preview',
+        status: 'completed',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     if (url.includes('/v1/messages')) {
       return new Response(JSON.stringify({
         id: 'msg-e2e-test',

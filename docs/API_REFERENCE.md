@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.8 hardens the OpenAI-compatible images/audio ingress added in v0.6 with image variations, audio translations, richer media metadata, and production log visibility while keeping media files pass-through only.
+v0.8 hardens the OpenAI-compatible images/audio ingress added in v0.6 with image variations, audio translations, richer media metadata, production log visibility, and an experimental async video generation preview. Media files and video bytes remain pass-through only and are not persisted by SiftGate.
 
 ## Live Documentation
 
@@ -41,6 +41,10 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
 | `POST` | `/v1/audio/translations` | OpenAI Audio translation-compatible ingress |
 | `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
+| `POST` | `/v1/videos/generations` | Experimental async video generation preview |
+| `GET` | `/v1/videos/:id` | Experimental video job status |
+| `GET` | `/v1/videos/:id/content` | Experimental video content proxy |
+| `POST` | `/v1/videos/:id/cancel` | Experimental video cancel proxy |
 | `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
@@ -205,6 +209,23 @@ curl http://localhost:2099/v1/audio/translations \
 ```
 
 When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged and records only the provider response content type. Increase `server.body_limit` when image edit/variation or audio transcription/translation files are larger than the default `1mb`.
+
+### Experimental Video
+
+`POST /v1/videos/generations` is an experimental async preview. It accepts JSON bodies, selects from `nodes[].video_models`, rewrites `model` to the chosen upstream model, and forwards provider-specific fields such as `prompt`, `input_reference`, `duration`, `size`, `aspect_ratio`, `quality`, and `metadata`.
+
+```json
+{
+  "model": "auto",
+  "prompt": "A five second product demo clip",
+  "duration": 5,
+  "aspect_ratio": "16:9"
+}
+```
+
+SiftGate stores only `video_jobs` metadata: local request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error. It does not persist prompts, source images, generated video bytes, raw headers, or provider keys.
+
+`GET /v1/videos/:id` returns local job metadata and refreshes from `video_status_endpoint` when configured. `GET /v1/videos/:id/content` and `POST /v1/videos/:id/cancel` proxy to `video_content_endpoint` and `video_cancel_endpoint` only when the selected node declares those endpoints.
 
 ### Experimental Realtime
 

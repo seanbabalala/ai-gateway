@@ -79,6 +79,9 @@ export interface PipelineResult {
   body: Record<string, unknown> | Buffer | string;
   statusCode: number;
   contentType?: string;
+  requestId?: string;
+  nodeId?: string;
+  model?: string;
 }
 
 interface SmartRouteResolution {
@@ -1133,6 +1136,9 @@ export class PipelineService {
             body: response.body,
             statusCode: 200,
             contentType: response.content_type,
+            requestId,
+            nodeId: usedNodeId,
+            model: usedModel,
           };
         } catch (err) {
           if (err instanceof GatewayRequestRejectedError) {
@@ -3032,6 +3038,12 @@ export class PipelineService {
     ) {
       return 'Audio speech requests must include a string input.';
     }
+    if (
+      canonical.source_format === 'video_generation' &&
+      typeof canonical.payload.prompt !== 'string'
+    ) {
+      return 'Video generation requests must include a string prompt.';
+    }
     return null;
   }
 
@@ -3549,6 +3561,18 @@ export class PipelineService {
         source_format: canonical.source_format,
       };
     }
+    if (canonical.source_format === 'image_variation') {
+      return {
+        requested_modality: 'image',
+        input_types: ['image', 'file'],
+        output_types: ['image'],
+        file_count: fileCount,
+        byte_size: byteSize,
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_variation',
+        source_format: canonical.source_format,
+      };
+    }
     if (canonical.source_format === 'audio_transcription') {
       return {
         requested_modality: 'audio',
@@ -3558,6 +3582,30 @@ export class PipelineService {
         byte_size: byteSize,
         required_capabilities: ['audio'],
         endpoint_strategy: 'audio_transcription',
+        source_format: canonical.source_format,
+      };
+    }
+    if (canonical.source_format === 'audio_translation') {
+      return {
+        requested_modality: 'audio',
+        input_types: ['audio', 'file'],
+        output_types: ['text'],
+        file_count: fileCount,
+        byte_size: byteSize,
+        required_capabilities: ['audio'],
+        endpoint_strategy: 'audio_translation',
+        source_format: canonical.source_format,
+      };
+    }
+    if (canonical.source_format === 'video_generation') {
+      return {
+        requested_modality: 'video',
+        input_types: ['text', 'image'],
+        output_types: ['video'],
+        file_count: fileCount,
+        byte_size: byteSize,
+        required_capabilities: ['video'],
+        endpoint_strategy: 'video_generation',
         source_format: canonical.source_format,
       };
     }
@@ -3751,8 +3799,9 @@ export class PipelineService {
     requestedModality: string | null,
     sourceFormat: string | null | undefined,
   ): string | null {
-    if (sourceFormat === 'image_generation' || sourceFormat === 'image_edit') return 'image';
-    if (sourceFormat === 'audio_transcription' || sourceFormat === 'audio_speech') return 'audio';
+    if (sourceFormat === 'image_generation' || sourceFormat === 'image_edit' || sourceFormat === 'image_variation') return 'image';
+    if (sourceFormat === 'audio_transcription' || sourceFormat === 'audio_translation' || sourceFormat === 'audio_speech') return 'audio';
+    if (sourceFormat === 'video_generation') return 'video';
     if (requestedModality === 'embedding') return 'embeddings';
     if (requestedModality === 'rerank') return 'rerank';
     if (requestedModality === 'realtime') return 'realtime';
@@ -3768,8 +3817,11 @@ export class PipelineService {
     if (!node) return null;
     if (sourceFormat === 'image_generation') return node.images_generations_endpoint || null;
     if (sourceFormat === 'image_edit') return node.images_edits_endpoint || null;
+    if (sourceFormat === 'image_variation') return node.images_variations_endpoint || null;
     if (sourceFormat === 'audio_transcription') return node.audio_transcriptions_endpoint || null;
+    if (sourceFormat === 'audio_translation') return node.audio_translations_endpoint || null;
     if (sourceFormat === 'audio_speech') return node.audio_speech_endpoint || null;
+    if (sourceFormat === 'video_generation') return node.video_endpoint || node.video_generations_endpoint || null;
     if (requestedModality === 'embedding') return node.embeddings_endpoint || null;
     if (requestedModality === 'rerank') return node.rerank_endpoint || null;
     if (requestedModality === 'realtime') return node.realtime_endpoint || null;
@@ -3782,8 +3834,11 @@ export class PipelineService {
   ): string | null {
     if (sourceFormat === 'image_generation') return '/v1/images/generations';
     if (sourceFormat === 'image_edit') return '/v1/images/edits';
+    if (sourceFormat === 'image_variation') return '/v1/images/variations';
     if (sourceFormat === 'audio_transcription') return '/v1/audio/transcriptions';
+    if (sourceFormat === 'audio_translation') return '/v1/audio/translations';
     if (sourceFormat === 'audio_speech') return '/v1/audio/speech';
+    if (sourceFormat === 'video_generation') return '/v1/videos/generations';
     if (requestedModality === 'embedding') return '/v1/embeddings';
     if (requestedModality === 'rerank') return '/v1/rerank';
     if (requestedModality === 'realtime') return '/v1/realtime';
@@ -4888,7 +4943,8 @@ export class PipelineService {
       node.embedding_models?.includes(model) ||
       node.rerank_models?.includes(model) ||
       node.image_models?.includes(model) ||
-      node.audio_models?.includes(model)
+      node.audio_models?.includes(model) ||
+      node.video_models?.includes(model)
     ) {
       return model;
     }
@@ -4916,6 +4972,9 @@ export class PipelineService {
       canonical.metadata.source_format === 'audio_speech'
     ) {
       return ['audio'];
+    }
+    if (canonical.metadata.source_format === 'video_generation') {
+      return ['video'];
     }
     return Array.from(detectRequestModalities(canonical as CanonicalRequest));
   }

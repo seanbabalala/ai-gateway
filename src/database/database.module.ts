@@ -9,6 +9,7 @@ import {
   ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
+  VideoJob,
 } from './entities';
 
 @Module({
@@ -25,6 +26,7 @@ import {
             ShadowTrafficResult,
             RouteDecisionLog,
             ProviderCompatibilityResult,
+            VideoJob,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
           // Production PostgreSQL deployments should set database.synchronize=false.
@@ -54,6 +56,7 @@ import {
       ShadowTrafficResult,
       RouteDecisionLog,
       ProviderCompatibilityResult,
+      VideoJob,
     ]),
   ],
   exports: [TypeOrmModule],

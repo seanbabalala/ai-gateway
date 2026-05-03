@@ -177,21 +177,10 @@ export class CreateNodeDto {
   @IsString()
   realtime_endpoint?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['veo-3-preview'] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  video_models?: string[];
-
   @ApiPropertyOptional({ example: '/v1/videos/generations' })
   @IsOptional()
   @IsString()
   video_endpoint?: string;
-
-  @ApiPropertyOptional({ example: '/v1/videos/:id' })
-  @IsOptional()
-  @IsString()
-  video_status_endpoint?: string;
 
   @ApiPropertyOptional({ example: '/v1/videos/:id/content' })
   @IsOptional()
@@ -484,21 +473,10 @@ export class UpdateNodeDto {
   @IsString()
   realtime_endpoint?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['veo-3-preview'] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  video_models?: string[];
-
   @ApiPropertyOptional({ example: '/v1/videos/generations' })
   @IsOptional()
   @IsString()
   video_endpoint?: string;
-
-  @ApiPropertyOptional({ example: '/v1/videos/:id' })
-  @IsOptional()
-  @IsString()
-  video_status_endpoint?: string;
 
   @ApiPropertyOptional({ example: '/v1/videos/:id/content' })
   @IsOptional()

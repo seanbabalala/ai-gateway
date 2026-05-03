@@ -368,6 +368,32 @@ export class AudioSpeechRequestDto {
   speed?: number;
 }
 
+export class VideoGenerationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate video routing or a configured video model.' })
+  model!: string;
+
+  @ApiProperty({ example: 'A short product demo clip of a self-hosted AI gateway dashboard.' })
+  prompt!: string;
+
+  @ApiPropertyOptional({ example: '16:9' })
+  aspect_ratio?: string;
+
+  @ApiPropertyOptional({ example: '1280x720' })
+  size?: string;
+
+  @ApiPropertyOptional({ example: 5 })
+  duration?: number;
+
+  @ApiPropertyOptional({ example: 'standard' })
+  quality?: string;
+
+  @ApiPropertyOptional({ description: 'Optional provider-specific image or asset reference. SiftGate forwards it but does not persist it.' })
+  input_reference?: unknown;
+
+  @ApiPropertyOptional({ description: 'Optional client metadata forwarded to the provider.' })
+  metadata?: Record<string, unknown>;
+}
+
 export class ModelItemDto {
   @ApiProperty({ example: 'gpt-4o' })
   id!: string;

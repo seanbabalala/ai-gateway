@@ -7,6 +7,7 @@ import * as net from 'net';
 import { AddressInfo } from 'net';
 import { createHash, randomBytes } from 'crypto';
 import { API_KEY, createE2EHarness, E2EHarness } from './setup';
+import { ConfigService } from '../../src/config/config.service';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -199,6 +200,12 @@ async function connectGateway(
   };
 }
 
+function pointRealtimeNodeAt(harness: E2EHarness, upstreamUrl: string): void {
+  const config = harness.app.get(ConfigService);
+  const node = config.getFullConfig().nodes.find((entry) => entry.id === 'mock-openai');
+  if (node) node.realtime_endpoint = upstreamUrl;
+}
+
 async function startRealtimeUpstream(options: { reject?: boolean } = {}) {
   const connections: Array<{
     url: string | undefined;
@@ -281,6 +288,7 @@ describe('Realtime preview (e2e)', () => {
     const upstream = await startRealtimeUpstream();
     process.env.REALTIME_UPSTREAM_ENDPOINT = upstream.url;
     const harness = await createE2EHarness();
+    pointRealtimeNodeAt(harness, upstream.url);
     try {
       const client = await connectGateway(harness, '/v1/realtime?model=gpt-4o-realtime-preview');
       expect(client.status).toBe(401);
@@ -297,6 +305,7 @@ describe('Realtime preview (e2e)', () => {
     const upstream = await startRealtimeUpstream();
     process.env.REALTIME_UPSTREAM_ENDPOINT = upstream.url;
     const harness = await createE2EHarness();
+    pointRealtimeNodeAt(harness, upstream.url);
     try {
       const client = await connectGateway(
         harness,
@@ -317,6 +326,7 @@ describe('Realtime preview (e2e)', () => {
     const upstream = await startRealtimeUpstream();
     process.env.REALTIME_UPSTREAM_ENDPOINT = upstream.url;
     const harness = await createE2EHarness();
+    pointRealtimeNodeAt(harness, upstream.url);
     try {
       const client = await connectGateway(
         harness,
@@ -359,6 +369,7 @@ describe('Realtime preview (e2e)', () => {
     const upstream = await startRealtimeUpstream({ reject: true });
     process.env.REALTIME_UPSTREAM_ENDPOINT = upstream.url;
     const harness = await createE2EHarness();
+    pointRealtimeNodeAt(harness, upstream.url);
     try {
       const client = await connectGateway(
         harness,

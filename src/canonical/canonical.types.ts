@@ -74,9 +74,10 @@ export type SourceFormat =
   | 'image_variation'
   | 'audio_transcription'
   | 'audio_translation'
-  | 'audio_speech';
+  | 'audio_speech'
+  | 'video_generation';
 
-export type CanonicalMediaType = 'image' | 'audio';
+export type CanonicalMediaType = 'image' | 'audio' | 'video';
 
 export type CanonicalMediaOperation =
   | 'generation'
@@ -284,7 +285,8 @@ export type CanonicalMediaSourceFormat =
   | 'image_variation'
   | 'audio_transcription'
   | 'audio_translation'
-  | 'audio_speech';
+  | 'audio_speech'
+  | 'video_generation';
 
 export type CanonicalMediaPayload = Record<string, unknown> | Buffer;
 export type CanonicalMediaResponseBody = Record<string, unknown> | Buffer | string;

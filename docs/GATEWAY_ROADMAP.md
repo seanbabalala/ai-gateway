@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-03
+> 最后更新：2026-05-04
 
 ---
 
@@ -16,13 +16,13 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
-| v0.8 | Provider + Multimodal Ops | 进行中 — Provider Catalog + Add Node Wizard + 多模态生产运维 | 🚧 Active |
+| v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 
 ---
 
 ## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）
 
-**v0.8 当前状态**：Prompt 46、47、48、50、51、52 已完成 Provider / Model Catalog、Dashboard Add Node Wizard、Images / Audio 生产化增强、Provider Compatibility Test Matrix、Catalog Update / Override CLI 与多模态 Route Explanation evidence。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.8.0 发布状态**：已完成 Provider / Model Catalog、Dashboard Add Node Wizard、Images / Audio 生产化增强、Video Generation async preview、Provider Compatibility Test Matrix、Catalog Update / Override CLI 与多模态 Route Explanation evidence。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：Provider / Model Catalog
 
@@ -51,7 +51,7 @@
   - Step 4 确认 `base_url`、endpoint、auth、headers、model aliases、prefixes、pricing、capability tags、health check、concurrency/queue controls
   - Step 5 针对 Chat/Text 模型执行连接测试并保存到本地 `gateway.config.yaml`
   - Provider 选择后自动填充 `base_url`、`auth_type`、endpoint、suggested models、`model_prefixes`、capability flags 和 pricing metadata
-  - 新增 `video_models`、`video_generations_endpoint`、`video_status_endpoint` 配置面，为后续公开 video endpoint 铺底
+  - 新增 `video_models`、`video_generations_endpoint`、`video_status_endpoint` 配置面，并接入 v0.8 experimental async video preview
   - Dashboard 新增文案继续保持 English、简体中文、繁体中文、日文、韩文、泰文、西班牙文 7 语言同步
   - 不接入 Cloud，不自动联网更新 catalog，不自动修改 routing 配置
 
@@ -69,6 +69,17 @@
   - API key、namespace、budget、rate limit、fallback、call_log、telemetry 继续复用现有 Data Plane 管线
   - Config validation 校验 media endpoint path、model bucket、`max_file_size` 与 pricing 诊断
 
+### P0：Video Generation Async Preview
+
+- **状态**：✅ v0.8.0 已发布
+- **目标**：用 async job 模型提供实验性视频生成入口，不假设视频可以同步返回
+- **实现方案**：
+  - 新增 `POST /v1/videos/generations`、`GET /v1/videos/:id`、`GET /v1/videos/:id/content`、`POST /v1/videos/:id/cancel`
+  - 支持 JSON pass-through，按 `nodes[].video_models`、`video_endpoint` / `video_generations_endpoint` 路由
+  - 本地 SQLite/Postgres 保存 `video_jobs` metadata：request id、provider job id、node、model、status、timestamps、error
+  - 不保存 prompt、源图片、视频 bytes、raw headers 或 provider key
+  - status/content/cancel 只在 node 配置了对应 endpoint 时代理到 provider
+
 ### P0：Provider Compatibility Test Matrix
 
 - **状态**：✅ Prompt 50 feature branch 已完成
@@ -81,7 +92,7 @@
   - 不保存 prompt、response、raw headers、provider key、media bytes 或 realtime frames
   - Dashboard Nodes 页面显示只读 compatibility matrix，并提供安全测试按钮
   - Config/Dashboard diagnostics 可引用最近测试结果给出非阻断 warning，例如 configured but untested 或最近探测失败
-  - 为未来 Provider / Model Catalog 和 Video async preview 预留 `video_models` 与 video endpoint 配置字段
+  - Provider / Model Catalog 与 Video async preview 共享 `video_models` 和 async video endpoint 配置字段
 
 ### 多模态路由证据
 

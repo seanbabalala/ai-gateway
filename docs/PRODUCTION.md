@@ -5,12 +5,15 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
-v0.6.0 keeps that deployment shape while adding broader protocol ingress and
-explainable routing. Structured output, rerank, images, and audio use the same
-local auth, namespace, budget, routing, call-log, and telemetry path as chat
-traffic. The Realtime preview is experimental, disabled by default, and should
-only be enabled when the upstream provider, connection limits, and WebSocket
-load balancer behavior have been tested in your environment.
+v0.8.0 keeps that deployment shape while adding a local Provider / Model
+Catalog, Dashboard Add Node wizard, hardened images/audio endpoints,
+experimental async video preview, provider compatibility checks, catalog
+override CLI, and richer multimodal routing evidence. Structured output,
+rerank, images, audio, and video use the same local auth, namespace, budget,
+routing, call-log, and telemetry path as chat traffic. Realtime and video
+remain experimental previews and should only be enabled for production after
+upstream provider behavior, connection limits, job retention, and load balancer
+paths have been tested in your environment.
 
 ## Baseline Topology
 
@@ -79,8 +82,8 @@ node dist/cli/siftgate.js migrate-db \
 
 The migrator:
 
-- Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`, and
-  `route_decisions`.
+- Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
+  `route_decisions`, `provider_compatibility_results`, and `video_jobs`.
 - Creates a timestamped SQLite backup when `--backup` is set.
 - Creates/updates the PostgreSQL schema through the OSS TypeORM entities before
   import.
