@@ -83,7 +83,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
-- **Explainable routing trace** — records privacy-safe route decision evidence so operators can inspect why a `node:model` was selected
+- **Explainable routing trace** — records privacy-safe route decision evidence, including multimodal capability matching, so operators can inspect why a `node:model` was selected or filtered
 - **Automatic fallback** — if the primary provider fails, instantly retries with the next provider in the chain
 
 ### Cost & Budget Control
@@ -112,7 +112,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
-- **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
+- **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -850,7 +850,7 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
-Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. It intentionally records only routing metadata: prompts, responses, raw headers, and provider keys are not stored.
+Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. For image, audio, rerank, embeddings, and future video-style traffic, the trace also records a compact `modality_evidence` block: requested modality, input/output types, file count, byte size, required capabilities, endpoint strategy, capability filters, and file-size filters. Each candidate includes capability badges for supported modalities, endpoint status, pricing source, and catalog source. It intentionally records only routing metadata: prompts, responses, file contents, raw headers, and provider keys are not stored.
 
 Use the Dashboard API to power an explainable routing page or inspect one request during incident response:
 

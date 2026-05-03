@@ -272,7 +272,23 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 
 `GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
 
-Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
+Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status.
+
+For multimodal and capability-specific requests, traces may include:
+
+- `modality_evidence.requested_modality`
+- `modality_evidence.input_types` / `output_types`
+- `modality_evidence.file_count` / `byte_size`
+- `modality_evidence.required_capabilities`
+- `modality_evidence.endpoint_strategy`
+- `modality_evidence.filtered_by_capability`
+- `modality_evidence.filtered_by_file_size`
+- `candidate_targets[].capability_evidence.supported_modalities`
+- `candidate_targets[].capability_evidence.endpoint_status`
+- `candidate_targets[].capability_evidence.pricing_source`
+- `candidate_targets[].capability_evidence.catalog_source`
+
+These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.
 
 ### Provider Compatibility Matrix
 

@@ -63,6 +63,7 @@ function sourceOptions(t: TFunction) {
     { value: 'rerank', label: t('routeExplanation.sources.rerank') },
     { value: 'images', label: t('routeExplanation.sources.images') },
     { value: 'audio', label: t('routeExplanation.sources.audio') },
+    { value: 'video', label: t('routeExplanation.sources.video') },
   ]
 }
 
@@ -92,6 +93,28 @@ function formatSourceFormat(source: string | null | undefined, t: TFunction) {
   })
 }
 
+function formatEvidenceValue(value: string | null | undefined, t: TFunction, group: string) {
+  if (!value) return t('routeExplanation.values.unknown')
+  const normalized = value.replaceAll('-', '_')
+  return t(`routeExplanation.${group}.${normalized}`, {
+    defaultValue: value.replaceAll('_', ' '),
+  })
+}
+
+function formatEvidenceList(values: string[] | undefined, t: TFunction, group: string) {
+  if (!values || values.length === 0) return t('routeExplanation.values.none')
+  return values.map((value) => formatEvidenceValue(value, t, group)).join(', ')
+}
+
+function formatBytes(value: number | null | undefined, t: TFunction) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return t('routeExplanation.values.unknown')
+  }
+  if (value < 1024) return t('routeExplanation.bytes.bytes', { value })
+  if (value < 1024 * 1024) return t('routeExplanation.bytes.kb', { value: (value / 1024).toFixed(1) })
+  return t('routeExplanation.bytes.mb', { value: (value / 1024 / 1024).toFixed(1) })
+}
+
 function formatContextFit(fit: RouteDecisionCandidate['metrics']['context_fit'], t: TFunction) {
   return t(`routeExplanation.contextFit.${fit}`, {
     defaultValue: fit.replaceAll('_', ' '),
@@ -109,6 +132,21 @@ function circuitBadge(state: string, available: boolean) {
   if (!available || state === 'OPEN') return 'red'
   if (state === 'HALF_OPEN') return 'amber'
   return 'emerald'
+}
+
+function capabilityBadge(candidate: RouteDecisionCandidate) {
+  const evidence = candidate.capability_evidence
+  if (!evidence) return 'zinc'
+  if (evidence.filtered_by_capability || evidence.filtered_by_file_size) return 'red'
+  if (evidence.missing_capabilities.length > 0) return 'amber'
+  return 'emerald'
+}
+
+function endpointBadge(status: string | null | undefined) {
+  if (status === 'native' || status === 'configured' || status === 'default') return 'emerald'
+  if (status === 'passthrough' || status === 'fallback') return 'amber'
+  if (status === 'missing') return 'red'
+  return 'zinc'
 }
 
 function ScoreMeter({
@@ -179,6 +217,86 @@ function PrivacyBadge({ trace }: { trace: RouteDecisionTrace }) {
   )
 }
 
+function ModalityEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
+  const { t } = useTranslation('logs')
+  const evidence = trace.modality_evidence
+
+  if (!evidence) {
+    return null
+  }
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <CardTitle>{t('routeExplanation.sections.modalityEvidence')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.modalityEvidence.requested')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant="blue">
+                {formatEvidenceValue(evidence.requested_modality, t, 'modalities')}
+              </Badge>
+              {evidence.required_capabilities.map((capability) => (
+                <Badge key={capability} variant="gold">
+                  {formatEvidenceValue(capability, t, 'capabilities')}
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.modalityEvidence.ioShape')}
+            </div>
+            <div className="mt-1 text-[12px] text-[var(--foreground)]">
+              {formatEvidenceList(evidence.input_types, t, 'ioTypes')}
+            </div>
+            <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+              {formatEvidenceList(evidence.output_types, t, 'ioTypes')}
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.modalityEvidence.mediaSize')}
+            </div>
+            <div className="mt-1 font-mono text-[12px] text-[var(--foreground)]">
+              {formatBytes(evidence.byte_size, t)}
+            </div>
+            <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+              {t('routeExplanation.modalityEvidence.files', {
+                count: evidence.file_count ?? 0,
+              })}
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.modalityEvidence.endpointStrategy')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={endpointBadge(evidence.endpoint_strategy)}>
+                {formatEvidenceValue(evidence.endpoint_strategy, t, 'endpointStrategy')}
+              </Badge>
+              <Badge variant={evidence.filtered_by_capability.length > 0 ? 'amber' : 'emerald'}>
+                {t('routeExplanation.modalityEvidence.capabilityFiltered', {
+                  count: evidence.filtered_by_capability.length,
+                })}
+              </Badge>
+              <Badge variant={evidence.filtered_by_file_size.length > 0 ? 'amber' : 'emerald'}>
+                {t('routeExplanation.modalityEvidence.sizeFiltered', {
+                  count: evidence.filtered_by_file_size.length,
+                })}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
 function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }) {
   const { t } = useTranslation('logs')
 
@@ -199,6 +317,7 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
           <TableHead>{t('routeExplanation.table.candidate')}</TableHead>
           <TableHead>{t('routeExplanation.table.circuit')}</TableHead>
           <TableHead>{t('routeExplanation.table.decision')}</TableHead>
+          <TableHead>{t('routeExplanation.table.capability')}</TableHead>
           <TableHead>{t('routeExplanation.table.tradeoffScores')}</TableHead>
           <TableHead className="text-right">{t('routeExplanation.table.cost')}</TableHead>
           <TableHead className="text-right">{t('routeExplanation.table.latency')}</TableHead>
@@ -244,6 +363,64 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                     </Badge>
                   ))}
                 </div>
+              )}
+            </TableCell>
+            <TableCell>
+              {candidate.capability_evidence ? (
+                <div className="max-w-[260px] space-y-2">
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={capabilityBadge(candidate)}>
+                      {formatEvidenceValue(
+                        candidate.capability_evidence.requested_modality,
+                        t,
+                        'modalities',
+                      )}
+                    </Badge>
+                    <Badge variant={endpointBadge(candidate.capability_evidence.endpoint_status)}>
+                      {formatEvidenceValue(
+                        candidate.capability_evidence.endpoint_status,
+                        t,
+                        'endpointStatus',
+                      )}
+                    </Badge>
+                    <Badge variant="zinc">
+                      {t('routeExplanation.table.pricingSource', {
+                        source: candidate.capability_evidence.pricing_source ||
+                          t('routeExplanation.values.unknown'),
+                      })}
+                    </Badge>
+                    <Badge variant="zinc">
+                      {t('routeExplanation.table.catalogSource', {
+                        source: candidate.capability_evidence.catalog_source ||
+                          t('routeExplanation.values.unknown'),
+                      })}
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] leading-5 text-[var(--foreground-dim)]">
+                    {formatEvidenceList(
+                      candidate.capability_evidence.supported_modalities,
+                      t,
+                      'modalities',
+                    )}
+                  </div>
+                  {(candidate.capability_evidence.filtered_by_capability ||
+                    candidate.capability_evidence.filtered_by_file_size) && (
+                    <div className="flex flex-wrap gap-1">
+                      {candidate.capability_evidence.missing_capabilities.map((capability) => (
+                        <Badge key={capability} variant="red">
+                          {formatEvidenceValue(capability, t, 'capabilities')}
+                        </Badge>
+                      ))}
+                      {candidate.capability_evidence.filtered_by_file_size && (
+                        <Badge variant="red">
+                          {t('routeExplanation.badges.fileSizeExceeded')}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Badge variant="zinc">{t('routeExplanation.values.unknown')}</Badge>
               )}
             </TableCell>
             <TableCell>
@@ -454,6 +631,8 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
               </div>
             </CardContent>
           </CardStatic>
+
+          <ModalityEvidencePanel trace={trace} />
 
           <CardStatic>
             <CardHeader>

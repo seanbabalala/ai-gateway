@@ -21,6 +21,10 @@
 - Experimental video capability config fields (`video_models`, `video_endpoint`, `video_status_endpoint`, `video_content_endpoint`, `video_cancel_endpoint`) for provider compatibility checks and future async video routing.
 - `siftgate catalog list/show/validate/export/import` plus `npm run catalog` for managing `catalog.override.yaml` without network updates.
 - Config validation warnings for secret-like catalog override fields/values.
+- v0.8 multimodal route decision evidence for image, audio, rerank, embedding, and future video-style requests.
+- Route Decision Trace `modality_evidence` and per-candidate `capability_evidence` covering requested modality, input/output types, file count, byte size, required capabilities, capability/file-size filters, endpoint strategy/status, pricing source, and catalog source.
+- Dashboard Route Explanation capability badges, endpoint status, pricing/catalog source badges, and 7-language localization for the new read-only evidence.
+- Unit coverage for routing trace evidence, pipeline trace persistence, and Dashboard route decision API shape.
 
 ### Changed
 

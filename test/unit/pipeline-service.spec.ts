@@ -764,6 +764,11 @@ describe('PipelineService — rerank', () => {
     expect(mocks.routingService.resolveRerankRoute).toHaveBeenCalledWith(
       'auto',
       expect.any(Function),
+      expect.objectContaining({
+        requested_modality: 'rerank',
+        input_types: ['text', 'documents'],
+        output_types: ['ranked_documents'],
+      }),
     );
     expect(mocks.providerClient.forwardRerank).toHaveBeenCalledWith(
       request,
@@ -782,6 +787,15 @@ describe('PipelineService — rerank', () => {
         status_code: 200,
       }),
     );
+    const routeTrace = JSON.parse(mocks.routeDecisionRepo.create.mock.calls[0][0].trace_json);
+    expect(routeTrace.modality_evidence).toMatchObject({
+      requested_modality: 'rerank',
+      required_capabilities: ['rerank'],
+    });
+    expect(routeTrace.candidate_targets[0].capability_evidence).toMatchObject({
+      requested_modality: 'rerank',
+      pricing_source: 'config',
+    });
   });
 
   it('should return 400 for invalid rerank requests without calling upstream', async () => {
@@ -2353,6 +2367,11 @@ describe('PipelineService — images and audio', () => {
       'image_generation',
       'auto',
       expect.any(Function),
+      expect.objectContaining({
+        requested_modality: 'image',
+        output_types: ['image'],
+        source_format: 'image_generation',
+      }),
     );
     expect(mocks.providerClient.forwardMedia).toHaveBeenCalledWith(
       request,
@@ -2373,6 +2392,15 @@ describe('PipelineService — images and audio', () => {
         media_provider_response_type: 'application/json',
       }),
     );
+    const routeTrace = JSON.parse(mocks.routeDecisionRepo.create.mock.calls[0][0].trace_json);
+    expect(routeTrace.modality_evidence).toMatchObject({
+      requested_modality: 'image',
+      output_types: ['image'],
+    });
+    expect(routeTrace.candidate_targets[0].capability_evidence).toMatchObject({
+      requested_modality: 'image',
+      endpoint_status: 'default',
+    });
   });
 
   it('should pass binary audio speech bodies through with provider content type', async () => {

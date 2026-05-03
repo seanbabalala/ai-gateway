@@ -38,7 +38,11 @@ import {
   ProviderError,
 } from '../providers/provider-client.service';
 import { ScoringService } from '../scoring/scoring.service';
-import { RoutingConstraintError, RoutingService } from '../routing/routing.service';
+import {
+  RoutingConstraintError,
+  RoutingService,
+  RouteSelectionHints,
+} from '../routing/routing.service';
 import { estimateCanonicalRequestTokens } from '../routing/token-estimator';
 import { CircuitBreakerService } from '../routing/circuit-breaker.service';
 import {
@@ -66,6 +70,7 @@ import { LogSinkService } from '../log-sinks/log-sink.service';
 import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import {
+  RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionTrace,
   routeTargetKey,
 } from '../routing/route-decision-trace';
@@ -807,6 +812,7 @@ export class PipelineService {
           const route = this.routingService.resolveRerankRoute(
             requestedModel,
             (target) => this.isTargetAllowed(canonical, target.node, target.model),
+            this.buildRerankRouteSelectionHints(canonical),
           );
           const tier: Tier = route.mode === 'direct' ? 'direct' : 'standard';
           const targets = [route.primary, ...route.fallbacks];
@@ -873,6 +879,7 @@ export class PipelineService {
               retryCount: totalRetries,
               fallbackReason,
               fallbackFromNode,
+              routeTrace: route.trace,
             });
             return {
               body: this.formatError('rerank', failureStatus, errorMsg),
@@ -922,6 +929,7 @@ export class PipelineService {
             retryCount: totalRetries,
             fallbackReason,
             fallbackFromNode,
+            routeTrace: route.trace,
           });
 
           return {
@@ -1000,6 +1008,7 @@ export class PipelineService {
             canonical.source_format,
             requestedModel,
             (target) => this.isTargetAllowed(canonical, target.node, target.model),
+            this.buildMediaRouteSelectionHints(canonical),
           );
           const tier: Tier = route.mode === 'direct' ? 'direct' : 'standard';
           const targets = [route.primary, ...route.fallbacks];
@@ -1066,6 +1075,7 @@ export class PipelineService {
               retryCount: totalRetries,
               fallbackReason,
               fallbackFromNode,
+              routeTrace: route.trace,
             });
             return {
               body: this.formatError(canonical.source_format, failureStatus, errorMsg),
@@ -1112,11 +1122,12 @@ export class PipelineService {
             latencyMs: response.routing.latency_ms,
             usage: response.usage,
             error: null,
-            retryCount: totalRetries,
-            fallbackReason,
-            fallbackFromNode,
-            mediaProviderResponseType: response.provider_response_type,
-          });
+              retryCount: totalRetries,
+              fallbackReason,
+              fallbackFromNode,
+              mediaProviderResponseType: response.provider_response_type,
+              routeTrace: route.trace,
+            });
 
           return {
             body: response.body,
@@ -3299,9 +3310,21 @@ export class PipelineService {
     const targets = [input.route.primary, ...input.route.fallbacks];
     const selectedKey = routeTargetKey(input.route.primary);
     const tokenEstimate =
-      input.canonical.metadata.source_format === 'embeddings'
-        ? null
-        : estimateCanonicalRequestTokens(input.canonical as CanonicalRequest);
+      input.canonical.metadata.source_format === 'chat_completions' ||
+      input.canonical.metadata.source_format === 'responses' ||
+      input.canonical.metadata.source_format === 'messages'
+        ? estimateCanonicalRequestTokens(input.canonical as CanonicalRequest)
+        : null;
+    const requestEvidenceHints = this.routeSelectionHintsForTrace(input.canonical);
+    const traceSelectionHints: RouteSelectionHints = {
+      ...requestEvidenceHints,
+      estimated_input_tokens: tokenEstimate?.input_tokens ?? undefined,
+      estimated_output_tokens: tokenEstimate?.output_tokens ?? undefined,
+      estimated_context_tokens: tokenEstimate?.context_tokens ?? undefined,
+      requires_structured_output:
+        input.canonical.metadata.source_format !== 'embeddings' &&
+        this.requestRequiresStructuredOutput(input.canonical as CanonicalRequest),
+    };
 
     return {
       version: 1,
@@ -3326,6 +3349,10 @@ export class PipelineService {
           input.canonical.metadata.source_format !== 'embeddings' &&
           this.requestRequiresStructuredOutput(input.canonical as CanonicalRequest),
       },
+      modality_evidence: this.buildPipelineTraceModalityEvidence(
+        traceSelectionHints,
+        targets,
+      ),
       candidate_targets: targets.map((target, index) => {
         const capabilities =
           this.capabilityService.resolveModelRoutingCapabilities?.(
@@ -3345,6 +3372,10 @@ export class PipelineService {
             : null;
         const maxContextTokens = capabilities.max_context_tokens ?? null;
         const contextTokens = tokenEstimate?.context_tokens;
+        const capabilityEvidence = this.buildPipelineCandidateCapabilityEvidence(
+          target,
+          traceSelectionHints,
+        );
         return {
           node: target.node,
           model: target.model,
@@ -3387,6 +3418,7 @@ export class PipelineService {
                 ? capabilities.structured_output
                 : null,
           },
+          capability_evidence: capabilityEvidence,
         };
       }),
       filters: [],
@@ -3427,6 +3459,405 @@ export class PipelineService {
         provider_keys: false,
       },
     };
+  }
+
+  private routeSelectionHintsForTrace(
+    canonical: LoggableCanonicalRequest,
+  ): RouteSelectionHints {
+    if (canonical.metadata.source_format === 'embeddings') {
+      const embedding = canonical as CanonicalEmbeddingRequest;
+      return {
+        requested_modality: 'embedding',
+        input_types: ['text'],
+        output_types: ['embedding'],
+        required_capabilities: ['embedding'],
+        endpoint_strategy: 'embeddings',
+        source_format: 'embeddings',
+        estimated_output_tokens: embedding.dimensions,
+      };
+    }
+    if (canonical.metadata.source_format === 'rerank') {
+      return this.buildRerankRouteSelectionHints(canonical as CanonicalRerankRequest);
+    }
+    if (this.isMediaCanonical(canonical)) {
+      return this.buildMediaRouteSelectionHints(canonical);
+    }
+
+    const modalities = Array.from(detectRequestModalities(canonical as CanonicalRequest));
+    const requested =
+      modalities.find((modality) => modality === 'vision') ||
+      modalities.find((modality) => modality !== 'text') ||
+      'text';
+    return {
+      requested_modality: requested,
+      input_types: modalities.includes('vision') ? ['text', 'image'] : ['text'],
+      output_types: ['text'],
+      file_count: modalities.includes('vision') ? this.countImageBlocks(canonical as CanonicalRequest) : 0,
+      byte_size: null,
+      required_capabilities: modalities.length > 0 ? modalities : ['text'],
+      endpoint_strategy: canonical.metadata.source_format,
+      source_format: canonical.metadata.source_format,
+    };
+  }
+
+  private buildRerankRouteSelectionHints(
+    canonical: CanonicalRerankRequest,
+  ): RouteSelectionHints {
+    const documents = Array.isArray(canonical.documents) ? canonical.documents : [];
+    const documentBytes = documents.reduce((sum, document) => {
+      const value = typeof document === 'string' ? document : JSON.stringify(document);
+      return sum + Buffer.byteLength(value || '', 'utf8');
+    }, 0);
+    return {
+      requested_modality: 'rerank',
+      input_types: ['text', 'documents'],
+      output_types: ['ranked_documents'],
+      file_count: 0,
+      byte_size: Buffer.byteLength(canonical.query || '', 'utf8') + documentBytes,
+      required_capabilities: ['rerank'],
+      endpoint_strategy: 'rerank',
+      source_format: 'rerank',
+    };
+  }
+
+  private buildMediaRouteSelectionHints(
+    canonical: CanonicalMediaRequest,
+  ): RouteSelectionHints {
+    const byteSize = this.mediaPayloadByteSize(canonical);
+    const fileCount = this.mediaFileCount(canonical);
+    if (canonical.source_format === 'image_generation') {
+      return {
+        requested_modality: 'image',
+        input_types: ['text'],
+        output_types: ['image'],
+        file_count: fileCount,
+        byte_size: byteSize,
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_generation',
+        source_format: canonical.source_format,
+      };
+    }
+    if (canonical.source_format === 'image_edit') {
+      return {
+        requested_modality: 'image',
+        input_types: ['text', 'image', 'file'],
+        output_types: ['image'],
+        file_count: fileCount,
+        byte_size: byteSize,
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_edit',
+        source_format: canonical.source_format,
+      };
+    }
+    if (canonical.source_format === 'audio_transcription') {
+      return {
+        requested_modality: 'audio',
+        input_types: ['audio', 'file'],
+        output_types: ['text'],
+        file_count: fileCount,
+        byte_size: byteSize,
+        required_capabilities: ['audio'],
+        endpoint_strategy: 'audio_transcription',
+        source_format: canonical.source_format,
+      };
+    }
+    return {
+      requested_modality: 'audio',
+      input_types: ['text'],
+      output_types: ['audio'],
+      file_count: fileCount,
+      byte_size: byteSize,
+      required_capabilities: ['audio'],
+      endpoint_strategy: 'audio_speech',
+      source_format: canonical.source_format,
+    };
+  }
+
+  private buildPipelineTraceModalityEvidence(
+    hints: RouteSelectionHints,
+    targets: RouteTarget[],
+  ) {
+    const candidates = targets.map((target) => ({
+      target,
+      evidence: this.buildPipelineCandidateCapabilityEvidence(target, hints),
+    }));
+    return {
+      requested_modality: hints.requested_modality ?? null,
+      input_types: this.uniqueTraceStrings(hints.input_types || []),
+      output_types: this.uniqueTraceStrings(hints.output_types || []),
+      file_count: hints.file_count ?? null,
+      byte_size: hints.byte_size ?? null,
+      required_capabilities: this.uniqueTraceStrings(hints.required_capabilities || []),
+      endpoint_strategy: hints.endpoint_strategy ?? null,
+      filtered_by_capability: candidates
+        .filter((candidate) => candidate.evidence.filtered_by_capability)
+        .map((candidate) => ({
+          node: candidate.target.node,
+          model: candidate.target.model,
+          reason: 'capability_unsupported',
+          missing_capabilities: candidate.evidence.missing_capabilities,
+        })),
+      filtered_by_file_size: candidates
+        .filter((candidate) => candidate.evidence.filtered_by_file_size)
+        .map((candidate) => ({
+          node: candidate.target.node,
+          model: candidate.target.model,
+          reason: 'file_size_exceeded',
+          byte_size: candidate.evidence.byte_size,
+          max_file_size: candidate.evidence.max_file_size,
+        })),
+    };
+  }
+
+  private buildPipelineCandidateCapabilityEvidence(
+    target: RouteTarget,
+    hints: RouteSelectionHints,
+  ): RouteDecisionCandidateCapabilityEvidence {
+    const capabilities =
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) || {};
+    const supportedModalities = this.uniqueTraceStrings(
+      capabilities.modalities ||
+        this.capabilityService.resolveModelModalities?.(target.node, target.model) ||
+        [],
+    );
+    const inputTypes = this.uniqueTraceStrings(
+      capabilities.input_types || this.inferTraceInputTypes(supportedModalities),
+    );
+    const outputTypes = this.uniqueTraceStrings(
+      capabilities.output_types || this.inferTraceOutputTypes(supportedModalities),
+    );
+    const required = this.uniqueTraceStrings(
+      hints.required_capabilities ||
+        (hints.requested_modality ? [hints.requested_modality] : []),
+    );
+    const matched = required.filter((requirement) =>
+      this.traceCandidateSupportsRequirement(
+        requirement,
+        capabilities,
+        supportedModalities,
+        inputTypes,
+        outputTypes,
+      ),
+    );
+    const missing = required.filter((requirement) => !matched.includes(requirement));
+    const byteSize = hints.byte_size ?? null;
+    const maxFileSize = capabilities.max_file_size ?? null;
+    const endpoint = this.pipelineEndpointEvidence(
+      target,
+      hints.requested_modality ?? null,
+      hints.source_format,
+      capabilities.endpoints,
+    );
+
+    return {
+      requested_modality: hints.requested_modality ?? null,
+      supported_modalities: supportedModalities,
+      input_types: inputTypes,
+      output_types: outputTypes,
+      required_capabilities: required,
+      matched_capabilities: matched,
+      missing_capabilities: missing,
+      endpoint_strategy: hints.endpoint_strategy || endpoint.strategy,
+      endpoint_status: endpoint.status,
+      endpoint: endpoint.path,
+      file_count: hints.file_count ?? null,
+      byte_size: byteSize,
+      max_file_size: maxFileSize,
+      filtered_by_capability: missing.length > 0,
+      filtered_by_file_size:
+        byteSize !== null &&
+        maxFileSize !== null &&
+        Number.isFinite(byteSize) &&
+        Number.isFinite(maxFileSize) &&
+        byteSize > maxFileSize,
+      pricing_source: capabilities.pricing
+        ? ((capabilities.pricing as ModelPricing & { source?: string }).source || 'config')
+        : 'missing',
+      catalog_source:
+        (capabilities as { catalog_source?: string; source?: string }).catalog_source ||
+        (capabilities as { source?: string }).source ||
+        'config',
+    };
+  }
+
+  private traceCandidateSupportsRequirement(
+    requirement: string,
+    capabilities: Record<string, any>,
+    supportedModalities: string[],
+    inputTypes: string[],
+    outputTypes: string[],
+  ): boolean {
+    const normalized = requirement.toLowerCase();
+    if (normalized === 'image' || normalized === 'vision') {
+      return supportsModalities(supportedModalities as any, ['image']);
+    }
+    if (normalized === 'audio') {
+      return supportedModalities.includes('audio') ||
+        inputTypes.includes('audio') ||
+        outputTypes.includes('audio');
+    }
+    if (normalized === 'embedding' || normalized === 'embeddings') {
+      return supportedModalities.includes('embedding') ||
+        inputTypes.includes('embedding') ||
+        outputTypes.includes('embedding') ||
+        capabilities.dimensions !== undefined;
+    }
+    if (normalized === 'rerank') {
+      return supportedModalities.includes('rerank') ||
+        capabilities.supports_rerank === true ||
+        Boolean(capabilities.endpoints?.rerank);
+    }
+    if (normalized === 'realtime') {
+      return supportedModalities.includes('realtime') ||
+        capabilities.supports_realtime === true ||
+        Boolean(capabilities.endpoints?.realtime);
+    }
+    if (normalized === 'video') {
+      return supportedModalities.includes('video') ||
+        inputTypes.includes('video') ||
+        outputTypes.includes('video') ||
+        Boolean(capabilities.endpoints?.video);
+    }
+    return (
+      supportedModalities.includes(normalized) ||
+      inputTypes.includes(normalized) ||
+      outputTypes.includes(normalized)
+    );
+  }
+
+  private pipelineEndpointEvidence(
+    target: RouteTarget,
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+    endpoints?: Record<string, string>,
+  ): { strategy: string; status: string; path: string | null } {
+    const key = this.pipelineEndpointKey(requestedModality, sourceFormat);
+    if (key && endpoints?.[key]) {
+      return { strategy: 'native', status: 'configured', path: endpoints[key] };
+    }
+    const node = this.config.getNode(target.node);
+    const legacy = this.pipelineLegacyEndpoint(node, requestedModality, sourceFormat);
+    if (legacy) return { strategy: 'configured', status: 'configured', path: legacy };
+    const fallback = this.pipelineDefaultEndpoint(requestedModality, sourceFormat);
+    if (fallback) return { strategy: 'default', status: 'default', path: fallback };
+    if (node?.endpoint) return { strategy: 'passthrough', status: 'fallback', path: node.endpoint };
+    return { strategy: 'missing', status: 'missing', path: null };
+  }
+
+  private pipelineEndpointKey(
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+  ): string | null {
+    if (sourceFormat === 'image_generation' || sourceFormat === 'image_edit') return 'image';
+    if (sourceFormat === 'audio_transcription' || sourceFormat === 'audio_speech') return 'audio';
+    if (requestedModality === 'embedding') return 'embeddings';
+    if (requestedModality === 'rerank') return 'rerank';
+    if (requestedModality === 'realtime') return 'realtime';
+    if (requestedModality === 'video') return 'video';
+    return null;
+  }
+
+  private pipelineLegacyEndpoint(
+    node: NodeConfig | undefined,
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+  ): string | null {
+    if (!node) return null;
+    if (sourceFormat === 'image_generation') return node.images_generations_endpoint || null;
+    if (sourceFormat === 'image_edit') return node.images_edits_endpoint || null;
+    if (sourceFormat === 'audio_transcription') return node.audio_transcriptions_endpoint || null;
+    if (sourceFormat === 'audio_speech') return node.audio_speech_endpoint || null;
+    if (requestedModality === 'embedding') return node.embeddings_endpoint || null;
+    if (requestedModality === 'rerank') return node.rerank_endpoint || null;
+    if (requestedModality === 'realtime') return node.realtime_endpoint || null;
+    return null;
+  }
+
+  private pipelineDefaultEndpoint(
+    requestedModality: string | null,
+    sourceFormat: string | null | undefined,
+  ): string | null {
+    if (sourceFormat === 'image_generation') return '/v1/images/generations';
+    if (sourceFormat === 'image_edit') return '/v1/images/edits';
+    if (sourceFormat === 'audio_transcription') return '/v1/audio/transcriptions';
+    if (sourceFormat === 'audio_speech') return '/v1/audio/speech';
+    if (requestedModality === 'embedding') return '/v1/embeddings';
+    if (requestedModality === 'rerank') return '/v1/rerank';
+    if (requestedModality === 'realtime') return '/v1/realtime';
+    return null;
+  }
+
+  private inferTraceInputTypes(modalities: readonly string[]): string[] {
+    const input = new Set<string>();
+    if (modalities.includes('text') || modalities.includes('embedding') || modalities.includes('rerank')) input.add('text');
+    if (modalities.includes('vision') || modalities.includes('image')) input.add('image');
+    if (modalities.includes('audio')) input.add('audio');
+    if (modalities.includes('rerank')) input.add('documents');
+    if (modalities.includes('realtime')) input.add('events');
+    return Array.from(input);
+  }
+
+  private inferTraceOutputTypes(modalities: readonly string[]): string[] {
+    const output = new Set<string>();
+    if (modalities.includes('text') || modalities.includes('vision')) output.add('text');
+    if (modalities.includes('image')) output.add('image');
+    if (modalities.includes('audio')) output.add('audio');
+    if (modalities.includes('embedding')) output.add('embedding');
+    if (modalities.includes('rerank')) output.add('ranked_documents');
+    if (modalities.includes('realtime')) output.add('events');
+    return Array.from(output);
+  }
+
+  private countImageBlocks(canonical: CanonicalRequest): number {
+    const messages = Array.isArray(canonical.messages) ? canonical.messages : [];
+    return messages.reduce((count, message) => {
+      if (!Array.isArray(message.content)) return count;
+      return count + message.content.filter((block) => block.type === 'image').length;
+    }, 0);
+  }
+
+  private mediaPayloadByteSize(canonical: CanonicalMediaRequest): number | null {
+    if (Buffer.isBuffer(canonical.payload)) return canonical.payload.length;
+    try {
+      return Buffer.byteLength(JSON.stringify(canonical.payload || {}), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  private mediaFileCount(canonical: CanonicalMediaRequest): number {
+    if (Buffer.isBuffer(canonical.payload)) {
+      const text = canonical.payload.toString('latin1');
+      return (text.match(/filename="/g) || []).length;
+    }
+    const payload = canonical.payload as Record<string, unknown>;
+    return ['image', 'file', 'audio']
+      .map((key) => payload[key])
+      .filter((value) => value !== undefined && value !== null).length;
+  }
+
+  private isMediaCanonical(
+    canonical: LoggableCanonicalRequest,
+  ): canonical is CanonicalMediaRequest {
+    return (
+      canonical.metadata.source_format === 'image_generation' ||
+      canonical.metadata.source_format === 'image_edit' ||
+      canonical.metadata.source_format === 'audio_transcription' ||
+      canonical.metadata.source_format === 'audio_speech'
+    );
+  }
+
+  private uniqueTraceStrings(values: readonly unknown[]): string[] {
+    return Array.from(
+      new Set(
+        values
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          .map((value) => value.toLowerCase()),
+      ),
+    );
   }
 
   private applyTargetFilterToTrace(
