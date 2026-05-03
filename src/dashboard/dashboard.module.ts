@@ -10,6 +10,7 @@ import { CacheModule } from '../cache/cache.module';
 import { AuthModule } from '../auth/auth.module';
 import { ShadowModule } from '../shadow/shadow.module';
 import { CallLog, RouteDecisionLog } from '../database/entities';
+import { BenchmarkReportService } from './benchmark-report.service';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { CallLog, RouteDecisionLog } from '../database/entities';
     TypeOrmModule.forFeature([CallLog, RouteDecisionLog]),
   ],
   controllers: [HealthController, DashboardController],
-  providers: [LogEventBus],
+  providers: [LogEventBus, BenchmarkReportService],
   exports: [LogEventBus],
 })
 export class DashboardModule {}

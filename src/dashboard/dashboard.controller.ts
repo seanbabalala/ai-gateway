@@ -53,6 +53,7 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
+import { BenchmarkReportService } from './benchmark-report.service';
 import type { Modality } from '../config/modality';
 import {
   CreateGatewayApiKeyDto,
@@ -90,6 +91,7 @@ export class DashboardController {
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
+    private readonly benchmarkReport: BenchmarkReportService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -241,6 +243,46 @@ export class DashboardController {
     } catch {
       return null;
     }
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Benchmark Report
+  // ══════════════════════════════════════════════════════
+
+  @Get('benchmarks/report')
+  @ApiOperation({ summary: 'Get local performance benchmark report from call logs' })
+  @ApiQuery({ name: 'period', required: false, example: '24h' })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'model', required: false })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiQuery({ name: 'limit', required: false, example: 5000 })
+  @ApiOkResponse({
+    description:
+      'Privacy-safe benchmark report with latency percentiles, throughput, SLO checks, and node:model breakdowns.',
+  })
+  getBenchmarkReport(
+    @Query('period') period: string = '24h',
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
+    @Query('node') node?: string,
+    @Query('model') model?: string,
+    @Query('source_format') sourceFormat?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.benchmarkReport.getReport({
+      period,
+      api_key: apiKey,
+      api_key_id: apiKeyId,
+      namespace: namespaceId,
+      node,
+      model,
+      source_format: sourceFormat,
+      limit: limit === undefined ? undefined : Number(limit),
+    });
   }
 
   // ══════════════════════════════════════════════════════

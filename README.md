@@ -28,6 +28,11 @@
 
 Current open-source release: **v0.6.1**. This patch keeps the v0.6 Protocol + Explainability milestone intact and tightens Dashboard localization for the v0.2-v0.6 feature surfaces: structured-output logs, namespaces, shadow traffic, multimodal capability badges, adaptive routing recommendations, realtime status, and Route Explanation.
 
+The next v0.7 workstream is focused on decision intelligence and production
+adoption. The first benchmark-report slice adds local performance evidence from
+call-log metadata and repeatable synthetic runs without requiring SiftGate
+Cloud.
+
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
 **The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
@@ -112,6 +117,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
+- **Benchmark reports** — review p50/p95/p99 latency, throughput, success rate, fallback rate, and node:model evidence from local call-log metadata
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -134,6 +140,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
+- **Benchmark script** — run `npm run benchmark:upstream` to capture repeatable synthetic latency/throughput JSON for mock or low-cost upstream comparisons
 
 ## Quick Start
 
@@ -1041,6 +1048,29 @@ Optional query parameters:
 
 See [Routing Recommendations](docs/ROUTING_RECOMMENDATIONS.md) for response shape and behavior.
 
+### Benchmark Reports
+
+SiftGate can build a local performance report from `call_logs` without storing
+prompts, responses, raw headers, or provider keys. The report is useful for
+production readiness checks and regression comparisons:
+
+- p50/p95/p99 latency and throughput
+- success, error, fallback, and cache-hit rates
+- node:model evidence with source formats and cost per call
+- status-code distribution and sanitized top errors
+- guidance for comparing direct providers, LiteLLM/New API/One API, or a generic API gateway in the same environment
+
+The Dashboard API is:
+
+```bash
+curl "http://localhost:2099/api/dashboard/benchmarks/report?period=24h&limit=5000" \
+  -H "Authorization: Bearer <dashboard-token>"
+```
+
+Use `npm run benchmark:upstream` against a mock or low-cost upstream when you
+need a repeatable synthetic run. Set `GATEWAY_BENCH_OUTPUT=./bench.json` to save
+the JSON report. See [Performance](docs/PERFORMANCE.md) for methodology.
+
 ### Budget
 
 ```yaml
@@ -1272,6 +1302,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/route-decisions`         | Paginated explainable routing summaries with tier, node, source format, key, and namespace filters |
 | `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
+| `GET`  | `/api/dashboard/benchmarks/report`      | Local benchmark report with p50/p95/p99 latency, throughput, SLO checks, and node:model evidence   |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
@@ -1296,6 +1327,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
+- **Benchmarks** — Read-only local performance report with latency percentiles, throughput, status distribution, and fair-comparison guidance
 - **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations

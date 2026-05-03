@@ -16,6 +16,34 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 生产采纳、安全运维与决策智能 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（生产采纳 + 决策智能）
+
+**v0.7 当前状态**：Prompt 42 功能分支已完成本地 Benchmark Report 和 Dashboard 只读页面。默认仍保持单机 memory/SQLite 可用；Redis、PostgreSQL、Cloud 都只作为可选能力。
+
+### P2：Benchmark 页面和压测报告
+
+- **状态**：✅ Prompt 42 功能分支已完成
+- **目标**：给生产部署、竞品对比和性能回归提供可复现证据，而不是只靠口头性能描述
+- **实现方案**：
+  - 新增 `GET /api/dashboard/benchmarks/report`，基于本地 `call_logs` 生成性能报告
+  - 报告包含样本量、成功率、错误率、fallback 率、cache 命中率、吞吐、p50/p95/p99 延迟、成本和 token 摘要
+  - 按 node:model 与 source_format 展示本地证据，便于定位慢模型、错误节点和高成本入口
+  - 增加 SLO/readiness 检查：样本量、成功率、p95/p99 延迟、fallback 率
+  - Dashboard 新增只读 Benchmarks 页面，不自动修改 routing 配置
+  - 扩展 `npm run benchmark:upstream`，输出可保存 JSON 的 synthetic run report
+- **安全边界**：
+  - 不保存或返回 prompt、response、raw headers、provider keys
+  - 公开对比 LiteLLM、New API、One API、Portkey、Envoy 或直连 provider 前，必须保证同机器、同上游 mock/延迟、同请求体、同并发和同版本
+
+### 后续 v0.7 候选
+
+- 将 Benchmark Report 与 route decision trace 关联，形成“慢在哪里、为什么选它”的一页式 incident view
+- 支持导入 direct-provider / LiteLLM / New API 的 JSON 报告并做同环境差异对比
+- 在 CI 或 nightly smoke 中保存基线，检测 p95/p99 或错误率回归
 
 ---
 

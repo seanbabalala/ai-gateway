@@ -147,7 +147,7 @@ The gateway records call logs with:
 - cache token fields
 - experiment group
 
-These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
+These logs power Dashboard pages, SSE updates, analytics, budgets, local benchmark reports, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
 
 For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome. It is designed for Dashboard inspection and incident review without duplicating the full call payload. Prompts, responses, raw headers, and provider keys are never written to this trace table.
 
@@ -156,6 +156,13 @@ For explainable routing, the pipeline also writes a separate `route_decisions` r
 The open-source data plane includes optional shadow traffic for sampled test-node mirroring. When enabled, successful primary requests can enqueue an asynchronous copy to a configured shadow node/model. The primary response has already been produced, so shadow latency and failures do not affect the caller.
 
 Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
+
+Benchmark reports are derived from `call_logs` and summarize only operational
+metadata: counts, latency percentiles, throughput, status codes, fallback/cache
+rates, costs, and node:model groupings. They are meant to help operators compare
+local runs, direct provider baselines, and gateway alternatives under the same
+test conditions. The report layer does not read or persist prompts, responses,
+raw headers, provider keys, or media payloads.
 
 ## Local Webhook Alerts
 

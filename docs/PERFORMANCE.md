@@ -37,6 +37,7 @@ GATEWAY_BENCH_API_KEY=gw_sk_live_... \
 GATEWAY_BENCH_REQUESTS=200 \
 GATEWAY_BENCH_CONCURRENCY=25 \
 GATEWAY_BENCH_MODEL=auto \
+GATEWAY_BENCH_OUTPUT=./benchmarks/siftgate-local.json \
 npm run benchmark:upstream
 ```
 
@@ -52,10 +53,36 @@ Useful environment variables:
 | `GATEWAY_BENCH_STREAM` | unset | Set to `1` to read the full SSE stream |
 | `GATEWAY_BENCH_TIMEOUT_MS` | `120000` | Per-request benchmark timeout |
 | `GATEWAY_BENCH_BODY` | small chat request | Full JSON request body override |
+| `GATEWAY_BENCH_LABEL` | unset | Optional label written to the JSON report |
+| `GATEWAY_BENCH_OUTPUT` | unset | Optional path for saving the JSON report |
 
-The script prints JSON with success counts, status codes, RPS, and p50/p95/p99
-latency. Keep benchmark notes with the gateway commit, node config, machine,
-provider or mock upstream, and request body so future runs can be compared.
+The script prints JSON with timing metadata, success counts, status codes, RPS,
+avg/p50/p75/p95/p99 latency, top errors, and methodology notes. Keep benchmark
+notes with the gateway commit, node config, machine, provider or mock upstream,
+and request body so future runs can be compared.
+
+## Dashboard Benchmark Report
+
+v0.7 adds a read-only report endpoint powered by local `call_logs`:
+
+```bash
+curl "http://localhost:2099/api/dashboard/benchmarks/report?period=24h&limit=5000" \
+  -H "Authorization: Bearer <dashboard-token>"
+```
+
+The report includes:
+
+- p50/p95/p99 latency and observed throughput
+- success, error, fallback, and cache-hit rates
+- node:model and source-format breakdowns
+- status-code distribution and sanitized top errors
+- readiness checks for sample size, success rate, p95/p99 latency, and fallback rate
+
+The endpoint returns metadata only. It does not expose prompts, responses, raw
+headers, provider keys, or request bodies. Treat it as local production evidence
+and regression context. For public comparisons against LiteLLM, New API, One API,
+Portkey, Envoy, or direct upstream providers, run all systems with the same
+machine, mock upstream latency profile, request body, concurrency, and commit.
 
 ## v0.5 Known Limits
 

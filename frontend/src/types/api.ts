@@ -545,6 +545,105 @@ export interface CostAnalyticsResponse {
   byTier: CostAnalyticsGroupItem[]
 }
 
+// ── Benchmark Report ──
+
+export type BenchmarkCheckStatus = 'pass' | 'warn' | 'fail'
+
+export interface BenchmarkLatencySummary {
+  avg_ms: number
+  p50_ms: number
+  p95_ms: number
+  p99_ms: number
+  max_ms: number
+}
+
+export interface BenchmarkMetrics {
+  calls: number
+  success: number
+  failed: number
+  success_rate: number
+  error_rate: number
+  fallback_rate: number
+  cache_hit_rate: number
+  total_cost_usd: number
+  avg_cost_usd: number
+  total_tokens: number
+  avg_tokens: number
+  throughput_rpm: number
+  period_rpm: number
+  latency_ms: BenchmarkLatencySummary
+}
+
+export interface BenchmarkCheck {
+  check: 'sample_size' | 'success_rate' | 'p95_latency' | 'p99_latency' | 'fallback_rate'
+  status: BenchmarkCheckStatus
+  value: number
+  actual: string
+  target: string
+}
+
+export interface BenchmarkGroup extends BenchmarkMetrics {
+  node_id: string
+  model: string
+  source_formats: string[]
+  status: BenchmarkCheckStatus
+}
+
+export interface BenchmarkStatusBucket {
+  status_code: number
+  calls: number
+  rate: number
+}
+
+export interface BenchmarkErrorBucket {
+  error: string
+  calls: number
+}
+
+export interface BenchmarkReportResponse {
+  generated_at: string
+  period: '1h' | '24h' | '7d' | '30d' | '90d'
+  window: {
+    requested_since: string
+    observed_start: string | null
+    observed_end: string | null
+    active_minutes: number
+    sample_limit: number
+    truncated: boolean
+  }
+  filters: {
+    api_key: string | null
+    api_key_id: string | null
+    namespace: string | null
+    node: string | null
+    model: string | null
+    source_format: string | null
+  }
+  summary: BenchmarkMetrics
+  checks: BenchmarkCheck[]
+  by_node_model: BenchmarkGroup[]
+  by_source_format: Array<BenchmarkMetrics & { source_format: string }>
+  status_breakdown: BenchmarkStatusBucket[]
+  top_errors: BenchmarkErrorBucket[]
+  comparison_guidance: Array<{
+    target: string
+    purpose: string
+    method: string
+  }>
+  methodology: {
+    source: 'call_logs'
+    synthetic_run_script: string
+    direct_baseline_required: boolean
+    notes: string[]
+  }
+  privacy: {
+    prompt_response_stored: false
+    raw_headers_stored: false
+    provider_keys_exposed: false
+    metadata_only: true
+  }
+}
+
 // ── Cache ──
 
 export interface CacheStats {

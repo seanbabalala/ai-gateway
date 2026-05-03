@@ -197,6 +197,21 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     recent: jest.fn().mockResolvedValue([]),
     ...overrides.shadowTraffic,
   };
+  const benchmarkReport = {
+    getReport: jest.fn().mockResolvedValue({
+      period: '24h',
+      summary: { calls: 0, latency_ms: { p95_ms: 0 } },
+      checks: [],
+      by_node_model: [],
+      privacy: {
+        prompt_response_stored: false,
+        raw_headers_stored: false,
+        provider_keys_exposed: false,
+        metadata_only: true,
+      },
+    }),
+    ...overrides.benchmarkReport,
+  };
 
   const routingRecommendations = {
     getRecommendations: jest.fn().mockResolvedValue({
@@ -233,13 +248,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     shadowTraffic as any,
+    benchmarkReport as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, benchmarkReport, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -308,6 +324,55 @@ describe('DashboardController — getCostAnalytics', () => {
     const result = await controller.getCostAnalytics('30d', 'model');
 
     expect(result.period).toBe(30);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Benchmark Report
+// ═══════════════════════════════════════════════════════════
+
+describe('DashboardController — benchmark report', () => {
+  it('should return local benchmark report with filters', async () => {
+    const report = {
+      period: '7d',
+      summary: { calls: 12, success_rate: 100, latency_ms: { p95_ms: 180 } },
+      checks: [],
+      by_node_model: [],
+      privacy: {
+        prompt_response_stored: false,
+        raw_headers_stored: false,
+        provider_keys_exposed: false,
+        metadata_only: true,
+      },
+    };
+    const { controller, benchmarkReport } = makeDashboard({
+      benchmarkReport: {
+        getReport: jest.fn().mockResolvedValue(report),
+      },
+    });
+
+    const result = await controller.getBenchmarkReport(
+      '7d',
+      undefined,
+      'key_123',
+      'team-alpha',
+      'openai',
+      'gpt-4o',
+      'chat_completions',
+      '250',
+    );
+
+    expect(result).toBe(report);
+    expect(benchmarkReport.getReport).toHaveBeenCalledWith({
+      period: '7d',
+      api_key: undefined,
+      api_key_id: 'key_123',
+      namespace: 'team-alpha',
+      node: 'openai',
+      model: 'gpt-4o',
+      source_format: 'chat_completions',
+      limit: 250,
+    });
   });
 });
 

@@ -22,6 +22,7 @@
   "language.label": "语言",
   "nav.analytics": "分析",
   "nav.apiKeys": "API Keys",
+  "nav.benchmarks": "性能基准",
   "nav.budget": "预算",
   "nav.dashboard": "控制台",
   "nav.experiments": "实验",

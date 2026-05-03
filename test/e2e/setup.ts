@@ -10,8 +10,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { json, raw, urlencoded } from 'express';
 import helmet from 'helmet';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as request from 'supertest';
+import * as yaml from 'js-yaml';
 import { createHash } from 'crypto';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
@@ -21,6 +24,30 @@ import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entit
 export const API_KEY = 'e2e-test-key-1';
 export const API_KEY_2 = 'e2e-test-key-2';
 export const FIXTURE_PATH = path.resolve(__dirname, 'fixtures', 'gateway.e2e.yaml');
+
+function createHarnessConfig(): { configPath: string; cleanup: () => void } {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-e2e-'));
+  const configPath = path.join(tempDir, 'gateway.e2e.yaml');
+  const parsed = yaml.load(fs.readFileSync(FIXTURE_PATH, 'utf8')) as {
+    nodes?: Array<{ id?: string; realtime_endpoint?: string }>;
+  };
+
+  const realtimeEndpoint = process.env.REALTIME_UPSTREAM_ENDPOINT;
+  if (realtimeEndpoint) {
+    const mockOpenAi = parsed.nodes?.find((node) => node.id === 'mock-openai');
+    if (mockOpenAi) {
+      mockOpenAi.realtime_endpoint = realtimeEndpoint;
+    }
+  }
+
+  fs.writeFileSync(configPath, yaml.dump(parsed, { lineWidth: 120 }), 'utf8');
+  return {
+    configPath,
+    cleanup: () => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
 
 // ── FetchMock ──────────────────────────────────────────────
 
@@ -321,12 +348,15 @@ export interface E2EHarness {
   app: INestApplication;
   agent: request.Agent;
   fetchMock: FetchMock;
+  configPath: string;
   close: () => Promise<void>;
 }
 
 export async function createE2EHarness(): Promise<E2EHarness> {
   // Set config path BEFORE module resolution
-  process.env.GATEWAY_CONFIG_PATH = FIXTURE_PATH;
+  const previousConfigPath = process.env.GATEWAY_CONFIG_PATH;
+  const harnessConfig = createHarnessConfig();
+  process.env.GATEWAY_CONFIG_PATH = harnessConfig.configPath;
 
   // Lazy-import AppModule so the config path is read at require time
   const { AppModule } = await import('../../src/app.module');
@@ -405,9 +435,16 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     app,
     agent,
     fetchMock,
+    configPath: harnessConfig.configPath,
     close: async () => {
       fetchMock.restore();
       await app.close();
+      if (previousConfigPath === undefined) {
+        delete process.env.GATEWAY_CONFIG_PATH;
+      } else {
+        process.env.GATEWAY_CONFIG_PATH = previousConfigPath;
+      }
+      harnessConfig.cleanup();
     },
   };
 }

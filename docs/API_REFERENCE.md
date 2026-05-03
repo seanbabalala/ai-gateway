@@ -4,6 +4,8 @@ SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API
 
 v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
 
+v0.7 adds local benchmark reporting for the OSS Data Plane. Benchmark reports are generated from call-log metadata and do not expose prompts, responses, provider keys, or raw headers.
+
 ## Live Documentation
 
 When the gateway is running, the API documentation is available from the same HTTP server:
@@ -230,6 +232,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
+| `GET` | `/api/dashboard/benchmarks/report` | Local benchmark report with latency percentiles, throughput, SLO checks, and node:model evidence |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
@@ -259,6 +262,28 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 `GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
 
 Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
+
+### Benchmark Reports
+
+`GET /api/dashboard/benchmarks/report` returns a read-only performance report from local `call_logs`.
+
+Supported query parameters:
+
+| Query | Values | Purpose |
+| --- | --- | --- |
+| `period` | `1h`, `24h`, `7d`, `30d`, `90d` | Time window; defaults to `24h` |
+| `limit` | integer, max `20000` | Latest matching rows to analyze; defaults to `5000` |
+| `api_key_id` | Gateway API key id | Filter by Dashboard-managed key |
+| `api_key` | legacy key name | Filter old YAML-defined keys when no id exists |
+| `namespace` | namespace id | Filter local OSS namespace |
+| `node` | node id | Filter one upstream node |
+| `model` | model id | Filter one model |
+| `source_format` | e.g. `chat_completions`, `responses`, `embeddings`, `rerank` | Filter one ingress type |
+
+The response includes summary metrics, readiness checks, node:model breakdowns,
+source-format breakdowns, status-code distribution, sanitized top errors, and
+comparison guidance. It is designed for production readiness and regression
+evidence, not public benchmark claims without a direct provider baseline.
 
 ## Gateway API Key Management
 

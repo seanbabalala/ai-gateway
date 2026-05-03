@@ -3,7 +3,7 @@
  */
 
 import * as fs from 'fs';
-import { createE2EHarness, E2EHarness, API_KEY, FIXTURE_PATH } from './setup';
+import { createE2EHarness, E2EHarness, API_KEY } from './setup';
 
 describe('Dashboard (e2e)', () => {
   let harness: E2EHarness;
@@ -185,12 +185,12 @@ describe('Dashboard (e2e)', () => {
   });
 
   it('POST /api/dashboard/config/reload → failure keeps previous config', async () => {
-    const original = fs.readFileSync(FIXTURE_PATH, 'utf8');
+    const original = fs.readFileSync(harness.configPath, 'utf8');
     const before = await harness.agent.get('/api/dashboard/config');
     const beforeNodeIds = before.body.nodes.map((node: any) => node.id);
 
     try {
-      fs.writeFileSync(FIXTURE_PATH, 'nodes: [', 'utf8');
+      fs.writeFileSync(harness.configPath, 'nodes: [', 'utf8');
       const res = await harness.agent.post('/api/dashboard/config/reload');
 
       expect(res.status).toBe(400);
@@ -201,7 +201,7 @@ describe('Dashboard (e2e)', () => {
       const after = await harness.agent.get('/api/dashboard/config');
       expect(after.body.nodes.map((node: any) => node.id)).toEqual(beforeNodeIds);
     } finally {
-      fs.writeFileSync(FIXTURE_PATH, original, 'utf8');
+      fs.writeFileSync(harness.configPath, original, 'utf8');
       await harness.agent.post('/api/dashboard/config/reload');
     }
   });
@@ -273,5 +273,23 @@ describe('Dashboard (e2e)', () => {
     expect(Array.isArray(res.body.dailyTrend)).toBe(true);
     expect(Array.isArray(res.body.byModel)).toBe(true);
     expect(Array.isArray(res.body.byNode)).toBe(true);
+  });
+
+  it('GET /api/dashboard/benchmarks/report → benchmark report shape', async () => {
+    const res = await harness.agent.get('/api/dashboard/benchmarks/report?period=24h&limit=100');
+
+    expect(res.status).toBe(200);
+    expect(res.body.period).toBe('24h');
+    expect(res.body.summary).toBeDefined();
+    expect(res.body.summary.latency_ms).toBeDefined();
+    expect(Array.isArray(res.body.checks)).toBe(true);
+    expect(Array.isArray(res.body.by_node_model)).toBe(true);
+    expect(res.body.privacy).toEqual(
+      expect.objectContaining({
+        prompt_response_stored: false,
+        raw_headers_stored: false,
+        provider_keys_exposed: false,
+      }),
+    );
   });
 });

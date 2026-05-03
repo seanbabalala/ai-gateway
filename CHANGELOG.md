@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 local Benchmark Report API for the MIT Data Plane: `GET /api/dashboard/benchmarks/report` summarizes p50/p95/p99 latency, throughput, success/error/fallback/cache rates, status codes, and node:model evidence from local call-log metadata.
+- Read-only Dashboard Benchmarks page with filters for period, API key, node, model, and source format, plus readiness checks and fair-comparison guidance.
+- Expanded `npm run benchmark:upstream` output with avg/p50/p75/p95/p99 latency, success rate, top errors, methodology notes, and optional `GATEWAY_BENCH_OUTPUT` JSON report writing.
+
+### Changed
+
+- Documented benchmark methodology and clarified that local reports do not expose prompts, responses, raw headers, provider keys, or media payloads.
 
 ## 0.6.1 - 2026-05-03
 
