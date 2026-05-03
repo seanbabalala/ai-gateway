@@ -216,6 +216,11 @@ export class CapabilityService {
     const modelIds = [
       ...(node.models || []),
       ...(node.embedding_models || []),
+      ...(node.rerank_models || []),
+      ...(node.image_models || []),
+      ...(node.audio_models || []),
+      ...(node.video_models || []),
+      ...(node.realtime_models || []),
     ];
     let anyInferred = modalities.size > 0;
 
@@ -441,6 +446,9 @@ export class CapabilityService {
       modalities.add('text');
       modalities.add('embedding');
     }
+    if (node.video_models?.includes(model)) {
+      modalities.add('video');
+    }
 
     const inputTypes = [
       ...(includeNodeDefaults ? (node.input_types || []) : []),
@@ -456,6 +464,9 @@ export class CapabilityService {
     if (inputTypes.includes('audio') || outputTypes.includes('audio')) {
       modalities.add('audio');
     }
+    if (inputTypes.includes('video') || outputTypes.includes('video')) {
+      modalities.add('video');
+    }
     if (inputTypes.includes('embedding') || outputTypes.includes('embedding')) {
       modalities.add('embedding');
     }
@@ -463,6 +474,7 @@ export class CapabilityService {
     const endpoints = modelCapability?.endpoints || {};
     if (endpoints.image) modalities.add('image');
     if (endpoints.audio) modalities.add('audio');
+    if (endpoints.video) modalities.add('video');
     if (
       endpoints.rerank ||
       modelCapability?.supports_rerank ||

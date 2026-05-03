@@ -16,6 +16,27 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.8 | Provider Breadth | 进行中 — Provider 兼容性矩阵 + 多模态生产验证 | 🚧 In Progress |
+
+---
+
+## v0.8 — Provider Breadth（Provider 兼容性矩阵 + 多模态生产验证）
+
+**v0.8 当前状态**：Prompt 50 已完成 Provider Compatibility Test Matrix，目标是让用户在 Dashboard 里验证 node 当前 endpoint/auth/model 配置是否真的支持声明的能力。默认保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 仍只是可选能力。
+
+### P0：Provider Compatibility Test Matrix
+
+- **状态**：✅ Prompt 50 feature branch 已完成
+- **目标**：把 Add Node/Test Connection 从“能不能连上”升级成“这个 node 是否真的支持所选能力”
+- **实现方案**：
+  - 扩展现有 `POST /api/dashboard/nodes/:id/test`，支持 `chat`、`responses`、`messages`、`embeddings`、`rerank`、`images`、`audio`、`video`、`realtime`
+  - 默认使用低成本安全探测：text/embedding/rerank 使用合成 `ping` 小请求；image/audio/video/realtime 默认只做 endpoint/auth probe
+  - video/realtime 不默认启动真实生成或长连接，避免意外成本
+  - 本地保存 `provider_compatibility_results` 元数据：capability、configured、tested、last_status、last_checked_at、latency、HTTP status、sanitized failure_reason
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 realtime frames
+  - Dashboard Nodes 页面显示只读 compatibility matrix，并提供安全测试按钮
+  - Config/Dashboard diagnostics 可引用最近测试结果给出非阻断 warning，例如 configured but untested 或最近探测失败
+  - 为未来 Provider / Model Catalog 和 Video async preview 预留 `video_models` 与 video endpoint 配置字段
 
 ---
 

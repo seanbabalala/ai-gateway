@@ -137,9 +137,10 @@ auth:
 # nodes[].embedding_models and can use a separate embeddings_endpoint.
 # Rerank-capable models for /v1/rerank are listed under nodes[].rerank_models
 # and can use a separate rerank_endpoint.
-# Image and audio models are listed separately under nodes[].image_models
-# and nodes[].audio_models so media endpoints can route, budget, and
+# Image, audio, and video models are listed separately under nodes[].image_models,
+# nodes[].audio_models, and nodes[].video_models so media endpoints can route, budget, and
 # log independently from chat models.
+# Video support is experimental; compatibility tests only probe endpoint/auth by default.
 # Experimental realtime models are listed under nodes[].realtime_models and
 # require the top-level realtime.enabled switch below.
 # Use model_prefixes when clients should direct-route future model family IDs
@@ -163,11 +164,16 @@ nodes:
     images_edits_endpoint: "/v1/images/edits"
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
     audio_speech_endpoint: "/v1/audio/speech"
+    # video_endpoint: "/v1/videos/generations"
+    # video_status_endpoint: "/v1/videos/:id"
+    # video_content_endpoint: "/v1/videos/:id/content"
+    # video_cancel_endpoint: "/v1/videos/:id/cancel"
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     # rerank_models: ["rerank-english-v3"]
     # realtime_models: ["gpt-4o-realtime-preview"]
+    # video_models: ["veo-3-preview"]
     image_models: ["gpt-image-1"]
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"]
     timeout_ms: 60000
@@ -177,9 +183,10 @@ nodes:
     endpoints:
       image: "/v1/images/generations" # Future v0.6 image entrypoint support
       audio: "/v1/audio/transcriptions"
+      video: "/v1/videos/generations"
       realtime: "/v1/realtime"        # Use wss://... for absolute realtime URLs if needed
-    input_types: ["text", "image", "audio"]
-    output_types: ["text", "image", "events"]
+    input_types: ["text", "image", "audio", "video"]
+    output_types: ["text", "image", "video", "events"]
     max_file_size: 20000000           # Bytes; applies as a node-level default
     supports_streaming: true
     supports_realtime: false
@@ -217,6 +224,8 @@ nodes:
       #   pricing: { input: 0.80, output: 0.00 }
       # gpt-4o-realtime-preview:
       #   pricing: { input: 5.00, output: 20.00 }
+      # veo-3-preview:
+      #   pricing: { input: 20.00, output: 0.00 }
       gpt-image-1:
         pricing: { input: 5.00, output: 0.00 }
       gpt-4o-mini-transcribe:
@@ -249,7 +258,7 @@ nodes:
     #   path: /healthz      # Defaults to endpoint when omitted
     #   lightweight_model: gpt-4o-mini
     # Unified v0.6 capability schema is optional.
-    # Valid modalities: text, vision, image, audio, embedding, rerank, realtime.
+    # Valid modalities: text, vision, image, audio, video, embedding, rerank, realtime.
     # "vision" is kept as the legacy image-input alias and matches "image".
     # Per-model model_capabilities override node-level defaults.
     tags: ["code", "reasoning", "creative"]

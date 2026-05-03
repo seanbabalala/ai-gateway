@@ -151,6 +151,34 @@ describe('Dashboard (e2e)', () => {
     expect(res.body.success).toBe(true);
   });
 
+  it('POST /api/dashboard/nodes/:id/test → returns compatibility matrix without secrets', async () => {
+    const res = await harness.agent
+      .post('/api/dashboard/nodes/mock-openai/test')
+      .send({ capabilities: ['chat', 'embeddings', 'images', 'video', 'realtime'] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.matrix)).toBe(true);
+    expect(res.body.matrix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ capability: 'chat', configured: true, tested: true }),
+        expect.objectContaining({ capability: 'embeddings', configured: true, tested: true }),
+        expect.objectContaining({ capability: 'images', configured: true, tested: true }),
+        expect.objectContaining({ capability: 'video', configured: true, tested: true }),
+        expect.objectContaining({ capability: 'realtime', configured: true, tested: true }),
+      ]),
+    );
+    expect(JSON.stringify(res.body)).not.toContain('mock-openai-key');
+
+    const nodes = await harness.agent.get('/api/dashboard/nodes');
+    const openai = nodes.body.nodes.find((node: { id: string }) => node.id === 'mock-openai');
+    expect(openai.compatibility_matrix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ capability: 'chat', last_status: 'pass' }),
+      ]),
+    );
+  });
+
   // ══════════════════════════════════════════════════════
   // Config
   // ══════════════════════════════════════════════════════

@@ -518,6 +518,9 @@ function validateNamespaces(
       for (const model of Array.isArray(node.audio_models) ? node.audio_models : []) {
         if (isNonEmptyString(model)) modelIds.add(model);
       }
+      for (const model of Array.isArray(node.video_models) ? node.video_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
     }
   }
 
@@ -820,6 +823,10 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     validateOptionalEndpoint(node, basePath, 'images_edits_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_transcriptions_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_speech_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'video_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'video_status_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'video_content_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'video_cancel_endpoint', issues);
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -873,6 +880,7 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     validateNodeRerankModels(node, basePath, issues);
     validateNodeMediaModels(node, basePath, 'image_models', 'Image', issues);
     validateNodeMediaModels(node, basePath, 'audio_models', 'Audio', issues);
+    validateNodeMediaModels(node, basePath, 'video_models', 'Video', issues);
     validateNodeRealtimeModels(node, basePath, issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
@@ -1128,7 +1136,7 @@ function validateNodeRealtimeModels(
 function validateNodeMediaModels(
   node: Record<string, unknown>,
   basePath: string,
-  key: 'image_models' | 'audio_models',
+  key: 'image_models' | 'audio_models' | 'video_models',
   label: string,
   issues: ConfigValidationIssue[],
 ): void {
@@ -1228,6 +1236,7 @@ function validateNodeRoutingCapabilities(
       ...(Array.isArray(node.rerank_models) ? node.rerank_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.image_models) ? node.image_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.audio_models) ? node.audio_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.video_models) ? node.video_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.realtime_models) ? node.realtime_models.filter(isNonEmptyString) : []),
     ],
   );
@@ -2579,6 +2588,7 @@ function validateShadow(
         ...(Array.isArray(targetNode.rerank_models) ? targetNode.rerank_models : []),
         ...(Array.isArray(targetNode.image_models) ? targetNode.image_models : []),
         ...(Array.isArray(targetNode.audio_models) ? targetNode.audio_models : []),
+        ...(Array.isArray(targetNode.video_models) ? targetNode.video_models : []),
       ].filter(isNonEmptyString);
       if (models.length > 0 && !models.includes(shadow.target_model)) {
         issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));

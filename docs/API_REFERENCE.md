@@ -243,12 +243,12 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
-| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, and realtime capability/connection summary |
+| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, realtime summary, and provider compatibility matrix |
 | `POST` | `/api/dashboard/nodes/test` | Test an arbitrary node payload before saving |
 | `POST` | `/api/dashboard/nodes` | Create a node in local config |
 | `PUT` | `/api/dashboard/nodes/:id` | Update a node in local config |
 | `DELETE` | `/api/dashboard/nodes/:id` | Delete a node from local config |
-| `POST` | `/api/dashboard/nodes/:id/test` | Test a configured node |
+| `POST` | `/api/dashboard/nodes/:id/test` | Run safe provider compatibility checks for a configured node |
 | `POST` | `/api/dashboard/nodes/:id/reset` | Reset a node circuit breaker |
 | `GET` | `/api/dashboard/cache/stats` | Prompt-cache statistics |
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
@@ -259,6 +259,21 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 `GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
 
 Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
+
+### Provider Compatibility Matrix
+
+`GET /api/dashboard/nodes` includes `compatibility_matrix` for every node. Each row contains `capability`, `configured`, `tested`, `last_status`, `last_checked_at`, `failure_reason`, `latency_ms`, `status_code`, `test_mode`, and `requires_confirmation`.
+
+`POST /api/dashboard/nodes/:id/test` accepts an optional body:
+
+```json
+{
+  "capabilities": ["chat", "embeddings", "images", "video", "realtime"],
+  "confirm_expensive": false
+}
+```
+
+Supported capabilities are `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, and `realtime`. Text, embedding, and rerank checks send tiny synthetic requests. Media, video, and realtime checks default to endpoint/auth probes; video/realtime generation or long-lived sessions are not started unless a future explicit confirmation flow enables it. Results are local metadata only and never include prompt text, response bodies, raw headers, or provider API keys.
 
 ## Gateway API Key Management
 

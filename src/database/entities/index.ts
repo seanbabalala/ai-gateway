@@ -4,3 +4,8 @@ export { NodeStatus } from './node-status.entity';
 export { GatewayApiKey } from './gateway-api-key.entity';
 export { ShadowTrafficResult } from './shadow-traffic-result.entity';
 export { RouteDecisionLog } from './route-decision-log.entity';
+export { ProviderCompatibilityResult } from './provider-compatibility-result.entity';
+export type {
+  ProviderCompatibilityCapability,
+  ProviderCompatibilityStatus,
+} from './provider-compatibility-result.entity';

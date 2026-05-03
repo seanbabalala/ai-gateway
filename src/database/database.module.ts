@@ -6,6 +6,7 @@ import {
   CallLog,
   GatewayApiKey,
   NodeStatus,
+  ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
 } from './entities';
@@ -23,6 +24,7 @@ import {
             GatewayApiKey,
             ShadowTrafficResult,
             RouteDecisionLog,
+            ProviderCompatibilityResult,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
           // Production PostgreSQL deployments should set database.synchronize=false.
@@ -51,6 +53,7 @@ import {
       NodeStatus,
       ShadowTrafficResult,
       RouteDecisionLog,
+      ProviderCompatibilityResult,
     ]),
   ],
   exports: [TypeOrmModule],

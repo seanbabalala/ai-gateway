@@ -98,9 +98,13 @@ export function useTestNode() {
 }
 
 export function useTestExistingNode() {
+  const queryClient = useQueryClient()
   return useMutation<TestNodeResponse, Error, string>({
     mutationFn: (nodeId) =>
       apiPost<TestNodeResponse>(`/api/dashboard/nodes/${nodeId}/test`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nodes'] })
+    },
   })
 }
 

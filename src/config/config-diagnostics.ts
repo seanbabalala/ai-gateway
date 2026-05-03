@@ -117,6 +117,12 @@ export function buildNodeModelDiagnostics(
       modelOwners.set(model, owners);
     }
 
+    for (const model of stringArray(node.video_models)) {
+      const owners = modelOwners.get(model) || [];
+      owners.push(node.id);
+      modelOwners.set(model, owners);
+    }
+
     for (const model of stringArray(node.realtime_models)) {
       const owners = modelOwners.get(model) || [];
       owners.push(node.id);

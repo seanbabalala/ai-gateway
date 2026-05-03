@@ -460,6 +460,16 @@ export interface NodeConfig {
   audio_speech_endpoint?: string;
   /** Audio-capable model IDs exposed by this node. */
   audio_models?: string[];
+  /** Experimental video generation endpoint path (default: /v1/videos/generations). */
+  video_endpoint?: string;
+  /** Optional endpoint path for async video job status lookups. */
+  video_status_endpoint?: string;
+  /** Optional endpoint path for async video content retrieval. */
+  video_content_endpoint?: string;
+  /** Optional endpoint path for async video job cancellation. */
+  video_cancel_endpoint?: string;
+  /** Video-capable model IDs exposed by this node. */
+  video_models?: string[];
   /** Experimental OpenAI-compatible realtime WebSocket endpoint path (default: /v1/realtime). */
   realtime_endpoint?: string;
   /** Realtime-capable model IDs exposed by this node. */
@@ -503,7 +513,7 @@ export interface NodeConfig {
    * Explicitly declare which modalities this node supports.
    * When set, this takes highest priority over model-name inference and capability fallback.
    *
-   * Valid modalities: "text", "vision", "image", "audio", "embedding", "rerank", "realtime"
+   * Valid modalities: "text", "vision", "image", "audio", "video", "embedding", "rerank", "realtime"
    * "vision" is kept for backwards compatibility and is treated as compatible with "image".
    *
    * If omitted, modalities are inferred from model names or capabilities.
