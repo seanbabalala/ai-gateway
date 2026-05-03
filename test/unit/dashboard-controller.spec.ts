@@ -219,6 +219,18 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...mockRepo(qb),
     findOne: jest.fn().mockResolvedValue(null),
   };
+  const providerCompatibility = {
+    matrixForNodes: jest.fn().mockResolvedValue({}),
+    compatibilityDiagnostics: jest.fn().mockReturnValue([]),
+    runNodeMatrix: jest.fn().mockResolvedValue({
+      success: true,
+      status: 200,
+      latency_ms: 1,
+      message: 'Compatibility checks completed',
+      matrix: [],
+    }),
+    ...overrides.providerCompatibility,
+  };
 
   const controller = new DashboardController(
     config,
@@ -235,13 +247,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     shadowTraffic as any,
+    providerCompatibility as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -655,9 +668,9 @@ describe('DashboardController — config', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — nodes', () => {
-  it('should return node list with circuit and capability info', () => {
+  it('should return node list with circuit and capability info', async () => {
     const { controller } = makeDashboard();
-    const result = controller.getNodes();
+    const result = await controller.getNodes();
 
     expect(result.nodes).toHaveLength(2);
     expect(result.nodes[0].id).toBe('openai');
@@ -688,10 +701,11 @@ describe('DashboardController — nodes', () => {
       expect.objectContaining({ active: 0, queued: 0 }),
     );
     expect(result.nodes[0].active_probe.status).toBe('disabled');
+    expect(result.nodes[0].compatibility_matrix).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
 
-  it('should include active probe state in node list', () => {
+  it('should include active probe state in node list', async () => {
     const { controller } = makeDashboard({
       activeHealth: {
         getNodeStatus: jest.fn().mockReturnValue({
@@ -707,14 +721,14 @@ describe('DashboardController — nodes', () => {
         }),
       },
     });
-    const result = controller.getNodes();
+    const result = await controller.getNodes();
 
     expect(result.nodes[0].healthy).toBe(false);
     expect(result.nodes[0].active_probe.failure_reason).toBe('HTTP 503');
     expect(result.nodes[0].active_probe.last_checked_at).toBe('2026-05-02T00:00:00.000Z');
   });
 
-  it('should show unhealthy when circuit is OPEN', () => {
+  it('should show unhealthy when circuit is OPEN', async () => {
     const { controller } = makeDashboard({
       circuitBreaker: {
         getNodeStatus: jest.fn().mockReturnValue({ state: CircuitState.OPEN, consecutiveFailures: 3, lastFailureAt: Date.now() }),
@@ -722,7 +736,7 @@ describe('DashboardController — nodes', () => {
         reset: jest.fn(),
       },
     });
-    const result = controller.getNodes();
+    const result = await controller.getNodes();
     expect(result.nodes[0].healthy).toBe(false);
   });
 

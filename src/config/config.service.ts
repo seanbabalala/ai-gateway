@@ -1059,6 +1059,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         ...(node.rerank_models || []),
         ...(node.image_models || []),
         ...(node.audio_models || []),
+        ...(node.video_models || []),
       ]))) {
         // Collect all aliases pointing to this model
         const aliases: string[] = [];

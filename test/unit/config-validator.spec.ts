@@ -200,7 +200,7 @@ describe('config validator', () => {
         namespaces: [
           {
             id: 'media-team',
-            allowed_models: ['gpt-image-1', 'gpt-4o-mini-transcribe'],
+            allowed_models: ['gpt-image-1', 'gpt-4o-mini-transcribe', 'veo-3-preview'],
           },
         ],
         nodes: [
@@ -216,10 +216,13 @@ describe('config validator', () => {
             audio_transcriptions_endpoint: '/v1/audio/transcriptions',
             audio_translations_endpoint: '/v1/audio/translations',
             audio_speech_endpoint: '/v1/audio/speech',
+            video_endpoint: '/v1/videos/generations',
+            video_status_endpoint: '/v1/videos/:id',
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o-mini'],
             image_models: ['gpt-image-1'],
             audio_models: ['gpt-4o-mini-transcribe'],
+            video_models: ['veo-3-preview'],
             timeout_ms: 60000,
           },
         ],
@@ -240,6 +243,7 @@ describe('config validator', () => {
         models_pricing: {
           'gpt-4o-mini': { input: 0.15, output: 0.6 },
           'gpt-image-1': { input: 5, output: 0 },
+          'veo-3-preview': { input: 20, output: 0 },
         },
       },
       { env: {} },
@@ -359,6 +363,7 @@ describe('config validator', () => {
             audio_translations_endpoint: 'audio/translations',
             audio_speech_endpoint: '',
             video_generations_endpoint: 'v1/videos/generations',
+            video_endpoint: 'v1/videos/generations',
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o-mini'],
             image_models: ['gpt-image-1', 'gpt-image-1'],

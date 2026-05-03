@@ -109,6 +109,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
+- **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
@@ -559,7 +560,10 @@ nodes:
     audio_translations_endpoint: "/v1/audio/translations" # Optional translation endpoint path
     audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
     # video_generations_endpoint: "/v1/videos/generations" # Reserved for video-capable compatible providers
-    # video_status_endpoint: "/v1/videos/{id}" # Optional async video status endpoint
+    video_endpoint: "/v1/videos/generations" # Optional experimental compatibility-test path
+    video_status_endpoint: "/v1/videos/:id" # Optional async video status path
+    video_content_endpoint: "/v1/videos/:id/content" # Optional async video content path
+    video_cancel_endpoint: "/v1/videos/:id/cancel" # Optional async video cancel path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
@@ -568,7 +572,7 @@ nodes:
     realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
     image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
-    # video_models: ["veo-3.1-generate-preview"] # Catalog/config support; public video endpoint is future work
+    video_models: ["veo-3-preview"] # Experimental models eligible for future /v1/videos/*
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -602,7 +606,7 @@ nodes:
 | `responses` | OpenAI Responses | OpenAI (newer API) |
 | `messages` | Anthropic Messages | Anthropic Claude |
 
-`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests. Images and audio endpoints use `nodes[].image_models` and `nodes[].audio_models` so media traffic can be permitted, priced, logged, and routed independently from chat traffic.
+`/v1/embeddings` is OpenAI-compatible and uses `nodes[].embedding_models`; chat models listed under `nodes[].models` are not selected for embedding requests. Images, audio, and experimental video capability declarations use `nodes[].image_models`, `nodes[].audio_models`, and `nodes[].video_models` so media traffic can be permitted, priced, logged, tested, and routed independently from chat traffic.
 
 ### Unified Model Capabilities
 
@@ -621,8 +625,8 @@ nodes:
       audio_translation: "/v1/audio/translations"
       rerank: "/v1/rerank"
       realtime: "wss://api.openai.com/v1/realtime"
-    input_types: ["text", "image", "audio"]
-    output_types: ["text", "image", "events"]
+    input_types: ["text", "image", "audio", "video"]
+    output_types: ["text", "image", "video", "events"]
     max_file_size: 20000000
     supports_streaming: true
     supports_realtime: false
@@ -643,6 +647,12 @@ nodes:
 ```
 
 Routing uses these declarations for smart-routing constraints. For example, a request containing images only considers targets whose model capability supports `vision` or `image`; incompatible targets are removed instead of silently kept at the end of the fallback list. The Dashboard Nodes and Routing pages show these model capabilities read-only so operators can see why a target is eligible.
+
+### Provider Compatibility Matrix
+
+Dashboard Nodes includes a compatibility matrix for every configured upstream. `POST /api/dashboard/nodes/:id/test` can run safe checks for `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, and `realtime`.
+
+Text, embedding, and rerank checks use tiny synthetic requests such as `ping`. Images, audio, video, and realtime default to endpoint/auth probes so SiftGate does not trigger expensive media generation or long-lived sessions without an explicit future confirmation flow. The saved result is local metadata only: capability, configured/tested state, status, timestamp, latency, HTTP status, and sanitized failure reason. Prompt text, provider responses, raw headers, and provider API keys are never stored.
 
 See [Multimodal Capability Schema](docs/MULTIMODAL_CAPABILITIES.md) for the full field list and routing behavior.
 

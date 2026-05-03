@@ -7,6 +7,7 @@ import {
   CallLog,
   GatewayApiKey,
   NodeStatus,
+  ProviderCompatibilityResult,
   RouteDecisionLog,
 } from "../database/entities";
 
@@ -15,7 +16,8 @@ export type DbMigrationTableName =
   | "budget_rules"
   | "node_status"
   | "call_logs"
-  | "route_decisions";
+  | "route_decisions"
+  | "provider_compatibility_results";
 
 interface MigrationTableDefinition {
   table: DbMigrationTableName;
@@ -29,6 +31,11 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
   { table: "route_decisions", entity: RouteDecisionLog, generatedSequenceColumn: "id" },
+  {
+    table: "provider_compatibility_results",
+    entity: ProviderCompatibilityResult,
+    generatedSequenceColumn: "id",
+  },
 ];
 
 export interface DbMigrationWarning {
@@ -160,7 +167,14 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
     this.dataSource = new DataSource({
       type: "postgres",
       url: this.postgresUrl,
-      entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey, RouteDecisionLog],
+      entities: [
+        CallLog,
+        BudgetRule,
+        NodeStatus,
+        GatewayApiKey,
+        RouteDecisionLog,
+        ProviderCompatibilityResult,
+      ],
       synchronize: false,
       logging: false,
     });

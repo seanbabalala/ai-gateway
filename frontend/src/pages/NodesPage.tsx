@@ -13,13 +13,16 @@ import {
   Server,
   AlertTriangle,
   Boxes,
+  CheckCircle2,
+  CircleDashed,
+  Clapperboard,
   Gauge,
   ImageIcon,
   Database,
   ListFilter,
   Radio,
   RadioTower,
-  Video,
+  XCircle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -43,10 +46,17 @@ import {
   useCreateNode,
   useUpdateNode,
   useDeleteNode,
+  useTestExistingNode,
 } from '@/hooks/use-mutations'
 import { getNodeColor } from '@/lib/utils'
 import { colorWithOpacity } from '@/lib/theme'
-import type { ModelCapabilityInfo, NodeInfo, CreateNodeRequest, UpdateNodeRequest } from '@/types/api'
+import type {
+  ModelCapabilityInfo,
+  NodeInfo,
+  CreateNodeRequest,
+  ProviderCompatibilityMatrixItem,
+  UpdateNodeRequest,
+} from '@/types/api'
 
 // ── Modality display configuration ──
 const MODALITY_DISPLAY: Record<string, {
@@ -86,10 +96,10 @@ const MODALITY_DISPLAY: Record<string, {
   },
   video: {
     labelKey: 'modalities.video',
-    icon: Video,
-    bgClass: 'bg-teal-500/10',
-    borderClass: 'border-teal-500/30',
-    textClass: 'text-teal-700 dark:text-teal-400',
+    icon: Clapperboard,
+    bgClass: 'bg-cyan-500/10',
+    borderClass: 'border-cyan-500/30',
+    textClass: 'text-cyan-700 dark:text-cyan-300',
   },
   embedding: {
     labelKey: 'modalities.embedding',
@@ -123,6 +133,7 @@ function modelIdsForNode(node: NodeInfo): string[] {
     ...(node.audio_models || []),
     ...(node.video_models || []),
     ...(node.realtime_models || []),
+    ...(node.realtime?.models || []),
   ]))
 }
 
@@ -159,6 +170,62 @@ function capabilityTokens(capability: ModelCapabilityInfo | undefined, t: TFunct
   return tokens
 }
 
+function formatCompatibilityTime(value: string | null, t: TFunction): string {
+  if (!value) return t('compatibility.never')
+  return new Date(value).toLocaleString()
+}
+
+function compatibilityTone(item: ProviderCompatibilityMatrixItem): {
+  icon: LucideIcon
+  className: string
+  labelKey: string
+} {
+  if (!item.configured) {
+    return {
+      icon: CircleDashed,
+      className: 'border-[var(--divider-dim)] bg-[var(--background-secondary)] text-[var(--foreground-dim)]',
+      labelKey: 'compatibility.status.notConfigured',
+    }
+  }
+  if (!item.tested) {
+    return {
+      icon: CircleDashed,
+      className: 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+      labelKey: 'compatibility.status.untested',
+    }
+  }
+  if (item.last_status === 'pass') {
+    return {
+      icon: CheckCircle2,
+      className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      labelKey: 'compatibility.status.pass',
+    }
+  }
+  if (item.last_status === 'warning') {
+    return {
+      icon: AlertTriangle,
+      className: 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      labelKey: 'compatibility.status.warning',
+    }
+  }
+  if (item.last_status === 'skipped') {
+    return {
+      icon: CircleDashed,
+      className: 'border-[var(--divider-dim)] bg-[var(--background-secondary)] text-[var(--foreground-dim)]',
+      labelKey: 'compatibility.status.skipped',
+    }
+  }
+  return {
+    icon: XCircle,
+    className: 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300',
+    labelKey: 'compatibility.status.fail',
+  }
+}
+
+function configuredCompatibility(matrix: ProviderCompatibilityMatrixItem[] | undefined) {
+  return (matrix || []).filter((item) => item.configured)
+}
+
 export function NodesPage() {
   const { t } = useTranslation('nodes')
   const { data: nodesData, isLoading, isError, error, refetch } = useNodes()
@@ -167,6 +234,7 @@ export function NodesPage() {
   const createNode = useCreateNode()
   const updateNode = useUpdateNode()
   const deleteNode = useDeleteNode()
+  const testCompatibility = useTestExistingNode()
 
   // Modal state
   const [formOpen, setFormOpen] = useState(false)
@@ -570,6 +638,14 @@ export function NodesPage() {
 
                   <div className="flex items-center gap-1 lg:justify-end">
                     <button
+                      onClick={() => testCompatibility.mutate(node.id)}
+                      disabled={testCompatibility.isPending}
+                      className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-[var(--background-secondary)] hover:text-[var(--foreground)] hover:shadow-[0_10px_24px_rgba(5,46,36,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
+                      title={t('compatibility.testMatrix')}
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${testCompatibility.isPending ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
                       onClick={() => handleOpenEdit(node)}
                       className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-[var(--background-secondary)] hover:text-[var(--foreground)] hover:shadow-[0_10px_24px_rgba(5,46,36,0.08)]"
                       title={t('actions.editUpstream')}
@@ -584,6 +660,67 @@ export function NodesPage() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
+
+                  {configuredCompatibility(node.compatibility_matrix).length > 0 && (
+                    <div className="lg:col-span-5">
+                      <div className="mt-1 rounded-lg border border-[var(--divider-dim)] bg-[var(--background-secondary)]/70 px-3 py-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-[var(--foreground-muted)]">
+                              {t('compatibility.title')}
+                            </div>
+                            <div className="text-[10px] font-medium text-[var(--foreground-dim)]">
+                              {t('compatibility.description')}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => testCompatibility.mutate(node.id)}
+                            disabled={testCompatibility.isPending}
+                            className="h-7 px-2 text-[10px]"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${testCompatibility.isPending ? 'animate-spin' : ''}`} />
+                            {testCompatibility.isPending ? t('compatibility.testing') : t('compatibility.testMatrix')}
+                          </Button>
+                        </div>
+                        <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                          {configuredCompatibility(node.compatibility_matrix).map((item) => {
+                            const tone = compatibilityTone(item)
+                            const Icon = tone.icon
+                            return (
+                              <div
+                                key={item.capability}
+                                className={`min-w-0 rounded-md border px-2.5 py-2 ${tone.className}`}
+                                title={item.failure_reason || undefined}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="inline-flex min-w-0 items-center gap-1.5 text-[10px] font-extrabold">
+                                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">{t(`compatibility.capabilities.${item.capability}`)}</span>
+                                  </span>
+                                  <span className="shrink-0 text-[9px] font-bold uppercase">
+                                    {t(tone.labelKey)}
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] font-semibold text-current/70">
+                                  <span>{item.tested ? t('compatibility.tested') : t('compatibility.notTested')}</span>
+                                  {item.status_code !== null && <span>HTTP {item.status_code}</span>}
+                                  {item.latency_ms !== null && <span>{item.latency_ms}ms</span>}
+                                  <span>{formatCompatibilityTime(item.last_checked_at, t)}</span>
+                                </div>
+                                {item.failure_reason && (
+                                  <div className="mt-1 truncate text-[9px] font-semibold text-current/80">
+                                    {item.failure_reason}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}

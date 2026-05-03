@@ -14,6 +14,11 @@
 - Canonical media metadata for images/audio requests: media type, operation, multipart flag, file count, byte size, requested format, response format, and provider response content type.
 - Dashboard call-log visibility, CSV/JSON export fields, external log sink fields, and optional connected-gateway telemetry metadata for media operations without storing file contents.
 - Node config support for `images_variations_endpoint` and `audio_translations_endpoint`, plus validation and OpenAPI docs for the new media endpoints.
+- v0.8 provider compatibility test matrix for the OSS Data Plane Dashboard, covering chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capabilities.
+- Local `provider_compatibility_results` metadata storage for configured/tested state, last status, timestamp, latency, HTTP status, and sanitized failure reason without storing prompts, responses, raw headers, provider keys, media bytes, or realtime frames.
+- Safe provider test policy: tiny synthetic requests for text/embedding/rerank and endpoint/auth probes for media, video, and realtime by default.
+- Dashboard Nodes compatibility matrix, safe test action, and non-blocking compatibility diagnostics.
+- Experimental video capability config fields (`video_models`, `video_endpoint`, `video_status_endpoint`, `video_content_endpoint`, `video_cancel_endpoint`) for provider compatibility checks and future async video routing.
 
 ### Changed
 

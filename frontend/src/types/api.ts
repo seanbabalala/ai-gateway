@@ -270,6 +270,32 @@ export interface RealtimeNodeStatus {
   last_error: string | null
 }
 
+export type ProviderCompatibilityCapability =
+  | 'chat'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'rerank'
+  | 'images'
+  | 'audio'
+  | 'video'
+  | 'realtime'
+
+export type ProviderCompatibilityStatus = 'pass' | 'warning' | 'fail' | 'skipped'
+
+export interface ProviderCompatibilityMatrixItem {
+  capability: ProviderCompatibilityCapability
+  configured: boolean
+  tested: boolean
+  last_status: ProviderCompatibilityStatus | null
+  last_checked_at: string | null
+  failure_reason: string | null
+  latency_ms: number | null
+  status_code: number | null
+  test_mode: string | null
+  requires_confirmation: boolean
+}
+
 export interface NodeInfo {
   id: string
   name: string
@@ -284,12 +310,17 @@ export interface NodeInfo {
   rerank_models?: string[]
   images_generations_endpoint?: string | null
   images_edits_endpoint?: string | null
+  images_variations_endpoint?: string | null
   image_models?: string[]
   audio_transcriptions_endpoint?: string | null
+  audio_translations_endpoint?: string | null
   audio_speech_endpoint?: string | null
   audio_models?: string[]
   video_generations_endpoint?: string | null
+  video_endpoint?: string | null
   video_status_endpoint?: string | null
+  video_content_endpoint?: string | null
+  video_cancel_endpoint?: string | null
   video_models?: string[]
   realtime_endpoint?: string | null
   realtime_models?: string[]
@@ -303,6 +334,7 @@ export interface NodeInfo {
   modelCircuits: Record<string, CircuitBreaker>
   concurrency: ConcurrencySnapshot
   realtime?: RealtimeNodeStatus
+  compatibility_matrix?: ProviderCompatibilityMatrixItem[]
   healthy: boolean
 }
 
@@ -333,6 +365,8 @@ export type ConfigDiagnosticCode =
   | 'route_references_unknown_node'
   | 'route_references_unknown_model'
   | 'split_overrides_targets'
+  | 'provider_compatibility_failed'
+  | 'provider_compatibility_untested'
 
 export interface ConfigDiagnostic {
   severity: 'warning'
@@ -344,6 +378,7 @@ export interface ConfigDiagnostic {
   matchingNodes?: string[]
   tier?: string
   target?: string
+  capability?: string
 }
 
 export interface NodesResponse {
@@ -607,8 +642,10 @@ export interface CreateNodeRequest {
   rerank_models?: string[]
   images_generations_endpoint?: string
   images_edits_endpoint?: string
+  images_variations_endpoint?: string
   image_models?: string[]
   audio_transcriptions_endpoint?: string
+  audio_translations_endpoint?: string
   audio_speech_endpoint?: string
   audio_models?: string[]
   video_generations_endpoint?: string
@@ -616,6 +653,9 @@ export interface CreateNodeRequest {
   video_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
+  video_endpoint?: string
+  video_content_endpoint?: string
+  video_cancel_endpoint?: string
   timeout_ms: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -644,8 +684,10 @@ export interface UpdateNodeRequest {
   rerank_models?: string[]
   images_generations_endpoint?: string
   images_edits_endpoint?: string
+  images_variations_endpoint?: string
   image_models?: string[]
   audio_transcriptions_endpoint?: string
+  audio_translations_endpoint?: string
   audio_speech_endpoint?: string
   audio_models?: string[]
   video_generations_endpoint?: string
@@ -653,6 +695,9 @@ export interface UpdateNodeRequest {
   video_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
+  video_endpoint?: string
+  video_content_endpoint?: string
+  video_cancel_endpoint?: string
   timeout_ms?: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -685,6 +730,8 @@ export interface TestNodeRequest {
   model: string
   auth_type?: 'bearer' | 'x-api-key'
   headers?: Record<string, string>
+  capabilities?: ProviderCompatibilityCapability[]
+  confirm_expensive?: boolean
 }
 
 export interface TestNodeResponse {
@@ -692,6 +739,7 @@ export interface TestNodeResponse {
   status: number
   latency_ms: number
   message: string
+  matrix?: ProviderCompatibilityMatrixItem[]
 }
 
 // ── Provider / Model Catalog ──

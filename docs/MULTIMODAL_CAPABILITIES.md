@@ -2,8 +2,8 @@
 
 SiftGate v0.6 introduces a unified capability schema for the open-source Data
 Plane. It keeps existing chat, responses, messages, and embeddings
-configuration compatible while preparing routing for image, audio, rerank, and
-realtime protocol entrypoints.
+configuration compatible while preparing routing for image, audio, video,
+rerank, and realtime protocol entrypoints.
 
 ## Configuration
 
@@ -23,10 +23,11 @@ nodes:
       image_variation: /v1/images/variations
       audio: /v1/audio/transcriptions
       audio_translation: /v1/audio/translations
+      video: /v1/videos/generations
       rerank: /v1/rerank
       realtime: wss://api.openai.com/v1/realtime
-    input_types: [text, image, audio]
-    output_types: [text, image, events]
+    input_types: [text, image, audio, video]
+    output_types: [text, image, video, events]
     max_file_size: 20000000
     supports_streaming: true
     supports_realtime: false
@@ -43,13 +44,13 @@ nodes:
         pricing: { input: 0.02, output: 0 }
 ```
 
-Supported `modalities` are `text`, `vision`, `image`, `audio`, `embedding`,
-`rerank`, and `realtime`. `vision` is kept as the legacy image-input alias and
+Supported `modalities` are `text`, `vision`, `image`, `audio`, `video`,
+`embedding`, `rerank`, and `realtime`. `vision` is kept as the legacy image-input alias and
 matches `image` during routing.
 
 Supported endpoint keys are `chat_completions`, `responses`, `messages`,
 `embeddings`, `image`, `image_edit`, `image_variation`, `audio`,
-`audio_translation`, `audio_speech`, `rerank`, and `realtime`. Values can be
+`audio_translation`, `audio_speech`, `video`, `rerank`, and `realtime`. Values can be
 relative paths or absolute `http(s)` / `ws(s)` URLs.
 
 ## Routing Behavior
@@ -70,3 +71,8 @@ The Dashboard Nodes page and Routing page show resolved model capability
 metadata read-only: modalities, streaming/realtime/rerank flags, context window,
 embedding dimensions, file-size limit, and pricing hints. The Dashboard does not
 automatically apply or rewrite these settings.
+
+v0.8 also adds a Provider Compatibility Matrix to the Nodes page. It verifies
+configured capabilities with safe local tests and stores only metadata: status,
+timestamp, latency, HTTP status, and sanitized failure reason. It never stores
+prompts, responses, raw headers, provider keys, media bytes, or realtime frames.

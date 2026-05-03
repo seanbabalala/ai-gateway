@@ -177,6 +177,32 @@ export class CreateNodeDto {
   @IsString()
   realtime_endpoint?: string;
 
+  @ApiPropertyOptional({ type: [String], example: ['veo-3-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  video_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id' })
+  @IsOptional()
+  @IsString()
+  video_status_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/content' })
+  @IsOptional()
+  @IsString()
+  video_content_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/cancel' })
+  @IsOptional()
+  @IsString()
+  video_cancel_endpoint?: string;
+
   @ApiProperty({ example: 60000, minimum: 1 })
   @IsNumber()
   @Min(1)
@@ -305,6 +331,25 @@ export class TestNodeDto {
   @IsOptional()
   @IsObject()
   headers?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: ['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime'],
+    description: 'Optional provider capabilities to test. Omit to test the primary protocol capability for unsaved nodes.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsIn(['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime'], { each: true })
+  capabilities?: Array<'chat' | 'responses' | 'messages' | 'embeddings' | 'rerank' | 'images' | 'audio' | 'video' | 'realtime'>;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Must be true before running expensive generation or long-connection compatibility tests.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirm_expensive?: boolean;
 }
 
 export class UpdateNodeDto {
@@ -438,6 +483,32 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsString()
   realtime_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['veo-3-preview'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  video_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/videos/generations' })
+  @IsOptional()
+  @IsString()
+  video_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id' })
+  @IsOptional()
+  @IsString()
+  video_status_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/content' })
+  @IsOptional()
+  @IsString()
+  video_content_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/videos/:id/cancel' })
+  @IsOptional()
+  @IsString()
+  video_cancel_endpoint?: string;
 
   @ApiPropertyOptional({ example: 60000, minimum: 1 })
   @IsOptional()

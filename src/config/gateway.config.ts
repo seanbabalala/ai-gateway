@@ -466,8 +466,14 @@ export interface NodeConfig {
   audio_models?: string[];
   /** Optional OpenAI-compatible video generation endpoint path reserved for video-capable providers. */
   video_generations_endpoint?: string;
-  /** Optional endpoint for polling asynchronous video generation jobs when a provider requires it. */
+  /** Experimental video generation endpoint path (default: /v1/videos/generations). */
+  video_endpoint?: string;
+  /** Optional endpoint path for async video job status lookups. */
   video_status_endpoint?: string;
+  /** Optional endpoint path for async video content retrieval. */
+  video_content_endpoint?: string;
+  /** Optional endpoint path for async video job cancellation. */
+  video_cancel_endpoint?: string;
   /** Video-capable model IDs exposed by this node. */
   video_models?: string[];
   /** Experimental OpenAI-compatible realtime WebSocket endpoint path (default: /v1/realtime). */

@@ -55,6 +55,8 @@ import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 import type { Modality } from '../config/modality';
 import { ProviderCatalogService } from '../catalog/provider-catalog.service';
+import type { ProviderCompatibilityCapability } from '../database/entities';
+import { ProviderCompatibilityService } from './provider-compatibility.service';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -92,6 +94,7 @@ export class DashboardController {
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
+    private readonly providerCompatibility: ProviderCompatibilityService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -1271,7 +1274,10 @@ export class DashboardController {
   @Get('nodes')
   @ApiOperation({ summary: 'List configured nodes, capabilities, and circuit status' })
   @ApiOkResponse({ description: 'Node status list with no provider API key values.' })
-  getNodes() {
+  async getNodes() {
+    const compatibility = await this.providerCompatibility.matrixForNodes(
+      this.config.nodes,
+    );
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
@@ -1314,6 +1320,13 @@ export class DashboardController {
         ...(node.audio_transcriptions_endpoint ? { audio_transcription: node.audio_transcriptions_endpoint } : {}),
         ...(node.audio_translations_endpoint ? { audio_translation: node.audio_translations_endpoint } : {}),
         ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
+        ...(node.images_generations_endpoint ? { images: node.images_generations_endpoint } : {}),
+        ...(node.audio_transcriptions_endpoint ? { audio: node.audio_transcriptions_endpoint } : {}),
+        ...(node.video_endpoint || node.video_generations_endpoint ? { video: node.video_endpoint || node.video_generations_endpoint } : {}),
+        ...(node.video_endpoint ? { video_endpoint: node.video_endpoint } : {}),
+        ...(node.video_content_endpoint ? { video_content: node.video_content_endpoint } : {}),
+        ...(node.video_cancel_endpoint ? { video_cancel: node.video_cancel_endpoint } : {}),
+        ...(node.realtime_endpoint ? { realtime: node.realtime_endpoint } : {}),
         ...(node.endpoints || {}),
       };
 
@@ -1354,7 +1367,10 @@ export class DashboardController {
         audio_speech_endpoint: node.audio_speech_endpoint || null,
         video_models: node.video_models || [],
         video_generations_endpoint: node.video_generations_endpoint || null,
+        video_endpoint: node.video_endpoint || null,
         video_status_endpoint: node.video_status_endpoint || null,
+        video_content_endpoint: node.video_content_endpoint || null,
+        video_cancel_endpoint: node.video_cancel_endpoint || null,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         model_capabilities: modelCapabilities,
@@ -1383,13 +1399,17 @@ export class DashboardController {
           last_closed_at: null,
           last_error: null,
         },
+        compatibility_matrix: compatibility[node.id] || [],
         healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
       };
     });
 
     return {
       nodes,
-      diagnostics: this.config.getNodeModelDiagnostics(),
+      diagnostics: [
+        ...this.config.getNodeModelDiagnostics(),
+        ...this.providerCompatibility.compatibilityDiagnostics(compatibility),
+      ],
     };
   }
 
@@ -1417,7 +1437,10 @@ export class DashboardController {
   @ApiOperation({ summary: 'Test an existing saved node' })
   @ApiParam({ name: 'id', example: 'openai' })
   @ApiOkResponse({ description: 'Connectivity result using the saved provider key.' })
-  async testExistingNode(@Param('id') nodeId: string) {
+  async testExistingNode(
+    @Param('id') nodeId: string,
+    @Body() dto?: Pick<TestNodeDto, 'capabilities' | 'confirm_expensive'>,
+  ) {
     const node = this.config.getNode(nodeId);
     if (!node) {
       throw new HttpException(
@@ -1425,14 +1448,9 @@ export class DashboardController {
         HttpStatus.NOT_FOUND,
       );
     }
-    return this.runConnectivityTest({
-      protocol: node.protocol,
-      base_url: node.base_url,
-      endpoint: node.endpoint,
-      api_key: node.api_key,
-      model: node.models[0],
-      auth_type: node.auth_type,
-      headers: node.headers,
+    return this.providerCompatibility.runNodeMatrix(node, {
+      capabilities: dto?.capabilities as ProviderCompatibilityCapability[] | undefined,
+      confirm_expensive: dto?.confirm_expensive,
     });
   }
 
@@ -1626,9 +1644,9 @@ export class DashboardController {
         name: dto.name,
         protocol: dto.protocol,
         base_url: dto.base_url,
-         endpoint: dto.endpoint,
-         api_key: dto.api_key,
-         models: dto.models,
+        endpoint: dto.endpoint,
+        api_key: dto.api_key,
+        models: dto.models,
         embeddings_endpoint: dto.embeddings_endpoint,
         embedding_models: dto.embedding_models,
         rerank_endpoint: dto.rerank_endpoint,
@@ -1642,7 +1660,10 @@ export class DashboardController {
         audio_speech_endpoint: dto.audio_speech_endpoint,
         audio_models: dto.audio_models,
         video_generations_endpoint: dto.video_generations_endpoint,
+        video_endpoint: dto.video_endpoint,
         video_status_endpoint: dto.video_status_endpoint,
+        video_content_endpoint: dto.video_content_endpoint,
+        video_cancel_endpoint: dto.video_cancel_endpoint,
         video_models: dto.video_models,
         realtime_models: dto.realtime_models,
         realtime_endpoint: dto.realtime_endpoint,

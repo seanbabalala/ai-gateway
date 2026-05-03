@@ -66,6 +66,20 @@
   - API key、namespace、budget、rate limit、fallback、call_log、telemetry 继续复用现有 Data Plane 管线
   - Config validation 校验 media endpoint path、model bucket、`max_file_size` 与 pricing 诊断
 
+### P0：Provider Compatibility Test Matrix
+
+- **状态**：✅ Prompt 50 feature branch 已完成
+- **目标**：把 Add Node/Test Connection 从“能不能连上”升级成“这个 node 是否真的支持所选能力”
+- **实现方案**：
+  - 扩展现有 `POST /api/dashboard/nodes/:id/test`，支持 `chat`、`responses`、`messages`、`embeddings`、`rerank`、`images`、`audio`、`video`、`realtime`
+  - 默认使用低成本安全探测：text/embedding/rerank 使用合成 `ping` 小请求；image/audio/video/realtime 默认只做 endpoint/auth probe
+  - video/realtime 不默认启动真实生成或长连接，避免意外成本
+  - 本地保存 `provider_compatibility_results` 元数据：capability、configured、tested、last_status、last_checked_at、latency、HTTP status、sanitized failure_reason
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 realtime frames
+  - Dashboard Nodes 页面显示只读 compatibility matrix，并提供安全测试按钮
+  - Config/Dashboard diagnostics 可引用最近测试结果给出非阻断 warning，例如 configured but untested 或最近探测失败
+  - 为未来 Provider / Model Catalog 和 Video async preview 预留 `video_models` 与 video endpoint 配置字段
+
 ---
 
 ## v0.6 — Protocol + Explainability（生产协议补齐 + 可解释路由）
