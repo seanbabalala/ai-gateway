@@ -16,6 +16,29 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 生产采纳、安全运维与决策智能 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（生产采纳 + 决策智能）
+
+**v0.7 当前状态**：Prompt 44 功能分支已完成兼容迁移工具扩展。默认仍保持单机 memory/SQLite 可用；Redis、PostgreSQL、Cloud 都只作为可选能力。
+
+### P2：迁移工具扩展
+
+- **状态**：✅ Prompt 44 功能分支已完成
+- **目标**：把 v0.4 的 LiteLLM 单向迁移升级成兼容迁移工具，支持 LiteLLM、New API、One API 与 SiftGate 之间的常见配置流转
+- **实现方案**：
+  - 保留 `siftgate migrate --from litellm --config ...` 的既有行为
+  - 新增 `--from newapi|oneapi`，从 channel export 生成 SiftGate `gateway.config.yaml` 草案
+  - 新增 `--from siftgate --to litellm|newapi|oneapi`，输出可审阅的第三方配置 scaffold
+  - 迁移报告继续区分 compatible、incompatible、manual review
+  - 不复制 literal provider key；导入/导出都改用环境变量占位并提示人工处理
+  - New API / One API 导出明确为声明式 scaffold，不直接写目标项目数据库
+- **边界**：
+  - 不依赖 New API / One API 私有包或数据库 schema
+  - 不引入企业版依赖
+  - 不修改 `/siftgate-cloud`
 
 ---
 
@@ -565,20 +588,25 @@
 
 ### P2：集成 & 兼容性
 
-#### 25. LiteLLM 配置兼容
+#### 25. 兼容迁移工具
 
-- **状态**：✅ v0.4.0 已发布
-- **现状**：已提供 `siftgate migrate --from litellm`，可从 LiteLLM YAML 生成 SiftGate `gateway.config.yaml` 草案和迁移报告
-- **目标**：降低从 LiteLLM 迁移到开源 Data Plane 的配置成本
+- **状态**：✅ v0.4.0 已发布 LiteLLM 单向迁移；✅ v0.7 Prompt 44 扩展到 LiteLLM / New API / One API 常见双向 scaffold
+- **现状**：已提供 `siftgate migrate`，可从 LiteLLM/New API/One API 生成 SiftGate `gateway.config.yaml` 草案，也可从 SiftGate 导出第三方配置 scaffold
+- **目标**：降低从 LiteLLM、New API、One API 等开源网关迁移到 SiftGate 的配置成本，同时给迁回或并行评估留出口
 - **实现方案**：
   ```bash
   npx siftgate migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
+  npx siftgate migrate --from newapi --config ./newapi.channels.yaml --out ./gateway.generated.yaml
+  npx siftgate migrate --from siftgate --to oneapi --config ./gateway.config.yaml --out ./oneapi.generated.yaml
   ```
 
   - 解析 LiteLLM YAML → 生成 SiftGate `gateway.config.yaml`
+  - 解析 New API / One API channel export → 生成 SiftGate `nodes[]`、routing targets 和 pricing placeholders
+  - 从 SiftGate 导出 LiteLLM `model_list` 或 New API / One API `channels` scaffold
   - 映射 model names、provider、API key env 引用、fallback rules、router retry/settings 和可识别 pricing
   - 输出迁移报告（兼容/不兼容/需人工处理）
   - 默认不覆盖已有 `gateway.config.yaml`
+  - 不复制 literal provider key；第三方导出不直接写目标项目数据库
 
 #### 26. SDK / 客户端库
 

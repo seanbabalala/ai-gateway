@@ -6,8 +6,12 @@ import {
   validateConfigFile,
 } from "../config/config-validator";
 import {
+  ConfigMigrationResult,
   LiteLlmMigrationResult,
+  MigrationConfigType,
+  formatConfigMigrationReport,
   formatMigrationReport,
+  migrateConfigFile,
   migrateLiteLlmConfigFile,
 } from "./litellm-migrator";
 import {
@@ -53,6 +57,7 @@ interface PluginArgs {
 
 interface MigrateArgs {
   from?: string;
+  to?: string;
   configPath?: string;
   outputPath?: string;
   overwrite: boolean;
@@ -235,8 +240,8 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
     return 0;
   }
 
-  if (parsedArgs.from !== "litellm") {
-    cli.stderr("Only --from litellm is supported.");
+  if (!parsedArgs.from) {
+    cli.stderr("--from is required for migrate.");
     cli.stderr(formatMigrateUsage());
     return 1;
   }
@@ -245,16 +250,49 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
     cli.stderr(formatMigrateUsage());
     return 1;
   }
+  if (!isMigrationConfigType(parsedArgs.from)) {
+    cli.stderr(`Unsupported --from value: ${parsedArgs.from}`);
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
+  const targetType = parsedArgs.to || "siftgate";
+  if (!isMigrationConfigType(targetType)) {
+    cli.stderr(`Unsupported --to value: ${targetType}`);
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
 
-  let result: LiteLlmMigrationResult;
+  let result: ConfigMigrationResult;
   try {
-    result = migrateLiteLlmConfigFile({
-      configPath: parsedArgs.configPath,
-      cwd: cli.cwd,
-      outputPath: parsedArgs.outputPath,
-      overwrite: parsedArgs.overwrite,
-      write: !parsedArgs.dryRun,
-    });
+    if (parsedArgs.from === "litellm" && targetType === "siftgate") {
+      const liteLlmResult: LiteLlmMigrationResult = migrateLiteLlmConfigFile({
+        configPath: parsedArgs.configPath,
+        cwd: cli.cwd,
+        outputPath: parsedArgs.outputPath,
+        overwrite: parsedArgs.overwrite,
+        write: !parsedArgs.dryRun,
+      });
+      result = {
+        sourceType: "litellm",
+        targetType: "siftgate",
+        sourcePath: liteLlmResult.sourcePath,
+        outputPath: liteLlmResult.outputPath,
+        output: liteLlmResult.config,
+        config: liteLlmResult.config,
+        yaml: liteLlmResult.yaml,
+        report: liteLlmResult.report,
+      };
+    } else {
+      result = migrateConfigFile({
+        from: parsedArgs.from,
+        to: targetType,
+        configPath: parsedArgs.configPath,
+        cwd: cli.cwd,
+        outputPath: parsedArgs.outputPath,
+        overwrite: parsedArgs.overwrite,
+        write: !parsedArgs.dryRun,
+      });
+    }
   } catch (error) {
     cli.stderr(error instanceof Error ? error.message : "Migration failed.");
     return 1;
@@ -263,7 +301,17 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
   if (parsedArgs.json) {
     cli.stdout(JSON.stringify(toJsonMigrationResult(result), null, 2));
   } else {
-    cli.stdout(formatMigrationReport(result));
+    cli.stdout(
+      result.sourceType === "litellm" && result.targetType === "siftgate"
+        ? formatMigrationReport({
+            sourcePath: result.sourcePath,
+            outputPath: result.outputPath,
+            config: result.config!,
+            yaml: result.yaml,
+            report: result.report,
+          })
+        : formatConfigMigrationReport(result),
+    );
     if (parsedArgs.dryRun) {
       cli.stdout("");
       cli.stdout(result.yaml);
@@ -482,6 +530,15 @@ function parseMigrateArgs(args: string[]): MigrateArgs {
       parsed.from = requireInlineValue(arg, "--from");
       continue;
     }
+    if (arg === "--to") {
+      parsed.to = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--to=")) {
+      parsed.to = requireInlineValue(arg, "--to");
+      continue;
+    }
     if (arg === "--config" || arg === "-c") {
       parsed.configPath = requireValue(args, index, arg);
       index += 1;
@@ -637,6 +694,10 @@ function parsePositiveInteger(value: string, flag: string): number {
   return parsed;
 }
 
+function isMigrationConfigType(value: string): value is MigrationConfigType {
+  return ["siftgate", "litellm", "newapi", "oneapi"].includes(value);
+}
+
 export function formatValidationResult(result: ConfigValidationResult): string {
   const lines = [
     "SiftGate config validation",
@@ -741,11 +802,14 @@ function toJsonResult(
   };
 }
 
-function toJsonMigrationResult(result: LiteLlmMigrationResult): object {
+function toJsonMigrationResult(result: ConfigMigrationResult): object {
   return {
+    sourceType: result.sourceType,
+    targetType: result.targetType,
     sourcePath: result.sourcePath,
     outputPath: result.outputPath,
     report: result.report,
+    output: result.output,
     config: result.config,
   };
 }
@@ -757,7 +821,8 @@ function formatUsage(): string {
     `  siftgate plugin install <path|@siftgate/plugin-name> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
-    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from siftgate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
     "",
     "Commands:",
@@ -801,12 +866,14 @@ function formatPluginUsage(): string {
 function formatMigrateUsage(): string {
   return [
     "Usage:",
-    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from siftgate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "",
     "Options:",
-    '      --from <source>    Source config type. Currently only "litellm"',
-    "  -c, --config <path>   LiteLLM config file to migrate",
-    "  -o, --out <path>      Output SiftGate config path (default: gateway.config.yaml)",
+    '      --from <source>    Source type: "litellm", "newapi", "oneapi", or "siftgate"',
+    '      --to <target>      Target type (default: "siftgate")',
+    "  -c, --config <path>   Source config file to migrate",
+    "  -o, --out <path>      Output path (default: gateway.config.yaml for SiftGate target)",
     "      --overwrite       Allow overwriting the output file",
     "      --dry-run         Print generated YAML instead of writing it",
     "      --json            Print machine-readable migration report",

@@ -10,8 +10,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { json, raw, urlencoded } from 'express';
 import helmet from 'helmet';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as request from 'supertest';
+import * as yaml from 'js-yaml';
 import { createHash } from 'crypto';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
@@ -321,12 +324,38 @@ export interface E2EHarness {
   app: INestApplication;
   agent: request.Agent;
   fetchMock: FetchMock;
+  configPath: string;
   close: () => Promise<void>;
 }
 
+function createHarnessConfig(): { configPath: string; tmpDir: string } {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-e2e-'));
+  const configPath = path.join(tmpDir, 'gateway.e2e.yaml');
+  const raw = fs.readFileSync(FIXTURE_PATH, 'utf8');
+  const config = yaml.load(raw) as Record<string, any>;
+
+  const realtimeEndpoint = process.env.REALTIME_UPSTREAM_ENDPOINT;
+  if (realtimeEndpoint && Array.isArray(config.nodes)) {
+    const realtimeNode = config.nodes.find((node) => node?.id === 'mock-openai');
+    if (realtimeNode) {
+      realtimeNode.realtime_endpoint = realtimeEndpoint;
+    }
+  }
+
+  fs.writeFileSync(
+    configPath,
+    yaml.dump(config, { noRefs: true, lineWidth: -1 }),
+    'utf8',
+  );
+  return { configPath, tmpDir };
+}
+
 export async function createE2EHarness(): Promise<E2EHarness> {
+  const previousConfigPath = process.env.GATEWAY_CONFIG_PATH;
+  const harnessConfig = createHarnessConfig();
+
   // Set config path BEFORE module resolution
-  process.env.GATEWAY_CONFIG_PATH = FIXTURE_PATH;
+  process.env.GATEWAY_CONFIG_PATH = harnessConfig.configPath;
 
   // Lazy-import AppModule so the config path is read at require time
   const { AppModule } = await import('../../src/app.module');
@@ -405,9 +434,16 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     app,
     agent,
     fetchMock,
+    configPath: harnessConfig.configPath,
     close: async () => {
       fetchMock.restore();
       await app.close();
+      if (previousConfigPath === undefined) {
+        delete process.env.GATEWAY_CONFIG_PATH;
+      } else {
+        process.env.GATEWAY_CONFIG_PATH = previousConfigPath;
+      }
+      fs.rmSync(harnessConfig.tmpDir, { recursive: true, force: true });
     },
   };
 }

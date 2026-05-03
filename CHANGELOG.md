@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 compatibility migration expansion for LiteLLM, New API, and One API configs, including New API/One API channel import into SiftGate and SiftGate-to-LiteLLM/New API/One API scaffold export.
 
 ## 0.6.1 - 2026-05-03
 

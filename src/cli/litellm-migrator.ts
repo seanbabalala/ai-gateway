@@ -29,6 +29,31 @@ export interface LiteLlmMigrationResult {
   report: MigrationReport;
 }
 
+export type MigrationConfigType = 'siftgate' | 'litellm' | 'newapi' | 'oneapi';
+
+export interface ConfigMigrationResult {
+  sourceType: MigrationConfigType;
+  targetType: MigrationConfigType;
+  sourcePath: string;
+  outputPath?: string;
+  /** Target-format object. For target=siftgate this is a GatewayConfig. */
+  output: unknown;
+  /** Convenience alias when target=siftgate. */
+  config?: GatewayConfig;
+  yaml: string;
+  report: MigrationReport;
+}
+
+export interface MigrateConfigFileOptions {
+  from: MigrationConfigType;
+  to?: MigrationConfigType;
+  configPath: string;
+  cwd?: string;
+  outputPath?: string;
+  overwrite?: boolean;
+  write?: boolean;
+}
+
 interface LiteLlmModelEntry {
   model_name?: unknown;
   litellm_params?: Record<string, unknown>;
@@ -59,6 +84,20 @@ export interface MigrateLiteLlmFileOptions {
   outputPath?: string;
   overwrite?: boolean;
   write?: boolean;
+}
+
+interface NormalizedChannelEntry {
+  index: number;
+  name: string;
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  models: string[];
+  aliases: Record<string, string>;
+  weight: number;
+  disabled: boolean;
+  rawType?: string | number;
+  raw: Record<string, unknown>;
 }
 
 const DEFAULT_PROVIDER: ProviderDefaults = {
@@ -128,6 +167,13 @@ const PROVIDERS: Record<string, ProviderDefaults> = {
   },
 };
 
+const CHANNEL_TYPE_PROVIDERS: Record<number, string> = {
+  1: 'openai',
+  3: 'azure',
+  8: 'openai_compatible',
+  14: 'anthropic',
+};
+
 const KNOWN_ROUTING_OPTIMIZATIONS = new Set<RoutingOptimization>([
   'cost',
   'latency',
@@ -158,6 +204,98 @@ export function migrateLiteLlmConfigFile(
   }
 
   return { ...result, outputPath };
+}
+
+export function migrateConfigFile(
+  options: MigrateConfigFileOptions,
+): ConfigMigrationResult {
+  const cwd = options.cwd || process.cwd();
+  const sourcePath = path.resolve(cwd, options.configPath);
+  const raw = fs.readFileSync(sourcePath, 'utf8');
+  const parsed = yaml.load(raw);
+  const result = migrateConfig(parsed, {
+    from: options.from,
+    to: options.to,
+    sourcePath,
+  });
+  const outputPath = options.outputPath
+    ? path.resolve(cwd, options.outputPath)
+    : path.resolve(
+        cwd,
+        result.targetType === 'siftgate'
+          ? 'gateway.config.yaml'
+          : `${result.targetType}.generated.yaml`,
+      );
+
+  if (options.write !== false) {
+    if (fs.existsSync(outputPath) && options.overwrite !== true) {
+      throw new Error(
+        `Refusing to overwrite existing ${outputPath}. Use --out with a new path or pass --overwrite.`,
+      );
+    }
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, result.yaml, 'utf8');
+  }
+
+  return { ...result, outputPath };
+}
+
+export function migrateConfig(
+  value: unknown,
+  options: {
+    from: MigrationConfigType;
+    to?: MigrationConfigType;
+    sourcePath?: string;
+  },
+): ConfigMigrationResult {
+  const sourcePath = options.sourcePath || `${options.from}.config.yaml`;
+  const targetType = options.to || 'siftgate';
+
+  if (options.from === targetType) {
+    throw new Error(`Migration source and target are both "${options.from}".`);
+  }
+
+  if (targetType === 'siftgate') {
+    if (options.from === 'litellm') {
+      const result = migrateLiteLlmConfig(value, sourcePath);
+      return {
+        sourceType: 'litellm',
+        targetType,
+        sourcePath,
+        output: result.config,
+        config: result.config,
+        yaml: result.yaml,
+        report: result.report,
+      };
+    }
+
+    if (options.from === 'newapi' || options.from === 'oneapi') {
+      const result = migrateChannelConfigToSiftGate(value, options.from, sourcePath);
+      return {
+        sourceType: options.from,
+        targetType,
+        sourcePath,
+        output: result.config,
+        config: result.config,
+        yaml: result.yaml,
+        report: result.report,
+      };
+    }
+  }
+
+  if (options.from === 'siftgate') {
+    const config = normalizeSiftGateConfig(value);
+    if (targetType === 'litellm') {
+      return exportSiftGateConfig(config, targetType, sourcePath);
+    }
+    if (targetType === 'newapi' || targetType === 'oneapi') {
+      return exportSiftGateConfig(config, targetType, sourcePath);
+    }
+  }
+
+  throw new Error(
+    `Unsupported migration path: --from ${options.from} --to ${targetType}.`,
+  );
 }
 
 export function migrateLiteLlmConfig(
@@ -245,6 +383,384 @@ export function formatMigrationReport(result: LiteLlmMigrationResult): string {
     formatReportGroup('Manual review', result.report.manual),
   );
   return lines.join('\n');
+}
+
+export function formatConfigMigrationReport(result: ConfigMigrationResult): string {
+  const lines = [
+    'SiftGate config migration',
+    `Source: ${result.sourceType} (${path.resolve(result.sourcePath)})`,
+    `Target: ${result.targetType}`,
+  ];
+  if (result.outputPath) {
+    lines.push(`Output: ${path.resolve(result.outputPath)}`);
+  }
+  lines.push(
+    '',
+    formatReportGroup('Compatible', result.report.compatible),
+    '',
+    formatReportGroup('Incompatible', result.report.incompatible),
+    '',
+    formatReportGroup('Manual review', result.report.manual),
+  );
+  return lines.join('\n');
+}
+
+function migrateChannelConfigToSiftGate(
+  value: unknown,
+  sourceType: 'newapi' | 'oneapi',
+  sourcePath: string,
+): LiteLlmMigrationResult {
+  if (!isRecord(value) && !Array.isArray(value)) {
+    throw new Error(`${formatSourceName(sourceType)} config must be a YAML object or array.`);
+  }
+
+  const report = emptyReport();
+  const channels = normalizeChannelEntries(value, sourceType, report);
+  if (channels.length === 0) {
+    throw new Error(`${formatSourceName(sourceType)} config did not contain any migratable channels.`);
+  }
+
+  const nodes = channels.map((channel) => buildNodeFromChannel(channel, sourceType, report));
+  const primary = {
+    node: nodes[0].id,
+    model: nodes[0].models[0],
+  };
+  const fallbacks = nodes
+    .slice(1)
+    .map((node) => ({ node: node.id, model: node.models[0] }));
+  const targets = nodes.map((node, index) => ({
+    node: node.id,
+    model: node.models[0],
+    weight: Math.max(1, channels[index].weight),
+  }));
+  const modelsPricing = buildPlaceholderPricing(nodes, sourceType, report);
+
+  report.compatible.push({
+    path: 'routing.tiers',
+    message: `Generated SiftGate routing tiers from ${formatSourceName(sourceType)} channels.`,
+  });
+
+  const config: GatewayConfig = {
+    server: { port: 2099, host: '0.0.0.0' },
+    database: { type: 'sqlite', path: './data/gateway.db' },
+    auth: { api_keys: [] },
+    nodes,
+    routing: {
+      optimization: 'balanced',
+      tiers: {
+        simple: {
+          primary,
+          fallbacks,
+          strategy: 'weighted',
+          targets,
+        },
+        standard: {
+          primary,
+          fallbacks,
+          strategy: 'weighted',
+          targets,
+        },
+        complex: { primary, fallbacks },
+        reasoning: { primary, fallbacks },
+      },
+      scoring: {
+        simple_max: -0.1,
+        standard_max: 0.08,
+        complex_max: 0.35,
+      },
+      retry: {
+        max_retries: 2,
+        backoff_base_ms: 500,
+        backoff_max_ms: 5000,
+        retryable_status: [429, 502, 503],
+      },
+    },
+    budget: {
+      daily_token_limit: 5_000_000,
+      daily_cost_limit: 50,
+      alert_threshold: 0.8,
+    },
+    models_pricing: modelsPricing,
+    cache: {
+      enabled: false,
+      ttl_seconds: 300,
+      max_entries: 1000,
+      exclude_tool_use: true,
+    },
+    telemetry: { enabled: false },
+  };
+
+  return {
+    sourcePath,
+    config,
+    yaml: dumpGatewayConfigFromSource(config, report, sourcePath, sourceType),
+    report,
+  };
+}
+
+function exportSiftGateConfig(
+  config: GatewayConfig,
+  targetType: 'litellm' | 'newapi' | 'oneapi',
+  sourcePath: string,
+): ConfigMigrationResult {
+  const report = emptyReport();
+  const output =
+    targetType === 'litellm'
+      ? exportSiftGateToLiteLlm(config, report)
+      : exportSiftGateToChannelConfig(config, targetType, report);
+
+  return {
+    sourceType: 'siftgate',
+    targetType,
+    sourcePath,
+    output,
+    yaml: dumpTargetConfig(output, report, sourcePath, targetType),
+    report,
+  };
+}
+
+function normalizeChannelEntries(
+  value: unknown,
+  sourceType: 'newapi' | 'oneapi',
+  report: MigrationReport,
+): NormalizedChannelEntry[] {
+  const entries = extractChannelEntries(value);
+  if (entries.length === 0) {
+    report.incompatible.push({
+      path: 'channels',
+      message: `No ${formatSourceName(sourceType)} channels array found.`,
+      suggestion: 'Export channels as an array or a top-level channels/data/items collection.',
+    });
+    return [];
+  }
+
+  return entries
+    .map((entry, index) => normalizeChannelEntry(entry, index, sourceType, report))
+    .filter((entry): entry is NormalizedChannelEntry => entry !== null);
+}
+
+function normalizeChannelEntry(
+  value: unknown,
+  index: number,
+  sourceType: 'newapi' | 'oneapi',
+  report: MigrationReport,
+): NormalizedChannelEntry | null {
+  if (!isRecord(value)) {
+    report.incompatible.push({
+      path: `channels[${index}]`,
+      message: 'Channel entry is not an object.',
+    });
+    return null;
+  }
+
+  const name =
+    stringValue(value.name) ||
+    stringValue(value.display_name) ||
+    stringValue(value.channel_name) ||
+    `channel-${index + 1}`;
+  const rawType = channelTypeValue(value);
+  const provider = providerFromChannel(rawType, value);
+  const defaults = PROVIDERS[provider] || {
+    ...DEFAULT_PROVIDER,
+    apiKeyEnv: `${toEnvPrefix(provider)}_API_KEY`,
+  };
+  const baseUrl = channelBaseUrl(value, provider, defaults, index, report);
+  const apiKey = channelApiKey(value, provider, index, report);
+  const aliases = parseModelMapping(value.model_mapping ?? value.model_map ?? value.modelMap);
+  const models = channelModels(value, aliases, index, report);
+  const weight = positiveInteger(value.weight ?? value.priority, 1);
+  const disabled = Boolean(value.disabled) || value.status === 2 || value.status === 'disabled';
+
+  report.compatible.push({
+    path: `channels[${index}]`,
+    message: `Mapped ${formatSourceName(sourceType)} channel "${name}" to provider "${provider}".`,
+  });
+  if (disabled) {
+    report.manual.push({
+      path: `channels[${index}].status`,
+      message: 'Source channel appears disabled; generated the node for review but routing still includes it.',
+      suggestion: 'Remove the node or routing target if this channel should remain inactive.',
+    });
+  }
+
+  return {
+    index,
+    name,
+    provider,
+    baseUrl,
+    apiKey,
+    models,
+    aliases,
+    weight,
+    disabled,
+    rawType,
+    raw: value,
+  };
+}
+
+function buildNodeFromChannel(
+  channel: NormalizedChannelEntry,
+  sourceType: 'newapi' | 'oneapi',
+  report: MigrationReport,
+): NodeConfig {
+  const defaults = PROVIDERS[channel.provider] || {
+    ...DEFAULT_PROVIDER,
+    apiKeyEnv: `${toEnvPrefix(channel.provider)}_API_KEY`,
+  };
+  const nodeId = uniqueSafeId(`${sourceType}-${channel.name}`, channel.index);
+  const endpoint =
+    stringValue(channel.raw.endpoint) ||
+    stringValue(channel.raw.chat_endpoint) ||
+    defaults.endpoint;
+  const timeoutMs =
+    secondsOrMsToMilliseconds(channel.raw.timeout) ||
+    secondsOrMsToMilliseconds(channel.raw.response_time_out) ||
+    60_000;
+  const chatModels = channel.models.filter((model) => !isEmbeddingModel(model));
+  const embeddingModels = channel.models.filter(isEmbeddingModel);
+
+  const node: NodeConfig = {
+    id: nodeId,
+    name: `${formatSourceName(sourceType)} ${channel.name}`,
+    protocol: defaults.protocol,
+    base_url: channel.baseUrl,
+    endpoint,
+    api_key: channel.apiKey,
+    models: chatModels.length > 0 ? chatModels : channel.models,
+    timeout_ms: timeoutMs,
+  };
+
+  if (defaults.authType) {
+    node.auth_type = defaults.authType;
+  }
+  if (defaults.headers) {
+    node.headers = { ...defaults.headers };
+  }
+  if (Object.keys(channel.aliases).length > 0) {
+    node.model_aliases = channel.aliases;
+  }
+  if (embeddingModels.length > 0) {
+    node.embeddings_endpoint = '/v1/embeddings';
+    node.embedding_models = embeddingModels;
+    report.compatible.push({
+      path: `channels[${channel.index}].models`,
+      message: `Detected ${embeddingModels.length} embedding model(s) for SiftGate embedding routing.`,
+    });
+  }
+  if (channel.provider === 'azure') {
+    report.manual.push({
+      path: `channels[${channel.index}]`,
+      message: 'Azure channel endpoint may need deployment-specific path and api-version review.',
+      suggestion: 'Confirm nodes[].endpoint before production traffic.',
+    });
+  }
+
+  return node;
+}
+
+function exportSiftGateToLiteLlm(
+  config: GatewayConfig,
+  report: MigrationReport,
+): Record<string, unknown> {
+  const modelList: Array<Record<string, unknown>> = [];
+  for (const node of config.nodes) {
+    for (const model of node.models) {
+      const provider = providerFromSiftGateNode(node);
+      const modelName = aliasForModel(node, model) || model;
+      const params: Record<string, unknown> = {
+        model: `${provider}/${model}`,
+        api_key: safeExportedApiKey(node.api_key, node.id, report, `nodes.${node.id}.api_key`),
+        api_base: node.base_url,
+        timeout: Math.round(node.timeout_ms / 1000),
+      };
+      if (provider === 'openai_compatible') {
+        params.custom_llm_provider = 'openai';
+      }
+      const modelInfo: Record<string, unknown> = {};
+      const maxContext =
+        node.model_capabilities?.[model]?.max_context_tokens ||
+        node.max_context_tokens;
+      if (maxContext) {
+        modelInfo.max_input_tokens = maxContext;
+      }
+      modelList.push({
+        model_name: modelName,
+        litellm_params: params,
+        ...(Object.keys(modelInfo).length > 0 ? { model_info: modelInfo } : {}),
+      });
+    }
+  }
+
+  const standardTier = config.routing.tiers.standard || Object.values(config.routing.tiers)[0];
+  const fallbacks = standardTier?.primary
+    ? [{
+        [targetModelName(config, standardTier.primary)]:
+          (standardTier.fallbacks || []).map((target) => targetModelName(config, target)),
+      }]
+    : [];
+  const routingStrategy = mapSiftGateStrategyToLiteLlm(standardTier?.strategy);
+  report.compatible.push({
+    path: 'nodes',
+    message: `Exported ${modelList.length} SiftGate model route(s) to LiteLLM model_list.`,
+  });
+  report.manual.push({
+    path: 'router_settings',
+    message: 'Generated one LiteLLM fallback map from the standard SiftGate tier.',
+    suggestion: 'Review per-tier routing if simple/complex/reasoning differ from standard.',
+  });
+
+  return {
+    model_list: modelList,
+    router_settings: {
+      routing_strategy: routingStrategy,
+      fallbacks,
+      num_retries: config.routing.retry?.max_retries ?? 2,
+    },
+  };
+}
+
+function exportSiftGateToChannelConfig(
+  config: GatewayConfig,
+  targetType: 'newapi' | 'oneapi',
+  report: MigrationReport,
+): Record<string, unknown> {
+  const channels = config.nodes.map((node, index) => {
+    const provider = providerFromSiftGateNode(node);
+    const channelType = providerToChannelType(provider);
+    const key = safeExportedApiKey(node.api_key, node.id, report, `nodes.${node.id}.api_key`);
+    const models = Array.from(
+      new Set([
+        ...node.models,
+        ...(node.embedding_models || []),
+        ...(node.rerank_models || []),
+        ...(node.image_models || []),
+        ...(node.audio_models || []),
+        ...(node.realtime_models || []),
+      ]),
+    );
+    return {
+      id: index + 1,
+      name: node.name || node.id,
+      type: channelType,
+      base_url: node.base_url,
+      key,
+      models: models.join(','),
+      status: 1,
+      weight: 1,
+      ...(node.model_aliases ? { model_mapping: node.model_aliases } : {}),
+    };
+  });
+  report.compatible.push({
+    path: 'nodes',
+    message: `Exported ${channels.length} SiftGate node(s) as ${formatSourceName(targetType)} channel scaffold.`,
+  });
+  report.manual.push({
+    path: 'channels',
+    message: `${formatSourceName(targetType)} export is a declarative scaffold, not a direct database dump.`,
+    suggestion: 'Import through the admin UI or adapt fields to your deployed schema before writing the database.',
+  });
+
+  return { channels };
 }
 
 function normalizeModelEntry(
@@ -660,6 +1176,329 @@ function mapRoutingOptimization(
   return 'balanced';
 }
 
+function extractChannelEntries(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (!isRecord(value)) return [];
+  const candidates = [
+    value.channels,
+    value.data,
+    value.items,
+    value.records,
+    isRecord(value.data) ? value.data.channels : undefined,
+    isRecord(value.data) ? value.data.items : undefined,
+    isRecord(value.data) ? value.data.records : undefined,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  if ('type' in value || 'base_url' in value || 'models' in value) {
+    return [value];
+  }
+  return [];
+}
+
+function channelTypeValue(value: Record<string, unknown>): string | number | undefined {
+  const raw = value.type ?? value.channel_type ?? value.provider ?? value.provider_type;
+  return typeof raw === 'number' || typeof raw === 'string' ? raw : undefined;
+}
+
+function providerFromChannel(
+  rawType: string | number | undefined,
+  value: Record<string, unknown>,
+): string {
+  if (typeof rawType === 'number') {
+    return CHANNEL_TYPE_PROVIDERS[rawType] || inferProviderFromChannelValue(value);
+  }
+  if (typeof rawType === 'string' && rawType.trim().length > 0) {
+    const numeric = Number(rawType);
+    if (Number.isInteger(numeric) && CHANNEL_TYPE_PROVIDERS[numeric]) {
+      return CHANNEL_TYPE_PROVIDERS[numeric];
+    }
+    const normalized = normalizeProvider(rawType);
+    if (normalized === 'claude') return 'anthropic';
+    if (normalized === 'openai_compatible' || normalized === 'custom') return 'openai_compatible';
+    return normalized;
+  }
+  return inferProviderFromChannelValue(value);
+}
+
+function inferProviderFromChannelValue(value: Record<string, unknown>): string {
+  const baseUrl = stringValue(value.base_url) || stringValue(value.baseUrl) || stringValue(value.api_base);
+  const lowered = baseUrl.toLowerCase();
+  if (lowered.includes('anthropic')) return 'anthropic';
+  if (lowered.includes('azure')) return 'azure';
+  if (lowered.includes('groq')) return 'groq';
+  if (lowered.includes('mistral')) return 'mistral';
+  if (lowered.includes('openrouter')) return 'openrouter';
+  if (lowered.includes('perplexity')) return 'perplexity';
+  if (lowered.includes('together')) return 'together_ai';
+  if (lowered.includes('openai')) return 'openai';
+
+  const models = splitModelList(value.models ?? value.model_list ?? value.model_name);
+  const first = models[0] || '';
+  return inferProviderFromModel(first);
+}
+
+function channelBaseUrl(
+  value: Record<string, unknown>,
+  provider: string,
+  defaults: ProviderDefaults,
+  index: number,
+  report: MigrationReport,
+): string {
+  const base =
+    stringValue(value.base_url) ||
+    stringValue(value.baseUrl) ||
+    stringValue(value.api_base) ||
+    stringValue(value.apiBase) ||
+    stringValue(value.url) ||
+    defaults.baseUrl;
+  if (base) return base.replace(/\/+$/, '');
+
+  report.incompatible.push({
+    path: `channels[${index}].base_url`,
+    message: `Provider "${provider}" needs a base URL for SiftGate.`,
+    suggestion: 'Set base_url/api_base or edit nodes[].base_url after migration.',
+  });
+  return `https://${provider}.example.invalid`;
+}
+
+function channelApiKey(
+  value: Record<string, unknown>,
+  provider: string,
+  index: number,
+  report: MigrationReport,
+): string {
+  const raw =
+    stringValue(value.key) ||
+    stringValue(value.api_key) ||
+    stringValue(value.apiKey) ||
+    stringValue(value.token);
+  const envRef = parseEnvReference(raw);
+  if (envRef) {
+    report.compatible.push({
+      path: `channels[${index}].key`,
+      message: `Mapped API key reference to \${${envRef}}.`,
+    });
+    return `\${${envRef}}`;
+  }
+  if (raw) {
+    const fallbackEnv = `${toEnvPrefix(provider)}_CHANNEL_${index + 1}_API_KEY`;
+    report.manual.push({
+      path: `channels[${index}].key`,
+      message: 'Literal channel key values are not copied into generated SiftGate config.',
+      suggestion: `Move the secret to ${fallbackEnv} and set nodes[].api_key to \${${fallbackEnv}}.`,
+    });
+    return `\${${fallbackEnv}}`;
+  }
+
+  const fallbackEnv = `${toEnvPrefix(provider)}_API_KEY`;
+  report.manual.push({
+    path: `channels[${index}].key`,
+    message: `No API key reference found; used provider default \${${fallbackEnv}}.`,
+  });
+  return `\${${fallbackEnv}}`;
+}
+
+function channelModels(
+  value: Record<string, unknown>,
+  aliases: Record<string, string>,
+  index: number,
+  report: MigrationReport,
+): string[] {
+  const models = splitModelList(
+    value.models ??
+      value.model_list ??
+      value.modelList ??
+      value.model_name ??
+      value.model,
+  );
+  for (const mapped of Object.values(aliases)) {
+    if (!models.includes(mapped)) models.push(mapped);
+  }
+  if (models.length > 0) return models;
+
+  report.incompatible.push({
+    path: `channels[${index}].models`,
+    message: 'No model list found for channel.',
+    suggestion: 'Add source channel models or edit nodes[].models after migration.',
+  });
+  return [`review-model-${index + 1}`];
+}
+
+function splitModelList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => splitModelList(item))
+      .filter(Boolean);
+  }
+  if (isRecord(value)) {
+    return Object.keys(value).filter((item) => item.length > 0);
+  }
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseModelMapping(value: unknown): Record<string, string> {
+  const parsed = parsePossiblyJsonObject(value);
+  if (!parsed) return {};
+  const mapping: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(parsed)) {
+    if (typeof raw === 'string' && raw.length > 0) {
+      mapping[key] = raw;
+    }
+  }
+  return mapping;
+}
+
+function parsePossiblyJsonObject(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) return value;
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isEmbeddingModel(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return normalized.includes('embedding') || normalized.includes('embed');
+}
+
+function buildPlaceholderPricing(
+  nodes: NodeConfig[],
+  sourceType: 'newapi' | 'oneapi',
+  report: MigrationReport,
+): GatewayConfig['models_pricing'] {
+  const pricing: GatewayConfig['models_pricing'] = {};
+  for (const node of nodes) {
+    for (const model of [
+      ...node.models,
+      ...(node.embedding_models || []),
+      ...(node.rerank_models || []),
+      ...(node.image_models || []),
+      ...(node.audio_models || []),
+      ...(node.realtime_models || []),
+    ]) {
+      pricing[model] = { input: 0, output: 0 };
+    }
+  }
+  report.manual.push({
+    path: 'models_pricing',
+    message: `${formatSourceName(sourceType)} channel exports do not include authoritative pricing; generated 0.00 placeholders.`,
+    suggestion: 'Set per-1M-token input/output pricing before enforcing budgets or cost routing.',
+  });
+  return pricing;
+}
+
+function normalizeSiftGateConfig(value: unknown): GatewayConfig {
+  if (!isRecord(value) || !Array.isArray(value.nodes) || !isRecord(value.routing)) {
+    throw new Error('SiftGate config must contain nodes[] and routing.');
+  }
+  return value as unknown as GatewayConfig;
+}
+
+function providerFromSiftGateNode(node: NodeConfig): string {
+  const base = node.base_url.toLowerCase();
+  if (node.protocol === 'messages' || base.includes('anthropic')) return 'anthropic';
+  if (base.includes('azure')) return 'azure';
+  if (base.includes('groq')) return 'groq';
+  if (base.includes('mistral')) return 'mistral';
+  if (base.includes('openrouter')) return 'openrouter';
+  if (base.includes('perplexity')) return 'perplexity';
+  if (base.includes('together')) return 'together_ai';
+  if (base.includes('openai.com')) return 'openai';
+  return 'openai_compatible';
+}
+
+function aliasForModel(node: NodeConfig, model: string): string | undefined {
+  if (!node.model_aliases) return undefined;
+  return Object.entries(node.model_aliases).find(([, target]) => target === model)?.[0];
+}
+
+function targetModelName(config: GatewayConfig, target: RouteTarget): string {
+  const node = config.nodes.find((item) => item.id === target.node);
+  return (node && aliasForModel(node, target.model)) || target.model;
+}
+
+function mapSiftGateStrategyToLiteLlm(strategy: LoadBalancingStrategy | undefined): string {
+  if (strategy === 'least_latency') return 'latency-based-routing';
+  if (strategy === 'random') return 'simple-shuffle';
+  return 'simple-shuffle-v2';
+}
+
+function safeExportedApiKey(
+  value: string,
+  nodeId: string,
+  report: MigrationReport,
+  reportPath: string,
+): string {
+  const envRef = parseEnvReference(value);
+  if (envRef) return `\${${envRef}}`;
+  if (!value) return `\${${toEnvPrefix(nodeId)}_API_KEY}`;
+  const fallbackEnv = `${toEnvPrefix(nodeId)}_API_KEY`;
+  report.manual.push({
+    path: reportPath,
+    message: 'Literal provider API keys are not copied into exported config.',
+    suggestion: `Move the secret to ${fallbackEnv} and set the exported key to \${${fallbackEnv}}.`,
+  });
+  return `\${${fallbackEnv}}`;
+}
+
+function providerToChannelType(provider: string): number | string {
+  const entry = Object.entries(CHANNEL_TYPE_PROVIDERS).find(
+    ([, value]) => value === provider,
+  );
+  return entry ? Number(entry[0]) : provider;
+}
+
+function dumpGatewayConfigFromSource(
+  config: GatewayConfig,
+  report: MigrationReport,
+  sourcePath: string,
+  sourceType: MigrationConfigType,
+): string {
+  const header = [
+    '# ============================================================',
+    `# SiftGate configuration generated from ${formatSourceName(sourceType)}`,
+    `# Source: ${sourcePath}`,
+    '# Review the migration report before using in production.',
+    '# ============================================================',
+    '',
+  ].join('\n');
+  return `${header}${yaml.dump(config, {
+    lineWidth: 100,
+    noRefs: true,
+    sortKeys: false,
+  })}${formatYamlReportComment(report)}`;
+}
+
+function dumpTargetConfig(
+  output: unknown,
+  report: MigrationReport,
+  sourcePath: string,
+  targetType: MigrationConfigType,
+): string {
+  const header = [
+    '# ============================================================',
+    `# ${formatSourceName(targetType)} configuration scaffold generated from SiftGate`,
+    `# Source: ${sourcePath}`,
+    '# Review the migration report before importing into another gateway.',
+    '# ============================================================',
+    '',
+  ].join('\n');
+  return `${header}${yaml.dump(output, {
+    lineWidth: 100,
+    noRefs: true,
+    sortKeys: false,
+  })}${formatYamlReportComment(report)}`;
+}
+
 function dumpGatewayConfig(
   config: GatewayConfig,
   report: MigrationReport,
@@ -727,6 +1566,21 @@ function inferProviderFromModel(model: string): string {
   if (normalized.startsWith('gpt') || normalized.startsWith('o')) return 'openai';
   if (normalized.startsWith('azure/')) return 'azure';
   return 'openai_compatible';
+}
+
+function formatSourceName(type: MigrationConfigType): string {
+  switch (type) {
+    case 'litellm':
+      return 'LiteLLM';
+    case 'newapi':
+      return 'New API';
+    case 'oneapi':
+      return 'One API';
+    case 'siftgate':
+      return 'SiftGate';
+    default:
+      return type;
+  }
 }
 
 function normalizeProvider(provider: string): string {

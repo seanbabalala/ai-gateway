@@ -1,0 +1,18 @@
+channels:
+  - id: 1
+    name: OpenAI prod
+    type: openai
+    base_url: https://api.openai.com
+    key: ${OPENAI_API_KEY}
+    models: gpt-4o,gpt-4o-mini,text-embedding-3-small
+    model_mapping:
+      gpt4: gpt-4o
+    weight: 2
+
+  - id: 2
+    name: Claude private
+    type: anthropic
+    base_url: https://api.anthropic.com
+    key: literal-claude-secret
+    models:
+      - claude-sonnet-4-20250514
