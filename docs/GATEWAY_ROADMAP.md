@@ -16,6 +16,46 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.8 | Provider + Media Maturity | 进行中 — Provider/Model Catalog、Add Node、媒体接口生产化 | 🚧 Active |
+
+---
+
+## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）
+
+**v0.8 当前状态**：进入实现阶段。第一项是本地 Provider / Model Catalog 与 update/override CLI，为 Dashboard Add Node、配置校验、多模态路由、价格人工校验和后续兼容性测试矩阵提供统一数据源。默认不联网更新，仍保持单机 memory/SQLite 可用。
+
+### P0：Provider / Model Catalog
+
+#### 1. 本地 Catalog Update / Override CLI
+
+- **状态**：🚧 当前分支实现中（`codex/v0.8-catalog-update-cli`）
+- **目标**：避免用户长期手写过期 provider/model/price 元数据，同时不引入联网更新和企业私有依赖
+- **实现方案**：
+  - 内置静态 provider catalog，覆盖 OpenAI、Anthropic、Google Gemini/Vertex、Azure OpenAI、OpenRouter、Groq、Mistral、DeepSeek、xAI、Cohere、Voyage、Jina、Together、Fireworks、Ollama、vLLM、OpenAI-compatible custom
+  - 支持 `text`、`vision`、`image`、`audio`、`video`、`embedding`、`rerank`、`realtime` 等 modality 元数据
+  - 新增 CLI：`siftgate catalog list/show/validate/export/import`
+  - 支持 `catalog.override.yaml` 覆盖 provider `base_url`、models、pricing、capabilities、limits、endpoints
+  - override 文件禁止 provider API key；校验到疑似 secret 字段/值时输出 error/warning
+  - Dashboard API 读取 built-in + override 合并结果，并标记 `overridden`
+  - Config validation 使用合并后的 catalog 给出 endpoint/model/modality/pricing warning
+  - 第一版不自动抓取官网，不联网更新；价格均带 `source`、`last_updated`、`manual_review_required`
+
+#### 2. Dashboard Add Node Wizard
+
+- **状态**：计划中
+- **目标**：基于 catalog 做 provider preset、model picker、多模态能力配置和 test connection
+- **约束**：仍只保存到开源 Data Plane 本地配置，不接入 Cloud；高级 YAML 能力保留
+
+#### 3. Provider Compatibility Test Matrix
+
+- **状态**：计划中
+- **目标**：让用户在 Dashboard 验证 node 是否真的支持 chat/responses/messages/embeddings/rerank/images/audio/video/realtime
+- **约束**：默认使用最小、低成本、无真实用户内容的 safe test；video/realtime 默认只做 endpoint/auth/capability 探测
+
+### P1：多模态接口生产化
+
+- **Images/Audio hardening**：补齐 variations/translations，统一 JSON/multipart metadata、日志和校验
+- **Video generation async preview**：以 async job 模型支持视频生成，不保存 prompt、源图或视频 bytes
 
 ---
 

@@ -10,6 +10,7 @@ import { CacheModule } from '../cache/cache.module';
 import { AuthModule } from '../auth/auth.module';
 import { ShadowModule } from '../shadow/shadow.module';
 import { CallLog, RouteDecisionLog } from '../database/entities';
+import { CatalogModule } from '../catalog/catalog.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { CallLog, RouteDecisionLog } from '../database/entities';
     CacheModule,
     AuthModule,
     ShadowModule,
+    CatalogModule,
     TypeOrmModule.forFeature([CallLog, RouteDecisionLog]),
   ],
   controllers: [HealthController, DashboardController],

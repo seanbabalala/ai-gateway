@@ -127,6 +127,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
+- **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
@@ -335,6 +336,22 @@ node dist/cli/siftgate.js validate --config gateway.config.yaml
 ```
 
 The validator checks YAML parsing, required sections, node/model naming conflicts, routing/fallback/split/targets references, pricing coverage warnings, environment-reference format, provider key hygiene, and optional `control_plane` safety. Errors return a non-zero exit code; warnings and info are printed without failing the command. See [Config Validation](docs/CONFIG_VALIDATION.md) for CI examples and the issue taxonomy.
+
+### Provider & Model Catalog
+
+SiftGate ships a local provider/model catalog for Dashboard Add Node presets, config warnings, and multimodal routing metadata. It is intentionally static: the gateway does not fetch provider websites or update prices over the network.
+
+Use the catalog CLI to inspect the built-in catalog and manage local overrides:
+
+```bash
+npm run catalog -- list
+npm run catalog -- show openai
+npm run catalog -- export --out ./catalog.merged.yaml
+npm run catalog -- import --file ./catalog.override.yaml
+npm run catalog -- validate
+```
+
+Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate` and `siftgate validate` flag suspicious secret fields and values. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
 
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 

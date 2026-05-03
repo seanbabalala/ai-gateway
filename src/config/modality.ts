@@ -11,6 +11,7 @@ export type Modality =
   | 'vision'
   | 'image'
   | 'audio'
+  | 'video'
   | 'embedding'
   | 'rerank'
   | 'realtime';
@@ -22,6 +23,7 @@ export type CapabilityEndpoint =
   | 'embeddings'
   | 'image'
   | 'audio'
+  | 'video'
   | 'rerank'
   | 'realtime';
 
@@ -29,6 +31,7 @@ export type CapabilityIOType =
   | 'text'
   | 'image'
   | 'audio'
+  | 'video'
   | 'file'
   | 'json'
   | 'embedding'
@@ -41,6 +44,7 @@ export const VALID_MODALITIES: readonly Modality[] = [
   'vision',
   'image',
   'audio',
+  'video',
   'embedding',
   'rerank',
   'realtime',
@@ -53,6 +57,7 @@ export const VALID_CAPABILITY_ENDPOINTS: readonly CapabilityEndpoint[] = [
   'embeddings',
   'image',
   'audio',
+  'video',
   'rerank',
   'realtime',
 ];
@@ -61,6 +66,7 @@ export const VALID_CAPABILITY_IO_TYPES: readonly CapabilityIOType[] = [
   'text',
   'image',
   'audio',
+  'video',
   'file',
   'json',
   'embedding',

@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.8 local provider/model catalog module with built-in provider presets, modality metadata, endpoint hints, limits, and manual-review pricing metadata.
+- `siftgate catalog list/show/validate/export/import` plus `npm run catalog` for managing `catalog.override.yaml` without network updates.
+- Dashboard catalog APIs `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` that return the merged built-in + local override catalog with `overridden` markers.
+- Config validation warnings for catalog endpoint mismatches, unknown models, modality mismatches, manual-review pricing, and secret-like catalog override fields/values.
+
+### Changed
+
+- `gateway.config.yaml` now supports optional `catalog.override_file` while keeping the static built-in catalog as the default.
 
 ## 0.6.1 - 2026-05-03
 

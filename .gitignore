@@ -19,6 +19,8 @@ data/
 # Configuration (contains API keys — only track the example)
 gateway.config.yaml
 !gateway.config.example.yaml
+catalog.override.yaml
+!test/fixtures/catalog/catalog.override.yaml
 
 # Environment
 .env
