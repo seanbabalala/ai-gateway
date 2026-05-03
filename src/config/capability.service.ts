@@ -461,8 +461,12 @@ export class CapabilityService {
     }
 
     const endpoints = modelCapability?.endpoints || {};
-    if (endpoints.image) modalities.add('image');
-    if (endpoints.audio) modalities.add('audio');
+    if (endpoints.image || endpoints.image_edit || endpoints.image_variation) {
+      modalities.add('image');
+    }
+    if (endpoints.audio || endpoints.audio_translation || endpoints.audio_speech) {
+      modalities.add('audio');
+    }
     if (
       endpoints.rerank ||
       modelCapability?.supports_rerank ||

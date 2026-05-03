@@ -119,6 +119,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
         data: [{ url: 'https://example.test/generated.png' }],
       },
       content_type: 'application/json',
+      provider_response_type: 'application/json',
       usage: { input_tokens: 6, output_tokens: 0 },
       model: 'gpt-image-1',
       routing: {
@@ -293,10 +294,28 @@ function makeMediaRequest(
     payload: { model: 'auto', prompt: 'Draw SiftGate' },
     content_type: 'application/json',
     is_multipart: false,
+    media: {
+      media_type: 'image',
+      operation: 'generation',
+      multipart: false,
+      file_count: 0,
+      byte_size: 42,
+      requested_format: null,
+      response_format: null,
+    },
     metadata: {
       source_format: 'image_generation',
       original_model: 'auto',
       raw_headers: {},
+      media: {
+        media_type: 'image',
+        operation: 'generation',
+        multipart: false,
+        file_count: 0,
+        byte_size: 42,
+        requested_format: null,
+        response_format: null,
+      },
     },
     ...overrides,
   };
@@ -2348,6 +2367,10 @@ describe('PipelineService — images and audio', () => {
         node_id: 'openai',
         model: 'gpt-image-1',
         status_code: 200,
+        media_type: 'image',
+        media_operation: 'generation',
+        media_byte_size: 42,
+        media_provider_response_type: 'application/json',
       }),
     );
   });
@@ -2366,6 +2389,7 @@ describe('PipelineService — images and audio', () => {
           id: 'speech-test',
           body: Buffer.from('audio-bytes'),
           content_type: 'audio/mpeg',
+          provider_response_type: 'audio/mpeg',
           usage: { input_tokens: 4, output_tokens: 0 },
           model: 'tts-1',
           routing: {
@@ -2382,10 +2406,28 @@ describe('PipelineService — images and audio', () => {
       model: 'tts-1',
       source_format: 'audio_speech',
       payload: { model: 'tts-1', input: 'hello', voice: 'alloy' },
+      media: {
+        media_type: 'audio',
+        operation: 'speech',
+        multipart: false,
+        file_count: 0,
+        byte_size: 52,
+        requested_format: null,
+        response_format: null,
+      },
       metadata: {
         source_format: 'audio_speech',
         original_model: 'tts-1',
         raw_headers: {},
+        media: {
+          media_type: 'audio',
+          operation: 'speech',
+          multipart: false,
+          file_count: 0,
+          byte_size: 52,
+          requested_format: null,
+          response_format: null,
+        },
       },
     });
 
@@ -2415,6 +2457,7 @@ describe('PipelineService — images and audio', () => {
             id: 'media-fallback',
             body: { data: [{ url: 'https://example.test/fallback.png' }] },
             content_type: 'application/json',
+            provider_response_type: 'application/json',
             usage: { input_tokens: 8, output_tokens: 0 },
             model: 'fallback-image',
             routing: {

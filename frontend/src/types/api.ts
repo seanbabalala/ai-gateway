@@ -58,6 +58,14 @@ export interface CallLog {
   structured_output_strategy?: string | null
   structured_output_supported?: boolean | null
   structured_output_schema_name?: string | null
+  media_type?: string | null
+  media_operation?: string | null
+  media_multipart?: boolean | null
+  media_file_count?: number | null
+  media_byte_size?: number | null
+  media_requested_format?: string | null
+  media_response_format?: string | null
+  media_provider_response_type?: string | null
   session_key: string | null
   error: string | null
   api_key_id?: string | null

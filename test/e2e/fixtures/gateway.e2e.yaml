@@ -25,7 +25,9 @@ nodes:
     realtime_endpoint: /v1/realtime
     images_generations_endpoint: /v1/images/generations
     images_edits_endpoint: /v1/images/edits
+    images_variations_endpoint: /v1/images/variations
     audio_transcriptions_endpoint: /v1/audio/transcriptions
+    audio_translations_endpoint: /v1/audio/translations
     audio_speech_endpoint: /v1/audio/speech
     api_key: mock-openai-key
     models:

@@ -452,10 +452,14 @@ export interface NodeConfig {
   images_generations_endpoint?: string;
   /** Optional OpenAI-compatible image edit endpoint path (default: /v1/images/edits). */
   images_edits_endpoint?: string;
+  /** Optional OpenAI-compatible image variation endpoint path (default: /v1/images/variations). */
+  images_variations_endpoint?: string;
   /** Image-capable model IDs exposed by this node. */
   image_models?: string[];
   /** Optional OpenAI-compatible audio transcription endpoint path (default: /v1/audio/transcriptions). */
   audio_transcriptions_endpoint?: string;
+  /** Optional OpenAI-compatible audio translation endpoint path (default: /v1/audio/translations). */
+  audio_translations_endpoint?: string;
   /** Optional OpenAI-compatible text-to-speech endpoint path (default: /v1/audio/speech). */
   audio_speech_endpoint?: string;
   /** Audio-capable model IDs exposed by this node. */

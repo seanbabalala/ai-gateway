@@ -964,6 +964,10 @@ export class PipelineService {
         'gateway.model': requestedModel,
         'gateway.session_key': canonical.metadata.session_key || '',
         'gateway.stream': false,
+        'gateway.media.type': canonical.media.media_type,
+        'gateway.media.operation': canonical.media.operation,
+        'gateway.media.multipart': canonical.media.multipart,
+        'gateway.media.byte_size': canonical.media.byte_size,
       },
       async (rootSpan) => {
         try {
@@ -1111,6 +1115,7 @@ export class PipelineService {
             retryCount: totalRetries,
             fallbackReason,
             fallbackFromNode,
+            mediaProviderResponseType: response.provider_response_type,
           });
 
           return {
@@ -3823,7 +3828,9 @@ export class PipelineService {
       case 'rerank': return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'image_generation':
       case 'image_edit':
+      case 'image_variation':
       case 'audio_transcription':
+      case 'audio_translation':
       case 'audio_speech':
         return { error: { message, type: 'server_error', code: String(statusCode) } };
       case 'messages': return { type: 'error', error: { type: 'api_error', message } };
@@ -4074,6 +4081,7 @@ export class PipelineService {
     fallbackReason?: FallbackReason | null;
     fallbackFromNode?: string | null;
     routeTrace?: RouteDecisionTrace;
+    mediaProviderResponseType?: string | null;
   }): Promise<void> {
     await this.recordBudgetUsage(
       params.canonical,
@@ -4134,6 +4142,7 @@ export class PipelineService {
     fallbackReason?: FallbackReason | null;
     fallbackFromNode?: string | null;
     routeTrace?: RouteDecisionTrace;
+    mediaProviderResponseType?: string | null;
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model, params.nodeId);
@@ -4142,6 +4151,10 @@ export class PipelineService {
         params.canonical,
         params.nodeId,
         params.model,
+      );
+      const media = this.resolveMediaLogFields(
+        params.canonical,
+        params.mediaProviderResponseType,
       );
 
       const log = this.callLogRepo.create({
@@ -4164,6 +4177,14 @@ export class PipelineService {
           structuredOutput.structured_output_supported,
         structured_output_schema_name:
           structuredOutput.structured_output_schema_name,
+        media_type: media.media_type,
+        media_operation: media.media_operation,
+        media_multipart: media.media_multipart,
+        media_file_count: media.media_file_count,
+        media_byte_size: media.media_byte_size,
+        media_requested_format: media.media_requested_format,
+        media_response_format: media.media_response_format,
+        media_provider_response_type: media.media_provider_response_type,
         session_key: params.canonical.metadata.session_key || null,
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
@@ -4268,6 +4289,44 @@ export class PipelineService {
       structured_output_strategy: forwarding.strategy,
       structured_output_supported: forwarding.supported,
       structured_output_schema_name: forwarding.schema_name,
+    };
+  }
+
+  private resolveMediaLogFields(
+    canonical: LoggableCanonicalRequest,
+    providerResponseType?: string | null,
+  ): {
+    media_type: string | null;
+    media_operation: string | null;
+    media_multipart: boolean | null;
+    media_file_count: number | null;
+    media_byte_size: number | null;
+    media_requested_format: string | null;
+    media_response_format: string | null;
+    media_provider_response_type: string | null;
+  } {
+    if (!('media' in canonical) || !canonical.media) {
+      return {
+        media_type: null,
+        media_operation: null,
+        media_multipart: null,
+        media_file_count: null,
+        media_byte_size: null,
+        media_requested_format: null,
+        media_response_format: null,
+        media_provider_response_type: null,
+      };
+    }
+
+    return {
+      media_type: canonical.media.media_type,
+      media_operation: canonical.media.operation,
+      media_multipart: canonical.media.multipart,
+      media_file_count: canonical.media.file_count,
+      media_byte_size: canonical.media.byte_size,
+      media_requested_format: canonical.media.requested_format || null,
+      media_response_format: canonical.media.response_format || null,
+      media_provider_response_type: providerResponseType || null,
     };
   }
 
@@ -4415,12 +4474,14 @@ export class PipelineService {
     }
     if (
       canonical.metadata.source_format === 'image_generation' ||
-      canonical.metadata.source_format === 'image_edit'
+      canonical.metadata.source_format === 'image_edit' ||
+      canonical.metadata.source_format === 'image_variation'
     ) {
       return ['vision'];
     }
     if (
       canonical.metadata.source_format === 'audio_transcription' ||
+      canonical.metadata.source_format === 'audio_translation' ||
       canonical.metadata.source_format === 'audio_speech'
     ) {
       return ['audio'];

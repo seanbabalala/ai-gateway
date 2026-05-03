@@ -765,6 +765,10 @@ describe('RoutingService — images and audio', () => {
     expect(route.mode).toBe('auto');
     expect(route.primary).toEqual({ node: 'cheap-media', model: 'gpt-image-mini' });
     expect(route.fallbacks[0]).toEqual({ node: 'quality-media', model: 'gpt-image-1' });
+    expect(svc.resolveMediaRoute('image_variation', 'auto').primary).toEqual({
+      node: 'cheap-media',
+      model: 'gpt-image-mini',
+    });
   });
 
   it('should resolve direct audio models and apply target permissions', () => {
@@ -797,5 +801,9 @@ describe('RoutingService — images and audio', () => {
     const route = svc.resolveMediaRoute('audio_transcription', 'auto');
 
     expect(route.primary).toEqual({ node: 'quality-media', model: 'gpt-4o-mini-transcribe' });
+    expect(svc.resolveMediaRoute('audio_translation', 'auto').primary).toEqual({
+      node: 'quality-media',
+      model: 'gpt-4o-mini-transcribe',
+    });
   });
 });

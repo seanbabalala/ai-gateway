@@ -20,7 +20,9 @@ nodes:
     modalities: [text, vision]
     endpoints:
       image: /v1/images/generations
+      image_variation: /v1/images/variations
       audio: /v1/audio/transcriptions
+      audio_translation: /v1/audio/translations
       rerank: /v1/rerank
       realtime: wss://api.openai.com/v1/realtime
     input_types: [text, image, audio]
@@ -46,8 +48,9 @@ Supported `modalities` are `text`, `vision`, `image`, `audio`, `embedding`,
 matches `image` during routing.
 
 Supported endpoint keys are `chat_completions`, `responses`, `messages`,
-`embeddings`, `image`, `audio`, `rerank`, and `realtime`. Values can be relative
-paths or absolute `http(s)` / `ws(s)` URLs.
+`embeddings`, `image`, `image_edit`, `image_variation`, `audio`,
+`audio_translation`, `audio_speech`, `rerank`, and `realtime`. Values can be
+relative paths or absolute `http(s)` / `ws(s)` URLs.
 
 ## Routing Behavior
 

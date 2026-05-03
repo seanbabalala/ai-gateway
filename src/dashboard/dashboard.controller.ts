@@ -742,6 +742,9 @@ export class DashboardController {
       'fallback_reason', 'structured_output_requested',
       'structured_output_type', 'structured_output_strategy',
       'structured_output_supported', 'structured_output_schema_name',
+      'media_type', 'media_operation', 'media_multipart',
+      'media_file_count', 'media_byte_size', 'media_requested_format',
+      'media_response_format', 'media_provider_response_type',
       'api_key_id', 'api_key_name', 'retry_count', 'error', 'namespace_id',
     ];
     const csvRows = [headers.join(',')];
@@ -1247,6 +1250,10 @@ export class DashboardController {
       const modelIds = Array.from(new Set([
         ...node.models,
         ...(node.embedding_models || []),
+        ...(node.rerank_models || []),
+        ...(node.image_models || []),
+        ...(node.audio_models || []),
+        ...(node.realtime_models || []),
       ]));
       const modelCapabilities = Object.fromEntries(
         modelIds.map((model) => [
@@ -1260,6 +1267,13 @@ export class DashboardController {
       const endpoints = {
         default: node.endpoint,
         ...(node.embeddings_endpoint ? { embeddings: node.embeddings_endpoint } : {}),
+        ...(node.rerank_endpoint ? { rerank: node.rerank_endpoint } : {}),
+        ...(node.images_generations_endpoint ? { image_generation: node.images_generations_endpoint } : {}),
+        ...(node.images_edits_endpoint ? { image_edit: node.images_edits_endpoint } : {}),
+        ...(node.images_variations_endpoint ? { image_variation: node.images_variations_endpoint } : {}),
+        ...(node.audio_transcriptions_endpoint ? { audio_transcription: node.audio_transcriptions_endpoint } : {}),
+        ...(node.audio_translations_endpoint ? { audio_translation: node.audio_translations_endpoint } : {}),
+        ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
         ...(node.endpoints || {}),
       };
 
@@ -1293,8 +1307,10 @@ export class DashboardController {
         image_models: node.image_models || [],
         images_generations_endpoint: node.images_generations_endpoint || null,
         images_edits_endpoint: node.images_edits_endpoint || null,
+        images_variations_endpoint: node.images_variations_endpoint || null,
         audio_models: node.audio_models || [],
         audio_transcriptions_endpoint: node.audio_transcriptions_endpoint || null,
+        audio_translations_endpoint: node.audio_translations_endpoint || null,
         audio_speech_endpoint: node.audio_speech_endpoint || null,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
@@ -1570,6 +1586,14 @@ export class DashboardController {
         endpoint: dto.endpoint,
         api_key: dto.api_key,
         models: dto.models,
+        image_models: dto.image_models,
+        images_generations_endpoint: dto.images_generations_endpoint,
+        images_edits_endpoint: dto.images_edits_endpoint,
+        images_variations_endpoint: dto.images_variations_endpoint,
+        audio_models: dto.audio_models,
+        audio_transcriptions_endpoint: dto.audio_transcriptions_endpoint,
+        audio_translations_endpoint: dto.audio_translations_endpoint,
+        audio_speech_endpoint: dto.audio_speech_endpoint,
         realtime_models: dto.realtime_models,
         realtime_endpoint: dto.realtime_endpoint,
         timeout_ms: dto.timeout_ms,

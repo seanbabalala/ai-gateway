@@ -65,8 +65,8 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Anthropic Messages** (`/v1/messages`) — Claude's native format
 - **OpenAI Embeddings** (`/v1/embeddings`) — batch embeddings with dimension-aware routing
 - **Rerank** (`/v1/rerank`) — OpenAI/common compatible rerank ingress with cost-aware routing
-- **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`) — image-capable node routing with JSON and multipart pass-through
-- **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/speech`) — transcription and speech routing with multipart input and binary audio output support
+- **OpenAI Images** (`/v1/images/generations`, `/v1/images/edits`, `/v1/images/variations`) — image-capable node routing with JSON and multipart pass-through
+- **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/speech`) — transcription, translation, and speech routing with multipart input and binary audio output support
 - **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - Full **streaming** support across supported generative protocols
@@ -537,7 +537,9 @@ nodes:
     realtime_endpoint: "/v1/realtime" # Optional experimental realtime WebSocket path or ws/wss URL
     images_generations_endpoint: "/v1/images/generations" # Optional image generation endpoint path
     images_edits_endpoint: "/v1/images/edits" # Optional image edit endpoint path
+    images_variations_endpoint: "/v1/images/variations" # Optional image variation endpoint path
     audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
+    audio_translations_endpoint: "/v1/audio/translations" # Optional translation endpoint path
     audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
@@ -594,7 +596,9 @@ nodes:
     modalities: ["text", "vision"] # legacy image-input alias; compatible with "image"
     endpoints:
       image: "/v1/images/generations"
+      image_variation: "/v1/images/variations"
       audio: "/v1/audio/transcriptions"
+      audio_translation: "/v1/audio/translations"
       rerank: "/v1/rerank"
       realtime: "wss://api.openai.com/v1/realtime"
     input_types: ["text", "image", "audio"]
@@ -930,16 +934,18 @@ curl http://localhost:2099/v1/rerank \
 
 ### Images and Audio
 
-v0.6 adds minimal OpenAI-compatible media ingress for common provider/proxy APIs:
+v0.8 hardens the v0.6 OpenAI-compatible media ingress for production provider/proxy APIs:
 
 | Endpoint | Models selected from | Request body |
 | --- | --- | --- |
 | `POST /v1/images/generations` | `nodes[].image_models` | JSON; multipart is accepted as pass-through |
 | `POST /v1/images/edits` | `nodes[].image_models` | JSON or `multipart/form-data` |
+| `POST /v1/images/variations` | `nodes[].image_models` | JSON or `multipart/form-data`; default strategy is OpenAI-compatible pass-through |
 | `POST /v1/audio/transcriptions` | `nodes[].audio_models` | JSON or `multipart/form-data` |
+| `POST /v1/audio/translations` | `nodes[].audio_models` | JSON or `multipart/form-data` |
 | `POST /v1/audio/speech` | `nodes[].audio_models` | JSON; binary provider responses are returned unchanged |
 
-For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`multipart`, byte size, model), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, or validation. Increase `server.body_limit` if your edit or transcription payloads exceed the default `1mb`.
+For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`media_type`, `operation`, `multipart`, file count, byte size, requested/response format, provider response type), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, compression, or validation. Increase `server.body_limit` if your edit, variation, transcription, or translation payloads exceed the default `1mb`.
 
 ```bash
 curl http://localhost:2099/v1/images/generations \
@@ -1203,7 +1209,9 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/rerank`           | OpenAI/common-compatible rerank format        |
 | `POST` | `/v1/images/generations` | OpenAI Images generation format             |
 | `POST` | `/v1/images/edits`     | OpenAI Images edits format with multipart pass-through |
+| `POST` | `/v1/images/variations` | OpenAI Images variations format with multipart pass-through |
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription format         |
+| `POST` | `/v1/audio/translations` | OpenAI Audio translation format           |
 | `POST` | `/v1/audio/speech`     | OpenAI Audio speech format with binary responses |
 | `WS`   | `/v1/realtime`         | Experimental OpenAI Realtime-style pass-through |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |

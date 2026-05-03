@@ -62,7 +62,9 @@ The gateway accepts the major AI API shapes supported by the open-source Data Pl
 - `POST /v1/rerank`
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
+- `POST /v1/images/variations`
 - `POST /v1/audio/transcriptions`
+- `POST /v1/audio/translations`
 - `POST /v1/audio/speech`
 - `WS /v1/realtime` when the experimental realtime preview is enabled
 

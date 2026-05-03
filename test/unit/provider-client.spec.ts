@@ -55,10 +55,28 @@ function makeMediaCanonical(
     payload: { model: 'gpt-image-1', prompt: 'Draw SiftGate' },
     content_type: 'application/json',
     is_multipart: false,
+    media: {
+      media_type: 'image',
+      operation: 'generation',
+      multipart: false,
+      file_count: 0,
+      byte_size: 48,
+      requested_format: null,
+      response_format: null,
+    },
     metadata: {
       source_format: 'image_generation',
       original_model: 'gpt-image-1',
       raw_headers: {},
+      media: {
+        media_type: 'image',
+        operation: 'generation',
+        multipart: false,
+        file_count: 0,
+        byte_size: 48,
+        requested_format: null,
+        response_format: null,
+      },
     },
     ...overrides,
   };
@@ -579,6 +597,93 @@ describe('ProviderClientService', () => {
         data: [{ url: 'https://example.test/image.png' }],
       });
       expect(result.usage.input_tokens).toBe(7);
+      expect(result.provider_response_type).toBe('application/json');
+    });
+
+    it('should forward image variations and audio translations to their configured endpoints', async () => {
+      const fetchMock = jest.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+        created: 123,
+        data: [{ b64_json: 'ZmFrZQ==' }],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      })));
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        image_models: ['gpt-image-1'],
+        audio_models: ['gpt-4o-mini-transcribe'],
+        images_variations_endpoint: '/v1/images/variations',
+        audio_translations_endpoint: '/v1/audio/translations',
+      });
+
+      await svc.forwardMedia(
+        makeMediaCanonical({
+          source_format: 'image_variation',
+          media: {
+            media_type: 'image',
+            operation: 'variation',
+            multipart: false,
+            file_count: 0,
+            byte_size: 48,
+            requested_format: null,
+            response_format: null,
+          },
+          metadata: {
+            source_format: 'image_variation',
+            original_model: 'gpt-image-1',
+            raw_headers: {},
+            media: {
+              media_type: 'image',
+              operation: 'variation',
+              multipart: false,
+              file_count: 0,
+              byte_size: 48,
+              requested_format: null,
+              response_format: null,
+            },
+          },
+        }),
+        'openai',
+        'gpt-image-1',
+        routingMeta,
+      );
+      await svc.forwardMedia(
+        makeMediaCanonical({
+          model: 'gpt-4o-mini-transcribe',
+          source_format: 'audio_translation',
+          payload: { model: 'gpt-4o-mini-transcribe', response_format: 'json' },
+          media: {
+            media_type: 'audio',
+            operation: 'translation',
+            multipart: false,
+            file_count: 0,
+            byte_size: 58,
+            requested_format: 'json',
+            response_format: 'json',
+          },
+          metadata: {
+            source_format: 'audio_translation',
+            original_model: 'gpt-4o-mini-transcribe',
+            raw_headers: {},
+            media: {
+              media_type: 'audio',
+              operation: 'translation',
+              multipart: false,
+              file_count: 0,
+              byte_size: 58,
+              requested_format: 'json',
+              response_format: 'json',
+            },
+          },
+        }),
+        'openai',
+        'gpt-4o-mini-transcribe',
+        routingMeta,
+      );
+
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.openai.com/v1/images/variations');
+      expect(fetchMock.mock.calls[1][0]).toBe('https://api.openai.com/v1/audio/translations');
     });
 
     it('should return binary audio speech responses with content type', async () => {
@@ -596,10 +701,28 @@ describe('ProviderClientService', () => {
           model: 'tts-1',
           source_format: 'audio_speech',
           payload: { model: 'tts-1', input: 'hello', voice: 'alloy' },
+          media: {
+            media_type: 'audio',
+            operation: 'speech',
+            multipart: false,
+            file_count: 0,
+            byte_size: 52,
+            requested_format: null,
+            response_format: null,
+          },
           metadata: {
             source_format: 'audio_speech',
             original_model: 'tts-1',
             raw_headers: {},
+            media: {
+              media_type: 'audio',
+              operation: 'speech',
+              multipart: false,
+              file_count: 0,
+              byte_size: 52,
+              requested_format: null,
+              response_format: null,
+            },
           },
         }),
         'openai',
@@ -609,6 +732,7 @@ describe('ProviderClientService', () => {
 
       expect(Buffer.isBuffer(result.body)).toBe(true);
       expect(result.content_type).toBe('audio/mpeg');
+      expect(result.provider_response_type).toBe('audio/mpeg');
       expect((result.body as Buffer).toString()).toBe('audio-bytes');
     });
 

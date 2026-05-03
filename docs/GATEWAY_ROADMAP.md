@@ -16,6 +16,27 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.8 | Provider Breadth | 进行中 — Provider / Model Catalog + 生产级多模态入口 | 🚧 In Progress |
+
+---
+
+## v0.8 — Provider Breadth（Provider / Model Catalog + 生产级多模态入口）
+
+**v0.8 当前状态**：Prompt 48 已完成 Images / Audio 生产化增强，目标是把 v0.6 的最小 media pass-through 提升为更完整的 OpenAI-compatible 生产体验。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：Images / Audio 生产化增强
+
+- **状态**：✅ Prompt 48 feature branch 已完成
+- **目标**：补齐 image variations 与 audio translations，统一 media 请求元数据，并让 Dashboard logs 能看懂媒体请求发生了什么
+- **实现方案**：
+  - Images 支持 `/v1/images/generations`、`/v1/images/edits`、`/v1/images/variations`
+  - Audio 支持 `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech`
+  - JSON 与 `multipart/form-data` 都沿用 pass-through；不做本地图像/音频解析、转码、剪辑、压缩或内容保存
+  - Canonical media metadata 记录 `media_type`、`operation`、`multipart`、`file_count`、`byte_size`、`requested_format`、`response_format`
+  - Provider response 只记录安全的 content type 摘要，用于 Dashboard logs、CSV/JSON export、log sink 和可选 telemetry
+  - 新增 `images_variations_endpoint` 与 `audio_translations_endpoint` 配置项，兼容 OpenAI-compatible upstream/proxy
+  - API key、namespace、budget、rate limit、fallback、call_log、telemetry 继续复用现有 Data Plane 管线
+  - Config validation 校验 media endpoint path、model bucket、`max_file_size` 与 pricing 诊断
 
 ---
 

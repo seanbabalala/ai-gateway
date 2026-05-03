@@ -78,6 +78,30 @@ export class CallLog {
   structured_output_schema_name!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
+  media_type!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_operation!: string | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  media_multipart!: boolean | null;
+
+  @Column({ type: 'integer', nullable: true })
+  media_file_count!: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  media_byte_size!: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_requested_format!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_response_format!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  media_provider_response_type!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
   session_key!: string | null;
 
   @Column({ type: 'text', nullable: true })
