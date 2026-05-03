@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.8 multimodal route decision evidence for image, audio, rerank, embedding, and future video-style requests.
+- Route Decision Trace `modality_evidence` and per-candidate `capability_evidence` covering requested modality, input/output types, file count, byte size, required capabilities, capability/file-size filters, endpoint strategy/status, pricing source, and catalog source.
+- Dashboard Route Explanation capability badges, endpoint status, pricing/catalog source badges, and 7-language localization for the new read-only evidence.
+- Unit coverage for routing trace evidence, pipeline trace persistence, and Dashboard route decision API shape.
 
 ## 0.6.1 - 2026-05-03
 

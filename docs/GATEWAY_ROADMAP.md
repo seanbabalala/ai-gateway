@@ -16,6 +16,25 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.8 | Provider + Multimodal Ops | 开发中 — provider/model catalog、媒体接口生产化、多模态路由证据 | 🚧 In Progress |
+
+---
+
+## v0.8 — Provider + Multimodal Ops（Provider 目录 + 多模态运维体验）
+
+**当前开发状态**：v0.8 继续补齐多 provider、多模型和多模态生产运维体验。Prompt 52 已加入多模态 Route Explanation evidence，让 image/audio/video/rerank/embedding 请求可以解释为什么某个模型被选择或过滤。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### 多模态路由证据
+
+- **状态**：🚧 已在当前开发分支实现
+- **目标**：增强 Route Decision Trace，让多模态请求不只展示最终 node/model，还能解释 capability、endpoint、文件大小和价格来源如何影响候选模型
+- **实现方案**：
+  - Trace 增加 `modality_evidence`：`requested_modality`、`input_types`、`output_types`、`file_count`、`byte_size`、`required_capabilities`、`endpoint_strategy`
+  - Candidate 增加 `capability_evidence`：supported modalities、matched/missing capabilities、endpoint status、max file size、pricing source、catalog source
+  - image/audio/rerank/embedding 请求写入 evidence；video 字段按 preview/后续入口预留，不保存视频 bytes 或源文件内容
+  - Dashboard Route Explanation 候选表展示 capability badges、endpoint status、pricing source、catalog source
+  - 所有新增 Dashboard 文案同步 7 语言 localization
+  - 不保存 prompt、response、文件内容、raw headers、provider keys
 
 ---
 

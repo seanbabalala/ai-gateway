@@ -368,6 +368,17 @@ describe('DashboardController — route decisions', () => {
       estimated_context_tokens: 112,
       requires_structured_output: false,
     },
+    modality_evidence: {
+      requested_modality: 'image',
+      input_types: ['text'],
+      output_types: ['image'],
+      file_count: 1,
+      byte_size: 2048,
+      required_capabilities: ['image'],
+      endpoint_strategy: 'image_generation',
+      filtered_by_capability: [],
+      filtered_by_file_size: [],
+    },
     candidate_targets: [
       {
         node: 'openai',
@@ -387,6 +398,25 @@ describe('DashboardController — route decisions', () => {
           max_context_tokens: 128000,
           context_fit: 'safe',
           structured_output: true,
+        },
+        capability_evidence: {
+          requested_modality: 'image',
+          supported_modalities: ['text', 'vision', 'image'],
+          input_types: ['text', 'image'],
+          output_types: ['image'],
+          required_capabilities: ['image'],
+          matched_capabilities: ['image'],
+          missing_capabilities: [],
+          endpoint_strategy: 'image_generation',
+          endpoint_status: 'default',
+          endpoint: '/v1/images/generations',
+          file_count: 1,
+          byte_size: 2048,
+          max_file_size: 10_000_000,
+          filtered_by_capability: false,
+          filtered_by_file_size: false,
+          pricing_source: 'config',
+          catalog_source: 'config',
         },
       },
     ],
@@ -501,6 +531,10 @@ describe('DashboardController — route decisions', () => {
       where: { request_id: 'req-1' },
     });
     expect(result.trace).toMatchObject({
+      modality_evidence: {
+        requested_modality: 'image',
+        byte_size: 2048,
+      },
       candidate_targets: expect.any(Array),
       privacy: {
         prompt: false,

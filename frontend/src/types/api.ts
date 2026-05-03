@@ -107,6 +107,25 @@ export interface RouteDecisionCandidate {
     context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown'
     structured_output: boolean | null
   }
+  capability_evidence?: {
+    requested_modality: string | null
+    supported_modalities: string[]
+    input_types: string[]
+    output_types: string[]
+    required_capabilities: string[]
+    matched_capabilities: string[]
+    missing_capabilities: string[]
+    endpoint_strategy: string | null
+    endpoint_status: string
+    endpoint: string | null
+    file_count: number | null
+    byte_size: number | null
+    max_file_size: number | null
+    filtered_by_capability: boolean
+    filtered_by_file_size: boolean
+    pricing_source: string | null
+    catalog_source: string | null
+  }
 }
 
 export interface RouteDecisionFilter {
@@ -139,6 +158,31 @@ export interface RouteDecisionTrace {
     estimated_output_tokens: number | null
     estimated_context_tokens: number | null
     requires_structured_output: boolean
+  }
+  modality_evidence?: {
+    requested_modality: string | null
+    input_types: string[]
+    output_types: string[]
+    file_count: number | null
+    byte_size: number | null
+    required_capabilities: string[]
+    endpoint_strategy: string | null
+    filtered_by_capability: Array<{
+      node: string
+      model: string
+      reason: string
+      missing_capabilities?: string[]
+      byte_size?: number | null
+      max_file_size?: number | null
+    }>
+    filtered_by_file_size: Array<{
+      node: string
+      model: string
+      reason: string
+      missing_capabilities?: string[]
+      byte_size?: number | null
+      max_file_size?: number | null
+    }>
   }
   candidate_targets: RouteDecisionCandidate[]
   filters: RouteDecisionFilter[]
