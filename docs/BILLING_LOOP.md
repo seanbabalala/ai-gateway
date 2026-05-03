@@ -94,7 +94,7 @@ Anthropic Messages-style endpoints return the same details under:
 
 ## Pricing Gaps
 
-If a model has no `models_pricing` entry, routing is allowed and tokens are still logged. Cost is recorded as `0` until pricing is configured, and diagnostics should surface the missing pricing entry.
+If a model has no node/model pricing override, no `models_pricing` entry, and no enabled catalog pricing fallback, routing is allowed and tokens are still logged. Cost is recorded as `0` until pricing is configured, and diagnostics should surface the missing pricing or unknown-catalog entry.
 
 ## Verification
 

@@ -16,6 +16,38 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 模型目录 + 价格元数据 + 灰度决策增强 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（路由决策智能 + 生产采纳）
+
+**v0.7 当前状态**：Prompt 37 已完成功能分支，实现本地内置 Model Catalog、可选远端刷新、价格新鲜度诊断、能力冲突诊断和只读 Dashboard 目录页。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud/远端目录都只作为可选能力。
+
+### P0：Model Catalog + Pricing Metadata
+
+- **状态**：✅ Prompt 37 功能分支完成，等待合并/发布
+- **目标**：降低手写 YAML 价格和能力元数据过期的风险，让成本路由、上下文窗口路由、Explainable Routing 和后续 Shadow 对比报告有更可靠的模型事实基础
+- **边界**：
+  - 内置目录只作为 fallback metadata，不覆盖 `gateway.config.yaml`
+  - 用户显式配置的 `nodes[].model_capabilities`、`models_pricing`、node/model capability 永远优先
+  - 远端目录刷新默认关闭，只允许显式配置可信 URL，异步刷新，不阻塞请求路径
+  - 不依赖 SiftGate Cloud，不引入企业版私有依赖
+- **实现方案**：
+  - 新增 `model_catalog.enabled`、`pricing_max_age_days`、`remote.enabled/url/timeout_ms/refresh_interval_hours`
+  - 内置常见 OpenAI、Anthropic、Google、Cohere、Embedding、Image、Audio、Rerank、Realtime 模型元数据
+  - `ConfigService.getModelPricing()` 在显式配置缺失时使用 catalog fallback
+  - `CapabilityService` 使用 catalog fallback 补齐 modality、endpoint、context、structured output、pricing、quality hints
+  - Config validation / Dashboard diagnostics 标记未知模型、价格过期、缺少 context、能力声明冲突、远端刷新失败
+  - Dashboard 新增只读 Model Catalog 页面，沿用 7 语言本地化，不允许应用配置
+
+### 后续 v0.7 候选
+
+- Shadow Traffic 对比报告：成功率、延迟差、成本差、输出质量评估
+- 路由决策解释增强：把 catalog price/context/capability 证据直接挂到 Route Explanation
+- Helm chart / K8s manifests：让 Redis/Postgres/cluster 模式更容易落地
+- Secret manager 支持：Vault/AWS Secrets/GCP Secret Manager
+- 本地审计日志和配置版本回滚
 
 ---
 
@@ -352,7 +384,7 @@
 - **实现方案**：
   - 超时 fallback：可配置 `threshold_ms`，默认顺序 abort-and-fallback；`race_fallback` 必须显式开启并声明阈值
   - 内容 fallback：OpenAI `response_format` / Responses `text.format` 结构化输出 JSON parse 或 schema 校验失败时切换 fallback
-  - 成本 fallback：基于本地 token 粗估与 `models_pricing`，超过 `max_estimated_cost_usd` 时降级到更便宜 fallback
+  - 成本 fallback：基于本地 token 粗估与 `model_capabilities`、`models_pricing` 或 v0.7 catalog fallback 价格，超过 `max_estimated_cost_usd` 时降级到更便宜 fallback
   - 限流 fallback：收到 429 可配置立即切换，不等待同节点 retry
   - Stream 请求保持保守：只在连接阶段 fallback，SSE 已开始后不因内容校验改道
   - `call_logs`、Dashboard、OpenTelemetry 与可选控制面 telemetry 记录 `fallback_reason`

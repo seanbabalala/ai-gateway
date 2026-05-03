@@ -10,7 +10,8 @@
     "i18n:check": "node scripts/check-i18n.mjs",
     "routing:check": "node scripts/check-dev-routing.mjs",
     "route-explanation:check": "node scripts/check-route-explanation.mjs",
-    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check",
+    "model-catalog:check": "node scripts/check-model-catalog.mjs",
+    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check && npm run model-catalog:check",
     "preview": "vite preview"
   },
   "dependencies": {

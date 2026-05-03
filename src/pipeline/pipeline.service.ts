@@ -2846,7 +2846,7 @@ export class PipelineService {
 
     const estimates = allTargets.map((target) => ({
       target,
-      estimatedCost: this.estimateRequestCostUsd(canonical, target.model),
+      estimatedCost: this.estimateRequestCostUsd(canonical, target.model, target.node),
     }));
     const primaryEstimate = estimates[0].estimatedCost;
     if (
@@ -2885,8 +2885,9 @@ export class PipelineService {
   private estimateRequestCostUsd(
     canonical: CanonicalRequest,
     model: string,
+    nodeId?: string,
   ): number | null {
-    const pricing = this.config.getModelPricing(model);
+    const pricing = this.resolveModelPricing(model, nodeId);
     if (!pricing) return null;
     const estimatedInputTokens = this.estimateRequestTokens(canonical);
     const estimatedOutputTokens = canonical.max_tokens ?? 1024;
@@ -3327,7 +3328,7 @@ export class PipelineService {
             target.node,
             target.model,
           ) || {};
-        const pricing = this.config.getModelPricing(target.model, target.node);
+        const pricing = this.resolveModelPricing(target.model, target.node);
         const estimatedCost =
           pricing && tokenEstimate
             ? this.calculateCost(
@@ -4028,7 +4029,7 @@ export class PipelineService {
     model: string,
     nodeId?: string,
   ): Promise<{ totalTokens: number; costUsd: number }> {
-    const pricing = this.config.getModelPricing(model, nodeId);
+    const pricing = this.resolveModelPricing(model, nodeId);
     const costUsd = this.calculateCost(usage, pricing);
     const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
 
@@ -4106,6 +4107,16 @@ export class PipelineService {
   // Cost Calculation (cache-aware)
   // ══════════════════════════════════════════════════════
 
+  private resolveModelPricing(model: string, nodeId?: string): ModelPricing | undefined {
+    if (nodeId) {
+      const capabilityPricing = this.capabilityService
+        .resolveModelRoutingCapabilities(nodeId, model)
+        .pricing;
+      if (capabilityPricing) return capabilityPricing;
+    }
+    return this.config.getModelPricing(model, nodeId);
+  }
+
   private calculateCost(usage: TokenUsage, pricing?: ModelPricing): number {
     if (!pricing) return 0;
     const cacheCreate = usage.cache_creation_input_tokens || 0;
@@ -4136,7 +4147,7 @@ export class PipelineService {
     routeTrace?: RouteDecisionTrace;
   }): Promise<void> {
     try {
-      const pricing = this.config.getModelPricing(params.model, params.nodeId);
+      const pricing = this.resolveModelPricing(params.model, params.nodeId);
       const costUsd = this.calculateCost(params.usage, pricing);
       const structuredOutput = this.resolveStructuredOutputLogFields(
         params.canonical,

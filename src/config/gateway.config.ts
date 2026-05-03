@@ -55,6 +55,9 @@ export interface GatewayConfig {
   /** Optional async shadow traffic mirror — disabled by default */
   shadow?: ShadowTrafficConfig;
 
+  /** Optional v0.7 model catalog metadata — built-in catalog is local, remote refresh is opt-in */
+  model_catalog?: ModelCatalogConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
 }
@@ -359,6 +362,27 @@ export interface ShadowTrafficConfig {
   max_recent_results?: number;
   /** Explicit comparison storage opt-in. Defaults keep prompt/response out. */
   compare?: ShadowTrafficCompareConfig;
+}
+
+// ===== Model Catalog =====
+export interface ModelCatalogRemoteConfig {
+  /** Explicit opt-in remote catalog refresh. Disabled by default. */
+  enabled?: boolean;
+  /** HTTPS endpoint returning a SiftGate catalog JSON document. */
+  url?: string;
+  /** Fetch timeout in milliseconds (default: 5000). */
+  timeout_ms?: number;
+  /** Optional background refresh interval in hours. Omit for startup-only refresh. */
+  refresh_interval_hours?: number;
+}
+
+export interface ModelCatalogConfig {
+  /** Use the built-in local catalog as fallback metadata (default: true). */
+  enabled?: boolean;
+  /** Warn when catalog pricing metadata is older than this many days (default: 90). */
+  pricing_max_age_days?: number;
+  /** Optional remote catalog update source. Remote data never rewrites gateway.config.yaml. */
+  remote?: ModelCatalogRemoteConfig;
 }
 
 // ===== Node (AI Provider) =====

@@ -71,6 +71,10 @@ hardening visible without blocking local development.
   `messages`, `embeddings`, `image`, `audio`, `rerank`, and `realtime`,
   non-empty `input_types` / `output_types`, positive `max_file_size`, and
   boolean `supports_streaming`, `supports_realtime`, and `supports_rerank`.
+- v0.7 `model_catalog` shape, including boolean enablement, positive
+  `pricing_max_age_days`, opt-in remote URL/timeout/refresh settings, HTTPS
+  warnings outside localhost, and catalog diagnostics for unknown models,
+  stale pricing, missing context windows, and capability conflicts.
 - `cache` shape, including positive TTL/entry limits and explicit
   `cache.stream_cache.enabled` boolean validation.
 - Optional `embedding_batching` shape, including boolean enablement and

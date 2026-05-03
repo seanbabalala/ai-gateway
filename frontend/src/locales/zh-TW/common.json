@@ -27,6 +27,7 @@
   "nav.experiments": "實驗",
   "nav.logs": "記錄",
   "nav.manage": "管理",
+  "nav.modelCatalog": "模型目錄",
   "nav.monitor": "監控",
   "nav.nodes": "節點",
   "nav.routeExplanation": "路由解釋",

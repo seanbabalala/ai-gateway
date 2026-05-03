@@ -27,6 +27,7 @@
   "nav.experiments": "실험",
   "nav.logs": "로그",
   "nav.manage": "관리",
+  "nav.modelCatalog": "모델 카탈로그",
   "nav.monitor": "모니터링",
   "nav.nodes": "노드",
   "nav.routeExplanation": "경로 설명",

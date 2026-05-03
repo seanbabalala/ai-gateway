@@ -127,6 +127,22 @@ The data plane protects request flow with:
 - body size limits
 - dashboard health and node status
 
+### Model Catalog Metadata
+
+The v0.7 model catalog is a local metadata layer, not a control plane. It ships
+with a small built-in catalog of public model pricing, context windows,
+modalities, endpoint support, dimensions, structured-output flags, streaming
+flags, and quality hints. Operators can optionally configure a trusted remote
+catalog JSON URL for background refreshes, but remote refresh is disabled by
+default and never rewrites `gateway.config.yaml`.
+
+Routing and diagnostics use catalog data only when user config is silent.
+Explicit `nodes[].model_capabilities`, node-level capability fields, and
+`models_pricing` are the source of truth. This keeps the single-node
+memory/SQLite deployment self-contained while giving cost routing,
+context-window filtering, Route Explanation, and Dashboard diagnostics better
+fallback evidence.
+
 ### Observability
 
 The gateway records call logs with:

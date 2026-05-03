@@ -272,6 +272,9 @@ export interface NodeInfo {
   models: string[]
   embedding_models?: string[]
   rerank_models?: string[]
+  image_models?: string[]
+  audio_models?: string[]
+  realtime_models?: string[]
   capabilities: string[]
   modalities: string[]
   model_capabilities?: Record<string, ModelCapabilityInfo>
@@ -299,6 +302,12 @@ export interface ModelCapabilityInfo {
   dimensions?: number | number[]
   pricing?: ModelPricing
   quality_score?: number
+  catalog?: {
+    provider: string
+    source: 'builtin' | 'remote'
+    last_updated_at: string
+    matched: boolean
+  }
 }
 
 export type ConfigDiagnosticCode =
@@ -309,6 +318,10 @@ export type ConfigDiagnosticCode =
   | 'duplicate_alias'
   | 'duplicate_model_prefix'
   | 'missing_model_pricing'
+  | 'catalog_unknown_model'
+  | 'catalog_pricing_stale'
+  | 'catalog_missing_context'
+  | 'catalog_capability_conflict'
   | 'route_references_unknown_node'
   | 'route_references_unknown_model'
   | 'split_overrides_targets'
@@ -328,6 +341,59 @@ export interface ConfigDiagnostic {
 export interface NodesResponse {
   nodes: NodeInfo[]
   diagnostics: ConfigDiagnostic[]
+}
+
+// ── Model Catalog ──
+
+export interface ModelCatalogEntry {
+  provider: string
+  model: string
+  aliases?: string[]
+  modalities: string[]
+  endpoints: string[]
+  input_types?: string[]
+  output_types?: string[]
+  max_context_tokens?: number
+  max_file_size?: number
+  structured_output?: boolean
+  supports_streaming?: boolean
+  supports_realtime?: boolean
+  supports_rerank?: boolean
+  dimensions?: number | number[]
+  pricing?: ModelPricing
+  quality_hint?: number
+  last_updated_at: string
+  source?: 'builtin' | 'remote'
+}
+
+export interface ModelCatalogDiagnostic {
+  severity: 'warning' | 'info'
+  code:
+    | 'catalog_unknown_model'
+    | 'catalog_pricing_stale'
+    | 'catalog_missing_context'
+    | 'catalog_capability_conflict'
+    | 'catalog_remote_disabled'
+    | 'catalog_remote_failed'
+  message: string
+  node?: string
+  model?: string
+  provider?: string | null
+  path?: string
+}
+
+export interface ModelCatalogResponse {
+  enabled: boolean
+  source: {
+    builtin_models: number
+    remote_models: number
+    remote_enabled: boolean
+    remote_url: string | null
+    last_refresh_at: string | null
+    last_refresh_error: string | null
+  }
+  models: ModelCatalogEntry[]
+  diagnostics: ModelCatalogDiagnostic[]
 }
 
 // ── Health ──

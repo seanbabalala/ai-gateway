@@ -38,6 +38,7 @@ import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
+import { ModelCatalogService } from '../config/model-catalog.service';
 import { RoutingService } from '../routing/routing.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
@@ -98,6 +99,9 @@ export class DashboardController {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    @Optional()
+    @Inject(ModelCatalogService)
+    private readonly modelCatalog?: ModelCatalogService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -1173,6 +1177,29 @@ export class DashboardController {
     return { recommendations: this.capabilityService.recommendRouting() };
   }
 
+  /** Read-only v0.7 model catalog metadata and diagnostics */
+  @Get('model-catalog')
+  @ApiOperation({ summary: 'List local model catalog metadata and diagnostics' })
+  @ApiOkResponse({ description: 'Read-only model catalog entries and config diagnostics.' })
+  getModelCatalog() {
+    if (this.modelCatalog) {
+      return this.modelCatalog.getStatus();
+    }
+    return {
+      enabled: false,
+      source: {
+        builtin_models: 0,
+        remote_models: 0,
+        remote_enabled: false,
+        remote_url: null,
+        last_refresh_at: null,
+        last_refresh_error: null,
+      },
+      models: [],
+      diagnostics: [],
+    };
+  }
+
   /** Read-only adaptive routing recommendations from local sliding-window metrics */
   @Get('routing/recommendations')
   getAdaptiveRoutingRecommendations(
@@ -1247,6 +1274,10 @@ export class DashboardController {
       const modelIds = Array.from(new Set([
         ...node.models,
         ...(node.embedding_models || []),
+        ...(node.rerank_models || []),
+        ...(node.image_models || []),
+        ...(node.audio_models || []),
+        ...(node.realtime_models || []),
       ]));
       const modelCapabilities = Object.fromEntries(
         modelIds.map((model) => [

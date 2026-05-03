@@ -220,6 +220,7 @@ export function validateConfigObject(
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
   validateCluster(config.cluster, config.state, issues);
+  validateModelCatalog(config.model_catalog, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
@@ -3640,6 +3641,126 @@ function validatePricingEntry(
       );
     }
   }
+}
+
+function validateModelCatalog(
+  catalog: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (catalog === undefined) return;
+  if (!isRecord(catalog)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_model_catalog_config',
+        'model_catalog must be an object when set.',
+        'model_catalog',
+      ),
+    );
+    return;
+  }
+
+  if (catalog.enabled !== undefined && !isBoolean(catalog.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_model_catalog_config',
+        'model_catalog.enabled must be a boolean when set.',
+        'model_catalog.enabled',
+      ),
+    );
+  }
+
+  if (
+    catalog.pricing_max_age_days !== undefined &&
+    (!isFiniteNumber(catalog.pricing_max_age_days) ||
+      catalog.pricing_max_age_days < 1)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_model_catalog_config',
+        'model_catalog.pricing_max_age_days must be a positive number of days.',
+        'model_catalog.pricing_max_age_days',
+      ),
+    );
+  }
+
+  if (catalog.remote === undefined) return;
+  if (!isRecord(catalog.remote)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_model_catalog_config',
+        'model_catalog.remote must be an object when set.',
+        'model_catalog.remote',
+      ),
+    );
+    return;
+  }
+
+  const remote = catalog.remote;
+  if (remote.enabled !== undefined && !isBoolean(remote.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_model_catalog_config',
+        'model_catalog.remote.enabled must be a boolean when set.',
+        'model_catalog.remote.enabled',
+      ),
+    );
+  }
+  if (remote.enabled === true && !isNonEmptyString(remote.url)) {
+    issues.push(
+      issue(
+        'error',
+        'missing_model_catalog_remote_url',
+        'model_catalog.remote.url is required when remote.enabled is true.',
+        'model_catalog.remote.url',
+      ),
+    );
+  }
+  if (remote.url !== undefined) {
+    if (!isNonEmptyString(remote.url)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_model_catalog_remote_url',
+          'model_catalog.remote.url must be a non-empty HTTPS URL.',
+          'model_catalog.remote.url',
+        ),
+      );
+    } else if (!containsEnvReference(remote.url)) {
+      const url = validateHttpUrl(
+        remote.url,
+        'model_catalog.remote.url',
+        'invalid_model_catalog_remote_url',
+        issues,
+      );
+      if (url && url.protocol !== 'https:' && !isLocalhostUrl(url)) {
+        issues.push(
+          issue(
+            'warning',
+            'insecure_model_catalog_remote_url',
+            'model_catalog.remote.url should use HTTPS outside localhost.',
+            'model_catalog.remote.url',
+          ),
+        );
+      }
+    }
+  }
+  validatePositiveNumber(
+    remote.timeout_ms,
+    'model_catalog.remote.timeout_ms',
+    'invalid_model_catalog_config',
+    issues,
+  );
+  validatePositiveNumber(
+    remote.refresh_interval_hours,
+    'model_catalog.remote.refresh_interval_hours',
+    'invalid_model_catalog_config',
+    issues,
+  );
 }
 
 function validateControlPlane(

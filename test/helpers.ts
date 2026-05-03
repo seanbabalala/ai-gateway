@@ -77,6 +77,16 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
     setDashboardPasswordHash: jest.fn(),
     nodes: [],
     routing: { tiers: {}, scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 } },
+    modelCatalog: {
+      enabled: true,
+      pricing_max_age_days: 90,
+      remote: {
+        enabled: false,
+        url: undefined,
+        timeout_ms: 5000,
+        refresh_interval_hours: undefined,
+      },
+    },
     fallbackPolicy: {
       immediate_429: false,
       timeout: { enabled: false, threshold_ms: undefined, race_fallback: false },

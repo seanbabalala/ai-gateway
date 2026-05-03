@@ -1,4 +1,14 @@
 import type { GatewayConfig, NodeConfig } from './gateway.config';
+import {
+  catalogEntrySupportsPurpose,
+  configuredModelIds,
+  configuredModelPurposes,
+  hasUserModelCapability,
+  inferProviderFromNode,
+  isPricingStale,
+  lookupBuiltInCatalogEntry,
+  userModelCapability,
+} from './model-catalog';
 
 export type ConfigDiagnosticSeverity = 'warning';
 
@@ -10,6 +20,10 @@ export type ConfigDiagnosticCode =
   | 'duplicate_alias'
   | 'duplicate_model_prefix'
   | 'missing_model_pricing'
+  | 'catalog_unknown_model'
+  | 'catalog_pricing_stale'
+  | 'catalog_missing_context'
+  | 'catalog_capability_conflict'
   | 'route_references_unknown_node'
   | 'route_references_unknown_model'
   | 'split_overrides_targets';
@@ -63,6 +77,16 @@ function hasNodeModelPricing(node: PartialNodeConfig | undefined, model: string)
   if (!node || !isRecord(node.model_capabilities)) return false;
   const modelCapability = node.model_capabilities[model];
   return isRecord(modelCapability) && isRecord(modelCapability.pricing);
+}
+
+function hasCatalogPricingFor(
+  config: PartialGatewayConfig,
+  node: PartialNodeConfig | undefined,
+  model: string,
+): boolean {
+  if (config.model_catalog?.enabled === false) return false;
+  const provider = inferProviderFromNode(node as Partial<NodeConfig> | undefined);
+  return Boolean(lookupBuiltInCatalogEntry(model, { provider })?.pricing);
 }
 
 /**
@@ -212,7 +236,8 @@ export function buildNodeModelDiagnostics(
   for (const [model, owners] of modelOwners.entries()) {
     const ownersMissingPricing = owners.filter((owner) =>
       !hasTopLevelPricingFor(config, model) &&
-      !hasNodeModelPricing(nodeById.get(owner), model),
+      !hasNodeModelPricing(nodeById.get(owner), model) &&
+      !hasCatalogPricingFor(config, nodeById.get(owner), model),
     );
     if (ownersMissingPricing.length > 0) {
       diagnostics.push({
@@ -222,6 +247,91 @@ export function buildNodeModelDiagnostics(
         nodes: ownersMissingPricing,
         model,
       });
+    }
+  }
+
+  if (config.model_catalog?.enabled !== false) {
+    const pricingMaxAgeDays = Number(config.model_catalog?.pricing_max_age_days ?? 90);
+    for (const node of nodes) {
+      if (!isNonEmptyString(node.id)) continue;
+      const provider = inferProviderFromNode(node as Partial<NodeConfig>);
+      for (const model of configuredModelIds(node as Partial<NodeConfig>)) {
+        const entry = lookupBuiltInCatalogEntry(model, { provider });
+        if (!entry) {
+          if (!hasUserModelCapability(node as Partial<NodeConfig>, model)) {
+            diagnostics.push({
+              severity: 'warning',
+              code: 'catalog_unknown_model',
+              message: `Model "${model}" is not present in the built-in model catalog. Add model_capabilities metadata if this is a private or proxy-only model.`,
+              nodes: [node.id],
+              model,
+            });
+          }
+          continue;
+        }
+
+        for (const purpose of configuredModelPurposes(node as Partial<NodeConfig>, model)) {
+          if (!catalogEntrySupportsPurpose(entry, purpose)) {
+            diagnostics.push({
+              severity: 'warning',
+              code: 'catalog_capability_conflict',
+              message: `Model "${model}" is listed for ${purpose} traffic on node "${node.id}", but the catalog entry does not advertise that endpoint/modality.`,
+              nodes: [node.id],
+              model,
+            });
+          }
+        }
+
+        const capability = userModelCapability(node as Partial<NodeConfig>, model);
+        if (
+          capability?.structured_output !== undefined &&
+          entry.structured_output !== undefined &&
+          capability.structured_output !== entry.structured_output
+        ) {
+          diagnostics.push({
+            severity: 'warning',
+            code: 'catalog_capability_conflict',
+            message: `Model "${model}" structured_output=${capability.structured_output} conflicts with built-in catalog structured_output=${entry.structured_output}. User config wins.`,
+            nodes: [node.id],
+            model,
+          });
+        }
+
+        const purposes = configuredModelPurposes(node as Partial<NodeConfig>, model);
+        const hasExplicitContext =
+          capability?.max_context_tokens !== undefined ||
+          typeof node.max_context_tokens === 'number';
+        if (
+          purposes.includes('chat') &&
+          !hasExplicitContext &&
+          entry.max_context_tokens === undefined
+        ) {
+          diagnostics.push({
+            severity: 'warning',
+            code: 'catalog_missing_context',
+            message: `Model "${model}" has no configured or catalog context window. Context-aware routing will treat it as unknown.`,
+            nodes: [node.id],
+            model,
+          });
+        }
+
+        const hasExplicitPricing =
+          hasTopLevelPricingFor(config, model) ||
+          hasNodeModelPricing(node, model);
+        if (
+          !hasExplicitPricing &&
+          entry.pricing &&
+          isPricingStale(entry.last_updated_at, pricingMaxAgeDays)
+        ) {
+          diagnostics.push({
+            severity: 'warning',
+            code: 'catalog_pricing_stale',
+            message: `Catalog pricing for "${model}" is older than ${pricingMaxAgeDays} days. Pin pricing in gateway.config.yaml or refresh the catalog before relying on cost routing.`,
+            nodes: [node.id],
+            model,
+          });
+        }
+      }
     }
   }
 

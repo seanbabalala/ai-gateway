@@ -237,10 +237,54 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
+    overrides.modelCatalog as any,
   );
 
   return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
 }
+
+// ═══════════════════════════════════════════════════════════
+// Model Catalog
+// ═══════════════════════════════════════════════════════════
+
+describe('DashboardController — model catalog', () => {
+  it('returns read-only model catalog status when the service is registered', () => {
+    const modelCatalog = {
+      getStatus: jest.fn().mockReturnValue({
+        enabled: true,
+        source: {
+          builtin_models: 1,
+          remote_models: 0,
+          remote_enabled: false,
+          remote_url: null,
+          last_refresh_at: null,
+          last_refresh_error: null,
+        },
+        models: [
+          {
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            modalities: ['text'],
+            endpoints: ['chat_completions'],
+            last_updated_at: '2026-05-03',
+            source: 'builtin',
+          },
+        ],
+        diagnostics: [],
+      }),
+    };
+
+    const { controller } = makeDashboard({ modelCatalog });
+    const result = controller.getModelCatalog();
+
+    expect(modelCatalog.getStatus).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      enabled: true,
+      source: { builtin_models: 1, remote_enabled: false },
+      models: [{ provider: 'openai', model: 'gpt-4o-mini' }],
+    });
+  });
+});
 
 // ═══════════════════════════════════════════════════════════
 // Stats

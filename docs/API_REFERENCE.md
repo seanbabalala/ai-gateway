@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
+v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing. v0.7 adds read-only model catalog metadata and pricing diagnostics for routing operators.
 
 ## Live Documentation
 
@@ -238,6 +238,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
+| `GET` | `/api/dashboard/model-catalog` | Read-only built-in/remote model metadata, pricing freshness, and capability diagnostics |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
@@ -259,6 +260,16 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 `GET /api/dashboard/route-decisions` returns paginated summaries and supports `page`, `limit`, `tier`, `node`, `source_format`, `api_key_id`, legacy `api_key`, and `namespace` filters. `GET /api/dashboard/route-decisions/:requestId` returns the full trace for one request.
 
 Each trace includes request id, source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, final selection, and outcome status. The trace is intentionally routing metadata only: it does not store prompt text, response text, raw headers, or provider API keys.
+
+### Model Catalog
+
+`GET /api/dashboard/model-catalog` returns a read-only view of catalog metadata used for diagnostics and routing hints:
+
+- `source`: built-in count, optional remote count, remote URL, last refresh timestamp, and last refresh error.
+- `models`: provider, model, aliases, modalities, endpoints, input/output types, context window, file-size limit, structured-output/streaming/realtime/rerank flags, dimensions, pricing, quality hint, update timestamp, and source.
+- `diagnostics`: warnings or info for unknown configured models, stale catalog pricing, missing context windows, capability conflicts, disabled remote refresh, or failed remote refresh.
+
+The endpoint does not mutate `gateway.config.yaml`, does not apply routing changes, and does not expose provider keys. User-defined `model_capabilities` and `models_pricing` remain the source of truth when present. The remote catalog document shape is described in [Model Catalog](MODEL_CATALOG.md).
 
 ## Gateway API Key Management
 

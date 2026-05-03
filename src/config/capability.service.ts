@@ -5,8 +5,9 @@
 // Does NOT modify the scoring engine — purely an advisory/recommendation layer.
 // ===================================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from './config.service';
+import { ModelCatalogService } from './model-catalog.service';
 import {
   CAPABILITY_REGISTRY,
   CAPABILITY_MAP,
@@ -56,13 +57,24 @@ export interface ResolvedModelRoutingCapabilities {
   dimensions?: number | number[];
   pricing?: ModelPricing;
   quality_score?: number;
+  catalog?: {
+    provider: string;
+    source: 'builtin' | 'remote';
+    last_updated_at: string;
+    matched: boolean;
+  };
 }
 
 @Injectable()
 export class CapabilityService {
   private readonly logger = new Logger(CapabilityService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional()
+    @Inject(ModelCatalogService)
+    private readonly modelCatalog?: ModelCatalogService,
+  ) {}
 
   /** Return the full capability registry (all 10 definitions) */
   getRegistry(): CapabilityDefinition[] {
@@ -216,6 +228,10 @@ export class CapabilityService {
     const modelIds = [
       ...(node.models || []),
       ...(node.embedding_models || []),
+      ...(node.rerank_models || []),
+      ...(node.image_models || []),
+      ...(node.audio_models || []),
+      ...(node.realtime_models || []),
     ];
     let anyInferred = modalities.size > 0;
 
@@ -284,6 +300,17 @@ export class CapabilityService {
       return implied;
     }
 
+    const catalogEntry = this.modelCatalog?.lookup(model, node);
+    if (catalogEntry?.modalities?.length) {
+      return this.withImpliedModalities(
+        catalogEntry.modalities,
+        node,
+        model,
+        modelCapability,
+        false,
+      );
+    }
+
     const inferred = inferModelModalities(model);
     if (inferred) {
       return this.withImpliedModalities(
@@ -322,6 +349,7 @@ export class CapabilityService {
   ): ResolvedModelRoutingCapabilities {
     const node = this.config.getNode(nodeId);
     const modelCapability = node?.model_capabilities?.[model];
+    const catalogEntry = this.modelCatalog?.lookup(model, node);
     const endpoints =
       node || modelCapability
         ? {
@@ -336,24 +364,35 @@ export class CapabilityService {
     return {
       modalities: this.resolveModelModalities(nodeId, model),
       endpoints: resolvedEndpoints,
-      input_types: modelCapability?.input_types ?? node?.input_types,
-      output_types: modelCapability?.output_types ?? node?.output_types,
+      output_types: modelCapability?.output_types ?? node?.output_types ?? catalogEntry?.output_types,
+      input_types: modelCapability?.input_types ?? node?.input_types ?? catalogEntry?.input_types,
       max_file_size:
-        modelCapability?.max_file_size ?? node?.max_file_size,
+        modelCapability?.max_file_size ?? node?.max_file_size ?? catalogEntry?.max_file_size,
       supports_streaming:
-        modelCapability?.supports_streaming ?? node?.supports_streaming,
+        modelCapability?.supports_streaming ?? node?.supports_streaming ?? catalogEntry?.supports_streaming,
       supports_realtime:
-        modelCapability?.supports_realtime ?? node?.supports_realtime,
+        modelCapability?.supports_realtime ?? node?.supports_realtime ?? catalogEntry?.supports_realtime,
       supports_rerank:
-        modelCapability?.supports_rerank ?? node?.supports_rerank,
+        modelCapability?.supports_rerank ?? node?.supports_rerank ?? catalogEntry?.supports_rerank,
       max_context_tokens:
-        modelCapability?.max_context_tokens ?? node?.max_context_tokens,
+        modelCapability?.max_context_tokens ?? node?.max_context_tokens ?? catalogEntry?.max_context_tokens,
       structured_output:
-        modelCapability?.structured_output ?? node?.structured_output ?? null,
-      dimensions: modelCapability?.dimensions,
+        modelCapability?.structured_output ?? node?.structured_output ?? catalogEntry?.structured_output ?? null,
+      dimensions: modelCapability?.dimensions ?? catalogEntry?.dimensions,
       pricing:
-        modelCapability?.pricing ?? this.config.getModelPricing(model, nodeId),
-      quality_score: modelCapability?.quality_score,
+        modelCapability?.pricing ??
+        this.config.modelsPricing?.[model] ??
+        catalogEntry?.pricing ??
+        this.config.getModelPricing(model, nodeId),
+      quality_score: modelCapability?.quality_score ?? catalogEntry?.quality_hint,
+      catalog: catalogEntry
+        ? {
+            provider: catalogEntry.provider,
+            source: catalogEntry.source || 'builtin',
+            last_updated_at: catalogEntry.last_updated_at,
+            matched: true,
+          }
+        : undefined,
     };
   }
 

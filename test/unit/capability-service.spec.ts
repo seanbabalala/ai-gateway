@@ -269,6 +269,84 @@ describe('CapabilityService', () => {
   });
 
   describe('resolveModelRoutingCapabilities', () => {
+    it('uses catalog metadata as fallback when user config omits routing metadata', () => {
+      const config = mockConfigService();
+      config.getNode.mockReturnValue({
+        id: 'openai',
+        name: 'OpenAI',
+        base_url: 'https://api.openai.com',
+        protocol: 'chat_completions',
+        models: ['gpt-4o-mini'],
+      });
+      config.getModelPricing.mockReturnValue(undefined);
+      const catalog = {
+        lookup: jest.fn().mockReturnValue({
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          source: 'builtin',
+          modalities: ['text', 'vision'],
+          endpoints: ['chat_completions'],
+          max_context_tokens: 128000,
+          structured_output: true,
+          supports_streaming: true,
+          pricing: { input: 0.15, output: 0.6 },
+          quality_hint: 0.68,
+          last_updated_at: '2026-05-03',
+        }),
+      };
+      const svc = new CapabilityService(config, catalog as any);
+
+      expect(svc.resolveModelRoutingCapabilities('openai', 'gpt-4o-mini')).toMatchObject({
+        modalities: ['text', 'vision'],
+        max_context_tokens: 128000,
+        structured_output: true,
+        supports_streaming: true,
+        pricing: { input: 0.15, output: 0.6 },
+        quality_score: 0.68,
+        catalog: {
+          provider: 'openai',
+          source: 'builtin',
+          matched: true,
+        },
+      });
+    });
+
+    it('lets remote catalog pricing override built-in fallback pricing while user config stays first', () => {
+      const config = mockConfigService();
+      config.getNode.mockReturnValue({
+        id: 'openai',
+        name: 'OpenAI',
+        base_url: 'https://api.openai.com',
+        protocol: 'chat_completions',
+        models: ['gpt-4o-mini'],
+      });
+      config.modelsPricing = {};
+      config.getModelPricing.mockReturnValue({ input: 0.15, output: 0.6 });
+      const catalog = {
+        lookup: jest.fn().mockReturnValue({
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          source: 'remote',
+          modalities: ['text'],
+          endpoints: ['chat_completions'],
+          pricing: { input: 0.12, output: 0.5 },
+          last_updated_at: '2026-05-03',
+        }),
+      };
+      const svc = new CapabilityService(config, catalog as any);
+
+      expect(svc.resolveModelRoutingCapabilities('openai', 'gpt-4o-mini').pricing).toEqual({
+        input: 0.12,
+        output: 0.5,
+      });
+
+      config.modelsPricing = { 'gpt-4o-mini': { input: 0.11, output: 0.44 } };
+      expect(svc.resolveModelRoutingCapabilities('openai', 'gpt-4o-mini').pricing).toEqual({
+        input: 0.11,
+        output: 0.44,
+      });
+    });
+
     it('should merge node defaults with model-specific v0.6 capability metadata', () => {
       const config = mockConfigService();
       config.getModelPricing.mockReturnValue({ input: 1, output: 2 });

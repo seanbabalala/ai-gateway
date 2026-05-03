@@ -110,6 +110,10 @@ function modelIdsForNode(node: NodeInfo): string[] {
   return Array.from(new Set([
     ...node.models,
     ...(node.embedding_models || []),
+    ...(node.rerank_models || []),
+    ...(node.image_models || []),
+    ...(node.audio_models || []),
+    ...(node.realtime_models || []),
   ]))
 }
 

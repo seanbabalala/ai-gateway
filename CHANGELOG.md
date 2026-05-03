@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 model catalog and pricing metadata for the MIT Data Plane, with a built-in local catalog, optional remote refresh, stale-pricing diagnostics, and config-validation warnings for unknown or conflicting model capabilities.
+- Cost/context routing now falls back to catalog metadata when explicit node/model capability or `models_pricing` entries are omitted, while explicit user configuration still wins.
+- Dashboard adds a read-only Model Catalog page and `GET /api/dashboard/model-catalog`, localized across English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish.
 
 ## 0.6.1 - 2026-05-03
 

@@ -78,6 +78,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Model catalog metadata** — built-in and optional remote model metadata fills pricing, context, modality, and quality hints for routing diagnostics without rewriting local config
 - **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
 - **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
@@ -111,6 +112,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
+- **Model catalog** — inspect built-in/remote model metadata, stale pricing warnings, unknown model warnings, and capability conflicts without applying changes automatically
 - **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
@@ -799,6 +801,21 @@ Optimization modes apply only within the already-eligible smart-routing target s
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
 
+For v0.7, the optional model catalog improves cost/context routing diagnostics without making SiftGate dependent on a hosted service:
+
+```yaml
+model_catalog:
+  enabled: true
+  pricing_max_age_days: 90
+  remote:
+    enabled: false
+    # url: "https://catalog.example.com/siftgate-models.json"
+    timeout_ms: 5000
+    # refresh_interval_hours: 24
+```
+
+The built-in catalog covers common OpenAI, Anthropic, Google, Cohere, image, audio, embedding, rerank, and realtime model metadata. SiftGate uses it only as fallback metadata: `nodes[].model_capabilities.*.pricing`, `nodes[].model_capabilities.*.max_context_tokens`, top-level `models_pricing`, and other explicit user config always win. Config validation and the Dashboard Model Catalog page warn about unknown private models, stale catalog pricing, missing context windows, and catalog/config capability conflicts. Remote refresh is opt-in, asynchronous, and never rewrites `gateway.config.yaml`. See [Model Catalog](docs/MODEL_CATALOG.md) for the remote JSON shape.
+
 Every accepted proxy request also writes a privacy-safe route decision trace. The trace explains the selected `node:model` with the request id, source format, tier, score, domain and modality hints, candidate targets, filtering reasons, cost/latency/context scores, circuit state, fallback chain, cost-downgrade state, and final selection. It intentionally records only routing metadata: prompts, responses, raw headers, and provider keys are not stored.
 
 Use the Dashboard API to power an explainable routing page or inspect one request during incident response:
@@ -1249,7 +1266,7 @@ The call log stores:
 - upstream node
 - upstream model
 - input and output tokens
-- estimated cost from node/model `pricing` overrides or `models_pricing`
+- estimated cost from node/model `pricing` overrides, `models_pricing`, or catalog fallback metadata
 - status code and latency
 
 That record powers the Dashboard, Logs, Analytics, Budget, and per-key billing views. Generated key budgets are reset by `budget_rule.id`, not by rule type, so global and per-key `daily_cost` rules cannot be confused.
@@ -1258,7 +1275,7 @@ Dashboard filters for generated Gateway API keys use the immutable `api_key_id`.
 
 Gateway prompt-cache hits are still logged and recorded against budgets using the cached response's usage and model pricing. They are marked as tier `cached` with node `cache`, so they remain attributable without making an upstream provider call.
 
-Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, routing still works, token usage is still tracked, and cost may be `0` until pricing is configured.
+Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in model capabilities, `models_pricing`, or the enabled model catalog, routing still works, token usage is still tracked, and cost may be `0` until pricing is configured.
 
 When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"` and structured details such as `scope`, `api_key_id`, `budget_type`, `current`, `limit`, and `reset_at`.
 

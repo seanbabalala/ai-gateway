@@ -235,6 +235,7 @@ describe('config validator', () => {
           daily_cost_limit: 25,
           alert_threshold: 0.8,
         },
+        model_catalog: { enabled: false },
         models_pricing: {
           'gpt-4o-mini': { input: 0.15, output: 0.6 },
           'gpt-image-1': { input: 5, output: 0 },
@@ -419,7 +420,6 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toEqual(
       expect.arrayContaining([
         'duplicate_model_id',
-        'missing_model_pricing',
         'literal_provider_api_key',
         'literal_control_plane_token',
         'insecure_control_plane_url',
@@ -471,6 +471,7 @@ describe('config validator', () => {
           daily_cost_limit: 25,
           alert_threshold: 0.8,
         },
+        model_catalog: { enabled: false },
         models_pricing: {},
       },
       { env: {} },
@@ -579,6 +580,109 @@ describe('config validator', () => {
     expect(result.ok).toBe(true);
     expect(codes(result.errors)).toHaveLength(0);
     expect(codes(result.warnings)).not.toContain('missing_model_pricing');
+  });
+
+  it('validates v0.7 model catalog config and emits catalog diagnostics', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-image-1', 'private-model'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-image-1' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        model_catalog: {
+          pricing_max_age_days: 90,
+          remote: {
+            enabled: true,
+            url: 'https://catalog.example.test/siftgate.json',
+            timeout_ms: 1000,
+          },
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'catalog_unknown_model',
+        'catalog_capability_conflict',
+      ]),
+    );
+  });
+
+  it('rejects invalid v0.7 model catalog remote config', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [{ node: 'openai', model: 'gpt-4o-mini' }],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        model_catalog: {
+          enabled: true,
+          pricing_max_age_days: 0,
+          remote: { enabled: true, timeout_ms: 0 },
+        },
+        models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_model_catalog_config',
+        'missing_model_catalog_remote_url',
+      ]),
+    );
   });
 
   it('accepts embedding models with dimensions and pricing metadata', () => {

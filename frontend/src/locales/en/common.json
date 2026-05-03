@@ -27,6 +27,7 @@
   "nav.experiments": "Experiments",
   "nav.logs": "Logs",
   "nav.manage": "MANAGE",
+  "nav.modelCatalog": "Model Catalog",
   "nav.monitor": "MONITOR",
   "nav.nodes": "Nodes",
   "nav.routeExplanation": "Route Explain",

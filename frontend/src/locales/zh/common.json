@@ -27,6 +27,7 @@
   "nav.experiments": "实验",
   "nav.logs": "日志",
   "nav.manage": "管理",
+  "nav.modelCatalog": "模型目录",
   "nav.monitor": "监控",
   "nav.nodes": "节点",
   "nav.routeExplanation": "路由解释",

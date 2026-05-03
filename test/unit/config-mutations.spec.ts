@@ -282,7 +282,8 @@ describe('ConfigService — model pricing', () => {
   it('should delete pricing', () => {
     const { svc } = loadConfigService();
     svc.deleteModelPricing('gpt-4o');
-    expect(svc.getModelPricing('gpt-4o')).toBeUndefined();
+    expect(svc.modelsPricing['gpt-4o']).toBeUndefined();
+    expect(svc.getModelPricing('gpt-4o')).toEqual({ input: 2.5, output: 10 });
   });
 
   it('should throw when deleting non-existent pricing', () => {
@@ -450,7 +451,7 @@ describe('ConfigService — node/model naming diagnostics', () => {
     expect(svc.getNodeModelDiagnostics()).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: 'missing_model_pricing',
-        model: 'gpt-4o',
+        model: 'claude-3-opus',
       }),
       expect.objectContaining({
         code: 'route_references_unknown_node',

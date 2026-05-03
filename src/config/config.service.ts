@@ -35,10 +35,15 @@ import {
   FallbackPolicyConfig,
   StateBackendConfig,
   RealtimeConfig,
+  ModelCatalogConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
+import {
+  inferProviderFromNode,
+  lookupBuiltInCatalogEntry,
+} from './model-catalog';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
@@ -72,6 +77,7 @@ export interface ConfigChangeSummary {
   state_changed: boolean;
   cluster_changed: boolean;
   realtime_changed: boolean;
+  model_catalog_changed: boolean;
 }
 
 export interface ConfigReloadResult {
@@ -205,6 +211,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       config.auth ??= { api_keys: [] };
       config.models_pricing ??= {};
       config.namespaces ??= [];
+      config.model_catalog ??= {};
       if (config.routing?.tiers) {
         for (const tier of Object.values(config.routing.tiers)) {
           tier.fallbacks ??= [];
@@ -484,6 +491,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       state_changed: JSON.stringify(previous.state || null) !== JSON.stringify(next.state || null),
       cluster_changed: JSON.stringify(previous.cluster || null) !== JSON.stringify(next.cluster || null),
       realtime_changed: JSON.stringify(previous.realtime || null) !== JSON.stringify(next.realtime || null),
+      model_catalog_changed: JSON.stringify(previous.model_catalog || null) !== JSON.stringify(next.model_catalog || null),
     };
   }
 
@@ -500,6 +508,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       state_changed: false,
       cluster_changed: false,
       realtime_changed: false,
+      model_catalog_changed: false,
     };
   }
 
@@ -775,6 +784,27 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.config.models_pricing;
   }
 
+  get modelCatalog(): Required<ModelCatalogConfig> & {
+    remote: {
+      enabled: boolean;
+      url?: string;
+      timeout_ms: number;
+      refresh_interval_hours?: number;
+    };
+  } {
+    const catalog = this.config.model_catalog;
+    return {
+      enabled: catalog?.enabled ?? true,
+      pricing_max_age_days: catalog?.pricing_max_age_days ?? 90,
+      remote: {
+        enabled: catalog?.remote?.enabled ?? false,
+        url: catalog?.remote?.url,
+        timeout_ms: catalog?.remote?.timeout_ms ?? 5000,
+        refresh_interval_hours: catalog?.remote?.refresh_interval_hours,
+      },
+    };
+  }
+
   private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {
     const value = prefix && prefix.length > 0 ? prefix : fallback;
     return value.endsWith(':') ? value : `${value}:`;
@@ -813,7 +843,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       const nodePricing = this.getNode(nodeId)?.model_capabilities?.[model]?.pricing;
       if (nodePricing) return nodePricing;
     }
-    return this.config.models_pricing[model];
+    const configured = this.config.models_pricing[model];
+    if (configured) return configured;
+    if (this.modelCatalog.enabled === false) return undefined;
+    const node = nodeId ? this.getNode(nodeId) : undefined;
+    const provider = inferProviderFromNode(node);
+    return lookupBuiltInCatalogEntry(model, { provider })?.pricing;
   }
 
   /** Resolve a user-provided embedding model name to a node/model pair. */
@@ -1059,6 +1094,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         ...(node.rerank_models || []),
         ...(node.image_models || []),
         ...(node.audio_models || []),
+        ...(node.realtime_models || []),
       ]))) {
         // Collect all aliases pointing to this model
         const aliases: string[] = [];
