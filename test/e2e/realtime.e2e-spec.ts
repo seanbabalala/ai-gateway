@@ -138,7 +138,7 @@ async function readHttpResponse(socket: net.Socket): Promise<{
 }> {
   let buffer = Buffer.alloc(0);
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Timed out waiting for handshake')), 1500);
+    const timeout = setTimeout(() => reject(new Error('Timed out waiting for handshake')), 5000);
     const onData = (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
       const idx = buffer.indexOf('\r\n\r\n');
