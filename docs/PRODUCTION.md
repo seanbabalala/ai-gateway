@@ -24,6 +24,24 @@ load balancer behavior have been tested in your environment.
   coordination.
 - Keep `/health` on the load balancer health check path.
 
+## Kubernetes And Helm
+
+The open-source repo ships Kubernetes deployment assets for the Data Plane:
+
+- `deploy/helm/siftgate` for Helm installs
+- `deploy/kubernetes/base` for plain Kustomize/GitOps starts
+
+Both defaults preserve the single-instance shape: one replica, SQLite on a PVC,
+memory state, cluster mode disabled, and no Redis/PostgreSQL dependency.
+Production operators can opt into PostgreSQL, Redis, Ingress, HPA,
+ServiceMonitor, and PDB through chart values or overlays.
+
+Kubernetes ConfigMap mounts are read-only. Use a bcrypt
+`DASHBOARD_PASSWORD_HASH` in a Secret instead of a plaintext dashboard password
+that would require startup-time config writeback.
+
+See [Kubernetes And Helm](KUBERNETES.md).
+
 ## Database Recommendation
 
 SQLite is the default because it keeps local development and small self-hosted

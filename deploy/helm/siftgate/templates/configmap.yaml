@@ -1,0 +1,11 @@
+{{- if not .Values.config.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "siftgate.configMapName" . }}
+  labels:
+    {{- include "siftgate.labels" . | nindent 4 }}
+data:
+  {{ .Values.config.key }}: |
+    {{- .Values.config.data | nindent 4 }}
+{{- end }}

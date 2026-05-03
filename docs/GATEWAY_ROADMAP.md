@@ -16,6 +16,34 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 生产采纳与部署易用性 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（路由决策智能 + 生产采纳）
+
+**v0.7 当前状态**：Prompt 39 已完成功能分支，为 OSS Data Plane 增加 Helm chart 与 Kubernetes/Kustomize 基础清单。默认仍保持单机 memory/SQLite 可用；Redis、PostgreSQL、Ingress、HPA、ServiceMonitor、Cloud 都只作为可选能力。
+
+### P1：生产部署易用性
+
+#### 1. Helm chart / K8s manifests
+
+- **状态**：✅ Prompt 39 功能分支已完成
+- **目标**：让 v0.5+ 的 Redis/Postgres/cluster 能力更容易进入 Kubernetes 生产环境，同时不牺牲开源版单机默认体验
+- **实现方案**：
+  - 新增 `deploy/helm/siftgate` Helm chart
+  - 新增 `deploy/kubernetes/base` Kustomize 基础清单
+  - 默认值为 1 replica、SQLite PVC、memory state、cluster disabled
+  - Redis、PostgreSQL、Ingress、HPA、PDB、ServiceMonitor 均为显式 opt-in
+  - 支持 existing ConfigMap / existing Secret，适配 GitOps 和外部 secret controller
+  - Kubernetes ConfigMap 只读场景使用 `DASHBOARD_PASSWORD_HASH`，避免明文 Dashboard 密码启动时写回配置
+  - 新增 `npm run validate:k8s` 和单测，防止部署清单缺关键对象、误引入私有 Cloud 依赖或真实 provider key
+
+### 后续 v0.7 候选
+
+- Secret manager 支持：Vault/AWS Secrets/GCP Secret Manager
+- 本地审计日志和配置版本回滚：Dashboard 能改配置后，审计和 rollback 会变成刚需
+- Benchmark 页面和压测报告：给生产部署和竞品对比提供性能证据
 
 ---
 

@@ -15,6 +15,7 @@
   <a href="#api-endpoints">API Endpoints</a> &bull;
   <a href="#dashboard">Dashboard</a> &bull;
   <a href="#docker">Docker</a> &bull;
+  <a href="#kubernetes">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
   <a href="docs/PRODUCT_ROADMAP.md">Roadmap</a> &bull;
@@ -131,6 +132,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
+- **Kubernetes deployment assets** — Helm chart and plain Kustomize base for the OSS Data Plane, with SQLite/memory defaults and opt-in Redis/PostgreSQL production paths
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
@@ -1392,6 +1394,26 @@ docker run -p 2099:2099 \
   --env-file .env \
   siftgate
 ```
+
+## Kubernetes
+
+SiftGate includes deployment assets for Kubernetes without requiring SiftGate Cloud:
+
+- Helm chart: `deploy/helm/siftgate`
+- Plain Kustomize base: `deploy/kubernetes/base`
+
+Both default to one replica, SQLite on a PVC, memory state, and no Redis/PostgreSQL dependency. Production operators can opt into PostgreSQL, Redis, Ingress, HPA, ServiceMonitor, and PDB through chart values or Kustomize overlays.
+
+```bash
+helm upgrade --install siftgate ./deploy/helm/siftgate \
+  --namespace siftgate \
+  --create-namespace \
+  --set secrets.env.OPENAI_API_KEY="$OPENAI_API_KEY"
+
+kubectl -n siftgate port-forward svc/siftgate 2099:2099
+```
+
+ConfigMap mounts are read-only, so use a bcrypt `DASHBOARD_PASSWORD_HASH` instead of a plaintext Dashboard password. See [Kubernetes And Helm](docs/KUBERNETES.md) for PostgreSQL, Redis, and GitOps notes.
 
 ## Connected Gateway
 

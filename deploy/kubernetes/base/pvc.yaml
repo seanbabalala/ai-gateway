@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: siftgate-data
+  labels:
+    app.kubernetes.io/name: siftgate
+    app.kubernetes.io/part-of: siftgate
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

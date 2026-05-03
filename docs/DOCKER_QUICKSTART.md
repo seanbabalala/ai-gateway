@@ -107,6 +107,13 @@ Set `DATABASE_URL=postgresql://siftgate:replace-me@postgres:5432/siftgate` in
 [Production Deployment](PRODUCTION.md) for the SQLite to PostgreSQL migration
 workflow.
 
+## Kubernetes Alternative
+
+If you are deploying to Kubernetes instead of Docker Compose, use the Helm chart
+under `deploy/helm/siftgate` or the Kustomize base under
+`deploy/kubernetes/base`. Both keep the same SQLite/memory default behavior and
+make Redis/PostgreSQL opt-in. See [Kubernetes And Helm](KUBERNETES.md).
+
 ## 4. Create a Gateway API Key
 
 In the Dashboard, open **API Keys**, create a key, and copy it once. Then call

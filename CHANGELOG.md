@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 Kubernetes deployment assets for the MIT Data Plane, including a Helm chart and plain Kustomize base with single-instance SQLite/memory defaults.
+- Optional Helm values for Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget, ServiceMonitor, existing ConfigMaps, and externally managed Secrets.
+- Kubernetes deployment validation via `npm run validate:k8s` plus unit coverage for default OSS-safe chart behavior.
 
 ## 0.6.1 - 2026-05-03
 

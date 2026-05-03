@@ -1,0 +1,16 @@
+SiftGate OSS Data Plane has been installed.
+
+Dashboard:
+{{- if .Values.ingress.enabled }}
+  https://{{ (index .Values.ingress.hosts 0).host }}
+{{- else }}
+  kubectl port-forward svc/{{ include "siftgate.fullname" . }} 2099:{{ .Values.service.port }}
+  http://127.0.0.1:2099
+{{- end }}
+
+Health check:
+  kubectl exec deploy/{{ include "siftgate.fullname" . }} -- node -e "fetch('http://127.0.0.1:2099/health').then(r=>r.text()).then(console.log)"
+
+Provider credentials are read from Kubernetes Secrets through environment
+variables. The chart does not include SiftGate Cloud or enterprise-only
+dependencies.

@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: siftgate-config
+  labels:
+    app.kubernetes.io/name: siftgate
+    app.kubernetes.io/part-of: siftgate
+data:
+  gateway.config.yaml: |
+    server:
+      port: 2099
+      host: 0.0.0.0
+      trust_proxy: true
+
+    database:
+      type: sqlite
+      path: /app/data/gateway.db
+      synchronize: true
+      log_retention_days: 30
+
+    auth:
+      api_keys: []
+
+    dashboard:
+      password: "${DASHBOARD_PASSWORD_HASH:-}"
+
+    hot_reload:
+      watch: false
+
+    state:
+      backend: memory
+
+    cluster:
+      enabled: false
+
+    nodes:
+      - id: openai
+        name: OpenAI
+        protocol: chat_completions
+        base_url: https://api.openai.com
+        endpoint: /v1/chat/completions
+        api_key: "${OPENAI_API_KEY}"
+        models:
+          - gpt-4o-mini
+        timeout_ms: 60000
+
+    routing:
+      scoring:
+        simple_max: 0.3
+        standard_max: 0.6
+        complex_max: 0.85
+      tiers:
+        simple:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        standard:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        complex:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        reasoning:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+
+    budget:
+      daily_token_limit: 5000000
+      daily_cost_limit: 50
+      alert_threshold: 0.8
+
+    models_pricing:
+      gpt-4o-mini:
+        input: 0.15
+        output: 0.60

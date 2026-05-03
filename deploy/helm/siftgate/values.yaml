@@ -1,0 +1,191 @@
+# SiftGate OSS Data Plane Helm values.
+# Default mode is single-instance memory + SQLite for a small self-hosted
+# install. Redis, PostgreSQL, Ingress, autoscaling, and monitoring are opt-in.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/seanbabalala/ai-gateway
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 10001
+
+service:
+  type: ClusterIP
+  port: 2099
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: siftgate.example.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 2Gi
+  storageClassName: ""
+  annotations: {}
+
+config:
+  existingConfigMap: ""
+  key: gateway.config.yaml
+  mountPath: /app/config/gateway.config.yaml
+  data: |
+    server:
+      port: 2099
+      host: 0.0.0.0
+      trust_proxy: true
+
+    database:
+      type: sqlite
+      path: /app/data/gateway.db
+      synchronize: true
+      log_retention_days: 30
+
+    auth:
+      api_keys: []
+
+    # Use a bcrypt hash in Kubernetes. ConfigMap mounts are read-only, so avoid
+    # plaintext dashboard passwords that require startup-time writeback.
+    dashboard:
+      password: "${DASHBOARD_PASSWORD_HASH:-}"
+
+    hot_reload:
+      watch: false
+
+    state:
+      backend: memory
+
+    cluster:
+      enabled: false
+
+    nodes:
+      - id: openai
+        name: OpenAI
+        protocol: chat_completions
+        base_url: https://api.openai.com
+        endpoint: /v1/chat/completions
+        api_key: "${OPENAI_API_KEY}"
+        models:
+          - gpt-4o-mini
+        timeout_ms: 60000
+
+    routing:
+      scoring:
+        simple_max: 0.3
+        standard_max: 0.6
+        complex_max: 0.85
+      tiers:
+        simple:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        standard:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        complex:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        reasoning:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+
+    budget:
+      daily_token_limit: 5000000
+      daily_cost_limit: 50
+      alert_threshold: 0.8
+
+    models_pricing:
+      gpt-4o-mini:
+        input: 0.15
+        output: 0.60
+
+secrets:
+  create: true
+  existingSecret: ""
+  env: {}
+  # env:
+  #   OPENAI_API_KEY: ""
+  #   DASHBOARD_PASSWORD_HASH: ""
+
+extraEnv: []
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+
+postgres:
+  enabled: false
+  databaseUrlSecret:
+    name: ""
+    key: DATABASE_URL
+
+redis:
+  enabled: false
+  urlSecret:
+    name: ""
+    key: REDIS_URL
+
+probes:
+  liveness:
+    initialDelaySeconds: 20
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /metrics
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

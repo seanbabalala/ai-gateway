@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: siftgate
+  labels:
+    app.kubernetes.io/name: siftgate
+    app.kubernetes.io/part-of: siftgate
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: siftgate
+  ports:
+    - name: http
+      port: 2099
+      targetPort: http
