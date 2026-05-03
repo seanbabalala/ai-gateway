@@ -8,6 +8,7 @@ import {
   VALID_CAPABILITY_IO_TYPES,
   VALID_MODALITIES,
 } from './modality';
+import { diagnoseNodeAgainstCatalog } from '../catalog/provider-catalog.service';
 
 export type ConfigValidationSeverity = 'error' | 'warning' | 'info';
 
@@ -208,7 +209,7 @@ export function validateConfigObject(
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
   validateAuth(config.auth, config.namespaces, issues);
-  validateNodes(config.nodes, issues);
+  validateNodes(config.nodes, issues, config.models_pricing);
   validateNamespaces(config.namespaces, config.nodes, issues);
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
@@ -643,7 +644,11 @@ function validateOptionalPositiveNumber(
   }
 }
 
-function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
+function validateNodes(
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+  modelsPricing?: unknown,
+): void {
   if (nodes === undefined) return;
   if (!Array.isArray(nodes)) {
     issues.push(
@@ -888,7 +893,35 @@ function validateNodes(nodes: unknown, issues: ConfigValidationIssue[]): void {
     validateNodeAliases(node, basePath, issues);
     validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
+    addCatalogDiagnostics(
+      node,
+      basePath,
+      isRecord(modelsPricing)
+        ? (modelsPricing as Record<string, unknown>)
+        : undefined,
+      issues,
+    );
   });
+}
+
+function addCatalogDiagnostics(
+  node: Record<string, unknown>,
+  basePath: string,
+  modelsPricing: Record<string, unknown> | undefined,
+  issues: ConfigValidationIssue[],
+): void {
+  for (const diagnostic of diagnoseNodeAgainstCatalog(node, basePath, {
+    modelsPricing,
+  })) {
+    issues.push(
+      issue(
+        diagnostic.severity,
+        diagnostic.code,
+        diagnostic.message,
+        diagnostic.path,
+      ),
+    );
+  }
 }
 
 function validateNodeConnection(

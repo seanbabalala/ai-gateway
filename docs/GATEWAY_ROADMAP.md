@@ -16,6 +16,26 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.8 | Provider Breadth | 进行中 — Provider / Model Catalog + 更多协议入口准备 | 🚧 In Progress |
+
+---
+
+## v0.8 — Provider Breadth（Provider / Model Catalog + 接口广度）
+
+**v0.8 当前状态**：Prompt 46 已完成本地 Provider / Model Catalog 的 feature branch 实现。目标是把 provider/model 能力从 Dashboard 表单硬编码中抽离，成为 Add Node、配置校验和后续多模态路由的统一数据源。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：Provider / Model Catalog
+
+- **状态**：✅ Prompt 46 feature branch 已完成
+- **目标**：为 provider、model、modalities、endpoint、auth、pricing、capability、limits 建立本地静态目录
+- **实现方案**：
+  - 新增内置静态 catalog 模块，不自动联网更新
+  - 初始覆盖 OpenAI、Anthropic、Google Gemini/Vertex、Azure OpenAI、OpenRouter、Groq、Mistral、DeepSeek、xAI、Cohere、Voyage、Jina、Together、Fireworks、Ollama、vLLM、OpenAI-compatible custom
+  - catalog 区分 `text`、`vision`、`image`、`audio`、`video`、`embedding`、`rerank`、`realtime`
+  - Dashboard API 提供 `GET /api/dashboard/catalog/providers` 和 `GET /api/dashboard/catalog/models`
+  - Dashboard Add Node 从 catalog API 读取 provider preset，不再在组件中硬编码 provider/model 列表
+  - Config validation 使用 catalog 输出 warning：未知模型、endpoint/modality 不匹配、pricing 需要人工确认
+  - pricing 可为 placeholder，但必须包含 `source`、`last_updated`、`manual_review_required`
 
 ---
 

@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.8 local Provider / Model Catalog for the OSS Data Plane, covering provider metadata, models, modalities, endpoints, auth type, pricing source, capabilities, and limits.
+- Built-in static catalog entries for OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
+- Dashboard catalog APIs `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` with provider/modality/endpoint filters.
+- Config validation warnings for catalog unknown models, endpoint/modality mismatches, and placeholder pricing that still needs operator review.
+
+### Changed
+
+- Dashboard Add Node provider presets now load from the catalog API instead of a hardcoded frontend list.
 
 ## 0.6.1 - 2026-05-03
 

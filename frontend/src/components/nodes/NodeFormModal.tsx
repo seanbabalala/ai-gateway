@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Plus, Trash2, ArrowLeft, Settings2, Zap, CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,15 @@ import { CapabilityPicker } from '@/components/shared/CapabilityPicker'
 import { TierRecommendation } from '@/components/shared/TierRecommendation'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useTestNode, useTestExistingNode } from '@/hooks/use-mutations'
-import type { NodeInfo, CreateNodeRequest, UpdateNodeRequest, TestNodeResponse } from '@/types/api'
+import { useProviderCatalogProviders } from '@/hooks/use-provider-catalog'
+import type {
+  CatalogModel,
+  CatalogProvider,
+  NodeInfo,
+  CreateNodeRequest,
+  UpdateNodeRequest,
+  TestNodeResponse,
+} from '@/types/api'
 
 // Default endpoints per protocol — the canonical paths
 const PROTOCOL_ENDPOINTS: Record<string, string> = {
@@ -34,145 +42,48 @@ interface ProviderPreset {
   keyPlaceholder: string
 }
 
-const PROVIDER_PRESETS: ProviderPreset[] = [
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    protocol: 'chat_completions',
-    base_url: 'https://api.openai.com',
-    endpoint: '/v1/chat/completions',
-    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
-    model_prefixes: ['gpt', 'o'],
-    capabilities: ['coding', 'reasoning', 'tool_use'],
-    tags: ['code', 'reasoning'],
-    keyPlaceholder: 'sk-...',
-  },
-  {
-    id: 'gpt-responses',
-    name: 'OpenAI (Responses API)',
-    protocol: 'responses',
-    base_url: 'https://api.openai.com',
-    endpoint: '/v1/responses',
-    models: ['gpt-4.1', 'gpt-4.1-mini', 'o3', 'o4-mini'],
-    model_prefixes: ['gpt', 'o'],
-    capabilities: ['coding', 'reasoning', 'tool_use'],
-    tags: ['code', 'reasoning'],
-    keyPlaceholder: 'sk-...',
-  },
-  {
-    id: 'claude',
-    name: 'Anthropic (Claude)',
-    protocol: 'messages',
-    base_url: 'https://api.anthropic.com',
-    endpoint: '/v1/messages',
-    auth_type: 'x-api-key',
-    models: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-haiku-4-20250414'],
-    model_prefixes: ['claude'],
-    capabilities: ['coding', 'coding_backend', 'reasoning', 'analysis'],
-    tags: ['code', 'reasoning'],
-    keyPlaceholder: 'sk-ant-...',
-  },
-  {
-    id: 'gemini',
-    name: 'Google (Gemini)',
-    protocol: 'chat_completions',
-    base_url: 'https://generativelanguage.googleapis.com',
-    endpoint: '/v1beta/openai/chat/completions',
-    models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
-    model_prefixes: ['gemini'],
-    capabilities: ['multilingual', 'long_context', 'coding'],
-    tags: ['multilingual', 'long-context'],
-    keyPlaceholder: 'AIza...',
-  },
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    protocol: 'chat_completions',
-    base_url: 'https://api.deepseek.com',
-    endpoint: '/v1/chat/completions',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    capabilities: ['coding', 'reasoning', 'fast'],
-    tags: ['code', 'reasoning', 'cheap'],
-    keyPlaceholder: 'sk-...',
-  },
-  {
-    id: 'grok',
-    name: 'xAI (Grok)',
-    protocol: 'chat_completions',
-    base_url: 'https://api.x.ai',
-    endpoint: '/v1/chat/completions',
-    models: ['grok-3', 'grok-3-mini', 'grok-3-fast'],
-    capabilities: ['reasoning', 'fast'],
-    tags: ['reasoning', 'fast'],
-    keyPlaceholder: 'xai-...',
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral AI',
-    protocol: 'chat_completions',
-    base_url: 'https://api.mistral.ai',
-    endpoint: '/v1/chat/completions',
-    models: ['mistral-large-latest', 'mistral-medium-latest', 'codestral-latest', 'mistral-small-latest'],
-    capabilities: ['coding', 'multilingual'],
-    tags: ['code', 'multilingual'],
-    keyPlaceholder: 'Bearer token...',
-  },
-  {
-    id: 'groq',
-    name: 'Groq',
-    protocol: 'chat_completions',
-    base_url: 'https://api.groq.com',
-    endpoint: '/openai/v1/chat/completions',
-    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
-    capabilities: ['fast'],
-    tags: ['fast', 'cheap'],
-    keyPlaceholder: 'gsk_...',
-  },
-  {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    protocol: 'chat_completions',
-    base_url: 'https://openrouter.ai',
-    endpoint: '/api/v1/chat/completions',
-    models: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-20250514', 'google/gemini-2.5-pro'],
-    capabilities: [],
-    tags: ['multi-provider'],
-    keyPlaceholder: 'sk-or-...',
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama (Local)',
-    protocol: 'chat_completions',
-    base_url: 'http://localhost:11434',
-    endpoint: '/v1/chat/completions',
-    models: ['llama3.1', 'qwen2.5-coder', 'deepseek-r1'],
-    capabilities: ['fast', 'coding'],
-    tags: ['local', 'free'],
-    keyPlaceholder: 'ollama (any value)',
-  },
-  {
-    id: 'azure',
-    name: 'Azure OpenAI',
-    protocol: 'chat_completions',
-    base_url: 'https://YOUR_RESOURCE.openai.azure.com',
-    endpoint: '/openai/deployments/YOUR_DEPLOYMENT/chat/completions?api-version=2024-10-21',
-    models: ['gpt-4o'],
-    capabilities: ['coding', 'tool_use'],
-    tags: ['enterprise'],
-    keyPlaceholder: 'Azure API key...',
-  },
-  {
-    id: 'minimax',
-    name: 'MiniMax',
-    protocol: 'chat_completions',
-    base_url: 'https://api.minimax.chat',
-    endpoint: '/v1/text/chatcompletion_v2',
-    models: ['MiniMax-M1', 'MiniMax-Text-01'],
-    capabilities: ['multilingual'],
-    tags: ['multilingual'],
-    keyPlaceholder: 'Bearer token...',
-  },
-]
+function providerToPreset(provider: CatalogProvider): ProviderPreset {
+  const protocol = provider.default_protocol || provider.protocols[0] || 'chat_completions'
+  const textModels = provider.models
+    .filter((model) => isTextModelForProtocol(model, protocol))
+    .map((model) => model.id)
+  const fallbackModels = provider.models
+    .filter((model) => !model.modalities.includes('embedding') && !model.modalities.includes('rerank'))
+    .map((model) => model.id)
+
+  const models = unique(textModels.length > 0 ? textModels : fallbackModels).slice(0, 8)
+
+  return {
+    id: provider.id,
+    name: provider.name,
+    protocol,
+    base_url: provider.base_url,
+    endpoint: provider.endpoints[protocol] || PROTOCOL_ENDPOINTS[protocol] || '/v1/chat/completions',
+    auth_type:
+      provider.auth_type === 'bearer' || provider.auth_type === 'x-api-key'
+        ? provider.auth_type
+        : undefined,
+    models: models.length > 0 ? models : [''],
+    model_prefixes: provider.model_prefixes,
+    capabilities: unique(provider.capabilities.filter((capability) => capability !== 'custom')),
+    tags: provider.tags || [],
+    keyPlaceholder: provider.key_placeholder || 'provider key...',
+  }
+}
+
+function isTextModelForProtocol(
+  model: CatalogModel,
+  protocol: ProviderPreset['protocol'],
+): boolean {
+  return (
+    model.endpoints.includes(protocol) &&
+    (model.modalities.includes('text') || model.modalities.includes('vision'))
+  )
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)))
+}
 
 // ── Types ────────────────────────────────────────────────
 
@@ -239,6 +150,11 @@ export function NodeFormModal({
   const [useCustomEndpoint, setUseCustomEndpoint] = useState(false)
   const testNode = useTestNode()
   const testExisting = useTestExistingNode()
+  const providerCatalog = useProviderCatalogProviders(open && !isEdit)
+  const providerPresets = useMemo(
+    () => (providerCatalog.data?.providers || []).map(providerToPreset),
+    [providerCatalog.data],
+  )
 
   // Reset when modal opens
   useEffect(() => {
@@ -506,7 +422,7 @@ export function NodeFormModal({
   }
 
   const presetInfo = selectedPreset
-    ? PROVIDER_PRESETS.find((p) => p.id === selectedPreset)
+    ? providerPresets.find((p) => p.id === selectedPreset)
     : null
   const currentNodeId = isEdit ? editNode!.id : form.id.trim()
   const otherNodes = existingNodes.filter((node) => node.id !== currentNodeId)
@@ -578,7 +494,13 @@ export function NodeFormModal({
             </div>
 
             <div className="grid grid-cols-3 gap-2.5">
-              {PROVIDER_PRESETS.map((preset) => {
+              {providerCatalog.isLoading && (
+                <div className="flex min-h-28 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--glass-bg)]">
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--foreground-dim)]" />
+                </div>
+              )}
+
+              {providerPresets.map((preset) => {
                 const alreadyExists = existingIds.includes(preset.id)
                 return (
                   <button

@@ -10,6 +10,7 @@ import { DashboardController } from '../../src/dashboard/dashboard.controller';
 import { CircuitState } from '../../src/routing/circuit-breaker.service';
 import { mockConfigService } from '../helpers';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
+import { ProviderCatalogService } from '../../src/catalog/provider-catalog.service';
 
 // ── Mock Query Builder Factory ──────────────────────────
 
@@ -222,6 +223,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
   const controller = new DashboardController(
     config,
     capabilityService as any,
+    (overrides.providerCatalog || new ProviderCatalogService()) as any,
     routingService as any,
     circuitBreaker as any,
     concurrencyLimiter as any,
@@ -833,6 +835,29 @@ describe('DashboardController — Node CRUD', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — capabilities & routing', () => {
+  it('should return provider catalog entries', () => {
+    const { controller } = makeDashboard();
+    const result = controller.getCatalogProviders();
+    expect(result.source).toBe('builtin_static');
+    expect(result.auto_update).toBe(false);
+    expect(result.providers.map((provider) => provider.id)).toEqual(
+      expect.arrayContaining(['openai', 'anthropic', 'openai-compatible']),
+    );
+  });
+
+  it('should return filtered catalog models', () => {
+    const { controller } = makeDashboard();
+    const result = controller.getCatalogModels('openai', 'embedding');
+    expect(result.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider_id: 'openai',
+          modalities: expect.arrayContaining(['embedding']),
+        }),
+      ]),
+    );
+  });
+
   it('should return capabilities registry', () => {
     const { controller } = makeDashboard();
     const result = controller.getCapabilities();

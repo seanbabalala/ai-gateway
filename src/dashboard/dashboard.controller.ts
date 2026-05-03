@@ -54,6 +54,7 @@ import { RoutingRecommendationService } from '../routing/routing-recommendation.
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 import type { Modality } from '../config/modality';
+import { ProviderCatalogService } from '../catalog/provider-catalog.service';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -79,6 +80,7 @@ export class DashboardController {
   constructor(
     private readonly config: ConfigService,
     private readonly capabilityService: CapabilityService,
+    private readonly providerCatalog: ProviderCatalogService,
     private readonly routingService: RoutingService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly concurrencyLimiter: ConcurrencyLimiterService,
@@ -1138,8 +1140,36 @@ export class DashboardController {
   }
 
   // ══════════════════════════════════════════════════════
-  // Capabilities
+  // Catalog & Capabilities
   // ══════════════════════════════════════════════════════
+
+  /** Get built-in provider catalog entries */
+  @Get('catalog/providers')
+  @ApiOperation({ summary: 'List built-in provider catalog entries' })
+  @ApiOkResponse({ description: 'Static provider catalog used by Dashboard Add Node and config validation.' })
+  getCatalogProviders() {
+    return {
+      ...this.providerCatalog.getMetadata(),
+      providers: this.providerCatalog.listProviders(),
+    };
+  }
+
+  @Get('catalog/models')
+  @ApiOperation({ summary: 'List built-in provider catalog models' })
+  @ApiQuery({ name: 'provider', required: false })
+  @ApiQuery({ name: 'modality', required: false })
+  @ApiQuery({ name: 'endpoint', required: false })
+  @ApiOkResponse({ description: 'Flattened static model catalog with optional provider/modality/endpoint filters.' })
+  getCatalogModels(
+    @Query('provider') provider?: string,
+    @Query('modality') modality?: string,
+    @Query('endpoint') endpoint?: string,
+  ) {
+    return {
+      ...this.providerCatalog.getMetadata(),
+      models: this.providerCatalog.listModels({ provider, modality, endpoint }),
+    };
+  }
 
   /** Get all capability definitions */
   @Get('capabilities')
@@ -1247,6 +1277,10 @@ export class DashboardController {
       const modelIds = Array.from(new Set([
         ...node.models,
         ...(node.embedding_models || []),
+        ...(node.rerank_models || []),
+        ...(node.image_models || []),
+        ...(node.audio_models || []),
+        ...(node.realtime_models || []),
       ]));
       const modelCapabilities = Object.fromEntries(
         modelIds.map((model) => [
@@ -1260,6 +1294,12 @@ export class DashboardController {
       const endpoints = {
         default: node.endpoint,
         ...(node.embeddings_endpoint ? { embeddings: node.embeddings_endpoint } : {}),
+        ...(node.rerank_endpoint ? { rerank: node.rerank_endpoint } : {}),
+        ...(node.images_generations_endpoint ? { image_generations: node.images_generations_endpoint } : {}),
+        ...(node.images_edits_endpoint ? { image_edits: node.images_edits_endpoint } : {}),
+        ...(node.audio_transcriptions_endpoint ? { audio_transcriptions: node.audio_transcriptions_endpoint } : {}),
+        ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
+        ...(node.realtime_endpoint ? { realtime: node.realtime_endpoint } : {}),
         ...(node.endpoints || {}),
       };
 
@@ -1570,6 +1610,16 @@ export class DashboardController {
         endpoint: dto.endpoint,
         api_key: dto.api_key,
         models: dto.models,
+        embeddings_endpoint: dto.embeddings_endpoint,
+        embedding_models: dto.embedding_models,
+        rerank_endpoint: dto.rerank_endpoint,
+        rerank_models: dto.rerank_models,
+        images_generations_endpoint: dto.images_generations_endpoint,
+        images_edits_endpoint: dto.images_edits_endpoint,
+        image_models: dto.image_models,
+        audio_transcriptions_endpoint: dto.audio_transcriptions_endpoint,
+        audio_speech_endpoint: dto.audio_speech_endpoint,
+        audio_models: dto.audio_models,
         realtime_models: dto.realtime_models,
         realtime_endpoint: dto.realtime_endpoint,
         timeout_ms: dto.timeout_ms,
