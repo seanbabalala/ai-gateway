@@ -88,6 +88,60 @@ export class CreateNodeDto {
   @ArrayMinSize(1)
   models!: string[];
 
+  @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  embedding_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/embeddings' })
+  @IsOptional()
+  @IsString()
+  embeddings_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['rerank-v3.5'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rerank_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/rerank' })
+  @IsOptional()
+  @IsString()
+  rerank_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-image-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  image_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/images/generations' })
+  @IsOptional()
+  @IsString()
+  images_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/edits' })
+  @IsOptional()
+  @IsString()
+  images_edits_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  audio_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
+  @IsOptional()
+  @IsString()
+  audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/speech' })
+  @IsOptional()
+  @IsString()
+  audio_speech_endpoint?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
   @IsOptional()
   @IsArray()
@@ -260,6 +314,60 @@ export class UpdateNodeDto {
   @IsString({ each: true })
   @ArrayMinSize(1)
   models?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  embedding_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/embeddings' })
+  @IsOptional()
+  @IsString()
+  embeddings_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['rerank-v3.5'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rerank_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/rerank' })
+  @IsOptional()
+  @IsString()
+  rerank_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-image-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  image_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/images/generations' })
+  @IsOptional()
+  @IsString()
+  images_generations_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/images/edits' })
+  @IsOptional()
+  @IsString()
+  images_edits_endpoint?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  audio_models?: string[];
+
+  @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
+  @IsOptional()
+  @IsString()
+  audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/speech' })
+  @IsOptional()
+  @IsString()
+  audio_speech_endpoint?: string;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-realtime-preview'] })
   @IsOptional()

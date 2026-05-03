@@ -248,6 +248,97 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('missing_model_pricing');
   });
 
+  it('adds provider catalog warnings for unknown known-provider models', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o', 'not-a-known-openai-model'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {
+          'gpt-4o': { input: 2.5, output: 10 },
+          'not-a-known-openai-model': { input: 1, output: 2 },
+        },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toContain('catalog_unknown_model');
+  });
+
+  it('adds provider catalog warnings for modality/endpoint mismatches and placeholder pricing', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'anthropic',
+            name: 'Anthropic',
+            protocol: 'messages',
+            base_url: 'https://api.anthropic.com',
+            endpoint: '/v1/messages',
+            api_key: '${ANTHROPIC_API_KEY:-test}',
+            models: ['claude-sonnet-4-20250514'],
+            image_models: ['claude-sonnet-4-20250514'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'anthropic', model: 'claude-sonnet-4-20250514' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'catalog_endpoint_modality_mismatch',
+        'catalog_pricing_manual_review',
+      ]),
+    );
+  });
+
   it('rejects invalid media endpoint paths and model arrays', () => {
     const result = validateConfigObject(
       {

@@ -272,6 +272,9 @@ export interface NodeInfo {
   models: string[]
   embedding_models?: string[]
   rerank_models?: string[]
+  image_models?: string[]
+  audio_models?: string[]
+  realtime_models?: string[]
   capabilities: string[]
   modalities: string[]
   model_capabilities?: Record<string, ModelCapabilityInfo>
@@ -575,6 +578,16 @@ export interface CreateNodeRequest {
   endpoint: string
   api_key: string
   models: string[]
+  embeddings_endpoint?: string
+  embedding_models?: string[]
+  rerank_endpoint?: string
+  rerank_models?: string[]
+  images_generations_endpoint?: string
+  images_edits_endpoint?: string
+  image_models?: string[]
+  audio_transcriptions_endpoint?: string
+  audio_speech_endpoint?: string
+  audio_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
   timeout_ms: number
@@ -597,6 +610,16 @@ export interface UpdateNodeRequest {
   endpoint?: string
   api_key?: string
   models?: string[]
+  embeddings_endpoint?: string
+  embedding_models?: string[]
+  rerank_endpoint?: string
+  rerank_models?: string[]
+  images_generations_endpoint?: string
+  images_edits_endpoint?: string
+  image_models?: string[]
+  audio_transcriptions_endpoint?: string
+  audio_speech_endpoint?: string
+  audio_models?: string[]
   realtime_models?: string[]
   realtime_endpoint?: string
   timeout_ms?: number
@@ -627,6 +650,116 @@ export interface TestNodeResponse {
   status: number
   latency_ms: number
   message: string
+}
+
+// ── Provider / Model Catalog ──
+
+export type CatalogModality =
+  | 'text'
+  | 'vision'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'embedding'
+  | 'rerank'
+  | 'realtime'
+
+export type CatalogEndpoint =
+  | 'chat_completions'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'image_generations'
+  | 'image_edits'
+  | 'audio_transcriptions'
+  | 'audio_speech'
+  | 'video_generations'
+  | 'video_status'
+  | 'rerank'
+  | 'realtime'
+
+export type CatalogAuthType =
+  | 'bearer'
+  | 'x-api-key'
+  | 'api-key-header'
+  | 'query-key'
+  | 'none'
+  | 'custom'
+
+export interface CatalogPricing {
+  input?: number | null
+  output?: number | null
+  unit: string
+  currency: string
+  source: string
+  last_updated: string
+  manual_review_required: boolean
+  notes?: string
+}
+
+export interface CatalogModel {
+  id: string
+  name?: string
+  provider_id: string
+  modalities: CatalogModality[]
+  endpoints: CatalogEndpoint[]
+  input_types: string[]
+  output_types: string[]
+  capabilities: string[]
+  limits?: {
+    max_context_tokens?: number
+    max_output_tokens?: number
+    max_file_size?: number
+    dimensions?: number[]
+  }
+  pricing: CatalogPricing
+  structured_output?: boolean
+  supports_streaming?: boolean
+  supports_realtime?: boolean
+  supports_rerank?: boolean
+  manual_review_required?: boolean
+  notes?: string
+}
+
+export interface CatalogProvider {
+  id: string
+  name: string
+  description?: string
+  base_url: string
+  base_url_matchers: string[]
+  protocols: Array<'chat_completions' | 'responses' | 'messages'>
+  default_protocol: 'chat_completions' | 'responses' | 'messages'
+  endpoints: Partial<Record<CatalogEndpoint, string>>
+  auth_type: CatalogAuthType
+  key_placeholder?: string
+  modalities: CatalogModality[]
+  capabilities: string[]
+  pricing: {
+    source: string
+    last_updated: string
+    manual_review_required: boolean
+  }
+  model_prefixes?: string[]
+  tags?: string[]
+  allows_unknown_models?: boolean
+  manual_review_required?: boolean
+  models: CatalogModel[]
+}
+
+export interface CatalogProvidersResponse {
+  version: string
+  source: 'builtin_static'
+  last_updated: string
+  auto_update: false
+  providers: CatalogProvider[]
+}
+
+export interface CatalogModelsResponse {
+  version: string
+  source: 'builtin_static'
+  last_updated: string
+  auto_update: false
+  models: CatalogModel[]
 }
 
 // ── Capabilities ──

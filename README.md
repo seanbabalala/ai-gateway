@@ -126,6 +126,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
+- **Provider / Model Catalog** — built-in static provider and model capability catalog powers Add Node presets, Dashboard catalog APIs, and config validation warnings without automatic network updates
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
@@ -134,6 +135,19 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
+
+### Provider Catalog
+
+v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. It is a static, reviewable data source for provider presets and model metadata; it does not phone home or auto-update. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
+
+- Dashboard APIs:
+  - `GET /api/dashboard/catalog/providers`
+  - `GET /api/dashboard/catalog/models?provider=openai&modality=embedding`
+- Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
+- Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
+- Pricing entries include `source`, `last_updated`, and `manual_review_required`. Use local `models_pricing` or `model_capabilities[].pricing` for production cost routing.
+
+See [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) for the schema and validation behavior.
 
 ## Quick Start
 

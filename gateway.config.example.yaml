@@ -127,6 +127,12 @@ auth:
 # Each node represents one upstream provider account, deployment,
 # proxy route, or API endpoint. A node can expose one or more models.
 #
+# v0.8 includes a local static Provider / Model Catalog used by Dashboard
+# Add Node and `npm run validate:config`. The catalog is advisory and does
+# not auto-update online. Pricing entries in the catalog are often marked
+# manual_review_required, so keep production cost routing values in
+# models_pricing or model_capabilities[].pricing below.
+#
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
 #   id: azure-prod        name: "Azure OpenAI Production"
