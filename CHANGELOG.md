@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 guardrails plugin upgrade for the MIT Data Plane with local PII detection/redaction, prompt-injection checks, named policy rules, lightweight input/output schema validation, and conservative streaming delta handling.
+
+### Changed
+
+- Upgraded the official `plugins/guardrails` docs and examples from a regex skeleton to a privacy-safe local policy plugin; defaults remain disabled/no-op until explicitly enabled.
 
 ## 0.6.1 - 2026-05-03
 

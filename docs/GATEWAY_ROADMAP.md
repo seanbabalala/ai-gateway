@@ -16,6 +16,31 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 生产采纳、安全运维与决策智能 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（生产采纳 + 决策智能）
+
+**v0.7 当前状态**：Prompt 43 功能分支已完成更完整的开源 guardrails 插件能力。默认仍保持单机 memory/SQLite 可用；Redis、PostgreSQL、Cloud 都只作为可选能力。
+
+### P2：更完整的 Guardrails 插件
+
+- **状态**：✅ Prompt 43 功能分支已完成
+- **目标**：把 v0.4 的 guardrails skeleton 升级成可落地的本地安全策略插件，覆盖 PII、prompt injection、schema validation 和 policy block
+- **实现方案**：
+  - 保留旧 `input_patterns` / `output_patterns` 配置，兼容既有用户
+  - 新增本地 PII 检测：email、phone、SSN、credit card、API-key-like 字符串
+  - PII / policy / prompt-injection 支持 `audit`、`redact`、`block` 动作
+  - 新增内置 prompt-injection 检测，覆盖忽略上文、泄露系统提示、绕过策略、jailbreak 等常见表达
+  - 新增命名 `rules[]`，支持 input/output/both 方向、正则、动作、redaction 和 severity
+  - 新增轻量 input/output schema validation，支持 JSON Schema 常用子集
+  - stream 输出采用保守策略：可审计/脱敏 delta；block 时发送本地 blocked message 后丢弃后续文本 delta
+- **安全边界**：
+  - 插件默认关闭，不调用外部服务
+  - 不发送 prompt、response、provider key、raw headers
+  - 日志只记录 finding metadata，不记录匹配到的原文
+  - Cloud 仍只是可选控制面，不参与本地 guardrails 判定
 
 ---
 
@@ -536,14 +561,14 @@
 #### 23. 官方插件集
 
 - **状态**：✅ v0.4.0 已发布第一批
-- **现状**：已交付首批官方插件：`redis-cache`、`analytics-sink`、`request-transform`、`guardrails` skeleton；每个插件包含 README、示例配置、测试和安全说明
+- **现状**：已交付首批官方插件：`redis-cache`、`analytics-sink`、`request-transform`、`guardrails`；其中 guardrails 已在 v0.7 Prompt 43 升级为本地 PII、prompt-injection、schema validation 与 policy block 插件。每个插件包含 README、示例配置、测试和安全说明
 - **目标**：继续扩展到 5-8 个高质量官方插件
 - **插件列表**：
 
 | 插件名                                 | 功能                                                                          |
 | -------------------------------------- | ----------------------------------------------------------------------------- |
 | `plugins/redis-cache`                  | ✅ Redis 分布式缓存替代内存 LRU；默认不写响应，需显式 `store_responses: true` |
-| `plugins/guardrails`                   | ✅ 输入/输出内容安全检查 skeleton；默认本地 audit/no-op                       |
+| `plugins/guardrails`                   | ✅ 本地 PII、prompt-injection、schema validation 与 policy block；默认关闭/no-op |
 | `plugins/request-transform`            | ✅ 请求自定义变换；仅本地改写                                                 |
 | `plugins/analytics-sink`               | ✅ 安全 call-log 元数据推送到 webhook；默认不发送 prompt/response             |
 | `@siftgate/plugin-prompt-template`     | 系统 prompt 注入 / 模板管理                                                   |

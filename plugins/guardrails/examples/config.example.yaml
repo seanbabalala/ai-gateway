@@ -4,8 +4,36 @@ plugins:
     config:
       enabled: true
       mode: audit
-      input_patterns:
-        - "(?i)secret project"
-      output_patterns:
-        - "(?i)internal only"
+      pii:
+        enabled: true
+        action: redact
+        entities:
+          - email
+          - api_key
+          - credit_card
+      prompt_injection:
+        enabled: true
+        action: block
+      rules:
+        - name: local-secret-project
+          direction: input
+          pattern: "(?i)secret project"
+          action: block
+        - name: internal-only-output
+          direction: output
+          pattern: "(?i)internal only"
+          action: redact
+          redaction: "[internal content redacted]"
+      schema_validation:
+        output:
+          enabled: false
+          action: audit
+          schema:
+            type: object
+            required:
+              - ok
+            properties:
+              ok:
+                type: boolean
+            additionalProperties: false
       blocked_message: This content is blocked by local guardrails policy.

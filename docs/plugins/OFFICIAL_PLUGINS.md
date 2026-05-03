@@ -11,7 +11,7 @@ All official plugins are disabled or no-op by default. External exports never in
 | redis-cache | `plugins/redis-cache` | Optional Redis-backed canonical response cache |
 | analytics-sink | `plugins/analytics-sink` | Optional sanitized call-log analytics webhook |
 | request-transform | `plugins/request-transform` | Local canonical request rewrite rules |
-| guardrails | `plugins/guardrails` | Local guardrails skeleton for audit/block regex policies |
+| guardrails | `plugins/guardrails` | Local PII, prompt-injection, schema, and policy guardrails |
 
 ## Enabling
 
@@ -24,8 +24,18 @@ plugins:
     config:
       enabled: true
       mode: audit
-      input_patterns:
-        - "(?i)secret project"
+      pii:
+        enabled: true
+        action: redact
+        entities: [email, api_key, credit_card]
+      prompt_injection:
+        enabled: true
+        action: block
+      rules:
+        - name: local-secret-project
+          direction: input
+          pattern: "(?i)secret project"
+          action: block
 ```
 
 `required: false` is recommended while testing. Required plugin load failures stop gateway startup.
@@ -44,7 +54,7 @@ The Dockerfile builds plugins during the backend build stage and copies `dist-ru
 - `redis-cache`: sends hashed cache keys to Redis. It stores response bodies only when `store_responses: true` is explicitly set.
 - `analytics-sink`: uses a safe allow-list of call-log metadata. `include_prompt_response: true` is required before prompt/response-like fields are eligible for export.
 - `request-transform`: performs local request mutations only and has no network path.
-- `guardrails`: performs local regex checks only. It logs finding counts by default; `include_prompt_in_logs: true` is required before match details are logged.
+- `guardrails`: performs local PII, prompt-injection, regex policy, and lightweight schema checks. It logs finding metadata only; it never logs matched prompt or response text.
 
 Each plugin has its own README and example config:
 
