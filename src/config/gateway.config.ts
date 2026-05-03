@@ -40,6 +40,9 @@ export interface GatewayConfig {
   /** Optional shared state backend; memory remains the default single-node mode */
   state?: StateBackendConfig;
 
+  /** Optional external secret manager references for provider keys and tokens. */
+  secrets?: SecretManagerConfig;
+
   /** Optional multi-instance cluster mode; enabled explicitly or by state.backend=redis */
   cluster?: ClusterConfig;
 
@@ -80,6 +83,61 @@ export interface RedisStateBackendConfig {
   timeout_ms?: number;
   /** Poll interval for sync-only local mirrors such as circuit/momentum (default: 2000). */
   sync_interval_ms?: number;
+}
+
+// ===== Secret Managers =====
+export interface SecretManagerConfig {
+  /** Master switch for resolving ${vault:...}, ${aws-sm:...}, and ${gcp-sm:...}. Default: true when refs are present. */
+  enabled?: boolean;
+  /** Successful secret lookup cache TTL in seconds (default: 300). */
+  cache_ttl_seconds?: number;
+  /** Optional HashiCorp Vault lookup settings. */
+  vault?: VaultSecretManagerConfig;
+  /** Optional AWS Secrets Manager lookup settings. */
+  aws?: AwsSecretsManagerConfig;
+  /** Optional GCP Secret Manager lookup settings. */
+  gcp?: GcpSecretManagerConfig;
+}
+
+export interface VaultSecretManagerConfig {
+  /** Vault base address. Falls back to VAULT_ADDR. */
+  address?: string;
+  /** Vault token. Falls back to VAULT_TOKEN. */
+  token?: string;
+  /** KV mount name used when references omit /data/ (default: secret). */
+  mount?: string;
+  /** KV engine version (default: 2). */
+  kv_version?: 1 | 2;
+  /** Per-lookup timeout in milliseconds (default: 5000). */
+  timeout_ms?: number;
+}
+
+export interface AwsSecretsManagerConfig {
+  /** AWS region. Falls back to AWS_REGION or AWS_DEFAULT_REGION. */
+  region?: string;
+  /** Optional endpoint override for LocalStack or private endpoints. */
+  endpoint?: string;
+  /** Access key id. Falls back to AWS_ACCESS_KEY_ID. */
+  access_key_id?: string;
+  /** Secret access key. Falls back to AWS_SECRET_ACCESS_KEY. */
+  secret_access_key?: string;
+  /** Optional session token. Falls back to AWS_SESSION_TOKEN. */
+  session_token?: string;
+  /** Per-lookup timeout in milliseconds (default: 5000). */
+  timeout_ms?: number;
+}
+
+export interface GcpSecretManagerConfig {
+  /** Project id for short refs such as ${gcp-sm:openai-key}. */
+  project_id?: string;
+  /** Bearer token. Falls back to GCP_SECRET_MANAGER_TOKEN or GOOGLE_OAUTH_ACCESS_TOKEN. */
+  access_token?: string;
+  /** Optional API endpoint override. */
+  endpoint?: string;
+  /** Use GCE metadata server when no token is configured (default: true). */
+  use_metadata?: boolean;
+  /** Per-lookup timeout in milliseconds (default: 5000). */
+  timeout_ms?: number;
 }
 
 // ===== Hot Reload =====

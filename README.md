@@ -127,6 +127,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
+- **Secret manager references** — keep provider keys in env vars, Vault, AWS Secrets Manager, or GCP Secret Manager without requiring SiftGate Cloud
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
@@ -250,7 +251,7 @@ SiftGate uses two different kinds of secrets:
 
 | Key type         | Where it lives              | Who uses it       | Purpose                                                                                            |
 | ---------------- | --------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
-| Provider API key | `.env` or `nodes[].api_key` | SiftGate          | Lets the gateway call upstream providers such as OpenAI, Anthropic, Gemini, Azure, or a proxy      |
+| Provider API key | `.env`, secret manager, or `nodes[].api_key` | SiftGate          | Lets the gateway call upstream providers such as OpenAI, Anthropic, Gemini, Azure, or a proxy      |
 | Gateway API key  | Dashboard → API Keys        | Your applications | Lets clients call SiftGate and enables attribution, permissions, budgets, rate limits, and billing |
 
 Client applications should never use provider API keys. They call the gateway with:
@@ -322,7 +323,22 @@ Do not silently rename a live node ID without checking routing rules, API key pe
 
 ## Configuration
 
-All configuration lives in `gateway.config.yaml`. Environment variables can be referenced as `${VAR}` or `${VAR:-default}`.
+All configuration lives in `gateway.config.yaml`. Environment variables can be referenced as `${VAR}`, `${VAR:-default}`, or the explicit `${env:VAR}` form.
+
+For production provider keys, `nodes[].api_key`, node headers, active probes, realtime upstream auth, and optional control-plane registration can also use secret manager references:
+
+```yaml
+nodes:
+  - id: openai
+    api_key: ${vault:secret/openai#api_key}
+
+secrets:
+  vault:
+    address: ${VAULT_ADDR}
+    token: ${VAULT_TOKEN}
+```
+
+Supported forms are `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}`. See [Secret Management](docs/SECRET_MANAGEMENT.md).
 
 Validate changes before restart or CI deploys:
 

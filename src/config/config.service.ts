@@ -25,6 +25,7 @@ import {
   AlertsConfig,
   AlertSpikeRuleConfig,
   AlertLatencySpikeRuleConfig,
+  SecretManagerConfig,
   NamespaceConfig,
   ShadowTrafficConfig,
   ModelPricing,
@@ -39,6 +40,7 @@ import {
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
+import { scanConfigReferences } from './secret-references';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
@@ -165,20 +167,31 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Recursively resolve ${ENV_VAR} patterns in string values.
-   * Supports default values: ${ENV_VAR:-default}
+   * Recursively resolve environment references in string values.
+   * Supports ${ENV_VAR}, ${ENV_VAR:-default}, ${env:ENV_VAR}, and
+   * ${env:ENV_VAR:-default}. Secret manager references are preserved and
+   * resolved lazily at outbound edges.
    */
   private resolveEnvVars<T>(obj: T): T {
     if (typeof obj === 'string') {
       return obj.replace(
         /\$\{([^}]+)\}/g,
-        (_match: string, expr: string) => {
-          const [envKey, defaultValue] = expr.split(':-');
-          const value = process.env[envKey.trim()];
+        (match: string, expr: string) => {
+          const refs = scanConfigReferences(match);
+          const secretRef = refs.secrets[0];
+          if (secretRef) return secretRef.raw;
+
+          const envRef = refs.env[0];
+          if (!envRef) {
+            this.logger.warn(`Ignoring malformed configuration reference: \${${expr}}`);
+            return '';
+          }
+
+          const value = process.env[envRef.variable];
           if (value !== undefined) return value;
-          if (defaultValue !== undefined) return defaultValue;
+          if (envRef.hasDefault) return envRef.defaultValue ?? '';
           this.logger.warn(
-            `Environment variable ${envKey.trim()} is not set and has no default`,
+            `Environment variable ${envRef.variable} is not set and has no default`,
           );
           return '';
         },
@@ -707,6 +720,18 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         timeout_ms: state?.redis?.timeout_ms ?? 500,
         sync_interval_ms: state?.redis?.sync_interval_ms ?? 2000,
       },
+    };
+  }
+
+  get secrets(): Required<Omit<SecretManagerConfig, 'vault' | 'aws' | 'gcp'>> &
+    Pick<SecretManagerConfig, 'vault' | 'aws' | 'gcp'> {
+    const secrets = this.config.secrets;
+    return {
+      enabled: secrets?.enabled ?? true,
+      cache_ttl_seconds: secrets?.cache_ttl_seconds ?? 300,
+      vault: secrets?.vault,
+      aws: secrets?.aws,
+      gcp: secrets?.gcp,
     };
   }
 

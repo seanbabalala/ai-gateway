@@ -16,6 +16,35 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 生产采纳、安全运维与决策智能 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（生产采纳 + 安全运维 + 决策智能）
+
+**v0.7 当前状态**：Prompt 40 已完成功能分支，为 OSS Data Plane 增加可选 Secret Manager 引用。默认仍保持单机 memory/SQLite 可用；Vault、AWS Secrets Manager、GCP Secret Manager、Redis、PostgreSQL、Cloud 都只作为可选能力。
+
+### P1：生产安全与部署易用性
+
+#### 1. Secret manager 支持
+
+- **状态**：✅ Prompt 40 功能分支已完成
+- **目标**：让生产部署不必把 provider key、upstream header token 或可选 control-plane registration token 明文写入 `gateway.config.yaml`
+- **实现方案**：
+  - 保持现有 `${VAR}` / `${VAR:-default}` 环境变量引用兼容
+  - 新增 `${env:VAR}` / `${env:VAR:-default}` 显式 env 引用
+  - 新增 `${vault:secret/openai#api_key}` 支持 HashiCorp Vault KV
+  - 新增 `${aws-sm:prod/openai#api_key}` 支持 AWS Secrets Manager
+  - 新增 `${gcp-sm:openai-key#api_key}` 与完整 GCP resource name 支持 GCP Secret Manager
+  - Secret lookup 在上游调用前惰性解析，不写回配置文件，并用本地内存 TTL cache 降低外部 secret manager 压力
+  - 覆盖 `nodes[].api_key`、`nodes[].headers`、active health probe auth、realtime upstream auth、`control_plane.registration_token`
+  - Config validation 校验引用语法、禁用状态、provider 配置缺失 warning；CI 不需要真实 secret 即可验证配置结构
+  - 不引入企业版私有依赖，不要求 SiftGate Cloud
+
+### 后续 v0.7 候选
+
+- 本地审计日志和配置版本回滚：Dashboard 能改配置后，审计和 rollback 会变成刚需
+- Benchmark 页面和压测报告：给生产部署和竞品对比提供性能证据
 
 ---
 
@@ -255,13 +284,14 @@
 
 #### 9. Provider Key 加密存储
 
-- **状态**：未纳入 v0.2.0，保留为后续安全加固项
-- **现状**：API key 明文存储在 YAML 和环境变量中
+- **状态**：✅ 已在 v0.7 Prompt 40 完成 Secret Manager 引用；本地 AES 加密文件仍保留为后续候选
+- **现状**：provider key 可以继续使用环境变量，也可以通过 Vault/AWS/GCP Secret Manager 在上游调用前惰性解析
 - **目标**：支持加密存储 + Secrets Manager 集成
 - **实现方案**：
-  - 支持 `${env:OPENAI_KEY}` 引用环境变量（已有）
-  - 新增 `${vault:secret/openai}` 格式支持 HashiCorp Vault
-  - 新增 `${aws-sm:openai-key}` 格式支持 AWS Secrets Manager
+  - 支持 `${env:OPENAI_KEY}` 引用环境变量
+  - 新增 `${vault:secret/openai#api_key}` 格式支持 HashiCorp Vault
+  - 新增 `${aws-sm:openai-key#api_key}` 格式支持 AWS Secrets Manager
+  - 新增 `${gcp-sm:openai-key#api_key}` 格式支持 GCP Secret Manager
   - 本地 fallback：AES-256 加密文件
 
 #### 10. 请求/响应审计日志

@@ -8,6 +8,10 @@ import {
   VALID_CAPABILITY_IO_TYPES,
   VALID_MODALITIES,
 } from './modality';
+import {
+  SecretReference,
+  scanConfigReferences,
+} from './secret-references';
 
 export type ConfigValidationSeverity = 'error' | 'warning' | 'info';
 
@@ -39,12 +43,6 @@ export interface ValidateConfigObjectOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-interface EnvReference {
-  raw: string;
-  variable: string;
-  hasDefault: boolean;
-}
-
 const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
 const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages']);
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
@@ -63,9 +61,7 @@ const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
 const STATE_BACKENDS = new Set(['memory', 'redis']);
 const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
-const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
-const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
-const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
+const CONFIG_REF_PATTERN = /\$\{[^}]*\}/g;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CAPABILITY_ENDPOINTS = new Set<string>(VALID_CAPABILITY_ENDPOINTS);
 const CAPABILITY_MODALITIES = new Set<string>(VALID_MODALITIES);
@@ -204,7 +200,7 @@ export function validateConfigObject(
   const config = value as Partial<GatewayConfig> & Record<string, unknown>;
 
   validateTopLevel(config, issues);
-  validateEnvReferences(config, env, issues);
+  validateConfigReferences(config, env, issues);
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
   validateAuth(config.auth, config.namespaces, issues);
@@ -219,6 +215,7 @@ export function validateConfigObject(
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
+  validateSecrets(config.secrets, config, env, issues);
   validateCluster(config.cluster, config.state, issues);
   validatePricing(config.models_pricing, issues);
   validateControlPlane(config.control_plane, issues);
@@ -1507,7 +1504,7 @@ function validateCapabilityIOArray(
 }
 
 function isEndpointReference(value: string): boolean {
-  if (HAS_ENV_REF_PATTERN.test(value)) return true;
+  if (containsConfigReference(value)) return true;
   if (value.startsWith('/')) return true;
   try {
     const url = new URL(value);
@@ -2755,7 +2752,7 @@ function validateRedisUrl(
     );
     return;
   }
-  if (containsEnvReference(value)) return;
+  if (containsConfigReference(value)) return;
   try {
     const url = new URL(value);
     if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
@@ -2948,7 +2945,7 @@ function validateAlertChannels(
           `${channelPath}.url`,
         ),
       );
-    } else if (!containsEnvReference(channel.url)) {
+    } else if (!containsConfigReference(channel.url)) {
       validateHttpUrl(
         channel.url,
         `${channelPath}.url`,
@@ -3252,11 +3249,344 @@ function validateState(
   }
 }
 
+function validateSecrets(
+  secrets: unknown,
+  config: Record<string, unknown>,
+  env: NodeJS.ProcessEnv,
+  issues: ConfigValidationIssue[],
+): void {
+  const refs = collectSecretReferences(config);
+  if (secrets === undefined) {
+    if (refs.length > 0) {
+      issues.push(
+        issue(
+          'info',
+          'secret_manager_default_config',
+          'Secret manager references are present; provider settings will be read from environment variables where possible.',
+          'secrets',
+        ),
+      );
+      validateSecretProvidersForReferences({}, refs, env, issues);
+    }
+    return;
+  }
+
+  if (!isRecord(secrets)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'secrets must be an object when configured.',
+        'secrets',
+      ),
+    );
+    return;
+  }
+
+  if (secrets.enabled !== undefined && !isBoolean(secrets.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secrets_enabled',
+        'secrets.enabled must be a boolean when set.',
+        'secrets.enabled',
+      ),
+    );
+  }
+  if (
+    secrets.cache_ttl_seconds !== undefined &&
+    (!isFiniteNumber(secrets.cache_ttl_seconds) || secrets.cache_ttl_seconds < 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secrets_cache_ttl',
+        'secrets.cache_ttl_seconds must be a non-negative number.',
+        'secrets.cache_ttl_seconds',
+      ),
+    );
+  }
+
+  validateVaultSecretsConfig(secrets.vault, issues);
+  validateAwsSecretsConfig(secrets.aws, issues);
+  validateGcpSecretsConfig(secrets.gcp, issues);
+
+  if (secrets.enabled === false && refs.length > 0) {
+    issues.push(
+      issue(
+        'error',
+        'secret_refs_disabled',
+        'Secret references are present but secrets.enabled=false.',
+        'secrets.enabled',
+      ),
+    );
+  }
+
+  validateSecretProvidersForReferences(secrets, refs, env, issues);
+}
+
+function validateVaultSecretsConfig(
+  vault: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (vault === undefined) return;
+  if (!isRecord(vault)) {
+    issues.push(
+      issue('error', 'invalid_secret_provider', 'secrets.vault must be an object.', 'secrets.vault'),
+    );
+    return;
+  }
+  if (vault.address !== undefined) {
+    if (!isNonEmptyString(vault.address)) {
+      issues.push(
+        issue('error', 'invalid_secret_provider_address', 'secrets.vault.address must be a non-empty URL.', 'secrets.vault.address'),
+      );
+    } else if (!containsConfigReference(vault.address)) {
+      validateHttpUrl(vault.address, 'secrets.vault.address', 'invalid_secret_provider_address', issues);
+    }
+  }
+  if (vault.token !== undefined && !isNonEmptyString(vault.token)) {
+    issues.push(
+      issue('error', 'invalid_secret_provider_token', 'secrets.vault.token must be a non-empty string.', 'secrets.vault.token'),
+    );
+  }
+  if (vault.mount !== undefined && !isNonEmptyString(vault.mount)) {
+    issues.push(
+      issue('error', 'invalid_secret_provider_mount', 'secrets.vault.mount must be a non-empty string.', 'secrets.vault.mount'),
+    );
+  }
+  if (vault.kv_version !== undefined && vault.kv_version !== 1 && vault.kv_version !== 2) {
+    issues.push(
+      issue('error', 'invalid_secret_provider_kv_version', 'secrets.vault.kv_version must be 1 or 2.', 'secrets.vault.kv_version'),
+    );
+  }
+  validatePositiveOptionalNumber(vault.timeout_ms, 'secrets.vault.timeout_ms', issues);
+}
+
+function validateAwsSecretsConfig(
+  aws: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (aws === undefined) return;
+  if (!isRecord(aws)) {
+    issues.push(
+      issue('error', 'invalid_secret_provider', 'secrets.aws must be an object.', 'secrets.aws'),
+    );
+    return;
+  }
+  for (const field of ['region', 'access_key_id', 'secret_access_key', 'session_token']) {
+    if (aws[field] !== undefined && !isNonEmptyString(aws[field])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_secret_provider_field',
+          `secrets.aws.${field} must be a non-empty string when set.`,
+          `secrets.aws.${field}`,
+        ),
+      );
+    }
+  }
+  if (aws.endpoint !== undefined) {
+    if (!isNonEmptyString(aws.endpoint)) {
+      issues.push(
+        issue('error', 'invalid_secret_provider_endpoint', 'secrets.aws.endpoint must be a non-empty URL.', 'secrets.aws.endpoint'),
+      );
+    } else if (!containsConfigReference(aws.endpoint)) {
+      validateHttpUrl(aws.endpoint, 'secrets.aws.endpoint', 'invalid_secret_provider_endpoint', issues);
+    }
+  }
+  validatePositiveOptionalNumber(aws.timeout_ms, 'secrets.aws.timeout_ms', issues);
+}
+
+function validateGcpSecretsConfig(
+  gcp: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (gcp === undefined) return;
+  if (!isRecord(gcp)) {
+    issues.push(
+      issue('error', 'invalid_secret_provider', 'secrets.gcp must be an object.', 'secrets.gcp'),
+    );
+    return;
+  }
+  for (const field of ['project_id', 'access_token']) {
+    if (gcp[field] !== undefined && !isNonEmptyString(gcp[field])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_secret_provider_field',
+          `secrets.gcp.${field} must be a non-empty string when set.`,
+          `secrets.gcp.${field}`,
+        ),
+      );
+    }
+  }
+  if (gcp.endpoint !== undefined) {
+    if (!isNonEmptyString(gcp.endpoint)) {
+      issues.push(
+        issue('error', 'invalid_secret_provider_endpoint', 'secrets.gcp.endpoint must be a non-empty URL.', 'secrets.gcp.endpoint'),
+      );
+    } else if (!containsConfigReference(gcp.endpoint)) {
+      validateHttpUrl(gcp.endpoint, 'secrets.gcp.endpoint', 'invalid_secret_provider_endpoint', issues);
+    }
+  }
+  if (gcp.use_metadata !== undefined && !isBoolean(gcp.use_metadata)) {
+    issues.push(
+      issue('error', 'invalid_secret_provider_field', 'secrets.gcp.use_metadata must be a boolean.', 'secrets.gcp.use_metadata'),
+    );
+  }
+  validatePositiveOptionalNumber(gcp.timeout_ms, 'secrets.gcp.timeout_ms', issues);
+}
+
+function validatePositiveOptionalNumber(
+  value: unknown,
+  issuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isFiniteNumber(value) || value <= 0) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_provider_timeout',
+        `${issuePath} must be a positive number when set.`,
+        issuePath,
+      ),
+    );
+  }
+}
+
+function validateSecretProvidersForReferences(
+  secrets: Record<string, unknown>,
+  refs: SecretReference[],
+  env: NodeJS.ProcessEnv,
+  issues: ConfigValidationIssue[],
+): void {
+  const providers = new Set(refs.map((ref) => ref.provider));
+  if (providers.size === 0) return;
+
+  issues.push(
+    issue(
+      'info',
+      'secret_references_detected',
+      `Detected ${refs.length} secret manager reference(s): ${Array.from(providers).join(', ')}.`,
+      'secrets',
+    ),
+  );
+
+  const vault = isRecord(secrets.vault) ? secrets.vault : {};
+  if (providers.has('vault')) {
+    if (!isNonEmptyString(vault.address) && !env.VAULT_ADDR) {
+      issues.push(
+        issue(
+          'warning',
+          'secret_provider_not_configured',
+          'Vault references require secrets.vault.address or VAULT_ADDR at runtime.',
+          'secrets.vault.address',
+        ),
+      );
+    }
+    if (!isNonEmptyString(vault.token) && !env.VAULT_TOKEN) {
+      issues.push(
+        issue(
+          'warning',
+          'secret_provider_not_configured',
+          'Vault references require secrets.vault.token or VAULT_TOKEN at runtime.',
+          'secrets.vault.token',
+        ),
+      );
+    }
+  }
+
+  const aws = isRecord(secrets.aws) ? secrets.aws : {};
+  if (providers.has('aws-sm')) {
+    if (!isNonEmptyString(aws.region) && !env.AWS_REGION && !env.AWS_DEFAULT_REGION) {
+      issues.push(
+        issue(
+          'warning',
+          'secret_provider_not_configured',
+          'AWS Secrets Manager references require secrets.aws.region, AWS_REGION, or AWS_DEFAULT_REGION at runtime.',
+          'secrets.aws.region',
+        ),
+      );
+    }
+    if (!isNonEmptyString(aws.access_key_id) && !env.AWS_ACCESS_KEY_ID) {
+      issues.push(
+        issue(
+          'warning',
+          'secret_provider_not_configured',
+          'AWS Secrets Manager references require secrets.aws.access_key_id or AWS_ACCESS_KEY_ID at runtime.',
+          'secrets.aws.access_key_id',
+        ),
+      );
+    }
+    if (!isNonEmptyString(aws.secret_access_key) && !env.AWS_SECRET_ACCESS_KEY) {
+      issues.push(
+        issue(
+          'warning',
+          'secret_provider_not_configured',
+          'AWS Secrets Manager references require secrets.aws.secret_access_key or AWS_SECRET_ACCESS_KEY at runtime.',
+          'secrets.aws.secret_access_key',
+        ),
+      );
+    }
+  }
+
+  const gcp = isRecord(secrets.gcp) ? secrets.gcp : {};
+  if (providers.has('gcp-sm')) {
+    const hasShortGcpRef = refs.some(
+      (ref) => ref.provider === 'gcp-sm' && !ref.target.startsWith('projects/'),
+    );
+    if (
+      hasShortGcpRef &&
+      !isNonEmptyString(gcp.project_id) &&
+      !env.GOOGLE_CLOUD_PROJECT &&
+      !env.GCLOUD_PROJECT
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'secret_provider_not_configured',
+          'Short GCP Secret Manager references require secrets.gcp.project_id, GOOGLE_CLOUD_PROJECT, or GCLOUD_PROJECT at runtime.',
+          'secrets.gcp.project_id',
+        ),
+      );
+    }
+    if (
+      !isNonEmptyString(gcp.access_token) &&
+      !env.GCP_SECRET_MANAGER_TOKEN &&
+      !env.GOOGLE_OAUTH_ACCESS_TOKEN
+    ) {
+      issues.push(
+        issue(
+          'info',
+          'secret_provider_uses_metadata',
+          'GCP Secret Manager will try the metadata server when no access token is configured.',
+          'secrets.gcp.access_token',
+        ),
+      );
+    }
+  }
+}
+
+function collectSecretReferences(value: unknown): SecretReference[] {
+  if (typeof value === 'string') {
+    return scanConfigReferences(value).secrets;
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectSecretReferences(item));
+  }
+  if (isRecord(value)) {
+    return Object.values(value).flatMap((item) => collectSecretReferences(item));
+  }
+  return [];
+}
+
 function validateRedisStateUrl(
   value: string,
   issues: ConfigValidationIssue[],
 ): void {
-  if (HAS_ENV_REF_PATTERN.test(value)) return;
+  if (containsConfigReference(value)) return;
   let url: URL;
   try {
     url = new URL(value);
@@ -3448,7 +3778,7 @@ function validateLogSinkUrl(
     );
     return;
   }
-  if (!containsEnvReference(value)) {
+  if (!containsConfigReference(value)) {
     validateHttpUrl(value, valuePath, code, issues);
   }
 }
@@ -3712,7 +4042,7 @@ function validateControlPlane(
         'control_plane.registration_token',
       ),
     );
-  } else if (!containsEnvReference(controlPlane.registration_token)) {
+  } else if (!containsConfigReference(controlPlane.registration_token)) {
     issues.push(
       issue(
         'warning',
@@ -3813,14 +4143,15 @@ function validateControlPlaneUrl(
   }
 }
 
-function validateEnvReferences(
+function validateConfigReferences(
   value: unknown,
   env: NodeJS.ProcessEnv,
   issues: ConfigValidationIssue[],
   currentPath = '',
 ): void {
   if (typeof value === 'string') {
-    for (const ref of extractEnvReferences(value, currentPath, issues)) {
+    const scan = scanConfigReferences(value);
+    for (const ref of scan.env) {
       if (!ref.hasDefault && env[ref.variable] === undefined) {
         issues.push(
           issue(
@@ -3832,12 +4163,43 @@ function validateEnvReferences(
         );
       }
     }
+    for (const invalid of scan.invalid) {
+      issues.push(
+        issue(
+          'error',
+          'malformed_env_reference',
+          `${invalid.raw} is not a supported config reference. ${invalid.reason}`,
+          currentPath,
+        ),
+      );
+    }
+    if (hasUnclosedConfigReference(value)) {
+      issues.push(
+        issue(
+          'error',
+          'malformed_env_reference',
+          'Config reference is missing a closing "}".',
+          currentPath,
+        ),
+      );
+    }
+    const withoutRefs = value.replace(CONFIG_REF_PATTERN, '');
+    if (withoutRefs.includes('}')) {
+      issues.push(
+        issue(
+          'error',
+          'malformed_env_reference',
+          'String contains a closing "}" without a matching config reference.',
+          currentPath,
+        ),
+      );
+    }
     return;
   }
 
   if (Array.isArray(value)) {
     value.forEach((item, index) =>
-      validateEnvReferences(item, env, issues, `${currentPath}[${index}]`),
+      validateConfigReferences(item, env, issues, `${currentPath}[${index}]`),
     );
     return;
   }
@@ -3845,76 +4207,29 @@ function validateEnvReferences(
   if (isRecord(value)) {
     for (const [key, child] of Object.entries(value)) {
       const childPath = currentPath ? `${currentPath}.${key}` : key;
-      validateEnvReferences(child, env, issues, childPath);
+      validateConfigReferences(child, env, issues, childPath);
     }
   }
 }
 
-function extractEnvReferences(
-  value: string,
-  valuePath: string,
-  issues: ConfigValidationIssue[],
-): EnvReference[] {
-  const refs: EnvReference[] = [];
+function hasUnclosedConfigReference(value: string): boolean {
   let searchIndex = 0;
-
   while (searchIndex < value.length) {
     const start = value.indexOf('${', searchIndex);
-    if (start === -1) break;
+    if (start === -1) return false;
 
     const end = value.indexOf('}', start + 2);
     if (end === -1) {
-      issues.push(
-        issue(
-          'error',
-          'malformed_env_reference',
-          'Environment reference is missing a closing "}".',
-          valuePath,
-        ),
-      );
-      break;
+      return true;
     }
-
-    const raw = value.slice(start, end + 1);
-    const expression = value.slice(start + 2, end).trim();
-    const match = ENV_EXPR_PATTERN.exec(expression);
-    if (!match) {
-      issues.push(
-        issue(
-          'error',
-          'malformed_env_reference',
-          `Environment reference ${raw} must use \${VAR} or \${VAR:-default} with an uppercase variable name.`,
-          valuePath,
-        ),
-      );
-    } else {
-      refs.push({
-        raw,
-        variable: match[1],
-        hasDefault: match[2] !== undefined,
-      });
-    }
-
     searchIndex = end + 1;
   }
-
-  const withoutRefs = value.replace(ENV_REF_PATTERN, '');
-  if (withoutRefs.includes('}')) {
-    issues.push(
-      issue(
-        'error',
-        'malformed_env_reference',
-        'String contains a closing "}" without a matching environment reference.',
-        valuePath,
-      ),
-    );
-  }
-
-  return refs;
+  return false;
 }
 
-function containsEnvReference(value: string): boolean {
-  return HAS_ENV_REF_PATTERN.test(value);
+function containsConfigReference(value: string): boolean {
+  const scan = scanConfigReferences(value);
+  return scan.env.length > 0 || scan.secrets.length > 0;
 }
 
 function validateProviderApiKey(
@@ -3923,7 +4238,7 @@ function validateProviderApiKey(
   nodePath: string,
   issues: ConfigValidationIssue[],
 ): void {
-  if (containsEnvReference(apiKey) || isPlaceholderApiKey(apiKey)) {
+  if (containsConfigReference(apiKey) || isPlaceholderApiKey(apiKey)) {
     return;
   }
 

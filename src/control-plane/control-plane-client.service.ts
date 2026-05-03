@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
+import { SecretReferenceResolver } from '../config/secret-reference-resolver.service';
 import type {
   ControlPlaneRegistrationResponse,
   ControlPlaneTelemetryEvent,
@@ -16,7 +17,10 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
   private registerInFlight: Promise<boolean> | null = null;
   private configReloadSub?: Subscription;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly secretResolver?: SecretReferenceResolver,
+  ) {}
 
   onModuleInit(): void {
     this.configReloadSub = this.config.onReloadSuccess(() => {
@@ -84,11 +88,12 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
           },
         },
       };
+      const registrationToken = await this.resolveSecretString(cp.registration_token);
       const response = await this.request<ControlPlaneRegistrationResponse>(
         'POST',
         '/api/control/register',
         body,
-        cp.registration_token,
+        registrationToken,
       );
       this.workspaceId = response.workspace_id || null;
       this.gatewayId = response.gateway_id || cp.gateway_id || 'default';
@@ -107,6 +112,10 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
       this.logger.warn(`Control plane registration failed: ${(err as Error).message}`);
       return false;
     }
+  }
+
+  private async resolveSecretString(value: string): Promise<string> {
+    return this.secretResolver?.resolveString(value) ?? value;
   }
 
   async heartbeat(): Promise<boolean> {

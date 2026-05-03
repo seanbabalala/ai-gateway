@@ -7,6 +7,7 @@ import {
 } from '../config/gateway.config';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { AlertService } from '../alerts/alert.service';
+import { SecretReferenceResolver } from '../config/secret-reference-resolver.service';
 
 export type ActiveProbeStatus = 'disabled' | 'unknown' | 'healthy' | 'unhealthy';
 
@@ -42,6 +43,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly circuitBreaker: CircuitBreakerService,
     @Optional() private readonly alerts?: AlertService,
+    @Optional() private readonly secretResolver?: SecretReferenceResolver,
   ) {}
 
   onModuleInit(): void {
@@ -109,7 +111,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     timeout.unref?.();
 
     try {
-      const request = this.buildProbeRequest(node, check);
+      const request = await this.buildProbeRequest(node, check);
       const response = await fetch(request.url, {
         method: request.method,
         headers: request.headers,
@@ -176,16 +178,16 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  private buildProbeRequest(
+  private async buildProbeRequest(
     node: NodeConfig,
     check: NormalizedHealthCheck,
-  ): {
+  ): Promise<{
     url: string;
     method: HealthCheckMethod;
     headers: Record<string, string>;
     body?: string;
-  } {
-    const headers = this.buildHeaders(node, check.method);
+  }> {
+    const headers = await this.buildHeaders(node, check.method);
     const url = this.buildUrl(node.base_url, check.path);
     if (check.method !== 'POST') {
       return { url, method: check.method, headers };
@@ -204,26 +206,39 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private buildHeaders(
+  private async buildHeaders(
     node: NodeConfig,
     method: HealthCheckMethod,
-  ): Record<string, string> {
+  ): Promise<Record<string, string>> {
     const headers: Record<string, string> = {};
     if (method === 'POST') {
       headers['Content-Type'] = 'application/json';
     }
+    const customHeaders = await this.resolveSecretRecord(node.headers);
+    const apiKey = await this.resolveSecretString(node.api_key);
 
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] =
+        customHeaders['anthropic-version'] || '2023-06-01';
     } else {
-      headers['Authorization'] = `Bearer ${node.api_key}`;
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    if (node.headers) Object.assign(headers, node.headers);
+    Object.assign(headers, customHeaders);
     return headers;
+  }
+
+  private async resolveSecretString(value: string): Promise<string> {
+    return this.secretResolver?.resolveString(value) ?? value;
+  }
+
+  private async resolveSecretRecord(
+    value: Record<string, string> | undefined,
+  ): Promise<Record<string, string>> {
+    return this.secretResolver?.resolveRecord(value) ?? (value || {});
   }
 
   private buildSyntheticProbeBody(

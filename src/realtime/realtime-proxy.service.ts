@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { randomUUID, createHash } from 'crypto';
@@ -15,6 +16,7 @@ import {
   GatewayApiKeyContext,
   GatewayApiKeyService,
 } from '../auth/gateway-api-key.service';
+import { SecretReferenceResolver } from '../config/secret-reference-resolver.service';
 
 type RealtimeCloseReason =
   | 'client_closed'
@@ -134,6 +136,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly apiKeys: GatewayApiKeyService,
     private readonly adapterHost: HttpAdapterHost,
+    @Optional() private readonly secretResolver?: SecretReferenceResolver,
   ) {}
 
   onModuleInit(): void {
@@ -417,7 +420,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
   ): Promise<InstanceType<typeof UpstreamWebSocket>> {
     const realtime = this.config.realtime;
     const url = this.buildUpstreamUrl(session.target.node, session.target.model);
-    const headers = this.buildUpstreamHeaders(session.target.node);
+    const headers = await this.buildUpstreamHeaders(session.target.node);
     const ws = new UpstreamWebSocket(url, { headers });
     (ws as unknown as { binaryType: string }).binaryType = 'arraybuffer';
 
@@ -826,24 +829,37 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     return url.toString();
   }
 
-  private buildUpstreamHeaders(node: NodeConfig): Record<string, string> {
+  private async buildUpstreamHeaders(node: NodeConfig): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'OpenAI-Beta': 'realtime=v1',
     };
+    const customHeaders = await this.resolveSecretRecord(node.headers);
+    const apiKey = await this.resolveSecretString(node.api_key);
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] =
+        customHeaders['anthropic-version'] || '2023-06-01';
     } else {
-      headers.Authorization = `Bearer ${node.api_key}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
-    for (const [key, value] of Object.entries(node.headers || {})) {
+    for (const [key, value] of Object.entries(customHeaders)) {
       if (this.isForwardableUpstreamHeader(key) && typeof value === 'string') {
         headers[key] = value;
       }
     }
     return headers;
+  }
+
+  private async resolveSecretString(value: string): Promise<string> {
+    return this.secretResolver?.resolveString(value) ?? value;
+  }
+
+  private async resolveSecretRecord(
+    value: Record<string, string> | undefined,
+  ): Promise<Record<string, string>> {
+    return this.secretResolver?.resolveRecord(value) ?? (value || {});
   }
 
   private isForwardableUpstreamHeader(key: string): boolean {

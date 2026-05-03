@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 optional Secret Manager references for the MIT Data Plane, covering provider API keys, node headers, active health probes, realtime upstream auth, and optional control-plane registration tokens.
+- HashiCorp Vault KV, AWS Secrets Manager, and GCP Secret Manager lookup support with in-memory caching and no SiftGate Cloud dependency.
+- Config validation diagnostics for `${env:...}`, `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` references, including disabled-reference errors and provider configuration warnings.
 
 ## 0.6.1 - 2026-05-03
 

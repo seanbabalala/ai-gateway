@@ -7,6 +7,12 @@
 # Environment variables can be referenced as:
 #   ${VAR}            — required, fails if not set
 #   ${VAR:-default}   — optional, uses default if not set
+#   ${env:VAR}        — explicit env form, equivalent to ${VAR}
+#
+# Optional secret manager references for sensitive values:
+#   ${vault:secret/openai#api_key}
+#   ${aws-sm:prod/openai#api_key}
+#   ${gcp-sm:openai-key#api_key}
 #
 # Validate before running:
 #   npm run validate:config -- --config gateway.config.yaml
@@ -95,6 +101,38 @@ auth:
 #   debounce_ms: 500
 
 # ============================================================
+# Secret Managers — optional provider-key lookup
+# ============================================================
+# SiftGate keeps environment variables as the default local secret source.
+# For production, nodes[].api_key, node headers, and control_plane tokens can
+# reference external secret managers. Lookups happen lazily before outbound
+# provider calls, so single-node memory/SQLite startup remains unchanged.
+#
+# Supported reference forms:
+#   ${vault:secret/openai#api_key}              # HashiCorp Vault KV
+#   ${aws-sm:prod/openai#api_key}              # AWS Secrets Manager
+#   ${gcp-sm:openai-key#api_key}               # GCP Secret Manager short ref
+#   ${gcp-sm:projects/my-proj/secrets/openai-key/versions/latest#api_key}
+#
+# secrets:
+#   enabled: true
+#   cache_ttl_seconds: 300
+#   vault:
+#     address: ${VAULT_ADDR:-https://vault.example.com}
+#     token: ${VAULT_TOKEN}
+#     mount: secret
+#     kv_version: 2
+#     timeout_ms: 5000
+#   aws:
+#     region: ${AWS_REGION:-us-east-1}
+#     # access_key_id / secret_access_key fall back to AWS_ACCESS_KEY_ID /
+#     # AWS_SECRET_ACCESS_KEY. Set endpoint for LocalStack or private endpoints.
+#   gcp:
+#     project_id: ${GOOGLE_CLOUD_PROJECT:-}
+#     # access_token falls back to GCP_SECRET_MANAGER_TOKEN or
+#     # GOOGLE_OAUTH_ACCESS_TOKEN, then GCE metadata when available.
+
+# ============================================================
 # Cluster Mode — optional Redis Pub/Sub multi-instance inventory
 # ============================================================
 # SiftGate runs as a single local data plane by default. Enable Redis-backed
@@ -163,6 +201,8 @@ nodes:
     images_edits_endpoint: "/v1/images/edits"
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
     audio_speech_endpoint: "/v1/audio/speech"
+    # May also be ${vault:secret/openai#api_key}, ${aws-sm:prod/openai#api_key},
+    # or ${gcp-sm:openai-key#api_key}; see docs/SECRET_MANAGEMENT.md.
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]

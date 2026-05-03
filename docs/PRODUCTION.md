@@ -198,6 +198,6 @@ Redis Pub/Sub does not carry provider keys, prompts, responses, raw headers, or 
 
 ## Security Notes
 
-- Provider API keys should stay in environment variables or a local secret manager referenced from `gateway.config.yaml`.
+- Provider API keys should stay in environment variables or a local secret manager referenced from `gateway.config.yaml`. SiftGate supports Vault, AWS Secrets Manager, and GCP Secret Manager references for outbound provider keys; see [Secret Management](SECRET_MANAGEMENT.md).
 - Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`.
 - The open-source Data Plane does not require SiftGate Cloud. If `control_plane` is enabled, it is an outbound optional integration and AI traffic still flows from the gateway to the configured providers.

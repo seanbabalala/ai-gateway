@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig, NodeProtocol } from '../config/gateway.config';
@@ -26,6 +26,7 @@ import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
+import { SecretReferenceResolver } from '../config/secret-reference-resolver.service';
 import type { Dispatcher } from 'undici';
 
 type FetchOptionsWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
@@ -64,6 +65,7 @@ export class ProviderClientService {
     private readonly config: ConfigService,
     private readonly telemetry: TelemetryService,
     private readonly connectionPool?: UpstreamConnectionPoolService,
+    @Optional() private readonly secretResolver?: SecretReferenceResolver,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -389,27 +391,11 @@ export class ProviderClientService {
     endpointOverride?: string,
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    // Auth
-    const authType =
-      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
-    } else {
-      headers['Authorization'] = `Bearer ${node.api_key}`;
-    }
-
-    // Custom headers
-    if (node.headers) Object.assign(headers, node.headers);
-
-    // Preserve Anthropic-native request headers for messages → messages passthrough.
-    if (canonical && this.shouldPassthroughNativeMessages(canonical, node.protocol)) {
-      Object.assign(headers, this.extractNativeMessageHeaders(canonical));
-    }
+    const headers = await this.buildRequestHeaders(
+      node,
+      'application/json',
+      canonical,
+    );
 
     this.logger.debug(
       `Forwarding to ${node.id} (${node.protocol}) → ${url} model=${requestBody.model} stream=${requestBody.stream}`,
@@ -492,19 +478,7 @@ export class ProviderClientService {
     signal?: AbortSignal,
   ): Promise<Response> {
     const url = `${node.base_url}${endpoint}`;
-    const headers: Record<string, string> = {
-      'Content-Type': request.contentType,
-    };
-
-    const authType =
-      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
-    } else {
-      headers['Authorization'] = `Bearer ${node.api_key}`;
-    }
-    if (node.headers) Object.assign(headers, node.headers);
+    const headers = await this.buildRequestHeaders(node, request.contentType);
 
     const controller = new AbortController();
     const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
@@ -567,6 +541,47 @@ export class ProviderClientService {
       clearTimeout(timeout);
       signal?.removeEventListener('abort', abortFromExternal);
     }
+  }
+
+  private async buildRequestHeaders(
+    node: NodeConfig,
+    contentType: string,
+    canonical?: CanonicalRequest,
+  ): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+    };
+    const customHeaders = await this.resolveSecretRecord(node.headers);
+    const apiKey = await this.resolveSecretString(node.api_key);
+    const authType =
+      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
+
+    if (authType === 'x-api-key') {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] =
+        customHeaders['anthropic-version'] || '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    Object.assign(headers, customHeaders);
+
+    // Preserve Anthropic-native request headers for messages -> messages passthrough.
+    if (canonical && this.shouldPassthroughNativeMessages(canonical, node.protocol)) {
+      Object.assign(headers, this.extractNativeMessageHeaders(canonical));
+    }
+
+    return headers;
+  }
+
+  private async resolveSecretString(value: string): Promise<string> {
+    return this.secretResolver?.resolveString(value) ?? value;
+  }
+
+  private async resolveSecretRecord(
+    value: Record<string, string> | undefined,
+  ): Promise<Record<string, string>> {
+    return this.secretResolver?.resolveRecord(value) ?? (value || {});
   }
 
   private async readJsonResponse(
