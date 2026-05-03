@@ -155,7 +155,9 @@ For explainable routing, the pipeline also writes a separate `route_decisions` r
 
 The open-source data plane includes optional shadow traffic for sampled test-node mirroring. When enabled, successful primary requests can enqueue an asynchronous copy to a configured shadow node/model. The primary response has already been produced, so shadow latency and failures do not affect the caller.
 
-Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
+Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Each result keeps enough sanitized metadata to build a local comparison report: primary/shadow node and model, status, latency, token usage, cost summary, and error reason. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
+
+The v0.7 comparison report is computed locally from recent shadow rows. It summarizes success rate, latency delta, cost delta, potential savings, output-quality sample coverage, confidence, and risk notes. It does not mutate routing configuration or promote a shadow target automatically.
 
 ## Local Webhook Alerts
 

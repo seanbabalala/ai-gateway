@@ -50,7 +50,12 @@ function makeService(overrides: Record<string, any> = {}) {
 
 describe('ShadowTrafficService', () => {
   it('mirrors chat requests without storing prompts or responses by default', async () => {
-    const { service, providerClient, repo } = makeService();
+    const { service, providerClient, repo, config } = makeService();
+    config.getModelPricing.mockImplementation((model: string) =>
+      model === 'gpt-4o'
+        ? { input: 5, output: 15 }
+        : { input: 0.15, output: 0.6 },
+    );
     const request = makeRequest('sensitive prompt', { originalModel: 'gpt-4o' });
     request.metadata.namespace_id = 'team-alpha';
 
@@ -78,6 +83,11 @@ describe('ShadowTrafficService', () => {
         status: 'sent',
         prompt_sample: null,
         response_sample: null,
+        primary_latency_ms: 100,
+        primary_input_tokens: 10,
+        primary_output_tokens: 5,
+        primary_cost_usd: 0.000125,
+        shadow_cost_usd: 0.00000585,
         input_tokens: 11,
         output_tokens: 7,
       }),
@@ -143,7 +153,81 @@ describe('ShadowTrafficService', () => {
       expect.objectContaining({
         status: 'skipped',
         error: expect.stringContaining('Shadow target'),
+        primary_latency_ms: 100,
       }),
     );
+  });
+
+  it('builds a read-only comparison report from sanitized shadow rows', () => {
+    const { service } = makeService();
+    const report = service.buildComparisonReport([
+      {
+        id: 1,
+        timestamp: new Date(),
+        request_id: 'req-1',
+        kind: 'chat',
+        namespace_id: 'team-alpha',
+        api_key_id: null,
+        api_key_name: null,
+        source_format: 'chat_completions',
+        primary_node: 'openai',
+        primary_model: 'gpt-4o',
+        shadow_node: 'shadow-openai',
+        shadow_model: 'gpt-4o-mini',
+        status: 'sent',
+        latency_ms: 80,
+        primary_latency_ms: 120,
+        status_code: 200,
+        error: null,
+        input_tokens: 9,
+        output_tokens: 5,
+        primary_input_tokens: 10,
+        primary_output_tokens: 5,
+        primary_cost_usd: 0.001,
+        shadow_cost_usd: 0.0002,
+        prompt_sample: null,
+        primary_response_sample: JSON.stringify({ content: [{ type: 'text', text: 'ship it' }] }),
+        response_sample: JSON.stringify({ content: [{ type: 'text', text: 'ship it now' }] }),
+      },
+      {
+        id: 2,
+        timestamp: new Date(),
+        request_id: 'req-2',
+        kind: 'chat',
+        namespace_id: 'team-alpha',
+        api_key_id: null,
+        api_key_name: null,
+        source_format: 'chat_completions',
+        primary_node: 'openai',
+        primary_model: 'gpt-4o',
+        shadow_node: 'shadow-openai',
+        shadow_model: 'gpt-4o-mini',
+        status: 'failed',
+        latency_ms: 200,
+        primary_latency_ms: 110,
+        status_code: 429,
+        error: 'rate limited',
+        input_tokens: 0,
+        output_tokens: 0,
+        primary_input_tokens: 10,
+        primary_output_tokens: 4,
+        primary_cost_usd: 0.001,
+        shadow_cost_usd: 0,
+        prompt_sample: null,
+        primary_response_sample: null,
+        response_sample: null,
+      },
+    ], 'team-alpha');
+
+    expect(report.window).toEqual(expect.objectContaining({
+      rows: 2,
+      compared: 2,
+      namespace_id: 'team-alpha',
+    }));
+    expect(report.success.shadow_success_rate).toBe(0.5);
+    expect(report.latency.delta_ms).toBe(25);
+    expect(report.cost.potential_savings_usd).toBe(0.0018);
+    expect(report.quality.evaluated).toBe(1);
+    expect(report.recommendation.decision).toBe('not_enough_data');
   });
 });

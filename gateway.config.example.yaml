@@ -463,6 +463,9 @@ budget:
 # sent asynchronously to a test node/model. Shadow failures never fail or slow
 # the primary request path, and shadow requests are not billed/logged as user
 # calls. Dashboard shows recent sanitized shadow outcomes read-only.
+# The Shadow page also computes a local comparison report: success rate,
+# latency/cost deltas, potential savings, quality sample coverage, confidence,
+# and risk notes. It never applies routing changes automatically.
 #
 # By default SiftGate stores no prompt/input samples and no response samples.
 # Enable compare storage only when you intentionally want local comparison

@@ -924,17 +924,19 @@ export class DashboardController {
   }
 
   @Get('shadow')
-  @ApiOperation({ summary: 'Read-only shadow traffic status and recent results' })
+  @ApiOperation({ summary: 'Read-only shadow traffic status, comparison report, and recent results' })
   @ApiQuery({ name: 'namespace', required: false })
   @ApiQuery({ name: 'limit', required: false, example: 50 })
-  @ApiOkResponse({ description: 'Shadow traffic configuration status and sanitized recent result rows.' })
+  @ApiOkResponse({ description: 'Shadow traffic configuration status, sanitized comparison report, and recent result rows.' })
   async getShadowTraffic(
     @Query('namespace') namespaceId?: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number = 50,
   ) {
+    const recent = await this.shadowTraffic.recent(namespaceId, limit);
     return {
       status: this.shadowTraffic.getStatus(),
-      recent: await this.shadowTraffic.recent(namespaceId, limit),
+      report: this.shadowTraffic.buildComparisonReport(recent, namespaceId),
+      recent,
     };
   }
 

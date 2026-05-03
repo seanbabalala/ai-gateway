@@ -912,15 +912,64 @@ export interface ShadowTrafficResult {
   shadow_model: string
   status: 'sent' | 'failed' | 'skipped'
   latency_ms: number | null
+  primary_latency_ms: number | null
   status_code: number | null
   error: string | null
   input_tokens: number
   output_tokens: number
+  primary_input_tokens: number
+  primary_output_tokens: number
+  primary_cost_usd: number
+  shadow_cost_usd: number
   prompt_sample: string | null
+  primary_response_sample: string | null
   response_sample: string | null
+}
+
+export interface ShadowTrafficComparisonReport {
+  window: {
+    rows: number
+    compared: number
+    skipped: number
+    namespace_id: string | null
+  }
+  success: {
+    primary_success_rate: number | null
+    shadow_success_rate: number | null
+    shadow_sent: number
+    shadow_failed: number
+  }
+  latency: {
+    avg_primary_ms: number | null
+    avg_shadow_ms: number | null
+    delta_ms: number | null
+    verdict: 'faster' | 'similar' | 'slower' | 'unknown'
+  }
+  cost: {
+    avg_primary_usd: number | null
+    avg_shadow_usd: number | null
+    total_primary_usd: number
+    total_shadow_usd: number
+    delta_usd: number | null
+    potential_savings_usd: number
+    verdict: 'cheaper' | 'similar' | 'more_expensive' | 'unknown'
+  }
+  quality: {
+    evaluated: number
+    average_score: number | null
+    status: 'not_evaluated' | 'similar' | 'watch' | 'diverged'
+    reason: string
+  }
+  recommendation: {
+    decision: 'not_enough_data' | 'promote_candidate' | 'keep_primary' | 'investigate'
+    confidence: number
+    reasons: string[]
+    risk_notes: string[]
+  }
 }
 
 export interface ShadowTrafficResponse {
   status: ShadowTrafficStatus
+  report: ShadowTrafficComparisonReport
   recent: ShadowTrafficResult[]
 }

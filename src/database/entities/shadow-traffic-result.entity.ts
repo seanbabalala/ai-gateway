@@ -57,6 +57,9 @@ export class ShadowTrafficResult {
   latency_ms!: number | null;
 
   @Column({ type: 'integer', nullable: true })
+  primary_latency_ms!: number | null;
+
+  @Column({ type: 'integer', nullable: true })
   status_code!: number | null;
 
   @Column({ type: 'text', nullable: true })
@@ -68,8 +71,23 @@ export class ShadowTrafficResult {
   @Column({ type: 'integer', default: 0 })
   output_tokens!: number;
 
+  @Column({ type: 'integer', default: 0 })
+  primary_input_tokens!: number;
+
+  @Column({ type: 'integer', default: 0 })
+  primary_output_tokens!: number;
+
+  @Column({ type: 'real', default: 0 })
+  primary_cost_usd!: number;
+
+  @Column({ type: 'real', default: 0 })
+  shadow_cost_usd!: number;
+
   @Column({ type: 'text', nullable: true })
   prompt_sample!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  primary_response_sample!: string | null;
 
   @Column({ type: 'text', nullable: true })
   response_sample!: string | null;

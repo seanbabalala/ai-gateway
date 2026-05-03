@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 shadow traffic comparison reports for the MIT Data Plane, summarizing sampled primary-vs-shadow success rate, latency delta, cost delta, potential savings, quality-sample coverage, confidence, and risk notes.
+- Read-only Dashboard Shadow report cards and localized recommendation/risk labels across English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish.
+- Shadow result metadata now stores primary latency/token/cost summaries and shadow cost summaries without saving prompts, responses, raw headers, or provider keys by default.
 
 ## 0.6.1 - 2026-05-03
 

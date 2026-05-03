@@ -70,10 +70,11 @@ Safety defaults:
 - Response samples are not stored unless `compare.store_responses: true`.
 - Raw request headers and provider keys are never stored in shadow results.
 - Shadow sends are fire-and-forget and do not affect routing, budgets, or call logs for the primary request.
+- Shadow comparison reports are read-only and never apply routing changes automatically.
 
 When comparison storage is enabled, the config validator prints a warning because local prompt/response samples may contain sensitive data.
 
-The Dashboard endpoint `GET /api/dashboard/shadow?namespace=<id>&limit=50` returns the sanitized shadow status and recent results. The Dashboard shadow page is read-only; it cannot apply routing changes or promote a shadow target.
+The Dashboard endpoint `GET /api/dashboard/shadow?namespace=<id>&limit=50` returns the sanitized shadow status, a comparison report, and recent results. The report summarizes primary-vs-shadow success rate, latency delta, cost delta, potential savings, output quality sample coverage, confidence, and risk notes. Quality evaluation uses only locally stored response samples when `compare.store_responses: true`; otherwise the report explicitly marks quality as not evaluated. The Dashboard shadow page is read-only; it cannot apply routing changes or promote a shadow target.
 
 ## Validation
 

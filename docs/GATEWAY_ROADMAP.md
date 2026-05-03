@@ -16,6 +16,36 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 灰度决策报告 + 生产采纳能力 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（路由决策智能 + 生产采纳）
+
+**v0.7 当前状态**：Prompt 38 已完成功能分支，为 OSS Data Plane 的 Shadow Traffic 增加只读对比报告。默认仍保持单机 memory/SQLite 可用；Shadow Traffic、Redis/Postgres/Cloud 都只作为可选能力。
+
+### P0：灰度决策工具
+
+#### 1. Shadow Traffic 对比报告
+
+- **状态**：✅ Prompt 38 功能分支已完成
+- **目标**：把 v0.5 的只读 shadow 结果升级成灰度迁移决策工具，而不是只看单条 mirror 成败。
+- **实现方案**：
+  - Dashboard `GET /api/dashboard/shadow` 在原有 `status` 与 `recent` 外新增 `report`
+  - 汇总 primary 与 shadow 的成功率、平均延迟、延迟差、平均成本、总成本差、潜在节省
+  - 记录每条 shadow 结果的 primary latency/token/cost 摘要与 shadow cost 摘要
+  - 默认仍不保存 prompt、response、raw headers、provider keys
+  - 仅当用户显式开启 `shadow.compare.store_responses=true` 时，基于本地响应样本做轻量输出质量相似度评估
+  - 输出 recommendation：`collect data`、`keep primary`、`investigate`、`candidate looks ready`
+  - 输出 confidence、原因与风险说明，Dashboard 只读展示，不自动应用 routing 配置
+  - 7 语言本地化覆盖报告卡片、建议和风险标签
+
+### 后续 v0.7 候选
+
+- Model Catalog 与 Pricing 自动更新：成本/上下文路由依赖准确模型元数据
+- Helm chart / K8s manifests：让 Redis/Postgres/cluster 模式更容易生产部署
+- Secret manager 支持：Vault/AWS Secrets/GCP Secret Manager
+- 本地审计日志和配置版本回滚：Dashboard 可改配置后需要审计和 rollback
 
 ---
 

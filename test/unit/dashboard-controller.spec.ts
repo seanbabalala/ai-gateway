@@ -195,6 +195,22 @@ function makeDashboard(overrides: Record<string, any> = {}) {
       },
     }),
     recent: jest.fn().mockResolvedValue([]),
+    buildComparisonReport: jest.fn().mockReturnValue({
+      window: { rows: 0, compared: 0, skipped: 0, namespace_id: null },
+      success: { primary_success_rate: null, shadow_success_rate: null, shadow_sent: 0, shadow_failed: 0 },
+      latency: { avg_primary_ms: null, avg_shadow_ms: null, delta_ms: null, verdict: 'unknown' },
+      cost: {
+        avg_primary_usd: null,
+        avg_shadow_usd: null,
+        total_primary_usd: 0,
+        total_shadow_usd: 0,
+        delta_usd: null,
+        potential_savings_usd: 0,
+        verdict: 'unknown',
+      },
+      quality: { evaluated: 0, average_score: null, status: 'not_evaluated', reason: 'response_samples_disabled_or_missing' },
+      recommendation: { decision: 'not_enough_data', confidence: 0, reasons: [], risk_notes: [] },
+    }),
     ...overrides.shadowTraffic,
   };
 
@@ -1071,7 +1087,12 @@ describe('DashboardController — namespaces and shadow traffic', () => {
     const result = await controller.getShadowTraffic('team-alpha', 10);
 
     expect(shadowTraffic.recent).toHaveBeenCalledWith('team-alpha', 10);
+    expect(shadowTraffic.buildComparisonReport).toHaveBeenCalledWith(
+      [{ id: 1, status: 'sent', namespace_id: 'team-alpha' }],
+      'team-alpha',
+    );
     expect(result.recent).toHaveLength(1);
+    expect(result.report.recommendation.decision).toBe('not_enough_data');
     expect(result.status.privacy.provider_keys).toBe(false);
   });
 });

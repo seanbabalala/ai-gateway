@@ -114,7 +114,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Route decision traces** — inspect per-request candidate targets, filter reasons, scores, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
-- **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
+- **Shadow traffic comparison reports** — read-only success, latency, cost, savings, confidence, and risk summaries for sampled test-node mirror outcomes without applying changes
 - **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
 
@@ -1072,7 +1072,9 @@ shadow:
     store_responses: false
 ```
 
-By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; config validation emits a warning when either is enabled. Raw headers and provider keys are never stored. The Dashboard Shadow page and `GET /api/dashboard/shadow` endpoint are read-only. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
+By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, cost summary, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; config validation emits a warning when either is enabled. Raw headers and provider keys are never stored.
+
+The Dashboard Shadow page and `GET /api/dashboard/shadow` endpoint are read-only. The response includes a comparison report with primary-vs-shadow success rate, latency delta, cost delta, potential savings, output quality sample coverage, confidence, and risk notes. Output quality is evaluated only from local response samples when response storage is explicitly enabled; otherwise the report says quality was not evaluated. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
 
 ### Webhook Alerts
 

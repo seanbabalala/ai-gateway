@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitCompareArrows, ShieldCheck } from 'lucide-react'
+import { Activity, DollarSign, GitCompareArrows, Gauge, ShieldCheck, Sparkles } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
@@ -18,7 +18,24 @@ import {
 } from '@/components/ui/table'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { useShadowTraffic } from '@/hooks/use-shadow'
-import { formatLatency, formatTimestamp, formatTokens } from '@/lib/utils'
+import { formatCost, formatLatency, formatPercent, formatTimestamp, formatTokens } from '@/lib/utils'
+
+function formatRate(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  return formatPercent(value * 100)
+}
+
+function formatDeltaMs(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${formatLatency(value)}`
+}
+
+function formatDeltaCost(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${formatCost(Math.abs(value))}`
+}
 
 export function ShadowPage() {
   const { t } = useTranslation('dashboard')
@@ -38,6 +55,7 @@ export function ShadowPage() {
   }
 
   const status = data?.status
+  const report = data?.report
   const recent = data?.recent || []
 
   return (
@@ -110,6 +128,131 @@ export function ShadowPage() {
           </CardContent>
         </CardStatic>
       </div>
+
+      <CardStatic>
+        <CardHeader>
+          <CardTitle>{t('shadow.report.title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {isLoading || !report ? (
+            <SkeletonTable rows={4} cols={4} />
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                    <Activity className="h-3.5 w-3.5" />
+                    {t('shadow.report.samples')}
+                  </div>
+                  <div className="mt-2 font-mono text-2xl font-bold text-[var(--foreground)]">
+                    {report.window.rows}
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+                    {t('shadow.report.comparedLine', {
+                      compared: report.window.compared,
+                      skipped: report.window.skipped,
+                    })}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                    <Gauge className="h-3.5 w-3.5" />
+                    {t('shadow.report.success')}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge variant="emerald">{formatRate(report.success.shadow_success_rate)}</Badge>
+                    <span className="text-[11px] text-[var(--foreground-dim)]">
+                      {t('shadow.report.primaryRate', {
+                        rate: formatRate(report.success.primary_success_rate),
+                      })}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                    <GitCompareArrows className="h-3.5 w-3.5" />
+                    {t('shadow.report.latency')}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge variant={report.latency.verdict === 'faster' ? 'emerald' : report.latency.verdict === 'slower' ? 'amber' : 'zinc'}>
+                      {t(`shadow.report.latencyVerdict.${report.latency.verdict}`)}
+                    </Badge>
+                    <span className="font-mono text-[12px] text-[var(--foreground)]">
+                      {formatDeltaMs(report.latency.delta_ms)}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                    <DollarSign className="h-3.5 w-3.5" />
+                    {t('shadow.report.cost')}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge variant={report.cost.verdict === 'cheaper' ? 'emerald' : report.cost.verdict === 'more_expensive' ? 'amber' : 'zinc'}>
+                      {t(`shadow.report.costVerdict.${report.cost.verdict}`)}
+                    </Badge>
+                    <span className="font-mono text-[12px] text-[var(--foreground)]">
+                      {formatDeltaCost(report.cost.delta_usd)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+                    {t('shadow.report.savings', {
+                      value: formatCost(report.cost.potential_savings_usd),
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {t('shadow.report.quality')}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge variant={report.quality.status === 'similar' ? 'emerald' : report.quality.status === 'diverged' ? 'red' : report.quality.status === 'watch' ? 'amber' : 'zinc'}>
+                      {t(`shadow.report.qualityStatus.${report.quality.status}`)}
+                    </Badge>
+                    <span className="font-mono text-[12px] text-[var(--foreground)]">
+                      {report.quality.average_score === null ? '-' : formatPercent(report.quality.average_score * 100)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+                    {t('shadow.report.qualityLine', { count: report.quality.evaluated })}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                      {t('shadow.report.recommendation')}
+                    </div>
+                    <Badge variant={report.recommendation.decision === 'promote_candidate' ? 'emerald' : report.recommendation.decision === 'investigate' ? 'amber' : 'zinc'}>
+                      {t(`shadow.report.decision.${report.recommendation.decision}`)}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 text-[12px] text-[var(--foreground-muted)]">
+                    {t('shadow.report.confidence', {
+                      value: formatPercent(report.recommendation.confidence * 100),
+                    })}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {report.recommendation.reasons.slice(0, 3).map((reason) => (
+                      <Badge key={reason} variant="blue">
+                        {t(`shadow.report.reason.${reason}`, { defaultValue: reason })}
+                      </Badge>
+                    ))}
+                    {report.recommendation.risk_notes.slice(0, 3).map((risk) => (
+                      <Badge key={risk} variant="amber">
+                        {t(`shadow.report.risk.${risk}`, { defaultValue: risk })}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </CardStatic>
 
       <CardStatic>
         <CardHeader>

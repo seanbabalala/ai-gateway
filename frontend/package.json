@@ -10,7 +10,8 @@
     "i18n:check": "node scripts/check-i18n.mjs",
     "routing:check": "node scripts/check-dev-routing.mjs",
     "route-explanation:check": "node scripts/check-route-explanation.mjs",
-    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check",
+    "shadow-comparison:check": "node scripts/check-shadow-comparison.mjs",
+    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check && npm run shadow-comparison:check",
     "preview": "vite preview"
   },
   "dependencies": {
