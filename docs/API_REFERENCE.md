@@ -2,7 +2,7 @@
 
 SiftGate exposes provider-compatible AI ingress endpoints, a local Dashboard API, and machine-readable OpenAPI documentation for the MIT open-source Data Plane.
 
-v0.6.0 adds canonical structured-output passthrough, common rerank ingress, minimal OpenAI-compatible images/audio ingress, an experimental OpenAI Realtime-style WebSocket preview, and privacy-safe route decision traces for explainable routing.
+v0.8 hardens the OpenAI-compatible images/audio ingress added in v0.6 with image variations, audio translations, richer media metadata, and production log visibility while keeping media files pass-through only.
 
 ## Live Documentation
 
@@ -37,7 +37,9 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `POST` | `/v1/rerank` | OpenAI/common-compatible rerank ingress |
 | `POST` | `/v1/images/generations` | OpenAI Images generation-compatible ingress |
 | `POST` | `/v1/images/edits` | OpenAI Images edits-compatible ingress |
+| `POST` | `/v1/images/variations` | OpenAI Images variations-compatible ingress |
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription-compatible ingress |
+| `POST` | `/v1/audio/translations` | OpenAI Audio translation-compatible ingress |
 | `POST` | `/v1/audio/speech` | OpenAI Audio speech-compatible ingress |
 | `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
@@ -165,7 +167,9 @@ Rerank routing uses `nodes[].rerank_models`. `model: "auto"` filters by Gateway 
 }
 ```
 
-`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as multipart status, byte size, and model.
+`POST /v1/images/edits` accepts JSON or `multipart/form-data`. For multipart requests, SiftGate does not parse, resize, transcode, or inspect image file contents. It preserves the raw multipart bytes, rewrites or appends the selected `model` form field, and records only safe canonical metadata such as media type, operation, multipart status, file count, byte size, requested/response format, and upstream response content type.
+
+`POST /v1/images/variations` uses the same image-capable route pool and multipart pass-through behavior. If an upstream does not implement image variations, keep `images_variations_endpoint` pointed at a compatible proxy that does, or let the provider return its native unsupported-operation error; SiftGate will surface it as a normal provider failure/fallback without storing image bytes.
 
 Image responses are returned in the upstream provider's OpenAI-compatible JSON shape.
 
@@ -180,6 +184,16 @@ curl http://localhost:2099/v1/audio/transcriptions \
   -F file=@sample.wav
 ```
 
+`POST /v1/audio/translations` follows the same route, budget, fallback, and multipart pass-through path as transcriptions:
+
+```bash
+curl http://localhost:2099/v1/audio/translations \
+  -H "Authorization: Bearer gw_sk_live_..." \
+  -F model=auto \
+  -F response_format=json \
+  -F file=@sample.wav
+```
+
 `POST /v1/audio/speech` accepts OpenAI-compatible JSON and can return binary provider audio directly:
 
 ```json
@@ -190,7 +204,7 @@ curl http://localhost:2099/v1/audio/transcriptions \
 }
 ```
 
-When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged. Increase `server.body_limit` when image edit or audio transcription files are larger than the default `1mb`.
+When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards the provider body and content type unchanged and records only the provider response content type. Increase `server.body_limit` when image edit/variation or audio transcription/translation files are larger than the default `1mb`.
 
 ### Experimental Realtime
 

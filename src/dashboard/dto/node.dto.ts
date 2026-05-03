@@ -124,6 +124,11 @@ export class CreateNodeDto {
   @IsString()
   images_edits_endpoint?: string;
 
+  @ApiPropertyOptional({ example: '/v1/images/variations' })
+  @IsOptional()
+  @IsString()
+  images_variations_endpoint?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
   @IsOptional()
   @IsArray()
@@ -134,6 +139,11 @@ export class CreateNodeDto {
   @IsOptional()
   @IsString()
   audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/translations' })
+  @IsOptional()
+  @IsString()
+  audio_translations_endpoint?: string;
 
   @ApiPropertyOptional({ example: '/v1/audio/speech' })
   @IsOptional()
@@ -376,6 +386,11 @@ export class UpdateNodeDto {
   @IsString()
   images_edits_endpoint?: string;
 
+  @ApiPropertyOptional({ example: '/v1/images/variations' })
+  @IsOptional()
+  @IsString()
+  images_variations_endpoint?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
   @IsOptional()
   @IsArray()
@@ -386,6 +401,11 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsString()
   audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/translations' })
+  @IsOptional()
+  @IsString()
+  audio_translations_endpoint?: string;
 
   @ApiPropertyOptional({ example: '/v1/audio/speech' })
   @IsOptional()

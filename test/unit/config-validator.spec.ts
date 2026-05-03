@@ -212,7 +212,9 @@ describe('config validator', () => {
             endpoint: '/v1/chat/completions',
             images_generations_endpoint: '/v1/images/generations',
             images_edits_endpoint: '/v1/images/edits',
+            images_variations_endpoint: '/v1/images/variations',
             audio_transcriptions_endpoint: '/v1/audio/transcriptions',
+            audio_translations_endpoint: '/v1/audio/translations',
             audio_speech_endpoint: '/v1/audio/speech',
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o-mini'],
@@ -353,6 +355,8 @@ describe('config validator', () => {
             base_url: 'https://api.openai.com',
             endpoint: '/v1/chat/completions',
             images_generations_endpoint: 'v1/images/generations',
+            images_variations_endpoint: 'v1/images/variations',
+            audio_translations_endpoint: 'audio/translations',
             audio_speech_endpoint: '',
             video_generations_endpoint: 'v1/videos/generations',
             api_key: '${OPENAI_API_KEY:-test}',
@@ -360,6 +364,12 @@ describe('config validator', () => {
             image_models: ['gpt-image-1', 'gpt-image-1'],
             audio_models: 'tts-1',
             video_models: ['veo-3.1-generate-preview', 'veo-3.1-generate-preview'],
+            model_capabilities: {
+              'gpt-image-1': {
+                max_file_size: 0,
+                pricing: { input: -1, output: 0 },
+              },
+            },
             timeout_ms: 60000,
           },
         ],
@@ -388,6 +398,8 @@ describe('config validator', () => {
         'invalid_node_endpoint',
         'duplicate_model_id_in_node',
         'invalid_audio_models',
+        'invalid_max_file_size',
+        'invalid_pricing_entry',
       ]),
     );
   });

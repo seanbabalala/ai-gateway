@@ -294,6 +294,27 @@ export class ImageEditRequestDto {
   size?: string;
 }
 
+export class ImageVariationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate image routing or a configured image model.' })
+  model!: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Multipart source image. SiftGate passes multipart bytes through and only rewrites/appends the model field.',
+  })
+  image?: unknown;
+
+  @ApiPropertyOptional({ example: 1 })
+  n?: number;
+
+  @ApiPropertyOptional({ example: '1024x1024' })
+  size?: string;
+
+  @ApiPropertyOptional({ example: 'url', enum: ['url', 'b64_json'] })
+  response_format?: string;
+}
+
 export class AudioTranscriptionRequestDto {
   @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured audio model.' })
   model!: string;
@@ -310,6 +331,24 @@ export class AudioTranscriptionRequestDto {
 
   @ApiPropertyOptional({ example: 'en' })
   language?: string;
+}
+
+export class AudioTranslationRequestDto {
+  @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate audio routing or a configured audio model.' })
+  model!: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Multipart audio file. SiftGate passes multipart bytes through and only rewrites/appends the model field.',
+  })
+  file?: unknown;
+
+  @ApiPropertyOptional({ example: 'json' })
+  response_format?: string;
+
+  @ApiPropertyOptional({ example: 'Translate this audio to English when the upstream supports OpenAI-compatible translations.' })
+  prompt?: string;
 }
 
 export class AudioSpeechRequestDto {
@@ -519,11 +558,17 @@ export class SanitizedNodeConfigDto {
   @ApiPropertyOptional({ example: '/v1/images/edits' })
   images_edits_endpoint?: string;
 
+  @ApiPropertyOptional({ example: '/v1/images/variations' })
+  images_variations_endpoint?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o-mini-transcribe', 'tts-1'] })
   audio_models?: string[];
 
   @ApiPropertyOptional({ example: '/v1/audio/transcriptions' })
   audio_transcriptions_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/audio/translations' })
+  audio_translations_endpoint?: string;
 
   @ApiPropertyOptional({ example: '/v1/audio/speech' })
   audio_speech_endpoint?: string;

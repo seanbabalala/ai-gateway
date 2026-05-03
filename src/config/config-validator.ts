@@ -829,7 +829,9 @@ function validateNodes(
     }
     validateOptionalEndpoint(node, basePath, 'images_generations_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'images_edits_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'images_variations_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_transcriptions_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'audio_translations_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_speech_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'video_generations_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'video_status_endpoint', issues);

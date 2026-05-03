@@ -944,7 +944,11 @@ export class RoutingService {
   }
 
   private mediaKind(sourceFormat: CanonicalMediaSourceFormat): 'image' | 'audio' {
-    return sourceFormat === 'image_generation' || sourceFormat === 'image_edit'
+    return (
+      sourceFormat === 'image_generation' ||
+      sourceFormat === 'image_edit' ||
+      sourceFormat === 'image_variation'
+    )
       ? 'image'
       : 'audio';
   }

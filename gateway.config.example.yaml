@@ -167,7 +167,9 @@ nodes:
     # realtime_endpoint: "/v1/realtime" # Optional ws/wss URL or path for experimental realtime proxy
     images_generations_endpoint: "/v1/images/generations"
     images_edits_endpoint: "/v1/images/edits"
+    images_variations_endpoint: "/v1/images/variations"
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
+    audio_translations_endpoint: "/v1/audio/translations"
     audio_speech_endpoint: "/v1/audio/speech"
     # video_generations_endpoint: "/v1/videos/generations" # Reserved for video-capable compatible providers
     # video_status_endpoint: "/v1/videos/{id}"             # Optional async video status endpoint
@@ -184,8 +186,10 @@ nodes:
     structured_output: true
     modalities: ["text", "vision"]    # Backward-compatible with image-capable chat models
     endpoints:
-      image: "/v1/images/generations" # Future v0.6 image entrypoint support
+      image: "/v1/images/generations"
+      image_variation: "/v1/images/variations"
       audio: "/v1/audio/transcriptions"
+      audio_translation: "/v1/audio/translations"
       realtime: "/v1/realtime"        # Use wss://... for absolute realtime URLs if needed
     input_types: ["text", "image", "audio"]
     output_types: ["text", "image", "events"]

@@ -10,12 +10,17 @@
 - Config validation warnings for catalog unknown models, endpoint/modality mismatches, and placeholder pricing that still needs operator review.
 - v0.8 Dashboard Add Node wizard backed by the local catalog, with provider/proxy/custom selection, capability selection, model bucket editing, endpoint/auth/header/pricing confirmation, and connection test/save flow.
 - `nodes[].video_models`, `video_generations_endpoint`, and `video_status_endpoint` config surface for video-capable providers ahead of a public video gateway endpoint.
+- v0.8 media endpoint hardening for the OSS Data Plane with OpenAI-compatible `POST /v1/images/variations` and `POST /v1/audio/translations`.
+- Canonical media metadata for images/audio requests: media type, operation, multipart flag, file count, byte size, requested format, response format, and provider response content type.
+- Dashboard call-log visibility, CSV/JSON export fields, external log sink fields, and optional connected-gateway telemetry metadata for media operations without storing file contents.
+- Node config support for `images_variations_endpoint` and `audio_translations_endpoint`, plus validation and OpenAPI docs for the new media endpoints.
 
 ### Changed
 
 - Dashboard Add Node provider presets now load from the catalog API instead of a hardcoded frontend list.
 - Dashboard Add Node now supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` in one localized wizard while preserving advanced local Data Plane fields.
 - Config validation now allows specialized-only nodes with `models: []` when embedding/rerank/media/realtime model buckets are configured.
+- Images/audio ingress now documents production pass-through behavior for JSON and multipart requests across generations, edits, variations, transcriptions, translations, and speech.
 
 ## 0.6.1 - 2026-05-03
 

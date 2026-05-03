@@ -22,8 +22,12 @@ export type CapabilityEndpoint =
   | 'messages'
   | 'embeddings'
   | 'image'
+  | 'image_edit'
+  | 'image_variation'
   | 'audio'
   | 'video'
+  | 'audio_translation'
+  | 'audio_speech'
   | 'rerank'
   | 'realtime';
 
@@ -56,8 +60,12 @@ export const VALID_CAPABILITY_ENDPOINTS: readonly CapabilityEndpoint[] = [
   'messages',
   'embeddings',
   'image',
+  'image_edit',
+  'image_variation',
   'audio',
   'video',
+  'audio_translation',
+  'audio_speech',
   'rerank',
   'realtime',
 ];

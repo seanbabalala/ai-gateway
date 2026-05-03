@@ -30,8 +30,16 @@ import type { CallLog } from '@/types/api'
 
 const LIMIT = 20
 
+function formatBytes(value?: number | null) {
+  if (value === null || value === undefined) return null
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${value} B`
+}
+
 function LogDetailRow({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
+  const mediaByteSize = formatBytes(log.media_byte_size)
   return (
     <TableRow>
       <TableCell colSpan={8} className="bg-[var(--inset-bg)] px-6 py-4">
@@ -83,6 +91,41 @@ function LogDetailRow({ log }: { log: CallLog }) {
               {log.structured_output_supported === false ? ` / ${t('detail.unsupported')}` : ''}
             </span>
           </div>
+          {log.media_type && (
+            <>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.mediaOperation')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {log.media_type}/{log.media_operation ?? t('common.na')}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.mediaBytes')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{mediaByteSize ?? t('common.na')}</span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.providerResponseType')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{log.media_provider_response_type ?? t('common.na')}</span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.mediaFiles')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {t('detail.mediaFilesValue', {
+                    count: log.media_file_count ?? 0,
+                    multipart: log.media_multipart ? t('common.yes') : t('common.no'),
+                  })}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.requestedFormat')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{log.media_requested_format ?? t('common.na')}</span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.responseFormat')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{log.media_response_format ?? t('common.na')}</span>
+              </div>
+            </>
+          )}
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.tokens')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
