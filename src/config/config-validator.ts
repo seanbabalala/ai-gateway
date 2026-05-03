@@ -519,6 +519,12 @@ function validateNamespaces(
       for (const model of Array.isArray(node.audio_models) ? node.audio_models : []) {
         if (isNonEmptyString(model)) modelIds.add(model);
       }
+      for (const model of Array.isArray(node.video_models) ? node.video_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
+      for (const model of Array.isArray(node.realtime_models) ? node.realtime_models : []) {
+        if (isNonEmptyString(model)) modelIds.add(model);
+      }
     }
   }
 
@@ -825,6 +831,8 @@ function validateNodes(
     validateOptionalEndpoint(node, basePath, 'images_edits_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_transcriptions_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'audio_speech_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'video_generations_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'video_status_endpoint', issues);
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -837,12 +845,32 @@ function validateNodes(
     } else {
       validateProviderApiKey(node, node.api_key, basePath, issues);
     }
-    if (!Array.isArray(node.models) || node.models.length === 0) {
+    const hasSpecializedModels = [
+      'embedding_models',
+      'rerank_models',
+      'image_models',
+      'audio_models',
+      'video_models',
+      'realtime_models',
+    ].some((key) =>
+      Array.isArray(node[key]) &&
+      (node[key] as unknown[]).some(isNonEmptyString),
+    );
+    if (!Array.isArray(node.models)) {
       issues.push(
         issue(
           'error',
           'missing_required_field',
-          'nodes[].models must contain at least one model id.',
+          'nodes[].models must be an array. Use [] for specialized-only nodes.',
+          `${basePath}.models`,
+        ),
+      );
+    } else if (node.models.length === 0 && !hasSpecializedModels) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'nodes[].models must contain at least one model id unless a specialized model bucket is configured.',
           `${basePath}.models`,
         ),
       );
@@ -878,6 +906,7 @@ function validateNodes(
     validateNodeRerankModels(node, basePath, issues);
     validateNodeMediaModels(node, basePath, 'image_models', 'Image', issues);
     validateNodeMediaModels(node, basePath, 'audio_models', 'Audio', issues);
+    validateNodeMediaModels(node, basePath, 'video_models', 'Video', issues);
     validateNodeRealtimeModels(node, basePath, issues);
     if (!isFiniteNumber(node.timeout_ms) || node.timeout_ms <= 0) {
       issues.push(
@@ -1161,7 +1190,7 @@ function validateNodeRealtimeModels(
 function validateNodeMediaModels(
   node: Record<string, unknown>,
   basePath: string,
-  key: 'image_models' | 'audio_models',
+  key: 'image_models' | 'audio_models' | 'video_models',
   label: string,
   issues: ConfigValidationIssue[],
 ): void {
@@ -1261,6 +1290,7 @@ function validateNodeRoutingCapabilities(
       ...(Array.isArray(node.rerank_models) ? node.rerank_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.image_models) ? node.image_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.audio_models) ? node.audio_models.filter(isNonEmptyString) : []),
+      ...(Array.isArray(node.video_models) ? node.video_models.filter(isNonEmptyString) : []),
       ...(Array.isArray(node.realtime_models) ? node.realtime_models.filter(isNonEmptyString) : []),
     ],
   );
@@ -2612,6 +2642,7 @@ function validateShadow(
         ...(Array.isArray(targetNode.rerank_models) ? targetNode.rerank_models : []),
         ...(Array.isArray(targetNode.image_models) ? targetNode.image_models : []),
         ...(Array.isArray(targetNode.audio_models) ? targetNode.audio_models : []),
+        ...(Array.isArray(targetNode.video_models) ? targetNode.video_models : []),
       ].filter(isNonEmptyString);
       if (models.length > 0 && !models.includes(shadow.target_model)) {
         issues.push(issue('warning', 'shadow_model_not_listed', `shadow.target_model "${shadow.target_model}" is not listed on node "${targetNode.id}". It will be passed through to the provider.`, 'shadow.target_model'));

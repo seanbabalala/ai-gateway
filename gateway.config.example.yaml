@@ -143,9 +143,9 @@ auth:
 # nodes[].embedding_models and can use a separate embeddings_endpoint.
 # Rerank-capable models for /v1/rerank are listed under nodes[].rerank_models
 # and can use a separate rerank_endpoint.
-# Image and audio models are listed separately under nodes[].image_models
-# and nodes[].audio_models so media endpoints can route, budget, and
-# log independently from chat models.
+# Image, audio, and future video models are listed separately under
+# nodes[].image_models, nodes[].audio_models, and nodes[].video_models so
+# media endpoints can route, budget, and log independently from chat models.
 # Experimental realtime models are listed under nodes[].realtime_models and
 # require the top-level realtime.enabled switch below.
 # Use model_prefixes when clients should direct-route future model family IDs
@@ -169,6 +169,8 @@ nodes:
     images_edits_endpoint: "/v1/images/edits"
     audio_transcriptions_endpoint: "/v1/audio/transcriptions"
     audio_speech_endpoint: "/v1/audio/speech"
+    # video_generations_endpoint: "/v1/videos/generations" # Reserved for video-capable compatible providers
+    # video_status_endpoint: "/v1/videos/{id}"             # Optional async video status endpoint
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
@@ -176,6 +178,7 @@ nodes:
     # realtime_models: ["gpt-4o-realtime-preview"]
     image_models: ["gpt-image-1"]
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"]
+    # video_models: ["veo-3.1-generate-preview"]
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true

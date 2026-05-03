@@ -30,6 +30,20 @@ Responses include catalog metadata:
 }
 ```
 
+## Dashboard Add Node Wizard
+
+v0.8 uses the catalog as the source of truth for the Dashboard Add Node flow. The wizard no longer keeps a separate provider/model list inside the React form.
+
+The OSS Data Plane wizard saves only local `gateway.config.yaml` node fields:
+
+1. Choose a provider, OpenAI-compatible proxy, or custom upstream.
+2. Select endpoint capabilities: Chat, Responses, Messages, Embeddings, Rerank, Images, Audio, Video, and Realtime.
+3. Pick or edit model buckets: `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models`.
+4. Confirm `base_url`, native protocol endpoint, per-capability endpoints, auth type, custom headers, aliases, prefixes, model pricing overrides, routing capability tags, health probe, and concurrency/queue controls.
+5. Run a chat/text connectivity test when a text model is present, then save the node.
+
+Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, and placeholder pricing metadata from the static catalog. Operators can still edit every generated field before saving.
+
 ## Initial Providers
 
 The first static catalog includes:
@@ -113,4 +127,4 @@ nodes:
 - No automatic online updates in v0.8.
 - No provider API keys or secrets are stored in the catalog.
 - The catalog is advisory. Operators can still configure private deployments, proxy model IDs, and local model names.
-- Video is cataloged as a modality for future routing work; v0.8 does not add a video endpoint.
+- Video is cataloged as a modality and can be configured through `nodes[].video_models`, `video_generations_endpoint`, and optional `video_status_endpoint`; v0.8 does not yet add a public `/v1/video` gateway endpoint.

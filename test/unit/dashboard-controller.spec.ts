@@ -776,6 +776,12 @@ describe('DashboardController — Node CRUD', () => {
       endpoint: '/v1/chat/completions',
       api_key: 'sk-new',
       models: ['model-1'],
+      video_generations_endpoint: '/v1/videos/generations',
+      video_status_endpoint: '/v1/videos/{id}',
+      video_models: ['video-1'],
+      model_capabilities: {
+        'video-1': { pricing: { input: 0.1, output: 0.2 } },
+      },
       max_concurrency: 3,
       queue_timeout_ms: 250,
       queue_policy: 'fallback',
@@ -788,6 +794,12 @@ describe('DashboardController — Node CRUD', () => {
         max_concurrency: 3,
         queue_timeout_ms: 250,
         queue_policy: 'fallback',
+        video_generations_endpoint: '/v1/videos/generations',
+        video_status_endpoint: '/v1/videos/{id}',
+        video_models: ['video-1'],
+        model_capabilities: {
+          'video-1': { pricing: { input: 0.1, output: 0.2 } },
+        },
       }),
     );
   });

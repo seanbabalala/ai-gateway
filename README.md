@@ -126,7 +126,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
-- **Provider / Model Catalog** — built-in static provider and model capability catalog powers Add Node presets, Dashboard catalog APIs, and config validation warnings without automatic network updates
+- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog APIs, and config validation warnings without automatic network updates
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
@@ -140,12 +140,15 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. It is a static, reviewable data source for provider presets and model metadata; it does not phone home or auto-update. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
 
+Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatible proxy, select capabilities, pick/edit model buckets, confirm endpoints/auth/headers/pricing/capabilities, then test and save to the local Data Plane config. It supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` without connecting to SiftGate Cloud.
+
 - Dashboard APIs:
   - `GET /api/dashboard/catalog/providers`
   - `GET /api/dashboard/catalog/models?provider=openai&modality=embedding`
 - Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
 - Pricing entries include `source`, `last_updated`, and `manual_review_required`. Use local `models_pricing` or `model_capabilities[].pricing` for production cost routing.
+- Video is available as a catalog/config capability through `video_models` and video endpoint fields; a public `/v1/video` gateway endpoint is still a later protocol task.
 
 See [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) for the schema and validation behavior.
 
@@ -553,6 +556,8 @@ nodes:
     images_edits_endpoint: "/v1/images/edits" # Optional image edit endpoint path
     audio_transcriptions_endpoint: "/v1/audio/transcriptions" # Optional transcription endpoint path
     audio_speech_endpoint: "/v1/audio/speech" # Optional text-to-speech endpoint path
+    # video_generations_endpoint: "/v1/videos/generations" # Reserved for video-capable compatible providers
+    # video_status_endpoint: "/v1/videos/{id}" # Optional async video status endpoint
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
@@ -561,6 +566,7 @@ nodes:
     realtime_models: ["gpt-4o-realtime-preview"] # Models eligible for /v1/realtime when enabled
     image_models: ["gpt-image-1"] # Models eligible for /v1/images/*
     audio_models: ["gpt-4o-mini-transcribe", "tts-1"] # Models eligible for /v1/audio/*
+    # video_models: ["veo-3.1-generate-preview"] # Catalog/config support; public video endpoint is future work
     timeout_ms: 60000 # Request timeout
     max_concurrency: 50 # Optional max in-flight upstream calls for this node
     queue_timeout_ms: 10000 # Wait-policy queue timeout in milliseconds
@@ -952,6 +958,8 @@ v0.6 adds minimal OpenAI-compatible media ingress for common provider/proxy APIs
 | `POST /v1/images/edits` | `nodes[].image_models` | JSON or `multipart/form-data` |
 | `POST /v1/audio/transcriptions` | `nodes[].audio_models` | JSON or `multipart/form-data` |
 | `POST /v1/audio/speech` | `nodes[].audio_models` | JSON; binary provider responses are returned unchanged |
+
+v0.8 catalog and Dashboard configuration also recognize `video_models`, `video_generations_endpoint`, and `video_status_endpoint` so operators can prepare video-capable provider nodes. SiftGate does not expose a public video gateway endpoint yet.
 
 For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`multipart`, byte size, model), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, or validation. Increase `server.body_limit` if your edit or transcription payloads exceed the default `1mb`.
 
