@@ -4,6 +4,12 @@ import * as yaml from 'js-yaml';
 import type { GatewayConfig } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import {
+  findCatalogModel,
+  flattenCatalogModels,
+  loadMergedCatalog,
+} from '../catalog/catalog.service';
+import type { CatalogIssue, ProviderCatalog } from '../catalog/catalog.types';
+import {
   VALID_CAPABILITY_ENDPOINTS,
   VALID_CAPABILITY_IO_TYPES,
   VALID_MODALITIES,
@@ -38,6 +44,8 @@ export interface ValidateConfigFileOptions {
 export interface ValidateConfigObjectOptions {
   configPath?: string;
   env?: NodeJS.ProcessEnv;
+  catalog?: ProviderCatalog;
+  catalogIssues?: CatalogIssue[];
 }
 
 interface EnvReference {
@@ -86,6 +94,10 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter(isNonEmptyString) : [];
 }
 
 function isLocalhostUrl(url: URL): boolean {
@@ -177,9 +189,17 @@ export function validateConfigFile(
     return finalizeResult(configPath, issues);
   }
 
+  const catalogLoad = loadMergedCatalog({
+    cwd: options.cwd,
+    env: options.env,
+    config: parsed,
+  });
+
   return validateConfigObject(parsed, {
     configPath,
     env: options.env,
+    catalog: catalogLoad.catalog,
+    catalogIssues: catalogLoad.issues,
   });
 }
 
@@ -222,8 +242,11 @@ export function validateConfigObject(
   validateState(config.state, issues);
   validateCluster(config.cluster, config.state, issues);
   validatePricing(config.models_pricing, issues);
+  validateCatalogConfig(config.catalog, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
+  addCatalogIssues(options.catalogIssues, issues);
+  validateConfigAgainstCatalog(config, options.catalog, issues);
 
   const nodeCount = Array.isArray(config.nodes) ? config.nodes.length : 0;
   const tierCount =
@@ -3708,6 +3731,283 @@ function validatePricingEntry(
         ),
       );
     }
+  }
+}
+
+function validateCatalogConfig(
+  catalog: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (catalog === undefined) return;
+  if (!isRecord(catalog)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_config',
+        'catalog must be an object when set.',
+        'catalog',
+      ),
+    );
+    return;
+  }
+  if (
+    catalog.override_file !== undefined &&
+    !isNonEmptyString(catalog.override_file)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_override_file',
+        'catalog.override_file must be a non-empty path when set.',
+        'catalog.override_file',
+      ),
+    );
+  }
+}
+
+function addCatalogIssues(
+  catalogIssues: CatalogIssue[] | undefined,
+  issues: ConfigValidationIssue[],
+): void {
+  for (const catalogIssue of catalogIssues || []) {
+    issues.push(
+      issue(
+        catalogIssue.severity,
+        catalogIssue.code,
+        catalogIssue.message,
+        catalogIssue.path,
+      ),
+    );
+  }
+}
+
+function validateConfigAgainstCatalog(
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  catalog: ProviderCatalog | undefined,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!catalog || !Array.isArray(config.nodes)) return;
+
+  const catalogModelIds = new Set(
+    flattenCatalogModels(catalog).map((model) => model.id),
+  );
+
+  config.nodes.forEach((nodeValue, nodeIndex) => {
+    if (!isRecord(nodeValue)) return;
+    const node = nodeValue as Record<string, unknown>;
+    const basePath = `nodes[${nodeIndex}]`;
+    const provider = catalogProviderForNode(catalog, node);
+
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      node.protocol,
+      node.endpoint,
+      `${basePath}.endpoint`,
+      issues,
+    );
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      'embeddings',
+      node.embeddings_endpoint,
+      `${basePath}.embeddings_endpoint`,
+      issues,
+    );
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      'rerank',
+      node.rerank_endpoint,
+      `${basePath}.rerank_endpoint`,
+      issues,
+    );
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      'image',
+      node.images_generations_endpoint,
+      `${basePath}.images_generations_endpoint`,
+      issues,
+    );
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      'audio',
+      node.audio_transcriptions_endpoint,
+      `${basePath}.audio_transcriptions_endpoint`,
+      issues,
+    );
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      'realtime',
+      node.realtime_endpoint,
+      `${basePath}.realtime_endpoint`,
+      issues,
+    );
+
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.models),
+      `${basePath}.models`,
+      ['text', 'vision'],
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.embedding_models),
+      `${basePath}.embedding_models`,
+      ['embedding'],
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.rerank_models),
+      `${basePath}.rerank_models`,
+      ['rerank'],
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.image_models),
+      `${basePath}.image_models`,
+      ['image', 'vision'],
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.audio_models),
+      `${basePath}.audio_models`,
+      ['audio'],
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.realtime_models),
+      `${basePath}.realtime_models`,
+      ['realtime'],
+      issues,
+    );
+  });
+}
+
+function catalogProviderForNode(
+  catalog: ProviderCatalog,
+  node: Record<string, unknown>,
+) {
+  const nodeId = isNonEmptyString(node.id) ? node.id : '';
+  const baseUrl = isNonEmptyString(node.base_url)
+    ? normalizeComparableUrl(node.base_url)
+    : '';
+  return catalog.providers.find((provider) => {
+    if (provider.id === nodeId) return true;
+    return normalizeComparableUrl(provider.base_url) === baseUrl;
+  });
+}
+
+function validateCatalogEndpointMatch(
+  node: Record<string, unknown>,
+  provider: ProviderCatalog['providers'][number] | undefined,
+  endpointKey: unknown,
+  configuredEndpoint: unknown,
+  endpointPath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!provider || !isNonEmptyString(endpointKey) || !isNonEmptyString(configuredEndpoint)) {
+    return;
+  }
+  const catalogEndpoint = provider.endpoints[endpointKey];
+  if (!isNonEmptyString(catalogEndpoint)) return;
+  const configured = normalizeEndpointPath(configuredEndpoint);
+  const expected = normalizeEndpointPath(catalogEndpoint);
+  if (configured !== expected) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_endpoint_mismatch',
+        `Node "${String(node.id || '')}" endpoint "${configuredEndpoint}" differs from catalog provider "${provider.id}" ${endpointKey} endpoint "${catalogEndpoint}".`,
+        endpointPath,
+      ),
+    );
+  }
+}
+
+function validateCatalogModelsForBucket(
+  catalog: ProviderCatalog,
+  catalogModelIds: Set<string>,
+  models: string[],
+  basePath: string,
+  expectedModalities: string[],
+  issues: ConfigValidationIssue[],
+): void {
+  models.forEach((modelId, index) => {
+    const modelPath = `${basePath}[${index}]`;
+    if (!catalogModelIds.has(modelId)) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_unknown_model',
+          `Model "${modelId}" is not in the merged provider catalog. Add it to catalog.override.yaml if this is intentional.`,
+          modelPath,
+        ),
+      );
+      return;
+    }
+
+    const catalogModel = findCatalogModel(catalog, modelId);
+    if (!catalogModel) return;
+    if (
+      !expectedModalities.some((modality) =>
+        (catalogModel.modalities as string[]).includes(modality),
+      )
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_modality_mismatch',
+          `Model "${modelId}" is listed in ${basePath} but catalog modalities are ${catalogModel.modalities.join(', ')}.`,
+          modelPath,
+        ),
+      );
+    }
+    if (catalogModel.pricing?.manual_review_required) {
+      issues.push(
+        issue(
+          'info',
+          'catalog_pricing_manual_review',
+          `Catalog pricing for "${modelId}" is marked manual_review_required; verify before relying on cost routing.`,
+          modelPath,
+        ),
+      );
+    }
+  });
+}
+
+function normalizeEndpointPath(value: string): string {
+  if (/^https?:\/\//i.test(value) || /^wss?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return url.pathname.replace(/\/+$/, '') || '/';
+    } catch {
+      return value.replace(/\/+$/, '');
+    }
+  }
+  return value.replace(/\/+$/, '') || '/';
+}
+
+function normalizeComparableUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`.replace(/\/+$/, '');
+  } catch {
+    return value.replace(/\/+$/, '');
   }
 }
 

@@ -6,7 +6,7 @@
 
 - v0.8 local Provider / Model Catalog for the OSS Data Plane, covering provider metadata, models, modalities, endpoints, auth type, pricing source, capabilities, and limits.
 - Built-in static catalog entries for OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
-- Dashboard catalog APIs `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` with provider/modality/endpoint filters.
+- Dashboard catalog APIs `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` with provider/modality/endpoint filters and built-in + local override merge metadata.
 - Config validation warnings for catalog unknown models, endpoint/modality mismatches, and placeholder pricing that still needs operator review.
 - v0.8 Dashboard Add Node wizard backed by the local catalog, with provider/proxy/custom selection, capability selection, model bucket editing, endpoint/auth/header/pricing confirmation, and connection test/save flow.
 - `nodes[].video_models`, `video_generations_endpoint`, and `video_status_endpoint` config surface for video-capable providers ahead of a public video gateway endpoint.
@@ -19,6 +19,8 @@
 - Safe provider test policy: tiny synthetic requests for text/embedding/rerank and endpoint/auth probes for media, video, and realtime by default.
 - Dashboard Nodes compatibility matrix, safe test action, and non-blocking compatibility diagnostics.
 - Experimental video capability config fields (`video_models`, `video_endpoint`, `video_status_endpoint`, `video_content_endpoint`, `video_cancel_endpoint`) for provider compatibility checks and future async video routing.
+- `siftgate catalog list/show/validate/export/import` plus `npm run catalog` for managing `catalog.override.yaml` without network updates.
+- Config validation warnings for secret-like catalog override fields/values.
 
 ### Changed
 
@@ -26,6 +28,7 @@
 - Dashboard Add Node now supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` in one localized wizard while preserving advanced local Data Plane fields.
 - Config validation now allows specialized-only nodes with `models: []` when embedding/rerank/media/realtime model buckets are configured.
 - Images/audio ingress now documents production pass-through behavior for JSON and multipart requests across generations, edits, variations, transcriptions, translations, and speech.
+- `gateway.config.yaml` now supports optional `catalog.override_file` while keeping the static built-in catalog as the default.
 
 ## 0.6.1 - 2026-05-03
 

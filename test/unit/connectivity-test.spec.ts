@@ -10,7 +10,6 @@
 
 import { DashboardController } from '../../src/dashboard/dashboard.controller';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
-import { ProviderCatalogService } from '../../src/catalog/provider-catalog.service';
 
 // ── Minimal mock for DashboardController dependencies ──
 
@@ -32,6 +31,14 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   const logEventBus = {} as any;
   const routingRecommendations = {} as any;
   const gatewayApiKeys = {} as any;
+  const catalog = {
+    load: jest.fn().mockReturnValue({
+      catalog: { providers: [] },
+      overridePath: 'catalog.override.yaml',
+      overrideFound: false,
+      issues: [],
+    }),
+  } as any;
   const shadowTraffic = {
     getStatus: jest.fn().mockReturnValue({
       enabled: false,
@@ -72,9 +79,9 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   } as any;
 
   return new DashboardController(
-    config as any, capabilityService, new ProviderCatalogService(), routingService, circuitBreaker, concurrencyLimiter,
+    config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, providerCompatibility, undefined, dataSource, callLogRepo, routeDecisionRepo,
+    gatewayApiKeys, shadowTraffic, providerCompatibility, catalog, undefined, dataSource, callLogRepo, routeDecisionRepo,
   );
 }
 

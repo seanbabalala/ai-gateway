@@ -16,13 +16,13 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
-| v0.8 | Provider Breadth | 进行中 — Provider Catalog + Add Node Wizard + 生产级多模态入口 | 🚧 In Progress |
+| v0.8 | Provider + Media Maturity | 进行中 — Provider Catalog + Add Node Wizard + 多模态生产化 | 🚧 Active |
 
 ---
 
-## v0.8 — Provider Breadth（Provider / Model Catalog + 生产级多模态入口）
+## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）
 
-**v0.8 当前状态**：Prompt 46-48 已完成 Provider / Model Catalog、Dashboard Add Node Wizard 与 Images / Audio 生产化增强，目标是把 provider/model 能力从 Dashboard 表单硬编码中抽离，并把 v0.6 的最小 media pass-through 提升为更完整的 OpenAI-compatible 生产体验。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.8 当前状态**：Prompt 46、47、48、50、51 已完成 Provider / Model Catalog、Dashboard Add Node Wizard、Images / Audio 生产化增强、Provider Compatibility Test Matrix 与 Catalog Update / Override CLI；Prompt 52 作为多模态路由证据补强待合并。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：Provider / Model Catalog
 
@@ -33,8 +33,11 @@
   - 初始覆盖 OpenAI、Anthropic、Google Gemini/Vertex、Azure OpenAI、OpenRouter、Groq、Mistral、DeepSeek、xAI、Cohere、Voyage、Jina、Together、Fireworks、Ollama、vLLM、OpenAI-compatible custom
   - catalog 区分 `text`、`vision`、`image`、`audio`、`video`、`embedding`、`rerank`、`realtime`
   - Dashboard API 提供 `GET /api/dashboard/catalog/providers` 和 `GET /api/dashboard/catalog/models`
+  - `siftgate catalog list/show/validate/export/import` 与 `npm run catalog` 支持本地 `catalog.override.yaml`
+  - Dashboard API 读取 built-in + override 合并结果，并标记 `overridden`
   - Dashboard Add Node 从 catalog API 读取 provider preset，不再在组件中硬编码 provider/model 列表
   - Config validation 使用 catalog 输出 warning：未知模型、endpoint/modality 不匹配、pricing 需要人工确认
+  - override 文件禁止 provider API key；疑似 secret 字段/值会给出 error/warning
   - pricing 可为 placeholder，但必须包含 `source`、`last_updated`、`manual_review_required`
 
 ### P0：Dashboard Add Node Wizard

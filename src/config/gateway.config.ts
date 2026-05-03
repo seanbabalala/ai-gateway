@@ -16,6 +16,7 @@ export interface GatewayConfig {
   database: DatabaseConfig;
   auth: AuthConfig;
   dashboard?: DashboardConfig;
+  catalog?: CatalogConfig;
   nodes: NodeConfig[];
   routing: RoutingConfig;
   budget: BudgetConfig;
@@ -57,6 +58,11 @@ export interface GatewayConfig {
 
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
+}
+
+export interface CatalogConfig {
+  /** Local model/provider catalog override file. Defaults to catalog.override.yaml. */
+  override_file?: string;
 }
 
 // ===== Shared State Backend =====

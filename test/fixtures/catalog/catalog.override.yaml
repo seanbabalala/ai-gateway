@@ -1,0 +1,39 @@
+version: 1
+providers:
+  openai:
+    base_url: https://proxy.example/openai
+    endpoints:
+      chat_completions: /v1/chat/completions
+      embeddings: /v1/embeddings
+    models:
+      - id: custom-chat-latest
+        modalities: [text]
+        endpoints:
+          chat_completions: /v1/chat/completions
+        capabilities: [streaming]
+        pricing:
+          input: 0.25
+          output: 0.75
+          unit: usd_per_1m_tokens
+          source: internal-rate-card
+          last_updated: "2026-05-03"
+          manual_review_required: false
+  local-lab:
+    name: Local Lab
+    base_url: http://localhost:8080
+    auth_type: none
+    endpoints:
+      chat_completions: /v1/chat/completions
+    models:
+      - id: lab-model
+        modalities: [text]
+        endpoints:
+          chat_completions: /v1/chat/completions
+        capabilities: [local]
+        pricing:
+          input: 0
+          output: 0
+          unit: usd_per_1m_tokens
+          source: local
+          last_updated: "2026-05-03"
+          manual_review_required: false

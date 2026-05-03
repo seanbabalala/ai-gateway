@@ -53,8 +53,8 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
+import { CatalogService } from '../catalog/catalog.service';
 import type { Modality } from '../config/modality';
-import { ProviderCatalogService } from '../catalog/provider-catalog.service';
 import type { ProviderCompatibilityCapability } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import {
@@ -82,7 +82,6 @@ export class DashboardController {
   constructor(
     private readonly config: ConfigService,
     private readonly capabilityService: CapabilityService,
-    private readonly providerCatalog: ProviderCatalogService,
     private readonly routingService: RoutingService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly concurrencyLimiter: ConcurrencyLimiterService,
@@ -95,6 +94,7 @@ export class DashboardController {
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
     private readonly providerCompatibility: ProviderCompatibilityService,
+    private readonly catalog: CatalogService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -1149,34 +1149,6 @@ export class DashboardController {
   // Catalog & Capabilities
   // ══════════════════════════════════════════════════════
 
-  /** Get built-in provider catalog entries */
-  @Get('catalog/providers')
-  @ApiOperation({ summary: 'List built-in provider catalog entries' })
-  @ApiOkResponse({ description: 'Static provider catalog used by Dashboard Add Node and config validation.' })
-  getCatalogProviders() {
-    return {
-      ...this.providerCatalog.getMetadata(),
-      providers: this.providerCatalog.listProviders(),
-    };
-  }
-
-  @Get('catalog/models')
-  @ApiOperation({ summary: 'List built-in provider catalog models' })
-  @ApiQuery({ name: 'provider', required: false })
-  @ApiQuery({ name: 'modality', required: false })
-  @ApiQuery({ name: 'endpoint', required: false })
-  @ApiOkResponse({ description: 'Flattened static model catalog with optional provider/modality/endpoint filters.' })
-  getCatalogModels(
-    @Query('provider') provider?: string,
-    @Query('modality') modality?: string,
-    @Query('endpoint') endpoint?: string,
-  ) {
-    return {
-      ...this.providerCatalog.getMetadata(),
-      models: this.providerCatalog.listModels({ provider, modality, endpoint }),
-    };
-  }
-
   /** Get all capability definitions */
   @Get('capabilities')
   @ApiOperation({ summary: 'List known capability definitions' })
@@ -1199,6 +1171,49 @@ export class DashboardController {
   recommendTiers(@Body() body: { capabilities: string[] }) {
     const capabilities = body.capabilities || [];
     return { recommendations: this.capabilityService.recommendTiers(capabilities) };
+  }
+
+  @Get('catalog/providers')
+  @ApiOperation({ summary: 'List merged built-in and local provider catalog entries' })
+  @ApiOkResponse({ description: 'Provider catalog entries with overridden markers.' })
+  getCatalogProviders() {
+    const loaded = this.catalog.load();
+    return {
+      providers: loaded.catalog.providers,
+      override_file: loaded.overridePath,
+      override_found: loaded.overrideFound,
+      issues: loaded.issues,
+    };
+  }
+
+  @Get('catalog/models')
+  @ApiOperation({ summary: 'List merged built-in and local model catalog entries' })
+  @ApiQuery({ name: 'provider', required: false })
+  @ApiQuery({ name: 'modality', required: false })
+  @ApiQuery({ name: 'endpoint', required: false })
+  @ApiOkResponse({ description: 'Flattened model catalog entries with overridden markers.' })
+  getCatalogModels(
+    @Query('provider') provider?: string,
+    @Query('modality') modality?: string,
+    @Query('endpoint') endpoint?: string,
+  ) {
+    const loaded = this.catalog.load();
+    let models = loaded.catalog.providers.flatMap((entry) => entry.models);
+    if (provider) models = models.filter((model) => model.provider === provider);
+    if (modality) {
+      models = models.filter((model) =>
+        (model.modalities as string[]).includes(modality),
+      );
+    }
+    if (endpoint) {
+      models = models.filter((model) => model.endpoints[endpoint] !== undefined);
+    }
+    return {
+      models,
+      override_file: loaded.overridePath,
+      override_found: loaded.overrideFound,
+      issues: loaded.issues,
+    };
   }
 
   /** Recommend full routing config based on all nodes' capabilities */

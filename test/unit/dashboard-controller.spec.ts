@@ -10,7 +10,6 @@ import { DashboardController } from '../../src/dashboard/dashboard.controller';
 import { CircuitState } from '../../src/routing/circuit-breaker.service';
 import { mockConfigService } from '../helpers';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
-import { ProviderCatalogService } from '../../src/catalog/provider-catalog.service';
 
 // ── Mock Query Builder Factory ──────────────────────────
 
@@ -207,6 +206,38 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     }),
     ...overrides.routingRecommendations,
   };
+  const catalog = {
+    load: jest.fn().mockReturnValue({
+      catalog: {
+        providers: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            base_url: 'https://api.openai.com',
+            auth_type: 'bearer',
+            endpoints: { chat_completions: '/v1/chat/completions' },
+            models: [
+              {
+                id: 'gpt-4o',
+                provider: 'openai',
+                modalities: ['text', 'vision'],
+                endpoints: { chat_completions: '/v1/chat/completions' },
+                capabilities: ['streaming'],
+                source: 'builtin',
+                overridden: false,
+              },
+            ],
+            source: 'builtin',
+            overridden: false,
+          },
+        ],
+      },
+      overridePath: 'catalog.override.yaml',
+      overrideFound: false,
+      issues: [],
+    }),
+    ...overrides.catalog,
+  };
 
   const dataSource = {
     options: { type: 'better-sqlite3' },
@@ -235,7 +266,6 @@ function makeDashboard(overrides: Record<string, any> = {}) {
   const controller = new DashboardController(
     config,
     capabilityService as any,
-    (overrides.providerCatalog || new ProviderCatalogService()) as any,
     routingService as any,
     circuitBreaker as any,
     concurrencyLimiter as any,
@@ -248,13 +278,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     gatewayApiKeys as any,
     shadowTraffic as any,
     providerCompatibility as any,
+    catalog as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -524,6 +555,34 @@ describe('DashboardController — route decisions', () => {
         provider_keys: false,
       },
     });
+  });
+});
+
+describe('DashboardController — catalog', () => {
+  it('returns merged provider catalog metadata for Dashboard forms', () => {
+    const { controller } = makeDashboard();
+
+    const result = controller.getCatalogProviders();
+
+    expect(result.override_file).toBe('catalog.override.yaml');
+    expect(result.override_found).toBe(false);
+    expect(result.providers[0]).toMatchObject({
+      id: 'openai',
+      overridden: false,
+    });
+  });
+
+  it('filters catalog models by provider and modality', () => {
+    const { controller } = makeDashboard();
+
+    const result = controller.getCatalogModels('openai', 'vision');
+
+    expect(result.models).toEqual([
+      expect.objectContaining({
+        id: 'gpt-4o',
+        provider: 'openai',
+      }),
+    ]);
   });
 });
 

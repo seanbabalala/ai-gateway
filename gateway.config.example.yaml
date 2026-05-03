@@ -95,6 +95,22 @@ auth:
 #   debounce_ms: 500
 
 # ============================================================
+# Provider / Model Catalog Overrides (optional)
+# ============================================================
+# SiftGate ships a built-in static provider/model catalog for Dashboard
+# presets and config warnings. Keep provider API keys in nodes[].api_key
+# or environment variables, never in catalog.override.yaml.
+#
+# CLI:
+#   npm run catalog -- list
+#   npm run catalog -- show openai
+#   npm run catalog -- import --file ./catalog.override.yaml
+#   npm run catalog -- validate
+# ============================================================
+# catalog:
+#   override_file: ./catalog.override.yaml
+
+# ============================================================
 # Cluster Mode — optional Redis Pub/Sub multi-instance inventory
 # ============================================================
 # SiftGate runs as a single local data plane by default. Enable Redis-backed

@@ -1,5 +1,18 @@
 #!/usr/bin/env node
+import * as fs from "fs";
 import * as path from "path";
+import {
+  DEFAULT_CATALOG_OVERRIDE_FILE,
+  formatCatalogAsYaml,
+  loadMergedCatalog,
+  resolveCatalogOverridePath,
+  validateCatalogOverrideFile,
+} from "../catalog/catalog.service";
+import type {
+  CatalogIssue,
+  CatalogProvider,
+  ProviderCatalog,
+} from "../catalog/catalog.types";
 import {
   ConfigValidationIssue,
   ConfigValidationResult,
@@ -75,6 +88,17 @@ interface MigrateDbArgs {
   batchSize?: number;
 }
 
+interface CatalogArgs {
+  action?: "list" | "show" | "validate" | "export" | "import";
+  provider?: string;
+  filePath?: string;
+  overridePath?: string;
+  outputPath?: string;
+  force: boolean;
+  json: boolean;
+  help: boolean;
+}
+
 const DEFAULT_IO: CliIO = {
   cwd: process.cwd(),
   env: process.env,
@@ -102,6 +126,10 @@ export async function runCli(
 
   if (command === "plugin") {
     return runPluginCommand(args, cli);
+  }
+
+  if (command === "catalog") {
+    return runCatalogCommand(args, cli);
   }
 
   if (command === "migrate") {
@@ -145,6 +173,202 @@ function runValidateCommand(args: string[], cli: CliIO): number {
   }
 
   return result.ok ? 0 : 1;
+}
+
+function runCatalogCommand(args: string[], cli: CliIO): number {
+  let parsedArgs: CatalogArgs;
+  try {
+    parsedArgs = parseCatalogArgs(args);
+  } catch (error) {
+    cli.stderr(error instanceof Error ? error.message : "Invalid arguments.");
+    cli.stderr(formatCatalogUsage());
+    return 1;
+  }
+
+  if (parsedArgs.help || !parsedArgs.action) {
+    cli.stdout(formatCatalogUsage());
+    return parsedArgs.help ? 0 : 1;
+  }
+
+  if (parsedArgs.action === "validate") {
+    return runCatalogValidateCommand(parsedArgs, cli);
+  }
+
+  if (parsedArgs.action === "import") {
+    return runCatalogImportCommand(parsedArgs, cli);
+  }
+
+  const loaded = loadMergedCatalog({
+    cwd: cli.cwd,
+    env: cli.env,
+    overridePath: parsedArgs.overridePath,
+  });
+
+  if (parsedArgs.action === "list") {
+    cli.stdout(
+      parsedArgs.json
+        ? JSON.stringify(loaded.catalog.providers, null, 2)
+        : formatCatalogProviderList(loaded.catalog, loaded.overridePath),
+    );
+    return catalogIssuesHaveErrors(loaded.issues) ? 1 : 0;
+  }
+
+  if (parsedArgs.action === "show") {
+    if (!parsedArgs.provider) {
+      cli.stderr("catalog show requires a provider id.");
+      cli.stderr(formatCatalogUsage());
+      return 1;
+    }
+    const provider = loaded.catalog.providers.find(
+      (entry) => entry.id === parsedArgs.provider,
+    );
+    if (!provider) {
+      cli.stderr(`Unknown catalog provider: ${parsedArgs.provider}`);
+      return 1;
+    }
+    cli.stdout(
+      parsedArgs.json
+        ? JSON.stringify(provider, null, 2)
+        : formatCatalogProvider(provider, loaded.overridePath),
+    );
+    return catalogIssuesHaveErrors(loaded.issues) ? 1 : 0;
+  }
+
+  if (parsedArgs.action === "export") {
+    const output = parsedArgs.json
+      ? JSON.stringify(loaded.catalog, null, 2)
+      : formatCatalogAsYaml(loaded.catalog);
+    if (parsedArgs.outputPath) {
+      const outputPath = resolveCliPath(cli.cwd, parsedArgs.outputPath);
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, output, "utf8");
+      cli.stdout(`Exported merged catalog to ${outputPath}`);
+    } else {
+      cli.stdout(output.trimEnd());
+    }
+    return catalogIssuesHaveErrors(loaded.issues) ? 1 : 0;
+  }
+
+  cli.stderr(`Unknown catalog command: ${String(parsedArgs.action)}`);
+  cli.stderr(formatCatalogUsage());
+  return 1;
+}
+
+function runCatalogValidateCommand(args: CatalogArgs, cli: CliIO): number {
+  const result = args.filePath
+    ? validateCatalogOverrideFile(resolveCliPath(cli.cwd, args.filePath))
+    : loadMergedCatalog({
+        cwd: cli.cwd,
+        env: cli.env,
+        overridePath: args.overridePath,
+      });
+  const issues = result.issues;
+
+  if (args.json) {
+    cli.stdout(JSON.stringify({ ok: !catalogIssuesHaveErrors(issues), ...result }, null, 2));
+  } else {
+    cli.stdout(
+      formatCatalogValidationResult({
+        overridePath:
+          "overridePath" in result
+            ? result.overridePath
+            : resolveCliPath(cli.cwd, args.filePath || DEFAULT_CATALOG_OVERRIDE_FILE),
+        overrideFound:
+          "overrideFound" in result
+            ? result.overrideFound
+            : fs.existsSync(resolveCliPath(cli.cwd, args.filePath || DEFAULT_CATALOG_OVERRIDE_FILE)),
+        issues,
+      }),
+    );
+  }
+
+  return catalogIssuesHaveErrors(issues) ? 1 : 0;
+}
+
+function runCatalogImportCommand(args: CatalogArgs, cli: CliIO): number {
+  if (!args.filePath) {
+    cli.stderr("catalog import requires --file <catalog.override.yaml>.");
+    cli.stderr(formatCatalogUsage());
+    return 1;
+  }
+
+  const sourcePath = resolveCliPath(cli.cwd, args.filePath);
+  const validation = validateCatalogOverrideFile(sourcePath);
+  if (catalogIssuesHaveErrors(validation.issues)) {
+    cli.stderr(formatCatalogValidationResult({
+      overridePath: sourcePath,
+      overrideFound: fs.existsSync(sourcePath),
+      issues: validation.issues,
+    }));
+    return 1;
+  }
+
+  const destinationPath = args.overridePath
+    ? resolveCliPath(cli.cwd, args.overridePath)
+    : resolveCatalogOverridePath({ cwd: cli.cwd, env: cli.env });
+  const sourceIsDestination = path.resolve(sourcePath) === path.resolve(destinationPath);
+  if (fs.existsSync(destinationPath) && !args.force) {
+    if (sourceIsDestination) {
+      cli.stdout(
+        args.json
+          ? JSON.stringify(
+              {
+                imported: false,
+                sourcePath,
+                overridePath: destinationPath,
+                alreadyActive: true,
+                issues: validation.issues,
+              },
+              null,
+              2,
+            )
+          : [
+              "SiftGate catalog import",
+              `Override: ${destinationPath}`,
+              "Result: OK (override already active)",
+            ].join("\n"),
+      );
+      return 0;
+    }
+    cli.stderr(
+      `Catalog override already exists at ${destinationPath}. Use --force to replace it.`,
+    );
+    return 1;
+  }
+
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(sourcePath, destinationPath);
+
+  if (args.json) {
+    cli.stdout(
+      JSON.stringify(
+        {
+          imported: true,
+          sourcePath,
+          overridePath: destinationPath,
+          issues: validation.issues,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    cli.stdout(
+      [
+        "SiftGate catalog import",
+        `Source: ${sourcePath}`,
+        `Override: ${destinationPath}`,
+        "",
+        formatCatalogIssueGroup("Warnings", catalogIssuesBySeverity(validation.issues, "warning")),
+        "",
+        formatCatalogIssueGroup("Info", catalogIssuesBySeverity(validation.issues, "info")),
+        "",
+        "Result: OK",
+      ].join("\n"),
+    );
+  }
+
+  return 0;
 }
 
 async function runPluginCommand(args: string[], cli: CliIO): Promise<number> {
@@ -447,6 +671,75 @@ function parsePluginArgs(args: string[]): PluginArgs {
   return parsed;
 }
 
+function parseCatalogArgs(args: string[]): CatalogArgs {
+  const parsed: CatalogArgs = {
+    force: false,
+    json: false,
+    help: false,
+  };
+  const [action, ...rest] = args;
+
+  if (!action || action === "--help" || action === "-h") {
+    parsed.help = action === "--help" || action === "-h";
+    return parsed;
+  }
+
+  if (!["list", "show", "validate", "export", "import"].includes(action)) {
+    throw new Error(`Unknown catalog command: ${action}`);
+  }
+  parsed.action = action as CatalogArgs["action"];
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    if (arg === "--help" || arg === "-h") {
+      parsed.help = true;
+      continue;
+    }
+    if (arg === "--json") {
+      parsed.json = true;
+      continue;
+    }
+    if (arg === "--force") {
+      parsed.force = true;
+      continue;
+    }
+    if (arg === "--file" || arg === "-f") {
+      parsed.filePath = requireValue(rest, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--file=")) {
+      parsed.filePath = requireInlineValue(arg, "--file");
+      continue;
+    }
+    if (arg === "--override") {
+      parsed.overridePath = requireValue(rest, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--override=")) {
+      parsed.overridePath = requireInlineValue(arg, "--override");
+      continue;
+    }
+    if (arg === "--out" || arg === "-o") {
+      parsed.outputPath = requireValue(rest, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--out=")) {
+      parsed.outputPath = requireInlineValue(arg, "--out");
+      continue;
+    }
+    if (!parsed.provider && parsed.action === "show" && !arg.startsWith("-")) {
+      parsed.provider = arg;
+      continue;
+    }
+    throw new Error(`Unknown catalog option: ${arg}`);
+  }
+
+  return parsed;
+}
+
 function parseMigrateArgs(args: string[]): MigrateArgs {
   const parsed: MigrateArgs = {
     overwrite: false,
@@ -656,7 +949,7 @@ export function formatValidationResult(result: ConfigValidationResult): string {
 
 function formatIssueGroup(
   label: string,
-  issues: ConfigValidationIssue[],
+  issues: Array<{ code: string; message: string; path?: string }>,
 ): string {
   if (issues.length === 0) {
     return `${label}: none`;
@@ -668,9 +961,110 @@ function formatIssueGroup(
   ].join("\n");
 }
 
-function formatIssue(issue: ConfigValidationIssue): string {
+function formatIssue(issue: { code: string; message: string; path?: string }): string {
   const location = issue.path ? `${issue.path}: ` : "";
   return `[${issue.code}] ${location}${issue.message}`;
+}
+
+function formatCatalogProviderList(
+  catalog: ProviderCatalog,
+  overridePath: string,
+): string {
+  return [
+    "SiftGate provider catalog",
+    `Override: ${overridePath}`,
+    `Providers: ${catalog.providers.length}`,
+    "",
+    ...catalog.providers.map((provider) =>
+      [
+        `- ${provider.id}`,
+        `name="${provider.name}"`,
+        `models=${provider.models.length}`,
+        `auth=${provider.auth_type}`,
+        provider.overridden ? "overridden=true" : "overridden=false",
+      ].join(" "),
+    ),
+  ].join("\n");
+}
+
+function formatCatalogProvider(
+  provider: CatalogProvider,
+  overridePath: string,
+): string {
+  const endpointSummary = Object.entries(provider.endpoints)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+  return [
+    "SiftGate catalog provider",
+    `Override: ${overridePath}`,
+    `Provider: ${provider.id}`,
+    `Name: ${provider.name}`,
+    `Base URL: ${provider.base_url}`,
+    `Auth: ${provider.auth_type}`,
+    `Overridden: ${provider.overridden ? "yes" : "no"}`,
+    `Endpoints: ${endpointSummary || "none"}`,
+    `Capabilities: ${(provider.capabilities || []).join(", ") || "none"}`,
+    "",
+    "Models:",
+    ...provider.models.map((model) =>
+      [
+        `  - ${model.id}`,
+        `modalities=${model.modalities.join(",")}`,
+        `capabilities=${model.capabilities.join(",") || "none"}`,
+        model.overridden ? "overridden=true" : "overridden=false",
+      ].join(" "),
+    ),
+  ].join("\n");
+}
+
+function formatCatalogValidationResult(input: {
+  overridePath: string;
+  overrideFound: boolean;
+  issues: CatalogIssue[];
+}): string {
+  return [
+    "SiftGate catalog validation",
+    `Override: ${input.overridePath}`,
+    `Override found: ${input.overrideFound ? "yes" : "no"}`,
+    "",
+    formatCatalogIssueGroup("Errors", catalogIssuesBySeverity(input.issues, "error")),
+    "",
+    formatCatalogIssueGroup("Warnings", catalogIssuesBySeverity(input.issues, "warning")),
+    "",
+    formatCatalogIssueGroup("Info", catalogIssuesBySeverity(input.issues, "info")),
+    "",
+    catalogIssuesHaveErrors(input.issues) ? "Result: FAILED" : "Result: OK",
+  ].join("\n");
+}
+
+function formatCatalogIssueGroup(
+  label: string,
+  issues: CatalogIssue[],
+): string {
+  if (issues.length === 0) {
+    return `${label}: none`;
+  }
+  return [
+    `${label} (${issues.length})`,
+    ...issues.map((item) => `  - ${formatIssue(item)}`),
+  ].join("\n");
+}
+
+function catalogIssuesBySeverity(
+  issues: CatalogIssue[],
+  severity: CatalogIssue["severity"],
+): CatalogIssue[] {
+  return issues.filter((issue) => issue.severity === severity);
+}
+
+function catalogIssuesHaveErrors(issues: CatalogIssue[]): boolean {
+  return catalogIssuesBySeverity(issues, "error").length > 0;
+}
+
+function resolveCliPath(cwd: string, requestedPath: string): string {
+  return path.isAbsolute(requestedPath)
+    ? requestedPath
+    : path.resolve(cwd, requestedPath);
 }
 
 function formatPluginInstallResult(result: PluginInstallResult): string {
@@ -754,6 +1148,11 @@ function formatUsage(): string {
   return [
     "Usage:",
     "  siftgate validate [--config gateway.config.yaml] [--json]",
+    "  siftgate catalog list [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog validate [--file catalog.override.yaml] [--json]",
+    "  siftgate catalog export [--override catalog.override.yaml] [--out catalog.yaml]",
+    "  siftgate catalog import --file catalog.override.yaml [--override catalog.override.yaml] [--force]",
     `  siftgate plugin install <path|@siftgate/plugin-name> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
@@ -762,9 +1161,29 @@ function formatUsage(): string {
     "",
     "Commands:",
     "  validate   Validate a SiftGate gateway.config.yaml file",
+    "  catalog    Inspect, validate, export, and import provider/model catalog overrides",
     "  plugin     Manage plugin declarations and npm/local installs",
     "  migrate    Migrate third-party gateway configs into SiftGate format",
     "  migrate-db Move local SQLite runtime data into PostgreSQL",
+  ].join("\n");
+}
+
+function formatCatalogUsage(): string {
+  return [
+    "Usage:",
+    "  siftgate catalog list [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog validate [--file catalog.override.yaml] [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog export [--override catalog.override.yaml] [--out catalog.yaml] [--json]",
+    "  siftgate catalog import --file catalog.override.yaml [--override catalog.override.yaml] [--force] [--json]",
+    "",
+    "Options:",
+    "      --override <path>  Local override destination/source path (default: catalog.override.yaml)",
+    "  -f, --file <path>      Override file to validate or import",
+    "  -o, --out <path>       Write exported merged catalog to a file",
+    "      --force            Replace an existing override during import",
+    "      --json             Print machine-readable JSON",
+    "  -h, --help             Show help",
   ].join("\n");
 }
 

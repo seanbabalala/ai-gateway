@@ -1,11 +1,11 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. The catalog is a built-in static data source used by Dashboard Add Node, catalog APIs, and config validation. It is intentionally local and reviewable: the gateway does not call provider websites or auto-update the list in this first version.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. The catalog is used by Dashboard Add Node, catalog APIs, config validation, and provider compatibility checks. It is intentionally local and reviewable: the gateway does not call provider websites, scrape docs, or auto-update prices in v0.8.
 
 ## Goals
 
 - Keep provider/model knowledge out of Dashboard form components.
-- Give config validation enough context to warn about likely model, pricing, and modality mistakes.
+- Give config validation enough context to warn about likely model, pricing, endpoint, and modality mistakes.
 - Provide one shared vocabulary for text, vision, image, audio, video, embedding, rerank, and realtime routing work.
 - Preserve single-node memory/SQLite defaults. Redis, Postgres, and Cloud are not required.
 
@@ -19,16 +19,17 @@ GET /api/dashboard/catalog/models?modality=embedding
 GET /api/dashboard/catalog/models?endpoint=rerank
 ```
 
-Responses include catalog metadata:
+Responses include merged built-in + override metadata:
 
 ```json
 {
-  "version": "2026-05-03.static.v1",
-  "source": "builtin_static",
-  "last_updated": "2026-05-03",
-  "auto_update": false
+  "override_file": "/path/to/catalog.override.yaml",
+  "override_found": false,
+  "issues": []
 }
 ```
+
+Provider and model rows include `overridden` markers when local override data replaced or added fields.
 
 ## Dashboard Add Node Wizard
 
@@ -40,96 +41,97 @@ The OSS Data Plane wizard saves only local `gateway.config.yaml` node fields:
 2. Select endpoint capabilities: Chat, Responses, Messages, Embeddings, Rerank, Images, Audio, Video, and Realtime.
 3. Pick or edit model buckets: `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models`.
 4. Confirm `base_url`, native protocol endpoint, per-capability endpoints, auth type, custom headers, aliases, prefixes, model pricing overrides, routing capability tags, health probe, and concurrency/queue controls.
-5. Run a chat/text connectivity test when a text model is present, then save the node.
+5. Run a safe connectivity or compatibility check, then save the node.
 
-Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, and placeholder pricing metadata from the static catalog. Operators can still edit every generated field before saving.
+Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, and placeholder pricing metadata from the merged catalog. Operators can still edit every generated field before saving.
 
-## Initial Providers
+## CLI
 
-The first static catalog includes:
+Run against source with npm:
 
-| Provider | Typical Role | Modalities |
-| --- | --- | --- |
-| OpenAI | Official OpenAI API | text, vision, image, audio, embedding, realtime |
-| Anthropic | Claude Messages API | text, vision |
-| Google Gemini | Gemini OpenAI-compatible and native-adjacent entries | text, vision, image, video, embedding |
-| Google Vertex AI | Cloud deployment variant | text, vision, image, video, embedding |
-| Azure OpenAI | Deployment-based OpenAI-compatible routing | text, vision, image, audio, embedding |
-| OpenRouter | Multi-provider OpenAI-compatible marketplace | text, vision, image, audio, embedding |
-| Groq | Fast OpenAI-compatible inference | text |
-| Mistral AI | OpenAI-compatible chat and embeddings | text, vision, embedding |
-| DeepSeek | OpenAI-compatible coding/reasoning | text |
-| xAI | OpenAI-compatible Grok models | text, vision |
-| Cohere | Chat, embeddings, rerank | text, embedding, rerank |
-| Voyage AI | Embeddings and rerank | embedding, rerank |
-| Jina AI | Embeddings and rerank | embedding, rerank |
-| Together AI | Open model hosting | text, vision, image, embedding |
-| Fireworks AI | Open model hosting | text, vision, image, embedding |
-| Ollama | Local OpenAI-compatible runtime | text, vision, embedding |
-| vLLM | Local/OpenAI-compatible runtime | text, vision, embedding |
-| OpenAI-Compatible Custom | Operator-defined provider/proxy | text, vision, image, audio, video, embedding, rerank, realtime |
-
-## Schema
-
-Provider entries include:
-
-- `id`, `name`, `base_url`, `base_url_matchers`
-- `protocols` and `default_protocol`
-- `endpoints` for chat, responses, messages, embeddings, images, audio, video, rerank, and realtime
-- `auth_type`
-- provider-level `modalities`, `capabilities`, `model_prefixes`, `tags`
-- `pricing.source`, `pricing.last_updated`, `pricing.manual_review_required`
-- `allows_unknown_models` for dynamic catalogs such as OpenRouter, Ollama, vLLM, Azure deployments, and custom OpenAI-compatible providers
-
-Model entries include:
-
-- `id`, `provider_id`
-- `modalities`
-- supported `endpoints`
-- `input_types`, `output_types`
-- `capabilities`
-- optional `limits`, including context window, file size, and embedding dimensions
-- `pricing` with `source`, `last_updated`, and `manual_review_required`
-- support flags such as `structured_output`, `supports_streaming`, `supports_realtime`, and `supports_rerank`
-
-## Config Validation
-
-`npm run validate:config` now uses the catalog for warnings only. The catalog does not block custom providers or private models unless another structural validation rule already fails.
-
-Examples:
-
-- `catalog_unknown_model`: a recognized provider uses a model ID that is not in the built-in static catalog.
-- `catalog_model_modality_mismatch`: a model is listed under the wrong model bucket, such as a chat model under `embedding_models`.
-- `catalog_endpoint_modality_mismatch`: the provider/model is not cataloged for the configured endpoint or modality.
-- `catalog_pricing_manual_review`: catalog pricing is a placeholder and no local `models_pricing` or `model_capabilities[].pricing` override exists.
-- `catalog_provider_unrecognized`: info-level note for custom provider URLs; SiftGate treats them as custom/OpenAI-compatible and skips known-model warnings.
-
-Production cost routing should rely on local pricing config, not catalog placeholders:
-
-```yaml
-models_pricing:
-  gpt-4o: { input: 2.5, output: 10.0 }
-  text-embedding-3-small: { input: 0.02, output: 0.0 }
+```bash
+npm run catalog -- list
+npm run catalog -- show openai
+npm run catalog -- validate
+npm run catalog -- export --out ./catalog.merged.yaml
+npm run catalog -- import --file ./catalog.override.yaml
 ```
 
-Or per-node/model overrides:
+After a production build, the same commands are available through the executable entrypoint:
+
+```bash
+node dist/cli/siftgate.js catalog list
+node dist/cli/siftgate.js catalog show anthropic
+node dist/cli/siftgate.js catalog validate
+```
+
+Useful options:
+
+- `--json` prints machine-readable output.
+- `--override <path>` points the command at a non-default override file.
+- `--file <path>` is used by `catalog validate` and `catalog import`.
+- `--force` allows `catalog import` to replace an existing override file.
+
+`catalog validate` exits non-zero on errors and is safe for CI. Warnings are printed without failing the command.
+
+## Override File
+
+By default SiftGate reads `catalog.override.yaml` from the working directory. You can also set an explicit path:
+
+```yaml
+catalog:
+  override_file: ./ops/catalog.override.yaml
+```
+
+Example override:
+
+```yaml
+version: 1
+providers:
+  openai:
+    base_url: https://proxy.example/openai
+    endpoints:
+      chat_completions: /v1/chat/completions
+      embeddings: /v1/embeddings
+    models:
+      - id: custom-chat-latest
+        modalities: [text]
+        endpoints:
+          chat_completions: /v1/chat/completions
+        capabilities: [streaming]
+        pricing:
+          input: 0.25
+          output: 0.75
+          unit: usd_per_1m_tokens
+          source: internal-rate-card
+          last_updated: "2026-05-03"
+          manual_review_required: false
+```
+
+Overrides merge with the built-in catalog. If a provider or model already exists, only supplied fields are replaced. New providers and models are added and marked with `overridden: true`.
+
+## Validation
+
+`siftgate validate` uses the merged catalog to add non-blocking warnings when:
+
+- a configured model is not in the merged catalog
+- a model is listed under a bucket that does not match its catalog modality
+- a node endpoint differs from a known provider preset
+- pricing is marked `manual_review_required`
+
+Catalog override parsing itself can fail validation when the file is malformed or contains suspicious secret fields.
+
+## Secret Safety
+
+Do not put provider keys, dashboard passwords, bearer tokens, or raw auth headers in `catalog.override.yaml`.
+
+The catalog validator flags keys such as `api_key`, `secret`, `token`, `authorization`, `bearer`, and `password`. Values that look like common provider tokens are also reported. Provider credentials should stay in environment variables and `nodes[].api_key` references:
 
 ```yaml
 nodes:
   - id: openai
-    model_capabilities:
-      gpt-4o-mini:
-        pricing: { input: 0.15, output: 0.60 }
+    api_key: ${OPENAI_API_KEY}
 ```
-
-## Boundaries
-
-- No automatic online updates in v0.8.
-- No provider API keys or secrets are stored in the catalog.
-- The catalog is advisory. Operators can still configure private deployments, proxy model IDs, and local model names.
-- Video is cataloged as a modality and can be configured through `nodes[].video_models`, `video_generations_endpoint`, and optional `video_status_endpoint`; v0.8 does not yet add a public `/v1/video` gateway endpoint.
-
-SiftGate's open-source Data Plane keeps provider configuration local. Provider/model catalog data can help operators pick likely endpoints and models, but the compatibility matrix answers the production question: does this saved node actually support the capability with its current endpoint, auth, headers, and model list?
 
 ## Compatibility Matrix
 
@@ -168,6 +170,9 @@ Media and long-lived checks are conservative:
 
 This makes the matrix suitable for CI-style smoke checks and local operator validation without accidentally spending meaningful provider budget.
 
-## Config Validation
+## Boundaries
 
-Config validation still validates static YAML first: endpoints, model buckets, routing references, and pricing warnings. Dashboard diagnostics may add non-blocking warnings from recent compatibility results, such as an untested configured capability or a failed provider probe. These diagnostics are informational and do not prevent the gateway from starting.
+- No automatic online updates in v0.8.
+- No provider API keys or secrets are stored in the catalog.
+- The catalog is advisory. Operators can still configure private deployments, proxy model IDs, and local model names.
+- Video is cataloged as a modality and can be configured through `nodes[].video_models`, `video_generations_endpoint`, `video_endpoint`, and optional async video endpoint fields.

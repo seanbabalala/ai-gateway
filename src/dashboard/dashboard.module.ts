@@ -15,6 +15,7 @@ import {
   RouteDecisionLog,
 } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
+import { CatalogModule } from '../catalog/catalog.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ProviderCompatibilityService } from './provider-compatibility.service';
     CacheModule,
     AuthModule,
     ShadowModule,
+    CatalogModule,
     TypeOrmModule.forFeature([
       CallLog,
       RouteDecisionLog,
