@@ -10,6 +10,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { json, raw, urlencoded } from 'express';
 import helmet from 'helmet';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as request from 'supertest';
 import { createHash } from 'crypto';
@@ -321,12 +323,24 @@ export interface E2EHarness {
   app: INestApplication;
   agent: request.Agent;
   fetchMock: FetchMock;
+  configPath: string;
   close: () => Promise<void>;
 }
 
 export async function createE2EHarness(): Promise<E2EHarness> {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-e2e-'));
+  const configPath = path.join(tempDir, 'gateway.e2e.yaml');
+  let configYaml = fs.readFileSync(FIXTURE_PATH, 'utf8');
+  if (process.env.REALTIME_UPSTREAM_ENDPOINT) {
+    configYaml = configYaml.replace(
+      'base_url: http://mock-upstream.test',
+      `base_url: ${process.env.REALTIME_UPSTREAM_ENDPOINT}`,
+    );
+  }
+  fs.writeFileSync(configPath, configYaml, 'utf8');
+
   // Set config path BEFORE module resolution
-  process.env.GATEWAY_CONFIG_PATH = FIXTURE_PATH;
+  process.env.GATEWAY_CONFIG_PATH = configPath;
 
   // Lazy-import AppModule so the config path is read at require time
   const { AppModule } = await import('../../src/app.module');
@@ -405,9 +419,11 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     app,
     agent,
     fetchMock,
+    configPath,
     close: async () => {
       fetchMock.restore();
       await app.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
     },
   };
 }

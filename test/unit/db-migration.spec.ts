@@ -15,6 +15,8 @@ const TABLES: DbMigrationTableName[] = [
   "node_status",
   "call_logs",
   "route_decisions",
+  "config_versions",
+  "config_audit_events",
 ];
 
 class MemoryPostgresTarget implements PostgresMigrationTarget {
@@ -170,6 +172,40 @@ function createSqliteFixture(dir: string): string {
       namespace_id varchar,
       trace_json text
     );
+
+    CREATE TABLE config_versions (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      created_at datetime,
+      action varchar,
+      actor_type varchar,
+      actor_id varchar,
+      reason varchar,
+      checksum varchar,
+      config_path varchar,
+      runtime_version integer,
+      node_count integer,
+      node_ids_json text,
+      route_tiers_json text,
+      summary_json text,
+      snapshot_yaml text
+    );
+
+    CREATE TABLE config_audit_events (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      timestamp datetime,
+      action varchar,
+      target_type varchar,
+      target_id varchar,
+      success integer,
+      actor_type varchar,
+      actor_id varchar,
+      source varchar,
+      version_id integer,
+      previous_version_id integer,
+      message text,
+      error text,
+      metadata_json text
+    );
   `);
 
   db.prepare(
@@ -306,6 +342,56 @@ function createSqliteFixture(dir: string): string {
     JSON.stringify({ version: 1, privacy: { prompt: false, response: false } }),
   );
 
+  db.prepare(
+    `
+    INSERT INTO config_versions (
+      created_at, action, actor_type, actor_id, reason, checksum, config_path,
+      runtime_version, node_count, node_ids_json, route_tiers_json,
+      summary_json, snapshot_yaml
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "2026-05-01T00:02:00.000Z",
+    "config.node.update",
+    "dashboard",
+    "dashboard",
+    "fixture",
+    "abc123",
+    "/tmp/gateway.config.yaml",
+    2,
+    1,
+    JSON.stringify(["openai"]),
+    JSON.stringify(["standard"]),
+    JSON.stringify({ node_count: 1 }),
+    "server:\n  port: 2099\n",
+  );
+
+  db.prepare(
+    `
+    INSERT INTO config_audit_events (
+      timestamp, action, target_type, target_id, success, actor_type,
+      actor_id, source, version_id, previous_version_id, message, error,
+      metadata_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "2026-05-01T00:03:00.000Z",
+    "config.node.update",
+    "node",
+    "openai",
+    1,
+    "dashboard",
+    "dashboard",
+    "dashboard",
+    1,
+    null,
+    "updated",
+    null,
+    JSON.stringify({ fields: ["name"] }),
+  );
+
   db.close();
   return dbPath;
 }
@@ -329,7 +415,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(5);
+    expect(result.totals.source_rows).toBe(7);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -372,6 +458,14 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(routeDecision?.is_fallback).toBe(false);
     expect(routeDecision?.candidate_count).toBe(2);
     expect(routeDecision?.timestamp).toBeInstanceOf(Date);
+
+    const configVersion = target.rows.get("config_versions")?.[0];
+    expect(configVersion?.created_at).toBeInstanceOf(Date);
+    expect(configVersion?.node_count).toBe(1);
+
+    const auditEvent = target.rows.get("config_audit_events")?.[0];
+    expect(auditEvent?.success).toBe(true);
+    expect(auditEvent?.timestamp).toBeInstanceOf(Date);
   });
 
   it("refuses non-empty PostgreSQL targets unless force is explicit", async () => {
@@ -403,7 +497,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(5);
+    expect(result.validation.mismatches).toHaveLength(7);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

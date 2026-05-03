@@ -3,7 +3,7 @@
  */
 
 import * as fs from 'fs';
-import { createE2EHarness, E2EHarness, API_KEY, FIXTURE_PATH } from './setup';
+import { createE2EHarness, E2EHarness, API_KEY } from './setup';
 
 describe('Dashboard (e2e)', () => {
   let harness: E2EHarness;
@@ -185,12 +185,12 @@ describe('Dashboard (e2e)', () => {
   });
 
   it('POST /api/dashboard/config/reload → failure keeps previous config', async () => {
-    const original = fs.readFileSync(FIXTURE_PATH, 'utf8');
+    const original = fs.readFileSync(harness.configPath, 'utf8');
     const before = await harness.agent.get('/api/dashboard/config');
     const beforeNodeIds = before.body.nodes.map((node: any) => node.id);
 
     try {
-      fs.writeFileSync(FIXTURE_PATH, 'nodes: [', 'utf8');
+      fs.writeFileSync(harness.configPath, 'nodes: [', 'utf8');
       const res = await harness.agent.post('/api/dashboard/config/reload');
 
       expect(res.status).toBe(400);
@@ -201,7 +201,55 @@ describe('Dashboard (e2e)', () => {
       const after = await harness.agent.get('/api/dashboard/config');
       expect(after.body.nodes.map((node: any) => node.id)).toEqual(beforeNodeIds);
     } finally {
-      fs.writeFileSync(FIXTURE_PATH, original, 'utf8');
+      fs.writeFileSync(harness.configPath, original, 'utf8');
+      await harness.agent.post('/api/dashboard/config/reload');
+    }
+  });
+
+  it('config audit and rollback APIs → version, audit, restore', async () => {
+    const original = fs.readFileSync(harness.configPath, 'utf8');
+
+    try {
+      const reload = await harness.agent.post('/api/dashboard/config/reload');
+      expect(reload.status).toBe(201);
+
+      const versionsBefore = await harness.agent.get('/api/dashboard/config/versions?limit=10');
+      expect(versionsBefore.status).toBe(200);
+      expect(versionsBefore.body.items.length).toBeGreaterThan(0);
+      const rollbackTargetId = versionsBefore.body.items[0].id;
+
+      const detail = await harness.agent.get(`/api/dashboard/config/versions/${rollbackTargetId}`);
+      expect(detail.status).toBe(200);
+      expect(JSON.stringify(detail.body.sanitized_config)).not.toContain('sk-test');
+
+      const create = await harness.agent
+        .post('/api/dashboard/nodes')
+        .send({
+          id: 'audit-rollback-node',
+          name: 'Audit Rollback Node',
+          protocol: 'chat_completions',
+          base_url: 'https://audit.example.com',
+          endpoint: '/v1/chat/completions',
+          api_key: 'sk-audit-rollback',
+          models: ['audit-model'],
+          timeout_ms: 1000,
+        });
+      expect(create.status).toBe(201);
+
+      const audit = await harness.agent.get('/api/dashboard/audit-log?action=config.node.create&limit=10');
+      expect(audit.status).toBe(200);
+      expect(audit.body.items.some((item: any) => item.target_id === 'audit-rollback-node')).toBe(true);
+
+      const rollback = await harness.agent
+        .post(`/api/dashboard/config/rollback/${rollbackTargetId}`)
+        .send({ reason: 'e2e restore' });
+      expect(rollback.status).toBe(201);
+      expect(rollback.body.success).toBe(true);
+
+      const after = await harness.agent.get('/api/dashboard/config');
+      expect(after.body.nodes.map((node: any) => node.id)).not.toContain('audit-rollback-node');
+    } finally {
+      fs.writeFileSync(harness.configPath, original, 'utf8');
       await harness.agent.post('/api/dashboard/config/reload');
     }
   });

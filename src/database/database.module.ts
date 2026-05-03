@@ -8,6 +8,8 @@ import {
   NodeStatus,
   RouteDecisionLog,
   ShadowTrafficResult,
+  ConfigAuditEvent,
+  ConfigVersion,
 } from './entities';
 
 @Module({
@@ -23,6 +25,8 @@ import {
             GatewayApiKey,
             ShadowTrafficResult,
             RouteDecisionLog,
+            ConfigVersion,
+            ConfigAuditEvent,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
           // Production PostgreSQL deployments should set database.synchronize=false.
@@ -51,6 +55,8 @@ import {
       NodeStatus,
       ShadowTrafficResult,
       RouteDecisionLog,
+      ConfigVersion,
+      ConfigAuditEvent,
     ]),
   ],
   exports: [TypeOrmModule],

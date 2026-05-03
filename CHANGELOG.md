@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- v0.7 local config audit and rollback for the MIT Data Plane, with `config_versions` snapshots, `config_audit_events`, and Dashboard APIs for audit log, version list/detail, and rollback.
+- Server-side rollback validation that restores `gateway.config.yaml` only after the stored YAML parses and validates, preserving the current config on failure.
+- Sanitized config-version responses that redact provider keys, Gateway keys, passwords, tokens, and secret-like fields while keeping rollback YAML local for server-side restores.
 
 ## 0.6.1 - 2026-05-03
 

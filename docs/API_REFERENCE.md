@@ -238,6 +238,10 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
+| `GET` | `/api/dashboard/config/versions` | List local config versions for rollback |
+| `GET` | `/api/dashboard/config/versions/:id` | Return one sanitized config version snapshot |
+| `POST` | `/api/dashboard/config/rollback/:id` | Validate and restore `gateway.config.yaml` from a stored local version |
+| `GET` | `/api/dashboard/audit-log` | Local config audit events for Dashboard config mutations, reloads, and rollbacks |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
@@ -278,6 +282,7 @@ The OpenAPI schema is intentionally secret-safe:
 
 - Provider API key inputs are marked `writeOnly` and use placeholder examples such as `${OPENAI_API_KEY}`.
 - Sanitized config responses mark node `api_key` as `readOnly` and describe it as masked.
+- Config version APIs never return raw rollback YAML; rollback snapshots are used only server-side and are stored in the local SiftGate database.
 - Dashboard password input is marked `writeOnly`.
 - Dashboard password hashes and raw provider keys are not part of documented response DTOs.
 - Connected-gateway configuration remains optional and must not require private Cloud packages.

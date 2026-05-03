@@ -49,6 +49,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
     }),
     recent: jest.fn().mockResolvedValue([]),
   } as any;
+  const configAudit = {} as any;
   const dataSource = {} as any;
   const callLogRepo = {
     createQueryBuilder: jest.fn().mockReturnValue({
@@ -68,7 +69,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService,
     cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, undefined, dataSource, callLogRepo, routeDecisionRepo,
+    gatewayApiKeys, shadowTraffic, configAudit, undefined, dataSource, callLogRepo, routeDecisionRepo,
   );
 }
 

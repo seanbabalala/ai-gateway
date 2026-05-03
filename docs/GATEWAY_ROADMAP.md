@@ -16,6 +16,37 @@
 | v0.4 | Ecosystem    | 已发布 — v0.4.0 插件生态 + 多端点 + 集成 | ✅ Released |
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
+| v0.7 | Decision Intelligence | 开发中 — 生产采纳、安全运维与决策智能 | 🚧 Active |
+
+---
+
+## v0.7 — Decision Intelligence（生产采纳 + 安全运维 + 决策智能）
+
+**v0.7 当前状态**：Prompt 41 功能分支已完成本地配置审计和版本回滚。默认仍保持单机 memory/SQLite 可用；Redis、PostgreSQL、Cloud 都只作为可选能力。
+
+### P1：生产安全与部署易用性
+
+#### 1. 本地审计日志和配置版本回滚
+
+- **状态**：✅ Prompt 41 功能分支已完成
+- **目标**：Dashboard 可以修改节点、路由和触发 reload 后，运维人员能看到谁改了什么、何时改、是否成功，并能回滚到最近的可用配置版本
+- **实现方案**：
+  - 新增本地 `config_versions` 表保存可回滚的 `gateway.config.yaml` YAML 快照
+  - 新增本地 `config_audit_events` 表记录 Dashboard 配置变更、reload、rollback 的审计事件
+  - `GET /api/dashboard/audit-log` 查看本地审计事件
+  - `GET /api/dashboard/config/versions` 与 `GET /api/dashboard/config/versions/:id` 查看配置版本和脱敏快照
+  - `POST /api/dashboard/config/rollback/:id` 在服务端验证目标 YAML 后恢复配置文件，并保留失败时的旧配置
+  - Dashboard API 不返回原始 rollback YAML；provider key、Gateway key、password、token 等字段脱敏
+  - 单机 SQLite 默认可用；PostgreSQL 作为生产可选后端
+- **安全边界**：
+  - 不保存 prompt、response、raw request headers 或 provider traffic
+  - rollback 需要本地保存完整 YAML，因此数据库应按 `gateway.config.yaml` 同等级别保护
+  - 建议生产环境使用 env/secret manager 引用，避免配置快照含明文 provider key
+
+### 后续 v0.7 候选
+
+- Secret manager 支持：Vault/AWS Secrets Manager/GCP Secret Manager
+- Benchmark 页面和压测报告：给生产部署和竞品对比提供性能证据
 
 ---
 

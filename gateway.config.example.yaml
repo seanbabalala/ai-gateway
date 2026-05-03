@@ -94,6 +94,16 @@ auth:
 #   watch: false
 #   debounce_ms: 500
 
+# Local config audit and rollback (optional).
+# Enabled by default. Dashboard APIs expose only sanitized snapshots; full
+# rollback YAML stays in the local SiftGate database and should be treated with
+# the same sensitivity as gateway.config.yaml.
+# config_audit:
+#   enabled: true
+#   max_versions: 50
+#   max_events: 100
+#   capture_startup_snapshot: true
+
 # ============================================================
 # Cluster Mode — optional Redis Pub/Sub multi-instance inventory
 # ============================================================

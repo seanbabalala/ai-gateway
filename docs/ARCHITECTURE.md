@@ -151,6 +151,19 @@ These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook
 
 For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome. It is designed for Dashboard inspection and incident review without duplicating the full call payload. Prompts, responses, raw headers, and provider keys are never written to this trace table.
 
+## Config Audit And Rollback
+
+The Dashboard config mutation path records local audit metadata in
+`config_audit_events` and stores versioned rollback snapshots in
+`config_versions`. Node create/update/delete, routing updates, reloads, and
+rollbacks are recorded with action, target, actor, success state, related
+version ids, and sanitized metadata.
+
+Rollback uses the stored YAML only on the server side. Public Dashboard APIs
+return version summaries plus sanitized config objects, not raw rollback YAML.
+The feature is intentionally local to the OSS Data Plane and does not require
+SiftGate Cloud.
+
 ## Shadow Traffic
 
 The open-source data plane includes optional shadow traffic for sampled test-node mirroring. When enabled, successful primary requests can enqueue an asynchronous copy to a configured shadow node/model. The primary response has already been produced, so shadow latency and failures do not affect the caller.

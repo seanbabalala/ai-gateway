@@ -86,6 +86,8 @@ hardening visible without blocking local development.
 - Optional `cluster` configuration, including boolean switches, instance id
   shape, heartbeat interval/TTL values, reload broadcast settings, and Redis
   overrides used by multi-instance Pub/Sub.
+- Optional `config_audit` configuration, including booleans and positive
+  retention limits for local config versions and audit events.
 - Environment references in the supported forms `${VAR}` and
   `${VAR:-default}`.
 - Literal provider API keys and literal control-plane registration tokens.

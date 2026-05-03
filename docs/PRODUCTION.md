@@ -188,6 +188,22 @@ A successful local reload from the Dashboard API, `SIGHUP`, or file watcher publ
 
 Redis Pub/Sub does not carry provider keys, prompts, responses, raw headers, or full config contents. It carries metadata such as instance id, timestamps, and config version.
 
+## Config Audit And Rollback
+
+The OSS Data Plane stores local config audit events and version snapshots in
+SQLite/PostgreSQL. This lets operators inspect Dashboard config mutations and
+roll back `gateway.config.yaml` to a known-good local version through:
+
+- `GET /api/dashboard/audit-log`
+- `GET /api/dashboard/config/versions`
+- `POST /api/dashboard/config/rollback/:id`
+
+Dashboard APIs return sanitized snapshots only. Full rollback YAML is stored
+locally so rollback can restore the file exactly; protect the SiftGate database
+with the same controls as `gateway.config.yaml`. In production, prefer env or
+secret-manager references for provider keys so snapshots do not contain literal
+provider credentials.
+
 ## Redis Operations
 
 - Prefer `rediss://` or private network Redis; do not expose Redis publicly.

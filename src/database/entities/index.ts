@@ -4,3 +4,5 @@ export { NodeStatus } from './node-status.entity';
 export { GatewayApiKey } from './gateway-api-key.entity';
 export { ShadowTrafficResult } from './shadow-traffic-result.entity';
 export { RouteDecisionLog } from './route-decision-log.entity';
+export { ConfigVersion } from './config-version.entity';
+export { ConfigAuditEvent } from './config-audit-event.entity';

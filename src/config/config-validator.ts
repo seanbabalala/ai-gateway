@@ -218,6 +218,7 @@ export function validateConfigObject(
   validateShadow(config.shadow, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
+  validateConfigAudit(config.config_audit, issues);
   validateState(config.state, issues);
   validateCluster(config.cluster, config.state, issues);
   validatePricing(config.models_pricing, issues);
@@ -3137,6 +3138,50 @@ function validateLogging(
 
   logging.sinks.forEach((sink, index) =>
     validateLogSink(sink, `logging.sinks[${index}]`, issues),
+  );
+}
+
+function validateConfigAudit(
+  configAudit: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (configAudit === undefined) return;
+  if (!isRecord(configAudit)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'config_audit must be an object.',
+        'config_audit',
+      ),
+    );
+    return;
+  }
+
+  for (const key of ['enabled', 'capture_startup_snapshot']) {
+    if (configAudit[key] !== undefined && typeof configAudit[key] !== 'boolean') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_config_audit',
+          `config_audit.${key} must be a boolean.`,
+          `config_audit.${key}`,
+        ),
+      );
+    }
+  }
+
+  validateOptionalPositiveNumber(
+    configAudit.max_versions,
+    'config_audit.max_versions',
+    'invalid_config_audit',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    configAudit.max_events,
+    'config_audit.max_events',
+    'invalid_config_audit',
+    issues,
   );
 }
 

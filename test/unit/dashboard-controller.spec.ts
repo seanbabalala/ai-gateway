@@ -207,6 +207,16 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...overrides.routingRecommendations,
   };
 
+  const configAudit = {
+    trackChange: jest.fn().mockImplementation(async (_input, mutation) => mutation()),
+    recordReload: jest.fn().mockResolvedValue(null),
+    listVersions: jest.fn().mockResolvedValue({ items: [], pagination: { limit: 50, count: 0 } }),
+    getVersion: jest.fn().mockResolvedValue(null),
+    rollbackToVersion: jest.fn(),
+    listEvents: jest.fn().mockResolvedValue({ items: [], pagination: { limit: 100, count: 0 } }),
+    ...overrides.configAudit,
+  };
+
   const dataSource = {
     options: { type: 'better-sqlite3' },
     ...overrides.dataSource,
@@ -233,13 +243,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     shadowTraffic as any,
+    configAudit as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, configAudit, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -619,18 +630,19 @@ describe('DashboardController — config', () => {
     expect(controller.getConfig().diagnostics).toBe(diagnostics);
   });
 
-  it('should reload config', () => {
-    const { controller, config, activeHealth } = makeDashboard();
-    const result = controller.reloadConfig();
+  it('should reload config', async () => {
+    const { controller, config, activeHealth, configAudit } = makeDashboard();
+    const result = await controller.reloadConfig();
     expect(result.success).toBe(true);
     expect(config.reload).toHaveBeenCalledWith({
       source: 'dashboard',
       throwOnError: false,
     });
+    expect(configAudit.recordReload).toHaveBeenCalled();
     expect(activeHealth.refreshSchedules).toHaveBeenCalled();
   });
 
-  it('should handle reload failure', () => {
+  it('should handle reload failure', async () => {
     const { controller } = makeDashboard({
       config: {
         reload: jest.fn().mockReturnValue({
@@ -644,7 +656,62 @@ describe('DashboardController — config', () => {
         }),
       },
     });
-    expect(() => controller.reloadConfig()).toThrow(HttpException);
+    await expect(controller.reloadConfig()).rejects.toThrow(HttpException);
+  });
+
+  it('should list config versions', async () => {
+    const { controller, configAudit } = makeDashboard({
+      configAudit: {
+        listVersions: jest.fn().mockResolvedValue({ items: [{ id: 1 }], pagination: { limit: 25, count: 1 } }),
+      },
+    });
+    const result = await controller.getConfigVersions(25);
+    expect(result.items).toHaveLength(1);
+    expect(configAudit.listVersions).toHaveBeenCalledWith(25);
+  });
+
+  it('should return a sanitized config version', async () => {
+    const { controller } = makeDashboard({
+      configAudit: {
+        getVersion: jest.fn().mockResolvedValue({ id: 1, sanitized_config: { nodes: [] } }),
+      },
+    });
+    const result = await controller.getConfigVersion(1);
+    expect(result.id).toBe(1);
+  });
+
+  it('should rollback config to a stored version', async () => {
+    const { controller, activeHealth } = makeDashboard({
+      configAudit: {
+        rollbackToVersion: jest.fn().mockResolvedValue({
+          success: true,
+          message: 'Rolled back',
+          reload: { success: true },
+          target_version: { id: 1 },
+          previous_version: { id: 2 },
+          restored_version: { id: 3 },
+        }),
+      },
+    });
+    const result = await controller.rollbackConfig(1, { reason: 'test' });
+    expect(result.success).toBe(true);
+    expect(activeHealth.refreshSchedules).toHaveBeenCalled();
+  });
+
+  it('should list audit events', async () => {
+    const { controller, configAudit } = makeDashboard({
+      configAudit: {
+        listEvents: jest.fn().mockResolvedValue({ items: [{ id: 1, action: 'config.node.create' }] }),
+      },
+    });
+    const result = await controller.getAuditLog(20, 'config.node.create', 'node', 'true');
+    expect(result.items).toHaveLength(1);
+    expect(configAudit.listEvents).toHaveBeenCalledWith({
+      limit: 20,
+      action: 'config.node.create',
+      target_type: 'node',
+      success: true,
+    });
   });
 });
 
@@ -738,10 +805,10 @@ describe('DashboardController — nodes', () => {
     expect(circuitBreaker.reset).toHaveBeenCalledWith('openai', 'gpt-4o');
   });
 
-  it('should refresh active health schedules after node mutations', () => {
+  it('should refresh active health schedules after node mutations', async () => {
     const { controller, activeHealth } = makeDashboard();
 
-    controller.createNode({
+    await controller.createNode({
       id: 'new-node',
       name: 'New Node',
       protocol: 'chat_completions',
@@ -752,8 +819,8 @@ describe('DashboardController — nodes', () => {
       timeout_ms: 1000,
       health_check: { enabled: true, method: 'HEAD', path: '/healthz' },
     });
-    controller.updateNode('openai', { health_check: { enabled: false } });
-    controller.deleteNode('openai');
+    await controller.updateNode('openai', { health_check: { enabled: false } });
+    await controller.deleteNode('openai');
 
     expect(activeHealth.refreshSchedules).toHaveBeenCalledTimes(3);
   });
@@ -764,7 +831,7 @@ describe('DashboardController — nodes', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — Node CRUD', () => {
-  it('should create a node', () => {
+  it('should create a node', async () => {
     const { controller, config } = makeDashboard();
     const dto = {
       id: 'new-node',
@@ -778,7 +845,7 @@ describe('DashboardController — Node CRUD', () => {
       queue_timeout_ms: 250,
       queue_policy: 'fallback',
     } as any;
-    const result = controller.createNode(dto);
+    const result = await controller.createNode(dto);
 
     expect(result.success).toBe(true);
     expect(config.addNode).toHaveBeenCalledWith(
@@ -790,41 +857,41 @@ describe('DashboardController — Node CRUD', () => {
     );
   });
 
-  it('should throw on duplicate node creation', () => {
+  it('should throw on duplicate node creation', async () => {
     const { controller } = makeDashboard({
       config: { addNode: jest.fn().mockImplementation(() => { throw new Error('Node already exists'); }) },
     });
     const dto = { id: 'openai', name: 'Dup' } as any;
-    expect(() => controller.createNode(dto)).toThrow(HttpException);
+    await expect(controller.createNode(dto)).rejects.toThrow(HttpException);
   });
 
-  it('should update a node', () => {
+  it('should update a node', async () => {
     const { controller, config } = makeDashboard();
-    const result = controller.updateNode('openai', { name: 'Updated OpenAI' } as any);
+    const result = await controller.updateNode('openai', { name: 'Updated OpenAI' } as any);
     expect(result.success).toBe(true);
     expect(config.updateNode).toHaveBeenCalled();
   });
 
-  it('should not pass empty api_key on update', () => {
+  it('should not pass empty api_key on update', async () => {
     const { controller, config } = makeDashboard();
-    controller.updateNode('openai', { name: 'Updated', api_key: '' } as any);
+    await controller.updateNode('openai', { name: 'Updated', api_key: '' } as any);
     const updateArgs = config.updateNode.mock.calls[0][1];
     expect(updateArgs.api_key).toBeUndefined();
   });
 
-  it('should delete a node', () => {
+  it('should delete a node', async () => {
     const { controller, config, circuitBreaker } = makeDashboard();
-    const result = controller.deleteNode('openai');
+    const result = await controller.deleteNode('openai');
     expect(result.success).toBe(true);
     expect(circuitBreaker.reset).toHaveBeenCalledWith('openai');
     expect(config.deleteNode).toHaveBeenCalledWith('openai');
   });
 
-  it('should throw on deleting last node', () => {
+  it('should throw on deleting last node', async () => {
     const { controller } = makeDashboard({
       config: { deleteNode: jest.fn().mockImplementation(() => { throw new Error('Cannot delete the last remaining node'); }) },
     });
-    expect(() => controller.deleteNode('openai')).toThrow(HttpException);
+    await expect(controller.deleteNode('openai')).rejects.toThrow(HttpException);
   });
 });
 
@@ -861,18 +928,18 @@ describe('DashboardController — capabilities & routing', () => {
     });
   });
 
-  it('should update routing config', () => {
+  it('should update routing config', async () => {
     const { controller, config } = makeDashboard();
-    const result = controller.updateRouting({ scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 } });
+    const result = await controller.updateRouting({ scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 } });
     expect(result.success).toBe(true);
     expect(config.updateRouting).toHaveBeenCalled();
   });
 
-  it('should throw on invalid routing update', () => {
+  it('should throw on invalid routing update', async () => {
     const { controller } = makeDashboard({
       config: { updateRouting: jest.fn().mockImplementation(() => { throw new Error('Invalid node reference'); }) },
     });
-    expect(() => controller.updateRouting({ tiers: {} as any })).toThrow(HttpException);
+    await expect(controller.updateRouting({ tiers: {} as any })).rejects.toThrow(HttpException);
   });
 });
 

@@ -127,6 +127,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
+- **Config audit and rollback** — keep local config version snapshots, audit Dashboard mutations, and restore the last known good `gateway.config.yaml`
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
@@ -445,6 +446,20 @@ hot_reload:
 ```
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
+### Config Audit And Rollback
+
+SiftGate keeps a local audit trail for Dashboard-driven config mutations and reloads. It stores versioned `gateway.config.yaml` snapshots in the local SQLite/PostgreSQL database so operators can roll back to a known-good version without SiftGate Cloud:
+
+```bash
+curl http://localhost:2099/api/dashboard/config/versions
+curl http://localhost:2099/api/dashboard/audit-log
+curl -X POST http://localhost:2099/api/dashboard/config/rollback/12 \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"Restore last known good routing config"}'
+```
+
+Dashboard APIs return sanitized config snapshots only. Full rollback YAML remains local in the SiftGate database and should be protected like `gateway.config.yaml`. Configure retention with `config_audit.max_versions` and `config_audit.max_events`. See [Config Audit And Rollback](docs/CONFIG_AUDIT_ROLLBACK.md).
 
 ### Shared State Backend
 
@@ -1278,6 +1293,10 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/shadow`                  | Read-only shadow traffic status and recent sanitized results                                       |
 | `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
+| `GET`  | `/api/dashboard/config/versions`         | Local config version history for rollback                                                          |
+| `GET`  | `/api/dashboard/config/versions/:id`     | One sanitized config version snapshot                                                              |
+| `POST` | `/api/dashboard/config/rollback/:id`     | Validate and restore `gateway.config.yaml` from a stored local version                             |
+| `GET`  | `/api/dashboard/audit-log`               | Local config audit events for Dashboard mutations, reloads, and rollbacks                          |
 | `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |

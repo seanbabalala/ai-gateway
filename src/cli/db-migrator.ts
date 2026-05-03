@@ -5,6 +5,8 @@ import { DataSource, EntityTarget } from "typeorm";
 import {
   BudgetRule,
   CallLog,
+  ConfigAuditEvent,
+  ConfigVersion,
   GatewayApiKey,
   NodeStatus,
   RouteDecisionLog,
@@ -15,7 +17,9 @@ export type DbMigrationTableName =
   | "budget_rules"
   | "node_status"
   | "call_logs"
-  | "route_decisions";
+  | "route_decisions"
+  | "config_versions"
+  | "config_audit_events";
 
 interface MigrationTableDefinition {
   table: DbMigrationTableName;
@@ -29,6 +33,8 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
   { table: "route_decisions", entity: RouteDecisionLog, generatedSequenceColumn: "id" },
+  { table: "config_versions", entity: ConfigVersion, generatedSequenceColumn: "id" },
+  { table: "config_audit_events", entity: ConfigAuditEvent, generatedSequenceColumn: "id" },
 ];
 
 export interface DbMigrationWarning {
@@ -160,7 +166,15 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
     this.dataSource = new DataSource({
       type: "postgres",
       url: this.postgresUrl,
-      entities: [CallLog, BudgetRule, NodeStatus, GatewayApiKey, RouteDecisionLog],
+      entities: [
+        CallLog,
+        BudgetRule,
+        NodeStatus,
+        GatewayApiKey,
+        RouteDecisionLog,
+        ConfigVersion,
+        ConfigAuditEvent,
+      ],
       synchronize: false,
       logging: false,
     });
@@ -540,6 +554,25 @@ function normalizeRow(
       filtered_count: toNumber,
       status_code: toNumber,
       is_fallback: toBoolean,
+    });
+  }
+
+  if (table === "config_versions") {
+    return normalizeFields(row, {
+      id: toNumber,
+      created_at: toDateOrNow,
+      runtime_version: toNumber,
+      node_count: toNumber,
+    });
+  }
+
+  if (table === "config_audit_events") {
+    return normalizeFields(row, {
+      id: toNumber,
+      timestamp: toDateOrNow,
+      success: toBoolean,
+      version_id: toNullableNumber,
+      previous_version_id: toNullableNumber,
     });
   }
 
