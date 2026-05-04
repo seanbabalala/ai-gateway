@@ -220,7 +220,10 @@ export class PipelineService {
         'gateway.request_id': requestId,
         'gateway.source_format': canonical.metadata.source_format,
         'gateway.model': canonical.metadata.original_model || 'auto',
+        'gateway.session_id':
+          canonical.metadata.session_id || canonical.metadata.session_key || '',
         'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.trace_id': canonical.metadata.trace_id || '',
         'gateway.stream': false,
         'gateway.structured_output.requested':
           canonical.structured_output?.requested ?? false,
@@ -232,7 +235,11 @@ export class PipelineService {
           canonical.reasoning_effort || '',
       },
       async (rootSpan) => {
-        const store = new Map<string, unknown>([['request_id', requestId]]);
+        const store = new Map<string, unknown>([
+          ['request_id', requestId],
+          ['session_id', canonical.metadata.session_id || canonical.metadata.session_key || null],
+          ['trace_id', canonical.metadata.trace_id || null],
+        ]);
         let currentPhase = 'preRequest';
 
         try {
@@ -594,7 +601,10 @@ export class PipelineService {
         'gateway.request_id': requestId,
         'gateway.source_format': 'embeddings',
         'gateway.model': requestedModel,
+        'gateway.session_id':
+          canonical.metadata.session_id || canonical.metadata.session_key || '',
         'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.trace_id': canonical.metadata.trace_id || '',
         'gateway.stream': false,
       },
       async (rootSpan) => {
@@ -794,7 +804,10 @@ export class PipelineService {
         'gateway.request_id': requestId,
         'gateway.source_format': 'rerank',
         'gateway.model': requestedModel,
+        'gateway.session_id':
+          canonical.metadata.session_id || canonical.metadata.session_key || '',
         'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.trace_id': canonical.metadata.trace_id || '',
         'gateway.stream': false,
       },
       async (rootSpan) => {
@@ -987,7 +1000,10 @@ export class PipelineService {
         'gateway.request_id': requestId,
         'gateway.source_format': canonical.source_format,
         'gateway.model': requestedModel,
+        'gateway.session_id':
+          canonical.metadata.session_id || canonical.metadata.session_key || '',
         'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.trace_id': canonical.metadata.trace_id || '',
         'gateway.stream': false,
         'gateway.media.type': canonical.media.media_type,
         'gateway.media.operation': canonical.media.operation,
@@ -2214,7 +2230,11 @@ export class PipelineService {
   ): Promise<void> {
     const requestId = uuidv4();
     const streamStartTime = Date.now();
-    const store = new Map<string, unknown>([['request_id', requestId]]);
+    const store = new Map<string, unknown>([
+      ['request_id', requestId],
+      ['session_id', canonical.metadata.session_id || canonical.metadata.session_key || null],
+      ['trace_id', canonical.metadata.trace_id || null],
+    ]);
     let currentPhase = 'preRequest';
     let headersFlushed = false;
     const streamAbort = new AbortController();
@@ -2236,7 +2256,10 @@ export class PipelineService {
         'gateway.request_id': requestId,
         'gateway.source_format': canonical.metadata.source_format,
         'gateway.model': canonical.metadata.original_model || 'auto',
+        'gateway.session_id':
+          canonical.metadata.session_id || canonical.metadata.session_key || '',
         'gateway.session_key': canonical.metadata.session_key || '',
+        'gateway.trace_id': canonical.metadata.trace_id || '',
         'gateway.stream': true,
       },
     });
@@ -4862,7 +4885,12 @@ export class PipelineService {
         media_requested_format: media.media_requested_format,
         media_response_format: media.media_response_format,
         media_provider_response_type: media.media_provider_response_type,
+        session_id:
+          params.canonical.metadata.session_id ||
+          params.canonical.metadata.session_key ||
+          null,
         session_key: params.canonical.metadata.session_key || null,
+        trace_id: params.canonical.metadata.trace_id || null,
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
         api_key_id: params.canonical.metadata.api_key_id || null,
@@ -5099,6 +5127,11 @@ export class PipelineService {
       status_code: params.statusCode,
       is_fallback: params.isFallback,
       fallback_reason: params.fallbackReason || null,
+      session_id:
+        params.canonical.metadata.session_id ||
+        params.canonical.metadata.session_key ||
+        null,
+      trace_id: params.canonical.metadata.trace_id || null,
       api_key_name: params.canonical.metadata.api_key_name || null,
       api_key_id: params.canonical.metadata.api_key_id || null,
       namespace_id: params.canonical.metadata.namespace_id || null,
@@ -5136,6 +5169,11 @@ export class PipelineService {
         });
 
     trace.request_id = params.requestId;
+    trace.session_id =
+      params.canonical.metadata.session_id ||
+      params.canonical.metadata.session_key ||
+      null;
+    trace.trace_id = params.canonical.metadata.trace_id || null;
     trace.source_format = params.canonical.metadata.source_format;
     trace.requested_model = params.canonical.metadata.original_model || null;
     trace.tier = params.tier;

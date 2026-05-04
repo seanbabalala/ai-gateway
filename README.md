@@ -18,6 +18,7 @@
   <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
+  <a href="docs/AGENT_INTEGRATIONS.md">Agents</a> &bull;
   <a href="docs/GATEWAY_ROADMAP.md">Roadmap</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
   <a href="#contributing">Contributing</a>
@@ -27,9 +28,9 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v1.0.0**. v1.0 is the SiftGate open-source ecosystem expansion release: Provider Catalog coverage grows to 30+ providers, reasoning/thinking intent is preserved across protocols, the official guardrails plugin gains metadata-only webhook findings and more local rules, and the Dashboard API Key page becomes a fuller local credential-management surface.
+Current open-source release: **v1.1.0**. v1.1 is the SiftGate developer experience release: a lightweight Python SDK scaffold, Dashboard Playground, Session View, and agent framework examples make it easier to integrate, test, trace, and explain routed AI traffic.
 
-The release builds on v0.9.3 Operations + Trust and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
+The release builds on v1.0.0 Extension Ecosystem and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -116,6 +117,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **API key management** — create, edit, disable, delete, rotate, and copy one-time Gateway API keys with namespace, budget, rate-limit, endpoint, modality, node, and model restrictions
+- **Dashboard Playground** — run operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks with selected API key, namespace, model, stream mode, and routing hints
 - **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
@@ -124,6 +126,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
+- **Session timelines** — correlate `session_id`, `trace_id`, call logs, route decisions, shadow results, benchmark-ready metrics, and guardrails finding metadata into a privacy-safe request timeline
 - **Guardrails finding summary** — inspect local PII/secret/prompt-injection/schema/tool-call findings and optional webhook delivery state without exposing prompts, responses, raw headers, provider keys, or webhook secrets
 - **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
@@ -145,10 +148,13 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
 - **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
+- **Interactive Dashboard probes** — use the local Playground to test requests through the same routing, permission, budget, cost, telemetry, and route-decision path while keeping sample bodies visible only on the current screen unless normal call-log metadata is enabled
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`; guardrails supports local PII, secret/token, jailbreak, unsafe URL, schema, tool-call, policy checks, and optional metadata-only webhook findings
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
+- **Python SDK scaffold** — install `packages/python` locally for a lightweight `siftgate` client with Gateway API key auth, routing hints, multimodal helpers, video jobs, and typed errors
+- **Agent framework examples** — run LangChain, CrewAI, OpenAI Agents SDK, and OpenAI SDK `base_url` examples through SiftGate with routing hints, session headers, trace labels, namespace-aware keys, and structured output
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 
 ### Provider Catalog
@@ -1277,9 +1283,9 @@ File sinks write JSONL, one sanitized call-log record per line. Webhook sinks se
 
 By default exports include only safe call-log metadata and exclude prompt text, response text, provider API keys, raw headers, authorization values, and other secret-bearing fields. Use `fields` as an allow-list or `exclude_fields` as a deny-list for additional filtering. See [docs/LOG_SINKS.md](docs/LOG_SINKS.md).
 
-## TypeScript SDK
+## SDKs
 
-The v0.4 SDK scaffold lives in [packages/client](packages/client). It is a lightweight fetch-based wrapper for the open-source data plane with typed helpers for models, chat completions, responses, messages, embeddings, and advisory routing hints.
+The TypeScript SDK scaffold lives in [packages/client](packages/client). It is a lightweight fetch-based wrapper for the open-source data plane with typed helpers for models, chat completions, responses, messages, embeddings, and advisory routing hints.
 
 ```ts
 import { SiftGateClient } from '@siftgate/client';
@@ -1295,6 +1301,26 @@ await client.chat.completions.create({
 });
 ```
 
+The v1.1 Python SDK scaffold lives in [packages/python](packages/python). It is stdlib-only, synchronous, typed, and prepared for local install without publishing to PyPI:
+
+```bash
+python3 -m pip install -e packages/python
+```
+
+```py
+from siftgate import SiftGateClient
+
+client = SiftGateClient(
+    base_url="http://localhost:2099",
+    gateway_api_key="gw_sk_live_...",
+)
+
+client.responses.create({
+    "model": "auto",
+    "input": "Route this through SiftGate.",
+})
+```
+
 Existing OpenAI SDK users do not need to switch SDKs. Point the SDK at SiftGate and use a dashboard-generated Gateway API key:
 
 ```ts
@@ -1306,7 +1332,21 @@ const openai = new OpenAI({
 });
 ```
 
-See the [TypeScript SDK README](packages/client/README.md) for routing hints, raw streaming access, and the forward-compatible embeddings helper. The Python SDK is design-only for this milestone; see [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
+See the [TypeScript SDK README](packages/client/README.md) and [Python SDK README](packages/python/README.md) for routing hints, raw response access, endpoint helpers, and OpenAI SDK `base_url` replacement notes. The Python package shape is summarized in [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
+
+## Agent Framework Examples
+
+Runnable Python examples live in [examples/agents](examples/agents). They cover OpenAI SDK `base_url`, LangChain, CrewAI, and OpenAI Agents SDK usage without committing real keys:
+
+```bash
+cp examples/agents/.env.example examples/agents/.env
+python -m venv .venv
+source .venv/bin/activate
+pip install -r examples/agents/requirements.txt
+python examples/agents/openai_sdk_base_url.py
+```
+
+Each example sends a Gateway API key, advisory `x-siftgate-routing-hint`, `x-session-id`, trace labels, and structured-output intent. Use the Dashboard Logs, API Keys, Benchmarks, and Route Explanation pages to inspect agent cost, fallback, selected node/model, and why each route was chosen. See [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md).
 
 ## API Endpoints
 

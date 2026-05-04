@@ -12,6 +12,7 @@ import {
 } from '../canonical.types';
 import { normalizeStructuredOutputFromBody } from '../structured-output';
 import { normalizeReasoningFromBody } from '../reasoning-effort';
+import { normalizeRequestIdentityHeaders } from './request-metadata';
 
 /**
  * Normalizes OpenAI Chat Completions format → Canonical format.
@@ -55,9 +56,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
       metadata: {
         source_format: 'chat_completions',
         original_model: req.model as string | undefined,
-        session_key: (headers['x-session-id'] || headers['x-session-key']) as
-          | string
-          | undefined,
+        ...normalizeRequestIdentityHeaders(headers),
         raw_headers: headers,
         raw_body: req,
       },

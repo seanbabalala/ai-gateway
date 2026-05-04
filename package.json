@@ -1,6 +1,6 @@
 {
   "name": "siftgate",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,
@@ -31,6 +31,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest",
     "test:sdk": "npm --workspace @siftgate/client run test",
+    "test:python-sdk": "python3 -m unittest discover -s packages/python/tests",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",

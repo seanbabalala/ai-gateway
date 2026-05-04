@@ -144,6 +144,8 @@ The data plane protects request flow with:
 The gateway records call logs with:
 
 - request id
+- session id / legacy session key
+- trace id from direct trace headers or W3C `traceparent`
 - Gateway API key id and name
 - namespace id
 - source protocol
@@ -161,6 +163,8 @@ The gateway records call logs with:
 - experiment group
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
+
+The v1.1 Session View does not add content storage. It correlates existing metadata by `request_id`, `session_id`, and `trace_id`: `call_logs` provide the timeline backbone, `route_decisions` attach explainable-routing evidence, `shadow_traffic_results` attach asynchronous mirror outcomes, benchmark reports reuse the same log metrics, and the guardrails plugin can contribute recent in-memory finding metadata. Prompt text, response text, raw headers, provider keys, uploaded media, and video bytes stay out of this correlation layer.
 
 The v0.9 Benchmark Report API reads the same sanitized `call_logs` table and
 does not introduce another metrics store. It computes local operational

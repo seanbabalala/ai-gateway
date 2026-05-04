@@ -34,6 +34,7 @@
   "nav.manage": "MANAGE",
   "nav.monitor": "MONITOR",
   "nav.nodes": "Nodes",
+  "nav.playground": "Playground",
   "nav.routeExplanation": "Route Explain",
   "nav.routing": "Routing",
   "nav.shadow": "Shadow",
@@ -58,5 +59,6 @@
   "tier.reasoning": "reasoning",
   "tier.simple": "simple",
   "tier.standard": "standard",
-  "nav.benchmarks": "Benchmarks"
+  "nav.benchmarks": "Benchmarks",
+  "nav.sessions": "Sessions"
 }

@@ -34,6 +34,7 @@
   "nav.manage": "管理",
   "nav.monitor": "监控",
   "nav.nodes": "节点",
+  "nav.playground": "调试台",
   "nav.routeExplanation": "路由解释",
   "nav.routing": "路由",
   "nav.shadow": "影子流量",
@@ -58,5 +59,6 @@
   "tier.reasoning": "推理",
   "tier.simple": "简单",
   "tier.standard": "标准",
-  "nav.benchmarks": "基准"
+  "nav.benchmarks": "基准",
+  "nav.sessions": "会话"
 }

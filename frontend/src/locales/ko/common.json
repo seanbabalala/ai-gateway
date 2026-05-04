@@ -34,6 +34,7 @@
   "nav.manage": "관리",
   "nav.monitor": "모니터링",
   "nav.nodes": "노드",
+  "nav.playground": "플레이그라운드",
   "nav.routeExplanation": "경로 설명",
   "nav.routing": "라우팅",
   "nav.shadow": "섀도우",
@@ -58,5 +59,6 @@
   "tier.reasoning": "추론",
   "tier.simple": "단순",
   "tier.standard": "표준",
-  "nav.benchmarks": "벤치마크"
+  "nav.benchmarks": "벤치마크",
+  "nav.sessions": "세션"
 }

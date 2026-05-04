@@ -1,4 +1,5 @@
 import { CanonicalRerankRequest } from '../canonical.types';
+import { normalizeRequestIdentityHeaders } from './request-metadata';
 
 /**
  * Normalizes OpenAI/common-compatible rerank requests into the dedicated
@@ -36,9 +37,7 @@ export class RerankNormalizer {
       metadata: {
         source_format: 'rerank',
         original_model: typeof req.model === 'string' ? req.model : 'auto',
-        session_key: (headers['x-session-id'] || headers['x-session-key']) as
-          | string
-          | undefined,
+        ...normalizeRequestIdentityHeaders(headers),
         raw_headers: headers,
         raw_body: req,
       },

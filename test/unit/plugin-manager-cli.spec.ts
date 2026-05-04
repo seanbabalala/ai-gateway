@@ -12,6 +12,9 @@ const fixturePlugin = path.resolve(
   'plugins',
   'local-compatible',
 );
+const packageVersion = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '..', '..', 'package.json'), 'utf8'),
+).version;
 
 async function makeTempDir(): Promise<string> {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-plugin-cli-'));
@@ -63,7 +66,7 @@ describe('siftgate plugin CLI', () => {
       required: true,
       gateway: {
         required: '>=1.0.0 <2.0.0',
-        checked_with: '1.0.0',
+        checked_with: packageVersion,
       },
     });
     expect(fs.readFileSync(path.join(cwd, 'gateway.config.yaml'), 'utf8')).toBe('nodes: []\n');

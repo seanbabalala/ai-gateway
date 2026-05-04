@@ -19,8 +19,67 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
+| v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 
 ---
+
+## v1.1 — Developer Experience（开发者体验）
+
+**v1.1.0 发布状态**：v1.1 基于已发布 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是让开发者更容易接入、测试、排障和理解一次调用在 SiftGate 内的完整路径。
+
+### P0：Python SDK
+
+- **状态**：✅ v1.1.0 已发布
+- **目标**：提供 `pip install -e packages/python` 可用的轻量 Python SDK scaffold，同时保持用户可继续使用 OpenAI SDK + `base_url`
+- **实现方案**：
+  - 新增 `packages/python`，包名 `siftgate`，`pyproject.toml` 使用 setuptools，运行时保持 stdlib-only
+  - `SiftGateClient` 支持 `base_url`、`gateway_api_key`、默认 headers、timeout、可注入 transport、`request_raw`
+  - 提供 models、chat completions、responses、messages、embeddings、rerank、images、audio、video generations/jobs endpoint helpers
+  - `routing_hint` 编码为 `x-siftgate-routing-hint`，只作为建议，不绕过 Gateway API key 权限、namespace、budget、rate limit 或路由策略
+  - `SiftGateError` 暴露 `status_code`、`body`、`request_id`，并尽量解析 JSON/text 错误体
+  - README 说明本地安装、OpenAI SDK `base_url` 替代路径、multipart media passthrough、raw response 使用方式
+  - 增加 Python SDK unit tests 和根脚本 `npm run test:python-sdk`
+
+---
+
+### P0：Dashboard Playground 交互式测试页面
+
+- **状态**：✅ v1.1.0 已发布
+- **目标**：让本地 Dashboard 具备安全的交互式探测入口，覆盖主要协议和多模态能力，同时复用真实 routing、权限、预算、成本、telemetry、call log 和 route decision 路径
+- **实现方案**：
+  - 新增 Dashboard 页面 `/playground`，支持 chat、responses、messages、embeddings、rerank、images、audio、video、realtime probe
+  - 支持选择本地 Gateway API key、namespace、model、endpoint、routing hint 和 stream
+  - 默认样例保持 tiny/synthetic，避免自动发送用户真实内容；用户必须手动点击 run
+  - 新增 Dashboard API `POST /api/dashboard/playground/run`，由 Dashboard session 保护，并通过 API key id 套用权限上下文，不把明文 Gateway API key 或 provider key 传给前端
+  - 展示 request preview、response summary、usage、cost、latency、status 和 Route Decision link
+  - Realtime 只做 endpoint/auth/capability probe，不打开 WebSocket，不影响 HTTP/SSE streaming
+  - 默认不保存 Playground prompt、response、raw headers、provider key、media bytes 或 realtime frames；普通 call log 只保留元数据
+  - 新增 Dashboard 7 语言本地化和前端静态检查，覆盖 route、hook、endpoint coverage、privacy copy 和 API types
+
+### P0：Session / Trace 关联与 Session View
+
+- **状态**：✅ v1.1.0 已发布
+- **目标**：把单条请求日志升级为会话级链路视图，方便开发者和运维人员排查一轮 agent、应用会话或多步骤工作流里的模型切换、fallback、成本、延迟和错误
+- **实现方案**：
+  - Normalizer 统一读取 `x-session-id`、legacy `x-session-key`、`x-siftgate-session-id`、`x-trace-id`、`x-siftgate-trace-id`、W3C `traceparent` 与 request-id fallback
+  - `call_logs`、`route_decisions`、`shadow_traffic_results` 增加 `session_id` / `trace_id` 关联字段，保留旧 `session_key` 兼容
+  - Pipeline 在 call log、Route Decision Trace、OpenTelemetry span attributes 和 shadow traffic result 中写入 session/trace metadata
+  - Dashboard API 新增 `GET /api/dashboard/sessions` 与 `GET /api/dashboard/sessions/:sessionId`
+  - Dashboard 新增只读 Session View，按 session 展示请求时间线、模型切换、fallback、成本、延迟、错误、shadow、guardrails finding 摘要和 Route Explanation 链接
+  - 支持 namespace、API key、model、source format、period 过滤
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
+  - Dashboard 文案保持 en、zh、zh-TW、ja、ko、th、es 七语言同步
+
+### P1：Agent 框架集成示例
+
+- **状态**：✅ v1.1.0 已发布
+- **目标**：提供可本地运行的示例，展示 LangChain、CrewAI、OpenAI Agents SDK 和 OpenAI SDK `base_url` 如何通过 SiftGate 发送请求
+- **实现方案**：
+  - 新增 `examples/agents`，包含 `.env.example`、共享 headers helper、requirements 和四个 Python 示例
+  - 示例统一使用 `SIFTGATE_BASE_URL`、`SIFTGATE_API_KEY`、`SIFTGATE_MODEL`、`SIFTGATE_NAMESPACE`、`SIFTGATE_SESSION_ID`、`SIFTGATE_TRACE_ID`、`SIFTGATE_ROUTING_HINT`
+  - 每个示例展示 Gateway API key、advisory routing hint、namespace label、session/trace correlation 和 structured output intent
+  - 文档说明如何在 Dashboard Logs、API Keys、Benchmarks、Route Explanation 中观察 agent 成本、fallback、选中的 node/model 和路由理由
+  - 不提交真实 provider key；静态测试检查示例文件、框架覆盖、headers、structured-output markers 和 secret hygiene
 
 ## v1.0 — Extension Ecosystem（扩展生态）
 
@@ -372,7 +431,7 @@
 
 ## v0.2 — Resilience（生产环境可靠性 + 开发者体验）
 
-**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground 与 P2 安全加固继续保留在后续 roadmap 中；结构化输出已转入 v0.6 Protocol 阶段。
+**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground 已进入 v1.1 Developer Experience 阶段；结构化输出已转入 v0.6 Protocol 阶段。
 
 ### P0：核心可靠性
 
@@ -466,19 +525,19 @@
 
 ### P1：开发者体验
 
-#### 5. 内置 Playground（Chat 测试界面）
+#### 5. 内置 Playground（交互式测试界面）
 
-- **状态**：未纳入 v0.2.0，保留为后续开发项
-- **现状**：测试需要 curl 或外部工具
-- **目标**：Dashboard 内嵌一个 Chat Playground
+- **状态**：🚧 已迁移到 v1.1 Developer Experience 实现
+- **现状**：v0.2 阶段仍主要依赖 curl 或外部工具；v1.1 将其升级为多协议 Dashboard Playground
+- **目标**：Dashboard 内嵌安全的交互式测试页面，复用真实 routing、权限、预算、成本、telemetry 和 route decision 路径
 - **实现方案**：
   - 新增 Dashboard 页面 `/playground`
-  - 支持选择模型（auto / 指定 node:model）
-  - 流式输出展示
-  - System prompt 编辑
-  - 请求/响应对比视图（展示路由决策）
-  - 延迟、Token、成本实时展示
-- **抽象到企业版**：多团队共享 Prompt Template
+  - 支持 chat、responses、messages、embeddings、rerank、images、audio、video 和 realtime probe
+  - 支持选择 API key、namespace、model、endpoint、routing hint 和 stream
+  - 展示 request preview、response summary、usage、cost、latency 和路由决策链接
+  - 默认 tiny synthetic sample，不自动发送用户真实内容
+  - 默认不保存 Playground prompt/response/media bytes；普通 call log 只保留元数据
+- **抽象到企业版**：多团队共享 Prompt Template 与实验用例管理
 
 #### 6. OpenAPI 文档自动生成
 
@@ -849,13 +908,13 @@
 
 #### 26. SDK / 客户端库
 
-- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；Python SDK 保持设计文档阶段
-- **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），并可试用 `packages/client` 中的轻量 TypeScript SDK scaffold
+- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；✅ v1.1.0 Python SDK scaffold 已发布
+- **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），也可试用 `packages/client` TypeScript SDK 与 `packages/python` Python SDK scaffold
 - **目标**：提供轻量 SDK 增强体验
 - **实现方案**：
   - ✅ TypeScript SDK（`@siftgate/client`）：支持 `baseUrl`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings helper、routing hint header、raw response access
-  - 📝 Python SDK（`siftgate-python`）：v0.4 先保留设计文档，不实现完整包
-  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、结构化错误
+  - ✅ Python SDK（`siftgate`）：支持 `base_url`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings、Rerank、Images、Audio、Video Jobs helper、routing hint header、raw response access
+  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、结构化错误、轻量本地安装
   - 与 OpenAI SDK 兼容（drop-in `base_url` 替换）
 
 #### 27. MCP (Model Context Protocol) 支持
@@ -1073,7 +1132,7 @@
 | 22  | 插件包管理器       |  ⭐⭐⭐⭐  |    中    |  ✅ v0.4   |
 | 23  | 官方插件集         |  ⭐⭐⭐⭐  |    大    |  ✅ v0.4   |
 | 25  | LiteLLM 配置兼容   |   ⭐⭐⭐   |    小    |  ✅ v0.4   |
-| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v0.4 TS scaffold |
+| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v1.1.0 Python scaffold |
 | 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  ✅ v0.5   |
 | 29  | 多实例集群模式     | ⭐⭐⭐⭐⭐ |    中    |  ✅ v0.5   |
 | 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  ✅ v0.5 experimental |

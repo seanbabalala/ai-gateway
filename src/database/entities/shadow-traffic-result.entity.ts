@@ -14,6 +14,8 @@ export type ShadowTrafficKind = 'chat' | 'embeddings';
 @Index(['request_id'])
 @Index(['namespace_id'])
 @Index(['status'])
+@Index(['session_id'])
+@Index(['trace_id'])
 export class ShadowTrafficResult {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -35,6 +37,12 @@ export class ShadowTrafficResult {
 
   @Column({ type: 'varchar', nullable: true })
   api_key_name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  session_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  trace_id!: string | null;
 
   @Column({ type: 'varchar' })
   source_format!: string;

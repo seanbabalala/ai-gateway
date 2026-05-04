@@ -34,6 +34,7 @@
   "nav.manage": "管理",
   "nav.monitor": "監控",
   "nav.nodes": "節點",
+  "nav.playground": "測試台",
   "nav.routeExplanation": "路由解釋",
   "nav.routing": "路由",
   "nav.shadow": "影子流量",
@@ -58,5 +59,6 @@
   "tier.reasoning": "推理",
   "tier.simple": "簡單",
   "tier.standard": "標準",
-  "nav.benchmarks": "基準"
+  "nav.benchmarks": "基準",
+  "nav.sessions": "工作階段"
 }

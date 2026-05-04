@@ -34,6 +34,7 @@
   "nav.manage": "管理",
   "nav.monitor": "監視",
   "nav.nodes": "ノード",
+  "nav.playground": "プレイグラウンド",
   "nav.routeExplanation": "ルート説明",
   "nav.routing": "ルーティング",
   "nav.shadow": "シャドウ",
@@ -58,5 +59,6 @@
   "tier.reasoning": "推論",
   "tier.simple": "シンプル",
   "tier.standard": "標準",
-  "nav.benchmarks": "ベンチマーク"
+  "nav.benchmarks": "ベンチマーク",
+  "nav.sessions": "セッション"
 }

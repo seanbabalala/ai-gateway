@@ -34,6 +34,7 @@
   "nav.manage": "จัดการ",
   "nav.monitor": "มอนิเตอร์",
   "nav.nodes": "โหนด",
+  "nav.playground": "สนามทดสอบ",
   "nav.routeExplanation": "อธิบายเส้นทาง",
   "nav.routing": "การกำหนดเส้นทาง",
   "nav.shadow": "Shadow",
@@ -58,5 +59,6 @@
   "tier.reasoning": "เหตุผล",
   "tier.simple": "ง่าย",
   "tier.standard": "มาตรฐาน",
-  "nav.benchmarks": "เบนช์มาร์ก"
+  "nav.benchmarks": "เบนช์มาร์ก",
+  "nav.sessions": "เซสชัน"
 }

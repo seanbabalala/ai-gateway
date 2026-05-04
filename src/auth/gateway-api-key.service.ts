@@ -111,6 +111,17 @@ export class GatewayApiKeyService {
     return this.toSummary(await this.getById(id));
   }
 
+  async getContextById(id: string): Promise<GatewayApiKeyContext> {
+    const entity = await this.getById(id);
+    if (entity.status !== 'active') {
+      throw new BadRequestException(`API key is not active: ${entity.name}`);
+    }
+    if (entity.namespace_id && !this.config.getNamespace(entity.namespace_id)) {
+      throw new BadRequestException(`API key namespace is not available: ${entity.namespace_id}`);
+    }
+    return this.toContext(entity);
+  }
+
   async findContextByPlainKey(
     plainKey: string,
     ip?: string,

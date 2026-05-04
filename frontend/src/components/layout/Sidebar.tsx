@@ -16,6 +16,8 @@ import {
   Boxes,
   X,
   FileClock,
+  SquareTerminal,
+  Network,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -33,7 +35,9 @@ const navGroups = [
       { to: '/analytics', icon: BarChart3, labelKey: 'nav.analytics' },
       { to: '/experiments', icon: FlaskConical, labelKey: 'nav.experiments' },
       { to: '/shadow', icon: GitCompareArrows, labelKey: 'nav.shadow' },
+      { to: '/sessions', icon: Network, labelKey: 'nav.sessions' },
       { to: '/route-decisions', icon: GitFork, labelKey: 'nav.routeExplanation' },
+      { to: '/playground', icon: SquareTerminal, labelKey: 'nav.playground' },
       { to: '/benchmarks', icon: Gauge, labelKey: 'nav.benchmarks' },
     ],
   },

@@ -25,6 +25,8 @@ interface ShadowTargetContext {
   namespaceId?: string | null;
   apiKeyId?: string | null;
   apiKeyName?: string | null;
+  sessionId?: string | null;
+  traceId?: string | null;
   sourceFormat: string;
   primaryNode: string;
   primaryModel: string;
@@ -827,6 +829,11 @@ export class ShadowTrafficService {
       namespaceId: canonical.metadata.namespace_id || null,
       apiKeyId: canonical.metadata.api_key_id || null,
       apiKeyName: canonical.metadata.api_key_name || null,
+      sessionId:
+        canonical.metadata.session_id ||
+        canonical.metadata.session_key ||
+        null,
+      traceId: canonical.metadata.trace_id || null,
       sourceFormat: canonical.metadata.source_format,
       primaryNode,
       primaryModel,
@@ -923,6 +930,8 @@ export class ShadowTrafficService {
       namespace_id: params.context.namespaceId || null,
       api_key_id: params.context.apiKeyId || null,
       api_key_name: params.context.apiKeyName || null,
+      session_id: params.context.sessionId || null,
+      trace_id: params.context.traceId || null,
       source_format: params.context.sourceFormat,
       primary_node: params.context.primaryNode,
       primary_model: params.context.primaryModel,

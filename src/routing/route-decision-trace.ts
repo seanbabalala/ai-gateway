@@ -93,6 +93,8 @@ export interface RouteDecisionTraceFilter {
 export interface RouteDecisionTrace {
   version: 1;
   request_id?: string;
+  session_id?: string | null;
+  trace_id?: string | null;
   source_format?: string;
   requested_model?: string | null;
   mode: RouteDecisionTraceMode;
