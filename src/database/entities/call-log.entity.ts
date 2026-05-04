@@ -77,6 +77,27 @@ export class CallLog {
   @Column({ type: 'varchar', nullable: true })
   structured_output_schema_name!: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  reasoning_requested!: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  reasoning_effort!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  reasoning_strategy!: string | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  reasoning_supported!: boolean | null;
+
+  @Column({ type: 'integer', nullable: true })
+  reasoning_budget_tokens!: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  reasoning_source!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  reasoning_reason!: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   media_type!: string | null;
 

@@ -237,6 +237,42 @@ describe('ChatCompletionsNormalizer', () => {
       strict: true,
     });
   });
+
+  it('should normalize OpenAI reasoning_effort into canonical reasoning intent', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-5',
+        messages: [{ role: 'user', content: 'Solve carefully' }],
+        reasoning_effort: 'high',
+      },
+      headers,
+    );
+
+    expect(result.reasoning_effort).toBe('high');
+    expect(result.reasoning).toMatchObject({
+      requested: true,
+      source: 'chat_completions.reasoning_effort',
+      effort: 'high',
+    });
+  });
+
+  it('should preserve Gemini thinking_config as canonical thinking intent', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'gemini-2.5-pro',
+        messages: [{ role: 'user', content: 'Think step by step' }],
+        thinking_config: { thinking_budget: 2048, include_thoughts: false },
+      },
+      headers,
+    );
+
+    expect(result.reasoning).toMatchObject({
+      requested: true,
+      source: 'gemini.thinking_config',
+      budget_tokens: 2048,
+    });
+    expect(result.thinking?.source).toBe('gemini.thinking_config');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -308,6 +344,24 @@ describe('ResponsesNormalizer', () => {
       type: 'json_schema',
       name: 'Classification',
       schema,
+    });
+  });
+
+  it('should normalize Responses reasoning effort', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-5',
+        input: 'Plan a migration',
+        reasoning: { effort: 'medium', summary: 'auto' },
+      },
+      headers,
+    );
+
+    expect(result.reasoning_effort).toBe('medium');
+    expect(result.reasoning).toMatchObject({
+      requested: true,
+      source: 'responses.reasoning',
+      effort: 'medium',
     });
   });
 
@@ -727,6 +781,25 @@ describe('MessagesNormalizer', () => {
       requested: true,
       type: 'json_schema',
       schema,
+    });
+  });
+
+  it('should normalize Anthropic thinking budget as canonical reasoning intent', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: 'Reason about this.' }],
+        thinking: { type: 'enabled', budget_tokens: 2048 },
+      },
+      headers,
+    );
+
+    expect(result.budget_tokens).toBe(2048);
+    expect(result.reasoning).toMatchObject({
+      requested: true,
+      source: 'messages.thinking',
+      budget_tokens: 2048,
     });
   });
 

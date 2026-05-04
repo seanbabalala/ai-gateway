@@ -346,6 +346,49 @@ describe('ProviderClientService', () => {
       expect(body.response_format).toBeUndefined();
       expect(body.text).toBeUndefined();
     });
+
+    it('should preserve native Anthropic thinking in messages passthrough', () => {
+      const svc = makeService();
+      const thinking = { type: 'enabled', budget_tokens: 1024 };
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: false,
+        thinking: {
+          source: 'messages.thinking' as const,
+          raw: thinking,
+          type: 'enabled',
+          budget_tokens: 1024,
+        },
+        reasoning: {
+          requested: true,
+          source: 'messages.thinking' as const,
+          effort: 'unknown' as const,
+          budget_tokens: 1024,
+          thinking: {
+            source: 'messages.thinking' as const,
+            raw: thinking,
+            type: 'enabled',
+            budget_tokens: 1024,
+          },
+          raw: thinking,
+        },
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: false,
+            messages: [{ role: 'user', content: 'Hi' }],
+            thinking,
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.thinking).toEqual(thinking);
+    });
   });
 
   // ── Header extraction ──────────────────────────────────

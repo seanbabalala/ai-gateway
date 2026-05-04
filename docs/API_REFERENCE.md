@@ -124,7 +124,51 @@ Example Messages request:
 }
 ```
 
-Call logs, CSV/JSON exports, external log sinks, and optional control-plane telemetry include structured-output metadata: requested status, type, strategy (`passthrough`, `native`, or `downgraded`), support flag, and schema name. If `routing.fallback_policy.structured_output.enabled` is true, non-streaming requests can fallback on JSON parse or schema validation failure. Streaming requests do not fallback after SSE output has started.
+### Reasoning And Thinking Controls
+
+v1.0 adds privacy-safe canonical reasoning intent so production clients can ask for deeper thinking without losing provider-specific parameters during routing.
+
+| Ingress | Supported Field | Behavior |
+| --- | --- | --- |
+| `/v1/chat/completions` | `reasoning_effort` | Passed through to Chat targets, mapped to Responses `reasoning.effort`, or mapped to Anthropic `thinking.budget_tokens` only when a safe budget can be derived |
+| `/v1/responses` | `reasoning.effort` | Passed through to Responses targets or mapped to OpenAI-compatible `reasoning_effort` / Anthropic thinking when safe |
+| `/v1/messages` | `thinking.type=enabled`, `thinking.budget_tokens` | Passed through for native Messages targets; cross-protocol forwarding keeps the original intent in canonical metadata and marks downgraded when no safe effort mapping exists |
+| OpenAI-compatible Gemini-style Chat | `thinking_config` | Preserved for compatible Chat targets as `thinking_config`; other protocols record the downgrade instead of inventing provider-specific values |
+
+Example Chat request:
+
+```json
+{
+  "model": "auto",
+  "messages": [{ "role": "user", "content": "Solve this carefully." }],
+  "reasoning_effort": "high"
+}
+```
+
+Example Responses request:
+
+```json
+{
+  "model": "auto",
+  "input": "Create a migration plan.",
+  "reasoning": { "effort": "medium" }
+}
+```
+
+Example Anthropic Messages request:
+
+```json
+{
+  "model": "auto",
+  "max_tokens": 4096,
+  "messages": [{ "role": "user", "content": "Analyze the tradeoffs." }],
+  "thinking": { "type": "enabled", "budget_tokens": 2048 }
+}
+```
+
+Reasoning metadata stored in `call_logs` and route decisions is limited to intent, effort, budget token count, source, forwarding strategy, support status, and sanitized downgrade reason. SiftGate does not store hidden chain-of-thought, prompts, responses, raw headers, or provider keys.
+
+Call logs, CSV/JSON exports, external log sinks, and optional control-plane telemetry include structured-output metadata: requested status, type, strategy (`passthrough`, `native`, or `downgraded`), support flag, and schema name. Reasoning logs similarly record requested status, effort, strategy (`passthrough`, `native`, `downgraded`, or `unsupported`), support flag, source, budget tokens, and sanitized reason. If `routing.fallback_policy.structured_output.enabled` is true, non-streaming requests can fallback on JSON parse or schema validation failure. Streaming requests do not fallback after SSE output has started.
 
 ### Embeddings
 

@@ -282,6 +282,7 @@ nodes:
     timeout_ms: 60000
     max_context_tokens: 128000
     structured_output: true
+    supports_reasoning: false          # Set true on reasoning-capable models such as o-series/GPT-5 family
     modalities: ["text", "vision"]    # Backward-compatible with image-capable chat models
     endpoints:
       image: "/v1/images/generations"
@@ -303,16 +304,23 @@ nodes:
         output_types: ["text"]
         max_context_tokens: 128000
         structured_output: true
+        supports_reasoning: false
         supports_streaming: true
         quality_score: 0.9
       gpt-4o-mini:
         modalities: ["text", "image"]
         max_context_tokens: 128000
         structured_output: true
+        supports_reasoning: false
         supports_streaming: true
         quality_score: 0.6
         # Optional per-node/model pricing override. If omitted, models_pricing below is used.
         pricing: { input: 0.15, output: 0.60 }
+      # o3:
+      #   modalities: ["text"]
+      #   max_context_tokens: 200000
+      #   structured_output: true
+      #   supports_reasoning: true
       text-embedding-3-small:
         modalities: ["text", "embedding"]
         input_types: ["text"]
@@ -384,6 +392,7 @@ nodes:
     timeout_ms: 120000
     max_context_tokens: 200000
     structured_output: false
+    supports_reasoning: true
     model_capabilities:
       claude-sonnet-4-20250514:
         modalities: ["text", "image"]
@@ -391,6 +400,7 @@ nodes:
         output_types: ["text"]
         max_context_tokens: 200000
         structured_output: false
+        supports_reasoning: true
         supports_streaming: true
         quality_score: 0.9
     tags: ["code", "backend", "reasoning", "math"]

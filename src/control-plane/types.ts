@@ -42,6 +42,10 @@ export interface ControlPlaneTelemetryEvent {
   structured_output_type?: string | null;
   structured_output_strategy?: string | null;
   structured_output_supported?: boolean | null;
+  reasoning_requested?: boolean;
+  reasoning_effort?: string | null;
+  reasoning_strategy?: string | null;
+  reasoning_supported?: boolean | null;
   media_type?: string | null;
   media_operation?: string | null;
   media_byte_size?: number | null;

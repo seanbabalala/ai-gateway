@@ -11,6 +11,7 @@ import {
   ToolResultBlock,
 } from '../canonical.types';
 import { normalizeStructuredOutputFromBody } from '../structured-output';
+import { normalizeReasoningFromBody } from '../reasoning-effort';
 
 /**
  * Normalizes Anthropic Messages API format → Canonical format.
@@ -32,6 +33,7 @@ export class MessagesNormalizer implements Normalizer {
   normalize(body: unknown, headers: Record<string, string>): CanonicalRequest {
     const req = body as Record<string, unknown>;
     const structured = normalizeStructuredOutputFromBody('messages', req);
+    const reasoning = normalizeReasoningFromBody('messages', req);
 
     const messages: CanonicalMessage[] = [];
 
@@ -54,6 +56,7 @@ export class MessagesNormalizer implements Normalizer {
       top_p: req.top_p as number | undefined,
       stop: this.normalizeStop(req.stop_sequences),
       ...structured,
+      ...reasoning,
       stream: Boolean(req.stream),
       metadata: {
         source_format: 'messages',

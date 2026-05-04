@@ -7,6 +7,9 @@
 - Expanded the built-in Provider / Model Catalog toward v1.0 ecosystem coverage with 30+ providers, adding AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud.
 - Added review-required pricing source metadata for the new providers, including source URLs, `last_updated`, `pricing_confidence`, and manual-review state without using placeholder wording in operator-facing catalog data.
 - Added provider identity mappings and tests so new OpenAI-compatible or compatible-style providers do not fall back to the OpenAI logo in Dashboard node/catalog surfaces.
+- Added v1.0 canonical reasoning/thinking intent for Chat `reasoning_effort`, Responses `reasoning`, Anthropic Messages `thinking`, and Gemini-style `thinking_config`.
+- Added reasoning-aware provider forwarding strategies, routing preference for `supports_reasoning` targets, call-log metadata, external log sink fields, control-plane metadata, and Route Explanation evidence without storing prompts, responses, hidden reasoning text, raw headers, or provider keys.
+- Added Dashboard Logs and Route Explanation localization for reasoning intent, effort, budget, strategy, support status, and downgrade notes across all 7 OSS Dashboard languages.
 
 ### Changed
 

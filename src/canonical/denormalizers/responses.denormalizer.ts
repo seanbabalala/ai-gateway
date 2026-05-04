@@ -6,6 +6,7 @@ import {
   CanonicalContentBlock,
 } from '../canonical.types';
 import { toOpenAiResponsesTextFormat } from '../structured-output';
+import { toOpenAiResponsesReasoning } from '../reasoning-effort';
 
 /**
  * Denormalizes Canonical → OpenAI Responses API format.
@@ -66,6 +67,9 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
       canonical.response_format,
     );
     if (textFormat) body.text = { format: textFormat };
+
+    const reasoning = toOpenAiResponsesReasoning(canonical.reasoning);
+    if (reasoning) body.reasoning = reasoning;
 
     return body;
   }

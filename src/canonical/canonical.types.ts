@@ -139,6 +139,46 @@ export interface CanonicalStructuredOutput {
   schema?: Record<string, unknown>;
   strict?: boolean;
 }
+
+// ===== Reasoning / Thinking =====
+export type CanonicalReasoningEffort =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'unknown';
+
+export type ReasoningSource =
+  | 'chat_completions.reasoning_effort'
+  | 'responses.reasoning'
+  | 'responses.reasoning_effort'
+  | 'messages.thinking'
+  | 'gemini.thinking_config'
+  | 'canonical';
+
+export type ReasoningStrategy =
+  | 'native'
+  | 'passthrough'
+  | 'downgraded'
+  | 'unsupported'
+  | 'none';
+
+export interface CanonicalThinkingConfig {
+  source: ReasoningSource;
+  raw: unknown;
+  type?: string;
+  budget_tokens?: number;
+  include_thoughts?: boolean;
+}
+
+export interface CanonicalReasoningIntent {
+  requested: boolean;
+  source: ReasoningSource;
+  effort?: CanonicalReasoningEffort;
+  budget_tokens?: number;
+  thinking?: CanonicalThinkingConfig;
+  raw: unknown;
+}
 // ===== Shared Request Metadata =====
 export interface CanonicalRequestMetadata {
   source_format: SourceFormat;
@@ -170,6 +210,10 @@ export interface CanonicalRequest {
   stop?: string[];
   response_format?: CanonicalResponseFormat;
   structured_output?: CanonicalStructuredOutput;
+  reasoning_effort?: CanonicalReasoningEffort;
+  thinking?: CanonicalThinkingConfig;
+  budget_tokens?: number;
+  reasoning?: CanonicalReasoningIntent;
   stream: boolean;
 
   /** Original request metadata, preserved for response denormalization */

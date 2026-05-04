@@ -73,6 +73,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Experimental Video** (`/v1/videos/generations`, `/v1/videos/:id`) — async video job preview with local metadata only; prompts, source media, and video bytes are not persisted
 - **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
+- **Reasoning effort / thinking passthrough** — preserve OpenAI `reasoning_effort`, Responses `reasoning`, Anthropic `thinking`, and Gemini-style `thinking_config` intent with explicit downgrade markers when a target cannot safely honor it
 - Full **streaming** support across supported generative protocols
 - **Cross-protocol conversion** — send a request in any format, it gets routed to any provider regardless of their native API
 
@@ -82,6 +83,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Reasoning-aware target preference** — explicit reasoning/thinking requests prefer models that declare `supports_reasoning` or reasoning capability tags, while keeping unknown legacy targets usable unless every configured target says no
 - **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
 - **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas

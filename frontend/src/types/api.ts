@@ -62,6 +62,13 @@ export interface CallLog {
   structured_output_strategy?: string | null
   structured_output_supported?: boolean | null
   structured_output_schema_name?: string | null
+  reasoning_requested?: boolean
+  reasoning_effort?: string | null
+  reasoning_strategy?: string | null
+  reasoning_supported?: boolean | null
+  reasoning_budget_tokens?: number | null
+  reasoning_source?: string | null
+  reasoning_reason?: string | null
   media_type?: string | null
   media_operation?: string | null
   media_multipart?: boolean | null
@@ -118,6 +125,7 @@ export interface RouteDecisionCandidate {
     max_context_tokens: number | null
     context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown'
     structured_output: boolean | null
+    reasoning?: boolean | null
   }
   capability_evidence?: {
     requested_modality: string | null
@@ -170,6 +178,10 @@ export interface RouteDecisionTrace {
     estimated_output_tokens: number | null
     estimated_context_tokens: number | null
     requires_structured_output: boolean
+    requires_reasoning?: boolean
+    reasoning_effort?: string | null
+    reasoning_budget_tokens?: number | null
+    reasoning_strategy?: string | null
   }
   modality_evidence?: {
     requested_modality: string | null
@@ -395,6 +407,7 @@ export interface ModelCapabilityInfo {
   supports_streaming?: boolean
   supports_realtime?: boolean
   supports_rerank?: boolean
+  supports_reasoning?: boolean | null
   max_context_tokens?: number
   structured_output: boolean | null
   dimensions?: number | number[]

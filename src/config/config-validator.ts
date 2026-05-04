@@ -1455,7 +1455,7 @@ function validateCapabilitySchemaFields(
     );
   }
 
-  for (const key of ['supports_streaming', 'supports_realtime', 'supports_rerank']) {
+  for (const key of ['supports_streaming', 'supports_realtime', 'supports_rerank', 'supports_reasoning']) {
     if (capability[key] !== undefined && !isBoolean(capability[key])) {
       issues.push(
         issue(

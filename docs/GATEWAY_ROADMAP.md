@@ -18,13 +18,13 @@
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
-| v1.0 | Ecosystem Expansion | 进行中 — 扩展 provider 生态、reasoning 映射、guardrails webhook、API key 管理 | 🚧 In Progress |
+| v1.0 | Ecosystem Expansion | 进行中 — Provider Catalog 扩展、Reasoning Effort 跨协议映射、Guardrails webhook、API Key 管理完善 | 🚧 In Progress |
 
 ---
 
 ## v1.0 — Ecosystem Expansion（扩展生态）
 
-**v1.0 目标**：在 v0.9.3 的 Operations + Trust 基础上，先把 Provider Catalog 从“够用的内置参考”扩展成真正能支撑 Add Node、配置校验和多模态路由的 30+ provider 数据源。默认仍然保持单机 memory/SQLite 可用；新增 provider/pricing 信息是 review-required reference，不自动联网抓取，不保存 provider key，不接入 Cloud。
+**目标**：在 v0.9.3 稳定运维基础上扩大 provider/model 覆盖，并补齐生产应用常用的跨协议能力，让 SiftGate 继续保持开源 Data Plane 自洽可用。默认仍然保持单机 memory/SQLite 可用；新增 provider/pricing 信息是 review-required reference，不自动联网抓取，不保存 provider key，不接入 Cloud。
 
 ### P0：Provider Catalog 30+
 
@@ -38,6 +38,19 @@
   - Config validation 针对新 provider 输出 model、endpoint、pricing、capability warnings
   - Dashboard provider identity registry 补齐新 provider，兼容 provider 不再误显示 OpenAI logo
   - 补 catalog service、CLI、Dashboard API、provider logo identity、config validation tests
+
+### P0：Reasoning Effort 跨协议映射
+
+- **状态**：🚧 Prompt 64 feature branch 进行中
+- **目标**：统一 OpenAI、Responses、Anthropic、Gemini 兼容风格的 reasoning/thinking 请求意图，路由时优先选择支持 reasoning 的模型，并在 Dashboard 解释为什么保留、映射或降级
+- **实现方案**：
+  - Canonical Request 增加 `reasoning_effort`、`thinking`、`budget_tokens` 与 `reasoning` intent 字段
+  - Chat Completions 支持 `reasoning_effort`，Responses 支持 `reasoning.effort`，Anthropic Messages 支持 `thinking.type=enabled` / `budget_tokens`，OpenAI-compatible Gemini 风格支持 `thinking_config`
+  - provider forwarding 同协议透传；跨协议只在安全时映射，不安全时保留 canonical metadata，并记录 `passthrough` / `native` / `downgraded` / `unsupported`
+  - `nodes[].supports_reasoning` 与 `model_capabilities[].supports_reasoning` 可显式声明模型是否支持 reasoning controls
+  - RoutingService 对显式 reasoning 请求优先选择 reasoning-capable node:model；如果只有未知能力目标，保持兼容，不破坏旧配置
+  - call logs、external log sinks、control-plane metadata、Route Decision Trace 和 Dashboard Logs/Route Explanation 展示 reasoning intent、effort、budget、strategy、support 与 fallback/downgrade reason
+  - 不保存 prompt、response、hidden chain-of-thought、raw headers 或 provider keys
 
 ---
 

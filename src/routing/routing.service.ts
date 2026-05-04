@@ -95,6 +95,10 @@ export interface RouteSelectionHints {
   estimated_output_tokens?: number;
   estimated_context_tokens?: number;
   requires_structured_output?: boolean;
+  requires_reasoning?: boolean;
+  reasoning_effort?: string | null;
+  reasoning_budget_tokens?: number | null;
+  reasoning_strategy?: string | null;
   requested_modality?: string | null;
   input_types?: string[];
   output_types?: string[];
@@ -1373,6 +1377,10 @@ export class RoutingService {
         estimated_output_tokens: input.selectionHints.estimated_output_tokens ?? null,
         estimated_context_tokens: input.selectionHints.estimated_context_tokens ?? null,
         requires_structured_output: Boolean(input.selectionHints.requires_structured_output),
+        requires_reasoning: Boolean(input.selectionHints.requires_reasoning),
+        reasoning_effort: input.selectionHints.reasoning_effort ?? null,
+        reasoning_budget_tokens: input.selectionHints.reasoning_budget_tokens ?? null,
+        reasoning_strategy: input.selectionHints.reasoning_strategy ?? null,
       },
       modality_evidence: this.buildTraceModalityEvidence(
         input.selectionHints,
@@ -1459,6 +1467,10 @@ export class RoutingService {
         structured_output:
           typeof capabilities.structured_output === 'boolean'
             ? capabilities.structured_output
+            : null,
+        reasoning:
+          typeof capabilities.supports_reasoning === 'boolean'
+            ? capabilities.supports_reasoning
             : null,
       },
       capability_evidence: capabilityEvidence,
@@ -1621,6 +1633,9 @@ export class RoutingService {
     }
     if (normalized === 'streaming') {
       return capabilities.supports_streaming === true;
+    }
+    if (normalized === 'reasoning' || normalized === 'thinking') {
+      return capabilities.supports_reasoning === true;
     }
     if (normalized === 'video') {
       return supportedModalities.includes('video') ||
@@ -1948,6 +1963,20 @@ export class RoutingService {
       reasons.push('structured_output_unsupported');
     }
 
+    if (
+      !isFinalTarget &&
+      selectionHints.requires_reasoning &&
+      capabilities.supports_reasoning === false &&
+      initialTargets.some((candidate) =>
+        this.capabilityService.resolveModelRoutingCapabilities?.(
+          candidate.node,
+          candidate.model,
+        )?.supports_reasoning === true,
+      )
+    ) {
+      reasons.push('reasoning_unsupported');
+    }
+
     if (modalityHints && modalityHints.length > 0) {
       const targetModalities =
         this.capabilityService.resolveModelModalities?.(target.node, target.model) || [];
@@ -1985,6 +2014,7 @@ export class RoutingService {
     if (reason.startsWith('circuit')) return 'circuit_breaker';
     if (reason.startsWith('context')) return 'context_window';
     if (reason.startsWith('structured')) return 'structured_output';
+    if (reason.startsWith('reasoning')) return 'reasoning';
     if (reason.startsWith('modality')) return 'modality';
     if (reason.startsWith('capability')) return 'capability';
     if (reason.startsWith('file_size')) return 'file_size';
@@ -2022,6 +2052,10 @@ export class RoutingService {
 
     if (selectionHints.requires_structured_output) {
       constrained = this.preferStructuredOutputTargets(tier, constrained);
+    }
+
+    if (selectionHints.requires_reasoning) {
+      constrained = this.preferReasoningTargets(tier, constrained);
     }
 
     const estimatedContextTokens = selectionHints.estimated_context_tokens;
@@ -2151,6 +2185,43 @@ export class RoutingService {
     if (unknown.length === 0 && unsupported.length > 0) {
       throw new RoutingConstraintError(
         `No route targets for tier "${tier}" declare structured output support.`,
+        400,
+      );
+    }
+
+    return [...unknown, ...unsupported];
+  }
+
+  private preferReasoningTargets<T extends RouteTarget>(
+    tier: string,
+    targets: T[],
+  ): T[] {
+    const supported: T[] = [];
+    const unknown: T[] = [];
+    const unsupported: T[] = [];
+
+    for (const target of targets) {
+      const reasoning =
+        this.capabilityService.resolveModelRoutingCapabilities(
+          target.node,
+          target.model,
+        ).supports_reasoning;
+      if (reasoning === true) {
+        supported.push(target);
+      } else if (reasoning === false) {
+        unsupported.push(target);
+      } else {
+        unknown.push(target);
+      }
+    }
+
+    if (supported.length > 0) {
+      return [...supported, ...unknown];
+    }
+
+    if (unknown.length === 0 && unsupported.length > 0) {
+      throw new RoutingConstraintError(
+        `No route targets for tier "${tier}" declare reasoning support.`,
         400,
       );
     }

@@ -469,6 +469,8 @@ export interface ModelCapabilityConfig {
   supports_realtime?: boolean;
   /** Whether this model supports rerank requests. */
   supports_rerank?: boolean;
+  /** Whether this model supports explicit reasoning/thinking controls. */
+  supports_reasoning?: boolean;
   /** Maximum total context window for this model, including input and reserved output tokens. */
   max_context_tokens?: number;
   /** Whether this model should be considered safe for structured output requests. */
@@ -582,6 +584,7 @@ export interface NodeConfig {
   supports_streaming?: boolean;
   supports_realtime?: boolean;
   supports_rerank?: boolean;
+  supports_reasoning?: boolean;
   /** Optional per-model capability and pricing metadata. Keys are model IDs. */
   model_capabilities?: Record<string, ModelCapabilityConfig>;
 

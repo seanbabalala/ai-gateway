@@ -457,7 +457,17 @@ describe('DashboardController — benchmark report', () => {
 
 describe('DashboardController — getLogs', () => {
   it('should return paginated logs', async () => {
-    const logs = [{ id: 1, model: 'gpt-4o' }, { id: 2, model: 'claude-3-opus' }];
+    const logs = [
+      {
+        id: 1,
+        model: 'gpt-4o',
+        reasoning_requested: true,
+        reasoning_effort: 'high',
+        reasoning_strategy: 'passthrough',
+        reasoning_supported: true,
+      },
+      { id: 2, model: 'claude-3-opus' },
+    ];
     const qb = mockQueryBuilder();
     qb.getManyAndCount.mockResolvedValue([logs, 50]);
     const repo = mockRepo(qb);
@@ -466,6 +476,12 @@ describe('DashboardController — getLogs', () => {
     const result = await controller.getLogs(1, 50);
 
     expect(result.data).toHaveLength(2);
+    expect(result.data[0]).toMatchObject({
+      reasoning_requested: true,
+      reasoning_effort: 'high',
+      reasoning_strategy: 'passthrough',
+      reasoning_supported: true,
+    });
     expect(result.pagination.page).toBe(1);
     expect(result.pagination.total).toBe(50);
     expect(result.pagination.totalPages).toBe(1);

@@ -34,6 +34,10 @@ import {
   structuredOutputSchema,
 } from '../canonical/structured-output';
 import {
+  normalizeReasoningFromBody,
+  resolveReasoningForwarding,
+} from '../canonical/reasoning-effort';
+import {
   ProviderClientService,
   ProviderError,
 } from '../providers/provider-client.service';
@@ -222,6 +226,10 @@ export class PipelineService {
           canonical.structured_output?.requested ?? false,
         'gateway.structured_output.type':
           canonical.structured_output?.type || '',
+        'gateway.reasoning.requested':
+          canonical.reasoning?.requested ?? false,
+        'gateway.reasoning.effort':
+          canonical.reasoning_effort || '',
       },
       async (rootSpan) => {
         const store = new Map<string, unknown>([['request_id', requestId]]);
@@ -3229,6 +3237,7 @@ export class PipelineService {
 
     const tokenEstimate = estimateCanonicalRequestTokens(canonical);
     const requiresStructuredOutput = this.requestRequiresStructuredOutput(canonical);
+    const reasoningFields = this.resolveReasoningSelectionFields(canonical);
 
     const routeDecision = this.telemetry.withSpanSync(
       'gateway.routing',
@@ -3250,6 +3259,13 @@ export class PipelineService {
             estimated_output_tokens: tokenEstimate.output_tokens,
             estimated_context_tokens: tokenEstimate.context_tokens,
             requires_structured_output: requiresStructuredOutput,
+            requires_reasoning: reasoningFields.requires_reasoning,
+            reasoning_effort: reasoningFields.reasoning_effort,
+            reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
+            reasoning_strategy: reasoningFields.reasoning_strategy,
+            required_capabilities: reasoningFields.requires_reasoning
+              ? Array.from(new Set([...(scoringResult.modalityHints || ['text']).map(String), 'reasoning']))
+              : undefined,
           },
         );
         span.setAttributes({
@@ -3328,6 +3344,17 @@ export class PipelineService {
         ? estimateCanonicalRequestTokens(input.canonical as CanonicalRequest)
         : null;
     const requestEvidenceHints = this.routeSelectionHintsForTrace(input.canonical);
+    const reasoningFields =
+      input.canonical.metadata.source_format !== 'embeddings' &&
+      input.canonical.metadata.source_format !== 'rerank' &&
+      !this.isMediaCanonical(input.canonical)
+        ? this.resolveReasoningSelectionFields(input.canonical as CanonicalRequest)
+        : {
+            requires_reasoning: false,
+            reasoning_effort: null,
+            reasoning_budget_tokens: null,
+            reasoning_strategy: null,
+          };
     const traceSelectionHints: RouteSelectionHints = {
       ...requestEvidenceHints,
       estimated_input_tokens: tokenEstimate?.input_tokens ?? undefined,
@@ -3336,6 +3363,16 @@ export class PipelineService {
       requires_structured_output:
         input.canonical.metadata.source_format !== 'embeddings' &&
         this.requestRequiresStructuredOutput(input.canonical as CanonicalRequest),
+      requires_reasoning: reasoningFields.requires_reasoning,
+      reasoning_effort: reasoningFields.reasoning_effort,
+      reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
+      reasoning_strategy: reasoningFields.reasoning_strategy,
+      required_capabilities: reasoningFields.requires_reasoning
+        ? this.uniqueTraceStrings([
+            ...(requestEvidenceHints.required_capabilities || []),
+            'reasoning',
+          ])
+        : requestEvidenceHints.required_capabilities,
     };
 
     return {
@@ -3360,6 +3397,10 @@ export class PipelineService {
         requires_structured_output:
           input.canonical.metadata.source_format !== 'embeddings' &&
           this.requestRequiresStructuredOutput(input.canonical as CanonicalRequest),
+        requires_reasoning: traceSelectionHints.requires_reasoning || false,
+        reasoning_effort: traceSelectionHints.reasoning_effort ?? null,
+        reasoning_budget_tokens: traceSelectionHints.reasoning_budget_tokens ?? null,
+        reasoning_strategy: traceSelectionHints.reasoning_strategy ?? null,
       },
       modality_evidence: this.buildPipelineTraceModalityEvidence(
         traceSelectionHints,
@@ -3428,6 +3469,10 @@ export class PipelineService {
             structured_output:
               typeof capabilities.structured_output === 'boolean'
                 ? capabilities.structured_output
+                : null,
+            reasoning:
+              typeof capabilities.supports_reasoning === 'boolean'
+                ? capabilities.supports_reasoning
                 : null,
           },
           capability_evidence: capabilityEvidence,
@@ -3500,15 +3545,24 @@ export class PipelineService {
       modalities.find((modality) => modality === 'vision') ||
       modalities.find((modality) => modality !== 'text') ||
       'text';
+    const reasoningFields = this.resolveReasoningSelectionFields(
+      canonical as CanonicalRequest,
+    );
     return {
       requested_modality: requested,
       input_types: modalities.includes('vision') ? ['text', 'image'] : ['text'],
       output_types: ['text'],
       file_count: modalities.includes('vision') ? this.countImageBlocks(canonical as CanonicalRequest) : 0,
       byte_size: null,
-      required_capabilities: modalities.length > 0 ? modalities : ['text'],
+      required_capabilities: reasoningFields.requires_reasoning
+        ? this.uniqueTraceStrings([...(modalities.length > 0 ? modalities : ['text']), 'reasoning'])
+        : (modalities.length > 0 ? modalities : ['text']),
       endpoint_strategy: canonical.metadata.source_format,
       source_format: canonical.metadata.source_format,
+      requires_reasoning: reasoningFields.requires_reasoning,
+      reasoning_effort: reasoningFields.reasoning_effort,
+      reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
+      reasoning_strategy: reasoningFields.reasoning_strategy,
     };
   }
 
@@ -3762,6 +3816,9 @@ export class PipelineService {
       return supportedModalities.includes('realtime') ||
         capabilities.supports_realtime === true ||
         Boolean(capabilities.endpoints?.realtime);
+    }
+    if (normalized === 'reasoning' || normalized === 'thinking') {
+      return capabilities.supports_reasoning === true;
     }
     if (normalized === 'video') {
       return supportedModalities.includes('video') ||
@@ -4157,6 +4214,33 @@ export class PipelineService {
       }
     }
     return false;
+  }
+
+  private resolveReasoningSelectionFields(canonical: CanonicalRequest): {
+    requires_reasoning: boolean;
+    reasoning_effort: string | null;
+    reasoning_budget_tokens: number | null;
+    reasoning_strategy: string | null;
+  } {
+    const intent =
+      canonical.reasoning ||
+      (
+        canonical.metadata.raw_body &&
+        typeof canonical.metadata.raw_body === 'object' &&
+        !Array.isArray(canonical.metadata.raw_body)
+          ? normalizeReasoningFromBody(
+              canonical.metadata.source_format,
+              canonical.metadata.raw_body as Record<string, unknown>,
+            ).reasoning
+          : undefined
+      );
+
+    return {
+      requires_reasoning: Boolean(intent?.requested),
+      reasoning_effort: intent?.effort || null,
+      reasoning_budget_tokens: intent?.budget_tokens || null,
+      reasoning_strategy: intent?.source || null,
+    };
   }
 
   private isTargetAllowed(
@@ -4638,6 +4722,11 @@ export class PipelineService {
         params.nodeId,
         params.model,
       );
+      const reasoning = this.resolveReasoningLogFields(
+        params.canonical,
+        params.nodeId,
+        params.model,
+      );
       const media = this.resolveMediaLogFields(
         params.canonical,
         params.mediaProviderResponseType,
@@ -4663,6 +4752,13 @@ export class PipelineService {
           structuredOutput.structured_output_supported,
         structured_output_schema_name:
           structuredOutput.structured_output_schema_name,
+        reasoning_requested: reasoning.reasoning_requested,
+        reasoning_effort: reasoning.reasoning_effort,
+        reasoning_strategy: reasoning.reasoning_strategy,
+        reasoning_supported: reasoning.reasoning_supported,
+        reasoning_budget_tokens: reasoning.reasoning_budget_tokens,
+        reasoning_source: reasoning.reasoning_source,
+        reasoning_reason: reasoning.reasoning_reason,
         media_type: media.media_type,
         media_operation: media.media_operation,
         media_multipart: media.media_multipart,
@@ -4778,6 +4874,68 @@ export class PipelineService {
     };
   }
 
+  private resolveReasoningLogFields(
+    canonical: LoggableCanonicalRequest,
+    nodeId: string,
+    model: string,
+  ): {
+    reasoning_requested: boolean;
+    reasoning_effort: string | null;
+    reasoning_strategy: string | null;
+    reasoning_supported: boolean | null;
+    reasoning_budget_tokens: number | null;
+    reasoning_source: string | null;
+    reasoning_reason: string | null;
+  } {
+    if (canonical.metadata.source_format === 'embeddings' || !('messages' in canonical)) {
+      return {
+        reasoning_requested: false,
+        reasoning_effort: null,
+        reasoning_strategy: null,
+        reasoning_supported: null,
+        reasoning_budget_tokens: null,
+        reasoning_source: null,
+        reasoning_reason: null,
+      };
+    }
+
+    const node = this.config.getNode(nodeId);
+    const declaredSupport = node
+      ? this.capabilityService.resolveModelRoutingCapabilities(
+          node.id,
+          model,
+        ).supports_reasoning
+      : null;
+    const intent =
+      canonical.reasoning ||
+      (
+        canonical.metadata.raw_body &&
+        typeof canonical.metadata.raw_body === 'object' &&
+        !Array.isArray(canonical.metadata.raw_body)
+          ? normalizeReasoningFromBody(
+              canonical.metadata.source_format,
+              canonical.metadata.raw_body as Record<string, unknown>,
+            ).reasoning
+          : undefined
+      );
+    const forwarding = resolveReasoningForwarding(
+      intent,
+      canonical.metadata.source_format,
+      node?.protocol,
+      declaredSupport,
+    );
+
+    return {
+      reasoning_requested: forwarding.requested,
+      reasoning_effort: forwarding.effort,
+      reasoning_strategy: forwarding.strategy,
+      reasoning_supported: forwarding.supported,
+      reasoning_budget_tokens: forwarding.budget_tokens,
+      reasoning_source: forwarding.source,
+      reasoning_reason: forwarding.reason,
+    };
+  }
+
   private resolveMediaLogFields(
     canonical: LoggableCanonicalRequest,
     providerResponseType?: string | null,
@@ -4887,6 +5045,17 @@ export class PipelineService {
     trace.requested_model = params.canonical.metadata.original_model || null;
     trace.tier = params.tier;
     trace.score = params.score;
+    if (params.canonical.metadata.source_format !== 'embeddings' && 'messages' in params.canonical) {
+      const reasoning = this.resolveReasoningLogFields(
+        params.canonical,
+        params.nodeId,
+        params.model,
+      );
+      trace.constraints.requires_reasoning = reasoning.reasoning_requested;
+      trace.constraints.reasoning_effort = reasoning.reasoning_effort;
+      trace.constraints.reasoning_budget_tokens = reasoning.reasoning_budget_tokens;
+      trace.constraints.reasoning_strategy = reasoning.reasoning_strategy;
+    }
     trace.final_selection = {
       node: params.nodeId,
       model: params.model,
