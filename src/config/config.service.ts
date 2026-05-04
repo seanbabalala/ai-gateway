@@ -754,6 +754,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     compare: {
       store_prompts: boolean;
       store_responses: boolean;
+      sample_max_chars: number;
     };
   } {
     const shadow = this.config.shadow;
@@ -767,6 +768,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       compare: {
         store_prompts: shadow?.compare?.store_prompts ?? false,
         store_responses: shadow?.compare?.store_responses ?? false,
+        sample_max_chars: shadow?.compare?.sample_max_chars ?? 4000,
       },
     };
   }

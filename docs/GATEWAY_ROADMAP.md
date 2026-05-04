@@ -17,6 +17,27 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力 | 🚧 Active |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 信任能力）
+
+**阶段定位**：v0.7 不再单独发布，v0.9 承接原 v0.7 backlog，并基于 v0.8.0 的 Provider Catalog、多模态入口、Video preview、Route Explanation 与 Dashboard i18n 重新适配。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### Shadow Traffic Comparison Report
+
+- **状态**：✅ Prompt feature branch 已完成
+- **目标**：把 v0.5 的只读 shadow results 升级为灰度决策报告，但不自动修改 routing 配置
+- **实现方案**：
+  - 新增 `GET /api/dashboard/shadow/report`，按 namespace、API key、node、model、period、source format 过滤
+  - 新增 `GET /api/dashboard/shadow/results/:id/comparison`，按单条 shadow result 返回主路径与 shadow 指标差异
+  - 报告输出 `primary_success_rate`、`shadow_success_rate`、`latency_delta_ms`、p50/p95 latency comparison、`cost_delta_usd`、`potential_savings_usd`、`token_delta`、`fallback_delta`、`quality_sample_coverage`、`confidence`、`risk_notes`
+  - 通过 `request_id` 将 `shadow_traffic_results` 与 `call_logs` 配对，shadow 成本使用本地 `models_pricing` / node model capability pricing 估算
+  - Dashboard Shadow 页面新增 overview cards、primary vs shadow table、risk/confidence labels 与 7 语言本地化
+  - 默认不保存 prompt、response、raw headers、provider key、media bytes、video bytes
+  - 如果显式开启 `shadow.compare.store_prompts` 或 `store_responses`，样本会内置脱敏并按 `shadow.compare.sample_max_chars` 截断，Dashboard 与 config validation 都会提示风险
+  - 页面保持只读，不提供自动应用 routing 修改的按钮或 API 调用
 
 ---
 

@@ -167,6 +167,8 @@ The open-source data plane includes optional shadow traffic for sampled test-nod
 
 Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
 
+The v0.9 comparison report layer does not introduce a new decision-making path. It pairs shadow result rows with primary `call_logs` by `request_id` and computes success rate, p50/p95 latency, estimated shadow cost, potential savings, token delta, fallback delta, quality sample coverage, confidence, and risk notes. Shadow cost uses the local pricing configuration and is flagged when pricing is missing. Dashboard and API reports stay read-only: they can support a gray-release decision, but they never mutate routing config, promote a target, or replay media/video bytes.
+
 ## Local Webhook Alerts
 
 The open-source data plane includes an optional `alerts` subsystem. It listens to budget threshold/exceeded events, active health probe state, circuit breaker transitions, and the local call-log stream for error/latency spikes. Delivery runs from an in-memory asynchronous queue so webhook latency does not block AI proxy requests.

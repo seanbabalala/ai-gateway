@@ -514,6 +514,7 @@ budget:
 #   compare:
 #     store_prompts: false
 #     store_responses: false
+#     sample_max_chars: 4000  # Samples are redacted and truncated when explicit storage is enabled
 
 # ============================================================
 # Alerts — local webhook alerting (optional)

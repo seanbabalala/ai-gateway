@@ -2693,8 +2693,14 @@ function validateShadow(
       if (shadow.compare.store_responses !== undefined && !isBoolean(shadow.compare.store_responses)) {
         issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.store_responses must be a boolean.', 'shadow.compare.store_responses'));
       }
+      if (shadow.compare.sample_max_chars !== undefined) {
+        const sampleMaxChars = shadow.compare.sample_max_chars;
+        if (!Number.isInteger(sampleMaxChars) || typeof sampleMaxChars !== 'number' || sampleMaxChars < 100 || sampleMaxChars > 100000) {
+          issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.sample_max_chars must be an integer between 100 and 100000.', 'shadow.compare.sample_max_chars'));
+        }
+      }
       if (shadow.compare.store_prompts === true || shadow.compare.store_responses === true) {
-        issues.push(issue('warning', 'shadow_compare_storage_enabled', 'Shadow comparison storage is enabled. Prompts/responses are stored only because this was explicitly configured.', 'shadow.compare'));
+        issues.push(issue('warning', 'shadow_compare_storage_enabled', 'Shadow comparison storage is enabled. Samples are redacted and truncated, but prompts/responses are stored only because this was explicitly configured.', 'shadow.compare'));
       }
     }
   }

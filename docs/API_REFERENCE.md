@@ -270,6 +270,8 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
 | `GET` | `/api/dashboard/namespaces` | Local namespace policies and budget summaries |
 | `GET` | `/api/dashboard/shadow` | Read-only shadow traffic status and sanitized recent results |
+| `GET` | `/api/dashboard/shadow/report` | Read-only primary vs shadow comparison report with success, latency, cost, token, fallback, confidence, and risk fields |
+| `GET` | `/api/dashboard/shadow/results/:id/comparison` | Single shadow result comparison paired with the primary call log by request id |
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
@@ -310,6 +312,14 @@ For multimodal and capability-specific requests, traces may include:
 - `candidate_targets[].capability_evidence.catalog_source`
 
 These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.
+
+### Shadow Comparison Report
+
+`GET /api/dashboard/shadow/report` supports `namespace`, `api_key`, `api_key_id`, `node`, `model`, `period`, and `source_format` filters. Node/model filters match either the primary side or the shadow side.
+
+The report is calculated by pairing `shadow_traffic_results.request_id` with the primary `call_logs.request_id`. It returns `primary_success_rate`, `shadow_success_rate`, `latency_delta_ms`, `p50_latency_comparison`, `p95_latency_comparison`, `cost_delta_usd`, `potential_savings_usd`, `token_delta`, `fallback_delta`, `quality_sample_coverage`, `confidence`, `risk_notes`, and grouped primary-to-shadow pair rows.
+
+`GET /api/dashboard/shadow/results/:id/comparison` returns a single result comparison with primary status, shadow status, deltas, privacy flags, and risk notes. These endpoints are read-only and do not apply routing changes. They do not expose raw headers, provider keys, media bytes, video bytes, or prompt/response samples unless local comparison storage was explicitly enabled; stored samples are redacted and truncated before persistence and response.
 
 ### Provider Compatibility Matrix
 

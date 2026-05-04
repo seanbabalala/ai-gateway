@@ -1155,12 +1155,16 @@ export interface ShadowTrafficStatus {
   compare: {
     store_prompts: boolean
     store_responses: boolean
+    sample_max_chars?: number
   }
   privacy: {
     stores_prompts: boolean
     stores_responses: boolean
     raw_headers: boolean
     provider_keys: boolean
+    media_bytes?: boolean
+    video_bytes?: boolean
+    sample_redaction?: boolean
   }
 }
 
@@ -1185,6 +1189,147 @@ export interface ShadowTrafficResult {
   output_tokens: number
   prompt_sample: string | null
   response_sample: string | null
+}
+
+export interface ShadowReportFilters {
+  namespace?: string
+  api_key?: string
+  api_key_id?: string
+  node?: string
+  model?: string
+  period?: string
+  source_format?: string
+}
+
+export interface ShadowConfidence {
+  level: 'low' | 'medium' | 'high'
+  score: number
+}
+
+export interface ShadowComparisonPair {
+  primary_node: string
+  primary_model: string
+  shadow_node: string
+  shadow_model: string
+  calls: number
+  primary_success_rate: number | null
+  shadow_success_rate: number | null
+  primary_p50_latency_ms: number | null
+  shadow_p50_latency_ms: number | null
+  primary_p95_latency_ms: number | null
+  shadow_p95_latency_ms: number | null
+  cost_delta_usd: number
+  token_delta: number
+  fallback_delta: number
+}
+
+export interface ShadowComparisonReport {
+  generated_at: string
+  filters: {
+    namespace_id: string | null
+    api_key_id: string | null
+    api_key_name: string | null
+    node: string | null
+    model: string | null
+    period: string
+    source_format: string | null
+  }
+  window: {
+    start_at: string
+    end_at: string
+    rows: number
+    comparable: number
+    missing_primary_logs: number
+  }
+  primary_success_rate: number | null
+  shadow_success_rate: number | null
+  latency_delta_ms: number | null
+  p50_latency_comparison: {
+    primary_ms: number | null
+    shadow_ms: number | null
+    delta_ms: number | null
+  }
+  p95_latency_comparison: {
+    primary_ms: number | null
+    shadow_ms: number | null
+    delta_ms: number | null
+  }
+  cost_delta_usd: number
+  potential_savings_usd: number
+  token_delta: number
+  fallback_delta: number
+  quality_sample_coverage: number
+  confidence: ShadowConfidence
+  risk_notes: string[]
+  primary: {
+    calls: number
+    success_rate: number | null
+    p50_latency_ms: number | null
+    p95_latency_ms: number | null
+    total_cost_usd: number
+    total_tokens: number
+    fallback_rate: number | null
+  }
+  shadow: {
+    calls: number
+    success_rate: number | null
+    p50_latency_ms: number | null
+    p95_latency_ms: number | null
+    total_cost_usd: number
+    total_tokens: number
+    fallback_rate: number | null
+    pricing_missing: number
+  }
+  pairs: ShadowComparisonPair[]
+  privacy: ShadowTrafficStatus['privacy']
+}
+
+export interface ShadowResultComparison {
+  result_id: number
+  request_id: string
+  timestamp: string
+  source_format: string
+  namespace_id: string | null
+  api_key_id: string | null
+  api_key_name: string | null
+  primary: {
+    node: string
+    model: string
+    success: boolean | null
+    status_code: number | null
+    latency_ms: number | null
+    cost_usd: number | null
+    input_tokens: number
+    output_tokens: number
+    is_fallback: boolean | null
+    fallback_reason: string | null
+  }
+  shadow: {
+    node: string
+    model: string
+    success: boolean
+    status: string
+    status_code: number | null
+    latency_ms: number | null
+    estimated_cost_usd: number
+    input_tokens: number
+    output_tokens: number
+    error: string | null
+  }
+  deltas: {
+    latency_ms: number | null
+    cost_usd: number | null
+    tokens: number | null
+    fallback: number | null
+  }
+  samples: {
+    prompt_stored: boolean
+    response_stored: boolean
+    prompt_preview: string | null
+    response_preview: string | null
+  }
+  risk_notes: string[]
+  privacy: ShadowTrafficStatus['privacy']
 }
 
 export interface ShadowTrafficResponse {

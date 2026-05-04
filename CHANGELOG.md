@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 Shadow Traffic Comparison Report for the OSS Data Plane, adding read-only Dashboard/API comparisons for primary vs shadow success rate, p50/p95 latency, cost delta, potential savings, token delta, fallback delta, quality sample coverage, confidence, and risk notes.
+- Dashboard Shadow filters for namespace, API key, node, model, period, and source format, plus localized overview cards and primary-to-shadow comparison tables without any automatic routing changes.
+- Privacy-safe shadow report APIs `GET /api/dashboard/shadow/report` and `GET /api/dashboard/shadow/results/:id/comparison`, paired with call logs by `request_id` and never returning raw headers, provider keys, media bytes, or video bytes.
+
+### Changed
+
+- Explicit shadow prompt/response sample storage now applies built-in redaction and `shadow.compare.sample_max_chars` truncation, and config validation warnings now call out the storage risk more clearly.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added
