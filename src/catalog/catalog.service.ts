@@ -21,10 +21,12 @@ import type {
   CatalogPricingDimension,
   CatalogPricingHygiene,
   CatalogProvider,
+  CatalogSource,
   ProviderCatalog,
 } from './catalog.types';
 
 export const DEFAULT_CATALOG_OVERRIDE_FILE = 'catalog.override.yaml';
+export const DEFAULT_CATALOG_SYNC_CACHE_FILE = '.siftgate/catalog-sync-cache.yaml';
 
 const VALID_AUTH_TYPES = new Set(['bearer', 'x-api-key', 'none']);
 const VALID_MODALITY_SET = new Set<string>(VALID_MODALITIES);
@@ -40,7 +42,7 @@ const VALID_ENDPOINT_SET = new Set<string>([
   'video_content',
   'video_cancel',
 ]);
-const SECRET_KEY_PATTERN = /(api[_-]?key|provider[_-]?key|secret|token|authorization|bearer|password)/i;
+const SECRET_KEY_PATTERN = /(^|[_-])((api|provider)?[_-]?key|secret|password|authorization|bearer|access[_-]?token|refresh[_-]?token|auth[_-]?token|token)([_-]|$)/i;
 const SECRET_VALUE_PATTERN = /\b(sk-[A-Za-z0-9._~+/-]{12,}|sk_[A-Za-z0-9._~+/-]{12,}|xox[A-Za-z0-9._~+/-]{12,}|Bearer\s+[A-Za-z0-9._~+/-]{12,})\b/i;
 const PRICING_DIMENSIONS: CatalogPricingDimension[] = [
   'input',
@@ -85,6 +87,7 @@ function cloneProvider(provider: CatalogProvider): CatalogProvider {
     model_prefixes: provider.model_prefixes ? [...provider.model_prefixes] : undefined,
     capabilities: provider.capabilities ? [...provider.capabilities] : undefined,
     pricing: provider.pricing ? { ...provider.pricing } : undefined,
+    synced: provider.synced,
     models: provider.models.map((model) => ({
       ...model,
       modalities: [...model.modalities],
@@ -99,6 +102,7 @@ function cloneProvider(provider: CatalogProvider): CatalogProvider {
           }
         : undefined,
       pricing: model.pricing ? { ...model.pricing } : undefined,
+      synced: model.synced,
     })),
   };
 }
@@ -126,6 +130,20 @@ export function resolveCatalogOverridePath(
   return path.isAbsolute(requested) ? requested : path.resolve(cwd, requested);
 }
 
+export function resolveCatalogSyncCachePath(
+  options: CatalogLoadOptions = {},
+): string {
+  const cwd = options.cwd ?? process.cwd();
+  const env = options.env ?? process.env;
+  const configPath = readConfigSyncCachePath(options.config);
+  const requested =
+    options.syncCachePath ||
+    env.SIFTGATE_CATALOG_SYNC_CACHE ||
+    configPath ||
+    DEFAULT_CATALOG_SYNC_CACHE_FILE;
+  return path.isAbsolute(requested) ? requested : path.resolve(cwd, requested);
+}
+
 function readConfigOverridePath(config: unknown): string | undefined {
   if (!isRecord(config)) return undefined;
   const catalog = config.catalog;
@@ -133,13 +151,49 @@ function readConfigOverridePath(config: unknown): string | undefined {
   return isNonEmptyString(catalog.override_file) ? catalog.override_file : undefined;
 }
 
+function readConfigSyncCachePath(config: unknown): string | undefined {
+  if (!isRecord(config)) return undefined;
+  const catalog = config.catalog;
+  if (!isRecord(catalog)) return undefined;
+  const sync = catalog.sync;
+  if (!isRecord(sync)) return undefined;
+  return isNonEmptyString(sync.cache_file) ? sync.cache_file : undefined;
+}
+
 export function loadMergedCatalog(
   options: CatalogLoadOptions = {},
 ): CatalogLoadResult {
   const overridePath = resolveCatalogOverridePath(options);
+  const syncCachePath = resolveCatalogSyncCachePath(options);
   const issues: CatalogIssue[] = [];
   let override: CatalogOverrideFile | null = null;
   let overrideFound = false;
+  let syncCache: CatalogOverrideFile | null = null;
+  let syncCacheFound = false;
+
+  if (fs.existsSync(syncCachePath)) {
+    syncCacheFound = true;
+    try {
+      const raw = fs.readFileSync(syncCachePath, 'utf8');
+      const parsed = yaml.load(raw);
+      const validation = validateCatalogOverrideObject(parsed, syncCachePath);
+      issues.push(...validation.issues);
+      if (validation.override && !hasCatalogErrors(validation.issues)) {
+        syncCache = validation.override;
+      }
+    } catch (error) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_sync_cache_read_failed',
+          error instanceof Error
+            ? `Could not read catalog sync cache: ${error.message}`
+            : 'Could not read catalog sync cache.',
+          syncCachePath,
+        ),
+      );
+    }
+  }
 
   if (fs.existsSync(overridePath)) {
     overrideFound = true;
@@ -165,11 +219,19 @@ export function loadMergedCatalog(
     }
   }
 
-  const catalog = mergeCatalog(override, overridePath);
+  const catalog = mergeCatalog(
+    [
+      { override: syncCache, source: 'sync_cache' },
+      { override, source: 'override' },
+    ],
+    overridePath,
+  );
   return {
     catalog,
     overridePath,
     overrideFound,
+    syncCachePath,
+    syncCacheFound,
     issues,
   };
 }
@@ -730,6 +792,19 @@ function validatePricing(
       ),
     );
   }
+  if (
+    pricing.last_sync !== undefined &&
+    (!isNonEmptyString(pricing.last_sync) || Number.isNaN(Date.parse(pricing.last_sync)))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_last_sync_invalid',
+        'pricing.last_sync should be an ISO date/time when set.',
+        `${basePath}.last_sync`,
+      ),
+    );
+  }
   if (pricing.manual_review_required === undefined) {
     issues.push(
       issue(
@@ -819,21 +894,30 @@ function scanForSecrets(
 }
 
 export function mergeCatalog(
-  override: CatalogOverrideFile | null = null,
+  overrides:
+    | CatalogOverrideFile
+    | null
+    | Array<{ override: CatalogOverrideFile | null; source: CatalogSource }> = null,
   overrideFile?: string,
 ): ProviderCatalog {
   const providers = BUILTIN_PROVIDER_CATALOG.map(cloneProvider);
   const byId = new Map(providers.map((provider) => [provider.id, provider]));
 
-  for (const overrideProvider of normalizeOverrideProvidersForMerge(override)) {
-    if (!overrideProvider.id) continue;
-    const existing = byId.get(overrideProvider.id);
-    if (existing) {
-      mergeProvider(existing, overrideProvider);
-    } else {
-      const provider = providerFromOverride(overrideProvider);
-      providers.push(provider);
-      byId.set(provider.id, provider);
+  const layers = Array.isArray(overrides)
+    ? overrides
+    : [{ override: overrides, source: 'override' as CatalogSource }];
+
+  for (const layer of layers) {
+    for (const overrideProvider of normalizeOverrideProvidersForMerge(layer.override)) {
+      if (!overrideProvider.id) continue;
+      const existing = byId.get(overrideProvider.id);
+      if (existing) {
+        mergeProvider(existing, overrideProvider, layer.source);
+      } else {
+        const provider = providerFromOverride(overrideProvider, layer.source);
+        providers.push(provider);
+        byId.set(provider.id, provider);
+      }
     }
   }
 
@@ -864,8 +948,13 @@ function normalizeOverrideProvidersForMerge(
 function mergeProvider(
   target: CatalogProvider,
   override: CatalogOverrideProvider,
+  source: CatalogSource,
 ): void {
-  target.overridden = true;
+  if (source === 'override') {
+    target.overridden = true;
+  } else if (source === 'sync_cache') {
+    target.synced = true;
+  }
   if (override.name !== undefined) target.name = override.name;
   if (override.base_url !== undefined) target.base_url = override.base_url;
   if (override.auth_type !== undefined) target.auth_type = override.auth_type;
@@ -881,16 +970,19 @@ function mergeProvider(
   for (const overrideModel of override.models || []) {
     const existing = modelsById.get(overrideModel.id);
     if (existing) {
-      mergeModel(existing, target.id, overrideModel);
+      mergeModel(existing, target.id, overrideModel, source);
     } else {
-      const model = modelFromOverride(target.id, overrideModel);
+      const model = modelFromOverride(target.id, overrideModel, source);
       target.models.push(model);
       modelsById.set(model.id, model);
     }
   }
 }
 
-function providerFromOverride(override: CatalogOverrideProvider): CatalogProvider {
+function providerFromOverride(
+  override: CatalogOverrideProvider,
+  source: CatalogSource,
+): CatalogProvider {
   const id = override.id || 'custom';
   return {
     id,
@@ -904,9 +996,10 @@ function providerFromOverride(override: CatalogOverrideProvider): CatalogProvide
     prompt_cache: override.prompt_cache,
     read_cache: override.read_cache,
     write_cache: override.write_cache,
-    models: (override.models || []).map((model) => modelFromOverride(id, model)),
-    source: 'override',
-    overridden: true,
+    models: (override.models || []).map((model) => modelFromOverride(id, model, source)),
+    source,
+    overridden: source === 'override',
+    synced: source === 'sync_cache',
   };
 }
 
@@ -914,9 +1007,15 @@ function mergeModel(
   target: CatalogModel,
   providerId: string,
   override: CatalogOverrideModel,
+  source: CatalogSource,
 ): void {
   target.provider = providerId;
-  target.overridden = true;
+  if (source === 'override') {
+    target.overridden = true;
+  } else if (source === 'sync_cache') {
+    target.synced = true;
+  }
+  target.source = source;
   if (override.display_name !== undefined) target.display_name = override.display_name;
   if (override.modalities) target.modalities = [...override.modalities];
   if (override.endpoints) target.endpoints = { ...target.endpoints, ...override.endpoints };
@@ -931,6 +1030,7 @@ function mergeModel(
 function modelFromOverride(
   providerId: string,
   override: CatalogOverrideModel,
+  source: CatalogSource,
 ): CatalogModel {
   return {
     id: override.id,
@@ -944,8 +1044,9 @@ function modelFromOverride(
     prompt_cache: override.prompt_cache,
     read_cache: override.read_cache,
     write_cache: override.write_cache,
-    source: 'override',
-    overridden: true,
+    source,
+    overridden: source === 'override',
+    synced: source === 'sync_cache',
   };
 }
 

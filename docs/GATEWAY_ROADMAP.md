@@ -65,6 +65,19 @@
   - Route Decision Trace 增加 `cache_evidence`，只记录 metadata：本地 lookup 状态、provider cache capability、观察命中率、cache-read/write token 计数、估算节省，不保存 prompt/response/raw headers/provider keys
   - Dashboard Route Explanation 展示 cache evidence；Logs 显示本地 bypass 或 provider cache evidence；Benchmarks 展示 `cache_summary`、provider/local hit rate 与 read-token ratio
 
+### P1：Model Pricing 自动同步框架
+
+- **状态**：🚧 功能分支进行中
+- **目标**：在现有 Provider Catalog refresh 基础上增加可选 scheduled sync，让成本路由能使用更及时的公开模型/价格元数据，同时避免覆盖用户显式配置
+- **实现方案**：
+  - `catalog.sync.enabled` 默认 `false`，不会在启动后自动联网
+  - 必须显式启用 provider adapter；v1.2 首批仅支持 `catalog.sync.adapters.openrouter.enabled: true`
+  - OpenRouter adapter 复用公开 `/api/v1/models` 数据，写入 `last_sync`、`source_url`、`pricing_confidence`、`stale_after_days`
+  - 默认 `write_to: cache`，写入 `.siftgate/catalog-sync-cache.yaml`；加载顺序为 built-in → sync cache → `catalog.override.yaml`
+  - 用户显式 `catalog.override.yaml`、node `model_capabilities[].pricing` 和 `models_pricing` 永远优先
+  - CLI 新增 `siftgate catalog sync openrouter`，Dashboard Provider Catalog 展示 sync status、last sync、stale 状态、source URL 和 confidence
+  - 其他 Provider 保持 `docs_review` / `operator_local`，由运维人员通过本地 override 管理
+
 ## v1.1 — Developer Experience（开发者体验）
 
 **v1.1.0 发布状态**：v1.1 基于已发布 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是让开发者更容易接入、测试、排障和理解一次调用在 SiftGate 内的完整路径。

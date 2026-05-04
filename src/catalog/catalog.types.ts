@@ -1,7 +1,7 @@
 import type { AuthType } from '../config/gateway.config';
 import type { CapabilityEndpoint, Modality } from '../config/modality';
 
-export type CatalogSource = 'builtin' | 'override';
+export type CatalogSource = 'builtin' | 'sync_cache' | 'override';
 
 export type CatalogPricingDimension =
   | 'input'
@@ -33,6 +33,8 @@ export interface CatalogPricing {
   source: string;
   source_url?: string;
   last_updated: string;
+  /** Last time SiftGate synced this pricing from an automatic adapter. */
+  last_sync?: string;
   retrieved_at?: string;
   manual_review_required: boolean;
   stale_after_days?: number;
@@ -76,6 +78,7 @@ export interface CatalogModel {
   write_cache?: boolean;
   source: CatalogSource;
   overridden: boolean;
+  synced?: boolean;
 }
 
 export interface CatalogProvider {
@@ -93,6 +96,7 @@ export interface CatalogProvider {
   models: CatalogModel[];
   source: CatalogSource;
   overridden: boolean;
+  synced?: boolean;
 }
 
 export interface ProviderCatalog {
@@ -146,6 +150,8 @@ export interface CatalogLoadResult {
   catalog: ProviderCatalog;
   overridePath: string;
   overrideFound: boolean;
+  syncCachePath: string;
+  syncCacheFound: boolean;
   issues: CatalogIssue[];
 }
 
@@ -153,5 +159,6 @@ export interface CatalogLoadOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   overridePath?: string;
+  syncCachePath?: string;
   config?: unknown;
 }

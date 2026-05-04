@@ -200,6 +200,14 @@ The preview does not implement an enterprise MCP marketplace, remote workspace r
 
 The v1.2 Batch API proxy follows the same metadata-only async pattern without running through the synchronous generation pipeline. `POST /v1/batches` resolves a provider node, enforces Gateway API key endpoint/node/model permissions, namespace scope, rate limits, and budget checks, then forwards the OpenAI-compatible create body to the upstream batch endpoint. It writes a `batch_jobs` row with request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, and sanitized error text. It stores metadata keys only, not metadata values. Status, cancel, output, and error-file routes look up `batch_jobs`, enforce the creating key/namespace boundary, and proxy provider file content without persisting input JSONL, output JSONL, raw headers, provider keys, or file bytes.
 
+## Provider Catalog And Pricing Sync
+
+The Provider Catalog is local metadata, not a hosted dependency. SiftGate loads built-in provider/model references, then an optional SiftGate-managed sync cache, then the operator-managed `catalog.override.yaml`. That merge order lets automatic OpenRouter model/pricing sync improve defaults while keeping explicit local overrides authoritative.
+
+The v1.2 pricing sync scheduler is disabled by default and runs only when a supported adapter is explicitly enabled under `catalog.sync.adapters`. In v1.2 the only automatic adapter is OpenRouter's public model catalog API. Other providers remain docs-review or operator-local because prices often depend on region, deployment, account, or private model names.
+
+Runtime cost routing still prefers explicit node/model pricing from `model_capabilities[].pricing` or `models_pricing`. Catalog sync does not store provider API keys and does not modify routing decisions by itself; it only updates metadata used by validation, Dashboard source status, and pricing fallback when no explicit user price exists.
+
 ## Config Audit And Rollback
 
 The v0.9 OSS Data Plane adds a local configuration history layer:

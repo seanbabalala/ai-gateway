@@ -1,4 +1,6 @@
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import {
   assessCatalogPricing,
   catalogModelToModelPricing,
@@ -42,6 +44,84 @@ describe('catalog service', () => {
     });
   });
 
+  it('loads managed sync cache before user overrides so explicit overrides win', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-sync-'));
+    const syncCachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+    fs.mkdirSync(path.dirname(syncCachePath), { recursive: true });
+    fs.writeFileSync(
+      syncCachePath,
+      [
+        'version: 1',
+        'providers:',
+        '  openrouter:',
+        '    name: OpenRouter',
+        '    base_url: https://openrouter.ai/api',
+        '    auth_type: bearer',
+        '    models:',
+        '      - id: openai/gpt-sync',
+        '        modalities: [text]',
+        '        endpoints:',
+        '          chat_completions: /v1/chat/completions',
+        '        capabilities: [streaming]',
+        '        pricing:',
+        '          input: 1',
+        '          output: 2',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          last_updated: 2026-05-05',
+        '          last_sync: 2026-05-05T00:00:00.000Z',
+        '          manual_review_required: false',
+        '          stale_after_days: 7',
+        '          pricing_confidence: high',
+        '          currency: USD',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(cwd, 'catalog.override.yaml'),
+      [
+        'version: 1',
+        'providers:',
+        '  openrouter:',
+        '    models:',
+        '      - id: openai/gpt-sync',
+        '        modalities: [text]',
+        '        endpoints:',
+        '          chat_completions: /v1/chat/completions',
+        '        pricing:',
+        '          input: 9',
+        '          output: 10',
+        '          source: operator-reviewed',
+        '          source_url: https://example.com/pricing',
+        '          last_updated: 2026-05-05',
+        '          manual_review_required: false',
+        '          stale_after_days: 30',
+        '          pricing_confidence: high',
+        '          currency: USD',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadMergedCatalog({ cwd, env: {} });
+    const model = result.catalog.providers
+      .find((provider) => provider.id === 'openrouter')
+      ?.models.find((entry) => entry.id === 'openai/gpt-sync');
+
+    expect(result.syncCacheFound).toBe(true);
+    expect(model).toMatchObject({
+      source: 'override',
+      overridden: true,
+      synced: true,
+      pricing: expect.objectContaining({
+        input: 9,
+        output: 10,
+        source: 'operator-reviewed',
+      }),
+    });
+  });
+
   it('rejects secret-looking fields in override files', () => {
     const result = validateCatalogOverrideFile(fixture('secret.catalog.override.yaml'));
 
@@ -55,6 +135,47 @@ describe('catalog service', () => {
         expect.objectContaining({
           severity: 'warning',
           code: 'catalog_override_secret_value',
+        }),
+      ]),
+    );
+  });
+
+  it('allows catalog token metadata fields without treating them as secrets', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-token-fields-'));
+    const overridePath = path.join(cwd, 'catalog.override.yaml');
+    fs.writeFileSync(
+      overridePath,
+      [
+        'version: 1',
+        'providers:',
+        '  openrouter:',
+        '    models:',
+        '      - id: openai/gpt-token-metadata',
+        '        modalities: [text]',
+        '        limits:',
+        '          max_context_tokens: 128000',
+        '        pricing:',
+        '          input: 1',
+        '          output: 2',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          last_updated: 2026-05-05',
+        '          last_sync: 2026-05-05T00:00:00.000Z',
+        '          manual_review_required: false',
+        '          stale_after_days: 7',
+        '          pricing_confidence: high',
+        '          currency: USD',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = validateCatalogOverrideFile(overridePath);
+
+    expect(result.issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'catalog_override_secret_field',
         }),
       ]),
     );

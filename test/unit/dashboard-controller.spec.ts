@@ -280,6 +280,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
       },
       overridePath: 'catalog.override.yaml',
       overrideFound: false,
+      syncCachePath: '.siftgate/catalog-sync-cache.yaml',
+      syncCacheFound: false,
       issues: [],
     }),
     ...overrides.catalog,
@@ -993,6 +995,11 @@ describe('DashboardController — catalog', () => {
 
     expect(result.override_file).toBe('catalog.override.yaml');
     expect(result.override_found).toBe(false);
+    expect(result.sync_status).toMatchObject({
+      enabled: false,
+      scheduled: false,
+      write_to: 'cache',
+    });
     expect(result.providers[0]).toMatchObject({
       id: 'openai',
       overridden: false,

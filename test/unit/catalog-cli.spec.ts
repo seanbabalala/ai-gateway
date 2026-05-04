@@ -175,6 +175,118 @@ describe('siftgate catalog CLI', () => {
     }
   });
 
+  it('syncs OpenRouter public catalog into the local managed cache by default', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            id: 'openai/gpt-sync',
+            name: 'OpenAI: GPT Sync',
+            context_length: 128000,
+            architecture: {
+              input_modalities: ['text'],
+              output_modalities: ['text'],
+            },
+            pricing: {
+              prompt: '0.0000015',
+              completion: '0.0000025',
+            },
+            supported_parameters: ['tools'],
+          },
+        ],
+      }),
+    } as Response));
+
+    try {
+      const exitCode = await runCli(['catalog', 'sync', 'openrouter'], io);
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toHaveLength(0);
+      expect(stdout.join('\n')).toContain('Output target: cache');
+      const cachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+      expect(fs.existsSync(cachePath)).toBe(true);
+      const exported = yaml.load(fs.readFileSync(cachePath, 'utf8')) as any;
+      const model = exported.providers.openrouter.models[0];
+      expect(model).toMatchObject({
+        id: 'openai/gpt-sync',
+        pricing: expect.objectContaining({
+          input: 1.5,
+          output: 2.5,
+          source: 'openrouter-public-api',
+          last_sync: '2026-05-03T00:00:00.000Z',
+          pricing_confidence: 'high',
+        }),
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('reports a custom sync cache path when catalog sync writes to --out', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            id: 'openai/gpt-sync-custom',
+            name: 'OpenAI: GPT Sync Custom',
+            context_length: 128000,
+            architecture: {
+              input_modalities: ['text'],
+              output_modalities: ['text'],
+            },
+            pricing: {
+              prompt: '0.000001',
+              completion: '0.000002',
+            },
+            supported_parameters: [],
+          },
+        ],
+      }),
+    } as Response));
+
+    try {
+      const exitCode = await runCli(
+        ['catalog', 'sync', 'openrouter', '--write-to', 'cache', '--out', 'custom/cache.yaml', '--json'],
+        io,
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toHaveLength(0);
+      const customCachePath = path.join(cwd, 'custom/cache.yaml');
+      expect(fs.existsSync(customCachePath)).toBe(true);
+      expect(fs.existsSync(path.join(cwd, '.siftgate/catalog-sync-cache.yaml'))).toBe(false);
+      const result = JSON.parse(stdout.join('\n'));
+      expect(result.sync_status.cache_file).toBe(customCachePath);
+      expect(result.sync_status.cache_found).toBe(true);
+      expect(result.sync_status.providers.find((provider: any) => provider.provider === 'openrouter')).toMatchObject({
+        last_sync: '2026-05-03T00:00:00.000Z',
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('rejects catalog sync for providers without an explicit automatic adapter', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const exitCode = await runCli(['catalog', 'sync', 'anthropic'], io);
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toHaveLength(0);
+    expect(stderr.join('\n')).toContain('catalog_sync_unsupported_provider');
+  });
+
   it('imports and validates a local override file', async () => {
     const cwd = await makeTempDir();
     const { io, stdout, stderr } = makeIo(cwd);

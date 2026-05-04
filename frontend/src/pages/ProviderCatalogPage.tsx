@@ -25,6 +25,7 @@ import type {
   CatalogPricingHygiene,
   CatalogProvider,
   CatalogProvidersResponse,
+  CatalogSyncStatus,
 } from '@/types/api'
 
 const MODALITY_FILTERS = [
@@ -99,6 +100,14 @@ function refreshSourceVariant(
   return 'zinc'
 }
 
+function syncStatusVariant(status: CatalogSyncStatus['providers'][number]['status']): 'zinc' | 'emerald' | 'amber' | 'red' | 'blue' {
+  if (status === 'fresh' || status === 'synced') return 'emerald'
+  if (status === 'stale' || status === 'never_synced') return 'amber'
+  if (status === 'failed') return 'red'
+  if (status === 'manual_only') return 'blue'
+  return 'zinc'
+}
+
 function modelMatches(model: CatalogModel, query: string, modality: string) {
   const q = query.trim().toLowerCase()
   const matchesQuery =
@@ -169,6 +178,8 @@ export function ProviderCatalogPage() {
             <CatalogMetric label={t('catalogPage.metrics.stale')} value={staleCount} icon={WalletCards} tone={staleCount > 0 ? 'amber' : 'emerald'} />
           </div>
 
+          {catalog.data.sync_status && <CatalogSyncStatusCard status={catalog.data.sync_status} />}
+
           <CatalogRefreshSources sources={catalog.data.refresh_sources || []} />
 
           <Card>
@@ -233,6 +244,105 @@ export function ProviderCatalogPage() {
           </Card>
         </>
       )}
+    </div>
+  )
+}
+
+function CatalogSyncStatusCard({ status }: { status: CatalogSyncStatus }) {
+  const { t } = useTranslation('nodes')
+  const openRouter = status.providers.find((provider) => provider.provider === 'openrouter')
+  const enabledCount = status.enabled_adapters.length
+  const failedCount = status.providers.filter((provider) => provider.status === 'failed').length
+  const staleCount = status.providers.filter((provider) => provider.stale).length
+  const visibleProviders = status.providers
+    .filter((provider) => provider.enabled || provider.supported || provider.status === 'failed')
+    .slice(0, 4)
+
+  return (
+    <Card>
+      <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <CardTitle>{t('catalogPage.sync.title')}</CardTitle>
+          <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[var(--foreground-dim)]">
+            {t('catalogPage.sync.description')}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5 md:justify-end">
+          <Badge variant={status.scheduled ? 'emerald' : 'zinc'}>
+            {status.scheduled ? t('catalogPage.sync.scheduled') : t('catalogPage.sync.disabled')}
+          </Badge>
+          <Badge variant={status.write_to === 'cache' ? 'blue' : 'amber'}>
+            {t(`catalogPage.sync.writeTargets.${status.write_to}`)}
+          </Badge>
+          {failedCount > 0 && (
+            <Badge variant="red">{t('catalogPage.sync.failedCount', { count: failedCount })}</Badge>
+          )}
+          {staleCount > 0 && (
+            <Badge variant="amber">{t('catalogPage.sync.staleCount', { count: staleCount })}</Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+          <div className="rounded-lg bg-[var(--background-secondary)] p-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <SyncFact label={t('catalogPage.sync.enabledAdapters')} value={String(enabledCount)} />
+              <SyncFact
+                label={t('catalogPage.sync.interval')}
+                value={t('catalogPage.sync.intervalValue', { count: status.interval_minutes })}
+              />
+              <SyncFact
+                label={t('catalogPage.sync.lastOpenRouter')}
+                value={openRouter?.last_sync || t('catalogPage.sync.never')}
+              />
+            </div>
+            <div className="mt-3 grid gap-2 text-[11px] text-[var(--foreground-dim)]">
+              <div className="truncate">
+                <span className="font-bold text-[var(--foreground-muted)]">{t('catalogPage.sync.cacheFile')}: </span>
+                <span className="font-mono">{status.cache_file}</span>
+              </div>
+              <div className="truncate">
+                <span className="font-bold text-[var(--foreground-muted)]">{t('catalogPage.sync.overrideFile')}: </span>
+                <span className="font-mono">{status.override_file}</span>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {visibleProviders.map((provider) => (
+              <div key={provider.provider} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-extrabold text-[var(--foreground)]">{provider.label}</div>
+                    <div className="mt-1 font-mono text-[10px] text-[var(--foreground-dim)]">{provider.provider}</div>
+                  </div>
+                  <Badge variant={syncStatusVariant(provider.status)} className="shrink-0 whitespace-nowrap">
+                    {t(`catalogPage.sync.status.${provider.status}`)}
+                  </Badge>
+                </div>
+                <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+                  {provider.last_sync
+                    ? t('catalogPage.sync.lastSync', { value: provider.last_sync })
+                    : t('catalogPage.sync.neverSynced')}
+                </div>
+                {provider.last_error && (
+                  <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-red-500">
+                    {provider.last_error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SyncFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">{label}</div>
+      <div className="mt-1 truncate font-mono text-[12px] font-semibold text-[var(--foreground)]">{value}</div>
     </div>
   )
 }

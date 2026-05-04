@@ -69,6 +69,11 @@ hardening visible without blocking local development.
   placeholder/manual-review entries, stale `last_updated` values, modality unit
   mismatches, and `routing.optimization=cost` candidates without usable
   input/output token prices.
+- Provider Catalog sync configuration: `catalog.sync` is disabled by default,
+  `write_to` must be `cache` or `override`, paths must be non-empty, and
+  scheduled sync warns unless at least one supported adapter is explicitly
+  enabled. In v1.2, only `openrouter` is an automatic adapter; other providers
+  remain docs-review or local override workflows.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional
   per-model `pricing` overrides.

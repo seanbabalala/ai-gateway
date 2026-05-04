@@ -59,6 +59,7 @@ import { McpGatewayService } from '../mcp/mcp-gateway.service';
 import { PluginRegistryService } from '../plugins/plugin-registry.service';
 import { assessCatalogPricing, CatalogService } from '../catalog/catalog.service';
 import { getCatalogRefreshSources } from '../catalog/catalog-refresh';
+import { buildCatalogSyncStatus } from '../catalog/catalog-sync';
 import type { CatalogModel, CatalogProvider } from '../catalog/catalog.types';
 import type { Modality } from '../config/modality';
 import type { ProviderCompatibilityCapability } from '../database/entities';
@@ -2116,13 +2117,25 @@ export class DashboardController {
   @ApiOkResponse({ description: 'Provider catalog entries with overridden markers.' })
   getCatalogProviders() {
     const loaded = this.catalog.load();
+    const syncStatus = buildCatalogSyncStatus({
+      config: this.config.getFullConfig().catalog,
+      catalog: loaded.catalog,
+      cachePath: loaded.syncCachePath,
+      cacheFound: loaded.syncCacheFound,
+      overridePath: loaded.overridePath,
+      overrideFound: loaded.overrideFound,
+      issues: loaded.issues,
+    });
     return {
       source: 'builtin_static',
-      auto_update: false,
+      auto_update: syncStatus.scheduled,
       refresh_sources: getCatalogRefreshSources(),
+      sync_status: syncStatus,
       providers: loaded.catalog.providers.map(toDashboardCatalogProvider),
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
+      sync_cache_file: loaded.syncCachePath,
+      sync_cache_found: loaded.syncCacheFound,
       issues: loaded.issues,
     };
   }
@@ -2139,6 +2152,15 @@ export class DashboardController {
     @Query('endpoint') endpoint?: string,
   ) {
     const loaded = this.catalog.load();
+    const syncStatus = buildCatalogSyncStatus({
+      config: this.config.getFullConfig().catalog,
+      catalog: loaded.catalog,
+      cachePath: loaded.syncCachePath,
+      cacheFound: loaded.syncCacheFound,
+      overridePath: loaded.overridePath,
+      overrideFound: loaded.overrideFound,
+      issues: loaded.issues,
+    });
     let models = loaded.catalog.providers.flatMap((entry) =>
       entry.models.map((model) => toDashboardCatalogModel(model, entry)),
     );
@@ -2153,11 +2175,14 @@ export class DashboardController {
     }
     return {
       source: 'builtin_static',
-      auto_update: false,
+      auto_update: syncStatus.scheduled,
       refresh_sources: getCatalogRefreshSources(),
+      sync_status: syncStatus,
       models,
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
+      sync_cache_file: loaded.syncCachePath,
+      sync_cache_found: loaded.syncCacheFound,
       issues: loaded.issues,
     };
   }

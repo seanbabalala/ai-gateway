@@ -42,6 +42,7 @@ import {
   VaultSecretManagerConfig,
   AwsSecretsManagerConfig,
   GcpSecretManagerConfig,
+  CatalogConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -597,6 +598,10 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   get dashboard(): DashboardConfig | undefined {
     return this.config.dashboard;
+  }
+
+  get catalog(): CatalogConfig | undefined {
+    return this.config.catalog;
   }
 
   /** Get the dashboard password hash (if set) */

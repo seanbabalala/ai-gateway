@@ -1498,6 +1498,7 @@ export interface CatalogPricing {
   source: string
   source_url?: string
   last_updated: string
+  last_sync?: string
   retrieved_at?: string
   manual_review_required: boolean
   stale_after_days?: number
@@ -1545,8 +1546,9 @@ export interface CatalogModel {
   supports_realtime?: boolean
   supports_rerank?: boolean
   manual_review_required?: boolean
-  source?: 'builtin' | 'override'
+  source?: 'builtin' | 'sync_cache' | 'override'
   overridden?: boolean
+  synced?: boolean
   notes?: string
 }
 
@@ -1569,16 +1571,47 @@ export interface CatalogProvider {
   tags?: string[]
   allows_unknown_models?: boolean
   manual_review_required?: boolean
-  source?: 'builtin' | 'override'
+  source?: 'builtin' | 'sync_cache' | 'override'
   overridden?: boolean
+  synced?: boolean
   models: CatalogModel[]
+}
+
+export interface CatalogSyncStatus {
+  enabled: boolean
+  scheduled: boolean
+  write_to: 'cache' | 'override'
+  interval_minutes: number
+  run_on_startup: boolean
+  cache_file: string
+  cache_found: boolean
+  override_file: string
+  override_found: boolean
+  supported_adapters: string[]
+  enabled_adapters: string[]
+  providers: Array<{
+    provider: string
+    label: string
+    enabled: boolean
+    supported: boolean
+    automatic: boolean
+    status: 'disabled' | 'fresh' | 'stale' | 'never_synced' | 'manual_only' | 'unsupported' | 'failed' | 'synced'
+    last_sync: string | null
+    source_url: string
+    confidence: string | null
+    stale: boolean
+    stale_after_days: number | null
+    age_days: number | null
+    last_error: string | null
+  }>
+  issues: Array<{ severity: string; code: string; message: string; path?: string }>
 }
 
 export interface CatalogProvidersResponse {
   version: string
   source: 'builtin_static'
   last_updated: string
-  auto_update: false
+  auto_update: boolean
   refresh_sources?: Array<{
     provider: string
     label: string
@@ -1588,8 +1621,11 @@ export interface CatalogProvidersResponse {
     pricing: 'live' | 'docs_only' | 'operator_required'
     notes: string
   }>
+  sync_status?: CatalogSyncStatus
   override_file?: string
   override_found?: boolean
+  sync_cache_file?: string
+  sync_cache_found?: boolean
   issues?: Array<{ severity: string; code: string; message: string; path?: string }>
   providers: CatalogProvider[]
 }
@@ -1598,10 +1634,13 @@ export interface CatalogModelsResponse {
   version: string
   source: 'builtin_static'
   last_updated: string
-  auto_update: false
+  auto_update: boolean
   refresh_sources?: CatalogProvidersResponse['refresh_sources']
+  sync_status?: CatalogSyncStatus
   override_file?: string
   override_found?: boolean
+  sync_cache_file?: string
+  sync_cache_found?: boolean
   issues?: Array<{ severity: string; code: string; message: string; path?: string }>
   models: CatalogModel[]
 }

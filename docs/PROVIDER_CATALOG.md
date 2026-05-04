@@ -59,6 +59,7 @@ npm run catalog -- list
 npm run catalog -- show openai
 npm run catalog -- sources
 npm run catalog -- refresh openrouter --out ./catalog.override.yaml
+npm run catalog -- sync openrouter
 npm run catalog -- validate
 npm run catalog -- validate --pricing
 npm run catalog -- export --out ./catalog.merged.yaml
@@ -73,6 +74,7 @@ node dist/cli/siftgate.js catalog list
 node dist/cli/siftgate.js catalog show anthropic
 node dist/cli/siftgate.js catalog sources
 node dist/cli/siftgate.js catalog refresh openrouter --out ./catalog.override.yaml
+node dist/cli/siftgate.js catalog sync openrouter
 node dist/cli/siftgate.js catalog validate
 ```
 
@@ -82,10 +84,12 @@ Useful options:
 - `--override <path>` points the command at a non-default override file.
 - `--file <path>` is used by `catalog validate` and `catalog import`.
 - `--force` allows `catalog import` to replace an existing override file.
+- `--write-to cache|override` selects where `catalog sync` writes. The default is `cache`, which writes SiftGate-managed metadata to `.siftgate/catalog-sync-cache.yaml`.
 - `--pricing` adds pricing freshness/unit checks to `catalog validate`.
 - `--include-pricing` is accepted by `catalog export`; pricing is included by default and the flag makes CI intent explicit.
 - `catalog sources` lists refresh modes. `public_api` means SiftGate can refresh without a provider key; `docs_review` means an operator should review provider docs; `operator_local` means pricing depends on local deployment/account choices.
 - `catalog refresh openrouter` calls OpenRouter's public model catalog, converts prompt/completion USD-per-token pricing to USD per 1M tokens, and writes a local override file. It refuses to replace an existing file unless `--force` is supplied.
+- `catalog sync openrouter` uses the same OpenRouter adapter but writes to the managed local sync cache by default. The merged catalog loads built-ins first, then sync cache, then operator `catalog.override.yaml`, so explicit local overrides remain authoritative.
 
 `catalog validate` exits non-zero on errors and is safe for CI. Warnings are printed without failing the command.
 
@@ -102,6 +106,32 @@ SiftGate v0.9.2 exposes refresh-source metadata through the Dashboard catalog AP
 | Ollama, vLLM, 01.AI/Yi, Replicate, custom OpenAI-compatible | `operator_local` | No | Model list and cost depend on the local host, cluster, marketplace model, account, or proxy. |
 
 For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.0 provider additions include `source_url`, `last_updated`, and `pricing_confidence` so operators can see where the reference came from without mistaking it for live billing data.
+
+## Scheduled Pricing Sync
+
+v1.2 adds a disabled-by-default pricing sync framework on top of the refresh-source system. It does not scrape provider docs, does not require SiftGate Cloud, and does not introduce private dependencies. The first adapter is OpenRouter because it exposes a stable public model catalog API. Other providers remain `docs_review` or `operator_local` until a safe public adapter exists.
+
+```yaml
+catalog:
+  override_file: ./catalog.override.yaml
+  sync:
+    enabled: false
+    interval_minutes: 1440
+    run_on_startup: false
+    write_to: cache
+    cache_file: ./.siftgate/catalog-sync-cache.yaml
+    adapters:
+      openrouter:
+        enabled: false
+```
+
+Important behavior:
+
+- `enabled` defaults to `false`; no background network request runs unless you turn it on.
+- A provider must be explicitly enabled under `catalog.sync.adapters`. In v1.2 only `openrouter.enabled: true` is supported.
+- `write_to: cache` is the recommended mode. It writes to a SiftGate-managed cache and never overwrites `catalog.override.yaml`.
+- `write_to: override` is available for operators who intentionally want scheduled output in an override path, but user config and explicit `models_pricing` still have priority at runtime.
+- Dashboard Provider Catalog shows sync status, last sync time, source URL, confidence, stale state, cache path, and enabled adapter count.
 
 ## Override File
 

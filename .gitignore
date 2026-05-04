@@ -20,6 +20,7 @@ data/
 gateway.config.yaml
 !gateway.config.example.yaml
 catalog.override.yaml
+.siftgate/
 !test/fixtures/catalog/catalog.override.yaml
 
 # Environment

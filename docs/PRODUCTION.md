@@ -18,6 +18,13 @@ Realtime, video, and Batch result download proxying should only be enabled for
 production after upstream provider behavior, connection limits, job/file
 retention, and load balancer paths have been tested in your environment.
 
+Provider pricing sync remains an operator-controlled metadata workflow. Leave
+`catalog.sync.enabled` off unless the deployment is allowed to make outbound
+requests to a supported public catalog. In v1.2 only OpenRouter has an
+automatic adapter; the recommended target is the local sync cache so reviewed
+`catalog.override.yaml`, node `model_capabilities[].pricing`, and
+`models_pricing` stay authoritative.
+
 ## Baseline Topology
 
 - Run one SiftGate instance for small deployments, or two or more instances

@@ -4289,6 +4289,135 @@ function validateCatalogConfig(
       ),
     );
   }
+  const sync = catalog.sync;
+  if (sync === undefined) return;
+  if (!isRecord(sync)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_sync_config',
+        'catalog.sync must be an object when set.',
+        'catalog.sync',
+      ),
+    );
+    return;
+  }
+  if (sync.enabled !== undefined && typeof sync.enabled !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_sync_enabled',
+        'catalog.sync.enabled must be a boolean.',
+        'catalog.sync.enabled',
+      ),
+    );
+  }
+  if (
+    sync.interval_minutes !== undefined &&
+    (!isFiniteNumber(sync.interval_minutes) || sync.interval_minutes <= 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_sync_interval',
+        'catalog.sync.interval_minutes must be a positive number.',
+        'catalog.sync.interval_minutes',
+      ),
+    );
+  }
+  if (sync.run_on_startup !== undefined && typeof sync.run_on_startup !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_sync_run_on_startup',
+        'catalog.sync.run_on_startup must be a boolean.',
+        'catalog.sync.run_on_startup',
+      ),
+    );
+  }
+  if (
+    sync.write_to !== undefined &&
+    sync.write_to !== 'cache' &&
+    sync.write_to !== 'override'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_sync_write_to',
+        'catalog.sync.write_to must be cache or override.',
+        'catalog.sync.write_to',
+      ),
+    );
+  }
+  for (const key of ['cache_file', 'override_file']) {
+    if (sync[key] !== undefined && !isNonEmptyString(sync[key])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_catalog_sync_path',
+          `catalog.sync.${key} must be a non-empty path when set.`,
+          `catalog.sync.${key}`,
+        ),
+      );
+    }
+  }
+  if (sync.adapters !== undefined && !isRecord(sync.adapters)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_catalog_sync_adapters',
+        'catalog.sync.adapters must be an object keyed by provider id.',
+        'catalog.sync.adapters',
+      ),
+    );
+  }
+  const adapters = isRecord(sync.adapters) ? sync.adapters : {};
+  let enabledSupportedAdapters = 0;
+  for (const [provider, adapter] of Object.entries(adapters)) {
+    if (!isRecord(adapter)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_catalog_sync_adapter',
+          `catalog.sync.adapters.${provider} must be an object.`,
+          `catalog.sync.adapters.${provider}`,
+        ),
+      );
+      continue;
+    }
+    if (adapter.enabled !== undefined && typeof adapter.enabled !== 'boolean') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_catalog_sync_adapter_enabled',
+          `catalog.sync.adapters.${provider}.enabled must be a boolean.`,
+          `catalog.sync.adapters.${provider}.enabled`,
+        ),
+      );
+    }
+    if (adapter.enabled === true && provider === 'openrouter') {
+      enabledSupportedAdapters += 1;
+    } else if (adapter.enabled === true) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_sync_adapter_manual_only',
+          `catalog.sync adapter "${provider}" is not automatic yet; use docs review or local override.`,
+          `catalog.sync.adapters.${provider}`,
+        ),
+      );
+    }
+  }
+  if (sync.enabled === true && enabledSupportedAdapters === 0) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_sync_no_enabled_adapter',
+        'catalog.sync.enabled is true but no supported provider adapter is explicitly enabled.',
+        'catalog.sync.adapters',
+      ),
+    );
+  }
 }
 
 function addCatalogIssues(
