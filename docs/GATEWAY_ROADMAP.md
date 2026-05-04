@@ -20,17 +20,17 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
-| v1.2 | Platform Capabilities | 进行中 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | 🚧 In Progress |
+| v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 
 ---
 
 ## v1.2 — Platform Capabilities（平台能力）
 
-**v1.2 进行中状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 SiftGate 从多协议网关推进到更完整的平台能力层。
+**v1.2.0 发布状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 SiftGate 从多协议网关推进到更完整的平台能力层：MCP Gateway preview、OpenAI-compatible Batch API proxy、Prompt Cache 智能路由与 Model Pricing 自动同步。
 
 ### P0：MCP Gateway Preview
 
-- **状态**：🚧 当前分支开发中
+- **状态**：✅ v1.2.0 已发布
 - **目标**：让 SiftGate 可以作为本地 MCP server 代理入口，用现有 Gateway API key、namespace、rate limit 和 Dashboard metadata 审计保护 agent/tool 调用路径
 - **实现方案**：
   - 新增 `mcp` 本地 registry/config，默认 disabled，支持 `servers[].id/name/url/transport/headers/allowed_namespaces/tools`
@@ -43,7 +43,7 @@
 
 ### P0：Batch API Proxy
 
-- **状态**：🚧 当前分支开发中
+- **状态**：✅ v1.2.0 已发布
 - **目标**：支持 OpenAI-compatible Batch API 创建、查询、取消和结果下载代理，同时保持本地 metadata-only 的隐私边界
 - **实现方案**：
   - 新增 `POST /v1/batches`、`GET /v1/batches/:id`、`POST /v1/batches/:id/cancel`、`GET /v1/batches/:id/output`、`GET /v1/batches/:id/errors`
@@ -55,7 +55,7 @@
 
 ### P0：Prompt Cache 智能路由
 
-- **状态**：🚧 Prompt Cache 智能路由功能分支进行中
+- **状态**：✅ v1.2.0 已发布
 - **目标**：在不改变本地 prompt cache 默认行为的前提下，让 `routing.optimization=cost` 与 `balanced` 能识别 provider cache 能力、cache-read 价格、观察到的 provider cache hit 率，并在 Route Explanation 中解释为什么偏好某个 node/model
 - **实现方案**：
   - `nodes[]` 与 `model_capabilities[]` 增加 `prompt_cache`、`read_cache`、`write_cache` 标记
@@ -67,7 +67,7 @@
 
 ### P1：Model Pricing 自动同步框架
 
-- **状态**：🚧 功能分支进行中
+- **状态**：✅ v1.2.0 已发布
 - **目标**：在现有 Provider Catalog refresh 基础上增加可选 scheduled sync，让成本路由能使用更及时的公开模型/价格元数据，同时避免覆盖用户显式配置
 - **实现方案**：
   - `catalog.sync.enabled` 默认 `false`，不会在启动后自动联网

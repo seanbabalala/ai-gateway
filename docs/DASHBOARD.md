@@ -2,7 +2,7 @@
 
 The SiftGate Dashboard is part of the MIT open-source Data Plane. It runs from the same gateway process, stores local metadata in SQLite by default, and does not require SiftGate Cloud.
 
-v1.2 preview adds an MCP Gateway page for local MCP server proxying. It shows server registry metadata, static tool inventory, recent calls, and error summaries without storing tool input/output text or secret headers.
+v1.2 adds an MCP Gateway preview page for local MCP server proxying. It shows server registry metadata, static tool inventory, recent calls, and error summaries without storing tool input/output text or secret headers.
 
 ## Pages
 

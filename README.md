@@ -28,9 +28,9 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v1.1.0**. v1.1 is the SiftGate developer experience release: a lightweight Python SDK scaffold, Dashboard Playground, Session View, and agent framework examples make it easier to integrate, test, trace, and explain routed AI traffic.
+Current open-source release: **v1.2.0**. v1.2 is the SiftGate platform capabilities release: MCP Gateway preview, OpenAI-compatible Batch API proxying, cache-aware routing evidence, and optional OpenRouter pricing sync extend the local Data Plane beyond request proxying into platform operations.
 
-The release builds on v1.0.0 Extension Ecosystem and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
+The release builds on v1.1.0 Developer Experience and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 

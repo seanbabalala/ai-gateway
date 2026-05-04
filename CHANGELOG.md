@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0 - 2026-05-05
+
 ### Added
 
 - Added v1.2 MCP Gateway preview with local `mcp.servers` registry, `POST /mcp/:serverId` JSON-RPC proxying, Gateway API key auth, endpoint permission checks, namespace allow-lists, rate limiting, and secret-reference-aware upstream headers.
