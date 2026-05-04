@@ -55,6 +55,7 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
+import { McpGatewayService } from '../mcp/mcp-gateway.service';
 import { PluginRegistryService } from '../plugins/plugin-registry.service';
 import { assessCatalogPricing, CatalogService } from '../catalog/catalog.service';
 import { getCatalogRefreshSources } from '../catalog/catalog-refresh';
@@ -236,6 +237,9 @@ export class DashboardController {
     @Optional()
     @Inject(PluginRegistryService)
     private readonly plugins?: PluginRegistryService,
+    @Optional()
+    @Inject(McpGatewayService)
+    private readonly mcp?: McpGatewayService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -262,6 +266,34 @@ export class DashboardController {
       .delete()
       .where('timestamp < :cutoff', { cutoff })
       .execute();
+  }
+
+  // ══════════════════════════════════════════════════════
+  // MCP Gateway
+  // ══════════════════════════════════════════════════════
+
+  @Get('mcp')
+  @ApiOperation({ summary: 'Get metadata-only MCP Gateway preview status' })
+  @ApiOkResponse({
+    description:
+      'MCP server registry, tools, recent calls, and error summary without tool input/output, raw headers, provider keys, or secret values.',
+  })
+  getMcpGateway() {
+    return this.mcp?.getDashboardSummary() || {
+      enabled: false,
+      path: '/mcp',
+      metadata_only: true,
+      servers: [],
+      recent_calls: [],
+      error_summary: [],
+      totals: {
+        servers: 0,
+        enabled_servers: 0,
+        tools: 0,
+        recent_calls: 0,
+        recent_errors: 0,
+      },
+    };
   }
 
   // ══════════════════════════════════════════════════════

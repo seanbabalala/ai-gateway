@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "Ranked document outputs",
   "modalitiesDescription.text": "Text generation and analysis",
   "modalitiesDescription.video": "Async video generation",
-  "modalitiesDescription.vision": "Image input in text requests"
+  "modalitiesDescription.vision": "Image input in text requests",
+  "endpoints.mcp": "MCP Gateway",
+  "endpointsDescription.mcp": "Local MCP server proxy preview"
 }

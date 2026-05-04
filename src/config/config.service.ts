@@ -35,6 +35,7 @@ import {
   FallbackPolicyConfig,
   StateBackendConfig,
   RealtimeConfig,
+  McpGatewayConfig,
   ConfigAuditConfig,
   SecretManagerConfig,
   SecretManagerFailurePolicy,
@@ -717,6 +718,19 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       max_session_ms: realtime?.max_session_ms ?? 1_800_000,
       default_node: realtime?.default_node ?? '',
       default_model: realtime?.default_model ?? 'auto',
+    };
+  }
+
+  /** Get experimental MCP Gateway preview config with safe local-only defaults. */
+  get mcpGateway(): Required<Omit<McpGatewayConfig, 'servers'>> & {
+    servers: NonNullable<McpGatewayConfig['servers']>;
+  } {
+    const mcp = this.config.mcp;
+    return {
+      enabled: mcp?.enabled ?? false,
+      path: mcp?.path ?? '/mcp',
+      max_recent_calls: mcp?.max_recent_calls ?? 100,
+      servers: mcp?.servers ?? [],
     };
   }
 

@@ -151,6 +151,29 @@ Future releases that change persistent schema should ship explicit TypeORM
 migration files. Production operators should run those release migrations as a
 deployment step instead of leaving runtime schema synchronization enabled.
 
+## MCP Gateway Preview
+
+The v1.2 MCP Gateway preview is disabled by default. Enable it only for MCP
+servers you operate or explicitly trust:
+
+```yaml
+mcp:
+  enabled: true
+  servers:
+    - id: local-docs
+      url: "http://localhost:8787/mcp"
+      allowed_namespaces: [team-a]
+      headers:
+        Authorization: "Bearer ${env:LOCAL_DOCS_MCP_TOKEN}"
+```
+
+Use Gateway API key `allowed_endpoints` to scope access to `mcp`,
+`mcp:<serverId>`, or `mcp:<serverId>:<toolName>`. Keep upstream credentials in
+environment or secret references, avoid secrets in MCP URLs, and prefer
+namespace allow-lists for team-scoped tool servers. The preview audit buffer is
+metadata-only and in-memory; it is useful for recent operational visibility but
+is not a durable compliance event store.
+
 ## Config Audit And Rollback
 
 The v0.9 OSS Data Plane keeps local config audit history in the same database

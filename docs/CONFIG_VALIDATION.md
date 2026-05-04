@@ -81,6 +81,10 @@ hardening visible without blocking local development.
   `cache.stream_cache.enabled` boolean validation.
 - Optional `embedding_batching` shape, including boolean enablement and
   positive queue/window/batch/timeout values.
+- Optional `mcp` Gateway preview shape, including boolean enablement, `/mcp`
+  path warnings, unique local server ids, HTTP upstream URLs, transport names,
+  namespace allow-list references, header string values, positive timeout/body
+  limits, and static tool metadata names/schemas.
 - `alerts` webhook channel shape, supported event names, debounce values,
   retry controls, and spike detector thresholds.
 - Optional `logging.sinks` entries for file, webhook, S3 interface, and

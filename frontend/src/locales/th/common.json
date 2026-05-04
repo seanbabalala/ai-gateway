@@ -60,5 +60,6 @@
   "tier.simple": "ง่าย",
   "tier.standard": "มาตรฐาน",
   "nav.benchmarks": "เบนช์มาร์ก",
-  "nav.sessions": "เซสชัน"
+  "nav.sessions": "เซสชัน",
+  "nav.mcp": "MCP Gateway"
 }

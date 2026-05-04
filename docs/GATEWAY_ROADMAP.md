@@ -20,8 +20,26 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
+| v1.2 | Platform Preview | 进行中 — MCP Gateway preview、本地 MCP proxy、metadata-only audit | 🚧 In Progress |
 
 ---
+
+## v1.2 — Platform Preview（平台能力预览）
+
+**v1.2.0 开发状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段先落地 MCP Gateway preview，不引入企业 MCP marketplace、远端 workspace registry 或 Cloud 依赖。
+
+### P0：MCP Gateway Preview
+
+- **状态**：🚧 codex/v1.2-mcp-gateway-preview
+- **目标**：让 SiftGate 可以作为本地 MCP server 代理入口，用现有 Gateway API key、namespace、rate limit 和 Dashboard metadata 审计保护 agent/tool 调用路径
+- **实现方案**：
+  - 新增 `mcp` 本地 registry/config，默认 disabled，支持 `servers[].id/name/url/transport/headers/allowed_namespaces/tools`
+  - 新增 `POST /mcp/:serverId` JSON-RPC preview 代理，复用 `ApiKeyGuard` 和 `RateLimitGuard`
+  - API key endpoint 权限支持 `mcp`、`mcp:<serverId>`、`mcp:<serverId>:<toolName>`，并与 server `allowed_namespaces` 交叉校验
+  - 上游 headers 通过 `SecretReferenceResolverService` 解析，Dashboard 不展示 resolved secret
+  - 新增 `GET /api/dashboard/mcp` 和 Dashboard MCP Gateway 页面，展示 server、tool、recent calls、error summary
+  - 本地 audit 默认只保留 metadata：server、method、tool name、API key、namespace、status、latency、byte size、error type
+  - 不保存 tool input/output 原文、raw headers、provider keys、resolved secret、media bytes 或 marketplace metadata
 
 ## v1.1 — Developer Experience（开发者体验）
 

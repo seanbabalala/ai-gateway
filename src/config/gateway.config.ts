@@ -38,6 +38,9 @@ export interface GatewayConfig {
   /** Experimental OpenAI Realtime-compatible WebSocket preview — disabled by default */
   realtime?: RealtimeConfig;
 
+  /** Experimental OSS-local MCP server proxy preview — disabled by default */
+  mcp?: McpGatewayConfig;
+
   /** Optional shared state backend; memory remains the default single-node mode */
   state?: StateBackendConfig;
 
@@ -414,6 +417,49 @@ export interface NamespaceConfig {
   allowed_models?: string[];
   budget?: NamespaceBudgetConfig;
   rate_limit?: NamespaceRateLimitConfig;
+}
+
+// ===== MCP Gateway Preview =====
+export type McpServerTransport = 'http_json_rpc' | 'streamable_http';
+
+export interface McpToolConfig {
+  /** Tool name advertised in Dashboard metadata. */
+  name: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+}
+
+export interface McpServerConfig {
+  /** Stable local server id used by /mcp/:serverId. */
+  id: string;
+  name?: string;
+  description?: string;
+  /** Disable one server without removing it. Default: true. */
+  enabled?: boolean;
+  /** Upstream MCP HTTP endpoint. Values may use secret references in headers, not URL query secrets. */
+  url: string;
+  /** Preview supports HTTP JSON-RPC style forwarding. Default: http_json_rpc. */
+  transport?: McpServerTransport;
+  /** Optional outbound headers. Values may use runtime secret references. */
+  headers?: Record<string, string>;
+  /** Optional namespace allow-list. Empty/unset allows all namespaces. */
+  allowed_namespaces?: string[];
+  /** Optional static tool metadata for Dashboard. Tool inputs/outputs are never stored by default. */
+  tools?: McpToolConfig[];
+  timeout_ms?: number;
+  max_request_bytes?: number;
+  tags?: string[];
+}
+
+export interface McpGatewayConfig {
+  /** Master switch. Disabled by default because MCP proxying is experimental. */
+  enabled?: boolean;
+  /** Local proxy prefix. Default: /mcp. */
+  path?: string;
+  /** Registered local MCP upstreams. */
+  servers?: McpServerConfig[];
+  /** Recent metadata-only audit entries kept in memory for Dashboard. Default: 100. */
+  max_recent_calls?: number;
 }
 
 // ===== Shadow Traffic =====

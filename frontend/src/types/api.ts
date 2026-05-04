@@ -35,6 +35,70 @@ export interface StatsResponse {
   nodeDistribution: NodeDistribution[]
 }
 
+// ── MCP Gateway Preview ──
+
+export interface McpToolSummary {
+  name: string
+  description: string | null
+  has_input_schema: boolean
+}
+
+export interface McpServerSummary {
+  id: string
+  name: string
+  description: string | null
+  enabled: boolean
+  transport: string
+  endpoint: string
+  allowed_namespaces: string[]
+  tools: McpToolSummary[]
+  tags: string[]
+  recent_calls: number
+  recent_errors: number
+  last_called_at: string | null
+}
+
+export interface McpAuditEntry {
+  id: string
+  timestamp: string
+  server_id: string
+  server_name: string
+  method: string
+  tool_name: string | null
+  batch_size: number
+  api_key_id: string | null
+  api_key_name: string | null
+  namespace_id: string | null
+  status_code: number
+  success: boolean
+  latency_ms: number
+  error_type: string | null
+  request_bytes: number
+}
+
+export interface McpErrorSummary {
+  server_id: string
+  error_type: string
+  count: number
+  last_seen_at: string
+}
+
+export interface McpGatewayResponse {
+  enabled: boolean
+  path: string
+  metadata_only: boolean
+  servers: McpServerSummary[]
+  recent_calls: McpAuditEntry[]
+  error_summary: McpErrorSummary[]
+  totals: {
+    servers: number
+    enabled_servers: number
+    tools: number
+    recent_calls: number
+    recent_errors: number
+  }
+}
+
 // ── Logs ──
 
 export interface CallLog {

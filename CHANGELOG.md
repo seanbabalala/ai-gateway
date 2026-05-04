@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added v1.2 MCP Gateway preview with local `mcp.servers` registry, `POST /mcp/:serverId` JSON-RPC proxying, Gateway API key auth, endpoint permission checks, namespace allow-lists, rate limiting, and secret-reference-aware upstream headers.
+- Added `GET /api/dashboard/mcp` plus a Dashboard MCP Gateway page showing local MCP servers, static tools, recent metadata-only calls, and error summaries without storing tool input/output, raw headers, provider keys, or resolved secret values.
+- Added MCP config validation, frontend 7-language localization, Dashboard static checks, and unit coverage for proxy privacy, permission enforcement, namespace enforcement, and config diagnostics.
+
 ## 1.1.0 - 2026-05-05
 
 ### Added

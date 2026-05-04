@@ -349,6 +349,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     overrides.secretResolver as any,
     overrides.benchmarkReports as any,
     overrides.plugins as any,
+    overrides.mcp as any,
   );
 
   return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
@@ -460,6 +461,48 @@ describe('DashboardController — benchmark report', () => {
 });
 
 describe('DashboardController — guardrails status', () => {
+  it('should return metadata-only MCP Gateway preview status', () => {
+    const mcp = {
+      getDashboardSummary: jest.fn().mockReturnValue({
+        enabled: true,
+        path: '/mcp',
+        metadata_only: true,
+        servers: [
+          {
+            id: 'local-tools',
+            name: 'Local Tools',
+            tools: [{ name: 'search_docs' }],
+          },
+        ],
+        recent_calls: [
+          {
+            id: 'req_1',
+            server_id: 'local-tools',
+            tool_name: 'search_docs',
+            method: 'tools/call',
+          },
+        ],
+        error_summary: [],
+        totals: {
+          servers: 1,
+          enabled_servers: 1,
+          tools: 1,
+          recent_calls: 1,
+          recent_errors: 0,
+        },
+      }),
+    };
+    const { controller } = makeDashboard({ mcp });
+
+    const result = controller.getMcpGateway() as any;
+
+    expect(mcp.getDashboardSummary).toHaveBeenCalled();
+    expect(result.metadata_only).toBe(true);
+    expect(result.servers[0].id).toBe('local-tools');
+    expect(JSON.stringify(result)).not.toContain('tool arguments');
+    expect(JSON.stringify(result)).not.toContain('Authorization');
+  });
+
   it('should return privacy-safe guardrails plugin status', () => {
     const plugins = {
       getPluginStatus: jest.fn().mockReturnValue({

@@ -2,7 +2,7 @@
 
 The SiftGate Dashboard is part of the MIT open-source Data Plane. It runs from the same gateway process, stores local metadata in SQLite by default, and does not require SiftGate Cloud.
 
-v1.1 extends the Dashboard into a developer experience surface: the local Playground lets operators test the routed Data Plane path without exposing provider keys to the browser, and Session View links call logs, route decisions, shadow results, benchmark-ready metrics, and guardrails finding metadata by `request_id`, `session_id`, and `trace_id`.
+v1.2 preview adds an MCP Gateway page for local MCP server proxying. It shows server registry metadata, static tool inventory, recent calls, and error summaries without storing tool input/output text or secret headers.
 
 ## Pages
 
@@ -10,6 +10,7 @@ v1.1 extends the Dashboard into a developer experience surface: the local Playgr
 | --- | --- |
 | Overview | Live calls, cost, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
+| MCP Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
 | Nodes | Upstream node health, compatibility matrix, active probes, realtime status, and Add Node wizard |
 | Provider Catalog | Built-in + local override provider/model catalog, price source status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
@@ -32,6 +33,12 @@ Dashboard API key create and rotate responses show the full key once. After that
 The Playground calls `POST /api/dashboard/playground/run` through the Dashboard session. It can apply a selected local Gateway API key by id, namespace restriction, model, endpoint, stream toggle, and routing hint, but the browser never receives the plaintext Gateway API key or any provider key.
 
 Default samples are intentionally tiny and synthetic. Realtime is a probe-only capability check; it does not open a WebSocket session. Playground request and response previews are returned to the current Dashboard view only. Normal call logs keep the same metadata as regular gateway traffic, including route decision ids when available, but Playground does not add a raw prompt/response/media store.
+
+## MCP Gateway Safety
+
+The MCP Gateway page reads `GET /api/dashboard/mcp`. It is read-only and only displays local config registry metadata plus recent in-memory audit metadata. It does not call tools from the browser and cannot modify MCP server config.
+
+The MCP preview stores server id/name, method, tool name, API key id/name, namespace, HTTP status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
 
 ## Session Traceability
 
