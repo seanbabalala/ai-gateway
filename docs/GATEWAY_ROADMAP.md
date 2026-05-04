@@ -19,17 +19,17 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
-| v1.1 | Developer Experience | 开发中 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | 🚧 In Progress |
+| v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 
 ---
 
 ## v1.1 — Developer Experience（开发者体验）
 
-**v1.1 开发状态**：v1.1 基于已发布 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是让开发者更容易接入、测试、排障和理解一次调用在 SiftGate 内的完整路径。
+**v1.1.0 发布状态**：v1.1 基于已发布 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是让开发者更容易接入、测试、排障和理解一次调用在 SiftGate 内的完整路径。
 
 ### P0：Python SDK
 
-- **状态**：🚧 feature branch `codex/v1.1-python-sdk`
+- **状态**：✅ v1.1.0 已发布
 - **目标**：提供 `pip install -e packages/python` 可用的轻量 Python SDK scaffold，同时保持用户可继续使用 OpenAI SDK + `base_url`
 - **实现方案**：
   - 新增 `packages/python`，包名 `siftgate`，`pyproject.toml` 使用 setuptools，运行时保持 stdlib-only
@@ -44,7 +44,7 @@
 
 ### P0：Dashboard Playground 交互式测试页面
 
-- **状态**：🚧 feature branch `codex/v1.1-dashboard-playground`
+- **状态**：✅ v1.1.0 已发布
 - **目标**：让本地 Dashboard 具备安全的交互式探测入口，覆盖主要协议和多模态能力，同时复用真实 routing、权限、预算、成本、telemetry、call log 和 route decision 路径
 - **实现方案**：
   - 新增 Dashboard 页面 `/playground`，支持 chat、responses、messages、embeddings、rerank、images、audio、video、realtime probe
@@ -58,7 +58,7 @@
 
 ### P0：Session / Trace 关联与 Session View
 
-- **状态**：🚧 feature branch `codex/v1.1-session-trace-view`
+- **状态**：✅ v1.1.0 已发布
 - **目标**：把单条请求日志升级为会话级链路视图，方便开发者和运维人员排查一轮 agent、应用会话或多步骤工作流里的模型切换、fallback、成本、延迟和错误
 - **实现方案**：
   - Normalizer 统一读取 `x-session-id`、legacy `x-session-key`、`x-siftgate-session-id`、`x-trace-id`、`x-siftgate-trace-id`、W3C `traceparent` 与 request-id fallback
@@ -72,7 +72,7 @@
 
 ### P1：Agent 框架集成示例
 
-- **状态**：🚧 feature branch `codex/v1.1-agent-framework-examples`
+- **状态**：✅ v1.1.0 已发布
 - **目标**：提供可本地运行的示例，展示 LangChain、CrewAI、OpenAI Agents SDK 和 OpenAI SDK `base_url` 如何通过 SiftGate 发送请求
 - **实现方案**：
   - 新增 `examples/agents`，包含 `.env.example`、共享 headers helper、requirements 和四个 Python 示例
@@ -908,12 +908,12 @@
 
 #### 26. SDK / 客户端库
 
-- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；🚧 v1.1 Python SDK scaffold 开发中
+- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；✅ v1.1.0 Python SDK scaffold 已发布
 - **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），也可试用 `packages/client` TypeScript SDK 与 `packages/python` Python SDK scaffold
 - **目标**：提供轻量 SDK 增强体验
 - **实现方案**：
   - ✅ TypeScript SDK（`@siftgate/client`）：支持 `baseUrl`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings helper、routing hint header、raw response access
-  - 🚧 Python SDK（`siftgate`）：支持 `base_url`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings、Rerank、Images、Audio、Video Jobs helper、routing hint header、raw response access
+  - ✅ Python SDK（`siftgate`）：支持 `base_url`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings、Rerank、Images、Audio、Video Jobs helper、routing hint header、raw response access
   - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、结构化错误、轻量本地安装
   - 与 OpenAI SDK 兼容（drop-in `base_url` 替换）
 
@@ -1132,7 +1132,7 @@
 | 22  | 插件包管理器       |  ⭐⭐⭐⭐  |    中    |  ✅ v0.4   |
 | 23  | 官方插件集         |  ⭐⭐⭐⭐  |    大    |  ✅ v0.4   |
 | 25  | LiteLLM 配置兼容   |   ⭐⭐⭐   |    小    |  ✅ v0.4   |
-| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  🚧 v1.1 Python scaffold |
+| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v1.1.0 Python scaffold |
 | 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  ✅ v0.5   |
 | 29  | 多实例集群模式     | ⭐⭐⭐⭐⭐ |    中    |  ✅ v0.5   |
 | 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  ✅ v0.5 experimental |
