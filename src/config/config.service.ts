@@ -46,6 +46,7 @@ import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
 import { isTypedSecretReferenceExpression } from './secret-references';
+import type { ProviderCatalog } from '../catalog/catalog.types';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
@@ -123,6 +124,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   private configWatcher?: fs.FSWatcher;
   private watcherDebounceTimer?: NodeJS.Timeout;
   private watcherDebounceMs = 0;
+  private catalogPricingCache?: { configVersion: number; catalog: ProviderCatalog };
 
   constructor() {
     // Load eagerly in constructor so config is available during module initialization
@@ -949,12 +951,76 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Get pricing for a specific model, preferring node/model overrides when a node is supplied. */
-  getModelPricing(model: string, nodeId?: string): ModelPricing | undefined {
+  getModelPricing(model: string, nodeId?: string): (ModelPricing & {
+    source?: string;
+    currency?: string;
+    catalog_source?: string;
+    manual_review_required?: boolean;
+    pricing_confidence?: string;
+  }) | undefined {
     if (nodeId) {
       const nodePricing = this.getNode(nodeId)?.model_capabilities?.[model]?.pricing;
       if (nodePricing) return nodePricing;
     }
-    return this.config.models_pricing[model];
+    const configuredPricing = this.config.models_pricing[model];
+    if (configuredPricing) return configuredPricing;
+    return this.getCatalogPricingFallback(model, nodeId);
+  }
+
+  private getCatalogPricingFallback(
+    model: string,
+    nodeId?: string,
+  ): (ModelPricing & {
+    source?: string;
+    currency?: string;
+    catalog_source?: string;
+    manual_review_required?: boolean;
+    pricing_confidence?: string;
+  }) | undefined {
+    const catalog = this.getMergedCatalogForPricing();
+    if (!catalog) return undefined;
+    try {
+      const catalogModule = require('../catalog/catalog.service') as typeof import('../catalog/catalog.service');
+      const catalogModel = catalogModule.findCatalogModelForNode(
+        catalog,
+        model,
+        nodeId ? this.getNode(nodeId) : undefined,
+      );
+      return catalogModule.catalogModelToModelPricing(catalogModel);
+    } catch (error) {
+      this.logger.warn(
+        error instanceof Error
+          ? `Catalog pricing fallback failed: ${error.message}`
+          : 'Catalog pricing fallback failed.',
+      );
+      return undefined;
+    }
+  }
+
+  private getMergedCatalogForPricing(): ProviderCatalog | undefined {
+    if (this.catalogPricingCache?.configVersion === this.configVersion) {
+      return this.catalogPricingCache.catalog;
+    }
+    try {
+      const catalogModule = require('../catalog/catalog.service') as typeof import('../catalog/catalog.service');
+      const loaded = catalogModule.loadMergedCatalog({
+        cwd: process.cwd(),
+        env: process.env,
+        config: this.config,
+      });
+      this.catalogPricingCache = {
+        configVersion: this.configVersion,
+        catalog: loaded.catalog,
+      };
+      return loaded.catalog;
+    } catch (error) {
+      this.logger.warn(
+        error instanceof Error
+          ? `Could not load provider catalog for pricing fallback: ${error.message}`
+          : 'Could not load provider catalog for pricing fallback.',
+      );
+      return undefined;
+    }
   }
 
   /** Resolve a user-provided embedding model name to a node/model pair. */
@@ -1400,6 +1466,13 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
    */
   private warnAboutNodeModelResolutionConflicts(): void {
     for (const diagnostic of buildNodeModelDiagnostics(this.config)) {
+      if (
+        diagnostic.code === 'missing_model_pricing' &&
+        diagnostic.model &&
+        this.getCatalogPricingFallback(diagnostic.model)
+      ) {
+        continue;
+      }
       this.logger.warn(diagnostic.message);
     }
   }

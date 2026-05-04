@@ -12,7 +12,8 @@
     "route-explanation:check": "node scripts/check-route-explanation.mjs",
     "shadow-report:check": "node scripts/check-shadow-report.mjs",
     "benchmark:check": "node scripts/check-benchmark-report.mjs",
-    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check && npm run shadow-report:check && npm run benchmark:check",
+    "provider-catalog:check": "node scripts/check-provider-catalog.mjs",
+    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check && npm run shadow-report:check && npm run benchmark:check && npm run provider-catalog:check",
     "preview": "vite preview"
   },
   "dependencies": {

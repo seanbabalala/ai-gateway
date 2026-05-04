@@ -30,6 +30,10 @@
 - v0.9 compatibility migration expansion for the OSS Data Plane: `siftgate migrate` now imports LiteLLM, New API, and One API configs into SiftGate and exports SiftGate configs to LiteLLM/New API/One API scaffold YAML.
 - Migration reports now include compatible, partially supported, unsupported, manual actions, provider/model mapping notes, and pricing/capability confidence.
 - New migration fixtures and tests for LiteLLM, New API, One API, SiftGate v0.8 model buckets, reverse scaffold export, and overwrite protection.
+- v0.9 Provider Catalog pricing hygiene for the OSS Data Plane, extending the v0.8 catalog instead of introducing a second model catalog.
+- Catalog pricing metadata now includes currency, modality-specific price/unit fields, `stale_after_days`, and `pricing_confidence`.
+- Dashboard Provider Catalog page showing pricing freshness, manual-review state, source, confidence, and override markers in the 7-language operator UI.
+- `siftgate catalog validate --pricing` and `siftgate catalog export --include-pricing` for local pricing hygiene workflows without online updates.
 
 ### Changed
 
@@ -39,6 +43,8 @@
 - Dashboard sanitized config keeps secret references visible as references, masks literal provider keys and sensitive headers, and never resolves secrets for display.
 - Explicit shadow prompt/response sample storage now applies built-in redaction and `shadow.compare.sample_max_chars` truncation, and config validation warnings now call out the storage risk more clearly.
 - `siftgate migrate` now supports `--to` and `--force`; `--overwrite` remains a backward-compatible alias.
+- Cost-aware routing and cost accounting can fall back to merged Provider Catalog pricing when explicit node/model pricing and `models_pricing` are absent; explicit user config always wins.
+- Config validation now warns for placeholder, stale, missing, and modality-unit-mismatched catalog pricing, including `routing.optimization=cost` cases with insufficient prices.
 
 ## 0.8.0 - 2026-05-04
 

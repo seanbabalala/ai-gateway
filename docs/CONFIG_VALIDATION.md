@@ -54,7 +54,9 @@ hardening visible without blocking local development.
 - Duplicate node ids and duplicate model ids inside the same node.
 - Shared ConfigService diagnostics for ambiguous node/model resolution,
   duplicate model ids across nodes, alias conflicts, duplicate prefixes,
-  missing model pricing, and routing references.
+  missing model pricing, and routing references. When merged Provider Catalog
+  pricing can supply a fallback, the validator reports catalog pricing hygiene
+  instead of a plain missing-pricing warning.
 - Routing integrity for `primary`, `fallbacks`, `split`, and `targets` entries.
 - `routing.optimization`, which must be `cost`, `latency`, `balanced`, or
   `quality` when configured.
@@ -63,6 +65,10 @@ hardening visible without blocking local development.
 - `routing.fallback_policy` shape, including explicit timeout race thresholds
   and cost-downgrade limits when those policies are enabled.
 - Pricing entries with numeric `input` and `output` values.
+- Provider Catalog pricing hygiene for configured models: missing prices,
+  placeholder/manual-review entries, stale `last_updated` values, modality unit
+  mismatches, and `routing.optimization=cost` candidates without usable
+  input/output token prices.
 - v0.3 model capability metadata, including positive `max_context_tokens`,
   boolean `structured_output`, non-negative `quality_score`, and optional
   per-model `pricing` overrides.

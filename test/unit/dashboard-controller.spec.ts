@@ -696,6 +696,9 @@ describe('DashboardController — catalog', () => {
     expect(result.providers[0]).toMatchObject({
       id: 'openai',
       overridden: false,
+      pricing_hygiene: expect.objectContaining({
+        status: expect.any(String),
+      }),
     });
   });
 
@@ -708,6 +711,9 @@ describe('DashboardController — catalog', () => {
       expect.objectContaining({
         id: 'gpt-4o',
         provider: 'openai',
+        pricing_hygiene: expect.objectContaining({
+          status: expect.any(String),
+        }),
       }),
     ]);
   });

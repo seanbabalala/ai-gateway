@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   DEFAULT_CATALOG_OVERRIDE_FILE,
+  collectCatalogPricingHygieneIssues,
   formatCatalogAsYaml,
   loadMergedCatalog,
   resolveCatalogOverridePath,
@@ -101,6 +102,8 @@ interface CatalogArgs {
   force: boolean;
   json: boolean;
   help: boolean;
+  pricing: boolean;
+  includePricing: boolean;
 }
 
 const DEFAULT_IO: CliIO = {
@@ -267,9 +270,14 @@ function runCatalogValidateCommand(args: CatalogArgs, cli: CliIO): number {
         overridePath: args.overridePath,
       });
   const issues = result.issues;
+  const pricingIssues =
+    args.pricing && "catalog" in result
+      ? collectCatalogPricingHygieneIssues(result.catalog, cli.now())
+      : [];
+  const allIssues = [...issues, ...pricingIssues];
 
   if (args.json) {
-    cli.stdout(JSON.stringify({ ok: !catalogIssuesHaveErrors(issues), ...result }, null, 2));
+    cli.stdout(JSON.stringify({ ok: !catalogIssuesHaveErrors(allIssues), pricing_checked: args.pricing, ...result, issues: allIssues }, null, 2));
   } else {
     cli.stdout(
       formatCatalogValidationResult({
@@ -281,12 +289,13 @@ function runCatalogValidateCommand(args: CatalogArgs, cli: CliIO): number {
           "overrideFound" in result
             ? result.overrideFound
             : fs.existsSync(resolveCliPath(cli.cwd, args.filePath || DEFAULT_CATALOG_OVERRIDE_FILE)),
-        issues,
+        pricingChecked: args.pricing,
+        issues: allIssues,
       }),
     );
   }
 
-  return catalogIssuesHaveErrors(issues) ? 1 : 0;
+  return catalogIssuesHaveErrors(allIssues) ? 1 : 0;
 }
 
 function runCatalogImportCommand(args: CatalogArgs, cli: CliIO): number {
@@ -690,6 +699,8 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
     force: false,
     json: false,
     help: false,
+    pricing: false,
+    includePricing: false,
   };
   const [action, ...rest] = args;
 
@@ -715,6 +726,14 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
     }
     if (arg === "--force") {
       parsed.force = true;
+      continue;
+    }
+    if (arg === "--pricing") {
+      parsed.pricing = true;
+      continue;
+    }
+    if (arg === "--include-pricing") {
+      parsed.includePricing = true;
       continue;
     }
     if (arg === "--file" || arg === "-f") {
@@ -1032,6 +1051,8 @@ function formatCatalogProvider(
     `Overridden: ${provider.overridden ? "yes" : "no"}`,
     `Endpoints: ${endpointSummary || "none"}`,
     `Capabilities: ${(provider.capabilities || []).join(", ") || "none"}`,
+    `Pricing source: ${provider.pricing?.source || "model-level"}`,
+    `Pricing review: ${provider.pricing?.manual_review_required ? "required" : "model-level"}`,
     "",
     "Models:",
     ...provider.models.map((model) =>
@@ -1039,6 +1060,9 @@ function formatCatalogProvider(
         `  - ${model.id}`,
         `modalities=${model.modalities.join(",")}`,
         `capabilities=${model.capabilities.join(",") || "none"}`,
+        `pricing=${model.pricing?.source || "missing"}`,
+        `confidence=${model.pricing?.pricing_confidence || "unknown"}`,
+        `updated=${model.pricing?.last_updated || "unknown"}`,
         model.overridden ? "overridden=true" : "overridden=false",
       ].join(" "),
     ),
@@ -1048,12 +1072,14 @@ function formatCatalogProvider(
 function formatCatalogValidationResult(input: {
   overridePath: string;
   overrideFound: boolean;
+  pricingChecked?: boolean;
   issues: CatalogIssue[];
 }): string {
   return [
     "SiftGate catalog validation",
     `Override: ${input.overridePath}`,
     `Override found: ${input.overrideFound ? "yes" : "no"}`,
+    `Pricing hygiene: ${input.pricingChecked ? "checked" : "not checked"}`,
     "",
     formatCatalogIssueGroup("Errors", catalogIssuesBySeverity(input.issues, "error")),
     "",
@@ -1205,14 +1231,16 @@ function formatCatalogUsage(): string {
     "Usage:",
     "  siftgate catalog list [--override catalog.override.yaml] [--json]",
     "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
-    "  siftgate catalog validate [--file catalog.override.yaml] [--override catalog.override.yaml] [--json]",
-    "  siftgate catalog export [--override catalog.override.yaml] [--out catalog.yaml] [--json]",
+    "  siftgate catalog validate [--pricing] [--file catalog.override.yaml] [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog export [--include-pricing] [--override catalog.override.yaml] [--out catalog.yaml] [--json]",
     "  siftgate catalog import --file catalog.override.yaml [--override catalog.override.yaml] [--force] [--json]",
     "",
     "Options:",
     "      --override <path>  Local override destination/source path (default: catalog.override.yaml)",
     "  -f, --file <path>      Override file to validate or import",
     "  -o, --out <path>       Write exported merged catalog to a file",
+    "      --pricing          Include pricing freshness/unit checks during validation",
+    "      --include-pricing  Accept explicit pricing export (pricing is included by default)",
     "      --force            Replace an existing override during import",
     "      --json             Print machine-readable JSON",
     "  -h, --help             Show help",

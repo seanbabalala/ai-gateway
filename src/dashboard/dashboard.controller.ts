@@ -55,7 +55,8 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
-import { CatalogService } from '../catalog/catalog.service';
+import { assessCatalogPricing, CatalogService } from '../catalog/catalog.service';
+import type { CatalogModel, CatalogProvider } from '../catalog/catalog.types';
 import type { Modality } from '../config/modality';
 import type { ProviderCompatibilityCapability } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
@@ -74,6 +75,120 @@ import {
   GatewayApiKeyMutationResponseDto,
   SanitizedConfigResponseDto,
 } from '../openapi/openapi.dto';
+
+const DASHBOARD_PROTOCOLS = ['chat_completions', 'responses', 'messages'] as const;
+
+function toDashboardCatalogProvider(provider: CatalogProvider) {
+  const endpoints = withDashboardEndpointAliases(provider.endpoints);
+  const protocols = DASHBOARD_PROTOCOLS.filter((protocol) => endpoints[protocol]);
+  const models = provider.models.map((model) => toDashboardCatalogModel(model, provider));
+  const modalities = Array.from(
+    new Set(models.flatMap((model) => model.modalities as string[])),
+  );
+  const pricing = provider.pricing || firstModelPricing(provider) || {
+    source: 'model-level',
+    last_updated: '',
+    manual_review_required: true,
+  };
+
+  return {
+    ...provider,
+    description: `${provider.name} provider preset`,
+    base_url_matchers: baseUrlMatchers(provider.base_url),
+    protocols: protocols.length > 0 ? protocols : ['chat_completions'],
+    default_protocol: protocols[0] || 'chat_completions',
+    endpoints,
+    modalities,
+    pricing,
+    tags: [
+      provider.source,
+      ...(provider.overridden ? ['override'] : []),
+    ],
+    allows_unknown_models: provider.id === 'openai-compatible',
+    manual_review_required:
+      pricing.manual_review_required || models.some((model) => model.pricing?.manual_review_required),
+    pricing_hygiene: assessCatalogPricing(pricing, modalities),
+    models,
+  };
+}
+
+function toDashboardCatalogModel(model: CatalogModel, provider?: CatalogProvider) {
+  const endpointMap = withDashboardEndpointAliases(model.endpoints);
+  const endpoints = Object.keys(endpointMap);
+  const pricing = model.pricing || firstModelPricing(provider) || {
+    source: 'missing',
+    last_updated: '',
+    manual_review_required: true,
+  };
+  return {
+    ...model,
+    name: model.display_name || model.id,
+    provider_id: model.provider,
+    endpoints,
+    input_types: inferDashboardInputTypes(model.modalities),
+    output_types: inferDashboardOutputTypes(model.modalities),
+    pricing,
+    pricing_hygiene: assessCatalogPricing(pricing, model.modalities),
+    manual_review_required: pricing.manual_review_required,
+  };
+}
+
+function firstModelPricing(provider: CatalogProvider | undefined) {
+  return provider?.models.find((model) => model.pricing)?.pricing;
+}
+
+function withDashboardEndpointAliases(
+  endpoints: Partial<Record<string, string>> | undefined,
+): Partial<Record<string, string>> {
+  const next = { ...(endpoints || {}) };
+  if (next.image) {
+    next.image_generations ??= next.image;
+    next.image_edits ??= next.image;
+  }
+  if (next.audio) {
+    next.audio_transcriptions ??= next.audio;
+    next.audio_speech ??= next.audio;
+  }
+  if (next.video) {
+    next.video_generations ??= next.video;
+  }
+  return next;
+}
+
+function inferDashboardInputTypes(modalities: readonly Modality[] | readonly string[]): string[] {
+  const values = new Set<string>();
+  for (const modality of modalities) {
+    if (modality === 'text' || modality === 'vision' || modality === 'embedding' || modality === 'rerank') {
+      values.add('text');
+    }
+    if (modality === 'vision' || modality === 'image') values.add('image');
+    if (modality === 'audio') values.add('audio');
+    if (modality === 'video') values.add('video');
+    if (modality === 'realtime') values.add('events');
+  }
+  return [...values];
+}
+
+function inferDashboardOutputTypes(modalities: readonly Modality[] | readonly string[]): string[] {
+  const values = new Set<string>();
+  for (const modality of modalities) {
+    if (modality === 'text' || modality === 'vision' || modality === 'rerank') values.add('text');
+    if (modality === 'embedding') values.add('embedding');
+    if (modality === 'image') values.add('image');
+    if (modality === 'audio') values.add('audio');
+    if (modality === 'video') values.add('video');
+    if (modality === 'realtime') values.add('events');
+  }
+  return [...values];
+}
+
+function baseUrlMatchers(baseUrl: string): string[] {
+  try {
+    return [new URL(baseUrl).hostname];
+  } catch {
+    return [baseUrl];
+  }
+}
 
 @Controller('api/dashboard')
 @UseGuards(DashboardGuard)
@@ -1433,7 +1548,7 @@ export class DashboardController {
     return {
       source: 'builtin_static',
       auto_update: false,
-      providers: loaded.catalog.providers,
+      providers: loaded.catalog.providers.map(toDashboardCatalogProvider),
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
       issues: loaded.issues,
@@ -1453,10 +1568,7 @@ export class DashboardController {
   ) {
     const loaded = this.catalog.load();
     let models = loaded.catalog.providers.flatMap((entry) =>
-      entry.models.map((model) => ({
-        ...model,
-        provider_id: model.provider,
-      })),
+      entry.models.map((model) => toDashboardCatalogModel(model, entry)),
     );
     if (provider) models = models.filter((model) => model.provider === provider);
     if (modality) {
@@ -1465,7 +1577,7 @@ export class DashboardController {
       );
     }
     if (endpoint) {
-      models = models.filter((model) => model.endpoints[endpoint] !== undefined);
+      models = models.filter((model) => model.endpoints.includes(endpoint));
     }
     return {
       source: 'builtin_static',

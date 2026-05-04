@@ -127,6 +127,8 @@ auth:
 #   npm run catalog -- show openai
 #   npm run catalog -- import --file ./catalog.override.yaml
 #   npm run catalog -- validate
+#   npm run catalog -- validate --pricing
+#   npm run catalog -- export --include-pricing --out ./catalog.merged.yaml
 # ============================================================
 # catalog:
 #   override_file: ./catalog.override.yaml
@@ -210,10 +212,11 @@ auth:
 # proxy route, or API endpoint. A node can expose one or more models.
 #
 # v0.8 includes a local static Provider / Model Catalog used by Dashboard
-# Add Node and `npm run validate:config`. The catalog is advisory and does
-# not auto-update online. Pricing entries in the catalog are often marked
-# manual_review_required, so keep production cost routing values in
-# models_pricing or model_capabilities[].pricing below.
+# Add Node and `npm run validate:config`. v0.9 adds pricing hygiene and
+# cost-routing fallback from the merged built-in + override catalog. The catalog
+# is advisory and does not auto-update online. Built-in prices are often marked
+# manual_review_required/low confidence, so production billing should still use
+# verified values in models_pricing or model_capabilities[].pricing below.
 #
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
@@ -669,7 +672,8 @@ budget:
 # Model Pricing — Cost per 1M tokens (USD)
 # ============================================================
 # Used to calculate per-request costs and enforce budget limits.
-# Add entries for every model ID listed in your nodes above.
+# Explicit entries here override Provider Catalog fallback pricing.
+# Add entries for every production model ID listed in your nodes above.
 models_pricing:
   gpt-4o: { input: 2.50, output: 10.00 }
   gpt-4o-mini: { input: 0.15, output: 0.60 }

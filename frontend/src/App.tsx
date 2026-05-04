@@ -16,6 +16,7 @@ const ShadowPage = lazy(() => import('@/pages/ShadowPage').then((m) => ({ defaul
 const RouteExplanationPage = lazy(() => import('@/pages/RouteExplanationPage').then((m) => ({ default: m.RouteExplanationPage })))
 const ConfigAuditPage = lazy(() => import('@/pages/ConfigAuditPage').then((m) => ({ default: m.ConfigAuditPage })))
 const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ default: m.BenchmarkPage })))
+const ProviderCatalogPage = lazy(() => import('@/pages/ProviderCatalogPage').then((m) => ({ default: m.ProviderCatalogPage })))
 
 function RouteFallback() {
   return (
@@ -48,6 +49,7 @@ export function App() {
         <Route path="/" element={page(<DashboardPage />)} />
         <Route path="/logs" element={page(<LogsPage />)} />
         <Route path="/nodes" element={page(<NodesPage />)} />
+        <Route path="/catalog" element={page(<ProviderCatalogPage />)} />
         <Route path="/routing" element={page(<RoutingPage />)} />
         <Route path="/budget" element={page(<BudgetPage />)} />
         <Route path="/api-keys" element={page(<ApiKeysPage />)} />

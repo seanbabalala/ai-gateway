@@ -13,6 +13,7 @@ import {
   Zap,
   Activity,
   Gauge,
+  Boxes,
   X,
   FileClock,
 } from 'lucide-react'
@@ -40,6 +41,7 @@ const navGroups = [
     labelKey: 'nav.manage',
     items: [
       { to: '/nodes', icon: Server, labelKey: 'nav.nodes' },
+      { to: '/catalog', icon: Boxes, labelKey: 'nav.catalog' },
       { to: '/routing', icon: GitFork, labelKey: 'nav.routing' },
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },

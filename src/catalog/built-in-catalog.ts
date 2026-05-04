@@ -1,21 +1,76 @@
 import type { CatalogProvider, CatalogPricing } from './catalog.types';
 
 const LAST_UPDATED = '2026-05-03';
+const STALE_AFTER_DAYS = 90;
 
 function pricing(
   input: number,
   output: number,
   notes?: string,
+  overrides: Partial<CatalogPricing> = {},
 ): CatalogPricing {
   return {
     input,
     output,
+    currency: 'USD',
     unit: 'usd_per_1m_tokens',
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      ...overrides.units,
+    },
     source: 'builtin-static-placeholder',
     last_updated: LAST_UPDATED,
     manual_review_required: true,
+    stale_after_days: STALE_AFTER_DAYS,
+    pricing_confidence: 'low',
     ...(notes ? { notes } : {}),
+    ...overrides,
   };
+}
+
+function embeddingPricing(input: number, notes?: string): CatalogPricing {
+  return pricing(input, 0, notes, {
+    embedding: input,
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      embedding: 'usd_per_1m_embedding_tokens',
+    },
+  });
+}
+
+function imagePricing(input: number, notes?: string): CatalogPricing {
+  return pricing(input, 0, notes, {
+    image: input,
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      image: 'usd_per_image_or_token_equivalent',
+    },
+  });
+}
+
+function audioPricing(input: number, output = 0, notes?: string): CatalogPricing {
+  return pricing(input, output, notes, {
+    audio: input,
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      audio: 'usd_per_audio_minute_or_token_equivalent',
+    },
+  });
+}
+
+function rerankPricing(input: number, notes?: string): CatalogPricing {
+  return pricing(input, 0, notes, {
+    rerank: input,
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      rerank: 'usd_per_1k_rerank_requests_or_token_equivalent',
+    },
+  });
 }
 
 function provider(
@@ -80,7 +135,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         endpoints: { embeddings: '/v1/embeddings' },
         capabilities: ['embeddings'],
         limits: { dimensions: [512, 1536] },
-        pricing: pricing(0.02, 0),
+        pricing: embeddingPricing(0.02),
         source: 'builtin',
         overridden: false,
       },
@@ -90,7 +145,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         modalities: ['image'],
         endpoints: { image: '/v1/images/generations' },
         capabilities: ['image_generation'],
-        pricing: pricing(5, 0, 'Image pricing varies by size and quality.'),
+        pricing: imagePricing(5, 'Image pricing varies by size and quality.'),
         source: 'builtin',
         overridden: false,
       },
@@ -100,7 +155,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         modalities: ['text', 'audio', 'realtime'],
         endpoints: { realtime: '/v1/realtime' },
         capabilities: ['realtime', 'streaming'],
-        pricing: pricing(5, 20, 'Realtime pricing varies by input/output modality.'),
+        pricing: audioPricing(5, 20, 'Realtime pricing varies by input/output modality.'),
         source: 'builtin',
         overridden: false,
       },
@@ -165,7 +220,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         modalities: ['text', 'embedding'],
         endpoints: { embeddings: '/v1beta/openai/embeddings' },
         capabilities: ['embeddings'],
-        pricing: pricing(0.01, 0),
+        pricing: embeddingPricing(0.01),
         source: 'builtin',
         overridden: false,
       },
@@ -342,7 +397,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         modalities: ['text', 'rerank'],
         endpoints: { rerank: '/v2/rerank' },
         capabilities: ['rerank'],
-        pricing: pricing(0.01, 0, 'Rerank pricing is often request-based; verify manually.'),
+        pricing: rerankPricing(0.01, 'Rerank pricing is often request-based; verify manually.'),
         source: 'builtin',
         overridden: false,
       },
@@ -364,7 +419,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         endpoints: { embeddings: '/v1/embeddings' },
         capabilities: ['embeddings'],
         limits: { dimensions: [256, 512, 1024, 2048] },
-        pricing: pricing(0.18, 0),
+        pricing: embeddingPricing(0.18),
         source: 'builtin',
         overridden: false,
       },
@@ -385,7 +440,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         modalities: ['text', 'embedding'],
         endpoints: { embeddings: '/v1/embeddings' },
         capabilities: ['embeddings'],
-        pricing: pricing(0.02, 0),
+        pricing: embeddingPricing(0.02),
         source: 'builtin',
         overridden: false,
       },

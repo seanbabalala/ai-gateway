@@ -122,6 +122,19 @@
   - 不复制 literal provider API key；改写为环境变量引用并写入手动处理项
   - 补 LiteLLM、New API、One API、SiftGate v0.8 fixtures，以及 CLI、报告、overwrite protection 单测
 
+### Provider Catalog Pricing Hygiene
+
+- **状态**：🚧 Prompt 进行中
+- **目标**：复用 v0.8 Provider / Model Catalog 与 `catalog.override.yaml`，补齐价格元数据卫生、过期检查和 cost routing fallback
+- **实现方案**：
+  - 不新增第二套 Model Catalog；继续使用 built-in + local override 的合并 catalog
+  - pricing metadata 扩展 `currency`、`units`、image/audio/video/rerank/embedding price/unit、`stale_after_days`、`pricing_confidence`
+  - Config validation 输出 pricing hygiene warnings：缺失、placeholder、stale、modality unit mismatch、`routing.optimization=cost` 缺必要价格
+  - Cost/context routing 在显式 node/model pricing 与 `models_pricing` 缺失时回退到 merged catalog pricing；显式用户配置永远优先
+  - Dashboard 新增只读 Provider Catalog 页面，展示 freshness、manual review、source、confidence、override 状态
+  - Catalog CLI 支持 `siftgate catalog validate --pricing` 与 `siftgate catalog export --include-pricing`
+  - 第一版不联网抓官网价格，避免不稳定网络更新和 provider docs churn
+
 ---
 
 ## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）

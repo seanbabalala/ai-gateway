@@ -4,6 +4,8 @@ import * as yaml from 'js-yaml';
 import type { GatewayConfig } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import {
+  assessCatalogPricing,
+  catalogModelToModelPricing,
   findCatalogModel,
   flattenCatalogModels,
   loadMergedCatalog,
@@ -244,7 +246,7 @@ export function validateConfigObject(
   validateCatalogConfig(config.catalog, issues);
   validateConfigAudit(config.config_audit, issues);
   validateControlPlane(config.control_plane, issues);
-  addSharedDiagnostics(config, issues);
+  addSharedDiagnostics(config, issues, options.catalog);
   addCatalogIssues(options.catalogIssues, issues);
   validateConfigAgainstCatalog(config, options.catalog, issues);
 
@@ -4014,6 +4016,8 @@ function validateConfigAgainstCatalog(
   const catalogModelIds = new Set(
     flattenCatalogModels(catalog).map((model) => model.id),
   );
+  const costOptimization = isRecord(config.routing) &&
+    config.routing.optimization === 'cost';
 
   config.nodes.forEach((nodeValue, nodeIndex) => {
     if (!isRecord(nodeValue)) return;
@@ -4076,6 +4080,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.models),
       `${basePath}.models`,
       ['text', 'vision'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -4084,6 +4091,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.embedding_models),
       `${basePath}.embedding_models`,
       ['embedding'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -4092,6 +4102,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.rerank_models),
       `${basePath}.rerank_models`,
       ['rerank'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -4100,6 +4113,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.image_models),
       `${basePath}.image_models`,
       ['image', 'vision'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -4108,6 +4124,20 @@ function validateConfigAgainstCatalog(
       stringArray(node.audio_models),
       `${basePath}.audio_models`,
       ['audio'],
+      config,
+      node,
+      costOptimization,
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.video_models),
+      `${basePath}.video_models`,
+      ['video'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -4116,6 +4146,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.realtime_models),
       `${basePath}.realtime_models`,
       ['realtime'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
   });
@@ -4168,6 +4201,9 @@ function validateCatalogModelsForBucket(
   models: string[],
   basePath: string,
   expectedModalities: string[],
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  node: Record<string, unknown>,
+  costOptimization: boolean,
   issues: ConfigValidationIssue[],
 ): void {
   models.forEach((modelId, index) => {
@@ -4210,7 +4246,95 @@ function validateCatalogModelsForBucket(
         ),
       );
     }
+    validateCatalogPricingForConfiguredModel(
+      catalogModel,
+      expectedModalities,
+      config,
+      node,
+      modelPath,
+      costOptimization,
+      issues,
+    );
   });
+}
+
+function validateCatalogPricingForConfiguredModel(
+  catalogModel: NonNullable<ReturnType<typeof findCatalogModel>>,
+  expectedModalities: string[],
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  node: Record<string, unknown>,
+  modelPath: string,
+  costOptimization: boolean,
+  issues: ConfigValidationIssue[],
+): void {
+  if (hasExplicitPricing(config, node, catalogModel.id)) return;
+
+  const hygiene = assessCatalogPricing(catalogModel.pricing, expectedModalities);
+  if (hygiene.missing_price_dimensions.length > 0) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_missing',
+        `Catalog pricing for "${catalogModel.id}" is missing ${hygiene.missing_price_dimensions.join(', ')} price metadata.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.placeholder) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_placeholder',
+        `Catalog pricing for "${catalogModel.id}" is placeholder/manual-review metadata; add explicit pricing for production cost routing.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.stale) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_stale',
+        `Catalog pricing for "${catalogModel.id}" is ${hygiene.age_days} day(s) old; refresh catalog.override.yaml or verify manually.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.unit_mismatches.length > 0) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_unit_mismatch',
+        `Catalog pricing units for "${catalogModel.id}" do not fully match ${hygiene.unit_mismatches.join(', ')} workloads.`,
+        modelPath,
+      ),
+    );
+  }
+  if (costOptimization && !catalogModelToModelPricing(catalogModel)) {
+    issues.push(
+      issue(
+        'warning',
+        'cost_routing_pricing_missing',
+        `routing.optimization=cost needs input/output token pricing for "${catalogModel.id}" or an explicit models_pricing override.`,
+        modelPath,
+      ),
+    );
+  }
+}
+
+function hasExplicitPricing(
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  node: Record<string, unknown>,
+  modelId: string,
+): boolean {
+  const topLevelPricing = config.models_pricing;
+  if (isRecord(topLevelPricing) && isRecord(topLevelPricing[modelId])) {
+    return true;
+  }
+  const modelCapabilities = node.model_capabilities;
+  if (!isRecord(modelCapabilities)) return false;
+  const capability = modelCapabilities[modelId];
+  return isRecord(capability) && isRecord(capability.pricing);
 }
 
 function normalizeEndpointPath(value: string): string {
@@ -4587,8 +4711,17 @@ function isLocalNode(node: Record<string, unknown>): boolean {
 function addSharedDiagnostics(
   config: Partial<GatewayConfig>,
   issues: ConfigValidationIssue[],
+  catalog?: ProviderCatalog,
 ): void {
   for (const diagnostic of buildNodeModelDiagnostics(config)) {
+    if (
+      catalog &&
+      diagnostic.code === 'missing_model_pricing' &&
+      diagnostic.model &&
+      catalogModelToModelPricing(findCatalogModel(catalog, diagnostic.model))
+    ) {
+      continue;
+    }
     const severity = diagnostic.code.startsWith('route_references_')
       ? 'error'
       : 'warning';
