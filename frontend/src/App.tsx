@@ -14,6 +14,9 @@ const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default:
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeysPage').then((m) => ({ default: m.ApiKeysPage })))
 const ShadowPage = lazy(() => import('@/pages/ShadowPage').then((m) => ({ default: m.ShadowPage })))
 const RouteExplanationPage = lazy(() => import('@/pages/RouteExplanationPage').then((m) => ({ default: m.RouteExplanationPage })))
+const ConfigAuditPage = lazy(() => import('@/pages/ConfigAuditPage').then((m) => ({ default: m.ConfigAuditPage })))
+const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ default: m.BenchmarkPage })))
+const ProviderCatalogPage = lazy(() => import('@/pages/ProviderCatalogPage').then((m) => ({ default: m.ProviderCatalogPage })))
 
 function RouteFallback() {
   return (
@@ -46,6 +49,7 @@ export function App() {
         <Route path="/" element={page(<DashboardPage />)} />
         <Route path="/logs" element={page(<LogsPage />)} />
         <Route path="/nodes" element={page(<NodesPage />)} />
+        <Route path="/catalog" element={page(<ProviderCatalogPage />)} />
         <Route path="/routing" element={page(<RoutingPage />)} />
         <Route path="/budget" element={page(<BudgetPage />)} />
         <Route path="/api-keys" element={page(<ApiKeysPage />)} />
@@ -54,6 +58,8 @@ export function App() {
         <Route path="/shadow" element={page(<ShadowPage />)} />
         <Route path="/route-decisions" element={page(<RouteExplanationPage />)} />
         <Route path="/route-decisions/:requestId" element={page(<RouteExplanationPage />)} />
+        <Route path="/config-audit" element={page(<ConfigAuditPage />)} />
+        <Route path="/benchmarks" element={page(<BenchmarkPage />)} />
       </Route>
     </Routes>
   )

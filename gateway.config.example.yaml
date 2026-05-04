@@ -8,6 +8,15 @@
 #   ${VAR}            — required, fails if not set
 #   ${VAR:-default}   — optional, uses default if not set
 #
+# v0.9 also supports runtime secret references:
+#   ${env:VAR}
+#   ${vault:path/to/secret#field}
+#   ${aws-sm:secret-name#field}
+#   ${gcp-sm:secret-name#field}
+# Only env references are enabled by default. Vault/AWS/GCP require the
+# secret_manager section below and are resolved at request time, never returned
+# by Dashboard APIs.
+#
 # Validate before running:
 #   npm run validate:config -- --config gateway.config.yaml
 # ============================================================
@@ -83,6 +92,8 @@ auth:
 # If set, the dashboard UI requires a password to access.
 # On first startup the plain-text password is auto-hashed with bcrypt
 # and the hash is written back to this file.
+# For read-only mounts such as Kubernetes ConfigMaps, precompute a bcrypt hash
+# and pass it through an environment variable instead.
 # If omitted, the dashboard is open to everyone (backwards-compatible).
 # dashboard:
 #   password: "my-secret-password"
@@ -93,6 +104,16 @@ auth:
 # hot_reload:
 #   watch: false
 #   debounce_ms: 500
+
+# Local config audit + rollback (optional)
+# Enabled by default. Snapshots are stored in the local SQLite/Postgres
+# database with literal secrets redacted; rollback validates the target config
+# before writing and keeps the current config on failure.
+# config_audit:
+#   enabled: true
+#   max_versions: 50
+#   max_events: 200
+#   capture_startup_snapshot: false
 
 # ============================================================
 # Provider / Model Catalog Overrides (optional)
@@ -106,9 +127,56 @@ auth:
 #   npm run catalog -- show openai
 #   npm run catalog -- import --file ./catalog.override.yaml
 #   npm run catalog -- validate
+#   npm run catalog -- validate --pricing
+#   npm run catalog -- export --include-pricing --out ./catalog.merged.yaml
 # ============================================================
 # catalog:
 #   override_file: ./catalog.override.yaml
+
+# ============================================================
+# Secret Manager References (optional)
+# ============================================================
+# Default behavior keeps local env references enabled and external backends
+# disabled. Use ${env:OPENAI_API_KEY} in provider api_key fields when you want
+# runtime resolution instead of startup-time ${OPENAI_API_KEY} interpolation.
+#
+# Supported reference locations:
+#   - nodes[].api_key
+#   - nodes[].headers
+#   - health/realtime provider auth inherited from node auth fields
+#   - control_plane.registration_token
+#
+# External backends are SDK-less HTTP adapters and must be explicitly enabled.
+# Resolved values are never written to logs, call logs, Dashboard config,
+# route traces, compatibility results, or catalog overrides.
+# ============================================================
+# secret_manager:
+#   cache_ttl_seconds: 300
+#   failure_policy: fail_closed        # fail_closed | fail_open_for_optional
+#   backends:
+#     env:
+#       enabled: true
+#     vault:
+#       enabled: false
+#       address: "${env:VAULT_ADDR}"
+#       token: "${env:VAULT_TOKEN}"
+#       mount: secret
+#       kv_version: 2
+#       timeout_ms: 5000
+#     aws_sm:
+#       enabled: false
+#       region: "${env:AWS_REGION:-us-east-1}"
+#       # endpoint: "http://localhost:4566" # Optional for LocalStack/mocks
+#       access_key_id: "${env:AWS_ACCESS_KEY_ID}"
+#       secret_access_key: "${env:AWS_SECRET_ACCESS_KEY}"
+#       session_token: "${env:AWS_SESSION_TOKEN:-}"
+#       timeout_ms: 5000
+#     gcp_sm:
+#       enabled: false
+#       project_id: "${env:GOOGLE_CLOUD_PROJECT}"
+#       access_token: "${env:GCP_SECRET_MANAGER_TOKEN:-}"
+#       use_metadata: true
+#       timeout_ms: 5000
 
 # ============================================================
 # Cluster Mode — optional Redis Pub/Sub multi-instance inventory
@@ -144,10 +212,11 @@ auth:
 # proxy route, or API endpoint. A node can expose one or more models.
 #
 # v0.8 includes a local static Provider / Model Catalog used by Dashboard
-# Add Node and `npm run validate:config`. The catalog is advisory and does
-# not auto-update online. Pricing entries in the catalog are often marked
-# manual_review_required, so keep production cost routing values in
-# models_pricing or model_capabilities[].pricing below.
+# Add Node and `npm run validate:config`. v0.9 adds pricing hygiene and
+# cost-routing fallback from the merged built-in + override catalog. The catalog
+# is advisory and does not auto-update online. Built-in prices are often marked
+# manual_review_required/low confidence, so production billing should still use
+# verified values in models_pricing or model_capabilities[].pricing below.
 #
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
@@ -193,6 +262,8 @@ nodes:
     # video_status_endpoint: "/v1/videos/:id"              # Optional async video status endpoint
     # video_content_endpoint: "/v1/videos/:id/content"
     # video_cancel_endpoint: "/v1/videos/:id/cancel"
+    # Startup interpolation: api_key: "${OPENAI_API_KEY}"
+    # Runtime secret reference: api_key: "${env:OPENAI_API_KEY}"
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
@@ -514,6 +585,7 @@ budget:
 #   compare:
 #     store_prompts: false
 #     store_responses: false
+#     sample_max_chars: 4000  # Samples are redacted and truncated when explicit storage is enabled
 
 # ============================================================
 # Alerts — local webhook alerting (optional)
@@ -600,7 +672,8 @@ budget:
 # Model Pricing — Cost per 1M tokens (USD)
 # ============================================================
 # Used to calculate per-request costs and enforce budget limits.
-# Add entries for every model ID listed in your nodes above.
+# Explicit entries here override Provider Catalog fallback pricing.
+# Add entries for every production model ID listed in your nodes above.
 models_pricing:
   gpt-4o: { input: 2.50, output: 10.00 }
   gpt-4o-mini: { input: 0.15, output: 0.60 }
@@ -673,7 +746,9 @@ models_pricing:
 #   explicit store_responses: true.
 # - analytics-sink exports sanitized call-log metadata only.
 # - request-transform runs local rewrites only.
-# - guardrails runs local audit/block checks only.
+# - guardrails runs local PII, prompt-injection, schema, and policy checks.
+#   Findings contain metadata only; prompt/response text and media bytes are
+#   not stored by default.
 # ============================================================
 # plugins:
 #   - path: plugins/request-transform
@@ -692,8 +767,25 @@ models_pricing:
 #     config:
 #       enabled: true
 #       mode: audit
-#       input_patterns:
-#         - "(?i)secret project"
+#       max_findings_per_request: 50
+#       pii:
+#         enabled: true
+#         action: redact
+#         entities: [email, api_key, credit_card]
+#       prompt_injection:
+#         enabled: true
+#         action: block
+#       policies:
+#         - name: block-secret-project
+#           direction: input
+#           pattern: "(?i)secret project"
+#           action: block
+#       schema:
+#         enabled: false
+#         output:
+#           enabled: false
+#           action: audit
+#           trigger_fallback: false
 #
 #   - path: plugins/analytics-sink
 #     required: false

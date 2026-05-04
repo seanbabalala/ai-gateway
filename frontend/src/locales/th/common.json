@@ -1,7 +1,7 @@
 {
   "action.cancel": "ยกเลิก",
-  "action.closeSidebar": "ปิดแถบด้านข้าง",
   "action.close": "ปิด",
+  "action.closeSidebar": "ปิดแถบด้านข้าง",
   "action.confirm": "ยืนยัน",
   "action.create": "สร้าง",
   "action.delete": "ลบ",
@@ -11,6 +11,9 @@
   "action.save": "บันทึก",
   "action.signOut": "ออกจากระบบ",
   "action.toggleSidebar": "สลับแถบด้านข้าง",
+  "circuit.CLOSED": "ปิด",
+  "circuit.HALF_OPEN": "กึ่งเปิด",
+  "circuit.OPEN": "เปิด",
   "error.failedToLoad": "โหลดไม่สำเร็จครับ",
   "error.generic": "มีบางอย่างผิดพลาดครับ โปรดลองอีกครั้ง",
   "error.unauthorized": "ยังไม่ได้รับอนุญาตครับ",
@@ -23,6 +26,8 @@
   "nav.analytics": "การวิเคราะห์",
   "nav.apiKeys": "API Keys",
   "nav.budget": "งบประมาณ",
+  "nav.catalog": "แค็ตตาล็อก",
+  "nav.configAudit": "ตรวจสอบคอนฟิก",
   "nav.dashboard": "แดชบอร์ด",
   "nav.experiments": "การทดลอง",
   "nav.logs": "บันทึก",
@@ -53,7 +58,5 @@
   "tier.reasoning": "เหตุผล",
   "tier.simple": "ง่าย",
   "tier.standard": "มาตรฐาน",
-  "circuit.CLOSED": "ปิด",
-  "circuit.HALF_OPEN": "กึ่งเปิด",
-  "circuit.OPEN": "เปิด"
+  "nav.benchmarks": "เบนช์มาร์ก"
 }

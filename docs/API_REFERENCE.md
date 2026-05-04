@@ -265,14 +265,21 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
+| `GET` | `/api/dashboard/benchmarks/report` | Read-only local benchmark report from call-log metadata |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
 | `GET` | `/api/dashboard/namespaces` | Local namespace policies and budget summaries |
 | `GET` | `/api/dashboard/shadow` | Read-only shadow traffic status and sanitized recent results |
+| `GET` | `/api/dashboard/shadow/report` | Read-only primary vs shadow comparison report with success, latency, cost, token, fallback, confidence, and risk fields |
+| `GET` | `/api/dashboard/shadow/results/:id/comparison` | Single shadow result comparison paired with the primary call log by request id |
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
+| `GET` | `/api/dashboard/config/versions` | List local sanitized config versions for audit and rollback |
+| `GET` | `/api/dashboard/config/versions/:id` | Read one sanitized config version snapshot |
+| `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore a previous local config version |
+| `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
@@ -310,6 +317,60 @@ For multimodal and capability-specific requests, traces may include:
 - `candidate_targets[].capability_evidence.catalog_source`
 
 These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.
+
+### Config Audit And Rollback
+
+The v0.9 Dashboard API exposes local config version history and audit events. It is backed by SQLite by default and PostgreSQL when configured; it does not require SiftGate Cloud.
+
+`GET /api/dashboard/config/versions` returns version metadata:
+
+```json
+{
+  "data": [
+    {
+      "version_id": "cfgv_m...",
+      "created_at": "2026-05-04T12:00:00.000Z",
+      "created_by": "dashboard:dashboard",
+      "source": "dashboard",
+      "checksum": "sha256...",
+      "node_count": 2,
+      "node_ids": ["openai", "anthropic"],
+      "route_tiers": ["standard"]
+    }
+  ],
+  "pagination": { "limit": 50, "count": 1 }
+}
+```
+
+`GET /api/dashboard/config/versions/:id` includes `sanitized_config`. Literal provider keys, dashboard password hashes, raw auth headers, and secret-like fields are redacted; raw provider key values are never returned.
+
+`POST /api/dashboard/config/versions/:id/rollback` accepts an optional reason:
+
+```json
+{
+  "reason": "Restore last known good routing config"
+}
+```
+
+Rollback parses and validates the target snapshot first. If validation or secret rehydration fails, SiftGate keeps the current config and returns `400` with a clear message.
+
+`GET /api/dashboard/config/audit-events` supports optional `limit`, `action`, `target`, and `result=success|failure` filters. Events record actor, action, target, before/after summaries, result, failure reason, source, and related version ids.
+
+### Shadow Comparison Report
+
+`GET /api/dashboard/shadow/report` supports `namespace`, `api_key`, `api_key_id`, `node`, `model`, `period`, and `source_format` filters. Node/model filters match either the primary side or the shadow side.
+
+The report is calculated by pairing `shadow_traffic_results.request_id` with the primary `call_logs.request_id`. It returns `primary_success_rate`, `shadow_success_rate`, `latency_delta_ms`, `p50_latency_comparison`, `p95_latency_comparison`, `cost_delta_usd`, `potential_savings_usd`, `token_delta`, `fallback_delta`, `quality_sample_coverage`, `confidence`, `risk_notes`, and grouped primary-to-shadow pair rows.
+
+`GET /api/dashboard/shadow/results/:id/comparison` returns a single result comparison with primary status, shadow status, deltas, privacy flags, and risk notes. These endpoints are read-only and do not apply routing changes. They do not expose raw headers, provider keys, media bytes, video bytes, or prompt/response samples unless local comparison storage was explicitly enabled; stored samples are redacted and truncated before persistence and response.
+
+### Benchmark Report
+
+`GET /api/dashboard/benchmarks/report` summarizes local gateway behavior from `call_logs`. It supports `period`, `namespace`, `api_key_id`, legacy `api_key`, `node`, `model`, `source_format`, and `limit` filters.
+
+The report includes total requests, success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimates, cost and token summaries, status-code distribution, `node:model` breakdown, source-format breakdown, source-family breakdown for chat/responses/messages/embeddings/rerank/images/audio/video/realtime, and route-trace coverage.
+
+This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
 
 ### Provider Compatibility Matrix
 

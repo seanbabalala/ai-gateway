@@ -17,6 +17,123 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 已发布 — v0.9.0 承接 v0.7 backlog，完成本地运维、安全、治理、部署和迁移能力 | ✅ Released |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 信任基础）
+
+**v0.9.0 发布状态**：v0.7 不再单独发布；v0.9 承接原 v0.7 Operations + Trust backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：本地配置审计与配置版本回滚
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：让开源 Data Plane 在不依赖 Cloud 的情况下具备本地配置版本、审计事件和安全 rollback 能力
+- **实现方案**：
+  - 新增 `config_versions` 与 `config_audit_events` 本地表，SQLite 默认可用，PostgreSQL 兼容
+  - `config_audit` 配置支持 `enabled`、`max_versions`、`max_events`、`capture_startup_snapshot`
+  - Dashboard reload、node create/update/delete、routing update、Dashboard API key 管理和 rollback 都记录审计事件
+  - 版本快照保存安全 YAML：provider API key、dashboard password hash、raw auth headers、secret/token/password-like 字段脱敏
+  - rollback 先解析和校验目标配置；如果 secret 不能从当前本地配置安全回填，或配置校验失败，则保留当前配置
+  - Dashboard 新增 Config Audit 只读页面：版本列表、脱敏版本详情、审计事件流、确认式 rollback
+  - `migrate-db` 覆盖 `config_versions` 与 `config_audit_events`
+  - 新增 `docs/CONFIG_AUDIT_ROLLBACK.md`，并更新 API、Architecture、Production 文档
+
+### P0：Secret Manager References
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：让开源 Data Plane 在不引入企业私有依赖的前提下支持可选 secret reference，减少明文 provider key 和控制面 token 出现在本地配置中的风险
+- **实现方案**：
+  - 支持 `${env:OPENAI_API_KEY}`、`${vault:path/to/secret#field}`、`${aws-sm:secret-name#field}`、`${gcp-sm:secret-name#field}`
+  - 默认只启用 env；Vault/AWS/GCP 必须在 `secret_manager.backends` 显式开启
+  - `SecretReferenceResolverService` 提供本地 TTL cache 与 `fail_closed` / `fail_open_for_optional` 行为
+  - Vault/AWS/GCP 第一版使用 SDK-less HTTP/mockable adapter，不引入重量级云 SDK
+  - 覆盖 `nodes[].api_key`、`nodes[].headers`、Active Health Probe、Realtime upstream auth、Provider Compatibility Test、Video provider proxy 与 `control_plane.registration_token`
+  - Dashboard config/API/log/route trace/compatibility result 不返回 resolved secret；literal secret 与敏感 headers 继续脱敏
+  - Config validation 诊断未启用 backend、格式错误、env 未设置、secret-manager 配置形状与 catalog override 中的疑似 secret
+
+### Shadow Traffic Comparison Report
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：把 v0.5 的只读 shadow results 升级为灰度决策报告，但不自动修改 routing 配置
+- **实现方案**：
+  - 新增 `GET /api/dashboard/shadow/report`，按 namespace、API key、node、model、period、source format 过滤
+  - 新增 `GET /api/dashboard/shadow/results/:id/comparison`，按单条 shadow result 返回主路径与 shadow 指标差异
+  - 报告输出 `primary_success_rate`、`shadow_success_rate`、`latency_delta_ms`、p50/p95 latency comparison、`cost_delta_usd`、`potential_savings_usd`、`token_delta`、`fallback_delta`、`quality_sample_coverage`、`confidence`、`risk_notes`
+  - 通过 `request_id` 将 `shadow_traffic_results` 与 `call_logs` 配对，shadow 成本使用本地 `models_pricing` / node model capability pricing 估算
+  - Dashboard Shadow 页面新增 overview cards、primary vs shadow table、risk/confidence labels 与 7 语言本地化
+  - 默认不保存 prompt、response、raw headers、provider key、media bytes、video bytes
+  - 如果显式开启 `shadow.compare.store_prompts` 或 `store_responses`，样本会内置脱敏并按 `shadow.compare.sample_max_chars` 截断，Dashboard 与 config validation 都会提示风险
+  - 页面保持只读，不提供自动应用 routing 修改的按钮或 API 调用
+
+### P0：官方 Guardrails 插件升级
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：把 `plugins/guardrails` 从 skeleton 升级为可用的本地安全插件，同时保持默认 disabled/no-op 和隐私安全默认值
+- **实现方案**：
+  - 支持 PII detection，并可按配置 `audit`、`redact` 或 `block`
+  - 支持 lightweight prompt injection checks，例如忽略系统指令、隐藏 prompt 泄露、jailbreak、developer mode 等常见模式
+  - 支持 schema validation helper，覆盖安全的 request/response metadata 文档或 JSON output
+  - 支持 `policies[]` named allow/block/redact/audit rules，保留 legacy `input_patterns` / `output_patterns`
+  - 支持 input hook、output hook 与 conservative streaming delta handling
+  - 默认不保存 prompt/response；finding 只包含 `request_id`、rule、kind、action、path、count、schema error summary 等 metadata
+  - 与 structured output fallback 保持兼容：核心 fallback 继续由 `routing.fallback_policy.structured_output` 处理；guardrails schema finding 可按配置 block 并记录 fallback intent metadata
+  - 插件继续进入 `dist-runtime-plugins`，兼容生产 Docker
+
+### P0：Helm Chart 与 Kubernetes Manifests
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：补齐开源 Data Plane 的 Kubernetes 部署入口，让用户可以从 Docker Compose 平滑进入集群部署
+- **实现方案**：
+  - 新增 `deploy/helm/siftgate` Helm chart
+  - 新增 `deploy/kubernetes/base` Kustomize/plain manifests
+  - 默认 `values.yaml` 保持单机可用：memory state backend、SQLite PVC、无 Cloud、无企业镜像、无真实 secrets
+  - Helm values 支持 Redis、PostgreSQL、Ingress、HPA、PodDisruptionBudget、ServiceMonitor、existing Secret/ConfigMap、resources、persistence
+  - Kubernetes Secret 示例只包含 placeholder，不提交真实 provider key
+  - gateway config 示例覆盖 v0.8 Provider Catalog、多模态 media/audio/image、structured output、realtime disabled、SQLite/memory defaults 等关键字段
+  - 新增 `npm run validate:k8s`，检查 YAML 解析、模板存在、Cloud 默认关闭、secret hygiene、image/port/config mount 基础正确性
+
+### P1：Benchmark Report API 与 Dashboard 页面
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：把本地 call_log 变成可读的性能证据页，帮助用户比较节点、模型、协议入口和部署变化，但不自动修改 routing 配置
+- **实现方案**：
+  - 新增 `GET /api/dashboard/benchmarks/report`
+  - 报告包含 total requests、success/error/fallback/cache rate、p50/p75/p95/p99 latency、throughput estimate、cost/token summary、status code distribution、node:model breakdown、source_format/source_family breakdown
+  - source breakdown 覆盖 chat、responses、messages、embeddings、rerank、images、audio、video、realtime
+  - 支持 `period`、`namespace`、`api_key_id` / legacy `api_key`、`node`、`model`、`source_format` 过滤
+  - route trace coverage 会提示性能样本中有多少请求可继续打开 Route Explanation
+  - Dashboard 新增只读 Benchmarks 页面，展示 methodology notes，避免用户把本地样本误读为严格云 benchmark
+  - 增强 `npm run benchmark:upstream`，支持 `GATEWAY_BENCH_OUTPUT=report.json` 输出 JSON 摘要
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
+
+### P1：兼容迁移工具扩展
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：降低从 LiteLLM、New API、One API 迁移到 SiftGate OSS Data Plane 的配置成本，同时允许把 SiftGate 配置导出成相邻网关 scaffold，方便评估和回迁
+- **实现方案**：
+  - 保留 `siftgate migrate --from litellm --config ./litellm_config.yaml`
+  - 新增 `--from newapi` 与 `--from oneapi`，将 channel config 转为 SiftGate `gateway.config.yaml`
+  - 新增 `--to litellm|newapi|oneapi`，从 SiftGate `gateway.config.yaml` 生成 scaffold
+  - 默认不覆盖已有输出文件；`--force` 才允许覆盖，`--overwrite` 作为旧脚本兼容别名
+  - 映射 provider、model、base URL、API key env ref、fallback/router 设置和 v0.8 模型桶：`models`、`embedding_models`、`rerank_models`、`image_models`、`audio_models`、`video_models`、`realtime_models`
+  - 使用 Provider Catalog 生成 endpoint、pricing、capability、context/dimensions 等 hints，并在报告中标注 pricing/capability confidence
+  - 对无法准确映射的源字段写入 `manual_actions` 或 `partially_supported`，避免静默丢失
+  - 不复制 literal provider API key；改写为环境变量引用并写入手动处理项
+  - 补 LiteLLM、New API、One API、SiftGate v0.8 fixtures，以及 CLI、报告、overwrite protection 单测
+
+### Provider Catalog Pricing Hygiene
+
+- **状态**：✅ v0.9.0 已发布
+- **目标**：复用 v0.8 Provider / Model Catalog 与 `catalog.override.yaml`，补齐价格元数据卫生、过期检查和 cost routing fallback
+- **实现方案**：
+  - 不新增第二套 Model Catalog；继续使用 built-in + local override 的合并 catalog
+  - pricing metadata 扩展 `currency`、`units`、image/audio/video/rerank/embedding price/unit、`stale_after_days`、`pricing_confidence`
+  - Config validation 输出 pricing hygiene warnings：缺失、placeholder、stale、modality unit mismatch、`routing.optimization=cost` 缺必要价格
+  - Cost/context routing 在显式 node/model pricing 与 `models_pricing` 缺失时回退到 merged catalog pricing；显式用户配置永远优先
+  - Dashboard 新增只读 Provider Catalog 页面，展示 freshness、manual review、source、confidence、override 状态
+  - Catalog CLI 支持 `siftgate catalog validate --pricing` 与 `siftgate catalog export --include-pricing`
+  - 第一版不联网抓官网价格，避免不稳定网络更新和 provider docs churn
 
 ---
 

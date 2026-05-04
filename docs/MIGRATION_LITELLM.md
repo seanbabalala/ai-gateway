@@ -1,13 +1,16 @@
 # LiteLLM Migration
 
 SiftGate can generate a starter `gateway.config.yaml` from a LiteLLM YAML config.
+The broader compatibility migrator also supports New API and One API channel
+imports plus SiftGate-to-LiteLLM/New API/One API scaffold exports; see
+[Compatibility Migration](MIGRATION_COMPAT.md).
 
 ```bash
 npm run build
 node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
 ```
 
-The command defaults to `gateway.config.yaml` in the current directory. It refuses to overwrite an existing file unless you pass `--overwrite`.
+The command defaults to `gateway.config.yaml` in the current directory. It refuses to overwrite an existing file unless you pass `--force` (`--overwrite` remains accepted for older scripts).
 
 ## Options
 
@@ -16,6 +19,7 @@ siftgate migrate --from litellm --config ./litellm_config.yaml
 siftgate migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
 siftgate migrate --from litellm --config ./litellm_config.yaml --dry-run
 siftgate migrate --from litellm --config ./litellm_config.yaml --json
+siftgate migrate --to litellm --config ./gateway.config.yaml --out ./litellm.generated.yaml
 ```
 
 | Option | Description |
@@ -23,7 +27,8 @@ siftgate migrate --from litellm --config ./litellm_config.yaml --json
 | `--from litellm` | Required source type |
 | `--config <path>` | LiteLLM YAML path |
 | `--out <path>` | Output SiftGate YAML path |
-| `--overwrite` | Allow replacing the output file |
+| `--force` | Allow replacing the output file |
+| `--overwrite` | Backward-compatible alias for `--force` |
 | `--dry-run` | Print generated YAML without writing |
 | `--json` | Print machine-readable report and generated config |
 
@@ -36,6 +41,7 @@ siftgate migrate --from litellm --config ./litellm_config.yaml --json
 - `router_settings.num_retries` and known retry defaults.
 - Known routing strategies: LiteLLM latency routing becomes `least_latency`, shuffle/random becomes `random`, and unknown strategies become `weighted` with manual review notes.
 - LiteLLM per-token pricing fields become SiftGate per-1M-token `models_pricing`.
+- SiftGate v0.8 model buckets are preserved when exporting back to LiteLLM through `model_info.mode` scaffold fields.
 
 ## Manual Review
 

@@ -1,7 +1,7 @@
 {
   "action.cancel": "취소",
-  "action.closeSidebar": "사이드바 닫기",
   "action.close": "닫기",
+  "action.closeSidebar": "사이드바 닫기",
   "action.confirm": "확인",
   "action.create": "생성",
   "action.delete": "삭제",
@@ -11,6 +11,9 @@
   "action.save": "저장",
   "action.signOut": "로그아웃",
   "action.toggleSidebar": "사이드바 전환",
+  "circuit.CLOSED": "닫힘",
+  "circuit.HALF_OPEN": "반열림",
+  "circuit.OPEN": "열림",
   "error.failedToLoad": "불러오기에 실패했습니다",
   "error.generic": "문제가 발생했습니다. 다시 시도해 주세요.",
   "error.unauthorized": "인증되지 않았습니다",
@@ -23,6 +26,8 @@
   "nav.analytics": "분석",
   "nav.apiKeys": "API 키",
   "nav.budget": "예산",
+  "nav.catalog": "카탈로그",
+  "nav.configAudit": "구성 감사",
   "nav.dashboard": "대시보드",
   "nav.experiments": "실험",
   "nav.logs": "로그",
@@ -53,7 +58,5 @@
   "tier.reasoning": "추론",
   "tier.simple": "단순",
   "tier.standard": "표준",
-  "circuit.CLOSED": "닫힘",
-  "circuit.HALF_OPEN": "반열림",
-  "circuit.OPEN": "열림"
+  "nav.benchmarks": "벤치마크"
 }

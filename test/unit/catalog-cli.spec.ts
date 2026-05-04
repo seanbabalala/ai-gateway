@@ -64,6 +64,33 @@ describe('siftgate catalog CLI', () => {
     expect(stdout.join('\n')).toContain('Exported merged catalog');
     const exported = yaml.load(fs.readFileSync(path.join(cwd, 'catalog.yaml'), 'utf8')) as any;
     expect(exported.providers.some((provider: any) => provider.id === 'openai')).toBe(true);
+    expect(exported.providers[0].models[0].pricing).toHaveProperty('pricing_confidence');
+  });
+
+  it('accepts explicit pricing validation and export flags', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const validateExit = await runCli(['catalog', 'validate', '--pricing'], io);
+    expect(validateExit).toBe(0);
+    expect(stderr).toHaveLength(0);
+    expect(stdout.join('\n')).toContain('Pricing hygiene: checked');
+
+    stdout.length = 0;
+    const exportExit = await runCli(
+      ['catalog', 'export', '--include-pricing', '--out', 'catalog.yaml'],
+      io,
+    );
+    expect(exportExit).toBe(0);
+    const exported = yaml.load(fs.readFileSync(path.join(cwd, 'catalog.yaml'), 'utf8')) as any;
+    const openAiModel = exported.providers
+      .find((provider: any) => provider.id === 'openai')
+      .models.find((model: any) => model.id === 'gpt-4o');
+    expect(openAiModel.pricing).toMatchObject({
+      currency: 'USD',
+      stale_after_days: 90,
+      pricing_confidence: 'low',
+    });
   });
 
   it('imports and validates a local override file', async () => {

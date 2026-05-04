@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   DEFAULT_CATALOG_OVERRIDE_FILE,
+  collectCatalogPricingHygieneIssues,
   formatCatalogAsYaml,
   loadMergedCatalog,
   resolveCatalogOverridePath,
@@ -19,10 +20,12 @@ import {
   validateConfigFile,
 } from "../config/config-validator";
 import {
-  LiteLlmMigrationResult,
-  formatMigrationReport,
-  migrateLiteLlmConfigFile,
-} from "./litellm-migrator";
+  ConfigMigrationResult,
+  MigrationConfigType,
+  formatConfigMigrationReport,
+  migrateConfigFile,
+  supportedMigrationType,
+} from "./config-migrator";
 import {
   DbMigrationResult,
   formatDbMigrationReport,
@@ -66,9 +69,11 @@ interface PluginArgs {
 
 interface MigrateArgs {
   from?: string;
+  to?: string;
   configPath?: string;
   outputPath?: string;
   overwrite: boolean;
+  force: boolean;
   dryRun: boolean;
   json: boolean;
   help: boolean;
@@ -97,6 +102,8 @@ interface CatalogArgs {
   force: boolean;
   json: boolean;
   help: boolean;
+  pricing: boolean;
+  includePricing: boolean;
 }
 
 const DEFAULT_IO: CliIO = {
@@ -263,9 +270,14 @@ function runCatalogValidateCommand(args: CatalogArgs, cli: CliIO): number {
         overridePath: args.overridePath,
       });
   const issues = result.issues;
+  const pricingIssues =
+    args.pricing && "catalog" in result
+      ? collectCatalogPricingHygieneIssues(result.catalog, cli.now())
+      : [];
+  const allIssues = [...issues, ...pricingIssues];
 
   if (args.json) {
-    cli.stdout(JSON.stringify({ ok: !catalogIssuesHaveErrors(issues), ...result }, null, 2));
+    cli.stdout(JSON.stringify({ ok: !catalogIssuesHaveErrors(allIssues), pricing_checked: args.pricing, ...result, issues: allIssues }, null, 2));
   } else {
     cli.stdout(
       formatCatalogValidationResult({
@@ -277,12 +289,13 @@ function runCatalogValidateCommand(args: CatalogArgs, cli: CliIO): number {
           "overrideFound" in result
             ? result.overrideFound
             : fs.existsSync(resolveCliPath(cli.cwd, args.filePath || DEFAULT_CATALOG_OVERRIDE_FILE)),
-        issues,
+        pricingChecked: args.pricing,
+        issues: allIssues,
       }),
     );
   }
 
-  return catalogIssuesHaveErrors(issues) ? 1 : 0;
+  return catalogIssuesHaveErrors(allIssues) ? 1 : 0;
 }
 
 function runCatalogImportCommand(args: CatalogArgs, cli: CliIO): number {
@@ -459,8 +472,15 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
     return 0;
   }
 
-  if (parsedArgs.from !== "litellm") {
-    cli.stderr("Only --from litellm is supported.");
+  const from = parsedArgs.from || (parsedArgs.to ? "siftgate" : undefined);
+  const to = parsedArgs.to || "siftgate";
+  if (!from) {
+    cli.stderr("--from is required unless --to is used for SiftGate export.");
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
+  if (!supportedMigrationType(from) || !supportedMigrationType(to)) {
+    cli.stderr("Supported migration types are: litellm, newapi, oneapi, siftgate.");
     cli.stderr(formatMigrateUsage());
     return 1;
   }
@@ -470,13 +490,16 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
     return 1;
   }
 
-  let result: LiteLlmMigrationResult;
+  let result: ConfigMigrationResult;
   try {
-    result = migrateLiteLlmConfigFile({
+    result = migrateConfigFile({
+      from: from as MigrationConfigType,
+      to: to as MigrationConfigType,
       configPath: parsedArgs.configPath,
       cwd: cli.cwd,
       outputPath: parsedArgs.outputPath,
       overwrite: parsedArgs.overwrite,
+      force: parsedArgs.force,
       write: !parsedArgs.dryRun,
     });
   } catch (error) {
@@ -487,14 +510,14 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
   if (parsedArgs.json) {
     cli.stdout(JSON.stringify(toJsonMigrationResult(result), null, 2));
   } else {
-    cli.stdout(formatMigrationReport(result));
+    cli.stdout(formatConfigMigrationReport(result));
     if (parsedArgs.dryRun) {
       cli.stdout("");
       cli.stdout(result.yaml);
     }
   }
 
-  return result.report.incompatible.length === 0 ? 0 : 2;
+  return result.report.unsupported.length === 0 && result.report.incompatible.length === 0 ? 0 : 2;
 }
 
 async function runMigrateDbCommand(
@@ -676,6 +699,8 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
     force: false,
     json: false,
     help: false,
+    pricing: false,
+    includePricing: false,
   };
   const [action, ...rest] = args;
 
@@ -701,6 +726,14 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
     }
     if (arg === "--force") {
       parsed.force = true;
+      continue;
+    }
+    if (arg === "--pricing") {
+      parsed.pricing = true;
+      continue;
+    }
+    if (arg === "--include-pricing") {
+      parsed.includePricing = true;
       continue;
     }
     if (arg === "--file" || arg === "-f") {
@@ -743,6 +776,7 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
 function parseMigrateArgs(args: string[]): MigrateArgs {
   const parsed: MigrateArgs = {
     overwrite: false,
+    force: false,
     dryRun: false,
     json: false,
     help: false,
@@ -762,6 +796,10 @@ function parseMigrateArgs(args: string[]): MigrateArgs {
       parsed.overwrite = true;
       continue;
     }
+    if (arg === "--force") {
+      parsed.force = true;
+      continue;
+    }
     if (arg === "--dry-run") {
       parsed.dryRun = true;
       continue;
@@ -773,6 +811,15 @@ function parseMigrateArgs(args: string[]): MigrateArgs {
     }
     if (arg.startsWith("--from=")) {
       parsed.from = requireInlineValue(arg, "--from");
+      continue;
+    }
+    if (arg === "--to") {
+      parsed.to = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--to=")) {
+      parsed.to = requireInlineValue(arg, "--to");
       continue;
     }
     if (arg === "--config" || arg === "-c") {
@@ -1004,6 +1051,8 @@ function formatCatalogProvider(
     `Overridden: ${provider.overridden ? "yes" : "no"}`,
     `Endpoints: ${endpointSummary || "none"}`,
     `Capabilities: ${(provider.capabilities || []).join(", ") || "none"}`,
+    `Pricing source: ${provider.pricing?.source || "model-level"}`,
+    `Pricing review: ${provider.pricing?.manual_review_required ? "required" : "model-level"}`,
     "",
     "Models:",
     ...provider.models.map((model) =>
@@ -1011,6 +1060,9 @@ function formatCatalogProvider(
         `  - ${model.id}`,
         `modalities=${model.modalities.join(",")}`,
         `capabilities=${model.capabilities.join(",") || "none"}`,
+        `pricing=${model.pricing?.source || "missing"}`,
+        `confidence=${model.pricing?.pricing_confidence || "unknown"}`,
+        `updated=${model.pricing?.last_updated || "unknown"}`,
         model.overridden ? "overridden=true" : "overridden=false",
       ].join(" "),
     ),
@@ -1020,12 +1072,14 @@ function formatCatalogProvider(
 function formatCatalogValidationResult(input: {
   overridePath: string;
   overrideFound: boolean;
+  pricingChecked?: boolean;
   issues: CatalogIssue[];
 }): string {
   return [
     "SiftGate catalog validation",
     `Override: ${input.overridePath}`,
     `Override found: ${input.overrideFound ? "yes" : "no"}`,
+    `Pricing hygiene: ${input.pricingChecked ? "checked" : "not checked"}`,
     "",
     formatCatalogIssueGroup("Errors", catalogIssuesBySeverity(input.issues, "error")),
     "",
@@ -1135,11 +1189,14 @@ function toJsonResult(
   };
 }
 
-function toJsonMigrationResult(result: LiteLlmMigrationResult): object {
+function toJsonMigrationResult(result: ConfigMigrationResult): object {
   return {
+    sourceType: result.sourceType,
+    targetType: result.targetType,
     sourcePath: result.sourcePath,
     outputPath: result.outputPath,
     report: result.report,
+    output: result.output,
     config: result.config,
   };
 }
@@ -1156,7 +1213,8 @@ function formatUsage(): string {
     `  siftgate plugin install <path|@siftgate/plugin-name> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
-    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
     "",
     "Commands:",
@@ -1173,14 +1231,16 @@ function formatCatalogUsage(): string {
     "Usage:",
     "  siftgate catalog list [--override catalog.override.yaml] [--json]",
     "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
-    "  siftgate catalog validate [--file catalog.override.yaml] [--override catalog.override.yaml] [--json]",
-    "  siftgate catalog export [--override catalog.override.yaml] [--out catalog.yaml] [--json]",
+    "  siftgate catalog validate [--pricing] [--file catalog.override.yaml] [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog export [--include-pricing] [--override catalog.override.yaml] [--out catalog.yaml] [--json]",
     "  siftgate catalog import --file catalog.override.yaml [--override catalog.override.yaml] [--force] [--json]",
     "",
     "Options:",
     "      --override <path>  Local override destination/source path (default: catalog.override.yaml)",
     "  -f, --file <path>      Override file to validate or import",
     "  -o, --out <path>       Write exported merged catalog to a file",
+    "      --pricing          Include pricing freshness/unit checks during validation",
+    "      --include-pricing  Accept explicit pricing export (pricing is included by default)",
     "      --force            Replace an existing override during import",
     "      --json             Print machine-readable JSON",
     "  -h, --help             Show help",
@@ -1220,13 +1280,17 @@ function formatPluginUsage(): string {
 function formatMigrateUsage(): string {
   return [
     "Usage:",
-    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from siftgate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
+    "  siftgate migrate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "",
     "Options:",
-    '      --from <source>    Source config type. Currently only "litellm"',
-    "  -c, --config <path>   LiteLLM config file to migrate",
-    "  -o, --out <path>      Output SiftGate config path (default: gateway.config.yaml)",
-    "      --overwrite       Allow overwriting the output file",
+    '      --from <source>    Source type: "litellm", "newapi", "oneapi", or "siftgate"',
+    '      --to <target>      Target type: "siftgate", "litellm", "newapi", or "oneapi"',
+    "  -c, --config <path>   Source config file to migrate",
+    "  -o, --out <path>      Output path (default depends on target)",
+    "      --force           Allow overwriting the output file",
+    "      --overwrite       Backward-compatible alias for --force",
     "      --dry-run         Print generated YAML instead of writing it",
     "      --json            Print machine-readable migration report",
     "  -h, --help            Show help",

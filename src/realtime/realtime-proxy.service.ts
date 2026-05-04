@@ -11,6 +11,7 @@ import type { Socket } from 'net';
 import { WebSocket as UpstreamWebSocket } from 'undici';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig } from '../config/gateway.config';
+import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import {
   GatewayApiKeyContext,
   GatewayApiKeyService,
@@ -134,6 +135,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly apiKeys: GatewayApiKeyService,
     private readonly adapterHost: HttpAdapterHost,
+    private readonly secretResolver: SecretReferenceResolverService,
   ) {}
 
   onModuleInit(): void {
@@ -417,7 +419,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
   ): Promise<InstanceType<typeof UpstreamWebSocket>> {
     const realtime = this.config.realtime;
     const url = this.buildUpstreamUrl(session.target.node, session.target.model);
-    const headers = this.buildUpstreamHeaders(session.target.node);
+    const headers = await this.buildUpstreamHeaders(session.target.node);
     const ws = new UpstreamWebSocket(url, { headers });
     (ws as unknown as { binaryType: string }).binaryType = 'arraybuffer';
 
@@ -826,19 +828,26 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     return url.toString();
   }
 
-  private buildUpstreamHeaders(node: NodeConfig): Record<string, string> {
+  private async buildUpstreamHeaders(node: NodeConfig): Promise<Record<string, string>> {
+    const nodeHeaders = await this.secretResolver.resolveRecord(node.headers, {
+      optional: true,
+      location: `nodes.${node.id}.headers`,
+    });
+    const apiKey = await this.secretResolver.resolveString(node.api_key, {
+      location: `nodes.${node.id}.api_key`,
+    });
     const headers: Record<string, string> = {
       'OpenAI-Beta': 'realtime=v1',
     };
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
-      headers.Authorization = `Bearer ${node.api_key}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
-    for (const [key, value] of Object.entries(node.headers || {})) {
+    for (const [key, value] of Object.entries(nodeHeaders)) {
       if (this.isForwardableUpstreamHeader(key) && typeof value === 'string') {
         headers[key] = value;
       }

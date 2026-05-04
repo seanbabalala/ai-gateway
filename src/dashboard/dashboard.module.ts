@@ -11,11 +11,15 @@ import { AuthModule } from '../auth/auth.module';
 import { ShadowModule } from '../shadow/shadow.module';
 import {
   CallLog,
+  ConfigAuditEvent,
+  ConfigVersion,
   ProviderCompatibilityResult,
   RouteDecisionLog,
 } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
+import { ConfigAuditService } from './config-audit.service';
+import { BenchmarkReportService } from './benchmark-report.service';
 
 @Module({
   imports: [
@@ -28,12 +32,19 @@ import { CatalogModule } from '../catalog/catalog.module';
     CatalogModule,
     TypeOrmModule.forFeature([
       CallLog,
+      ConfigAuditEvent,
+      ConfigVersion,
       RouteDecisionLog,
       ProviderCompatibilityResult,
     ]),
   ],
   controllers: [HealthController, DashboardController],
-  providers: [LogEventBus, ProviderCompatibilityService],
+  providers: [
+    LogEventBus,
+    ProviderCompatibilityService,
+    ConfigAuditService,
+    BenchmarkReportService,
+  ],
   exports: [LogEventBus],
 })
 export class DashboardModule {}

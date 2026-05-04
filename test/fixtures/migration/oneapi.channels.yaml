@@ -1,0 +1,22 @@
+data:
+  - id: 7
+    name: One API OpenAI channel
+    type: 1
+    base_url: https://api.openai.com
+    key: os.environ/OPENAI_API_KEY
+    models: gpt-4o-mini,text-embedding-3-small
+    model_mapping: '{"mini":"gpt-4o-mini"}'
+
+  - id: 8
+    name: One API Anthropic channel
+    type: 14
+    base_url: https://api.anthropic.com
+    key: ${ANTHROPIC_API_KEY}
+    models: claude-sonnet-4-20250514
+
+  - id: 9
+    name: Rerank channel
+    type: cohere
+    base_url: https://api.cohere.com
+    key: ${COHERE_API_KEY}
+    models: rerank-english-v3.0

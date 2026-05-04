@@ -1,0 +1,115 @@
+server:
+  port: 2099
+  host: 0.0.0.0
+database:
+  type: sqlite
+  path: ./data/gateway.db
+auth:
+  api_keys: []
+nodes:
+  - id: openai-prod
+    name: OpenAI Production
+    protocol: chat_completions
+    base_url: https://api.openai.com
+    endpoint: /v1/chat/completions
+    api_key: ${OPENAI_API_KEY}
+    models:
+      - gpt-4o
+      - gpt-4o-mini
+    embedding_models:
+      - text-embedding-3-small
+    image_models:
+      - gpt-image-1
+    audio_models:
+      - tts-1
+    realtime_models:
+      - gpt-4o-realtime-preview
+    model_aliases:
+      gpt4: gpt-4o
+    timeout_ms: 30000
+    max_context_tokens: 128000
+  - id: claude-prod
+    name: Claude Production
+    protocol: messages
+    base_url: https://api.anthropic.com
+    endpoint: /v1/messages
+    api_key: literal-secret-not-exported
+    auth_type: x-api-key
+    models:
+      - claude-sonnet-4-20250514
+    timeout_ms: 30000
+  - id: video-lab
+    name: Video Lab
+    protocol: chat_completions
+    base_url: https://video.example.test
+    endpoint: /v1/chat/completions
+    api_key: ${VIDEO_LAB_API_KEY}
+    models: []
+    video_models:
+      - veo-3.1-generate-preview
+    video_endpoint: /v1/videos/generations
+    timeout_ms: 120000
+routing:
+  tiers:
+    simple:
+      primary:
+        node: openai-prod
+        model: gpt-4o-mini
+      fallbacks:
+        - node: claude-prod
+          model: claude-sonnet-4-20250514
+    standard:
+      primary:
+        node: openai-prod
+        model: gpt-4o
+      fallbacks:
+        - node: claude-prod
+          model: claude-sonnet-4-20250514
+      strategy: least_latency
+      targets:
+        - node: openai-prod
+          model: gpt-4o
+          weight: 1
+        - node: claude-prod
+          model: claude-sonnet-4-20250514
+          weight: 1
+    complex:
+      primary:
+        node: claude-prod
+        model: claude-sonnet-4-20250514
+      fallbacks:
+        - node: openai-prod
+          model: gpt-4o
+    reasoning:
+      primary:
+        node: claude-prod
+        model: claude-sonnet-4-20250514
+      fallbacks:
+        - node: openai-prod
+          model: gpt-4o
+  scoring:
+    simple_max: -0.1
+    standard_max: 0.08
+    complex_max: 0.35
+budget:
+  daily_token_limit: 5000000
+  daily_cost_limit: 50
+  alert_threshold: 0.8
+models_pricing:
+  gpt-4o:
+    input: 2.5
+    output: 10
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.6
+  claude-sonnet-4-20250514:
+    input: 3
+    output: 15
+  text-embedding-3-small:
+    input: 0.02
+    output: 0
+cache:
+  enabled: false
+  ttl_seconds: 300
+  max_entries: 1000
+  exclude_tool_use: true

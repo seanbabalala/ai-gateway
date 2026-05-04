@@ -153,7 +153,7 @@ describe('LiteLLM migration', () => {
       },
     );
     expect(unsupportedCode).toBe(1);
-    expect(stderr.join('\n')).toContain('Only --from litellm is supported');
+    expect(stderr.join('\n')).toContain('Supported migration types are');
 
     stderr.length = 0;
     const overwriteCode = await runCli(

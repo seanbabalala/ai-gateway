@@ -62,8 +62,8 @@ describe('siftgate plugin CLI', () => {
       version: '1.2.3',
       required: true,
       gateway: {
-        required: '>=0.8.0 <0.9.0',
-        checked_with: '0.8.0',
+        required: '>=0.9.0 <1.0.0',
+        checked_with: '0.9.0',
       },
     });
     expect(fs.readFileSync(path.join(cwd, 'gateway.config.yaml'), 'utf8')).toBe('nodes: []\n');
@@ -79,7 +79,7 @@ describe('siftgate plugin CLI', () => {
           stdout: JSON.stringify({
             name: '@siftgate/plugin-guardrails',
             version: '2.0.0',
-            peerDependencies: { siftgate: '^0.8.0' },
+            peerDependencies: { siftgate: '^0.9.0' },
           }),
           stderr: '',
         };
@@ -170,7 +170,7 @@ describe('siftgate plugin CLI', () => {
       stdout: JSON.stringify({
         name: '@siftgate/plugin-future',
         version: '9.0.0',
-        peerDependencies: { siftgate: '>=0.9.0' },
+        peerDependencies: { siftgate: '>=1.0.0' },
       }),
       stderr: '',
     }));
@@ -182,6 +182,6 @@ describe('siftgate plugin CLI', () => {
     );
 
     expect(exitCode).toBe(1);
-    expect(stderr.join('\n')).toContain('requires SiftGate >=0.9.0');
+    expect(stderr.join('\n')).toContain('requires SiftGate >=1.0.0');
   });
 });

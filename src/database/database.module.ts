@@ -4,6 +4,8 @@ import { ConfigService } from '../config/config.service';
 import {
   BudgetRule,
   CallLog,
+  ConfigAuditEvent,
+  ConfigVersion,
   GatewayApiKey,
   NodeStatus,
   ProviderCompatibilityResult,
@@ -20,6 +22,8 @@ import {
         const shared = {
           entities: [
             CallLog,
+            ConfigAuditEvent,
+            ConfigVersion,
             BudgetRule,
             NodeStatus,
             GatewayApiKey,
@@ -51,6 +55,8 @@ import {
     }),
     TypeOrmModule.forFeature([
       CallLog,
+      ConfigAuditEvent,
+      ConfigVersion,
       BudgetRule,
       NodeStatus,
       ShadowTrafficResult,

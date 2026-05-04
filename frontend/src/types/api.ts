@@ -602,8 +602,83 @@ export interface ConfigResponse {
   }
   namespaces?: NamespaceInfo[]
   shadow?: ShadowTrafficStatus
+  config_audit?: {
+    enabled: boolean
+    max_versions: number
+    max_events: number
+    capture_startup_snapshot: boolean
+    storage: string
+    secrets: string
+  }
   models_pricing: Record<string, ModelPricing>
   diagnostics: ConfigDiagnostic[]
+}
+
+// ── Config Audit / Rollback ──
+
+export interface ConfigAuditPrivacy {
+  local_only: boolean
+  prompt_response_stored: boolean
+  raw_headers_stored: boolean
+  provider_keys_stored_in_audit: boolean
+  provider_keys_exposed_by_api: boolean
+  snapshot_storage: string
+}
+
+export interface ConfigVersionSummary {
+  id: number
+  version_id: string
+  created_at: string
+  created_by: string
+  source: 'dashboard' | 'cli' | 'reload' | 'rollback' | 'system'
+  checksum: string
+  config_path: string
+  runtime_version: number
+  node_count: number
+  node_ids: string[]
+  route_tiers: string[]
+  sanitized_summary: Record<string, unknown>
+}
+
+export interface ConfigVersionDetail extends ConfigVersionSummary {
+  sanitized_config: unknown
+  privacy: ConfigAuditPrivacy
+}
+
+export interface ConfigVersionsResponse {
+  data: ConfigVersionSummary[]
+  pagination: { limit: number; count: number }
+  privacy: ConfigAuditPrivacy
+}
+
+export interface ConfigAuditEvent {
+  id: number
+  event_id: string
+  timestamp: string
+  actor: string
+  action: string
+  target: string
+  before_summary: Record<string, unknown>
+  after_summary: Record<string, unknown>
+  result: 'success' | 'failure'
+  failure_reason: string | null
+  source: string | null
+  version_id: string | null
+  previous_version_id: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface ConfigAuditEventsResponse {
+  data: ConfigAuditEvent[]
+  pagination: { limit: number; count: number }
+  privacy: ConfigAuditPrivacy
+}
+
+export interface ConfigRollbackResponse extends ActionResponse {
+  target_version: ConfigVersionSummary
+  previous_version: ConfigVersionSummary | null
+  restored_version: ConfigVersionSummary | null
+  reload: unknown
 }
 
 // ── SSE Events ──
@@ -648,6 +723,147 @@ export interface CostAnalyticsResponse {
   byModel: CostAnalyticsGroupItem[]
   byNode: CostAnalyticsGroupItem[]
   byTier: CostAnalyticsGroupItem[]
+}
+
+// ── Benchmark Report ──
+
+export type BenchmarkCheckStatus = 'pass' | 'warn' | 'fail'
+
+export interface BenchmarkLatencySummary {
+  avg_ms: number
+  p50_ms: number
+  p75_ms: number
+  p95_ms: number
+  p99_ms: number
+  max_ms: number
+}
+
+export interface BenchmarkThroughputEstimate {
+  requests_per_minute: number
+  requests_per_second: number
+  period_requests_per_minute: number
+  basis: 'observed_active_window'
+}
+
+export interface BenchmarkCostSummary {
+  total_usd: number
+  avg_usd_per_request: number
+}
+
+export interface BenchmarkTokenSummary {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  avg_tokens_per_request: number
+  cache_creation_input_tokens: number
+  cache_read_input_tokens: number
+}
+
+export interface BenchmarkMetrics {
+  calls: number
+  total_requests: number
+  success: number
+  failed: number
+  success_rate: number
+  error_rate: number
+  fallback_rate: number
+  cache_hit_rate: number
+  cache_miss_rate: number
+  total_cost_usd: number
+  avg_cost_usd: number
+  total_tokens: number
+  avg_tokens: number
+  throughput_rpm: number
+  period_rpm: number
+  throughput: BenchmarkThroughputEstimate
+  cost_summary: BenchmarkCostSummary
+  token_summary: BenchmarkTokenSummary
+  latency_ms: BenchmarkLatencySummary
+}
+
+export interface BenchmarkCatalogEvidence {
+  known_model: boolean
+  provider: string | null
+  modalities: string[]
+  pricing_source: string | null
+  catalog_source: string | null
+}
+
+export interface BenchmarkCheck {
+  check: 'sample_size' | 'success_rate' | 'p95_latency' | 'p99_latency' | 'fallback_rate'
+  status: BenchmarkCheckStatus
+  value: number
+  actual: string
+  target: string
+}
+
+export interface BenchmarkGroup extends BenchmarkMetrics {
+  node_id: string
+  model: string
+  source_formats: string[]
+  status: BenchmarkCheckStatus
+  catalog: BenchmarkCatalogEvidence
+}
+
+export interface BenchmarkStatusBucket {
+  status_code: number
+  calls: number
+  rate: number
+}
+
+export interface BenchmarkErrorBucket {
+  error: string
+  calls: number
+}
+
+export interface BenchmarkReportResponse {
+  generated_at: string
+  period: '1h' | '24h' | '7d' | '30d' | '90d'
+  window: {
+    requested_since: string
+    observed_start: string | null
+    observed_end: string | null
+    active_minutes: number
+    sample_limit: number
+    truncated: boolean
+  }
+  filters: {
+    api_key: string | null
+    api_key_id: string | null
+    namespace: string | null
+    node: string | null
+    model: string | null
+    source_format: string | null
+  }
+  summary: BenchmarkMetrics
+  checks: BenchmarkCheck[]
+  by_node_model: BenchmarkGroup[]
+  by_source_format: Array<BenchmarkMetrics & { source_format: string; source_family: string }>
+  by_source_family: Array<BenchmarkMetrics & { source_family: string }>
+  status_breakdown: BenchmarkStatusBucket[]
+  top_errors: BenchmarkErrorBucket[]
+  route_trace_coverage: {
+    matched_requests: number
+    coverage_rate: number
+  }
+  comparison_guidance: Array<{
+    target: string
+    purpose: string
+    method: string
+  }>
+  methodology: {
+    source: 'call_logs'
+    synthetic_run_script: string
+    direct_baseline_required: boolean
+    notes: string[]
+  }
+  privacy: {
+    prompt_response_stored: false
+    raw_headers_stored: false
+    provider_keys_exposed: false
+    media_bytes_stored: false
+    metadata_only: true
+  }
 }
 
 // ── Cache ──
@@ -823,17 +1039,43 @@ export type CatalogAuthType =
 export interface CatalogPricing {
   input?: number | null
   output?: number | null
-  unit: string
-  currency: string
+  image?: number | null
+  audio?: number | null
+  video?: number | null
+  rerank?: number | null
+  embedding?: number | null
+  unit?: string
+  units?: Partial<Record<'input' | 'output' | 'image' | 'audio' | 'video' | 'rerank' | 'embedding', string>>
+  currency?: string
   source: string
   last_updated: string
   manual_review_required: boolean
+  stale_after_days?: number
+  pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
   notes?: string
+}
+
+export interface CatalogPricingHygiene {
+  status: 'fresh' | 'stale' | 'placeholder' | 'missing' | 'invalid'
+  currency: string | null
+  source: string | null
+  manual_review_required: boolean
+  pricing_confidence: 'high' | 'medium' | 'low' | 'unknown' | null
+  last_updated: string | null
+  age_days: number | null
+  stale_after_days: number | null
+  stale: boolean
+  placeholder: boolean
+  missing_price_dimensions: string[]
+  unit_mismatches: string[]
+  warnings: string[]
 }
 
 export interface CatalogModel {
   id: string
   name?: string
+  display_name?: string
+  provider?: string
   provider_id: string
   modalities: CatalogModality[]
   endpoints: CatalogEndpoint[]
@@ -847,11 +1089,14 @@ export interface CatalogModel {
     dimensions?: number[]
   }
   pricing: CatalogPricing
+  pricing_hygiene?: CatalogPricingHygiene
   structured_output?: boolean
   supports_streaming?: boolean
   supports_realtime?: boolean
   supports_rerank?: boolean
   manual_review_required?: boolean
+  source?: 'builtin' | 'override'
+  overridden?: boolean
   notes?: string
 }
 
@@ -872,11 +1117,16 @@ export interface CatalogProvider {
     source: string
     last_updated: string
     manual_review_required: boolean
+    stale_after_days?: number
+    pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
   }
+  pricing_hygiene?: CatalogPricingHygiene
   model_prefixes?: string[]
   tags?: string[]
   allows_unknown_models?: boolean
   manual_review_required?: boolean
+  source?: 'builtin' | 'override'
+  overridden?: boolean
   models: CatalogModel[]
 }
 
@@ -885,6 +1135,9 @@ export interface CatalogProvidersResponse {
   source: 'builtin_static'
   last_updated: string
   auto_update: false
+  override_file?: string
+  override_found?: boolean
+  issues?: Array<{ severity: string; code: string; message: string; path?: string }>
   providers: CatalogProvider[]
 }
 
@@ -893,6 +1146,9 @@ export interface CatalogModelsResponse {
   source: 'builtin_static'
   last_updated: string
   auto_update: false
+  override_file?: string
+  override_found?: boolean
+  issues?: Array<{ severity: string; code: string; message: string; path?: string }>
   models: CatalogModel[]
 }
 
@@ -1155,12 +1411,16 @@ export interface ShadowTrafficStatus {
   compare: {
     store_prompts: boolean
     store_responses: boolean
+    sample_max_chars?: number
   }
   privacy: {
     stores_prompts: boolean
     stores_responses: boolean
     raw_headers: boolean
     provider_keys: boolean
+    media_bytes?: boolean
+    video_bytes?: boolean
+    sample_redaction?: boolean
   }
 }
 
@@ -1185,6 +1445,147 @@ export interface ShadowTrafficResult {
   output_tokens: number
   prompt_sample: string | null
   response_sample: string | null
+}
+
+export interface ShadowReportFilters {
+  namespace?: string
+  api_key?: string
+  api_key_id?: string
+  node?: string
+  model?: string
+  period?: string
+  source_format?: string
+}
+
+export interface ShadowConfidence {
+  level: 'low' | 'medium' | 'high'
+  score: number
+}
+
+export interface ShadowComparisonPair {
+  primary_node: string
+  primary_model: string
+  shadow_node: string
+  shadow_model: string
+  calls: number
+  primary_success_rate: number | null
+  shadow_success_rate: number | null
+  primary_p50_latency_ms: number | null
+  shadow_p50_latency_ms: number | null
+  primary_p95_latency_ms: number | null
+  shadow_p95_latency_ms: number | null
+  cost_delta_usd: number
+  token_delta: number
+  fallback_delta: number
+}
+
+export interface ShadowComparisonReport {
+  generated_at: string
+  filters: {
+    namespace_id: string | null
+    api_key_id: string | null
+    api_key_name: string | null
+    node: string | null
+    model: string | null
+    period: string
+    source_format: string | null
+  }
+  window: {
+    start_at: string
+    end_at: string
+    rows: number
+    comparable: number
+    missing_primary_logs: number
+  }
+  primary_success_rate: number | null
+  shadow_success_rate: number | null
+  latency_delta_ms: number | null
+  p50_latency_comparison: {
+    primary_ms: number | null
+    shadow_ms: number | null
+    delta_ms: number | null
+  }
+  p95_latency_comparison: {
+    primary_ms: number | null
+    shadow_ms: number | null
+    delta_ms: number | null
+  }
+  cost_delta_usd: number
+  potential_savings_usd: number
+  token_delta: number
+  fallback_delta: number
+  quality_sample_coverage: number
+  confidence: ShadowConfidence
+  risk_notes: string[]
+  primary: {
+    calls: number
+    success_rate: number | null
+    p50_latency_ms: number | null
+    p95_latency_ms: number | null
+    total_cost_usd: number
+    total_tokens: number
+    fallback_rate: number | null
+  }
+  shadow: {
+    calls: number
+    success_rate: number | null
+    p50_latency_ms: number | null
+    p95_latency_ms: number | null
+    total_cost_usd: number
+    total_tokens: number
+    fallback_rate: number | null
+    pricing_missing: number
+  }
+  pairs: ShadowComparisonPair[]
+  privacy: ShadowTrafficStatus['privacy']
+}
+
+export interface ShadowResultComparison {
+  result_id: number
+  request_id: string
+  timestamp: string
+  source_format: string
+  namespace_id: string | null
+  api_key_id: string | null
+  api_key_name: string | null
+  primary: {
+    node: string
+    model: string
+    success: boolean | null
+    status_code: number | null
+    latency_ms: number | null
+    cost_usd: number | null
+    input_tokens: number
+    output_tokens: number
+    is_fallback: boolean | null
+    fallback_reason: string | null
+  }
+  shadow: {
+    node: string
+    model: string
+    success: boolean
+    status: string
+    status_code: number | null
+    latency_ms: number | null
+    estimated_cost_usd: number
+    input_tokens: number
+    output_tokens: number
+    error: string | null
+  }
+  deltas: {
+    latency_ms: number | null
+    cost_usd: number | null
+    tokens: number | null
+    fallback: number | null
+  }
+  samples: {
+    prompt_stored: boolean
+    response_stored: boolean
+    prompt_preview: string | null
+    response_preview: string | null
+  }
+  risk_notes: string[]
+  privacy: ShadowTrafficStatus['privacy']
 }
 
 export interface ShadowTrafficResponse {

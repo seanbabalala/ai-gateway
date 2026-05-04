@@ -3,14 +3,51 @@ import type { CapabilityEndpoint, Modality } from '../config/modality';
 
 export type CatalogSource = 'builtin' | 'override';
 
+export type CatalogPricingDimension =
+  | 'input'
+  | 'output'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'rerank'
+  | 'embedding';
+
+export type CatalogPricingConfidence = 'high' | 'medium' | 'low' | 'unknown';
+
 export interface CatalogPricing {
   input?: number;
   output?: number;
+  image?: number;
+  audio?: number;
+  video?: number;
+  rerank?: number;
+  embedding?: number;
+  /** Legacy default unit retained for existing overrides. Prefer units.* for modality-specific pricing. */
   unit?: string;
+  units?: Partial<Record<CatalogPricingDimension, string>>;
+  currency?: string;
   source: string;
   last_updated: string;
   manual_review_required: boolean;
+  stale_after_days?: number;
+  pricing_confidence?: CatalogPricingConfidence;
   notes?: string;
+}
+
+export interface CatalogPricingHygiene {
+  status: 'fresh' | 'stale' | 'placeholder' | 'missing' | 'invalid';
+  currency: string | null;
+  source: string | null;
+  manual_review_required: boolean;
+  pricing_confidence: CatalogPricingConfidence | null;
+  last_updated: string | null;
+  age_days: number | null;
+  stale_after_days: number | null;
+  stale: boolean;
+  placeholder: boolean;
+  missing_price_dimensions: CatalogPricingDimension[];
+  unit_mismatches: CatalogPricingDimension[];
+  warnings: string[];
 }
 
 export interface CatalogLimits {

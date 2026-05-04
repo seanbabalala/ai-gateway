@@ -195,6 +195,22 @@ function makeDashboard(overrides: Record<string, any> = {}) {
       },
     }),
     recent: jest.fn().mockResolvedValue([]),
+    comparisonReport: jest.fn().mockResolvedValue({
+      primary_success_rate: null,
+      shadow_success_rate: null,
+      latency_delta_ms: null,
+      p50_latency_comparison: { primary_ms: null, shadow_ms: null, delta_ms: null },
+      p95_latency_comparison: { primary_ms: null, shadow_ms: null, delta_ms: null },
+      cost_delta_usd: 0,
+      potential_savings_usd: 0,
+      token_delta: 0,
+      fallback_delta: 0,
+      quality_sample_coverage: 0,
+      confidence: { level: 'low', score: 0 },
+      risk_notes: [],
+      pairs: [],
+    }),
+    comparisonForResult: jest.fn().mockResolvedValue(null),
     ...overrides.shadowTraffic,
   };
 
@@ -291,6 +307,16 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     }),
     ...overrides.providerCompatibility,
   };
+  const configAudit = {
+    recordReload: jest.fn().mockResolvedValue(null),
+    listVersions: jest.fn().mockResolvedValue({ data: [], pagination: { limit: 50, count: 0 }, privacy: {} }),
+    getVersion: jest.fn().mockResolvedValue(null),
+    rollbackToVersion: jest.fn(),
+    listEvents: jest.fn().mockResolvedValue({ data: [], pagination: { limit: 100, count: 0 }, privacy: {} }),
+    recordManagementEvent: jest.fn().mockResolvedValue(null),
+    trackChange: jest.fn((_input, mutation) => mutation()),
+    ...overrides.configAudit,
+  };
 
   const controller = new DashboardController(
     config,
@@ -307,14 +333,17 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     gatewayApiKeys as any,
     shadowTraffic as any,
     providerCompatibility as any,
+    configAudit as any,
     catalog as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
+    overrides.secretResolver as any,
+    overrides.benchmarkReports as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -383,6 +412,42 @@ describe('DashboardController — getCostAnalytics', () => {
     const result = await controller.getCostAnalytics('30d', 'model');
 
     expect(result.period).toBe(30);
+  });
+});
+
+describe('DashboardController — benchmark report', () => {
+  it('should return a read-only benchmark report with filters', async () => {
+    const benchmarkReports = {
+      getReport: jest.fn().mockResolvedValue({
+        summary: { total_requests: 0, success_rate: 0 },
+        by_node_model: [],
+        by_source_format: [],
+      }),
+    };
+    const { controller } = makeDashboard({ benchmarkReports });
+
+    const result = await controller.getBenchmarkReport(
+      '7d',
+      'team-alpha',
+      undefined,
+      'key_123',
+      'openai',
+      'gpt-4o',
+      'chat_completions',
+      '250',
+    );
+
+    expect(result.summary.total_requests).toBe(0);
+    expect(benchmarkReports.getReport).toHaveBeenCalledWith({
+      period: '7d',
+      namespace: 'team-alpha',
+      api_key: undefined,
+      api_key_id: 'key_123',
+      node: 'openai',
+      model: 'gpt-4o',
+      source_format: 'chat_completions',
+      limit: 250,
+    });
   });
 });
 
@@ -632,6 +697,9 @@ describe('DashboardController — catalog', () => {
     expect(result.providers[0]).toMatchObject({
       id: 'openai',
       overridden: false,
+      pricing_hygiene: expect.objectContaining({
+        status: expect.any(String),
+      }),
     });
   });
 
@@ -644,6 +712,9 @@ describe('DashboardController — catalog', () => {
       expect.objectContaining({
         id: 'gpt-4o',
         provider: 'openai',
+        pricing_hygiene: expect.objectContaining({
+          status: expect.any(String),
+        }),
       }),
     ]);
   });
@@ -756,18 +827,19 @@ describe('DashboardController — config', () => {
     expect(controller.getConfig().diagnostics).toBe(diagnostics);
   });
 
-  it('should reload config', () => {
-    const { controller, config, activeHealth } = makeDashboard();
-    const result = controller.reloadConfig();
+  it('should reload config', async () => {
+    const { controller, config, activeHealth, configAudit } = makeDashboard();
+    const result = await controller.reloadConfig();
     expect(result.success).toBe(true);
     expect(config.reload).toHaveBeenCalledWith({
       source: 'dashboard',
       throwOnError: false,
     });
+    expect(configAudit.recordReload).toHaveBeenCalled();
     expect(activeHealth.refreshSchedules).toHaveBeenCalled();
   });
 
-  it('should handle reload failure', () => {
+  it('should handle reload failure', async () => {
     const { controller } = makeDashboard({
       config: {
         reload: jest.fn().mockReturnValue({
@@ -781,7 +853,53 @@ describe('DashboardController — config', () => {
         }),
       },
     });
-    expect(() => controller.reloadConfig()).toThrow(HttpException);
+    await expect(controller.reloadConfig()).rejects.toThrow(HttpException);
+  });
+
+  it('should expose config version and audit event APIs', async () => {
+    const { controller, configAudit } = makeDashboard({
+      configAudit: {
+        listVersions: jest.fn().mockResolvedValue({ data: [{ version_id: 'cfgv_1' }], pagination: { count: 1 } }),
+        getVersion: jest.fn().mockResolvedValue({ version_id: 'cfgv_1', sanitized_config: { nodes: [] } }),
+        rollbackToVersion: jest.fn().mockResolvedValue({
+          success: true,
+          message: 'Rolled back',
+          target_version: { version_id: 'cfgv_1' },
+          previous_version: null,
+          restored_version: { version_id: 'cfgv_2' },
+          reload: { success: true },
+        }),
+        listEvents: jest.fn().mockResolvedValue({ data: [{ event_id: 'cfge_1' }], pagination: { count: 1 } }),
+      },
+    });
+
+    await expect(controller.getConfigVersions(25)).resolves.toEqual({
+      data: [{ version_id: 'cfgv_1' }],
+      pagination: { count: 1 },
+    });
+    await expect(controller.getConfigVersion('cfgv_1')).resolves.toEqual({
+      version_id: 'cfgv_1',
+      sanitized_config: { nodes: [] },
+    });
+    await expect(controller.rollbackConfigVersion('cfgv_1', { reason: 'test' })).resolves.toEqual(
+      expect.objectContaining({ success: true, message: 'Rolled back' }),
+    );
+    await expect(controller.getConfigAuditEvents(10, 'config.node.create')).resolves.toEqual({
+      data: [{ event_id: 'cfge_1' }],
+      pagination: { count: 1 },
+    });
+    expect(configAudit.rollbackToVersion).toHaveBeenCalledWith('cfgv_1', {
+      reason: 'test',
+      actor: { type: 'dashboard', id: 'dashboard' },
+      source: 'dashboard',
+    });
+  });
+
+  it('should return 404 for missing config versions', async () => {
+    const { controller } = makeDashboard({
+      configAudit: { getVersion: jest.fn().mockResolvedValue(null) },
+    });
+    await expect(controller.getConfigVersion('missing')).rejects.toThrow(HttpException);
   });
 });
 
@@ -876,10 +994,10 @@ describe('DashboardController — nodes', () => {
     expect(circuitBreaker.reset).toHaveBeenCalledWith('openai', 'gpt-4o');
   });
 
-  it('should refresh active health schedules after node mutations', () => {
+  it('should refresh active health schedules after node mutations', async () => {
     const { controller, activeHealth } = makeDashboard();
 
-    controller.createNode({
+    await controller.createNode({
       id: 'new-node',
       name: 'New Node',
       protocol: 'chat_completions',
@@ -890,8 +1008,8 @@ describe('DashboardController — nodes', () => {
       timeout_ms: 1000,
       health_check: { enabled: true, method: 'HEAD', path: '/healthz' },
     });
-    controller.updateNode('openai', { health_check: { enabled: false } });
-    controller.deleteNode('openai');
+    await controller.updateNode('openai', { health_check: { enabled: false } });
+    await controller.deleteNode('openai');
 
     expect(activeHealth.refreshSchedules).toHaveBeenCalledTimes(3);
   });
@@ -902,8 +1020,8 @@ describe('DashboardController — nodes', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DashboardController — Node CRUD', () => {
-  it('should create a node', () => {
-    const { controller, config } = makeDashboard();
+  it('should create a node', async () => {
+    const { controller, config, configAudit } = makeDashboard();
     const dto = {
       id: 'new-node',
       name: 'New',
@@ -922,9 +1040,13 @@ describe('DashboardController — Node CRUD', () => {
       queue_timeout_ms: 250,
       queue_policy: 'fallback',
     } as any;
-    const result = controller.createNode(dto);
+    const result = await controller.createNode(dto);
 
     expect(result.success).toBe(true);
+    expect(configAudit.trackChange).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'config.node.create', target: 'node:new-node' }),
+      expect.any(Function),
+    );
     expect(config.addNode).toHaveBeenCalledWith(
       expect.objectContaining({
         max_concurrency: 3,
@@ -940,41 +1062,41 @@ describe('DashboardController — Node CRUD', () => {
     );
   });
 
-  it('should throw on duplicate node creation', () => {
+  it('should throw on duplicate node creation', async () => {
     const { controller } = makeDashboard({
       config: { addNode: jest.fn().mockImplementation(() => { throw new Error('Node already exists'); }) },
     });
     const dto = { id: 'openai', name: 'Dup' } as any;
-    expect(() => controller.createNode(dto)).toThrow(HttpException);
+    await expect(controller.createNode(dto)).rejects.toThrow(HttpException);
   });
 
-  it('should update a node', () => {
+  it('should update a node', async () => {
     const { controller, config } = makeDashboard();
-    const result = controller.updateNode('openai', { name: 'Updated OpenAI' } as any);
+    const result = await controller.updateNode('openai', { name: 'Updated OpenAI' } as any);
     expect(result.success).toBe(true);
     expect(config.updateNode).toHaveBeenCalled();
   });
 
-  it('should not pass empty api_key on update', () => {
+  it('should not pass empty api_key on update', async () => {
     const { controller, config } = makeDashboard();
-    controller.updateNode('openai', { name: 'Updated', api_key: '' } as any);
+    await controller.updateNode('openai', { name: 'Updated', api_key: '' } as any);
     const updateArgs = config.updateNode.mock.calls[0][1];
     expect(updateArgs.api_key).toBeUndefined();
   });
 
-  it('should delete a node', () => {
+  it('should delete a node', async () => {
     const { controller, config, circuitBreaker } = makeDashboard();
-    const result = controller.deleteNode('openai');
+    const result = await controller.deleteNode('openai');
     expect(result.success).toBe(true);
     expect(circuitBreaker.reset).toHaveBeenCalledWith('openai');
     expect(config.deleteNode).toHaveBeenCalledWith('openai');
   });
 
-  it('should throw on deleting last node', () => {
+  it('should throw on deleting last node', async () => {
     const { controller } = makeDashboard({
       config: { deleteNode: jest.fn().mockImplementation(() => { throw new Error('Cannot delete the last remaining node'); }) },
     });
-    expect(() => controller.deleteNode('openai')).toThrow(HttpException);
+    await expect(controller.deleteNode('openai')).rejects.toThrow(HttpException);
   });
 });
 
@@ -1034,18 +1156,18 @@ describe('DashboardController — capabilities & routing', () => {
     });
   });
 
-  it('should update routing config', () => {
+  it('should update routing config', async () => {
     const { controller, config } = makeDashboard();
-    const result = controller.updateRouting({ scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 } });
+    const result = await controller.updateRouting({ scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 } });
     expect(result.success).toBe(true);
     expect(config.updateRouting).toHaveBeenCalled();
   });
 
-  it('should throw on invalid routing update', () => {
+  it('should throw on invalid routing update', async () => {
     const { controller } = makeDashboard({
       config: { updateRouting: jest.fn().mockImplementation(() => { throw new Error('Invalid node reference'); }) },
     });
-    expect(() => controller.updateRouting({ tiers: {} as any })).toThrow(HttpException);
+    await expect(controller.updateRouting({ tiers: {} as any })).rejects.toThrow(HttpException);
   });
 });
 
@@ -1246,6 +1368,68 @@ describe('DashboardController — namespaces and shadow traffic', () => {
     expect(shadowTraffic.recent).toHaveBeenCalledWith('team-alpha', 10);
     expect(result.recent).toHaveLength(1);
     expect(result.status.privacy.provider_keys).toBe(false);
+  });
+
+  it('should return shadow comparison report with filters', async () => {
+    const { controller, shadowTraffic } = makeDashboard({
+      shadowTraffic: {
+        comparisonReport: jest.fn().mockResolvedValue({
+          primary_success_rate: 1,
+          shadow_success_rate: 0.9,
+          latency_delta_ms: -20,
+          p50_latency_comparison: { primary_ms: 120, shadow_ms: 100, delta_ms: -20 },
+          p95_latency_comparison: { primary_ms: 300, shadow_ms: 260, delta_ms: -40 },
+          cost_delta_usd: -0.02,
+          potential_savings_usd: 0.02,
+          token_delta: -50,
+          fallback_delta: -0.1,
+          quality_sample_coverage: 0,
+          confidence: { level: 'medium', score: 0.62 },
+          risk_notes: ['quality_samples_disabled'],
+          pairs: [],
+        }),
+      },
+    });
+
+    const result = await controller.getShadowComparisonReport(
+      'team-alpha',
+      'default',
+      'key-1',
+      'shadow-openai',
+      'gpt-4o-mini',
+      '24h',
+      'chat_completions',
+    );
+
+    expect(shadowTraffic.comparisonReport).toHaveBeenCalledWith({
+      namespaceId: 'team-alpha',
+      apiKeyName: 'default',
+      apiKeyId: 'key-1',
+      node: 'shadow-openai',
+      model: 'gpt-4o-mini',
+      period: '24h',
+      sourceFormat: 'chat_completions',
+    });
+    expect(result.potential_savings_usd).toBe(0.02);
+  });
+
+  it('should return one shadow result comparison or 404', async () => {
+    const { controller, shadowTraffic } = makeDashboard({
+      shadowTraffic: {
+        comparisonForResult: jest.fn()
+          .mockResolvedValueOnce({ result_id: 12, request_id: 'req-12' })
+          .mockResolvedValueOnce(null),
+      },
+    });
+
+    await expect(controller.getShadowResultComparison(12)).resolves.toEqual({
+      result_id: 12,
+      request_id: 'req-12',
+    });
+    expect(shadowTraffic.comparisonForResult).toHaveBeenCalledWith(12);
+    await expect(controller.getShadowResultComparison(404)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });
 

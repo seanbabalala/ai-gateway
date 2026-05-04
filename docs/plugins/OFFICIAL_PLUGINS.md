@@ -1,6 +1,6 @@
 # Official Runtime Plugins
 
-SiftGate v0.4 includes the first MIT-licensed official plugin batch for the open-source Data Plane. Plugins live under `plugins/`, are compiled by `npm run build` into `dist-runtime-plugins`, and are copied into the production Docker image.
+SiftGate v0.4 introduced the first MIT-licensed official plugin batch for the open-source Data Plane, and v0.9 upgrades the official guardrails plugin from a skeleton into a usable local safety plugin. Plugins live under `plugins/`, are compiled by `npm run build` into `dist-runtime-plugins`, and are copied into the production Docker image.
 
 All official plugins are disabled or no-op by default. External exports never include prompts, responses, provider keys, raw headers, authorization headers, passwords, secrets, or tokens unless an operator explicitly opts into that behavior.
 
@@ -11,7 +11,7 @@ All official plugins are disabled or no-op by default. External exports never in
 | redis-cache | `plugins/redis-cache` | Optional Redis-backed canonical response cache |
 | analytics-sink | `plugins/analytics-sink` | Optional sanitized call-log analytics webhook |
 | request-transform | `plugins/request-transform` | Local canonical request rewrite rules |
-| guardrails | `plugins/guardrails` | Local guardrails skeleton for audit/block regex policies |
+| guardrails | `plugins/guardrails` | Local PII, prompt-injection, schema, and policy guardrails |
 
 ## Enabling
 
@@ -24,8 +24,17 @@ plugins:
     config:
       enabled: true
       mode: audit
-      input_patterns:
-        - "(?i)secret project"
+      pii:
+        enabled: true
+        action: redact
+      prompt_injection:
+        enabled: true
+        action: block
+      policies:
+        - name: block-secret-project
+          direction: input
+          pattern: "(?i)secret project"
+          action: block
 ```
 
 `required: false` is recommended while testing. Required plugin load failures stop gateway startup.
@@ -44,7 +53,7 @@ The Dockerfile builds plugins during the backend build stage and copies `dist-ru
 - `redis-cache`: sends hashed cache keys to Redis. It stores response bodies only when `store_responses: true` is explicitly set.
 - `analytics-sink`: uses a safe allow-list of call-log metadata. `include_prompt_response: true` is required before prompt/response-like fields are eligible for export.
 - `request-transform`: performs local request mutations only and has no network path.
-- `guardrails`: performs local regex checks only. It logs finding counts by default; `include_prompt_in_logs: true` is required before match details are logged.
+- `guardrails`: performs local PII, prompt-injection, schema, and policy checks. It stores/logs finding metadata only: request id, rule, kind, action, count, path, and schema error summaries. It does not log matched prompt/response text, raw headers, provider keys, media bytes, or video bytes.
 
 Each plugin has its own README and example config:
 

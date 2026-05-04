@@ -324,6 +324,50 @@ describe('HookExecutorService', () => {
     expect((result.data as any).response.fromStore).toBe('abc123');
   });
 
+  it('should preserve privacy-safe guardrail finding metadata across phases', async () => {
+    registry.register(
+      makePlugin('guardrail-like', {
+        preRequest: (ctx: any) => {
+          ctx.store.set('guardrails.findings', [
+            {
+              request_id: ctx.store.get('request_id'),
+              kind: 'pii',
+              rule: 'pii.email',
+              action: 'redact',
+              match_count: 1,
+            },
+          ]);
+          return { unchanged: true };
+        },
+        postUpstream: (ctx: any) => ({
+          response: {
+            ...ctx.data.response,
+            findingCount: (ctx.store.get('guardrails.findings') as unknown[]).length,
+          },
+        }),
+      } as any),
+    );
+
+    const store = new Map<string, unknown>([['request_id', 'req-hook']]);
+    await executor.run(
+      'preRequest',
+      { request: { text: 'alice@example.com' } } as any,
+      store,
+      makeGatewayConfig(),
+    );
+    const result = await executor.run(
+      'postUpstream',
+      { response: { ok: true } } as any,
+      store,
+      makeGatewayConfig(),
+    );
+
+    expect((result.data as any).response.findingCount).toBe(1);
+    const serialized = JSON.stringify(store.get('guardrails.findings'));
+    expect(serialized).toContain('req-hook');
+    expect(serialized).not.toContain('alice@example.com');
+  });
+
   // ── Async hooks ───────────────────────────────────────────
 
   it('should handle async hooks', async () => {

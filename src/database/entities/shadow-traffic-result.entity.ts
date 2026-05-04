@@ -11,6 +11,7 @@ export type ShadowTrafficKind = 'chat' | 'embeddings';
 
 @Entity('shadow_traffic_results')
 @Index(['timestamp'])
+@Index(['request_id'])
 @Index(['namespace_id'])
 @Index(['status'])
 export class ShadowTrafficResult {

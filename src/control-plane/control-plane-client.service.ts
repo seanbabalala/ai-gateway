@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
+import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import type {
   ControlPlaneRegistrationResponse,
   ControlPlaneTelemetryEvent,
@@ -16,7 +17,11 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
   private registerInFlight: Promise<boolean> | null = null;
   private configReloadSub?: Subscription;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional()
+    private readonly secretResolver?: SecretReferenceResolverService,
+  ) {}
 
   onModuleInit(): void {
     this.configReloadSub = this.config.onReloadSuccess(() => {
@@ -73,6 +78,11 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
     }
 
     try {
+      const registrationToken = this.secretResolver
+        ? await this.secretResolver.resolveString(cp.registration_token, {
+            location: 'control_plane.registration_token',
+          })
+        : cp.registration_token;
       const body = {
         gateway_id: cp.gateway_id || 'default',
         version: process.env.npm_package_version || '0.1.0',
@@ -88,7 +98,7 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
         'POST',
         '/api/control/register',
         body,
-        cp.registration_token,
+        registrationToken,
       );
       this.workspaceId = response.workspace_id || null;
       this.gatewayId = response.gateway_id || cp.gateway_id || 'default';

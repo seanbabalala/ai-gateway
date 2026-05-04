@@ -1,6 +1,50 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 - 2026-05-04
+
+### Added
+
+- v0.9 local config audit and rollback for the OSS Data Plane with `config_versions` and `config_audit_events` persistence on SQLite/PostgreSQL.
+- Dashboard APIs `GET /api/dashboard/config/versions`, `GET /api/dashboard/config/versions/:id`, `POST /api/dashboard/config/versions/:id/rollback`, and `GET /api/dashboard/config/audit-events`.
+- Dashboard Config Audit page with sanitized version detail, audit event stream, and confirmation-based rollback.
+- Config audit settings under `config_audit` with validation for `enabled`, `max_versions`, `max_events`, and `capture_startup_snapshot`.
+- SQLite-to-PostgreSQL migrator coverage for config version and audit event tables.
+- Unit coverage for config audit redaction, rollback success, rollback failure, Dashboard APIs, config validation, and migration.
+- v0.9 optional Secret Manager reference support for the OSS Data Plane, with runtime `${env:...}`, `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` references.
+- `SecretReferenceResolverService` with local TTL cache, `fail_closed` / `fail_open_for_optional` behavior, SDK-less Vault/AWS/GCP HTTP adapters, and explicit backend enablement.
+- Secret-reference support for provider `nodes[].api_key`, node headers, active health probes, realtime upstream auth, video provider proxy routes, provider compatibility tests, and optional control-plane registration tokens.
+- Config validation diagnostics for malformed references, disabled backends, unset env values, secret-manager shape, and secret-like catalog override values.
+- Secret management documentation and example configuration.
+- v0.9 Shadow Traffic Comparison Report for the OSS Data Plane, adding read-only Dashboard/API comparisons for primary vs shadow success rate, p50/p95 latency, cost delta, potential savings, token delta, fallback delta, quality sample coverage, confidence, and risk notes.
+- Dashboard Shadow filters for namespace, API key, node, model, period, and source format, plus localized overview cards and primary-to-shadow comparison tables without any automatic routing changes.
+- Privacy-safe shadow report APIs `GET /api/dashboard/shadow/report` and `GET /api/dashboard/shadow/results/:id/comparison`, paired with call logs by `request_id` and never returning raw headers, provider keys, media bytes, or video bytes.
+- v0.9 official guardrails plugin upgrade for the OSS Data Plane, replacing the skeleton with disabled-by-default local PII detection/redaction/blocking, lightweight prompt-injection checks, schema validation helpers, named allow/block/redact policies, input/output hooks, and conservative streaming delta handling.
+- Privacy-safe guardrails findings in the per-request plugin store, capped by `max_findings_per_request` and limited to metadata such as request id, rule, kind, action, count, and path without prompt text, response text, raw headers, provider keys, media bytes, or video bytes.
+- Unit coverage for guardrails privacy behavior, PII redaction/blocking, prompt-injection blocking, schema validation, allow/block policy exceptions, stream delta handling, and hook executor store propagation.
+- v0.9 OSS-only Helm chart under `deploy/helm/siftgate` with default single-node SQLite + memory state behavior and opt-in Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget, ServiceMonitor, existing Secret/ConfigMap, resources, and persistence settings.
+- v0.9 Kustomize/plain Kubernetes base under `deploy/kubernetes/base` with placeholder-only Secrets, SQLite PVC, config mount, health probes, and no SiftGate Cloud or enterprise image dependency.
+- `npm run validate:k8s` plus manifest validation tests for YAML parsing, required deployment assets, default Cloud-disabled behavior, secret hygiene, image/port checks, and config/data mounts.
+- v0.9 Benchmark Report API `GET /api/dashboard/benchmarks/report` for local call-log performance evidence, including success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimate, cost/token summaries, status-code distribution, node:model breakdowns, source-format/source-family breakdowns, and route-trace coverage.
+- Read-only Dashboard Benchmarks page with period, namespace, API key, node, model, and source-format filters plus methodology notes that warn against treating local samples as strict cloud benchmarks.
+- `npm run benchmark:upstream` JSON report output via `GATEWAY_BENCH_OUTPUT=report.json`, with p75 latency, top sanitized errors, labels, and methodology metadata.
+- v0.9 compatibility migration expansion for the OSS Data Plane: `siftgate migrate` now imports LiteLLM, New API, and One API configs into SiftGate and exports SiftGate configs to LiteLLM/New API/One API scaffold YAML.
+- Migration reports now include compatible, partially supported, unsupported, manual actions, provider/model mapping notes, and pricing/capability confidence.
+- New migration fixtures and tests for LiteLLM, New API, One API, SiftGate v0.8 model buckets, reverse scaffold export, and overwrite protection.
+- v0.9 Provider Catalog pricing hygiene for the OSS Data Plane, extending the v0.8 catalog instead of introducing a second model catalog.
+- Catalog pricing metadata now includes currency, modality-specific price/unit fields, `stale_after_days`, and `pricing_confidence`.
+- Dashboard Provider Catalog page showing pricing freshness, manual-review state, source, confidence, and override markers in the 7-language operator UI.
+- `siftgate catalog validate --pricing` and `siftgate catalog export --include-pricing` for local pricing hygiene workflows without online updates.
+
+### Changed
+
+- Dashboard config reload, node create/update/delete, routing edits, and Dashboard-managed API key mutations now record local audit metadata when config audit is enabled.
+- Rollback snapshots store redacted safe YAML and rehydrate secrets only from matching current local config fields; unresolved redactions fail safely without writing the config file.
+- Runtime config loading now preserves typed secret references such as `${env:OPENAI_API_KEY}` for request-time resolution while keeping legacy `${OPENAI_API_KEY}` startup interpolation compatible.
+- Dashboard sanitized config keeps secret references visible as references, masks literal provider keys and sensitive headers, and never resolves secrets for display.
+- Explicit shadow prompt/response sample storage now applies built-in redaction and `shadow.compare.sample_max_chars` truncation, and config validation warnings now call out the storage risk more clearly.
+- `siftgate migrate` now supports `--to` and `--force`; `--overwrite` remains a backward-compatible alias.
+- Cost-aware routing and cost accounting can fall back to merged Provider Catalog pricing when explicit node/model pricing and `models_pricing` are absent; explicit user config always wins.
+- Config validation now warns for placeholder, stale, missing, and modality-unit-mismatched catalog pricing, including `routing.optimization=cost` cases with insufficient prices.
 
 ## 0.8.0 - 2026-05-04
 

@@ -224,7 +224,7 @@ export class PipelineService {
           canonical.structured_output?.type || '',
       },
       async (rootSpan) => {
-        const store = new Map<string, unknown>();
+        const store = new Map<string, unknown>([['request_id', requestId]]);
         let currentPhase = 'preRequest';
 
         try {
@@ -2198,7 +2198,7 @@ export class PipelineService {
   ): Promise<void> {
     const requestId = uuidv4();
     const streamStartTime = Date.now();
-    const store = new Map<string, unknown>();
+    const store = new Map<string, unknown>([['request_id', requestId]]);
     let currentPhase = 'preRequest';
     let headersFlushed = false;
     const streamAbort = new AbortController();

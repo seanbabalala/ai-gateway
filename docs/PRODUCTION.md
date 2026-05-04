@@ -5,15 +5,16 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
-v0.8.0 keeps that deployment shape while adding a local Provider / Model
-Catalog, Dashboard Add Node wizard, hardened images/audio endpoints,
-experimental async video preview, provider compatibility checks, catalog
-override CLI, and richer multimodal routing evidence. Structured output,
-rerank, images, audio, and video use the same local auth, namespace, budget,
-routing, call-log, and telemetry path as chat traffic. Realtime and video
-remain experimental previews and should only be enabled for production after
-upstream provider behavior, connection limits, job retention, and load balancer
-paths have been tested in your environment.
+v0.9.0 keeps that deployment shape while adding the Operations + Trust layer on
+top of the v0.8 Provider Catalog and multimodal foundation: local config audit
+and rollback, optional secret manager references, shadow comparison reports,
+guardrails plugin upgrades, Helm/Kubernetes assets, benchmark reports,
+compatibility migration expansion, and Provider Catalog pricing hygiene.
+Structured output, rerank, images, audio, video, secret resolution, audit
+metadata, and benchmark summaries all stay in the open-source Data Plane.
+Realtime and video remain experimental previews and should only be enabled for
+production after upstream provider behavior, connection limits, job retention,
+and load balancer paths have been tested in your environment.
 
 ## Baseline Topology
 
@@ -21,11 +22,33 @@ paths have been tested in your environment.
   behind an HTTP load balancer for higher availability.
 - Put `gateway.config.yaml` on every instance through the same deployment
   process.
+- Keep provider credentials out of committed config. Use legacy `${VAR}` env
+  interpolation for simple deployments or v0.9 `${env:VAR}` runtime secret
+  references when you want SecretReferenceResolver caching and consistent
+  Dashboard redaction.
 - Use PostgreSQL for durable call logs and generated Gateway API key records
   when SQLite is not enough for production traffic.
 - Use Redis only for features that need shared state or multi-instance
   coordination.
 - Keep `/health` on the load balancer health check path.
+
+## Kubernetes / Helm
+
+v0.9 adds OSS-only deployment assets for Kubernetes:
+
+- Helm chart: `deploy/helm/siftgate`
+- Kustomize/plain manifests: `deploy/kubernetes/base`
+- local validation: `npm run validate:k8s`
+
+The defaults stay conservative: one replica, SQLite on a PVC, memory state
+backend, `cluster.enabled=false`, `realtime.enabled=false`, no Ingress, no
+autoscaling, no SiftGate Cloud, no enterprise image, and no real secrets in the
+repository. Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget,
+ServiceMonitor, existing Secrets/ConfigMaps, resource requests/limits, and
+persistence controls are opt-in through Helm values.
+
+See [Kubernetes And Helm](KUBERNETES.md) before using these assets in a
+production cluster.
 
 ## Database Recommendation
 
@@ -83,7 +106,8 @@ node dist/cli/siftgate.js migrate-db \
 The migrator:
 
 - Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
-  `route_decisions`, `provider_compatibility_results`, and `video_jobs`.
+  `route_decisions`, `config_versions`, `config_audit_events`,
+  `provider_compatibility_results`, and `video_jobs`.
 - Creates a timestamped SQLite backup when `--backup` is set.
 - Creates/updates the PostgreSQL schema through the OSS TypeORM entities before
   import.
@@ -124,6 +148,34 @@ Future releases that change persistent schema should ship explicit TypeORM
 migration files. Production operators should run those release migrations as a
 deployment step instead of leaving runtime schema synchronization enabled.
 
+## Config Audit And Rollback
+
+The v0.9 OSS Data Plane keeps local config audit history in the same database
+used for runtime metadata. SQLite remains the default; PostgreSQL is recommended
+when config history should survive container replacement and be backed up with
+the rest of production metadata.
+
+```yaml
+config_audit:
+  enabled: true
+  max_versions: 50
+  max_events: 200
+  capture_startup_snapshot: false
+```
+
+Operational guidance:
+
+- Keep provider keys as environment references such as `${OPENAI_API_KEY}`
+  wherever possible.
+- Snapshots redact literal secrets before storage. Rollback rehydrates redacted
+  fields from the current local config only when the path or array `id` matches.
+- Rollback validates the target config before writing the file. Failed rollback
+  attempts keep the current config active and write a failure audit event.
+- In multi-instance deployments, rollback is local to one instance. Roll config
+  changes through your deployment system so every instance converges.
+- Include `config_versions` and `config_audit_events` in PostgreSQL backups and
+  restore tests if you rely on Dashboard rollback during incident response.
+
 ## Docker Compose PostgreSQL Profile
 
 The default Compose path still starts only the gateway with SQLite. To run the
@@ -149,6 +201,43 @@ database:
 For real production, use managed PostgreSQL or a hardened database deployment
 with backups, TLS/network controls, secret management, and regular restore
 tests.
+
+## Secret References
+
+The default production recommendation remains simple: store provider keys and
+tokens in environment variables and reference them from `gateway.config.yaml`.
+
+```yaml
+nodes:
+  - id: openai
+    api_key: "${env:OPENAI_API_KEY}"
+
+control_plane:
+  enabled: false
+  registration_token: "${env:SIFTGATE_CONTROL_TOKEN}"
+```
+
+Vault, AWS Secrets Manager, and GCP Secret Manager are optional SDK-less HTTP
+adapters and stay disabled until configured:
+
+```yaml
+secret_manager:
+  cache_ttl_seconds: 300
+  failure_policy: fail_closed
+  backends:
+    env:
+      enabled: true
+    vault:
+      enabled: true
+      address: "${env:VAULT_ADDR}"
+      token: "${env:VAULT_TOKEN}"
+```
+
+Use external managers when your deployment platform already manages those
+systems. Resolved values are used only at the outbound edge and are redacted
+from Dashboard config, compatibility results, call logs, route traces, and
+telemetry summaries. See [SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) for
+backend-specific syntax.
 
 ## Redis Shared State And Cluster Mode
 

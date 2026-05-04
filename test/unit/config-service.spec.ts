@@ -7,6 +7,8 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { ConfigService } from '../../src/config/config.service';
 
 describe('ConfigService', () => {
@@ -172,6 +174,52 @@ describe('ConfigService', () => {
       // verify the config loaded without errors (which means resolveEnvVars ran)
       expect(config.server).toBeDefined();
       delete process.env.TEST_GATEWAY_PORT;
+    });
+
+    it('preserves typed secret references for runtime resolution', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-secret-config-'));
+      const configPath = path.join(tempDir, 'gateway.config.yaml');
+      fs.writeFileSync(
+        configPath,
+        `
+server: { port: 2099, host: 0.0.0.0 }
+database: { type: sqlite, path: ':memory:' }
+auth: { api_keys: [] }
+secret_manager:
+  backends:
+    env: { enabled: true }
+nodes:
+  - id: openai
+    name: OpenAI
+    protocol: chat_completions
+    base_url: https://api.openai.com
+    endpoint: /v1/chat/completions
+    api_key: "\${env:OPENAI_API_KEY}"
+    models: [gpt-4o-mini]
+    timeout_ms: 60000
+routing:
+  tiers:
+    standard:
+      primary: { node: openai, model: gpt-4o-mini }
+      fallbacks: []
+  scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 }
+budget: { daily_token_limit: 1000000, daily_cost_limit: 25, alert_threshold: 0.8 }
+models_pricing:
+  gpt-4o-mini: { input: 0.15, output: 0.6 }
+`,
+      );
+      const previous = process.env.GATEWAY_CONFIG_PATH;
+      process.env.GATEWAY_CONFIG_PATH = configPath;
+
+      try {
+        const localConfig = new ConfigService();
+        expect(localConfig.nodes[0].api_key).toBe('${env:OPENAI_API_KEY}');
+        expect(localConfig.secretManager.backends.env.enabled).toBe(true);
+      } finally {
+        if (previous) process.env.GATEWAY_CONFIG_PATH = previous;
+        else delete process.env.GATEWAY_CONFIG_PATH;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

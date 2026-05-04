@@ -15,9 +15,10 @@
   <a href="#api-endpoints">API Endpoints</a> &bull;
   <a href="#dashboard">Dashboard</a> &bull;
   <a href="#docker">Docker</a> &bull;
+  <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
-  <a href="docs/PRODUCT_ROADMAP.md">Roadmap</a> &bull;
+  <a href="docs/GATEWAY_ROADMAP.md">Roadmap</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
@@ -26,7 +27,9 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.8.0**. This release focuses on Provider Catalog + Add Node Wizard + Multimodal Expansion + Video Preview: local provider/model presets, safer Dashboard node setup, hardened images/audio ingress, experimental async video jobs, provider compatibility checks, catalog overrides, and richer multimodal route explanation.
+Current open-source release: **v0.9.0**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation.
+
+This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog pricing hygiene. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -89,7 +92,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 ### Cost & Budget Control
 
-- **Per-model pricing** — tracks cost per request based on actual token usage
+- **Per-model pricing** — tracks cost per request from explicit config or verified Provider Catalog fallback metadata
 - **Daily budget limits** — set daily token and cost limits
 - **Alert thresholds** — get warnings before hitting limits
 - **Budget enforcement** — requests are rejected (429) when limits are exceeded
@@ -114,9 +117,10 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
+- **Benchmark reports** — inspect local performance evidence with latency percentiles, throughput estimates, status/source breakdowns, cost/token summaries, and methodology notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
-- **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
+- **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
 - **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
 
@@ -128,16 +132,20 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
-- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog APIs, and config validation warnings without automatic network updates
+- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog/pricing hygiene APIs, cost fallback, and config validation warnings without automatic network updates
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
+- **Optional secret manager references** — keep env as the default while allowing explicit `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` runtime references for provider keys, node headers, health/realtime auth, and the optional control-plane token
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
-- **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
+- **Compatibility migration CLI** — convert LiteLLM, New API, and One API channel configs into SiftGate, or export SiftGate configs back to LiteLLM/New API/One API scaffolds
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
+- **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
+- **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
-- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
+- **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
+- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
-- **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
+- **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 
 ### Provider Catalog
 
@@ -150,7 +158,9 @@ Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatib
   - `GET /api/dashboard/catalog/models?provider=openai&modality=embedding`
 - Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
-- Pricing entries include `source`, `last_updated`, and `manual_review_required`. Use local `models_pricing` or `model_capabilities[].pricing` for production cost routing.
+- Pricing entries include `currency`, modality-specific units, `source`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `manual_review_required`.
+- Dashboard includes a read-only Provider Catalog page for pricing freshness, source, manual-review state, confidence, and override markers.
+- Cost routing falls back to merged catalog pricing only when explicit `model_capabilities[].pricing` and `models_pricing` are absent. Explicit user config always wins.
 - Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
 
 See [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) for the schema and validation behavior.
@@ -215,6 +225,11 @@ Set your provider API key in `.env`:
 ```bash
 OPENAI_API_KEY=sk-...
 ```
+
+For runtime resolution instead of startup interpolation, v0.9 configs can use
+`${env:OPENAI_API_KEY}`. Vault, AWS Secrets Manager, and GCP Secret Manager are
+available only when explicitly enabled under `secret_manager`; see
+[docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md).
 
 Validate the file before starting the gateway:
 
@@ -365,25 +380,36 @@ Use the catalog CLI to inspect the built-in catalog and manage local overrides:
 ```bash
 npm run catalog -- list
 npm run catalog -- show openai
+npm run catalog -- validate --pricing
 npm run catalog -- export --out ./catalog.merged.yaml
+npm run catalog -- export --include-pricing --out ./catalog.merged.yaml
 npm run catalog -- import --file ./catalog.override.yaml
 npm run catalog -- validate
 ```
 
-Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate` and `siftgate validate` flag suspicious secret fields and values. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
+Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate`, `siftgate catalog validate --pricing`, and `siftgate validate` flag suspicious secret fields, stale/placeholder prices, and modality unit mismatches. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
 
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 
-### LiteLLM Migration
+### Compatibility Migration
 
-Generate a SiftGate config from an existing LiteLLM YAML file:
+Generate a SiftGate config from an existing LiteLLM, New API, or One API YAML file:
 
 ```bash
 npm run build
 node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
+node dist/cli/siftgate.js migrate --from newapi --config ./channels.yaml --out ./gateway.generated.yaml
+node dist/cli/siftgate.js migrate --from oneapi --config ./channels.yaml --out ./gateway.generated.yaml
 ```
 
-The migrator maps `model_list`, provider/model names, API key environment references, fallbacks, router retry settings, and known routing strategies. It writes a migration report with compatible, incompatible, and manual-review items. Existing `gateway.config.yaml` is never overwritten unless `--overwrite` is passed. See [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
+You can also export a SiftGate config into scaffold YAML for adjacent gateways:
+
+```bash
+node dist/cli/siftgate.js migrate --to litellm --config ./gateway.config.yaml --out ./litellm.generated.yaml
+node dist/cli/siftgate.js migrate --to newapi --config ./gateway.config.yaml --out ./newapi.generated.yaml
+```
+
+The migrator maps provider, model name, base URL, API key environment references, fallback/router settings, v0.8 model buckets (`models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`), and catalog-backed pricing/capability hints. Reports include compatible, partially supported, unsupported, manual actions, provider/model mapping notes, and pricing/capability confidence. Existing outputs are never overwritten unless `--force` is passed. See [Compatibility Migration](docs/MIGRATION_COMPAT.md) and [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
 
 ### Database Migration
 
@@ -482,6 +508,31 @@ hot_reload:
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
 
+### Config Audit And Rollback
+
+v0.9 adds local configuration audit history for the OSS Data Plane. Config reloads, Dashboard node create/update/delete, routing edits, Dashboard-managed API key changes, and rollback attempts write local audit events. Version snapshots are stored in SQLite by default or PostgreSQL when configured.
+
+Snapshots are secret-safe: literal provider keys, dashboard password hashes, raw auth headers, dashboard key hashes, and secret/token/password-like fields are redacted before storage. Environment references such as `${OPENAI_API_KEY}` remain intact. Rollback rehydrates redacted fields only from matching values in the current local config; if SiftGate cannot safely rehydrate a secret, rollback fails before writing and keeps the current config active.
+
+```yaml
+config_audit:
+  enabled: true
+  max_versions: 50
+  max_events: 200
+  capture_startup_snapshot: false
+```
+
+Dashboard APIs:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/dashboard/config/versions` | List local config versions |
+| `GET` | `/api/dashboard/config/versions/:id` | Read one sanitized version snapshot |
+| `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore a previous version |
+| `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
+
+See [Config Audit And Rollback](docs/CONFIG_AUDIT_ROLLBACK.md).
+
 ### Shared State Backend
 
 SiftGate defaults to local memory for all runtime state, so the open-source Data Plane stays single-node friendly and needs no extra services. For horizontally scaled deployments, enable Redis shared state:
@@ -535,7 +586,7 @@ The first official batch is:
 | `plugins/redis-cache`       | Redis-backed response cache           | Disabled; only stores responses when `store_responses: true` is explicit |
 | `plugins/analytics-sink`    | Sanitized call-log analytics webhook  | Disabled; safe metadata allow-list only                                  |
 | `plugins/request-transform` | Local request rewrites before routing | Disabled; no-op until rules are configured                               |
-| `plugins/guardrails`        | Local audit/block guardrails skeleton | Disabled; logs finding counts only                                       |
+| `plugins/guardrails`        | Local PII, prompt-injection, schema, and policy guardrails | Disabled; stores/logs finding metadata only                              |
 
 Example:
 
@@ -554,6 +605,8 @@ plugins:
 ```
 
 Official plugins do not send prompts, responses, provider keys, or raw headers to external systems by default. See [Official Plugins](docs/plugins/OFFICIAL_PLUGINS.md) and each plugin README under `plugins/*/README.md` for safety notes and example configs.
+
+The official `plugins/guardrails` plugin is still opt-in, but it is now usable for local audit/redact/block flows. It supports built-in PII detection, lightweight prompt-injection checks, schema validation helpers, named allow/block/redact policy rules, input/output hooks, and conservative streaming delta handling. Findings are capped per request and contain only metadata such as `request_id`, rule, kind, action, count, and path; prompt text, response text, raw headers, provider keys, media bytes, and video bytes are not stored.
 
 ### Nodes (Upstream Providers)
 
@@ -846,7 +899,7 @@ The gateway estimates request tokens from canonical messages, tools, and the req
 
 Optimization modes apply only within the already-eligible smart-routing target set:
 
-- `cost` chooses the lowest estimated input/output cost using per-model `pricing` or `models_pricing`.
+- `cost` chooses the lowest estimated input/output cost using per-model `pricing`, `models_pricing`, or merged Provider Catalog fallback pricing when explicit config is absent.
 - `latency` chooses the lowest local sliding-window latency, with stable cold-start fallback.
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
@@ -1130,9 +1183,12 @@ shadow:
   compare:
     store_prompts: false
     store_responses: false
+    sample_max_chars: 4000
 ```
 
-By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; config validation emits a warning when either is enabled. Raw headers and provider keys are never stored. The Dashboard Shadow page and `GET /api/dashboard/shadow` endpoint are read-only. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
+By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; when enabled, samples are redacted and truncated by `compare.sample_max_chars`, and config validation emits a warning. Raw headers, provider keys, media bytes, and video bytes are never stored.
+
+The Dashboard Shadow page and API are read-only. `GET /api/dashboard/shadow/report` compares paired primary/shadow rows by success rate, p50/p95 latency, estimated cost, potential savings, tokens, fallback delta, quality sample coverage, confidence, and risk notes. `GET /api/dashboard/shadow/results/:id/comparison` returns the same privacy-safe comparison for one result. Reports do not apply routing changes or promote a shadow target automatically. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
 
 ### Webhook Alerts
 
@@ -1320,7 +1376,7 @@ Dashboard filters for generated Gateway API keys use the immutable `api_key_id`.
 
 Gateway prompt-cache hits are still logged and recorded against budgets using the cached response's usage and model pricing. They are marked as tier `cached` with node `cache`, so they remain attributable without making an upstream provider call.
 
-Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, routing still works, token usage is still tracked, and cost may be `0` until pricing is configured.
+Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, SiftGate tries merged Provider Catalog fallback pricing. If that is missing too, routing still works, token usage is tracked, and cost may be `0` until pricing is configured.
 
 When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"` and structured details such as `scope`, `api_key_id`, `budget_type`, `current`, `limit`, and `reset_at`.
 
@@ -1334,12 +1390,19 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/route-decisions`         | Paginated explainable routing summaries with tier, node, source format, key, and namespace filters |
 | `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
+| `GET`  | `/api/dashboard/benchmarks/report`       | Read-only benchmark report with latency, throughput, cost, token, status, node:model, and source-format breakdowns |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
 | `GET`  | `/api/dashboard/shadow`                  | Read-only shadow traffic status and recent sanitized results                                       |
+| `GET`  | `/api/dashboard/shadow/report`           | Read-only primary vs shadow comparison report with success, latency, cost, confidence, and risks   |
+| `GET`  | `/api/dashboard/shadow/results/:id/comparison` | Single shadow result comparison paired with the primary call log                            |
 | `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
+| `GET`  | `/api/dashboard/config/versions`         | Local sanitized config version history                                                             |
+| `GET`  | `/api/dashboard/config/versions/:id`     | Sanitized detail for one config version                                                            |
+| `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore one local config version                                                 |
+| `GET`  | `/api/dashboard/config/audit-events`     | Local config audit event stream                                                                    |
 | `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
@@ -1358,11 +1421,13 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
-- **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
+- **Shadow** — Read-only sampled mirror results plus comparison reports for success, latency, cost, confidence, and risk
+- **Benchmarks** — Read-only local benchmark report from call-log metadata; it never applies routing changes
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
 - **API Keys** — Client Gateway API key generation, namespace binding, permissions, budgets, rate limits, rotation, and disable/delete controls
+- **Config Audit** — Local sanitized config versions, audit events, and confirmation-based rollback
 
 ## Plugins
 
@@ -1443,6 +1508,18 @@ To try the optional Redis state backend locally, uncomment the `state` block in 
 ```bash
 docker compose --profile redis up -d --build
 ```
+
+### Kubernetes / Helm
+
+SiftGate also ships OSS-only deployment assets:
+
+```bash
+npm run validate:k8s
+helm upgrade --install siftgate ./deploy/helm/siftgate --namespace siftgate --create-namespace
+kubectl apply -k deploy/kubernetes/base
+```
+
+Defaults stay single-node friendly: memory state backend, SQLite PVC, no Cloud requirement, no enterprise image, and no real secrets in the repo. Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget, ServiceMonitor, existing Secrets/ConfigMaps, resources, and persistence are opt-in. See [Kubernetes And Helm](docs/KUBERNETES.md).
 
 ### Using Dockerfile directly
 

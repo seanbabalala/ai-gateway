@@ -51,6 +51,7 @@ describe('OpenAPI documentation endpoints', () => {
       '/api/auth/status',
       '/api/dashboard/stats',
       '/api/dashboard/logs',
+      '/api/dashboard/benchmarks/report',
       '/api/dashboard/config',
       '/api/dashboard/config/reload',
       '/api/dashboard/api-keys',

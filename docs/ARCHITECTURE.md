@@ -155,17 +155,47 @@ The gateway records call logs with:
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
 
+The v0.9 Benchmark Report API reads the same sanitized `call_logs` table and
+does not introduce another metrics store. It computes local operational
+evidence for the Dashboard: request totals, success/error/fallback/cache rates,
+latency percentiles, throughput estimates, cost/token summaries, status-code
+distribution, `node:model` breakdowns, and source-format/source-family
+breakdowns across chat, responses, messages, embeddings, rerank, images, audio,
+video, and realtime. When matching `route_decisions` rows exist, the report also
+shows trace coverage so operators can see whether performance samples have
+explainable-routing evidence.
+
+Benchmark reports are read-only. They never mutate routing config and never
+store or expose prompts, responses, raw headers, provider keys, media bytes, or
+video bytes.
+
 For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
 
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
+## Config Audit And Rollback
+
+The v0.9 OSS Data Plane adds a local configuration history layer:
+
+- `config_versions` stores sanitized rollback snapshots and summaries.
+- `config_audit_events` stores actor/action/target/result metadata for config changes.
+- Dashboard config reload, node create/update/delete, routing edits, Dashboard-managed API key mutations, and rollback attempts write audit events.
+
+The audit layer sits beside `ConfigService`; it does not change the request forwarding path. Mutating Dashboard operations are wrapped so SiftGate captures a before snapshot, runs the mutation, captures an after snapshot, and records success or failure.
+
+Rollback uses the same atomic validation semantics as config reload: SiftGate parses and validates the target YAML before writing `gateway.config.yaml` and committing the in-memory snapshot. If parsing, validation, or secret rehydration fails, the current file and active runtime config are retained.
+
+Snapshots are secret-safe storage. Literal provider keys, dashboard password hashes, raw auth headers, and secret/token/password-like values are redacted before persistence. Environment references such as `${OPENAI_API_KEY}` remain visible. When rollback needs a redacted value, SiftGate rehydrates it only from a matching field in the current local config; array entries with an `id` must match by `id`, preventing a deleted node from borrowing another node's secret.
+
 ## Shadow Traffic
 
 The open-source data plane includes optional shadow traffic for sampled test-node mirroring. When enabled, successful primary requests can enqueue an asynchronous copy to a configured shadow node/model. The primary response has already been produced, so shadow latency and failures do not affect the caller.
 
 Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
+
+The v0.9 comparison report layer does not introduce a new decision-making path. It pairs shadow result rows with primary `call_logs` by `request_id` and computes success rate, p50/p95 latency, estimated shadow cost, potential savings, token delta, fallback delta, quality sample coverage, confidence, and risk notes. Shadow cost uses the local pricing configuration and is flagged when pricing is missing. Dashboard and API reports stay read-only: they can support a gray-release decision, but they never mutate routing config, promote a target, or replay media/video bytes.
 
 ## Local Webhook Alerts
 

@@ -153,6 +153,38 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       max_recent_results: 100,
       compare: { store_prompts: false, store_responses: false },
     },
+    secretManager: {
+      cache_ttl_seconds: 300,
+      failure_policy: 'fail_closed',
+      backends: {
+        env: { enabled: true },
+        vault: {
+          enabled: false,
+          address: '',
+          token: '',
+          mount: 'secret',
+          kv_version: 2,
+          timeout_ms: 5000,
+        },
+        aws_sm: {
+          enabled: false,
+          region: '',
+          endpoint: '',
+          access_key_id: '',
+          secret_access_key: '',
+          session_token: '',
+          timeout_ms: 5000,
+        },
+        gcp_sm: {
+          enabled: false,
+          project_id: '',
+          endpoint: '',
+          access_token: '',
+          use_metadata: true,
+          timeout_ms: 5000,
+        },
+      },
+    },
     getNode: jest.fn().mockReturnValue(undefined),
     resolveRerankModel: jest.fn().mockReturnValue(null),
     getNamespace: jest.fn((namespaceId?: string | null) =>

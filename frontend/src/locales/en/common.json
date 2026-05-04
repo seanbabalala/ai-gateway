@@ -1,7 +1,7 @@
 {
   "action.cancel": "Cancel",
-  "action.closeSidebar": "Close sidebar",
   "action.close": "Close",
+  "action.closeSidebar": "Close sidebar",
   "action.confirm": "Confirm",
   "action.create": "Create",
   "action.delete": "Delete",
@@ -11,6 +11,9 @@
   "action.save": "Save",
   "action.signOut": "Sign out",
   "action.toggleSidebar": "Toggle sidebar",
+  "circuit.CLOSED": "CLOSED",
+  "circuit.HALF_OPEN": "HALF OPEN",
+  "circuit.OPEN": "OPEN",
   "error.failedToLoad": "Failed to load",
   "error.generic": "Something went wrong. Please try again.",
   "error.unauthorized": "Unauthorized",
@@ -23,6 +26,8 @@
   "nav.analytics": "Analytics",
   "nav.apiKeys": "API Keys",
   "nav.budget": "Budget",
+  "nav.catalog": "Catalog",
+  "nav.configAudit": "Config Audit",
   "nav.dashboard": "Dashboard",
   "nav.experiments": "Experiments",
   "nav.logs": "Logs",
@@ -53,7 +58,5 @@
   "tier.reasoning": "reasoning",
   "tier.simple": "simple",
   "tier.standard": "standard",
-  "circuit.CLOSED": "CLOSED",
-  "circuit.HALF_OPEN": "HALF OPEN",
-  "circuit.OPEN": "OPEN"
+  "nav.benchmarks": "Benchmarks"
 }

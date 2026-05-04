@@ -35,16 +35,27 @@ import {
   FallbackPolicyConfig,
   StateBackendConfig,
   RealtimeConfig,
+  ConfigAuditConfig,
+  SecretManagerConfig,
+  SecretManagerFailurePolicy,
+  VaultSecretManagerConfig,
+  AwsSecretsManagerConfig,
+  GcpSecretManagerConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
+import { isTypedSecretReferenceExpression } from './secret-references';
+import type { ProviderCatalog } from '../catalog/catalog.types';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
 export type ConfigReloadSource =
   | 'manual'
   | 'dashboard'
+  | 'cli'
+  | 'rollback'
+  | 'system'
   | 'sighup'
   | 'watcher'
   | 'cluster';
@@ -113,6 +124,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   private configWatcher?: fs.FSWatcher;
   private watcherDebounceTimer?: NodeJS.Timeout;
   private watcherDebounceMs = 0;
+  private catalogPricingCache?: { configVersion: number; catalog: ProviderCatalog };
 
   constructor() {
     // Load eagerly in constructor so config is available during module initialization
@@ -157,6 +169,10 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       throw new Error(`Configuration file not found: ${this.configPath}`);
     }
     const raw = fs.readFileSync(this.configPath, 'utf8');
+    return this.loadConfigFromYaml(raw);
+  }
+
+  private loadConfigFromYaml(raw: string): GatewayConfig {
     const parsed = yaml.load(raw) as GatewayConfig;
     const resolved = this.resolveEnvVars(parsed) as GatewayConfig;
     this.normalizeConfig(resolved);
@@ -173,6 +189,9 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       return obj.replace(
         /\$\{([^}]+)\}/g,
         (_match: string, expr: string) => {
+          if (isTypedSecretReferenceExpression(expr)) {
+            return _match;
+          }
           const [envKey, defaultValue] = expr.split(':-');
           const value = process.env[envKey.trim()];
           if (value !== undefined) return value;
@@ -324,6 +343,64 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         success: false,
         source,
         message: `Configuration reload failed; retained previous config: ${error.message}`,
+        previous,
+        current,
+        changed: this.emptyChangeSummary(),
+        rolled_back: true,
+        error: {
+          name: error.name || 'Error',
+          message: error.message,
+        },
+      };
+
+      this.logger.error(result.message);
+      this.emitReloadResult(result);
+      if (throwOnError) {
+        throw new ConfigReloadError(result);
+      }
+      return result;
+    }
+  }
+
+  /**
+   * Restore a candidate YAML snapshot with the same atomic validation semantics
+   * as reload(). The file is written only after parsing and validation succeed.
+   */
+  restoreFromYaml(rawYaml: string, options: ConfigReloadOptions = {}): ConfigReloadResult {
+    const source = options.source ?? 'rollback';
+    const throwOnError = options.throwOnError ?? true;
+    const previousConfig = this.config;
+    const previous = this.getSnapshot();
+
+    try {
+      const nextConfig = this.loadConfigFromYaml(rawYaml);
+      const changed = this.describeChanges(previousConfig, nextConfig);
+      fs.writeFileSync(this.configPath, rawYaml, 'utf8');
+      this.commitConfig(nextConfig);
+      const current = this.getSnapshot();
+      const result: ConfigReloadResult = {
+        success: true,
+        source,
+        message: 'Configuration restored',
+        previous,
+        current,
+        changed,
+        rolled_back: false,
+      };
+
+      this.logger.log(
+        `Configuration restored to ${this.configPath} — version ${current.version}`,
+      );
+      this.emitReloadResult(result);
+      this.syncConfigWatcher();
+      return result;
+    } catch (err) {
+      const error = err as Error;
+      const current = this.getSnapshot();
+      const result: ConfigReloadResult = {
+        success: false,
+        source,
+        message: `Configuration restore failed; retained previous config: ${error.message}`,
         previous,
         current,
         changed: this.emptyChangeSummary(),
@@ -754,6 +831,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     compare: {
       store_prompts: boolean;
       store_responses: boolean;
+      sample_max_chars: number;
     };
   } {
     const shadow = this.config.shadow;
@@ -767,12 +845,77 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       compare: {
         store_prompts: shadow?.compare?.store_prompts ?? false,
         store_responses: shadow?.compare?.store_responses ?? false,
+        sample_max_chars: shadow?.compare?.sample_max_chars ?? 4000,
+      },
+    };
+  }
+
+  get secretManager(): Required<SecretManagerConfig> & {
+    failure_policy: SecretManagerFailurePolicy;
+    backends: {
+      env: { enabled: boolean };
+      vault: Required<VaultSecretManagerConfig>;
+      aws_sm: Required<AwsSecretsManagerConfig>;
+      gcp_sm: Required<GcpSecretManagerConfig>;
+    };
+  } {
+    const secrets = this.config.secret_manager;
+    return {
+      cache_ttl_seconds: secrets?.cache_ttl_seconds ?? 300,
+      failure_policy: secrets?.failure_policy ?? 'fail_closed',
+      backends: {
+        env: {
+          enabled: secrets?.backends?.env?.enabled ?? true,
+        },
+        vault: {
+          enabled: secrets?.backends?.vault?.enabled ?? false,
+          address: secrets?.backends?.vault?.address ?? '',
+          token: secrets?.backends?.vault?.token ?? '',
+          mount: secrets?.backends?.vault?.mount ?? 'secret',
+          kv_version: secrets?.backends?.vault?.kv_version ?? 2,
+          timeout_ms: secrets?.backends?.vault?.timeout_ms ?? 5000,
+        },
+        aws_sm: {
+          enabled: secrets?.backends?.aws_sm?.enabled ?? false,
+          region: secrets?.backends?.aws_sm?.region ?? '',
+          endpoint: secrets?.backends?.aws_sm?.endpoint ?? '',
+          access_key_id: secrets?.backends?.aws_sm?.access_key_id ?? '',
+          secret_access_key: secrets?.backends?.aws_sm?.secret_access_key ?? '',
+          session_token: secrets?.backends?.aws_sm?.session_token ?? '',
+          timeout_ms: secrets?.backends?.aws_sm?.timeout_ms ?? 5000,
+        },
+        gcp_sm: {
+          enabled: secrets?.backends?.gcp_sm?.enabled ?? false,
+          project_id: secrets?.backends?.gcp_sm?.project_id ?? '',
+          endpoint: secrets?.backends?.gcp_sm?.endpoint ?? '',
+          access_token: secrets?.backends?.gcp_sm?.access_token ?? '',
+          use_metadata: secrets?.backends?.gcp_sm?.use_metadata ?? true,
+          timeout_ms: secrets?.backends?.gcp_sm?.timeout_ms ?? 5000,
+        },
       },
     };
   }
 
   get modelsPricing(): Record<string, ModelPricing> {
     return this.config.models_pricing;
+  }
+
+  get configAudit(): Required<ConfigAuditConfig> {
+    const audit = this.config.config_audit;
+    return {
+      enabled: audit?.enabled ?? true,
+      max_versions: audit?.max_versions ?? 50,
+      max_events: audit?.max_events ?? 200,
+      capture_startup_snapshot: audit?.capture_startup_snapshot ?? false,
+    };
+  }
+
+  getConfigPath(): string {
+    return this.configPath;
+  }
+
+  readRawConfigYaml(): string {
+    return fs.readFileSync(this.configPath, 'utf8');
   }
 
   private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {
@@ -808,12 +951,76 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Get pricing for a specific model, preferring node/model overrides when a node is supplied. */
-  getModelPricing(model: string, nodeId?: string): ModelPricing | undefined {
+  getModelPricing(model: string, nodeId?: string): (ModelPricing & {
+    source?: string;
+    currency?: string;
+    catalog_source?: string;
+    manual_review_required?: boolean;
+    pricing_confidence?: string;
+  }) | undefined {
     if (nodeId) {
       const nodePricing = this.getNode(nodeId)?.model_capabilities?.[model]?.pricing;
       if (nodePricing) return nodePricing;
     }
-    return this.config.models_pricing[model];
+    const configuredPricing = this.config.models_pricing[model];
+    if (configuredPricing) return configuredPricing;
+    return this.getCatalogPricingFallback(model, nodeId);
+  }
+
+  private getCatalogPricingFallback(
+    model: string,
+    nodeId?: string,
+  ): (ModelPricing & {
+    source?: string;
+    currency?: string;
+    catalog_source?: string;
+    manual_review_required?: boolean;
+    pricing_confidence?: string;
+  }) | undefined {
+    const catalog = this.getMergedCatalogForPricing();
+    if (!catalog) return undefined;
+    try {
+      const catalogModule = require('../catalog/catalog.service') as typeof import('../catalog/catalog.service');
+      const catalogModel = catalogModule.findCatalogModelForNode(
+        catalog,
+        model,
+        nodeId ? this.getNode(nodeId) : undefined,
+      );
+      return catalogModule.catalogModelToModelPricing(catalogModel);
+    } catch (error) {
+      this.logger.warn(
+        error instanceof Error
+          ? `Catalog pricing fallback failed: ${error.message}`
+          : 'Catalog pricing fallback failed.',
+      );
+      return undefined;
+    }
+  }
+
+  private getMergedCatalogForPricing(): ProviderCatalog | undefined {
+    if (this.catalogPricingCache?.configVersion === this.configVersion) {
+      return this.catalogPricingCache.catalog;
+    }
+    try {
+      const catalogModule = require('../catalog/catalog.service') as typeof import('../catalog/catalog.service');
+      const loaded = catalogModule.loadMergedCatalog({
+        cwd: process.cwd(),
+        env: process.env,
+        config: this.config,
+      });
+      this.catalogPricingCache = {
+        configVersion: this.configVersion,
+        catalog: loaded.catalog,
+      };
+      return loaded.catalog;
+    } catch (error) {
+      this.logger.warn(
+        error instanceof Error
+          ? `Could not load provider catalog for pricing fallback: ${error.message}`
+          : 'Could not load provider catalog for pricing fallback.',
+      );
+      return undefined;
+    }
   }
 
   /** Resolve a user-provided embedding model name to a node/model pair. */
@@ -1259,6 +1466,13 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
    */
   private warnAboutNodeModelResolutionConflicts(): void {
     for (const diagnostic of buildNodeModelDiagnostics(this.config)) {
+      if (
+        diagnostic.code === 'missing_model_pricing' &&
+        diagnostic.model &&
+        this.getCatalogPricingFallback(diagnostic.model)
+      ) {
+        continue;
+      }
       this.logger.warn(diagnostic.message);
     }
   }

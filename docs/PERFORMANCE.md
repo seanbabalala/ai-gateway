@@ -52,10 +52,41 @@ Useful environment variables:
 | `GATEWAY_BENCH_STREAM` | unset | Set to `1` to read the full SSE stream |
 | `GATEWAY_BENCH_TIMEOUT_MS` | `120000` | Per-request benchmark timeout |
 | `GATEWAY_BENCH_BODY` | small chat request | Full JSON request body override |
+| `GATEWAY_BENCH_OUTPUT` | unset | Optional path such as `report.json` for writing the JSON summary |
+| `GATEWAY_BENCH_LABEL` | unset | Optional label included in the JSON summary |
 
-The script prints JSON with success counts, status codes, RPS, and p50/p95/p99
-latency. Keep benchmark notes with the gateway commit, node config, machine,
-provider or mock upstream, and request body so future runs can be compared.
+The script prints JSON with success counts, status codes, RPS, p50/p75/p95/p99
+latency, top sanitized errors, and methodology notes. If `GATEWAY_BENCH_OUTPUT`
+is set, the same JSON is written to that path:
+
+```bash
+GATEWAY_BENCH_API_KEY=gw_sk_live_... \
+GATEWAY_BENCH_OUTPUT=reports/local-run.json \
+npm run benchmark:upstream
+```
+
+Keep benchmark notes with the gateway commit, node config, machine, provider or
+mock upstream, and request body so future runs can be compared.
+
+## Dashboard Benchmark Report
+
+v0.9 adds a read-only Dashboard report backed by call-log metadata:
+
+```bash
+curl 'http://localhost:2099/api/dashboard/benchmarks/report?period=24h&source_format=chat_completions'
+```
+
+The report includes request totals, success/error/fallback/cache rates,
+p50/p75/p95/p99 latency, throughput estimates, cost and token summaries,
+status-code distribution, node:model breakdowns, source-format breakdowns, and
+route-trace coverage. Filters include `period`, `namespace`, `api_key_id`
+or legacy `api_key`, `node`, `model`, and `source_format`.
+
+This report is local operational evidence, not a strict cloud benchmark.
+Compare systems only when request body, concurrency, commit, machine, network
+placement, upstream latency profile, and config are identical. It never stores
+or returns prompts, responses, raw headers, provider keys, media bytes, or video
+bytes.
 
 ## v0.5 Known Limits
 

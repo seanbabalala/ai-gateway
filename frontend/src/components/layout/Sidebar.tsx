@@ -12,7 +12,10 @@ import {
   GitCompareArrows,
   Zap,
   Activity,
+  Gauge,
+  Boxes,
   X,
+  FileClock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -31,15 +34,18 @@ const navGroups = [
       { to: '/experiments', icon: FlaskConical, labelKey: 'nav.experiments' },
       { to: '/shadow', icon: GitCompareArrows, labelKey: 'nav.shadow' },
       { to: '/route-decisions', icon: GitFork, labelKey: 'nav.routeExplanation' },
+      { to: '/benchmarks', icon: Gauge, labelKey: 'nav.benchmarks' },
     ],
   },
   {
     labelKey: 'nav.manage',
     items: [
       { to: '/nodes', icon: Server, labelKey: 'nav.nodes' },
+      { to: '/catalog', icon: Boxes, labelKey: 'nav.catalog' },
       { to: '/routing', icon: GitFork, labelKey: 'nav.routing' },
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
+      { to: '/config-audit', icon: FileClock, labelKey: 'nav.configAudit' },
     ],
   },
 ]

@@ -56,6 +56,12 @@ export interface GatewayConfig {
   /** Optional async shadow traffic mirror — disabled by default */
   shadow?: ShadowTrafficConfig;
 
+  /** Optional local config audit log and rollback history. */
+  config_audit?: ConfigAuditConfig;
+
+  /** Optional secret reference backends; env references are enabled by default */
+  secret_manager?: SecretManagerConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
 }
@@ -63,6 +69,74 @@ export interface GatewayConfig {
 export interface CatalogConfig {
   /** Local model/provider catalog override file. Defaults to catalog.override.yaml. */
   override_file?: string;
+}
+
+// ===== Config Audit / Rollback =====
+export interface ConfigAuditConfig {
+  /** Master switch for local config audit/version history (default: true). */
+  enabled?: boolean;
+  /** Maximum stored config versions before oldest versions are pruned (default: 50). */
+  max_versions?: number;
+  /** Maximum audit events returned by Dashboard APIs (default: 200). */
+  max_events?: number;
+  /** Capture a startup baseline snapshot on boot (default: false). */
+  capture_startup_snapshot?: boolean;
+}
+
+// ===== Secret References =====
+export type SecretManagerFailurePolicy = 'fail_closed' | 'fail_open_for_optional';
+
+export interface SecretManagerConfig {
+  /** Local in-process cache TTL for resolved references (default: 300 seconds). */
+  cache_ttl_seconds?: number;
+  /** Runtime behavior when a reference fails to resolve (default: fail_closed). */
+  failure_policy?: SecretManagerFailurePolicy;
+  /** Env is enabled by default. Vault/AWS/GCP are disabled unless explicitly enabled. */
+  backends?: SecretManagerBackendsConfig;
+}
+
+export interface SecretManagerBackendsConfig {
+  env?: {
+    enabled?: boolean;
+  };
+  vault?: VaultSecretManagerConfig;
+  aws_sm?: AwsSecretsManagerConfig;
+  gcp_sm?: GcpSecretManagerConfig;
+}
+
+export interface VaultSecretManagerConfig {
+  enabled?: boolean;
+  /** Vault address, for example https://vault.example.com. May use ${env:VAULT_ADDR}. */
+  address?: string;
+  /** Vault token. May use ${env:VAULT_TOKEN}; never returned by Dashboard APIs. */
+  token?: string;
+  /** KV mount name used when a reference does not already include /data/. */
+  mount?: string;
+  /** Vault KV version (default: 2). */
+  kv_version?: 1 | 2;
+  timeout_ms?: number;
+}
+
+export interface AwsSecretsManagerConfig {
+  enabled?: boolean;
+  region?: string;
+  /** Optional custom endpoint for local/mocked Secrets Manager-compatible services. */
+  endpoint?: string;
+  access_key_id?: string;
+  secret_access_key?: string;
+  session_token?: string;
+  timeout_ms?: number;
+}
+
+export interface GcpSecretManagerConfig {
+  enabled?: boolean;
+  project_id?: string;
+  /** Optional custom endpoint for local/mocked Secret Manager-compatible services. */
+  endpoint?: string;
+  access_token?: string;
+  /** Allow Compute metadata token lookup when access_token is omitted (default: true). */
+  use_metadata?: boolean;
+  timeout_ms?: number;
 }
 
 // ===== Shared State Backend =====
@@ -348,6 +422,8 @@ export interface ShadowTrafficCompareConfig {
   store_prompts?: boolean;
   /** Store sanitized response samples for comparison. Default: false. */
   store_responses?: boolean;
+  /** Maximum stored sample characters after built-in redaction. Default: 4000. */
+  sample_max_chars?: number;
 }
 
 export interface ShadowTrafficConfig {

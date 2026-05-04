@@ -4,6 +4,8 @@ import * as yaml from 'js-yaml';
 import type { GatewayConfig } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import {
+  assessCatalogPricing,
+  catalogModelToModelPricing,
   findCatalogModel,
   flattenCatalogModels,
   loadMergedCatalog,
@@ -15,6 +17,10 @@ import {
   VALID_MODALITIES,
 } from './modality';
 import { diagnoseNodeAgainstCatalog } from '../catalog/provider-catalog.service';
+import {
+  SecretReferenceBackend,
+  scanSecretReferences,
+} from './secret-references';
 
 export type ConfigValidationSeverity = 'error' | 'warning' | 'info';
 
@@ -48,12 +54,6 @@ export interface ValidateConfigObjectOptions {
   catalogIssues?: CatalogIssue[];
 }
 
-interface EnvReference {
-  raw: string;
-  variable: string;
-  hasDefault: boolean;
-}
-
 const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
 const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages']);
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
@@ -72,9 +72,7 @@ const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
 const STATE_BACKENDS = new Set(['memory', 'redis']);
 const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
-const ENV_REF_PATTERN = /\$\{[^}]*\}/g;
-const HAS_ENV_REF_PATTERN = /\$\{[^}]*\}/;
-const ENV_EXPR_PATTERN = /^([A-Z_][A-Z0-9_]*)(:-[\s\S]*)?$/;
+const HAS_CONFIG_REF_PATTERN = /\$\{[^}]*\}/;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CAPABILITY_ENDPOINTS = new Set<string>(VALID_CAPABILITY_ENDPOINTS);
 const CAPABILITY_MODALITIES = new Set<string>(VALID_MODALITIES);
@@ -225,7 +223,7 @@ export function validateConfigObject(
   const config = value as Partial<GatewayConfig> & Record<string, unknown>;
 
   validateTopLevel(config, issues);
-  validateEnvReferences(config, env, issues);
+  validateSecretReferences(config, env, issues, '', secretBackendState(config.secret_manager));
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
   validateAuth(config.auth, config.namespaces, issues);
@@ -243,10 +241,12 @@ export function validateConfigObject(
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
   validateCluster(config.cluster, config.state, issues);
+  validateSecretManager(config.secret_manager, issues);
   validatePricing(config.models_pricing, issues);
   validateCatalogConfig(config.catalog, issues);
+  validateConfigAudit(config.config_audit, issues);
   validateControlPlane(config.control_plane, issues);
-  addSharedDiagnostics(config, issues);
+  addSharedDiagnostics(config, issues, options.catalog);
   addCatalogIssues(options.catalogIssues, issues);
   validateConfigAgainstCatalog(config, options.catalog, issues);
 
@@ -1603,7 +1603,7 @@ function validateCapabilityIOArray(
 }
 
 function isEndpointReference(value: string): boolean {
-  if (HAS_ENV_REF_PATTERN.test(value)) return true;
+  if (HAS_CONFIG_REF_PATTERN.test(value)) return true;
   if (value.startsWith('/')) return true;
   try {
     const url = new URL(value);
@@ -2693,8 +2693,14 @@ function validateShadow(
       if (shadow.compare.store_responses !== undefined && !isBoolean(shadow.compare.store_responses)) {
         issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.store_responses must be a boolean.', 'shadow.compare.store_responses'));
       }
+      if (shadow.compare.sample_max_chars !== undefined) {
+        const sampleMaxChars = shadow.compare.sample_max_chars;
+        if (!Number.isInteger(sampleMaxChars) || typeof sampleMaxChars !== 'number' || sampleMaxChars < 100 || sampleMaxChars > 100000) {
+          issues.push(issue('error', 'invalid_shadow_config', 'shadow.compare.sample_max_chars must be an integer between 100 and 100000.', 'shadow.compare.sample_max_chars'));
+        }
+      }
       if (shadow.compare.store_prompts === true || shadow.compare.store_responses === true) {
-        issues.push(issue('warning', 'shadow_compare_storage_enabled', 'Shadow comparison storage is enabled. Prompts/responses are stored only because this was explicitly configured.', 'shadow.compare'));
+        issues.push(issue('warning', 'shadow_compare_storage_enabled', 'Shadow comparison storage is enabled. Samples are redacted and truncated, but prompts/responses are stored only because this was explicitly configured.', 'shadow.compare'));
       }
     }
   }
@@ -3353,7 +3359,7 @@ function validateRedisStateUrl(
   value: string,
   issues: ConfigValidationIssue[],
 ): void {
-  if (HAS_ENV_REF_PATTERN.test(value)) return;
+  if (HAS_CONFIG_REF_PATTERN.test(value)) return;
   let url: URL;
   try {
     url = new URL(value);
@@ -3739,6 +3745,220 @@ function validatePricingEntry(
   }
 }
 
+function validateSecretManager(
+  secretManager: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (secretManager === undefined) return;
+  if (!isRecord(secretManager)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_manager',
+        'secret_manager must be an object when configured.',
+        'secret_manager',
+      ),
+    );
+    return;
+  }
+
+  if (
+    secretManager.cache_ttl_seconds !== undefined &&
+    (!isFiniteNumber(secretManager.cache_ttl_seconds) ||
+      secretManager.cache_ttl_seconds < 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_manager_cache_ttl',
+        'secret_manager.cache_ttl_seconds must be a non-negative number.',
+        'secret_manager.cache_ttl_seconds',
+      ),
+    );
+  }
+
+  if (
+    secretManager.failure_policy !== undefined &&
+    secretManager.failure_policy !== 'fail_closed' &&
+    secretManager.failure_policy !== 'fail_open_for_optional'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_manager_failure_policy',
+        'secret_manager.failure_policy must be fail_closed or fail_open_for_optional.',
+        'secret_manager.failure_policy',
+      ),
+    );
+  }
+
+  const backends = secretManager.backends;
+  if (backends === undefined) return;
+  if (!isRecord(backends)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_manager_backends',
+        'secret_manager.backends must be an object when configured.',
+        'secret_manager.backends',
+      ),
+    );
+    return;
+  }
+
+  validateSecretBackendEnabled(backends.env, 'secret_manager.backends.env', issues);
+  validateSecretBackendEnabled(backends.vault, 'secret_manager.backends.vault', issues);
+  validateSecretBackendEnabled(backends.aws_sm, 'secret_manager.backends.aws_sm', issues);
+  validateSecretBackendEnabled(backends.gcp_sm, 'secret_manager.backends.gcp_sm', issues);
+
+  if (isRecord(backends.vault)) {
+    validateSecretManagerCredential(
+      backends.vault.token,
+      'secret_manager.backends.vault.token',
+      issues,
+    );
+    if (
+      backends.vault.kv_version !== undefined &&
+      backends.vault.kv_version !== 1 &&
+      backends.vault.kv_version !== 2
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_secret_manager_vault_kv_version',
+          'secret_manager.backends.vault.kv_version must be 1 or 2.',
+          'secret_manager.backends.vault.kv_version',
+        ),
+      );
+    }
+    validateOptionalPositiveNumber(
+      backends.vault.timeout_ms,
+      'secret_manager.backends.vault.timeout_ms',
+      'invalid_secret_manager_timeout',
+      issues,
+    );
+  }
+
+  if (isRecord(backends.aws_sm)) {
+    validateSecretManagerCredential(
+      backends.aws_sm.secret_access_key,
+      'secret_manager.backends.aws_sm.secret_access_key',
+      issues,
+    );
+    validateSecretManagerCredential(
+      backends.aws_sm.session_token,
+      'secret_manager.backends.aws_sm.session_token',
+      issues,
+    );
+    validateOptionalPositiveNumber(
+      backends.aws_sm.timeout_ms,
+      'secret_manager.backends.aws_sm.timeout_ms',
+      'invalid_secret_manager_timeout',
+      issues,
+    );
+  }
+
+  if (isRecord(backends.gcp_sm)) {
+    validateSecretManagerCredential(
+      backends.gcp_sm.access_token,
+      'secret_manager.backends.gcp_sm.access_token',
+      issues,
+    );
+    validateOptionalPositiveNumber(
+      backends.gcp_sm.timeout_ms,
+      'secret_manager.backends.gcp_sm.timeout_ms',
+      'invalid_secret_manager_timeout',
+      issues,
+    );
+    if (
+      backends.gcp_sm.use_metadata !== undefined &&
+      !isBoolean(backends.gcp_sm.use_metadata)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_secret_manager_gcp_metadata',
+          'secret_manager.backends.gcp_sm.use_metadata must be a boolean.',
+          'secret_manager.backends.gcp_sm.use_metadata',
+        ),
+      );
+    }
+  }
+}
+
+function validateSecretManagerCredential(
+  value: unknown,
+  issuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isNonEmptyString(value)) return;
+  if (containsEnvReference(value)) return;
+  if (!looksLikeSecret(value)) return;
+  issues.push(
+    issue(
+      'warning',
+      'literal_secret_manager_credential',
+      `${issuePath} looks like a literal secret; use an env reference such as \${env:SECRET_MANAGER_TOKEN}.`,
+      issuePath,
+    ),
+  );
+}
+
+function validateSecretBackendEnabled(
+  backend: unknown,
+  issuePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (backend === undefined) return;
+  if (!isRecord(backend)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_manager_backend',
+        `${issuePath} must be an object when configured.`,
+        issuePath,
+      ),
+    );
+    return;
+  }
+  if (backend.enabled !== undefined && !isBoolean(backend.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_secret_manager_backend_enabled',
+        `${issuePath}.enabled must be a boolean when set.`,
+        `${issuePath}.enabled`,
+      ),
+    );
+  }
+}
+
+function secretBackendState(
+  secretManager: unknown,
+): Record<SecretReferenceBackend, boolean> {
+  if (!isRecord(secretManager)) {
+    return {
+      env: true,
+      vault: false,
+      'aws-sm': false,
+      'gcp-sm': false,
+    };
+  }
+  const backends = isRecord(secretManager.backends)
+    ? secretManager.backends
+    : {};
+  return {
+    env: isRecord(backends.env) ? backends.env.enabled !== false : true,
+    vault: isRecord(backends.vault) ? backends.vault.enabled === true : false,
+    'aws-sm': isRecord(backends.aws_sm)
+      ? backends.aws_sm.enabled === true
+      : false,
+    'gcp-sm': isRecord(backends.gcp_sm)
+      ? backends.gcp_sm.enabled === true
+      : false,
+  };
+}
+
 function validateCatalogConfig(
   catalog: unknown,
   issues: ConfigValidationIssue[],
@@ -3796,6 +4016,8 @@ function validateConfigAgainstCatalog(
   const catalogModelIds = new Set(
     flattenCatalogModels(catalog).map((model) => model.id),
   );
+  const costOptimization = isRecord(config.routing) &&
+    config.routing.optimization === 'cost';
 
   config.nodes.forEach((nodeValue, nodeIndex) => {
     if (!isRecord(nodeValue)) return;
@@ -3858,6 +4080,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.models),
       `${basePath}.models`,
       ['text', 'vision'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -3866,6 +4091,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.embedding_models),
       `${basePath}.embedding_models`,
       ['embedding'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -3874,6 +4102,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.rerank_models),
       `${basePath}.rerank_models`,
       ['rerank'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -3882,6 +4113,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.image_models),
       `${basePath}.image_models`,
       ['image', 'vision'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -3890,6 +4124,20 @@ function validateConfigAgainstCatalog(
       stringArray(node.audio_models),
       `${basePath}.audio_models`,
       ['audio'],
+      config,
+      node,
+      costOptimization,
+      issues,
+    );
+    validateCatalogModelsForBucket(
+      catalog,
+      catalogModelIds,
+      stringArray(node.video_models),
+      `${basePath}.video_models`,
+      ['video'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
     validateCatalogModelsForBucket(
@@ -3898,6 +4146,9 @@ function validateConfigAgainstCatalog(
       stringArray(node.realtime_models),
       `${basePath}.realtime_models`,
       ['realtime'],
+      config,
+      node,
+      costOptimization,
       issues,
     );
   });
@@ -3950,6 +4201,9 @@ function validateCatalogModelsForBucket(
   models: string[],
   basePath: string,
   expectedModalities: string[],
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  node: Record<string, unknown>,
+  costOptimization: boolean,
   issues: ConfigValidationIssue[],
 ): void {
   models.forEach((modelId, index) => {
@@ -3992,7 +4246,95 @@ function validateCatalogModelsForBucket(
         ),
       );
     }
+    validateCatalogPricingForConfiguredModel(
+      catalogModel,
+      expectedModalities,
+      config,
+      node,
+      modelPath,
+      costOptimization,
+      issues,
+    );
   });
+}
+
+function validateCatalogPricingForConfiguredModel(
+  catalogModel: NonNullable<ReturnType<typeof findCatalogModel>>,
+  expectedModalities: string[],
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  node: Record<string, unknown>,
+  modelPath: string,
+  costOptimization: boolean,
+  issues: ConfigValidationIssue[],
+): void {
+  if (hasExplicitPricing(config, node, catalogModel.id)) return;
+
+  const hygiene = assessCatalogPricing(catalogModel.pricing, expectedModalities);
+  if (hygiene.missing_price_dimensions.length > 0) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_missing',
+        `Catalog pricing for "${catalogModel.id}" is missing ${hygiene.missing_price_dimensions.join(', ')} price metadata.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.placeholder) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_placeholder',
+        `Catalog pricing for "${catalogModel.id}" is placeholder/manual-review metadata; add explicit pricing for production cost routing.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.stale) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_stale',
+        `Catalog pricing for "${catalogModel.id}" is ${hygiene.age_days} day(s) old; refresh catalog.override.yaml or verify manually.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.unit_mismatches.length > 0) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_unit_mismatch',
+        `Catalog pricing units for "${catalogModel.id}" do not fully match ${hygiene.unit_mismatches.join(', ')} workloads.`,
+        modelPath,
+      ),
+    );
+  }
+  if (costOptimization && !catalogModelToModelPricing(catalogModel)) {
+    issues.push(
+      issue(
+        'warning',
+        'cost_routing_pricing_missing',
+        `routing.optimization=cost needs input/output token pricing for "${catalogModel.id}" or an explicit models_pricing override.`,
+        modelPath,
+      ),
+    );
+  }
+}
+
+function hasExplicitPricing(
+  config: Partial<GatewayConfig> & Record<string, unknown>,
+  node: Record<string, unknown>,
+  modelId: string,
+): boolean {
+  const topLevelPricing = config.models_pricing;
+  if (isRecord(topLevelPricing) && isRecord(topLevelPricing[modelId])) {
+    return true;
+  }
+  const modelCapabilities = node.model_capabilities;
+  if (!isRecord(modelCapabilities)) return false;
+  const capability = modelCapabilities[modelId];
+  return isRecord(capability) && isRecord(capability.pricing);
 }
 
 function normalizeEndpointPath(value: string): string {
@@ -4014,6 +4356,62 @@ function normalizeComparableUrl(value: string): string {
   } catch {
     return value.replace(/\/+$/, '');
   }
+}
+
+function validateConfigAudit(
+  audit: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (audit === undefined) return;
+  if (!isRecord(audit)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_config_audit_config',
+        'config_audit must be an object.',
+        'config_audit',
+      ),
+    );
+    return;
+  }
+
+  if (audit.enabled !== undefined && !isBoolean(audit.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_config_audit_config',
+        'config_audit.enabled must be a boolean.',
+        'config_audit.enabled',
+      ),
+    );
+  }
+
+  if (
+    audit.capture_startup_snapshot !== undefined &&
+    !isBoolean(audit.capture_startup_snapshot)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_config_audit_config',
+        'config_audit.capture_startup_snapshot must be a boolean.',
+        'config_audit.capture_startup_snapshot',
+      ),
+    );
+  }
+
+  validatePositiveNumber(
+    audit.max_versions,
+    'config_audit.max_versions',
+    'invalid_config_audit_config',
+    issues,
+  );
+  validatePositiveNumber(
+    audit.max_events,
+    'config_audit.max_events',
+    'invalid_config_audit_config',
+    issues,
+  );
 }
 
 function validateControlPlane(
@@ -4187,20 +4585,48 @@ function validateControlPlaneUrl(
   }
 }
 
-function validateEnvReferences(
+function validateSecretReferences(
   value: unknown,
   env: NodeJS.ProcessEnv,
   issues: ConfigValidationIssue[],
   currentPath = '',
+  backends: Record<SecretReferenceBackend, boolean>,
 ): void {
   if (typeof value === 'string') {
-    for (const ref of extractEnvReferences(value, currentPath, issues)) {
-      if (!ref.hasDefault && env[ref.variable] === undefined) {
+    const scan = scanSecretReferences(value);
+    for (const invalid of scan.invalid) {
+      const envLike = invalid.reason.startsWith('Environment references');
+      issues.push(
+        issue(
+          'error',
+          envLike ? 'malformed_env_reference' : 'malformed_secret_reference',
+          `${envLike ? 'Environment' : 'Secret'} reference ${invalid.raw} is invalid: ${invalid.reason}`,
+          currentPath,
+        ),
+      );
+    }
+    for (const ref of scan.references) {
+      if (!backends[ref.backend]) {
+        issues.push(
+          issue(
+            'error',
+            'secret_backend_disabled',
+            `Secret reference ${ref.raw} uses backend "${ref.backend}", but that backend is not enabled.`,
+            currentPath,
+          ),
+        );
+        continue;
+      }
+      if (
+        ref.backend === 'env' &&
+        ref.defaultValue === undefined &&
+        env[ref.target] === undefined
+      ) {
         issues.push(
           issue(
             'warning',
             'env_reference_unset',
-            `Environment variable ${ref.variable} is not set and has no default.`,
+            `Environment variable ${ref.target} is not set and has no default.`,
             currentPath,
           ),
         );
@@ -4211,7 +4637,13 @@ function validateEnvReferences(
 
   if (Array.isArray(value)) {
     value.forEach((item, index) =>
-      validateEnvReferences(item, env, issues, `${currentPath}[${index}]`),
+      validateSecretReferences(
+        item,
+        env,
+        issues,
+        `${currentPath}[${index}]`,
+        backends,
+      ),
     );
     return;
   }
@@ -4219,76 +4651,13 @@ function validateEnvReferences(
   if (isRecord(value)) {
     for (const [key, child] of Object.entries(value)) {
       const childPath = currentPath ? `${currentPath}.${key}` : key;
-      validateEnvReferences(child, env, issues, childPath);
+      validateSecretReferences(child, env, issues, childPath, backends);
     }
   }
-}
-
-function extractEnvReferences(
-  value: string,
-  valuePath: string,
-  issues: ConfigValidationIssue[],
-): EnvReference[] {
-  const refs: EnvReference[] = [];
-  let searchIndex = 0;
-
-  while (searchIndex < value.length) {
-    const start = value.indexOf('${', searchIndex);
-    if (start === -1) break;
-
-    const end = value.indexOf('}', start + 2);
-    if (end === -1) {
-      issues.push(
-        issue(
-          'error',
-          'malformed_env_reference',
-          'Environment reference is missing a closing "}".',
-          valuePath,
-        ),
-      );
-      break;
-    }
-
-    const raw = value.slice(start, end + 1);
-    const expression = value.slice(start + 2, end).trim();
-    const match = ENV_EXPR_PATTERN.exec(expression);
-    if (!match) {
-      issues.push(
-        issue(
-          'error',
-          'malformed_env_reference',
-          `Environment reference ${raw} must use \${VAR} or \${VAR:-default} with an uppercase variable name.`,
-          valuePath,
-        ),
-      );
-    } else {
-      refs.push({
-        raw,
-        variable: match[1],
-        hasDefault: match[2] !== undefined,
-      });
-    }
-
-    searchIndex = end + 1;
-  }
-
-  const withoutRefs = value.replace(ENV_REF_PATTERN, '');
-  if (withoutRefs.includes('}')) {
-    issues.push(
-      issue(
-        'error',
-        'malformed_env_reference',
-        'String contains a closing "}" without a matching environment reference.',
-        valuePath,
-      ),
-    );
-  }
-
-  return refs;
 }
 
 function containsEnvReference(value: string): boolean {
-  return HAS_ENV_REF_PATTERN.test(value);
+  return HAS_CONFIG_REF_PATTERN.test(value);
 }
 
 function validateProviderApiKey(
@@ -4342,8 +4711,17 @@ function isLocalNode(node: Record<string, unknown>): boolean {
 function addSharedDiagnostics(
   config: Partial<GatewayConfig>,
   issues: ConfigValidationIssue[],
+  catalog?: ProviderCatalog,
 ): void {
   for (const diagnostic of buildNodeModelDiagnostics(config)) {
+    if (
+      catalog &&
+      diagnostic.code === 'missing_model_pricing' &&
+      diagnostic.model &&
+      catalogModelToModelPricing(findCatalogModel(catalog, diagnostic.model))
+    ) {
+      continue;
+    }
     const severity = diagnostic.code.startsWith('route_references_')
       ? 'error'
       : 'warning';
