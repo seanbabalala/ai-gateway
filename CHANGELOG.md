@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.3 - 2026-05-05
+
+### Changed
+
+- Improved the Dashboard Provider Catalog refresh-source section with collapsed-by-default source cards, pinned automatic/local override sources, summary badges, and 7-language copy so long provider lists no longer dominate the page.
+- Rebalanced the Routing page layout so each tier shows the route lane first and expands load-balancing/split controls across the available width instead of crowding them into a narrow right column.
+- Updated Dashboard Logs for the v0.9 surface: source format is visible in the table, route result is separated from upstream node, and prompt-cache hits now display as cache outcomes with no upstream call instead of fake `cached` tiers or `cache` nodes.
+- Filtered prompt-cache synthetic rows out of Dashboard tier/node distribution charts while keeping them visible in cache metrics and recent-call activity.
+
 ## 0.9.2 - 2026-05-04
 
 ### Added

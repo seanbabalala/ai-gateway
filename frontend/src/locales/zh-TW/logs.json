@@ -36,7 +36,7 @@
   "filters.allNamespaces": "所有命名空間",
   "filters.allStatus": "所有狀態",
   "filters.allTiers": "所有層級",
-  "filters.nodePlaceholder": "依節點篩選...",
+  "filters.nodePlaceholder": "依上游篩選...",
   "filters.status200": "200 OK",
   "filters.status429": "429 限流",
   "filters.status500": "500 錯誤",
@@ -217,5 +217,17 @@
   "tiers.complex": "複雜",
   "tiers.reasoning": "推理",
   "tiers.simple": "簡單",
-  "tiers.standard": "標準"
+  "tiers.standard": "標準",
+  "cache.creationTokens": "快取寫入 tokens",
+  "cache.hit": "快取命中",
+  "cache.kind": "快取",
+  "cache.noUpstream": "未呼叫上游",
+  "cache.promptCache": "Prompt 快取回放",
+  "cache.providerCache": "Provider 快取 tokens",
+  "cache.readTokens": "快取讀取 tokens",
+  "detail.routeResult": "路由結果",
+  "detail.upstream": "上游",
+  "table.routeResult": "路由結果",
+  "table.source": "來源",
+  "table.upstream": "上游"
 }

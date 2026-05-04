@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "Shadow 失敗あり",
   "shadow.risk.shadow_does_not_apply_routing_changes": "レポートは読み取り専用",
   "shadow.risk.missing_primary_log": "主ログ不足",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow 失敗またはスキップ"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow 失敗またはスキップ",
+  "cache.callsHidden": "{{count}} 件の Prompt キャッシュヒットはキャッシュ指標に集計され、ルーティング階層や上流ノードには含まれません。",
+  "cache.hit": "キャッシュヒット",
+  "cache.noUpstream": "上流呼び出しなし"
 }

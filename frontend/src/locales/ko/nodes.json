@@ -317,5 +317,8 @@
   "catalogPage.refreshSources.modes.public_api": "공개 API",
   "catalogPage.refreshSources.modes.authenticated_api": "API 키",
   "catalogPage.refreshSources.modes.docs_review": "문서 검토",
-  "catalogPage.refreshSources.modes.operator_local": "로컬 오버라이드"
+  "catalogPage.refreshSources.modes.operator_local": "로컬 오버라이드",
+  "catalogPage.refreshSources.showAll": "{{count}}개 모두 보기",
+  "catalogPage.refreshSources.showLess": "소스 접기",
+  "catalogPage.refreshSources.summary": "업데이트 소스 {{total}}개 중 {{shown}}개 표시"
 }

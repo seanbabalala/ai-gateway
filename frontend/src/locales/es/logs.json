@@ -36,7 +36,7 @@
   "filters.allNamespaces": "Todos los namespaces",
   "filters.allStatus": "Todos los estados",
   "filters.allTiers": "Todos los tiers",
-  "filters.nodePlaceholder": "Filtrar por node...",
+  "filters.nodePlaceholder": "Filtrar por upstream...",
   "filters.status200": "200 OK",
   "filters.status429": "429 Rate Limit",
   "filters.status500": "500 Error",
@@ -217,5 +217,17 @@
   "tiers.complex": "Complejo",
   "tiers.reasoning": "Razonamiento",
   "tiers.simple": "Simple",
-  "tiers.standard": "Estándar"
+  "tiers.standard": "Estándar",
+  "cache.creationTokens": "tokens creados en caché",
+  "cache.hit": "Acierto de caché",
+  "cache.kind": "Caché",
+  "cache.noUpstream": "Sin llamada upstream",
+  "cache.promptCache": "Reproducción de prompt cache",
+  "cache.providerCache": "Tokens de caché del proveedor",
+  "cache.readTokens": "tokens leídos de caché",
+  "detail.routeResult": "Resultado de ruta",
+  "detail.upstream": "Upstream",
+  "table.routeResult": "Resultado de ruta",
+  "table.source": "Origen",
+  "table.upstream": "Upstream"
 }

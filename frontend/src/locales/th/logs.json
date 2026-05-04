@@ -36,7 +36,7 @@
   "filters.allNamespaces": "Namespaces ทั้งหมด",
   "filters.allStatus": "ทุกสถานะ",
   "filters.allTiers": "ทุก Tiers",
-  "filters.nodePlaceholder": "กรองตาม node...",
+  "filters.nodePlaceholder": "กรองตาม upstream...",
   "filters.status200": "200 OK",
   "filters.status429": "429 Rate Limit",
   "filters.status500": "500 Error",
@@ -217,5 +217,17 @@
   "tiers.complex": "Complex",
   "tiers.reasoning": "Reasoning",
   "tiers.simple": "Simple",
-  "tiers.standard": "Standard"
+  "tiers.standard": "Standard",
+  "cache.creationTokens": "tokens ที่สร้าง cache",
+  "cache.hit": "Cache hit",
+  "cache.kind": "Cache",
+  "cache.noUpstream": "ไม่มีการเรียก upstream",
+  "cache.promptCache": "เล่นซ้ำจาก Prompt cache",
+  "cache.providerCache": "Provider cache tokens",
+  "cache.readTokens": "tokens ที่อ่านจาก cache",
+  "detail.routeResult": "ผลการ route",
+  "detail.upstream": "Upstream",
+  "table.routeResult": "ผลการ route",
+  "table.source": "แหล่งที่มา",
+  "table.upstream": "Upstream"
 }

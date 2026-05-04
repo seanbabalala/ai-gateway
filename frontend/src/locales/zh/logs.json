@@ -36,7 +36,7 @@
   "filters.allNamespaces": "所有命名空间",
   "filters.allStatus": "所有状态",
   "filters.allTiers": "所有层级",
-  "filters.nodePlaceholder": "按节点筛选...",
+  "filters.nodePlaceholder": "按上游筛选...",
   "filters.status200": "200 OK",
   "filters.status429": "429 限流",
   "filters.status500": "500 错误",
@@ -217,5 +217,17 @@
   "tiers.complex": "复杂",
   "tiers.reasoning": "推理",
   "tiers.simple": "简单",
-  "tiers.standard": "标准"
+  "tiers.standard": "标准",
+  "cache.creationTokens": "缓存写入 tokens",
+  "cache.hit": "缓存命中",
+  "cache.kind": "缓存",
+  "cache.noUpstream": "未调用上游",
+  "cache.promptCache": "Prompt 缓存回放",
+  "cache.providerCache": "Provider 缓存 tokens",
+  "cache.readTokens": "缓存读取 tokens",
+  "detail.routeResult": "路由结果",
+  "detail.upstream": "上游",
+  "table.routeResult": "路由结果",
+  "table.source": "来源",
+  "table.upstream": "上游"
 }

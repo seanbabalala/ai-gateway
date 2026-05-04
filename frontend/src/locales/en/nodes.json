@@ -317,5 +317,8 @@
   "catalogPage.refreshSources.modes.public_api": "Public API",
   "catalogPage.refreshSources.modes.authenticated_api": "API key",
   "catalogPage.refreshSources.modes.docs_review": "Docs review",
-  "catalogPage.refreshSources.modes.operator_local": "Local override"
+  "catalogPage.refreshSources.modes.operator_local": "Local override",
+  "catalogPage.refreshSources.showAll": "Show all {{count}}",
+  "catalogPage.refreshSources.showLess": "Collapse sources",
+  "catalogPage.refreshSources.summary": "Showing {{shown}} of {{total}} update sources"
 }

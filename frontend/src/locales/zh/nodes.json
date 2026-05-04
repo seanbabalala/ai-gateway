@@ -317,5 +317,8 @@
   "catalogPage.refreshSources.modes.public_api": "公开 API",
   "catalogPage.refreshSources.modes.authenticated_api": "API Key",
   "catalogPage.refreshSources.modes.docs_review": "文档复核",
-  "catalogPage.refreshSources.modes.operator_local": "本地覆盖"
+  "catalogPage.refreshSources.modes.operator_local": "本地覆盖",
+  "catalogPage.refreshSources.showAll": "展开全部 {{count}} 个",
+  "catalogPage.refreshSources.showLess": "收起来源",
+  "catalogPage.refreshSources.summary": "已显示 {{shown}} / {{total}} 个更新来源"
 }

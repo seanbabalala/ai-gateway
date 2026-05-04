@@ -317,5 +317,8 @@
   "catalogPage.refreshSources.modes.public_api": "Public API",
   "catalogPage.refreshSources.modes.authenticated_api": "API key",
   "catalogPage.refreshSources.modes.docs_review": "ตรวจเอกสาร",
-  "catalogPage.refreshSources.modes.operator_local": "Local override"
+  "catalogPage.refreshSources.modes.operator_local": "Local override",
+  "catalogPage.refreshSources.showAll": "แสดงทั้งหมด {{count}} รายการ",
+  "catalogPage.refreshSources.showLess": "ยุบแหล่งข้อมูล",
+  "catalogPage.refreshSources.summary": "แสดงแหล่งอัปเดต {{shown}} จาก {{total}} รายการ"
 }

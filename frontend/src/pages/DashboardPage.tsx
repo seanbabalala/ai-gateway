@@ -32,6 +32,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { TierBadge } from '@/components/shared/TierBadge'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { SkeletonCard, SkeletonChart, Skeleton } from '@/components/ui/skeleton'
@@ -55,6 +56,12 @@ import {
   TIER_CHART_COLORS,
   getNodeColor,
 } from '@/lib/utils'
+import {
+  hiddenPromptCacheCount,
+  isPromptCacheLog,
+  visibleNodeDistribution,
+  visibleTierDistribution,
+} from '@/lib/call-log-display'
 
 type ChartTooltipPayload = {
   color?: string
@@ -173,7 +180,10 @@ export function DashboardPage() {
     )
   }
 
-  const { total, tierDistribution, nodeDistribution } = stats
+  const { total } = stats
+  const tierDistribution = visibleTierDistribution(stats.tierDistribution)
+  const nodeDistribution = visibleNodeDistribution(stats.nodeDistribution)
+  const promptCacheCount = hiddenPromptCacheCount(stats.tierDistribution, stats.nodeDistribution)
   const totalTierCalls = tierDistribution.reduce((sum, entry) => sum + entry.count, 0)
   const maxNodeCalls = Math.max(1, ...nodeDistribution.map((entry) => entry.count))
   const configDiagnostics = configData?.diagnostics || []
@@ -559,6 +569,11 @@ export function DashboardPage() {
                       </button>
                     )
                   })}
+                  {promptCacheCount > 0 && (
+                    <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                      {t('cache.callsHidden', { count: formatNumber(promptCacheCount) })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -705,9 +720,15 @@ export function DashboardPage() {
                     <span className="font-mono text-[var(--foreground-dim)]">
                       {formatTimestamp(log.timestamp)}
                     </span>
-                    <TierBadge tier={log.tier} />
+                    {isPromptCacheLog(log) ? (
+                      <Badge variant="emerald">{t('cache.hit')}</Badge>
+                    ) : (
+                      <TierBadge tier={log.tier} />
+                    )}
                     <div className="min-w-0">
-                      <span className="font-semibold text-[var(--foreground-muted)]">{log.node_id}</span>
+                      <span className="font-semibold text-[var(--foreground-muted)]">
+                        {isPromptCacheLog(log) ? t('cache.noUpstream') : log.node_id}
+                      </span>
                       <Tooltip content={log.model}>
                         <span className="ml-2 inline-block max-w-[180px] truncate align-bottom font-mono text-[var(--foreground-dim)]">
                           {log.model}

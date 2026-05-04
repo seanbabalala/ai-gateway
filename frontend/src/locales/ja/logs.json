@@ -36,7 +36,7 @@
   "filters.allNamespaces": "すべての Namespace",
   "filters.allStatus": "すべてのステータス",
   "filters.allTiers": "すべての Tier",
-  "filters.nodePlaceholder": "ノードで絞り込み...",
+  "filters.nodePlaceholder": "上流で絞り込み...",
   "filters.status200": "200 OK",
   "filters.status429": "429 レート制限",
   "filters.status500": "500 エラー",
@@ -217,5 +217,17 @@
   "tiers.complex": "複雑",
   "tiers.reasoning": "推論",
   "tiers.simple": "シンプル",
-  "tiers.standard": "標準"
+  "tiers.standard": "標準",
+  "cache.creationTokens": "キャッシュ作成 tokens",
+  "cache.hit": "キャッシュヒット",
+  "cache.kind": "キャッシュ",
+  "cache.noUpstream": "上流呼び出しなし",
+  "cache.promptCache": "Prompt キャッシュ再生",
+  "cache.providerCache": "Provider キャッシュ tokens",
+  "cache.readTokens": "キャッシュ読取 tokens",
+  "detail.routeResult": "ルート結果",
+  "detail.upstream": "上流",
+  "table.routeResult": "ルート結果",
+  "table.source": "ソース",
+  "table.upstream": "上流"
 }

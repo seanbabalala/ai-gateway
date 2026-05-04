@@ -36,7 +36,7 @@
   "filters.allNamespaces": "모든 네임스페이스",
   "filters.allStatus": "모든 상태",
   "filters.allTiers": "모든 티어",
-  "filters.nodePlaceholder": "노드로 필터...",
+  "filters.nodePlaceholder": "업스트림으로 필터...",
   "filters.status200": "200 OK",
   "filters.status429": "429 Rate Limit",
   "filters.status500": "500 오류",
@@ -217,5 +217,17 @@
   "tiers.complex": "복합",
   "tiers.reasoning": "추론",
   "tiers.simple": "단순",
-  "tiers.standard": "표준"
+  "tiers.standard": "표준",
+  "cache.creationTokens": "캐시 생성 tokens",
+  "cache.hit": "캐시 히트",
+  "cache.kind": "캐시",
+  "cache.noUpstream": "업스트림 호출 없음",
+  "cache.promptCache": "Prompt 캐시 재생",
+  "cache.providerCache": "Provider 캐시 tokens",
+  "cache.readTokens": "캐시 읽기 tokens",
+  "detail.routeResult": "라우팅 결과",
+  "detail.upstream": "업스트림",
+  "table.routeResult": "라우팅 결과",
+  "table.source": "소스",
+  "table.upstream": "업스트림"
 }

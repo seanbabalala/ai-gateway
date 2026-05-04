@@ -27,7 +27,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.9.2**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation. v0.9.2 is a small Provider Catalog patch that clarifies price source status, improves the Dashboard catalog layout, and adds a safe OpenRouter public catalog refresh workflow for model/pricing overrides.
+Current open-source release: **v0.9.3**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation. v0.9.3 is a Dashboard polish patch that tightens Provider Catalog refresh-source browsing, improves Routing page space usage, and updates Logs so prompt-cache hits are shown as cache outcomes instead of routing tiers or upstream nodes.
 
 This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog price source status checks. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
 
@@ -149,7 +149,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 ### Provider Catalog
 
-v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. v0.9.2 keeps the built-in data as a reviewable reference snapshot and adds a refresh-source workflow for providers with a stable public API. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
+v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. v0.9 keeps the built-in data as a reviewable reference snapshot and adds a refresh-source workflow for providers with a stable public API. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
 
 Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatible proxy, select capabilities, pick/edit model buckets, confirm endpoints/auth/headers/pricing/capabilities, then test and save to the local Data Plane config. It supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` without connecting to SiftGate Cloud.
 
@@ -160,7 +160,7 @@ Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatib
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
 - Pricing entries include `currency`, modality-specific units, `source`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `manual_review_required`.
 - Dashboard includes a read-only Provider Catalog page for price source status, source URL, manual-review state, confidence, override markers, and available refresh sources.
-- `siftgate catalog sources` shows which providers can be refreshed automatically. In v0.9.2, OpenRouter can be refreshed from its public model catalog API; providers whose prices depend on region, deployment, account, or private model names remain docs-review or local-override workflows.
+- `siftgate catalog sources` shows which providers can be refreshed automatically. OpenRouter can be refreshed from its public model catalog API; providers whose prices depend on region, deployment, account, or private model names remain docs-review or local-override workflows.
 - `siftgate catalog refresh openrouter --out catalog.override.yaml` writes a local override with current OpenRouter model IDs and prompt/completion pricing converted to USD per 1M tokens.
 - Cost routing falls back to merged catalog pricing only when explicit `model_capabilities[].pricing` and `models_pricing` are absent. Explicit user config always wins.
 - Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
@@ -375,7 +375,7 @@ The validator checks YAML parsing, required sections, node/model naming conflict
 
 ### Provider & Model Catalog
 
-SiftGate ships a local provider/model catalog for Dashboard Add Node presets, config warnings, and multimodal routing metadata. Built-in entries are reviewable references. Providers with stable public APIs can be refreshed into a local override; v0.9.2 starts with OpenRouter.
+SiftGate ships a local provider/model catalog for Dashboard Add Node presets, config warnings, and multimodal routing metadata. Built-in entries are reviewable references. Providers with stable public APIs can be refreshed into a local override; OpenRouter is the first supported public refresh adapter.
 
 Use the catalog CLI to inspect the built-in catalog and manage local overrides:
 

@@ -53,6 +53,10 @@ export interface CallLog {
   status_code: number
   is_fallback: boolean
   fallback_reason: string | null
+  retry_count?: number
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
+  experiment_group?: string | null
   structured_output_requested?: boolean
   structured_output_type?: string | null
   structured_output_strategy?: string | null

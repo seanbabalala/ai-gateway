@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "Shadow 실패 존재",
   "shadow.risk.shadow_does_not_apply_routing_changes": "리포트는 읽기 전용",
   "shadow.risk.missing_primary_log": "기본 로그 누락",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow 실패 또는 건너뜀"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow 실패 또는 건너뜀",
+  "cache.callsHidden": "Prompt 캐시 히트 {{count}}건은 캐시 지표에 집계되며 라우팅 티어나 업스트림 노드에는 포함되지 않습니다.",
+  "cache.hit": "캐시 히트",
+  "cache.noUpstream": "업스트림 호출 없음"
 }

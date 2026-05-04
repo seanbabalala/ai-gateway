@@ -36,7 +36,7 @@
   "filters.allNamespaces": "All namespaces",
   "filters.allStatus": "All Status",
   "filters.allTiers": "All Tiers",
-  "filters.nodePlaceholder": "Filter by node...",
+  "filters.nodePlaceholder": "Filter by upstream...",
   "filters.status200": "200 OK",
   "filters.status429": "429 Rate Limit",
   "filters.status500": "500 Error",
@@ -217,5 +217,17 @@
   "tiers.complex": "Complex",
   "tiers.reasoning": "Reasoning",
   "tiers.simple": "Simple",
-  "tiers.standard": "Standard"
+  "tiers.standard": "Standard",
+  "cache.creationTokens": "cache create tokens",
+  "cache.hit": "Cache hit",
+  "cache.kind": "Cache",
+  "cache.noUpstream": "No upstream call",
+  "cache.promptCache": "Prompt cache replay",
+  "cache.providerCache": "Provider cache tokens",
+  "cache.readTokens": "cache read tokens",
+  "detail.routeResult": "Route Result",
+  "detail.upstream": "Upstream",
+  "table.routeResult": "Route Result",
+  "table.source": "Source",
+  "table.upstream": "Upstream"
 }

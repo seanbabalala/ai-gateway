@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "Hay fallos shadow",
   "shadow.risk.shadow_does_not_apply_routing_changes": "El reporte es solo lectura",
   "shadow.risk.missing_primary_log": "Falta log primario",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow falló o se omitió"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow falló o se omitió",
+  "cache.callsHidden": "{{count}} acierto(s) de prompt cache se cuentan en métricas de caché, no como tiers de routing ni nodos upstream.",
+  "cache.hit": "Acierto de caché",
+  "cache.noUpstream": "Sin llamada upstream"
 }

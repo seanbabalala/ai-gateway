@@ -317,5 +317,8 @@
   "catalogPage.refreshSources.modes.public_api": "公開 API",
   "catalogPage.refreshSources.modes.authenticated_api": "API キー",
   "catalogPage.refreshSources.modes.docs_review": "ドキュメント確認",
-  "catalogPage.refreshSources.modes.operator_local": "ローカル上書き"
+  "catalogPage.refreshSources.modes.operator_local": "ローカル上書き",
+  "catalogPage.refreshSources.showAll": "{{count}} 件すべて表示",
+  "catalogPage.refreshSources.showLess": "ソースを折りたたむ",
+  "catalogPage.refreshSources.summary": "{{total}} 件中 {{shown}} 件の更新ソースを表示"
 }

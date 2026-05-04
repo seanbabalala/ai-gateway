@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardStatic } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -25,6 +26,7 @@ import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
+import { isPromptCacheLog, sourceFormatLabel } from '@/lib/call-log-display'
 import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
@@ -37,13 +39,44 @@ function formatBytes(value?: number | null) {
   return `${value} B`
 }
 
+function LogRouteBadge({ log }: { log: CallLog }) {
+  const { t } = useTranslation('logs')
+  if (isPromptCacheLog(log)) {
+    return <Badge variant="emerald">{t('cache.hit')}</Badge>
+  }
+  return <TierBadge tier={log.tier} />
+}
+
+function SourceBadge({ sourceFormat }: { sourceFormat: string }) {
+  const { t } = useTranslation('logs')
+  return (
+    <Badge variant="blue" className="max-w-[150px] truncate whitespace-nowrap">
+      {sourceFormatLabel(sourceFormat, t)}
+    </Badge>
+  )
+}
+
+function UpstreamCell({ log }: { log: CallLog }) {
+  const { t } = useTranslation('logs')
+  if (isPromptCacheLog(log)) {
+    return (
+      <div className="min-w-0">
+        <span className="font-medium text-[var(--foreground-dim)]">{t('cache.noUpstream')}</span>
+        <div className="mt-1 font-mono text-[10px] text-[var(--foreground-dim)]">{t('cache.promptCache')}</div>
+      </div>
+    )
+  }
+  return <span className="font-medium text-[var(--foreground)]">{log.node_id}</span>
+}
+
 function LogDetailRow({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
   const mediaByteSize = formatBytes(log.media_byte_size)
+  const isCache = isPromptCacheLog(log)
   return (
     <TableRow>
-      <TableCell colSpan={8} className="bg-[var(--inset-bg)] px-6 py-4">
-        <div className="grid grid-cols-3 gap-4 text-xs">
+      <TableCell colSpan={10} className="bg-[var(--inset-bg)] px-6 py-4">
+        <div className="grid gap-4 text-xs md:grid-cols-2 xl:grid-cols-3">
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.requestId')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">{log.request_id}</span>
@@ -54,7 +87,21 @@ function LogDetailRow({ log }: { log: CallLog }) {
           </div>
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.sourceFormat')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">{log.source_format}</span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {sourceFormatLabel(log.source_format, t)}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.routeResult')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {isCache ? t('cache.hit') : t(`tiers.${log.tier}`, { defaultValue: log.tier })}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.upstream')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {isCache ? t('cache.noUpstream') : log.node_id}
+            </span>
           </div>
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.apiKey')}: </span>
@@ -126,6 +173,24 @@ function LogDetailRow({ log }: { log: CallLog }) {
               </div>
             </>
           )}
+          {(isCache || log.cache_creation_input_tokens || log.cache_read_input_tokens) && (
+            <>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('cache.kind')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {isCache ? t('cache.promptCache') : t('cache.providerCache')}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('cache.readTokens')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{log.cache_read_input_tokens ?? 0}</span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('cache.creationTokens')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{log.cache_creation_input_tokens ?? 0}</span>
+              </div>
+            </>
+          )}
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.tokens')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
@@ -138,7 +203,7 @@ function LogDetailRow({ log }: { log: CallLog }) {
               <span className="font-mono text-red-600 dark:text-red-400">{log.error}</span>
             </div>
           )}
-          <div className="col-span-3">
+          <div className="md:col-span-2 xl:col-span-3">
             <Link
               to={`/route-decisions/${encodeURIComponent(log.request_id)}`}
               className={buttonVariants({ variant: 'outline', size: 'sm', className: 'mt-1' })}
@@ -337,7 +402,7 @@ export function LogsPage() {
         {isError ? (
           <ErrorState error={error} onRetry={refetch} />
         ) : isLoading ? (
-          <SkeletonTable rows={10} cols={9} />
+          <SkeletonTable rows={10} cols={10} />
         ) : (
           <>
             <Table>
@@ -345,8 +410,9 @@ export function LogsPage() {
                 <TableRow>
                   <TableHead className="w-8" />
                   <TableHead>{t('table.time')}</TableHead>
-                  <TableHead>{t('table.tier')}</TableHead>
-                  <TableHead>{t('table.node')}</TableHead>
+                  <TableHead>{t('table.source')}</TableHead>
+                  <TableHead>{t('table.routeResult')}</TableHead>
+                  <TableHead>{t('table.upstream')}</TableHead>
                   <TableHead>{t('table.model')}</TableHead>
                   <TableHead className="text-right">{t('table.tokens')}</TableHead>
                   <TableHead className="text-right">{t('table.cost')}</TableHead>
@@ -356,9 +422,8 @@ export function LogsPage() {
               </TableHeader>
               <TableBody>
                 {logsData?.data.map((log) => (
-                  <>
+                  <Fragment key={log.id}>
                     <TableRow
-                      key={log.id}
                       className="cursor-pointer"
                       onClick={() =>
                         setExpandedId(expandedId === log.id ? null : log.id)
@@ -375,10 +440,13 @@ export function LogsPage() {
                         {formatTimestamp(log.timestamp)}
                       </TableCell>
                       <TableCell>
-                        <TierBadge tier={log.tier} />
+                        <SourceBadge sourceFormat={log.source_format} />
                       </TableCell>
-                      <TableCell className="font-medium text-[var(--foreground)]">
-                        {log.node_id}
+                      <TableCell>
+                        <LogRouteBadge log={log} />
+                      </TableCell>
+                      <TableCell className="max-w-[160px]">
+                        <UpstreamCell log={log} />
                       </TableCell>
                       <TableCell className="max-w-[180px] truncate font-mono text-[11px] text-[var(--foreground-dim)]">
                         <Tooltip content={log.model}>
@@ -409,11 +477,11 @@ export function LogsPage() {
                     {expandedId === log.id && (
                       <LogDetailRow key={`detail-${log.id}`} log={log} />
                     )}
-                  </>
+                  </Fragment>
                 ))}
                 {(!logsData?.data || logsData.data.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={9} className="p-0">
+                    <TableCell colSpan={10} className="p-0">
                       <EmptyState
                         icon={ScrollText}
                         title={t('empty.title')}

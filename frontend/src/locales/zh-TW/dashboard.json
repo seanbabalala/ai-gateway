@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "存在 Shadow 失敗",
   "shadow.risk.shadow_does_not_apply_routing_changes": "報告唯讀，不會改路由",
   "shadow.risk.missing_primary_log": "缺少主路徑日誌",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow 失敗或跳過"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow 失敗或跳過",
+  "cache.callsHidden": "{{count}} 次 Prompt 快取命中已歸入快取指標，不計入路由層級或上游節點。",
+  "cache.hit": "快取命中",
+  "cache.noUpstream": "未呼叫上游"
 }

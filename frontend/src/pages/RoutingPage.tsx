@@ -714,10 +714,12 @@ export function RoutingPage() {
 
       {/* Tier Routing Flow */}
       <div className="animate-fade-up rounded-lg bg-[var(--glass-bg)] p-3 shadow-[var(--card-shadow)]">
-        <div className="mb-2 hidden grid-cols-[130px_1fr_320px] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
+        <div className="mb-2 hidden grid-cols-[108px_minmax(0,1fr)] gap-4 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)] lg:grid">
           <span>{t('table.tier')}</span>
-          <span>{t('table.routeLane')}</span>
-          <span>{t('table.trafficMode')}</span>
+          <div className="grid gap-3 xl:grid-cols-[minmax(360px,1fr)_minmax(420px,0.95fr)]">
+            <span>{t('table.routeLane')}</span>
+            <span>{t('table.trafficMode')}</span>
+          </div>
         </div>
         <div className="space-y-2">
           {tierNames.map((tierName) => {
@@ -733,7 +735,7 @@ export function RoutingPage() {
             return (
               <div
                 key={tierName}
-                className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[130px_1fr_320px] lg:items-start"
+                className="matrix-row grid gap-4 rounded-lg px-4 py-4 lg:grid-cols-[108px_minmax(0,1fr)] lg:items-start"
               >
                 <div className="space-y-2">
                   <TierBadge tier={tierName} />
@@ -830,7 +832,7 @@ export function RoutingPage() {
                   )}
                 </div>
 
-                <div className="space-y-3">
+                <div className="grid gap-3 lg:col-start-2 xl:grid-cols-[minmax(360px,1fr)_minmax(300px,0.82fr)]">
                   {renderLoadBalancingPanel(tierName, tier, targets, routingStatus)}
 
                   <div className="rounded-lg bg-[var(--background-secondary)] px-3 py-3">

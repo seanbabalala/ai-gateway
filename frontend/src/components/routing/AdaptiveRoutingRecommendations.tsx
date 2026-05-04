@@ -80,7 +80,7 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
 
   return (
     <div className="matrix-row rounded-lg px-4 py-4">
-      <div className="grid gap-4 xl:grid-cols-[160px_1fr_250px]">
+      <div className="grid gap-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(320px,0.8fr)]">
         <div className="space-y-2">
           <TierBadge tier={recommendation.tier} />
           <Badge variant={typeVariant(recommendation.type)} className="w-fit text-[9px]">
@@ -139,7 +139,7 @@ function RecommendationRow({ recommendation }: { recommendation: AdaptiveRouting
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 self-start">
           <Metric icon={BadgeDollarSign} label={t('adaptiveRecommendations.metrics.costPer1k')} value={money(savings.cost_usd_per_1k_calls)} />
           <Metric icon={TrendingDown} label={t('adaptiveRecommendations.metrics.windowCost')} value={money(savings.window_cost_usd)} />
           <Metric icon={Gauge} label={t('adaptiveRecommendations.metrics.p50Saved')} value={`${savings.p50_latency_ms}ms`} />

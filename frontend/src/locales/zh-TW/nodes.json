@@ -317,5 +317,8 @@
   "catalogPage.refreshSources.modes.public_api": "公開 API",
   "catalogPage.refreshSources.modes.authenticated_api": "API Key",
   "catalogPage.refreshSources.modes.docs_review": "文件複核",
-  "catalogPage.refreshSources.modes.operator_local": "本機覆寫"
+  "catalogPage.refreshSources.modes.operator_local": "本機覆寫",
+  "catalogPage.refreshSources.showAll": "展開全部 {{count}} 個",
+  "catalogPage.refreshSources.showLess": "收合來源",
+  "catalogPage.refreshSources.summary": "已顯示 {{shown}} / {{total}} 個更新來源"
 }

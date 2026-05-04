@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "มี Shadow failures",
   "shadow.risk.shadow_does_not_apply_routing_changes": "รายงานนี้อ่านอย่างเดียว",
   "shadow.risk.missing_primary_log": "ขาด primary log",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow ล้มเหลวหรือถูกข้าม"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow ล้มเหลวหรือถูกข้าม",
+  "cache.callsHidden": "Prompt-cache hit {{count}} ครั้งถูกนับใน cache metrics ไม่ใช่ routing tiers หรือ upstream nodes",
+  "cache.hit": "Cache hit",
+  "cache.noUpstream": "ไม่มีการเรียก upstream"
 }

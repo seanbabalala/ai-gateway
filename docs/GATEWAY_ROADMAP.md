@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-04
+> 最后更新：2026-05-05
 
 ---
 
@@ -17,13 +17,13 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
-| v0.9 | Operations + Trust | 已发布 — v0.9.2 承接 v0.7 backlog，并补齐 Provider Catalog 价格来源状态与 OpenRouter 刷新小版本 | ✅ Released |
+| v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 
 ---
 
 ## v0.9 — Operations + Trust（本地运维 + 信任基础）
 
-**v0.9.2 发布状态**：v0.7 不再单独发布；v0.9 承接原 v0.7 Operations + Trust backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。v0.9.1 修复 Dashboard provider compatibility probe 和 Provider Catalog logo identity；v0.9.2 进一步把“pricing hygiene”产品化为“价格来源状态”，改进 Provider Catalog 表格布局，并新增 OpenRouter 公开目录刷新 workflow。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.9.3 发布状态**：v0.7 不再单独发布；v0.9 承接原 v0.7 Operations + Trust backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。v0.9.1 修复 Dashboard provider compatibility probe 和 Provider Catalog logo identity；v0.9.2 进一步把“pricing hygiene”产品化为“价格来源状态”，改进 Provider Catalog 表格布局，并新增 OpenRouter 公开目录刷新 workflow；v0.9.3 优化 Provider Catalog 来源折叠、Routing 页面空间分配和 Logs 的缓存语义展示。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：本地配置审计与配置版本回滚
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Boxes, ExternalLink, RefreshCw, Search, Tag, WalletCards } from 'lucide-react'
+import { Boxes, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Search, Tag, WalletCards } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { Badge } from '@/components/ui/badge'
@@ -413,51 +413,98 @@ function CatalogRefreshSources({
   sources: NonNullable<CatalogProvidersResponse['refresh_sources']>
 }) {
   const { t } = useTranslation('nodes')
+  const [expanded, setExpanded] = useState(false)
   if (sources.length === 0) return null
+
+  const pinnedProviders = new Set(['openrouter', 'local-override'])
+  const sortedSources = [...sources].sort((a, b) => {
+    const pinnedA = pinnedProviders.has(a.provider) || a.automatic
+    const pinnedB = pinnedProviders.has(b.provider) || b.automatic
+    if (pinnedA !== pinnedB) return pinnedA ? -1 : 1
+    return a.label.localeCompare(b.label)
+  })
+  const collapsedCount = 4
+  const visibleSources = expanded ? sortedSources : sortedSources.slice(0, collapsedCount)
+  const hiddenCount = Math.max(0, sortedSources.length - visibleSources.length)
+  const automaticCount = sources.filter((source) => source.automatic).length
+  const docsReviewCount = sources.filter((source) => source.mode === 'docs_review').length
+  const localCount = sources.filter((source) => source.mode === 'operator_local').length
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle>{t('catalogPage.refreshSources.title')}</CardTitle>
-        <p className="text-[12px] leading-5 text-[var(--foreground-dim)]">
-          {t('catalogPage.refreshSources.description')}
-        </p>
+      <CardHeader className="gap-3 pb-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <CardTitle>{t('catalogPage.refreshSources.title')}</CardTitle>
+          <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[var(--foreground-dim)]">
+            {t('catalogPage.refreshSources.description')}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5 lg:justify-end">
+          <Badge variant="emerald" className="whitespace-nowrap">
+            {automaticCount} {t('catalogPage.refreshSources.automatic')}
+          </Badge>
+          <Badge variant="blue" className="whitespace-nowrap">
+            {docsReviewCount} {t('catalogPage.refreshSources.modes.docs_review')}
+          </Badge>
+          <Badge variant="amber" className="whitespace-nowrap">
+            {localCount} {t('catalogPage.refreshSources.modes.operator_local')}
+          </Badge>
+        </div>
       </CardHeader>
-      <CardContent className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {sources.map((source) => (
-          <div
-            key={source.provider}
-            className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-[12px] font-extrabold text-[var(--foreground)]">{source.label}</div>
-                <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
-                  {source.provider}
+      <CardContent className="space-y-3">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {visibleSources.map((source) => (
+            <div
+              key={source.provider}
+              className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-extrabold text-[var(--foreground)]">{source.label}</div>
+                  <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                    {source.provider}
+                  </div>
                 </div>
+                <Badge variant={refreshSourceVariant(source)} className="shrink-0 whitespace-nowrap">
+                  {source.automatic
+                    ? t('catalogPage.refreshSources.automatic')
+                    : t(`catalogPage.refreshSources.modes.${source.mode}`)}
+                </Badge>
               </div>
-              <Badge variant={refreshSourceVariant(source)} className="shrink-0 whitespace-nowrap">
-                {source.automatic
-                  ? t('catalogPage.refreshSources.automatic')
-                  : t(`catalogPage.refreshSources.modes.${source.mode}`)}
-              </Badge>
+              <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-[11px] leading-5 text-[var(--foreground-dim)]">
+                {source.notes}
+              </p>
+              {source.source_url && (
+                <a
+                  href={source.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[var(--accent)]"
+                >
+                  {t('catalogPage.refreshSources.sourceLink')}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
             </div>
-            <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-[var(--foreground-dim)]">
-              {source.notes}
-            </p>
-            {source.source_url && (
-              <a
-                href={source.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[var(--accent)]"
-              >
-                {t('catalogPage.refreshSources.sourceLink')}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
+          ))}
+        </div>
+        {sources.length > collapsedCount && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
+            <span className="text-[11px] font-medium text-[var(--foreground-dim)]">
+              {t('catalogPage.refreshSources.summary', {
+                shown: visibleSources.length,
+                total: sources.length,
+              })}
+              {hiddenCount > 0 ? ` · +${hiddenCount}` : ''}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>
+              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {expanded
+                ? t('catalogPage.refreshSources.showLess')
+                : t('catalogPage.refreshSources.showAll', { count: sources.length })}
+            </Button>
           </div>
-        ))}
+        )}
       </CardContent>
     </Card>
   )

@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "Shadow failures present",
   "shadow.risk.shadow_does_not_apply_routing_changes": "Report is read-only",
   "shadow.risk.missing_primary_log": "Primary log missing",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow failed or skipped"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow failed or skipped",
+  "cache.callsHidden": "{{count}} prompt-cache hit(s) are tracked under cache metrics, not routing tiers or upstream nodes.",
+  "cache.hit": "Cache hit",
+  "cache.noUpstream": "No upstream call"
 }

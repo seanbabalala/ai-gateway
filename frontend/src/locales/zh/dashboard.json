@@ -204,5 +204,8 @@
   "shadow.risk.shadow_failures_present": "存在 Shadow 失败",
   "shadow.risk.shadow_does_not_apply_routing_changes": "报告只读，不会改路由",
   "shadow.risk.missing_primary_log": "缺少主路径日志",
-  "shadow.risk.shadow_failed_or_skipped": "Shadow 失败或跳过"
+  "shadow.risk.shadow_failed_or_skipped": "Shadow 失败或跳过",
+  "cache.callsHidden": "{{count}} 次 Prompt 缓存命中已归入缓存指标，不计入路由层级或上游节点。",
+  "cache.hit": "缓存命中",
+  "cache.noUpstream": "未调用上游"
 }
