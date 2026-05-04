@@ -66,6 +66,20 @@
   - 如果显式开启 `shadow.compare.store_prompts` 或 `store_responses`，样本会内置脱敏并按 `shadow.compare.sample_max_chars` 截断，Dashboard 与 config validation 都会提示风险
   - 页面保持只读，不提供自动应用 routing 修改的按钮或 API 调用
 
+### P0：官方 Guardrails 插件升级
+
+- **状态**：🚧 Prompt v0.9 guardrails feature branch 进行中
+- **目标**：把 `plugins/guardrails` 从 skeleton 升级为可用的本地安全插件，同时保持默认 disabled/no-op 和隐私安全默认值
+- **实现方案**：
+  - 支持 PII detection，并可按配置 `audit`、`redact` 或 `block`
+  - 支持 lightweight prompt injection checks，例如忽略系统指令、隐藏 prompt 泄露、jailbreak、developer mode 等常见模式
+  - 支持 schema validation helper，覆盖安全的 request/response metadata 文档或 JSON output
+  - 支持 `policies[]` named allow/block/redact/audit rules，保留 legacy `input_patterns` / `output_patterns`
+  - 支持 input hook、output hook 与 conservative streaming delta handling
+  - 默认不保存 prompt/response；finding 只包含 `request_id`、rule、kind、action、path、count、schema error summary 等 metadata
+  - 与 structured output fallback 保持兼容：核心 fallback 继续由 `routing.fallback_policy.structured_output` 处理；guardrails schema finding 可按配置 block 并记录 fallback intent metadata
+  - 插件继续进入 `dist-runtime-plugins`，兼容生产 Docker
+
 ---
 
 ## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）

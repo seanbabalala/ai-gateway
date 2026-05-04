@@ -18,6 +18,9 @@
 - v0.9 Shadow Traffic Comparison Report for the OSS Data Plane, adding read-only Dashboard/API comparisons for primary vs shadow success rate, p50/p95 latency, cost delta, potential savings, token delta, fallback delta, quality sample coverage, confidence, and risk notes.
 - Dashboard Shadow filters for namespace, API key, node, model, period, and source format, plus localized overview cards and primary-to-shadow comparison tables without any automatic routing changes.
 - Privacy-safe shadow report APIs `GET /api/dashboard/shadow/report` and `GET /api/dashboard/shadow/results/:id/comparison`, paired with call logs by `request_id` and never returning raw headers, provider keys, media bytes, or video bytes.
+- v0.9 official guardrails plugin upgrade for the OSS Data Plane, replacing the skeleton with disabled-by-default local PII detection/redaction/blocking, lightweight prompt-injection checks, schema validation helpers, named allow/block/redact policies, input/output hooks, and conservative streaming delta handling.
+- Privacy-safe guardrails findings in the per-request plugin store, capped by `max_findings_per_request` and limited to metadata such as request id, rule, kind, action, count, and path without prompt text, response text, raw headers, provider keys, media bytes, or video bytes.
+- Unit coverage for guardrails privacy behavior, PII redaction/blocking, prompt-injection blocking, schema validation, allow/block policy exceptions, stream delta handling, and hook executor store propagation.
 
 ### Changed
 
