@@ -240,5 +240,7 @@
   "detail.upstream": "上游",
   "table.routeResult": "路由結果",
   "table.source": "來源",
-  "table.upstream": "上游"
+  "table.upstream": "上游",
+  "routeExplanation.sources.batch": "批次",
+  "routeExplanation.endpointStrategy.batch": "批次"
 }

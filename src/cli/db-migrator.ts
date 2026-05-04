@@ -9,6 +9,7 @@ import {
   ConfigVersion,
   GatewayApiKey,
   NodeStatus,
+  BatchJob,
   ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
@@ -25,6 +26,7 @@ export type DbMigrationTableName =
   | "config_versions"
   | "config_audit_events"
   | "provider_compatibility_results"
+  | "batch_jobs"
   | "video_jobs";
 
 interface MigrationTableDefinition {
@@ -45,6 +47,11 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   {
     table: "provider_compatibility_results",
     entity: ProviderCompatibilityResult,
+    generatedSequenceColumn: "id",
+  },
+  {
+    table: "batch_jobs",
+    entity: BatchJob,
     generatedSequenceColumn: "id",
   },
   {
@@ -193,6 +200,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         ConfigVersion,
         ConfigAuditEvent,
         ProviderCompatibilityResult,
+        BatchJob,
         VideoJob,
       ],
       synchronize: false,
@@ -615,6 +623,17 @@ function normalizeRow(
     return normalizeFields(row, {
       id: toNumber,
       timestamp: toDateOrNow,
+    });
+  }
+
+  if (table === "batch_jobs") {
+    return normalizeFields(row, {
+      id: toNumber,
+      request_counts_total: toNumber,
+      request_counts_completed: toNumber,
+      request_counts_failed: toNumber,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
     });
   }
 

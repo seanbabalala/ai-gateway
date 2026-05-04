@@ -65,6 +65,7 @@ import type { ProviderCompatibilityCapability } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { ConfigAuditService } from './config-audit.service';
 import { BenchmarkReportService } from './benchmark-report.service';
+import { BatchJobStoreService } from '../batch/batch-job-store.service';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -218,6 +219,7 @@ export class DashboardController {
     private readonly providerCompatibility: ProviderCompatibilityService,
     private readonly configAudit: ConfigAuditService,
     private readonly catalog: CatalogService,
+    private readonly batchJobs: BatchJobStoreService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -392,6 +394,40 @@ export class DashboardController {
       node,
       model,
       source_format: sourceFormat,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Batch Jobs
+  // ══════════════════════════════════════════════════════
+
+  @Get('batches')
+  @ApiOperation({ summary: 'List privacy-safe Batch API job metadata for the Dashboard' })
+  @ApiQuery({ name: 'period', required: false, example: '24h' })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'limit', required: false, example: 100 })
+  @ApiOkResponse({
+    description:
+      'Batch job metadata only. Input/output file contents, prompts, raw headers, and provider keys are never returned.',
+  })
+  async getBatchJobs(
+    @Query('period') period: string = '24h',
+    @Query('status') status?: string,
+    @Query('node') node?: string,
+    @Query('namespace') namespace?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.batchJobs.dashboardSummary({
+      period,
+      status,
+      node,
+      namespace,
+      api_key_id: apiKeyId,
       limit: limit ? Number(limit) : undefined,
     });
   }
@@ -2247,6 +2283,10 @@ export class DashboardController {
         ...(node.audio_speech_endpoint ? { audio_speech: node.audio_speech_endpoint } : {}),
         ...(node.video_generations_endpoint ? { video_generations: node.video_generations_endpoint } : {}),
         ...(node.video_status_endpoint ? { video_status: node.video_status_endpoint } : {}),
+        ...(node.batch_endpoint ? { batch: node.batch_endpoint } : {}),
+        ...(node.batch_status_endpoint ? { batch_status: node.batch_status_endpoint } : {}),
+        ...(node.batch_cancel_endpoint ? { batch_cancel: node.batch_cancel_endpoint } : {}),
+        ...(node.batch_result_endpoint ? { batch_result: node.batch_result_endpoint } : {}),
         ...(node.realtime_endpoint ? { realtime: node.realtime_endpoint } : {}),
         ...(node.images_generations_endpoint ? { image_generation: node.images_generations_endpoint } : {}),
         ...(node.images_edits_endpoint ? { image_edit: node.images_edits_endpoint } : {}),
@@ -2305,6 +2345,10 @@ export class DashboardController {
         video_status_endpoint: node.video_status_endpoint || null,
         video_content_endpoint: node.video_content_endpoint || null,
         video_cancel_endpoint: node.video_cancel_endpoint || null,
+        batch_endpoint: node.batch_endpoint || null,
+        batch_status_endpoint: node.batch_status_endpoint || null,
+        batch_cancel_endpoint: node.batch_cancel_endpoint || null,
+        batch_result_endpoint: node.batch_result_endpoint || null,
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         model_capabilities: modelCapabilities,
@@ -2637,6 +2681,10 @@ export class DashboardController {
             video_status_endpoint: dto.video_status_endpoint,
             video_content_endpoint: dto.video_content_endpoint,
             video_cancel_endpoint: dto.video_cancel_endpoint,
+            batch_endpoint: dto.batch_endpoint,
+            batch_status_endpoint: dto.batch_status_endpoint,
+            batch_cancel_endpoint: dto.batch_cancel_endpoint,
+            batch_result_endpoint: dto.batch_result_endpoint,
             video_models: dto.video_models,
             realtime_models: dto.realtime_models,
             realtime_endpoint: dto.realtime_endpoint,

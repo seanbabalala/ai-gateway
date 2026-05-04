@@ -135,5 +135,7 @@
   "modalitiesDescription.video": "비동기 비디오 생성",
   "modalitiesDescription.vision": "텍스트 요청 안의 이미지 입력",
   "endpoints.mcp": "MCP Gateway",
-  "endpointsDescription.mcp": "로컬 MCP server proxy preview"
+  "endpointsDescription.mcp": "로컬 MCP server proxy preview",
+  "endpoints.batch": "배치",
+  "endpointsDescription.batch": "OpenAI 호환 Batch API 생성, 조회, 취소, 결과 다운로드 프록시를 허용합니다."
 }

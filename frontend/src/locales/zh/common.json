@@ -61,5 +61,6 @@
   "tier.standard": "标准",
   "nav.benchmarks": "基准",
   "nav.sessions": "会话",
-  "nav.mcp": "MCP 网关"
+  "nav.mcp": "MCP 网关",
+  "nav.batches": "批处理"
 }

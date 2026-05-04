@@ -16,6 +16,7 @@ const ShadowPage = lazy(() => import('@/pages/ShadowPage').then((m) => ({ defaul
 const RouteExplanationPage = lazy(() => import('@/pages/RouteExplanationPage').then((m) => ({ default: m.RouteExplanationPage })))
 const ConfigAuditPage = lazy(() => import('@/pages/ConfigAuditPage').then((m) => ({ default: m.ConfigAuditPage })))
 const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ default: m.BenchmarkPage })))
+const BatchesPage = lazy(() => import('@/pages/BatchesPage').then((m) => ({ default: m.BatchesPage })))
 const ProviderCatalogPage = lazy(() => import('@/pages/ProviderCatalogPage').then((m) => ({ default: m.ProviderCatalogPage })))
 const PlaygroundPage = lazy(() => import('@/pages/PlaygroundPage').then((m) => ({ default: m.PlaygroundPage })))
 const SessionsPage = lazy(() => import('@/pages/SessionsPage').then((m) => ({ default: m.SessionsPage })))
@@ -67,6 +68,7 @@ export function App() {
         <Route path="/mcp" element={page(<McpGatewayPage />)} />
         <Route path="/config-audit" element={page(<ConfigAuditPage />)} />
         <Route path="/benchmarks" element={page(<BenchmarkPage />)} />
+        <Route path="/batches" element={page(<BatchesPage />)} />
       </Route>
     </Routes>
   )

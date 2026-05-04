@@ -135,5 +135,7 @@
   "modalitiesDescription.video": "非同期動画生成",
   "modalitiesDescription.vision": "テキストリクエスト内の画像入力",
   "endpoints.mcp": "MCP Gateway",
-  "endpointsDescription.mcp": "ローカル MCP server プロキシ preview"
+  "endpointsDescription.mcp": "ローカル MCP server プロキシ preview",
+  "endpoints.batch": "バッチ",
+  "endpointsDescription.batch": "OpenAI 互換 Batch API の作成、状態確認、取消、結果ダウンロードのプロキシを許可します。"
 }

@@ -74,6 +74,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Experimental Video** (`/v1/videos/generations`, `/v1/videos/:id`) — async video job preview with local metadata only; prompts, source media, and video bytes are not persisted
 - **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
 - **Experimental MCP Gateway** (`/mcp/:serverId`) — disabled-by-default local MCP server proxy with Gateway API key auth, namespace policy, rate limits, and metadata-only audit
+- **Batch API proxy** (`/v1/batches`, `/v1/batches/:id`) — OpenAI-compatible async batch create/status/cancel/result proxy with local metadata only; input/output files are never persisted
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - **Reasoning effort / thinking passthrough** — preserve OpenAI `reasoning_effort`, Responses `reasoning`, Anthropic `thinking`, and Gemini-style `thinking_config` intent with explicit downgrade markers when a target cannot safely honor it
 - Full **streaming** support across supported generative protocols
@@ -125,6 +126,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Benchmark reports** — inspect local performance evidence with latency percentiles, throughput estimates, status/source breakdowns, cost/token summaries, and methodology notes
+- **Batch Jobs** — read-only Batch API status, file ids, request counts, API key/namespace scope, and sanitized errors without storing batch input or output contents
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
@@ -652,6 +654,10 @@ nodes:
     video_status_endpoint: "/v1/videos/:id" # Optional async video status path
     video_content_endpoint: "/v1/videos/:id/content" # Optional async video content path
     video_cancel_endpoint: "/v1/videos/:id/cancel" # Optional async video cancel path
+    batch_endpoint: "/v1/batches" # Optional Batch API create proxy path
+    batch_status_endpoint: "/v1/batches/:id" # Optional Batch status path
+    batch_cancel_endpoint: "/v1/batches/:id/cancel" # Optional Batch cancel path
+    batch_result_endpoint: "/v1/files/:id/content" # Optional Batch output/error file content path
     api_key: "${OPENAI_API_KEY}" # API key (use env vars!)
     auth_type: bearer # bearer (default) | x-api-key
     models: ["gpt-4o", "gpt-4o-mini"] # Supported model IDs
@@ -712,6 +718,7 @@ nodes:
       audio: "/v1/audio/transcriptions"
       audio_translation: "/v1/audio/translations"
       rerank: "/v1/rerank"
+      batch: "/v1/batches"
       realtime: "wss://api.openai.com/v1/realtime"
     input_types: ["text", "image", "audio", "video"]
     output_types: ["text", "image", "video", "events"]
@@ -1091,8 +1098,15 @@ v0.8 hardens the v0.6 OpenAI-compatible media ingress for production provider/pr
 | `GET /v1/videos/:id` | stored `video_jobs` metadata | Status lookup with optional provider refresh |
 | `GET /v1/videos/:id/content` | stored `video_jobs` metadata | Provider content proxy only when configured |
 | `POST /v1/videos/:id/cancel` | stored `video_jobs` metadata | Provider cancel proxy only when configured |
+| `POST /v1/batches` | selected provider node | OpenAI-compatible Batch create proxy |
+| `GET /v1/batches/:id` | stored `batch_jobs` metadata | Batch status lookup with optional provider refresh |
+| `POST /v1/batches/:id/cancel` | stored `batch_jobs` metadata | Provider batch cancel proxy |
+| `GET /v1/batches/:id/output` | stored `batch_jobs` metadata | Provider output file content proxy; content is not persisted |
+| `GET /v1/batches/:id/errors` | stored `batch_jobs` metadata | Provider error file content proxy; content is not persisted |
 
 v0.8 also includes an experimental async video preview. `POST /v1/videos/generations` routes JSON requests to `nodes[].video_models`, stores only local job metadata in `video_jobs`, and returns the provider response. `GET /v1/videos/:id` reads local status and refreshes from `video_status_endpoint` when configured. `GET /v1/videos/:id/content` and `POST /v1/videos/:id/cancel` proxy only when the node declares `video_content_endpoint` or `video_cancel_endpoint`; job lookup stays bound to the creating Gateway API key/namespace.
+
+v1.2 adds an OpenAI-compatible Batch API proxy. `POST /v1/batches` forwards provider batch create fields such as `input_file_id`, `endpoint`, `completion_window`, and `metadata`, but SiftGate stores only `batch_jobs` metadata: request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, metadata keys, and sanitized errors. Batch input JSONL, output JSONL, raw headers, provider keys, and file bytes are not persisted. `GET /v1/batches/:id/output` and `/errors` proxy file content on demand from `batch_result_endpoint`.
 
 For JSON bodies, SiftGate rewrites `model` to the selected upstream model and forwards the remaining fields. For multipart bodies, SiftGate stores only safe canonical metadata (`media_type`, `operation`, `multipart`, file count, byte size, requested/response format, provider response type), rewrites or appends the `model` form field, and passes the original file bytes through without image/audio parsing, transcoding, resizing, compression, or validation. Increase `server.body_limit` if your edit, variation, transcription, or translation payloads exceed the default `1mb`.
 
@@ -1399,6 +1413,11 @@ Live API docs are available when the gateway is running:
 | `POST` | `/v1/audio/transcriptions` | OpenAI Audio transcription format         |
 | `POST` | `/v1/audio/translations` | OpenAI Audio translation format           |
 | `POST` | `/v1/audio/speech`     | OpenAI Audio speech format with binary responses |
+| `POST` | `/v1/batches`          | OpenAI-compatible Batch create proxy             |
+| `GET`  | `/v1/batches/:id`      | Batch status proxy                               |
+| `POST` | `/v1/batches/:id/cancel` | Batch cancel proxy                             |
+| `GET`  | `/v1/batches/:id/output` | Batch output file content proxy                |
+| `GET`  | `/v1/batches/:id/errors` | Batch error file content proxy                 |
 | `WS`   | `/v1/realtime`         | Experimental OpenAI Realtime-style pass-through |
 | `GET`  | `/v1/models`           | List all available models (OpenAI-compatible) |
 

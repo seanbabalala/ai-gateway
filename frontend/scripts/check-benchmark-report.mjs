@@ -46,6 +46,7 @@ for (const source of [
   'audio_speech',
   'video_generation',
   'realtime',
+  'batch',
 ]) {
   if (!page.includes(source)) {
     throw new Error(`Benchmark page must expose source_format filter: ${source}`)

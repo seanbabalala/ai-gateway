@@ -192,6 +192,26 @@ export class CreateNodeDto {
   @IsString()
   video_cancel_endpoint?: string;
 
+  @ApiPropertyOptional({ example: '/v1/batches' })
+  @IsOptional()
+  @IsString()
+  batch_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/batches/:id' })
+  @IsOptional()
+  @IsString()
+  batch_status_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/batches/:id/cancel' })
+  @IsOptional()
+  @IsString()
+  batch_cancel_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/files/:id/content' })
+  @IsOptional()
+  @IsString()
+  batch_result_endpoint?: string;
+
   @ApiProperty({ example: 60000, minimum: 1 })
   @IsNumber()
   @Min(1)
@@ -487,6 +507,26 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsString()
   video_cancel_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/batches' })
+  @IsOptional()
+  @IsString()
+  batch_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/batches/:id' })
+  @IsOptional()
+  @IsString()
+  batch_status_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/batches/:id/cancel' })
+  @IsOptional()
+  @IsString()
+  batch_cancel_endpoint?: string;
+
+  @ApiPropertyOptional({ example: '/v1/files/:id/content' })
+  @IsOptional()
+  @IsString()
+  batch_result_endpoint?: string;
 
   @ApiPropertyOptional({ example: 60000, minimum: 1 })
   @IsOptional()

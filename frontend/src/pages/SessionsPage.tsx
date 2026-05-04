@@ -67,6 +67,7 @@ function sourceOptions(t: TFunction) {
     { value: 'audio_translation', label: t('sessions.sources.audio_translation') },
     { value: 'audio_speech', label: t('sessions.sources.audio_speech') },
     { value: 'video_generation', label: t('sessions.sources.video_generation') },
+    { value: 'batch', label: t('sessions.sources.batch') },
   ]
 }
 

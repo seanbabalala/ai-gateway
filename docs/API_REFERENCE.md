@@ -45,10 +45,15 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `GET` | `/v1/videos/:id` | Experimental video job status |
 | `GET` | `/v1/videos/:id/content` | Experimental video content proxy |
 | `POST` | `/v1/videos/:id/cancel` | Experimental video cancel proxy |
+| `POST` | `/v1/batches` | OpenAI-compatible Batch API create proxy |
+| `GET` | `/v1/batches/:id` | Batch status proxy using local metadata lookup |
+| `POST` | `/v1/batches/:id/cancel` | Batch cancel proxy |
+| `GET` | `/v1/batches/:id/output` | Batch output file content proxy; content is not persisted |
+| `GET` | `/v1/batches/:id/errors` | Batch error file content proxy; content is not persisted |
 | `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
-All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access. Dashboard-managed keys can also restrict endpoint families (`chat_completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, `realtime`, `models`) and modalities (`text`, `vision`, `embedding`, `rerank`, `image`, `audio`, `video`, `realtime`) before routing reaches an upstream provider.
+All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access. Dashboard-managed keys can also restrict endpoint families (`chat_completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, `realtime`, `batch`, `models`) and modalities (`text`, `vision`, `embedding`, `rerank`, `image`, `audio`, `video`, `realtime`) before routing reaches an upstream provider.
 
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
 
@@ -270,6 +275,39 @@ When an upstream returns non-JSON audio such as `audio/mpeg`, SiftGate forwards 
 SiftGate stores only `video_jobs` metadata: local request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error. It does not persist prompts, source images, generated video bytes, raw headers, or provider keys.
 
 `GET /v1/videos/:id` returns local job metadata and refreshes from `video_status_endpoint` when configured. `GET /v1/videos/:id/content` and `POST /v1/videos/:id/cancel` proxy to `video_content_endpoint` and `video_cancel_endpoint` only when the selected node declares those endpoints.
+
+### Batch API Proxy
+
+`POST /v1/batches` proxies OpenAI-compatible Batch API creation. The gateway forwards provider fields such as `input_file_id`, `endpoint`, `completion_window`, and `metadata`, but stores only local metadata: request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, sanitized error, and Gateway API key/namespace attribution.
+
+```json
+{
+  "input_file_id": "file-batch-input",
+  "endpoint": "/v1/chat/completions",
+  "completion_window": "24h",
+  "model": "gpt-4o-mini",
+  "metadata": {
+    "purpose": "nightly-eval"
+  }
+}
+```
+
+SiftGate never stores batch input JSONL, provider output JSONL, raw headers, provider keys, or metadata values. It stores metadata keys only so operators can identify safe labels without retaining payload content. If a Gateway API key has `allowed_models`, the create request must include a top-level `model` or `x-siftgate-model` hint so SiftGate can enforce the restriction before forwarding.
+
+Node endpoint overrides:
+
+```yaml
+nodes:
+  - id: openai
+    batch_endpoint: /v1/batches
+    batch_status_endpoint: /v1/batches/:id
+    batch_cancel_endpoint: /v1/batches/:id/cancel
+    batch_result_endpoint: /v1/files/:id/content
+```
+
+`GET /v1/batches/:id` refreshes status through the configured provider status endpoint and updates local metadata. `POST /v1/batches/:id/cancel` proxies cancellation and updates metadata from the provider response. `GET /v1/batches/:id/output` and `GET /v1/batches/:id/errors` proxy provider file content using `output_file_id` or `error_file_id`; bytes are streamed to the caller and are not persisted locally.
+
+Dashboard metadata is available at `GET /api/dashboard/batches` and the Batch Jobs page. Both surfaces are read-only and metadata-only.
 
 ### Experimental Realtime
 

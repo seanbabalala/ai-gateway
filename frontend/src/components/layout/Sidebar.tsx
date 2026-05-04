@@ -18,6 +18,7 @@ import {
   FileClock,
   SquareTerminal,
   Network,
+  FileStack,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -40,6 +41,7 @@ const navGroups = [
       { to: '/playground', icon: SquareTerminal, labelKey: 'nav.playground' },
       { to: '/mcp', icon: Network, labelKey: 'nav.mcp' },
       { to: '/benchmarks', icon: Gauge, labelKey: 'nav.benchmarks' },
+      { to: '/batches', icon: FileStack, labelKey: 'nav.batches' },
     ],
   },
   {

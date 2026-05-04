@@ -71,6 +71,20 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
     rollbackToVersion: jest.fn(),
     listEvents: jest.fn(),
   } as any;
+  const batchJobs = {
+    dashboardSummary: jest.fn().mockResolvedValue({
+      metadata_only: true,
+      items: [],
+      totals: { total: 0, active: 0, completed: 0, failed: 0, cancelled: 0 },
+      filters: {
+        period: '24h',
+        status: null,
+        node: null,
+        namespace: null,
+        api_key_id: null,
+      },
+    }),
+  } as any;
   const dataSource = {} as any;
   const callLogRepo = {
     createQueryBuilder: jest.fn().mockReturnValue({
@@ -93,7 +107,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, catalog, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, catalog, batchJobs, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

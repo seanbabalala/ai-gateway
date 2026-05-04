@@ -20,17 +20,17 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
-| v1.2 | Platform Preview | 进行中 — MCP Gateway preview、本地 MCP proxy、metadata-only audit | 🚧 In Progress |
+| v1.2 | Platform Capabilities | 进行中 — MCP Gateway、Batch API、Prompt Cache 智能路由、Pricing 自动同步 | 🚧 In Progress |
 
 ---
 
-## v1.2 — Platform Preview（平台能力预览）
+## v1.2 — Platform Capabilities（平台能力）
 
-**v1.2.0 开发状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段先落地 MCP Gateway preview，不引入企业 MCP marketplace、远端 workspace registry 或 Cloud 依赖。
+**v1.2 开发状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 SiftGate 从多协议代理扩展为更完整的平台能力层。
 
 ### P0：MCP Gateway Preview
 
-- **状态**：🚧 codex/v1.2-mcp-gateway-preview
+- **状态**：🚧 当前分支开发中
 - **目标**：让 SiftGate 可以作为本地 MCP server 代理入口，用现有 Gateway API key、namespace、rate limit 和 Dashboard metadata 审计保护 agent/tool 调用路径
 - **实现方案**：
   - 新增 `mcp` 本地 registry/config，默认 disabled，支持 `servers[].id/name/url/transport/headers/allowed_namespaces/tools`
@@ -40,6 +40,18 @@
   - 新增 `GET /api/dashboard/mcp` 和 Dashboard MCP Gateway 页面，展示 server、tool、recent calls、error summary
   - 本地 audit 默认只保留 metadata：server、method、tool name、API key、namespace、status、latency、byte size、error type
   - 不保存 tool input/output 原文、raw headers、provider keys、resolved secret、media bytes 或 marketplace metadata
+
+### P0：Batch API Proxy
+
+- **状态**：🚧 当前分支开发中
+- **目标**：支持 OpenAI-compatible Batch API 创建、查询、取消和结果下载代理，同时保持本地 metadata-only 的隐私边界
+- **实现方案**：
+  - 新增 `POST /v1/batches`、`GET /v1/batches/:id`、`POST /v1/batches/:id/cancel`、`GET /v1/batches/:id/output`、`GET /v1/batches/:id/errors`
+  - 节点配置支持 `batch_endpoint`、`batch_status_endpoint`、`batch_cancel_endpoint`、`batch_result_endpoint`
+  - 本地 `batch_jobs` 只保存 request id、provider batch id、node/model hint、endpoint、file ids、request counts、status、timestamps、API key/namespace attribution、metadata keys 和脱敏错误
+  - 不保存 batch input JSONL、provider output JSONL、raw headers、provider keys、metadata values 或文件 bytes
+  - Gateway API key、namespace、budget、rate limit、call_log、telemetry 覆盖 Batch 路径
+  - Dashboard 新增只读 Batch Jobs 页面和 `GET /api/dashboard/batches`，文案保持 7 语言同步
 
 ## v1.1 — Developer Experience（开发者体验）
 

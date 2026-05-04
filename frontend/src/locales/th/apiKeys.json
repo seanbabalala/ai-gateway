@@ -135,5 +135,7 @@
   "modalitiesDescription.video": "สร้างวิดีโอแบบ async",
   "modalitiesDescription.vision": "อินพุตรูปภาพในคำขอ text",
   "endpoints.mcp": "MCP Gateway",
-  "endpointsDescription.mcp": "พรีวิวพร็อกซี MCP server ภายใน"
+  "endpointsDescription.mcp": "พรีวิวพร็อกซี MCP server ภายใน",
+  "endpoints.batch": "แบตช์",
+  "endpointsDescription.batch": "อนุญาต proxy สำหรับ OpenAI-compatible Batch API create, status, cancel และดาวน์โหลดผลลัพธ์"
 }

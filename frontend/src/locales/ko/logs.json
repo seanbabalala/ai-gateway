@@ -240,5 +240,7 @@
   "detail.upstream": "업스트림",
   "table.routeResult": "라우팅 결과",
   "table.source": "소스",
-  "table.upstream": "업스트림"
+  "table.upstream": "업스트림",
+  "routeExplanation.sources.batch": "배치",
+  "routeExplanation.endpointStrategy.batch": "배치"
 }

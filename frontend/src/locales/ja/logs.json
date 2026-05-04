@@ -240,5 +240,7 @@
   "detail.upstream": "上流",
   "table.routeResult": "ルート結果",
   "table.source": "ソース",
-  "table.upstream": "上流"
+  "table.upstream": "上流",
+  "routeExplanation.sources.batch": "バッチ",
+  "routeExplanation.endpointStrategy.batch": "バッチ"
 }

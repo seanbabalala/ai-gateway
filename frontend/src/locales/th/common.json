@@ -61,5 +61,6 @@
   "tier.standard": "มาตรฐาน",
   "nav.benchmarks": "เบนช์มาร์ก",
   "nav.sessions": "เซสชัน",
-  "nav.mcp": "MCP Gateway"
+  "nav.mcp": "MCP Gateway",
+  "nav.batches": "แบตช์"
 }

@@ -73,7 +73,7 @@ export class FetchMock {
       }
 
       // Default handler — auto-detect protocol from URL
-      return this.defaultHandler(url, body);
+      return this.defaultHandler(url, body, method);
     };
   }
 
@@ -204,7 +204,7 @@ export class FetchMock {
 
   // ── Default Handler ──
 
-  private defaultHandler(url: string, body: Record<string, unknown>): Response {
+  private defaultHandler(url: string, body: Record<string, unknown>, method: string): Response {
     if (url.includes('/v1/embeddings')) {
       const inputs = Array.isArray(body.input) ? body.input : [body.input];
       return new Response(JSON.stringify({
@@ -346,6 +346,61 @@ export class FetchMock {
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/batches') && url.includes('/cancel')) {
+      return new Response(JSON.stringify({
+        id: url.split('/').slice(-2, -1)[0],
+        object: 'batch',
+        endpoint: '/v1/chat/completions',
+        input_file_id: 'file-batch-input',
+        output_file_id: 'file-batch-output',
+        status: 'cancelled',
+        request_counts: { total: 2, completed: 1, failed: 0 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/batches') && method === 'POST') {
+      return new Response(JSON.stringify({
+        id: 'batch-e2e-1',
+        object: 'batch',
+        endpoint: body.endpoint || '/v1/chat/completions',
+        input_file_id: body.input_file_id || 'file-batch-input',
+        output_file_id: 'file-batch-output',
+        error_file_id: 'file-batch-errors',
+        completion_window: body.completion_window || '24h',
+        status: 'in_progress',
+        request_counts: { total: 2, completed: 1, failed: 0 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/batches/')) {
+      return new Response(JSON.stringify({
+        id: url.split('/').pop(),
+        object: 'batch',
+        endpoint: '/v1/chat/completions',
+        input_file_id: 'file-batch-input',
+        output_file_id: 'file-batch-output',
+        error_file_id: 'file-batch-errors',
+        status: 'completed',
+        request_counts: { total: 2, completed: 2, failed: 0 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/v1/files/') && url.includes('/content')) {
+      return new Response('{"custom_id":"one","response":{"status_code":200}}\n', {
+        status: 200,
+        headers: { 'Content-Type': 'application/jsonl' },
       });
     }
 

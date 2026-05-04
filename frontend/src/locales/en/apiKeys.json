@@ -135,5 +135,7 @@
   "modalitiesDescription.video": "Async video generation",
   "modalitiesDescription.vision": "Image input in text requests",
   "endpoints.mcp": "MCP Gateway",
-  "endpointsDescription.mcp": "Local MCP server proxy preview"
+  "endpointsDescription.mcp": "Local MCP server proxy preview",
+  "endpoints.batch": "Batch",
+  "endpointsDescription.batch": "Allow OpenAI-compatible Batch API create, status, cancel, and output download proxy calls."
 }

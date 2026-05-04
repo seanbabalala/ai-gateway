@@ -135,5 +135,7 @@
   "modalitiesDescription.video": "异步视频生成",
   "modalitiesDescription.vision": "文本请求中的图片输入",
   "endpoints.mcp": "MCP 网关",
-  "endpointsDescription.mcp": "本地 MCP server 代理预览"
+  "endpointsDescription.mcp": "本地 MCP server 代理预览",
+  "endpoints.batch": "批处理",
+  "endpointsDescription.batch": "允许 OpenAI 兼容 Batch API 创建、查询、取消和结果下载代理。"
 }

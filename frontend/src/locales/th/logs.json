@@ -240,5 +240,7 @@
   "detail.upstream": "Upstream",
   "table.routeResult": "ผลการ route",
   "table.source": "แหล่งที่มา",
-  "table.upstream": "Upstream"
+  "table.upstream": "Upstream",
+  "routeExplanation.sources.batch": "แบตช์",
+  "routeExplanation.endpointStrategy.batch": "แบตช์"
 }

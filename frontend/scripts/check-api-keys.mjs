@@ -20,6 +20,7 @@ const requiredLocaleKeys = [
   'endpoints.audio',
   'endpoints.video',
   'endpoints.realtime',
+  'endpoints.batch',
   'modalities.vision',
   'modalities.image',
   'modalities.audio',

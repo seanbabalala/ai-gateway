@@ -173,7 +173,7 @@ evidence for the Dashboard: request totals, success/error/fallback/cache rates,
 latency percentiles, throughput estimates, cost/token summaries, status-code
 distribution, `node:model` breakdowns, and source-format/source-family
 breakdowns across chat, responses, messages, embeddings, rerank, images, audio,
-video, and realtime. When matching `route_decisions` rows exist, the report also
+video, realtime, and batch. When matching `route_decisions` rows exist, the report also
 shows trace coverage so operators can see whether performance samples have
 explainable-routing evidence.
 
@@ -192,6 +192,10 @@ The experimental v0.8 video preview uses an async job model. `POST /v1/videos/ge
 The v1.2 MCP Gateway preview is a small sidecar path beside the AI protocol pipeline. `McpGatewayController` exposes `POST /mcp/:serverId`, reusing `ApiKeyGuard` and `RateLimitGuard`. `McpGatewayService` resolves the local `mcp.servers` registry, checks API key endpoint permissions and namespace allow-lists, resolves configured upstream headers through `SecretReferenceResolverService`, and forwards the JSON-RPC body to the upstream MCP HTTP endpoint.
 
 The preview does not implement an enterprise MCP marketplace, remote workspace registry, stdio process supervisor, or Cloud dependency. Dashboard reads `GET /api/dashboard/mcp` for local registry metadata, static tool names, recent call metadata, and error summaries. The local audit buffer is metadata-only: server, method, tool name, API key id/name, namespace, status, latency, byte size, and sanitized error type. MCP tool input/output, raw headers, provider keys, resolved secret values, media bytes, and marketplace content are not stored.
+
+## Batch API Proxy
+
+The v1.2 Batch API proxy follows the same metadata-only async pattern without running through the synchronous generation pipeline. `POST /v1/batches` resolves a provider node, enforces Gateway API key endpoint/node/model permissions, namespace scope, rate limits, and budget checks, then forwards the OpenAI-compatible create body to the upstream batch endpoint. It writes a `batch_jobs` row with request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, and sanitized error text. It stores metadata keys only, not metadata values. Status, cancel, output, and error-file routes look up `batch_jobs`, enforce the creating key/namespace boundary, and proxy provider file content without persisting input JSONL, output JSONL, raw headers, provider keys, or file bytes.
 
 ## Config Audit And Rollback
 

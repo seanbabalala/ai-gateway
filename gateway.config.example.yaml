@@ -274,6 +274,9 @@ auth:
 # Image, audio, and video models are listed separately under nodes[].image_models,
 # nodes[].audio_models, and nodes[].video_models so media endpoints can route, budget, and
 # log independently from chat models.
+# Batch API proxying uses nodes[].batch_* endpoint overrides when a provider
+# needs non-default paths. SiftGate stores batch metadata only, never input or
+# output file contents.
 # Video support is experimental; compatibility tests only probe endpoint/auth by default.
 # Experimental realtime models are listed under nodes[].realtime_models and
 # require the top-level realtime.enabled switch below.
@@ -305,6 +308,10 @@ nodes:
     # video_status_endpoint: "/v1/videos/:id"              # Optional async video status endpoint
     # video_content_endpoint: "/v1/videos/:id/content"
     # video_cancel_endpoint: "/v1/videos/:id/cancel"
+    batch_endpoint: "/v1/batches"
+    batch_status_endpoint: "/v1/batches/:id"
+    batch_cancel_endpoint: "/v1/batches/:id/cancel"
+    batch_result_endpoint: "/v1/files/:id/content"
     # Startup interpolation: api_key: "${OPENAI_API_KEY}"
     # Runtime secret reference: api_key: "${env:OPENAI_API_KEY}"
     api_key: "${OPENAI_API_KEY}"
@@ -327,6 +334,7 @@ nodes:
       audio_translation: "/v1/audio/translations"
       video: "/v1/videos/generations"
       realtime: "/v1/realtime"        # Use wss://... for absolute realtime URLs if needed
+      batch: "/v1/batches"
     input_types: ["text", "image", "audio", "video"]
     output_types: ["text", "image", "video", "events"]
     max_file_size: 20000000           # Bytes; applies as a node-level default

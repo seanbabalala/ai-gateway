@@ -10,13 +10,13 @@ on top of the v0.9.3 Operations + Trust foundation: Provider Catalog coverage
 for 30+ providers, reasoning/thinking intent across protocols, metadata-only
 guardrails webhook findings with more local rules, and a fuller OSS Dashboard
 API Key management surface. Structured output, rerank, images, audio, video,
-secret resolution, audit metadata, benchmark summaries, provider catalog
+Batch API metadata, secret resolution, audit metadata, benchmark summaries, provider catalog
 metadata, and API key policy stay in the open-source Data Plane. Keep the
 guardrails webhook sink disabled until the receiver, queue limits, retry
 policy, and downstream retention policy have been reviewed.
-Realtime and video remain experimental previews and should only be enabled for
-production after upstream provider behavior, connection limits, job retention,
-and load balancer paths have been tested in your environment.
+Realtime, video, and Batch result download proxying should only be enabled for
+production after upstream provider behavior, connection limits, job/file
+retention, and load balancer paths have been tested in your environment.
 
 ## Baseline Topology
 
@@ -110,7 +110,7 @@ The migrator:
 
 - Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
   `route_decisions`, `config_versions`, `config_audit_events`,
-  `provider_compatibility_results`, and `video_jobs`.
+  `provider_compatibility_results`, `batch_jobs`, and `video_jobs`.
 - Creates a timestamped SQLite backup when `--backup` is set.
 - Creates/updates the PostgreSQL schema through the OSS TypeORM entities before
   import.

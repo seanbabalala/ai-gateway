@@ -14,6 +14,7 @@ import { StateModule } from './state/state.module';
 import { ClusterModule } from './cluster/cluster.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { McpModule } from './mcp/mcp.module';
+import { BatchModule } from './batch/batch.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { McpModule } from './mcp/mcp.module';
     ClusterModule,
     RealtimeModule,
     McpModule,
+    BatchModule,
     PluginModule,
     AuthModule,
     IngestModule,

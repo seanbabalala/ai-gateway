@@ -132,5 +132,6 @@
   "benchmark.table.success": "成功率",
   "benchmark.table.target": "ターゲット",
   "benchmark.table.throughput": "Req/分",
-  "benchmark.title": "ベンチマーク"
+  "benchmark.title": "ベンチマーク",
+  "benchmark.source.batch": "バッチ"
 }

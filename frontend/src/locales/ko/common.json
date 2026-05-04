@@ -61,5 +61,6 @@
   "tier.standard": "표준",
   "nav.benchmarks": "벤치마크",
   "nav.sessions": "세션",
-  "nav.mcp": "MCP Gateway"
+  "nav.mcp": "MCP Gateway",
+  "nav.batches": "배치"
 }

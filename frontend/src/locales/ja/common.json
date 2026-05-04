@@ -61,5 +61,6 @@
   "tier.standard": "標準",
   "nav.benchmarks": "ベンチマーク",
   "nav.sessions": "セッション",
-  "nav.mcp": "MCP Gateway"
+  "nav.mcp": "MCP Gateway",
+  "nav.batches": "バッチ"
 }

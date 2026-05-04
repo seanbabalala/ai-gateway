@@ -61,5 +61,6 @@
   "tier.standard": "estándar",
   "nav.benchmarks": "Rendimiento",
   "nav.sessions": "Sesiones",
-  "nav.mcp": "MCP Gateway"
+  "nav.mcp": "MCP Gateway",
+  "nav.batches": "Lotes"
 }

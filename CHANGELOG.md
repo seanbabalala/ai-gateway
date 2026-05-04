@@ -7,6 +7,10 @@
 - Added v1.2 MCP Gateway preview with local `mcp.servers` registry, `POST /mcp/:serverId` JSON-RPC proxying, Gateway API key auth, endpoint permission checks, namespace allow-lists, rate limiting, and secret-reference-aware upstream headers.
 - Added `GET /api/dashboard/mcp` plus a Dashboard MCP Gateway page showing local MCP servers, static tools, recent metadata-only calls, and error summaries without storing tool input/output, raw headers, provider keys, or resolved secret values.
 - Added MCP config validation, frontend 7-language localization, Dashboard static checks, and unit coverage for proxy privacy, permission enforcement, namespace enforcement, and config diagnostics.
+- Added the v1.2 OpenAI-compatible Batch API proxy with `POST /v1/batches`, `GET /v1/batches/:id`, `POST /v1/batches/:id/cancel`, `GET /v1/batches/:id/output`, and `GET /v1/batches/:id/errors`.
+- Added local `batch_jobs` metadata storage for request id, provider batch id, node/model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, metadata keys, and sanitized errors without storing input JSONL, output JSONL, raw headers, provider keys, or file bytes.
+- Added Dashboard Batch Jobs page and `GET /api/dashboard/batches`, including 7-language localization, endpoint permission copy, read-only filters, status cards, and privacy/static frontend checks.
+- Added Batch endpoint configuration fields, config validation, SQLite-to-PostgreSQL migration coverage, call-log/benchmark source-format support, and e2e coverage for create/status/cancel/output proxying and endpoint-permission enforcement.
 
 ## 1.1.0 - 2026-05-05
 

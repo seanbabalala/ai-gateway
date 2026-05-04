@@ -22,6 +22,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { ConfigAuditService } from './config-audit.service';
 import { BenchmarkReportService } from './benchmark-report.service';
 import { McpModule } from '../mcp/mcp.module';
+import { BatchModule } from '../batch/batch.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { McpModule } from '../mcp/mcp.module';
     ShadowModule,
     CatalogModule,
     McpModule,
+    BatchModule,
     TypeOrmModule.forFeature([
       CallLog,
       ConfigAuditEvent,
