@@ -5,18 +5,15 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
-v0.9.3 keeps that deployment shape while adding the Operations + Trust layer on
-top of the v0.8 Provider Catalog and multimodal foundation: local config audit
-and rollback, optional secret manager references, shadow comparison reports,
-guardrails plugin upgrades, Helm/Kubernetes assets, benchmark reports,
-compatibility migration expansion, and Provider Catalog price source status.
-Structured output, rerank, images, audio, video, secret resolution, audit
-metadata, and benchmark summaries all stay in the open-source Data Plane.
-The v0.9.3 Dashboard also keeps prompt-cache hits separate from routing tiers
-and upstream node charts, so cache behavior is tracked as cache behavior.
-v1.0 expands guardrails with metadata-only webhook finding delivery and more
-local rules. Keep the webhook sink disabled until the receiver, queue limits,
-retry policy, and downstream retention policy have been reviewed.
+v1.0.0 keeps that deployment shape while adding the Extension Ecosystem layer
+on top of the v0.9.3 Operations + Trust foundation: Provider Catalog coverage
+for 30+ providers, reasoning/thinking intent across protocols, metadata-only
+guardrails webhook findings with more local rules, and a fuller OSS Dashboard
+API Key management surface. Structured output, rerank, images, audio, video,
+secret resolution, audit metadata, benchmark summaries, provider catalog
+metadata, and API key policy stay in the open-source Data Plane. Keep the
+guardrails webhook sink disabled until the receiver, queue limits, retry
+policy, and downstream retention policy have been reviewed.
 Realtime and video remain experimental previews and should only be enabled for
 production after upstream provider behavior, connection limits, job retention,
 and load balancer paths have been tested in your environment.

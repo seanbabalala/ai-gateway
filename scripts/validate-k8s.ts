@@ -64,6 +64,7 @@ export function validateK8sAssets(rootDir = process.cwd()): K8sValidationResult 
   const baseDeployment = firstDoc(path.join(k8sDir, 'deployment.yaml'), result, 'base Deployment') as Record<string, unknown>;
   const baseService = firstDoc(path.join(k8sDir, 'service.yaml'), result, 'base Service') as Record<string, unknown>;
   const baseSecret = firstDoc(path.join(k8sDir, 'secret.example.yaml'), result, 'base Secret example') as Record<string, unknown>;
+  const packageVersion = readPackageVersion(rootDir, result);
 
   if (!chart || !values || !kustomization || !baseConfigMap || !baseDeployment || !baseService || !baseSecret) {
     return result;
@@ -72,7 +73,7 @@ export function validateK8sAssets(rootDir = process.cwd()): K8sValidationResult 
   validateHelmMetadata(chart, values, result);
   validateValuesSupport(values, result);
   validateHelmTemplateText(helmDir, result);
-  validateKustomizeBase(kustomization, baseConfigMap, baseDeployment, baseService, baseSecret, result);
+  validateKustomizeBase(kustomization, baseConfigMap, baseDeployment, baseService, baseSecret, packageVersion, result);
   validateDefaultGatewayConfig('Helm values config.data', getPath(values, ['config', 'data']), result);
   validateDefaultGatewayConfig(
     'Kubernetes base ConfigMap gateway.config.yaml',
@@ -142,6 +143,19 @@ function firstDoc(
     result.errors.push(`${label} is not valid YAML: ${(err as Error).message}`);
     return null;
   }
+}
+
+function readPackageVersion(rootDir: string, result: K8sValidationResult): string {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')) as { version?: unknown };
+    if (typeof parsed.version === 'string' && parsed.version.trim()) {
+      return parsed.version;
+    }
+    result.errors.push('package.json must declare a release version for Kubernetes image validation.');
+  } catch (err) {
+    result.errors.push(`package.json is not readable for Kubernetes image validation: ${(err as Error).message}`);
+  }
+  return 'unknown';
 }
 
 function validateHelmMetadata(
@@ -221,6 +235,7 @@ function validateKustomizeBase(
   deployment: Record<string, unknown>,
   service: Record<string, unknown>,
   secret: Record<string, unknown>,
+  expectedImageTag: string,
   result: K8sValidationResult,
 ): void {
   const resources = new Set(
@@ -256,8 +271,8 @@ function validateKustomizeBase(
     result.errors.push('Kubernetes base container name must be siftgate.');
   }
   const image = container.image;
-  if (typeof image !== 'string' || !image.includes('ai-gateway:0.9.3')) {
-    result.errors.push('Kubernetes base image must reference the OSS ai-gateway:0.9.3 image.');
+  if (typeof image !== 'string' || !image.includes(`ai-gateway:${expectedImageTag}`)) {
+    result.errors.push(`Kubernetes base image must reference the OSS ai-gateway:${expectedImageTag} image.`);
   }
   if (typeof image === 'string' && /siftgate-cloud|enterprise/i.test(image)) {
     result.errors.push('Kubernetes base image must not reference Cloud or enterprise images.');

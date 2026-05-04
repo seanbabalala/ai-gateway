@@ -18,17 +18,17 @@
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
-| v1.0 | Extension Ecosystem | 进行中 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | 🚧 In Progress |
+| v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 
 ---
 
 ## v1.0 — Extension Ecosystem（扩展生态）
 
-**v1.0 开发状态**：v1.0 基于已发布 v0.9.3，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是扩展 provider 生态、跨协议能力映射、安全插件和本地 Dashboard 运维体验，不引入企业 workspace/RBAC/SSO/SCIM。
+**v1.0.0 发布状态**：v1.0 基于已发布 v0.9.3，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是扩展 provider 生态、跨协议能力映射、安全插件和本地 Dashboard 运维体验，不引入企业 workspace/RBAC/SSO/SCIM。
 
 ### P0：Provider Catalog 30+
 
-- **状态**：🚧 Prompt 63 feature branch 进行中
+- **状态**：✅ v1.0.0 已发布
 - **目标**：优先补齐 Bedrock、千问、文心、豆包、智谱、Moonshot 等生态缺口，让 Dashboard Add Node 不再只能覆盖欧美主流 provider
 - **实现方案**：
   - 内置 catalog 新增 AWS Bedrock、Alibaba Qwen/通义千问、Baidu Qianfan/文心、Volcengine Ark/豆包、Zhipu GLM/智谱、Moonshot/Kimi、MiniMax、Tencent Hunyuan/腾讯混元、01.AI/Yi、Replicate、Perplexity、NVIDIA NIM、Cerebras、SambaNova
@@ -41,7 +41,7 @@
 
 ### P0：Reasoning Effort 跨协议映射
 
-- **状态**：🚧 Prompt 64 feature branch 进行中
+- **状态**：✅ v1.0.0 已发布
 - **目标**：统一 OpenAI、Responses、Anthropic、Gemini 兼容风格的 reasoning/thinking 请求意图，路由时优先选择支持 reasoning 的模型，并在 Dashboard 解释为什么保留、映射或降级
 - **实现方案**：
   - Canonical Request 增加 `reasoning_effort`、`thinking`、`budget_tokens` 与 `reasoning` intent 字段
@@ -54,7 +54,7 @@
 
 ### P0：Guardrails Webhook Finding Sink 与规则扩展
 
-- **状态**：🚧 Prompt 65 feature branch 进行中
+- **状态**：✅ v1.0.0 已发布
 - **目标**：把官方 `plugins/guardrails` 升级为更完整的本地治理插件，支持 metadata-only webhook finding sink，并补齐 secret/token、jailbreak、unsafe URL、schema strictness、tool-call policy 等规则
 - **实现方案**：
   - Guardrails rule action 扩展为 `audit`、`redact`、`block`、`allow`、`webhook`
@@ -67,7 +67,7 @@
 
 ### P0：API Key 管理 Dashboard 完善
 
-- **状态**：🚧 feature branch `codex/v1.0-api-key-dashboard-hardening`
+- **状态**：✅ v1.0.0 已发布
 - **目标**：把本地 Gateway API Key 页面补齐到生产可用的密钥治理入口，同时保持开源边界清晰
 - **实现方案**：
   - Dashboard 支持创建、编辑、禁用、删除、rotate、一次性复制完整 key；列表和详情只显示 masked prefix

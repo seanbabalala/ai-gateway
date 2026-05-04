@@ -1,6 +1,6 @@
 # Official Runtime Plugins
 
-SiftGate v0.4 introduced the first MIT-licensed official plugin batch for the open-source Data Plane, and v0.9 upgrades the official guardrails plugin from a skeleton into a usable local safety plugin. Plugins live under `plugins/`, are compiled by `npm run build` into `dist-runtime-plugins`, and are copied into the production Docker image.
+SiftGate v0.4 introduced the first MIT-licensed official plugin batch for the open-source Data Plane, v0.9 upgraded the official guardrails plugin from a skeleton into a usable local safety plugin, and v1.0 adds metadata-only guardrails webhook findings plus expanded built-in rules. Plugins live under `plugins/`, are compiled by `npm run build` into `dist-runtime-plugins`, and are copied into the production Docker image.
 
 All official plugins are disabled or no-op by default. External exports never include prompts, responses, provider keys, raw headers, authorization headers, passwords, secrets, or tokens unless an operator explicitly opts into that behavior.
 

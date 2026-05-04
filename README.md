@@ -13,7 +13,7 @@
   <a href="#core-concepts">Core Concepts</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#api-endpoints">API Endpoints</a> &bull;
-  <a href="#dashboard">Dashboard</a> &bull;
+  <a href="docs/DASHBOARD.md">Dashboard</a> &bull;
   <a href="#docker">Docker</a> &bull;
   <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
@@ -27,9 +27,9 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.9.3**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation. v0.9.3 is a Dashboard polish patch that tightens Provider Catalog refresh-source browsing, improves Routing page space usage, and updates Logs so prompt-cache hits are shown as cache outcomes instead of routing tiers or upstream nodes.
+Current open-source release: **v1.0.0**. v1.0 is the SiftGate open-source ecosystem expansion release: Provider Catalog coverage grows to 30+ providers, reasoning/thinking intent is preserved across protocols, the official guardrails plugin gains metadata-only webhook findings and more local rules, and the Dashboard API Key page becomes a fuller local credential-management surface.
 
-This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog price source status checks. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
+The release builds on v0.9.3 Operations + Trust and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
