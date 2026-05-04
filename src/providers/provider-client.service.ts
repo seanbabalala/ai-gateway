@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig, NodeProtocol } from '../config/gateway.config';
@@ -26,6 +26,7 @@ import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
+import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import type { Dispatcher } from 'undici';
 
 type FetchOptionsWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
@@ -63,7 +64,10 @@ export class ProviderClientService {
   constructor(
     private readonly config: ConfigService,
     private readonly telemetry: TelemetryService,
+    @Optional()
     private readonly connectionPool?: UpstreamConnectionPoolService,
+    @Optional()
+    private readonly secretResolver?: SecretReferenceResolverService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -384,6 +388,23 @@ export class ProviderClientService {
   // Shared HTTP Request Logic
   // ══════════════════════════════════════════════════════
 
+  private async resolveNodeApiKey(node: NodeConfig): Promise<string> {
+    return this.secretResolver
+      ? this.secretResolver.resolveString(node.api_key, {
+          location: `nodes.${node.id}.api_key`,
+        })
+      : node.api_key;
+  }
+
+  private async resolveNodeHeaders(node: NodeConfig): Promise<Record<string, string>> {
+    return this.secretResolver
+      ? this.secretResolver.resolveRecord(node.headers, {
+          optional: true,
+          location: `nodes.${node.id}.headers`,
+        })
+      : { ...(node.headers || {}) };
+  }
+
   private async sendRequest(
     node: NodeConfig,
     requestBody: Record<string, unknown>,
@@ -393,6 +414,8 @@ export class ProviderClientService {
     endpointOverride?: string,
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
+    const nodeHeaders = await this.resolveNodeHeaders(node);
+    const apiKey = await this.resolveNodeApiKey(node);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -401,14 +424,14 @@ export class ProviderClientService {
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
-      headers['Authorization'] = `Bearer ${node.api_key}`;
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     // Custom headers
-    if (node.headers) Object.assign(headers, node.headers);
+    Object.assign(headers, nodeHeaders);
 
     // Preserve Anthropic-native request headers for messages → messages passthrough.
     if (canonical && this.shouldPassthroughNativeMessages(canonical, node.protocol)) {
@@ -496,6 +519,8 @@ export class ProviderClientService {
     signal?: AbortSignal,
   ): Promise<Response> {
     const url = `${node.base_url}${endpoint}`;
+    const nodeHeaders = await this.resolveNodeHeaders(node);
+    const apiKey = await this.resolveNodeApiKey(node);
     const headers: Record<string, string> = {
       'Content-Type': request.contentType,
     };
@@ -503,12 +528,12 @@ export class ProviderClientService {
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
-      headers['Authorization'] = `Bearer ${node.api_key}`;
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
-    if (node.headers) Object.assign(headers, node.headers);
+    Object.assign(headers, nodeHeaders);
 
     const controller = new AbortController();
     const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;

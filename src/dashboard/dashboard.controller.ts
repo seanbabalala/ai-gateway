@@ -38,6 +38,8 @@ import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
+import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import { maskSecretForDisplay } from '../config/secret-references';
 import { RoutingService } from '../routing/routing.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
@@ -103,6 +105,8 @@ export class DashboardController {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    @Optional()
+    private readonly secretResolver?: SecretReferenceResolverService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -246,6 +250,27 @@ export class DashboardController {
     } catch {
       return null;
     }
+  }
+
+  private maskSecretHeaderRecord(
+    headers: Record<string, string> | undefined,
+  ): Record<string, string> | undefined {
+    if (!headers) return undefined;
+    const sanitized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      sanitized[key] = this.isSensitiveHeader(key)
+        ? maskSecretForDisplay(value)
+        : value;
+    }
+    return sanitized;
+  }
+
+  private isSensitiveHeader(key: string): boolean {
+    const lower = key.toLowerCase();
+    return (
+      ['authorization', 'x-api-key', 'api-key', 'cookie', 'set-cookie'].includes(lower) ||
+      /(^|[-_])(auth|token|secret|api[-_]?key)([-_]|$)/.test(lower)
+    );
   }
 
   // ══════════════════════════════════════════════════════
@@ -1086,7 +1111,9 @@ export class DashboardController {
     // Sanitize: mask API keys
     const sanitizedNodes = full.nodes.map((node) => ({
       ...node,
-      api_key: node.api_key ? `${node.api_key.substring(0, 8)}...` : '[not set]',
+      api_key: maskSecretForDisplay(node.api_key),
+      api_key_secret_reference: this.secretResolver?.isReference(node.api_key) ?? false,
+      headers: this.maskSecretHeaderRecord(node.headers),
     }));
 
     const sanitizedAuth = {
@@ -1510,16 +1537,37 @@ export class DashboardController {
     const resolvedAuthType = auth_type || (protocol === 'messages' ? 'x-api-key' : 'bearer');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
-    if (resolvedAuthType === 'x-api-key') {
-      headers['x-api-key'] = api_key;
-      headers['anthropic-version'] = '2023-06-01';
-    } else {
-      headers['Authorization'] = `Bearer ${api_key}`;
+    let resolvedApiKey: string;
+    let resolvedExtraHeaders: Record<string, string>;
+    try {
+      resolvedApiKey = this.secretResolver
+        ? await this.secretResolver.resolveString(api_key, {
+            location: 'dashboard.nodes.test.api_key',
+          })
+        : api_key;
+      resolvedExtraHeaders = this.secretResolver
+        ? await this.secretResolver.resolveRecord(extraHeaders, {
+            optional: true,
+            location: 'dashboard.nodes.test.headers',
+          })
+        : { ...(extraHeaders || {}) };
+    } catch (err) {
+      return {
+        success: false,
+        status: 0,
+        latency_ms: 0,
+        message: `Secret reference could not be resolved: ${(err as Error).message}`,
+      };
     }
 
-    if (extraHeaders) {
-      Object.assign(headers, extraHeaders);
+    if (resolvedAuthType === 'x-api-key') {
+      headers['x-api-key'] = resolvedApiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${resolvedApiKey}`;
     }
+
+    Object.assign(headers, resolvedExtraHeaders);
 
     // Build minimal request body per protocol (small max_tokens to minimize cost)
     let body: Record<string, unknown>;

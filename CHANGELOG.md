@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 optional Secret Manager reference support for the OSS Data Plane, with runtime `${env:...}`, `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` references.
+- `SecretReferenceResolverService` with local TTL cache, `fail_closed` / `fail_open_for_optional` behavior, SDK-less Vault/AWS/GCP HTTP adapters, and explicit backend enablement.
+- Secret-reference support for provider `nodes[].api_key`, node headers, active health probes, realtime upstream auth, video provider proxy routes, provider compatibility tests, and optional control-plane registration tokens.
+- Config validation diagnostics for malformed references, disabled backends, unset env values, secret-manager shape, and secret-like catalog override values.
+- Secret management documentation and example configuration.
+
+### Changed
+
+- Runtime config loading now preserves typed secret references such as `${env:OPENAI_API_KEY}` for request-time resolution while keeping legacy `${OPENAI_API_KEY}` startup interpolation compatible.
+- Dashboard sanitized config keeps secret references visible as references, masks literal provider keys and sensitive headers, and never resolves secrets for display.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

@@ -35,10 +35,16 @@ import {
   FallbackPolicyConfig,
   StateBackendConfig,
   RealtimeConfig,
+  SecretManagerConfig,
+  SecretManagerFailurePolicy,
+  VaultSecretManagerConfig,
+  AwsSecretsManagerConfig,
+  GcpSecretManagerConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
+import { isTypedSecretReferenceExpression } from './secret-references';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
 
@@ -173,6 +179,9 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       return obj.replace(
         /\$\{([^}]+)\}/g,
         (_match: string, expr: string) => {
+          if (isTypedSecretReferenceExpression(expr)) {
+            return _match;
+          }
           const [envKey, defaultValue] = expr.split(':-');
           const value = process.env[envKey.trim()];
           if (value !== undefined) return value;
@@ -767,6 +776,52 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       compare: {
         store_prompts: shadow?.compare?.store_prompts ?? false,
         store_responses: shadow?.compare?.store_responses ?? false,
+      },
+    };
+  }
+
+  get secretManager(): Required<SecretManagerConfig> & {
+    failure_policy: SecretManagerFailurePolicy;
+    backends: {
+      env: { enabled: boolean };
+      vault: Required<VaultSecretManagerConfig>;
+      aws_sm: Required<AwsSecretsManagerConfig>;
+      gcp_sm: Required<GcpSecretManagerConfig>;
+    };
+  } {
+    const secrets = this.config.secret_manager;
+    return {
+      cache_ttl_seconds: secrets?.cache_ttl_seconds ?? 300,
+      failure_policy: secrets?.failure_policy ?? 'fail_closed',
+      backends: {
+        env: {
+          enabled: secrets?.backends?.env?.enabled ?? true,
+        },
+        vault: {
+          enabled: secrets?.backends?.vault?.enabled ?? false,
+          address: secrets?.backends?.vault?.address ?? '',
+          token: secrets?.backends?.vault?.token ?? '',
+          mount: secrets?.backends?.vault?.mount ?? 'secret',
+          kv_version: secrets?.backends?.vault?.kv_version ?? 2,
+          timeout_ms: secrets?.backends?.vault?.timeout_ms ?? 5000,
+        },
+        aws_sm: {
+          enabled: secrets?.backends?.aws_sm?.enabled ?? false,
+          region: secrets?.backends?.aws_sm?.region ?? '',
+          endpoint: secrets?.backends?.aws_sm?.endpoint ?? '',
+          access_key_id: secrets?.backends?.aws_sm?.access_key_id ?? '',
+          secret_access_key: secrets?.backends?.aws_sm?.secret_access_key ?? '',
+          session_token: secrets?.backends?.aws_sm?.session_token ?? '',
+          timeout_ms: secrets?.backends?.aws_sm?.timeout_ms ?? 5000,
+        },
+        gcp_sm: {
+          enabled: secrets?.backends?.gcp_sm?.enabled ?? false,
+          project_id: secrets?.backends?.gcp_sm?.project_id ?? '',
+          endpoint: secrets?.backends?.gcp_sm?.endpoint ?? '',
+          access_token: secrets?.backends?.gcp_sm?.access_token ?? '',
+          use_metadata: secrets?.backends?.gcp_sm?.use_metadata ?? true,
+          timeout_ms: secrets?.backends?.gcp_sm?.timeout_ms ?? 5000,
+        },
       },
     };
   }

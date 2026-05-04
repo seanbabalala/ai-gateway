@@ -15,6 +15,48 @@ const catalogFixture = (name: string) =>
 
 const codes = (issues: { code: string }[]) => issues.map((item) => item.code);
 
+function secretReferenceConfig(
+  apiKey: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    server: { port: 2099, host: '0.0.0.0' },
+    database: { type: 'sqlite', path: ':memory:' },
+    auth: { api_keys: [] },
+    nodes: [
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        protocol: 'chat_completions',
+        base_url: 'https://api.openai.com',
+        endpoint: '/v1/chat/completions',
+        api_key: apiKey,
+        models: ['gpt-4o-mini'],
+        timeout_ms: 60000,
+        headers: {
+          'X-Provider-Org': '${env:OPENAI_ORG_ID:-org_test}',
+        },
+      },
+    ],
+    routing: {
+      tiers: {
+        standard: {
+          primary: { node: 'openai', model: 'gpt-4o-mini' },
+          fallbacks: [],
+        },
+      },
+      scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+    },
+    budget: {
+      daily_token_limit: 1000000,
+      daily_cost_limit: 25,
+      alert_threshold: 0.8,
+    },
+    models_pricing: { 'gpt-4o-mini': { input: 0.15, output: 0.6 } },
+    ...overrides,
+  };
+}
+
 describe('config validator', () => {
   it('accepts a valid standalone data-plane config', () => {
     const result = validateConfigFile({
@@ -257,6 +299,57 @@ describe('config validator', () => {
     expect(result.ok).toBe(true);
     expect(result.errors).toHaveLength(0);
     expect(codes(result.warnings)).toContain('missing_model_pricing');
+  });
+
+  it('accepts typed env secret references and warns when the env value is missing', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${env:OPENAI_API_KEY}'),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('malformed_secret_reference');
+    expect(codes(result.warnings)).toContain('env_reference_unset');
+  });
+
+  it('rejects external secret references when the backend is not enabled', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${vault:secret/openai#api_key}'),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('secret_backend_disabled');
+  });
+
+  it('accepts explicitly enabled external secret backends', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${vault:secret/openai#api_key}', {
+        secret_manager: {
+          backends: {
+            vault: {
+              enabled: true,
+              address: '${env:VAULT_ADDR:-https://vault.example.com}',
+              token: '${env:VAULT_TOKEN:-test}',
+            },
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('secret_backend_disabled');
+  });
+
+  it('reports malformed secret reference syntax', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${vault:#api_key}'),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('malformed_secret_reference');
   });
 
   it('adds provider catalog warnings for unknown known-provider models', () => {

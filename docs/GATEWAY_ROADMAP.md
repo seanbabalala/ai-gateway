@@ -17,6 +17,34 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力 | 🚧 In Progress |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 信任基础）
+
+**阶段定位**：v0.7 不再单独发布；v0.9 承接原 v0.7 backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：Secret Manager References
+
+- **状态**：🚧 feature branch 进行中
+- **目标**：让开源 Data Plane 在不引入企业私有依赖的前提下支持可选 secret reference，减少明文 provider key 和控制面 token 出现在本地配置中的风险
+- **实现方案**：
+  - 支持 `${env:OPENAI_API_KEY}`、`${vault:path/to/secret#field}`、`${aws-sm:secret-name#field}`、`${gcp-sm:secret-name#field}`
+  - 默认只启用 env；Vault/AWS/GCP 必须在 `secret_manager.backends` 显式开启
+  - `SecretReferenceResolverService` 提供本地 TTL cache 与 `fail_closed` / `fail_open_for_optional` 行为
+  - Vault/AWS/GCP 第一版使用 SDK-less HTTP/mockable adapter，不引入重量级云 SDK
+  - 覆盖 `nodes[].api_key`、`nodes[].headers`、Active Health Probe、Realtime upstream auth、Provider Compatibility Test、Video provider proxy 与 `control_plane.registration_token`
+  - Dashboard config/API/log/route trace/compatibility result 不返回 resolved secret；literal secret 与敏感 headers 继续脱敏
+  - Config validation 诊断未启用 backend、格式错误、env 未设置、secret-manager 配置形状与 catalog override 中的疑似 secret
+
+### 后续 v0.9 Backlog（不在本 Prompt 范围内）
+
+- 本地配置审计与版本回滚
+- Guardrails 插件增强与 policy block
+- Helm chart / K8s manifests
+- New API / One API / LiteLLM 迁移工具扩展
+- Benchmark 页面和压测报告
 
 ---
 
