@@ -203,6 +203,12 @@ The open-source data plane includes an optional `alerts` subsystem. It listens t
 
 Alert payloads are sanitized before dispatch. Prompts, responses, provider API keys, raw headers, configured webhook headers, passwords, secrets, and tokens are not included. Dashboard alert status is read from local memory through `GET /api/dashboard/alerts`; webhook URLs and headers are not exposed there.
 
+## Guardrails Findings
+
+The official `plugins/guardrails` plugin remains a local Data Plane plugin. It runs in pipeline hooks and records privacy-safe finding metadata in the per-request plugin store plus an in-memory Dashboard summary. It can inspect text content for PII, secret/token patterns, prompt injection, jailbreak language, unsafe URLs, schema violations, tool-call policy violations, and named policy rules.
+
+The optional guardrails webhook sink is separate from local webhook alerts. It sends `siftgate.guardrails.findings.v1` metadata asynchronously with debounce, retry, timeout, max queue, and drop-policy controls. Payloads include request id, source format, rule/action/kind/severity counts, and finding metadata only. They do not include prompts, responses, matched text, raw headers, provider keys, webhook URL, webhook headers, media bytes, or video bytes. Dashboard reads `GET /api/dashboard/guardrails` for local counters and recent delivery state; no persistence table is required.
+
 ## Shared Runtime State
 
 The data plane defaults to in-process memory for runtime state. The optional

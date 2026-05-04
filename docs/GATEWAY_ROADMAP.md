@@ -18,6 +18,26 @@
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
+| v1.0 | Ecosystem Expansion | 进行中 — Provider Catalog 扩展、Reasoning Effort 跨协议映射、Guardrails webhook、API Key 管理完善 | 🚧 In Progress |
+
+---
+
+## v1.0 — Ecosystem Expansion（扩展生态）
+
+**目标**：在 v0.9.3 稳定运维基础上扩大 provider/model 覆盖，并补齐生产应用常用的跨协议能力，让 SiftGate 继续保持开源 Data Plane 自洽可用。
+
+### P0：Guardrails Webhook Finding Sink 与规则扩展
+
+- **状态**：🚧 Prompt 65 feature branch 进行中
+- **目标**：把官方 `plugins/guardrails` 升级为更完整的本地治理插件，支持 metadata-only webhook finding sink，并补齐 secret/token、jailbreak、unsafe URL、schema strictness、tool-call policy 等规则
+- **实现方案**：
+  - Guardrails rule action 扩展为 `audit`、`redact`、`block`、`allow`、`webhook`
+  - webhook sink 默认关闭，显式启用后异步发送 `siftgate.guardrails.findings.v1` metadata
+  - webhook 支持 `debounce_seconds`、`retry.attempts`、`retry.backoff_ms`、`timeout_ms`、`max_queue`、`drop_policy`
+  - webhook payload 和 Dashboard status 不包含 prompt、response、matched text、raw headers、provider key、media/video bytes、webhook URL 或 webhook headers
+  - 内置规则扩展：PII 扩展字段、secret/token pattern、prompt injection、jailbreak、unsafe URL、schema strictness、tool-call policy
+  - Dashboard 新增 `GET /api/dashboard/guardrails` 摘要和首页 Guardrails 卡片，展示 finding counters、最近 finding metadata、webhook queue/drop/recent 状态
+  - 插件继续默认 disabled/no-op，单机 memory/SQLite 默认可用，不依赖 Redis/Postgres/Cloud
 
 ---
 

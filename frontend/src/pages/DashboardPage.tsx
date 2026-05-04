@@ -28,6 +28,7 @@ import {
   KeyRound,
   Server,
   BellRing,
+  ShieldCheck,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -46,6 +47,7 @@ import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { useConfig } from '@/hooks/use-config'
 import { useAlerts } from '@/hooks/use-alerts'
+import { useGuardrails } from '@/hooks/use-guardrails'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -141,6 +143,7 @@ export function DashboardPage() {
   const { data: namespacesData } = useNamespaces()
   const { data: configData } = useConfig()
   const { data: alertsData } = useAlerts()
+  const { data: guardrailsData } = useGuardrails()
   const colors = useThemeColors()
 
   const apiKeyOptions = [
@@ -278,6 +281,99 @@ export function DashboardPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="animate-fade-up" style={{ animationDelay: '140ms' }}>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-[var(--accent)]" />
+              <CardTitle>{t('guardrails.title')}</CardTitle>
+            </div>
+            <span
+              className={
+                guardrailsData?.enabled
+                  ? 'rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300'
+                  : 'rounded-md bg-[var(--background-tertiary)] px-2 py-1 text-[10px] font-bold uppercase text-[var(--foreground-dim)]'
+              }
+            >
+              {guardrailsData?.enabled ? t('guardrails.enabled') : t('guardrails.disabled')}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('guardrails.findings')}
+                </div>
+                <div className="mt-1 font-mono text-[20px] font-extrabold text-[var(--foreground)]">
+                  {guardrailsData?.findings.total ?? 0}
+                </div>
+              </div>
+              <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('guardrails.webhook')}
+                </div>
+                <div className="mt-1 font-mono text-[13px] font-extrabold text-[var(--foreground)]">
+                  {guardrailsData?.webhook.enabled
+                    ? t(`guardrails.webhookStatus.${guardrailsData.webhook.last_status || 'queued'}`)
+                    : guardrailsData?.webhook.configured
+                      ? t('guardrails.webhookConfigured')
+                      : t('guardrails.webhookOff')}
+                </div>
+              </div>
+            </div>
+            {!guardrailsData || guardrailsData.findings.recent.length === 0 ? (
+              <div className="flex min-h-24 items-center justify-center rounded-lg bg-[var(--background-tertiary)] text-sm text-[var(--foreground-dim)]">
+                {guardrailsData?.enabled ? t('guardrails.empty') : t('guardrails.notConfigured')}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {guardrailsData.findings.recent.slice(0, 4).map((finding, index) => (
+                  <div
+                    key={`${finding.request_id || 'finding'}-${finding.rule}-${index}`}
+                    className="grid gap-2 rounded-lg bg-[var(--background-tertiary)] px-3.5 py-2.5 text-xs sm:grid-cols-[110px_120px_1fr_auto]"
+                  >
+                    <span className="font-mono font-bold text-[var(--foreground-muted)]">
+                      {finding.kind}
+                    </span>
+                    <span className="truncate font-mono text-[var(--foreground-dim)]">
+                      {finding.request_id || t('guardrails.unknownRequest')}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-[var(--foreground)]">
+                        {finding.rule}
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-[var(--foreground-dim)]">
+                        {finding.path} · {t('guardrails.matches', { count: finding.match_count ?? 1 })}
+                      </div>
+                    </div>
+                    <span
+                      className={
+                        finding.action === 'block'
+                          ? 'w-fit rounded-md bg-red-500/10 px-2 py-1 font-mono font-bold text-red-700 dark:text-red-300'
+                          : finding.action === 'redact'
+                            ? 'w-fit rounded-md bg-amber-500/10 px-2 py-1 font-mono font-bold text-amber-700 dark:text-amber-300'
+                            : finding.action === 'webhook'
+                              ? 'w-fit rounded-md bg-blue-500/10 px-2 py-1 font-mono font-bold text-blue-700 dark:text-blue-300'
+                              : 'w-fit rounded-md bg-[var(--background-secondary)] px-2 py-1 font-mono font-bold text-[var(--foreground-dim)]'
+                      }
+                    >
+                      {t(`guardrails.actions.${finding.action}`)}
+                    </span>
+                  </div>
+                ))}
+                {guardrailsData.webhook.last_error && (
+                  <div className="truncate text-[11px] text-red-700 dark:text-red-300">
+                    {t('guardrails.lastWebhookError')}: {guardrailsData.webhook.last_error}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

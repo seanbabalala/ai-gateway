@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Upgraded the official guardrails plugin to v1.0 with metadata-only webhook finding delivery, per-rule `webhook` actions, debounce/retry/timeout/max-queue/drop-policy controls, expanded PII, secret/token, jailbreak, unsafe URL, strict schema, and tool-call policy rules.
+- Added `GET /api/dashboard/guardrails` and a Dashboard Guardrails summary card showing finding counters and recent webhook state without exposing prompts, responses, matched text, raw headers, provider keys, webhook URLs, webhook headers, media bytes, or video bytes.
+
 ## 0.9.3 - 2026-05-05
 
 ### Changed

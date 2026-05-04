@@ -55,6 +55,7 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RoutingRecommendationService } from '../routing/routing-recommendation.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
+import { PluginRegistryService } from '../plugins/plugin-registry.service';
 import { assessCatalogPricing, CatalogService } from '../catalog/catalog.service';
 import { getCatalogRefreshSources } from '../catalog/catalog-refresh';
 import type { CatalogModel, CatalogProvider } from '../catalog/catalog.types';
@@ -230,6 +231,9 @@ export class DashboardController {
     @Optional()
     @Inject(BenchmarkReportService)
     private readonly benchmarkReports?: BenchmarkReportService,
+    @Optional()
+    @Inject(PluginRegistryService)
+    private readonly plugins?: PluginRegistryService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -256,6 +260,63 @@ export class DashboardController {
       .delete()
       .where('timestamp < :cutoff', { cutoff })
       .execute();
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Guardrails
+  // ══════════════════════════════════════════════════════
+
+  @Get('guardrails')
+  @ApiOperation({ summary: 'Get privacy-safe guardrails plugin summary and webhook status' })
+  @ApiOkResponse({
+    description:
+      'Guardrails finding counters and webhook delivery status without prompts, responses, raw headers, provider keys, webhook URLs, or webhook headers.',
+  })
+  getGuardrailsStatus() {
+    const status = this.plugins?.getPluginStatus('guardrails');
+    return (
+      status || {
+        enabled: false,
+        mode: 'audit',
+        rules: {
+          total: 0,
+          by_kind: {},
+          by_action: {},
+          schema: {
+            input_enabled: false,
+            output_enabled: false,
+            input_strict: false,
+            output_strict: false,
+          },
+        },
+        findings: {
+          total: 0,
+          by_kind: {},
+          by_action: {},
+          last_seen_at: null,
+          recent: [],
+        },
+        webhook: {
+          enabled: false,
+          configured: false,
+          queue_depth: 0,
+          max_queue: 0,
+          drop_policy: 'drop_newest',
+          dropped: 0,
+          last_status: null,
+          last_error: null,
+          last_sent_at: null,
+          recent: [],
+        },
+        privacy: {
+          prompt: false,
+          response: false,
+          raw_headers: false,
+          provider_keys: false,
+          media_bytes: false,
+        },
+      }
+    );
   }
 
   // ══════════════════════════════════════════════════════

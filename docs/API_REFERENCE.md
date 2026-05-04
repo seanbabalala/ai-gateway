@@ -274,6 +274,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/shadow/report` | Read-only primary vs shadow comparison report with success, latency, cost, token, fallback, confidence, and risk fields |
 | `GET` | `/api/dashboard/shadow/results/:id/comparison` | Single shadow result comparison paired with the primary call log by request id |
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
+| `GET` | `/api/dashboard/guardrails` | Privacy-safe guardrails finding summary and webhook delivery status; does not expose prompts, responses, raw headers, provider keys, webhook URL, or webhook headers |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
 | `GET` | `/api/dashboard/config/versions` | List local sanitized config versions for audit and rollback |

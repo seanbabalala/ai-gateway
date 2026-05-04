@@ -341,6 +341,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routeDecisionRepo as any,
     overrides.secretResolver as any,
     overrides.benchmarkReports as any,
+    overrides.plugins as any,
   );
 
   return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
@@ -448,6 +449,41 @@ describe('DashboardController — benchmark report', () => {
       source_format: 'chat_completions',
       limit: 250,
     });
+  });
+});
+
+describe('DashboardController — guardrails status', () => {
+  it('should return privacy-safe guardrails plugin status', () => {
+    const plugins = {
+      getPluginStatus: jest.fn().mockReturnValue({
+        enabled: true,
+        mode: 'audit',
+        findings: {
+          total: 2,
+          recent: [{ rule: 'secret.aws', action: 'webhook' }],
+        },
+        webhook: {
+          enabled: true,
+          last_status: 'sent',
+          recent: [{ id: 'delivery_1', status: 'sent' }],
+        },
+        privacy: {
+          prompt: false,
+          response: false,
+          raw_headers: false,
+          provider_keys: false,
+          media_bytes: false,
+        },
+      }),
+    };
+    const { controller } = makeDashboard({ plugins });
+
+    const result = controller.getGuardrailsStatus() as any;
+
+    expect(plugins.getPluginStatus).toHaveBeenCalledWith('guardrails');
+    expect(result.enabled).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('https://hooks.example');
+    expect(JSON.stringify(result)).not.toContain('Authorization');
   });
 });
 

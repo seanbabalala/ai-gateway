@@ -112,6 +112,14 @@ export class PluginRegistryService
     }));
   }
 
+  getPluginStatus(pluginName: string): unknown {
+    const entry = this.plugins.find(
+      (p) => p.instance.meta.name === pluginName,
+    );
+    if (!entry?.instance.getStatus) return null;
+    return entry.instance.getStatus();
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────
 
   async onApplicationBootstrap(): Promise<void> {

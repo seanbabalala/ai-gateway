@@ -511,6 +511,78 @@ export interface AlertsResponse {
   recent: AlertDeliveryStatus[]
 }
 
+// ── Guardrails ──
+
+export type GuardrailAction = 'audit' | 'redact' | 'block' | 'allow' | 'webhook'
+export type GuardrailDeliveryState = 'queued' | 'sent' | 'failed' | 'debounced' | 'dropped'
+
+export interface GuardrailFindingSummary {
+  request_id?: string
+  direction: 'input' | 'output'
+  kind: string
+  rule: string
+  action: GuardrailAction
+  severity: 'low' | 'medium' | 'high'
+  path: string
+  category?: string
+  match_count?: number
+  message?: string
+}
+
+export interface GuardrailsWebhookStatus {
+  id: string
+  status: GuardrailDeliveryState
+  attempts: number
+  timestamp: string
+  finding_count: number
+  rules: string[]
+  actions: string[]
+  last_error: string | null
+  sent_at: string | null
+}
+
+export interface GuardrailsResponse {
+  enabled: boolean
+  mode: 'audit' | 'redact' | 'block'
+  rules: {
+    total: number
+    by_kind: Record<string, number>
+    by_action: Record<string, number>
+    schema: {
+      input_enabled: boolean
+      output_enabled: boolean
+      input_strict: boolean
+      output_strict: boolean
+    }
+  }
+  findings: {
+    total: number
+    by_kind: Record<string, number>
+    by_action: Record<string, number>
+    last_seen_at: string | null
+    recent: GuardrailFindingSummary[]
+  }
+  webhook: {
+    enabled: boolean
+    configured: boolean
+    queue_depth: number
+    max_queue: number
+    drop_policy: 'drop_newest' | 'drop_oldest'
+    dropped: number
+    last_status: GuardrailDeliveryState | null
+    last_error: string | null
+    last_sent_at: string | null
+    recent: GuardrailsWebhookStatus[]
+  }
+  privacy: {
+    prompt: false
+    response: false
+    raw_headers: false
+    provider_keys: false
+    media_bytes: false
+  }
+}
+
 // ── Config ──
 
 export interface SplitVariant {

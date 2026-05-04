@@ -749,9 +749,10 @@ models_pricing:
 #   explicit store_responses: true.
 # - analytics-sink exports sanitized call-log metadata only.
 # - request-transform runs local rewrites only.
-# - guardrails runs local PII, prompt-injection, schema, and policy checks.
-#   Findings contain metadata only; prompt/response text and media bytes are
-#   not stored by default.
+# - guardrails runs local PII, secret/token, prompt-injection, jailbreak,
+#   unsafe URL, schema, tool-call, and policy checks. Optional webhook export
+#   sends finding metadata only; prompt/response text, raw headers, provider
+#   keys, and media bytes are never sent by default.
 # ============================================================
 # plugins:
 #   - path: plugins/request-transform
@@ -774,21 +775,52 @@ models_pricing:
 #       pii:
 #         enabled: true
 #         action: redact
-#         entities: [email, api_key, credit_card]
+#         entities: [email, api_key, credit_card, ip_address, iban]
+#       secrets:
+#         enabled: true
+#         action: webhook
 #       prompt_injection:
 #         enabled: true
 #         action: block
+#       jailbreak:
+#         enabled: true
+#         action: block
+#       unsafe_url:
+#         enabled: true
+#         action: audit
+#         block_private_ips: true
+#       tool_call_policy:
+#         enabled: true
+#         action: block
+#         allowed_tools: [safe_lookup]
+#         require_known_tools: true
 #       policies:
 #         - name: block-secret-project
 #           direction: input
 #           pattern: "(?i)secret project"
 #           action: block
+#         - name: webhook-high-risk-policy
+#           direction: both
+#           pattern: "(?i)credential dump"
+#           action: webhook
 #       schema:
 #         enabled: false
+#         strict: true
 #         output:
 #           enabled: false
 #           action: audit
 #           trigger_fallback: false
+#       webhook:
+#         enabled: false
+#         url: "https://hooks.example.com/siftgate/guardrails"
+#         include_actions: [webhook, block]
+#         debounce_seconds: 300
+#         timeout_ms: 5000
+#         max_queue: 100
+#         drop_policy: drop_newest
+#         retry:
+#           attempts: 3
+#           backoff_ms: 1000
 #
 #   - path: plugins/analytics-sink
 #     required: false
