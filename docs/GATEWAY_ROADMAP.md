@@ -52,13 +52,19 @@
   - Dashboard config/API/log/route trace/compatibility result 不返回 resolved secret；literal secret 与敏感 headers 继续脱敏
   - Config validation 诊断未启用 backend、格式错误、env 未设置、secret-manager 配置形状与 catalog override 中的疑似 secret
 
-### 后续 v0.9 Backlog（不在本 Prompt 范围内）
+### Shadow Traffic Comparison Report
 
-- 本地配置审计与版本回滚
-- Guardrails 插件增强与 policy block
-- Helm chart / K8s manifests
-- New API / One API / LiteLLM 迁移工具扩展
-- Benchmark 页面和压测报告
+- **状态**：✅ Prompt feature branch 已完成
+- **目标**：把 v0.5 的只读 shadow results 升级为灰度决策报告，但不自动修改 routing 配置
+- **实现方案**：
+  - 新增 `GET /api/dashboard/shadow/report`，按 namespace、API key、node、model、period、source format 过滤
+  - 新增 `GET /api/dashboard/shadow/results/:id/comparison`，按单条 shadow result 返回主路径与 shadow 指标差异
+  - 报告输出 `primary_success_rate`、`shadow_success_rate`、`latency_delta_ms`、p50/p95 latency comparison、`cost_delta_usd`、`potential_savings_usd`、`token_delta`、`fallback_delta`、`quality_sample_coverage`、`confidence`、`risk_notes`
+  - 通过 `request_id` 将 `shadow_traffic_results` 与 `call_logs` 配对，shadow 成本使用本地 `models_pricing` / node model capability pricing 估算
+  - Dashboard Shadow 页面新增 overview cards、primary vs shadow table、risk/confidence labels 与 7 语言本地化
+  - 默认不保存 prompt、response、raw headers、provider key、media bytes、video bytes
+  - 如果显式开启 `shadow.compare.store_prompts` 或 `store_responses`，样本会内置脱敏并按 `shadow.compare.sample_max_chars` 截断，Dashboard 与 config validation 都会提示风险
+  - 页面保持只读，不提供自动应用 routing 修改的按钮或 API 调用
 
 ---
 

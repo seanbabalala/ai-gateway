@@ -118,7 +118,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
-- **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
+- **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
 - **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
 
@@ -141,7 +141,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
-- **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
+- **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 
 ### Provider Catalog
 
@@ -1164,9 +1164,12 @@ shadow:
   compare:
     store_prompts: false
     store_responses: false
+    sample_max_chars: 4000
 ```
 
-By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; config validation emits a warning when either is enabled. Raw headers and provider keys are never stored. The Dashboard Shadow page and `GET /api/dashboard/shadow` endpoint are read-only. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
+By default, shadow results store metadata only: request id, namespace, primary/shadow node and model, status, latency, token usage, and error reason. Prompt/input samples and response samples are stored only when `compare.store_prompts` or `compare.store_responses` is explicitly set to `true`; when enabled, samples are redacted and truncated by `compare.sample_max_chars`, and config validation emits a warning. Raw headers, provider keys, media bytes, and video bytes are never stored.
+
+The Dashboard Shadow page and API are read-only. `GET /api/dashboard/shadow/report` compares paired primary/shadow rows by success rate, p50/p95 latency, estimated cost, potential savings, tokens, fallback delta, quality sample coverage, confidence, and risk notes. `GET /api/dashboard/shadow/results/:id/comparison` returns the same privacy-safe comparison for one result. Reports do not apply routing changes or promote a shadow target automatically. See [Local Namespaces And Shadow Traffic](docs/NAMESPACES_AND_SHADOW.md).
 
 ### Webhook Alerts
 
@@ -1372,6 +1375,8 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
 | `GET`  | `/api/dashboard/shadow`                  | Read-only shadow traffic status and recent sanitized results                                       |
+| `GET`  | `/api/dashboard/shadow/report`           | Read-only primary vs shadow comparison report with success, latency, cost, confidence, and risks   |
+| `GET`  | `/api/dashboard/shadow/results/:id/comparison` | Single shadow result comparison paired with the primary call log                            |
 | `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
 | `GET`  | `/api/dashboard/config/versions`         | Local sanitized config version history                                                             |
@@ -1396,7 +1401,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
-- **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
+- **Shadow** — Read-only sampled mirror results plus comparison reports for success, latency, cost, confidence, and risk
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules

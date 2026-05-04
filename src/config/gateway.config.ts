@@ -422,6 +422,8 @@ export interface ShadowTrafficCompareConfig {
   store_prompts?: boolean;
   /** Store sanitized response samples for comparison. Default: false. */
   store_responses?: boolean;
+  /** Maximum stored sample characters after built-in redaction. Default: 4000. */
+  sample_max_chars?: number;
 }
 
 export interface ShadowTrafficConfig {

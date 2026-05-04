@@ -973,6 +973,50 @@ export class DashboardController {
     };
   }
 
+  @Get('shadow/report')
+  @ApiOperation({ summary: 'Read-only shadow traffic comparison report' })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'model', required: false })
+  @ApiQuery({ name: 'period', required: false, example: '7d' })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiOkResponse({ description: 'Privacy-safe aggregate comparison between primary and shadow traffic.' })
+  async getShadowComparisonReport(
+    @Query('namespace') namespaceId?: string,
+    @Query('api_key') apiKeyName?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('node') node?: string,
+    @Query('model') model?: string,
+    @Query('period') period?: string,
+    @Query('source_format') sourceFormat?: string,
+  ) {
+    return this.shadowTraffic.comparisonReport({
+      namespaceId,
+      apiKeyName,
+      apiKeyId,
+      node,
+      model,
+      period,
+      sourceFormat,
+    });
+  }
+
+  @Get('shadow/results/:id/comparison')
+  @ApiOperation({ summary: 'Read-only comparison detail for one shadow traffic result' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Primary vs shadow metrics for a single mirrored request without raw prompts, responses, headers, or keys.' })
+  async getShadowResultComparison(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const comparison = await this.shadowTraffic.comparisonForResult(id);
+    if (!comparison) {
+      throw new HttpException('Shadow result not found', HttpStatus.NOT_FOUND);
+    }
+    return comparison;
+  }
+
   @Get('api-keys')
   @ApiTags('API Keys')
   @ApiOperation({ summary: 'List Dashboard-managed Gateway API keys' })

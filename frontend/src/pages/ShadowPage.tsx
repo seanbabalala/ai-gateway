@@ -1,10 +1,20 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitCompareArrows, ShieldCheck } from 'lucide-react'
+import {
+  Activity,
+  DollarSign,
+  Filter,
+  GitCompareArrows,
+  Gauge,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { SkeletonTable } from '@/components/ui/skeleton'
@@ -17,14 +27,82 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useNamespaces } from '@/hooks/use-namespaces'
-import { useShadowTraffic } from '@/hooks/use-shadow'
-import { formatLatency, formatTimestamp, formatTokens } from '@/lib/utils'
+import { useShadowReport, useShadowTraffic } from '@/hooks/use-shadow'
+import { formatCost, formatLatency, formatPercent, formatTimestamp, formatTokens } from '@/lib/utils'
+import type { ShadowComparisonReport, ShadowReportFilters } from '@/types/api'
+
+const PERIOD_OPTIONS = ['24h', '7d', '30d']
+const SOURCE_FORMAT_OPTIONS = [
+  '',
+  'chat_completions',
+  'responses',
+  'messages',
+  'embeddings',
+  'rerank',
+  'image_generation',
+  'image_edit',
+  'image_variation',
+  'audio_transcription',
+  'audio_translation',
+  'audio_speech',
+  'video_generation',
+]
+
+function formatRate(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  return formatPercent(value * 100)
+}
+
+function formatSignedLatency(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  return `${value > 0 ? '+' : ''}${formatLatency(value)}`
+}
+
+function formatSignedCost(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  const sign = value > 0 ? '+' : value < 0 ? '-' : ''
+  return `${sign}${formatCost(Math.abs(value))}`
+}
+
+function formatSignedTokens(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  return `${value > 0 ? '+' : ''}${formatTokens(value)}`
+}
+
+function confidenceVariant(level?: string): BadgeProps['variant'] {
+  if (level === 'high') return 'emerald'
+  if (level === 'medium') return 'blue'
+  return 'amber'
+}
+
+function deltaVariant(value: number | null | undefined, positiveIsGood = false): BadgeProps['variant'] {
+  if (value === null || value === undefined || Math.abs(value) < 0.000001) return 'zinc'
+  const good = positiveIsGood ? value > 0 : value < 0
+  return good ? 'emerald' : 'amber'
+}
 
 export function ShadowPage() {
   const { t } = useTranslation('dashboard')
   const [namespaceFilter, setNamespaceFilter] = useState('')
+  const [apiKeyFilter, setApiKeyFilter] = useState('')
+  const [nodeFilter, setNodeFilter] = useState('')
+  const [modelFilter, setModelFilter] = useState('')
+  const [periodFilter, setPeriodFilter] = useState('7d')
+  const [sourceFormatFilter, setSourceFormatFilter] = useState('')
   const { data: namespacesData } = useNamespaces()
-  const { data, isLoading, isError, error, refetch } = useShadowTraffic(namespaceFilter || undefined)
+  const reportFilters = useMemo<ShadowReportFilters>(
+    () => ({
+      namespace: namespaceFilter || undefined,
+      api_key: apiKeyFilter || undefined,
+      node: nodeFilter || undefined,
+      model: modelFilter || undefined,
+      period: periodFilter,
+      source_format: sourceFormatFilter || undefined,
+    }),
+    [apiKeyFilter, modelFilter, namespaceFilter, nodeFilter, periodFilter, sourceFormatFilter],
+  )
+  const shadowQuery = useShadowTraffic(namespaceFilter || undefined)
+  const reportQuery = useShadowReport(reportFilters)
   const namespaceOptions = [
     { value: '', label: t('filters.allNamespaces') },
     ...(namespacesData?.namespaces || []).map((namespace) => ({
@@ -33,12 +111,17 @@ export function ShadowPage() {
     })),
   ]
 
-  if (isError) {
-    return <ErrorState error={error} onRetry={refetch} />
+  if (shadowQuery.isError) {
+    return <ErrorState error={shadowQuery.error} onRetry={shadowQuery.refetch} />
+  }
+  if (reportQuery.isError) {
+    return <ErrorState error={reportQuery.error} onRetry={reportQuery.refetch} />
   }
 
-  const status = data?.status
-  const recent = data?.recent || []
+  const status = shadowQuery.data?.status
+  const recent = shadowQuery.data?.recent || []
+  const report = reportQuery.data
+  const storageWarning = Boolean(status?.privacy.stores_prompts || status?.privacy.stores_responses)
 
   return (
     <div className="space-y-6">
@@ -47,12 +130,7 @@ export function ShadowPage() {
         description={t('shadow.description')}
         icon={GitCompareArrows}
       >
-        <Select
-          options={namespaceOptions}
-          value={namespaceFilter}
-          onChange={(value) => setNamespaceFilter(value)}
-          className="w-44"
-        />
+        <Badge variant="zinc">{t('shadow.readOnly')}</Badge>
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -111,12 +189,73 @@ export function ShadowPage() {
         </CardStatic>
       </div>
 
+      {storageWarning && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-800 dark:text-amber-300">
+          <ShieldAlert className="mt-0.5 h-4 w-4 flex-none" />
+          <div>
+            <div className="font-semibold">{t('shadow.privacyWarningTitle')}</div>
+            <div className="mt-1 text-[var(--foreground-muted)]">{t('shadow.privacyWarningDescription')}</div>
+          </div>
+        </div>
+      )}
+
+      <CardStatic>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-[var(--foreground-dim)]" />
+            {t('shadow.filters.title')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <Select
+              options={namespaceOptions}
+              value={namespaceFilter}
+              onChange={(value) => setNamespaceFilter(value)}
+            />
+            <Input
+              value={apiKeyFilter}
+              onChange={(event) => setApiKeyFilter(event.target.value)}
+              placeholder={t('shadow.filters.apiKey')}
+            />
+            <Input
+              value={nodeFilter}
+              onChange={(event) => setNodeFilter(event.target.value)}
+              placeholder={t('shadow.filters.node')}
+            />
+            <Input
+              value={modelFilter}
+              onChange={(event) => setModelFilter(event.target.value)}
+              placeholder={t('shadow.filters.model')}
+            />
+            <Select
+              options={PERIOD_OPTIONS.map((period) => ({
+                value: period,
+                label: t(`shadow.period.${period}`),
+              }))}
+              value={periodFilter}
+              onChange={(value) => setPeriodFilter(value)}
+            />
+            <Select
+              options={SOURCE_FORMAT_OPTIONS.map((source) => ({
+                value: source,
+                label: source ? t(`shadow.sourceFormat.${source}`, { defaultValue: source }) : t('shadow.filters.allFormats'),
+              }))}
+              value={sourceFormatFilter}
+              onChange={(value) => setSourceFormatFilter(value)}
+            />
+          </div>
+        </CardContent>
+      </CardStatic>
+
+      <ShadowReportCard report={report} isLoading={reportQuery.isLoading} />
+
       <CardStatic>
         <CardHeader>
           <CardTitle>{t('shadow.recentResults')}</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {shadowQuery.isLoading ? (
             <SkeletonTable rows={8} cols={8} />
           ) : recent.length === 0 ? (
             <EmptyState
@@ -187,6 +326,190 @@ export function ShadowPage() {
           )}
         </CardContent>
       </CardStatic>
+    </div>
+  )
+}
+
+function ShadowReportCard({
+  report,
+  isLoading,
+}: {
+  report?: ShadowComparisonReport
+  isLoading: boolean
+}) {
+  const { t } = useTranslation('dashboard')
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>{t('shadow.report.title')}</CardTitle>
+          {report && (
+            <Badge variant={confidenceVariant(report.confidence.level)}>
+              {t(`shadow.confidence.${report.confidence.level}`)} · {formatRate(report.confidence.score)}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {isLoading || !report ? (
+          <SkeletonTable rows={5} cols={4} />
+        ) : report.window.rows === 0 ? (
+          <EmptyState
+            icon={GitCompareArrows}
+            title={t('shadow.report.emptyTitle')}
+            description={t('shadow.report.emptyDescription')}
+          />
+        ) : (
+          <>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <MetricTile
+                icon={Activity}
+                label={t('shadow.report.samples')}
+                value={String(report.window.comparable)}
+                detail={t('shadow.report.samplesDetail', {
+                  total: report.window.rows,
+                  missing: report.window.missing_primary_logs,
+                })}
+              />
+              <MetricTile
+                icon={Gauge}
+                label={t('shadow.report.success')}
+                value={formatRate(report.shadow_success_rate)}
+                detail={t('shadow.report.primaryValue', {
+                  value: formatRate(report.primary_success_rate),
+                })}
+              />
+              <MetricTile
+                icon={GitCompareArrows}
+                label={t('shadow.report.latencyDelta')}
+                value={formatSignedLatency(report.latency_delta_ms)}
+                badge={t('shadow.report.p95Delta', {
+                  value: formatSignedLatency(report.p95_latency_comparison.delta_ms),
+                })}
+                badgeVariant={deltaVariant(report.latency_delta_ms)}
+              />
+              <MetricTile
+                icon={DollarSign}
+                label={t('shadow.report.potentialSavings')}
+                value={formatCost(report.potential_savings_usd)}
+                badge={formatSignedCost(report.cost_delta_usd)}
+                badgeVariant={deltaVariant(report.cost_delta_usd)}
+              />
+              <MetricTile
+                icon={Sparkles}
+                label={t('shadow.report.qualityCoverage')}
+                value={formatRate(report.quality_sample_coverage)}
+                detail={t('shadow.report.samplesPrivacy')}
+              />
+            </div>
+
+            {report.risk_notes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {report.risk_notes.map((risk) => (
+                  <Badge key={risk} variant={risk.includes('lower') || risk.includes('regression') || risk.includes('higher') ? 'amber' : 'zinc'}>
+                    {t(`shadow.risk.${risk}`, { defaultValue: risk })}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('shadow.report.table.route')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.calls')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.success')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.p50')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.p95')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.costDelta')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.tokenDelta')}</TableHead>
+                    <TableHead className="text-right">{t('shadow.report.table.fallbackDelta')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {report.pairs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-[12px] text-[var(--foreground-muted)]">
+                        {t('shadow.report.noPairs')}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    report.pairs.map((pair) => (
+                      <TableRow key={`${pair.primary_node}:${pair.primary_model}:${pair.shadow_node}:${pair.shadow_model}`}>
+                        <TableCell>
+                          <div className="font-mono text-[11px] text-[var(--foreground)]">
+                            {pair.primary_node} / {pair.primary_model}
+                          </div>
+                          <div className="mt-1 font-mono text-[11px] text-[var(--foreground-muted)]">
+                            {pair.shadow_node} / {pair.shadow_model}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-[11px]">{pair.calls}</TableCell>
+                        <TableCell className="text-right font-mono text-[11px]">
+                          {formatRate(pair.primary_success_rate)} → {formatRate(pair.shadow_success_rate)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-[11px]">
+                          {pair.primary_p50_latency_ms === null ? '-' : formatLatency(pair.primary_p50_latency_ms)}
+                          {' → '}
+                          {pair.shadow_p50_latency_ms === null ? '-' : formatLatency(pair.shadow_p50_latency_ms)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-[11px]">
+                          {pair.primary_p95_latency_ms === null ? '-' : formatLatency(pair.primary_p95_latency_ms)}
+                          {' → '}
+                          {pair.shadow_p95_latency_ms === null ? '-' : formatLatency(pair.shadow_p95_latency_ms)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant={deltaVariant(pair.cost_delta_usd)}>
+                            {formatSignedCost(pair.cost_delta_usd)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-[11px]">
+                          {formatSignedTokens(pair.token_delta)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-[11px]">
+                          {formatRate(pair.fallback_delta)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </CardStatic>
+  )
+}
+
+function MetricTile({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  badge,
+  badgeVariant = 'zinc',
+}: {
+  icon: typeof Activity
+  label: string
+  value: string
+  detail?: string
+  badge?: string
+  badgeVariant?: BadgeProps['variant']
+}) {
+  return (
+    <div className="rounded-lg bg-[var(--background-tertiary)] px-4 py-3">
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-2xl font-bold text-[var(--foreground)]">{value}</span>
+        {badge && <Badge variant={badgeVariant}>{badge}</Badge>}
+      </div>
+      {detail && <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">{detail}</div>}
     </div>
   )
 }

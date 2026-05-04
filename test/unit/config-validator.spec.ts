@@ -1824,7 +1824,7 @@ describe('config validator', () => {
           sample_rate: 0.25,
           target_node: 'openai',
           target_model: 'gpt-4o-mini',
-          compare: { store_prompts: false, store_responses: false },
+          compare: { store_prompts: false, store_responses: false, sample_max_chars: 4000 },
         },
         budget: {
           daily_token_limit: 1000000,
@@ -1880,7 +1880,7 @@ describe('config validator', () => {
         shadow: {
           enabled: true,
           sample_rate: 2,
-          compare: { store_prompts: true },
+          compare: { store_prompts: true, sample_max_chars: 20 },
         },
         budget: {
           daily_token_limit: 1000000,

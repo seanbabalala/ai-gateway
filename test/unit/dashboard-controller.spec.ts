@@ -195,6 +195,22 @@ function makeDashboard(overrides: Record<string, any> = {}) {
       },
     }),
     recent: jest.fn().mockResolvedValue([]),
+    comparisonReport: jest.fn().mockResolvedValue({
+      primary_success_rate: null,
+      shadow_success_rate: null,
+      latency_delta_ms: null,
+      p50_latency_comparison: { primary_ms: null, shadow_ms: null, delta_ms: null },
+      p95_latency_comparison: { primary_ms: null, shadow_ms: null, delta_ms: null },
+      cost_delta_usd: 0,
+      potential_savings_usd: 0,
+      token_delta: 0,
+      fallback_delta: 0,
+      quality_sample_coverage: 0,
+      confidence: { level: 'low', score: 0 },
+      risk_notes: [],
+      pairs: [],
+    }),
+    comparisonForResult: jest.fn().mockResolvedValue(null),
     ...overrides.shadowTraffic,
   };
 
@@ -1308,6 +1324,68 @@ describe('DashboardController — namespaces and shadow traffic', () => {
     expect(shadowTraffic.recent).toHaveBeenCalledWith('team-alpha', 10);
     expect(result.recent).toHaveLength(1);
     expect(result.status.privacy.provider_keys).toBe(false);
+  });
+
+  it('should return shadow comparison report with filters', async () => {
+    const { controller, shadowTraffic } = makeDashboard({
+      shadowTraffic: {
+        comparisonReport: jest.fn().mockResolvedValue({
+          primary_success_rate: 1,
+          shadow_success_rate: 0.9,
+          latency_delta_ms: -20,
+          p50_latency_comparison: { primary_ms: 120, shadow_ms: 100, delta_ms: -20 },
+          p95_latency_comparison: { primary_ms: 300, shadow_ms: 260, delta_ms: -40 },
+          cost_delta_usd: -0.02,
+          potential_savings_usd: 0.02,
+          token_delta: -50,
+          fallback_delta: -0.1,
+          quality_sample_coverage: 0,
+          confidence: { level: 'medium', score: 0.62 },
+          risk_notes: ['quality_samples_disabled'],
+          pairs: [],
+        }),
+      },
+    });
+
+    const result = await controller.getShadowComparisonReport(
+      'team-alpha',
+      'default',
+      'key-1',
+      'shadow-openai',
+      'gpt-4o-mini',
+      '24h',
+      'chat_completions',
+    );
+
+    expect(shadowTraffic.comparisonReport).toHaveBeenCalledWith({
+      namespaceId: 'team-alpha',
+      apiKeyName: 'default',
+      apiKeyId: 'key-1',
+      node: 'shadow-openai',
+      model: 'gpt-4o-mini',
+      period: '24h',
+      sourceFormat: 'chat_completions',
+    });
+    expect(result.potential_savings_usd).toBe(0.02);
+  });
+
+  it('should return one shadow result comparison or 404', async () => {
+    const { controller, shadowTraffic } = makeDashboard({
+      shadowTraffic: {
+        comparisonForResult: jest.fn()
+          .mockResolvedValueOnce({ result_id: 12, request_id: 'req-12' })
+          .mockResolvedValueOnce(null),
+      },
+    });
+
+    await expect(controller.getShadowResultComparison(12)).resolves.toEqual({
+      result_id: 12,
+      request_id: 'req-12',
+    });
+    expect(shadowTraffic.comparisonForResult).toHaveBeenCalledWith(12);
+    await expect(controller.getShadowResultComparison(404)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });
 
