@@ -56,5 +56,6 @@
   "tier.direct": "ダイレクト",
   "tier.reasoning": "推論",
   "tier.simple": "シンプル",
-  "tier.standard": "標準"
+  "tier.standard": "標準",
+  "nav.benchmarks": "ベンチマーク"
 }

@@ -155,6 +155,20 @@ The gateway records call logs with:
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
 
+The v0.9 Benchmark Report API reads the same sanitized `call_logs` table and
+does not introduce another metrics store. It computes local operational
+evidence for the Dashboard: request totals, success/error/fallback/cache rates,
+latency percentiles, throughput estimates, cost/token summaries, status-code
+distribution, `node:model` breakdowns, and source-format/source-family
+breakdowns across chat, responses, messages, embeddings, rerank, images, audio,
+video, and realtime. When matching `route_decisions` rows exist, the report also
+shows trace coverage so operators can see whether performance samples have
+explainable-routing evidence.
+
+Benchmark reports are read-only. They never mutate routing config and never
+store or expose prompts, responses, raw headers, provider keys, media bytes, or
+video bytes.
+
 For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
 
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.

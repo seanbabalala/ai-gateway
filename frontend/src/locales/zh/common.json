@@ -56,5 +56,6 @@
   "tier.direct": "直连",
   "tier.reasoning": "推理",
   "tier.simple": "简单",
-  "tier.standard": "标准"
+  "tier.standard": "标准",
+  "nav.benchmarks": "基准"
 }

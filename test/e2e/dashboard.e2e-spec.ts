@@ -302,4 +302,31 @@ describe('Dashboard (e2e)', () => {
     expect(Array.isArray(res.body.byModel)).toBe(true);
     expect(Array.isArray(res.body.byNode)).toBe(true);
   });
+
+  it('GET /api/dashboard/benchmarks/report → benchmark report shape', async () => {
+    const res = await harness.agent.get('/api/dashboard/benchmarks/report?period=24h&limit=100');
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toBeDefined();
+    expect(typeof res.body.summary.total_requests).toBe('number');
+    expect(res.body.summary.latency_ms).toHaveProperty('p50_ms');
+    expect(res.body.summary.latency_ms).toHaveProperty('p75_ms');
+    expect(res.body.summary.latency_ms).toHaveProperty('p95_ms');
+    expect(res.body.summary.latency_ms).toHaveProperty('p99_ms');
+    expect(res.body.summary).toHaveProperty('cost_summary');
+    expect(res.body.summary).toHaveProperty('token_summary');
+    expect(Array.isArray(res.body.by_node_model)).toBe(true);
+    expect(Array.isArray(res.body.by_source_format)).toBe(true);
+    expect(Array.isArray(res.body.by_source_family)).toBe(true);
+    expect(res.body.by_source_family.map((item: any) => item.source_family)).toEqual(
+      expect.arrayContaining(['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime']),
+    );
+    expect(res.body.privacy).toMatchObject({
+      prompt_response_stored: false,
+      raw_headers_stored: false,
+      provider_keys_exposed: false,
+      media_bytes_stored: false,
+      metadata_only: true,
+    });
+  });
 });

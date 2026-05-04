@@ -117,6 +117,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
+- **Benchmark reports** — inspect local performance evidence with latency percentiles, throughput estimates, status/source breakdowns, cost/token summaries, and methodology notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
@@ -139,6 +140,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
+- **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`
@@ -1375,6 +1377,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/route-decisions`         | Paginated explainable routing summaries with tier, node, source format, key, and namespace filters |
 | `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
+| `GET`  | `/api/dashboard/benchmarks/report`       | Read-only benchmark report with latency, throughput, cost, token, status, node:model, and source-format breakdowns |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
@@ -1406,6 +1409,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
 - **Shadow** — Read-only sampled mirror results plus comparison reports for success, latency, cost, confidence, and risk
+- **Benchmarks** — Read-only local benchmark report from call-log metadata; it never applies routing changes
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules

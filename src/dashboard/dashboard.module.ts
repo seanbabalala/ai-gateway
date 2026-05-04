@@ -19,6 +19,7 @@ import {
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
 import { ConfigAuditService } from './config-audit.service';
+import { BenchmarkReportService } from './benchmark-report.service';
 
 @Module({
   imports: [
@@ -38,7 +39,12 @@ import { ConfigAuditService } from './config-audit.service';
     ]),
   ],
   controllers: [HealthController, DashboardController],
-  providers: [LogEventBus, ProviderCompatibilityService, ConfigAuditService],
+  providers: [
+    LogEventBus,
+    ProviderCompatibilityService,
+    ConfigAuditService,
+    BenchmarkReportService,
+  ],
   exports: [LogEventBus],
 })
 export class DashboardModule {}

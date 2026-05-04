@@ -12,6 +12,7 @@ import {
   GitCompareArrows,
   Zap,
   Activity,
+  Gauge,
   X,
   FileClock,
 } from 'lucide-react'
@@ -32,6 +33,7 @@ const navGroups = [
       { to: '/experiments', icon: FlaskConical, labelKey: 'nav.experiments' },
       { to: '/shadow', icon: GitCompareArrows, labelKey: 'nav.shadow' },
       { to: '/route-decisions', icon: GitFork, labelKey: 'nav.routeExplanation' },
+      { to: '/benchmarks', icon: Gauge, labelKey: 'nav.benchmarks' },
     ],
   },
   {

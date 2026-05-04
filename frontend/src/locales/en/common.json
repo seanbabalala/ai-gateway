@@ -56,5 +56,6 @@
   "tier.direct": "direct",
   "tier.reasoning": "reasoning",
   "tier.simple": "simple",
-  "tier.standard": "standard"
+  "tier.standard": "standard",
+  "nav.benchmarks": "Benchmarks"
 }

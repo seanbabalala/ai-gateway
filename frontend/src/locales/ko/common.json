@@ -56,5 +56,6 @@
   "tier.direct": "직접",
   "tier.reasoning": "추론",
   "tier.simple": "단순",
-  "tier.standard": "표준"
+  "tier.standard": "표준",
+  "nav.benchmarks": "벤치마크"
 }

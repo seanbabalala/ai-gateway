@@ -265,6 +265,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
+| `GET` | `/api/dashboard/benchmarks/report` | Read-only local benchmark report from call-log metadata |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
@@ -362,6 +363,14 @@ Rollback parses and validates the target snapshot first. If validation or secret
 The report is calculated by pairing `shadow_traffic_results.request_id` with the primary `call_logs.request_id`. It returns `primary_success_rate`, `shadow_success_rate`, `latency_delta_ms`, `p50_latency_comparison`, `p95_latency_comparison`, `cost_delta_usd`, `potential_savings_usd`, `token_delta`, `fallback_delta`, `quality_sample_coverage`, `confidence`, `risk_notes`, and grouped primary-to-shadow pair rows.
 
 `GET /api/dashboard/shadow/results/:id/comparison` returns a single result comparison with primary status, shadow status, deltas, privacy flags, and risk notes. These endpoints are read-only and do not apply routing changes. They do not expose raw headers, provider keys, media bytes, video bytes, or prompt/response samples unless local comparison storage was explicitly enabled; stored samples are redacted and truncated before persistence and response.
+
+### Benchmark Report
+
+`GET /api/dashboard/benchmarks/report` summarizes local gateway behavior from `call_logs`. It supports `period`, `namespace`, `api_key_id`, legacy `api_key`, `node`, `model`, `source_format`, and `limit` filters.
+
+The report includes total requests, success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimates, cost and token summaries, status-code distribution, `node:model` breakdown, source-format breakdown, source-family breakdown for chat/responses/messages/embeddings/rerank/images/audio/video/realtime, and route-trace coverage.
+
+This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
 
 ### Provider Compatibility Matrix
 

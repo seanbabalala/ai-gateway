@@ -93,6 +93,20 @@
   - gateway config 示例覆盖 v0.8 Provider Catalog、多模态 media/audio/image、structured output、realtime disabled、SQLite/memory defaults 等关键字段
   - 新增 `npm run validate:k8s`，检查 YAML 解析、模板存在、Cloud 默认关闭、secret hygiene、image/port/config mount 基础正确性
 
+### P1：Benchmark Report API 与 Dashboard 页面
+
+- **状态**：✅ Prompt v0.9 Benchmark Report feature branch 已完成
+- **目标**：把本地 call_log 变成可读的性能证据页，帮助用户比较节点、模型、协议入口和部署变化，但不自动修改 routing 配置
+- **实现方案**：
+  - 新增 `GET /api/dashboard/benchmarks/report`
+  - 报告包含 total requests、success/error/fallback/cache rate、p50/p75/p95/p99 latency、throughput estimate、cost/token summary、status code distribution、node:model breakdown、source_format/source_family breakdown
+  - source breakdown 覆盖 chat、responses、messages、embeddings、rerank、images、audio、video、realtime
+  - 支持 `period`、`namespace`、`api_key_id` / legacy `api_key`、`node`、`model`、`source_format` 过滤
+  - route trace coverage 会提示性能样本中有多少请求可继续打开 Route Explanation
+  - Dashboard 新增只读 Benchmarks 页面，展示 methodology notes，避免用户把本地样本误读为严格云 benchmark
+  - 增强 `npm run benchmark:upstream`，支持 `GATEWAY_BENCH_OUTPUT=report.json` 输出 JSON 摘要
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
+
 ---
 
 ## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）

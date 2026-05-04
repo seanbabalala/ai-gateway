@@ -56,5 +56,6 @@
   "tier.direct": "ตรง",
   "tier.reasoning": "เหตุผล",
   "tier.simple": "ง่าย",
-  "tier.standard": "มาตรฐาน"
+  "tier.standard": "มาตรฐาน",
+  "nav.benchmarks": "เบนช์มาร์ก"
 }
