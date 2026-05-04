@@ -256,8 +256,8 @@ function validateKustomizeBase(
     result.errors.push('Kubernetes base container name must be siftgate.');
   }
   const image = container.image;
-  if (typeof image !== 'string' || !image.includes('ai-gateway:0.9.1')) {
-    result.errors.push('Kubernetes base image must reference the OSS ai-gateway:0.9.1 image.');
+  if (typeof image !== 'string' || !image.includes('ai-gateway:0.9.2')) {
+    result.errors.push('Kubernetes base image must reference the OSS ai-gateway:0.9.2 image.');
   }
   if (typeof image === 'string' && /siftgate-cloud|enterprise/i.test(image)) {
     result.errors.push('Kubernetes base image must not reference Cloud or enterprise images.');

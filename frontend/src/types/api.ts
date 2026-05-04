@@ -1048,7 +1048,9 @@ export interface CatalogPricing {
   units?: Partial<Record<'input' | 'output' | 'image' | 'audio' | 'video' | 'rerank' | 'embedding', string>>
   currency?: string
   source: string
+  source_url?: string
   last_updated: string
+  retrieved_at?: string
   manual_review_required: boolean
   stale_after_days?: number
   pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
@@ -1135,6 +1137,15 @@ export interface CatalogProvidersResponse {
   source: 'builtin_static'
   last_updated: string
   auto_update: false
+  refresh_sources?: Array<{
+    provider: string
+    label: string
+    mode: 'public_api' | 'authenticated_api' | 'docs_review' | 'operator_local'
+    source_url: string
+    automatic: boolean
+    pricing: 'live' | 'docs_only' | 'operator_required'
+    notes: string
+  }>
   override_file?: string
   override_found?: boolean
   issues?: Array<{ severity: string; code: string; message: string; path?: string }>
@@ -1146,6 +1157,7 @@ export interface CatalogModelsResponse {
   source: 'builtin_static'
   last_updated: string
   auto_update: false
+  refresh_sources?: CatalogProvidersResponse['refresh_sources']
   override_file?: string
   override_found?: boolean
   issues?: Array<{ severity: string; code: string; message: string; path?: string }>

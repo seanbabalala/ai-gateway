@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.2 - 2026-05-04
+
+### Added
+
+- Added Provider Catalog refresh-source metadata to Dashboard catalog APIs and the CLI, making it clear which providers can be refreshed automatically and which require docs review or local operator overrides.
+- Added `siftgate catalog sources` and `siftgate catalog refresh openrouter --out catalog.override.yaml` for generating a local OpenRouter catalog override from the public model API, including prompt/completion pricing converted to USD per 1M tokens.
+- Added catalog pricing `source_url` and `retrieved_at` metadata so Dashboard and validation can explain where pricing came from and when it was fetched.
+
+### Changed
+
+- Renamed Dashboard and operator-facing copy from "pricing hygiene" to "price source status" / "价格来源状态" while keeping the internal `pricing_hygiene` API field for compatibility.
+- Updated built-in catalog pricing source labels from placeholder wording to review-required reference metadata, avoiding confusing "占位" UI language while still warning operators to verify production prices.
+- Improved the Provider Catalog Dashboard layout with wrapped modality filters, stable table widths, horizontal scrolling, clearer source badges, confidence labels, source links, and a refresh-source section.
+
 ## 0.9.1 - 2026-05-04
 
 ### Fixed

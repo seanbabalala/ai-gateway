@@ -1,6 +1,6 @@
 import type { CatalogProvider, CatalogPricing } from './catalog.types';
 
-const LAST_UPDATED = '2026-05-03';
+const LAST_UPDATED = '2026-05-04';
 const STALE_AFTER_DAYS = 90;
 
 function pricing(
@@ -19,7 +19,8 @@ function pricing(
       output: 'usd_per_1m_output_tokens',
       ...overrides.units,
     },
-    source: 'builtin-static-placeholder',
+    source: 'builtin-reference',
+    source_url: 'https://github.com/seanbabalala/ai-gateway/blob/main/docs/PROVIDER_CATALOG.md',
     last_updated: LAST_UPDATED,
     manual_review_required: true,
     stale_after_days: STALE_AFTER_DAYS,

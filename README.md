@@ -27,9 +27,9 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.9.1**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation. v0.9.1 is a small Dashboard/provider-ops patch that fixes provider compatibility probe behavior and catalog-aware provider logo identity for compatible providers such as Voyage AI.
+Current open-source release: **v0.9.2**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation. v0.9.2 is a small Provider Catalog patch that clarifies price source status, improves the Dashboard catalog layout, and adds a safe OpenRouter public catalog refresh workflow for model/pricing overrides.
 
-This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog pricing hygiene. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
+This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog price source status checks. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -132,9 +132,9 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
-- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog/pricing hygiene APIs, cost fallback, and config validation warnings without automatic network updates
+- **Provider / Model Catalog** — built-in provider and model capability references power the Add Node wizard, Dashboard catalog source-status APIs, cost fallback, and config validation warnings
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
-- **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
+- **Provider/model catalog CLI** — inspect built-in provider presets, list refresh sources, refresh OpenRouter public model/pricing metadata into `catalog.override.yaml`, import local overrides, and validate catalog overrides without storing provider secrets
 - **Optional secret manager references** — keep env as the default while allowing explicit `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` runtime references for provider keys, node headers, health/realtime auth, and the optional control-plane token
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **Compatibility migration CLI** — convert LiteLLM, New API, and One API channel configs into SiftGate, or export SiftGate configs back to LiteLLM/New API/One API scaffolds
@@ -149,7 +149,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 ### Provider Catalog
 
-v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. It is a static, reviewable data source for provider presets and model metadata; it does not phone home or auto-update. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
+v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. v0.9.2 keeps the built-in data as a reviewable reference snapshot and adds a refresh-source workflow for providers with a stable public API. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
 
 Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatible proxy, select capabilities, pick/edit model buckets, confirm endpoints/auth/headers/pricing/capabilities, then test and save to the local Data Plane config. It supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` without connecting to SiftGate Cloud.
 
@@ -159,7 +159,9 @@ Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatib
 - Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
 - Pricing entries include `currency`, modality-specific units, `source`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `manual_review_required`.
-- Dashboard includes a read-only Provider Catalog page for pricing freshness, source, manual-review state, confidence, and override markers.
+- Dashboard includes a read-only Provider Catalog page for price source status, source URL, manual-review state, confidence, override markers, and available refresh sources.
+- `siftgate catalog sources` shows which providers can be refreshed automatically. In v0.9.2, OpenRouter can be refreshed from its public model catalog API; providers whose prices depend on region, deployment, account, or private model names remain docs-review or local-override workflows.
+- `siftgate catalog refresh openrouter --out catalog.override.yaml` writes a local override with current OpenRouter model IDs and prompt/completion pricing converted to USD per 1M tokens.
 - Cost routing falls back to merged catalog pricing only when explicit `model_capabilities[].pricing` and `models_pricing` are absent. Explicit user config always wins.
 - Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
 
@@ -373,13 +375,15 @@ The validator checks YAML parsing, required sections, node/model naming conflict
 
 ### Provider & Model Catalog
 
-SiftGate ships a local provider/model catalog for Dashboard Add Node presets, config warnings, and multimodal routing metadata. It is intentionally static: the gateway does not fetch provider websites or update prices over the network.
+SiftGate ships a local provider/model catalog for Dashboard Add Node presets, config warnings, and multimodal routing metadata. Built-in entries are reviewable references. Providers with stable public APIs can be refreshed into a local override; v0.9.2 starts with OpenRouter.
 
 Use the catalog CLI to inspect the built-in catalog and manage local overrides:
 
 ```bash
 npm run catalog -- list
 npm run catalog -- show openai
+npm run catalog -- sources
+npm run catalog -- refresh openrouter --out ./catalog.override.yaml
 npm run catalog -- validate --pricing
 npm run catalog -- export --out ./catalog.merged.yaml
 npm run catalog -- export --include-pricing --out ./catalog.merged.yaml
@@ -387,7 +391,7 @@ npm run catalog -- import --file ./catalog.override.yaml
 npm run catalog -- validate
 ```
 
-Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate`, `siftgate catalog validate --pricing`, and `siftgate validate` flag suspicious secret fields, stale/placeholder prices, and modality unit mismatches. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
+Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate`, `siftgate catalog validate --pricing`, and `siftgate validate` flag suspicious secret fields, stale/reference prices, and modality unit mismatches. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
 
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 

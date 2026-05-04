@@ -5,11 +5,11 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
-v0.9.1 keeps that deployment shape while adding the Operations + Trust layer on
+v0.9.2 keeps that deployment shape while adding the Operations + Trust layer on
 top of the v0.8 Provider Catalog and multimodal foundation: local config audit
 and rollback, optional secret manager references, shadow comparison reports,
 guardrails plugin upgrades, Helm/Kubernetes assets, benchmark reports,
-compatibility migration expansion, and Provider Catalog pricing hygiene.
+compatibility migration expansion, and Provider Catalog price source status.
 Structured output, rerank, images, audio, video, secret resolution, audit
 metadata, and benchmark summaries all stay in the open-source Data Plane.
 Realtime and video remain experimental previews and should only be enabled for
