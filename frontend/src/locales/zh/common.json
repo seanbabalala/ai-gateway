@@ -34,6 +34,7 @@
   "nav.manage": "管理",
   "nav.monitor": "监控",
   "nav.nodes": "节点",
+  "nav.playground": "调试台",
   "nav.routeExplanation": "路由解释",
   "nav.routing": "路由",
   "nav.shadow": "影子流量",

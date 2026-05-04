@@ -6,6 +6,10 @@
 
 - Added the v1.1 lightweight Python SDK scaffold under `packages/python`, with a stdlib-only synchronous `SiftGateClient`, typed package metadata, Gateway API key auth, routing hints, structured errors, raw response access, and helpers for models, chat completions, responses, messages, embeddings, rerank, images, audio, and async video jobs.
 - Added Python SDK unit tests and the root `npm run test:python-sdk` quality-gate script for local package verification without publishing to PyPI.
+- Added a v1.1 Dashboard Playground page for operator-triggered safe probes across chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks.
+- Added `POST /api/dashboard/playground/run`, a dashboard-session protected probe endpoint that can apply a selected Gateway API key and namespace scope without exposing plaintext Gateway API keys to the browser.
+- Added Playground result summaries for status, latency, usage, cost, response preview, and Route Decision deep links while keeping prompts, responses, raw headers, provider keys, media bytes, and realtime frames out of Playground persistence by default.
+- Added 7-language Dashboard localization and frontend static checks for the Playground route, hook, endpoint coverage, privacy copy, and API types.
 
 ## 1.0.0 - 2026-05-05
 

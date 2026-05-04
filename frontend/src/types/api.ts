@@ -955,6 +955,86 @@ export interface BenchmarkReportResponse {
   }
 }
 
+// ── Dashboard Playground ──
+
+export type PlaygroundEndpoint =
+  | 'chat_completions'
+  | 'responses'
+  | 'messages'
+  | 'embeddings'
+  | 'rerank'
+  | 'images'
+  | 'audio'
+  | 'video'
+  | 'realtime'
+
+export type PlaygroundOperation =
+  | PlaygroundEndpoint
+  | 'image_generation'
+  | 'image_edit'
+  | 'image_variation'
+  | 'audio_speech'
+  | 'audio_transcription'
+  | 'audio_translation'
+  | 'video_generation'
+  | 'realtime_probe'
+
+export interface PlaygroundRunRequest {
+  endpoint: PlaygroundEndpoint
+  operation?: PlaygroundOperation
+  model: string
+  api_key_id?: string | null
+  namespace_id?: string | null
+  routing_hint?: unknown
+  stream?: boolean
+  body?: Record<string, unknown>
+}
+
+export interface PlaygroundRunResponse {
+  success: boolean
+  endpoint: PlaygroundEndpoint
+  operation: PlaygroundOperation
+  stream: boolean
+  request: {
+    method: string
+    path: string
+    model: string
+    api_key_id: string | null
+    namespace_id: string | null
+    routing_hint: unknown
+    body_preview: string
+  }
+  response_summary: {
+    status_code: number
+    content_type: string
+    body_type: 'json' | 'text' | 'sse' | 'binary'
+    body_preview: string
+    bytes: number
+    event_count: number
+    truncated: boolean
+  }
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    total_tokens: number
+  }
+  cost_usd: number
+  latency_ms: number
+  status_code: number
+  route_decision: {
+    request_id: string
+    link: string
+    available: boolean
+  } | null
+  privacy: {
+    prompt_response_stored: false
+    raw_headers_stored: false
+    provider_keys_exposed: false
+    media_bytes_stored: false
+    standard_call_log_metadata: boolean
+  }
+}
+
 // ── Cache ──
 
 export interface CacheStats {

@@ -116,6 +116,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **API key management** — create, edit, disable, delete, rotate, and copy one-time Gateway API keys with namespace, budget, rate-limit, endpoint, modality, node, and model restrictions
+- **Dashboard Playground** — run operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks with selected API key, namespace, model, stream mode, and routing hints
 - **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
@@ -145,6 +146,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
 - **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
+- **Interactive Dashboard probes** — use the local Playground to test requests through the same routing, permission, budget, cost, telemetry, and route-decision path while keeping sample bodies visible only on the current screen unless normal call-log metadata is enabled
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`; guardrails supports local PII, secret/token, jailbreak, unsafe URL, schema, tool-call, policy checks, and optional metadata-only webhook findings

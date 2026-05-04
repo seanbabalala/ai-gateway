@@ -309,6 +309,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
+| `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
 | `GET` | `/api/dashboard/benchmarks/report` | Read-only local benchmark report from call-log metadata |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
@@ -424,6 +425,18 @@ The report is calculated by pairing `shadow_traffic_results.request_id` with the
 The report includes total requests, success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimates, cost and token summaries, status-code distribution, `node:model` breakdown, source-format breakdown, source-family breakdown for chat/responses/messages/embeddings/rerank/images/audio/video/realtime, and route-trace coverage.
 
 This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
+
+### Dashboard Playground
+
+`POST /api/dashboard/playground/run` is a Dashboard-session protected operator tool for safe interactive probes. It supports:
+
+- `endpoint`: `chat_completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, or `realtime`
+- `operation`: media/video/realtime operation such as `image_generation`, `audio_speech`, `video_generation`, or `realtime_probe`
+- `api_key_id`, `namespace_id`, `model`, `stream`, `routing_hint`, and an optional JSON `body`
+
+The backend applies the selected Gateway API key context by id, so the Dashboard does not need or receive the plaintext key. The response includes request preview, response summary, usage, cost, latency, status, and a Route Decision link when normal call-log metadata produced one.
+
+Realtime is a probe-only check and does not open a WebSocket. Playground previews are returned only to the current Dashboard request. The endpoint does not persist prompt bodies, response bodies, raw headers, provider keys, media bytes, video bytes, or realtime frames beyond normal privacy-safe call-log metadata.
 
 ### Provider Compatibility Matrix
 
