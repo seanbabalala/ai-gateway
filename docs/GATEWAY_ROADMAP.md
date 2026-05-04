@@ -19,6 +19,26 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
+| v1.1 | Developer Experience | 进行中 — Python SDK scaffold 与开发者体验增强 | 🚧 In Progress |
+
+---
+
+## v1.1 — Developer Experience（开发者体验）
+
+**v1.1 开发状态**：基于已发布 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用。本阶段先补齐 Python SDK scaffold，让 Python 用户可以选择轻量 `siftgate` client，也可以继续用 OpenAI SDK 指向 SiftGate `base_url`。
+
+### P0：Python SDK Scaffold
+
+- **状态**：🚧 v1.1 开发中
+- **目标**：提供 `pip install -e packages/python` 可用的本地 Python 包结构，不发布 PyPI，不强迫用户替换 OpenAI SDK
+- **实现方案**：
+  - 新增 `packages/python`，包名 `siftgate`，`pyproject.toml` 使用 setuptools，运行时保持 stdlib-only
+  - `SiftGateClient` 支持 `base_url`、`gateway_api_key`、默认 headers、timeout、可注入 transport、`request_raw`
+  - 提供 models、chat completions、responses、messages、embeddings、rerank、images、audio、video generations/jobs endpoint helpers
+  - `routing_hint` 编码为 `x-siftgate-routing-hint`，只作为建议，不绕过 Gateway API key 权限、namespace、budget、rate limit 或路由策略
+  - `SiftGateError` 暴露 `status_code`、`body`、`request_id`，并尽量解析 JSON/text 错误体
+  - README 说明本地安装、OpenAI SDK `base_url` 替代路径、multipart media passthrough、raw response 使用方式
+  - 增加 Python SDK unit tests 和根脚本 `npm run test:python-sdk`
 
 ---
 
@@ -849,13 +869,13 @@
 
 #### 26. SDK / 客户端库
 
-- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；Python SDK 保持设计文档阶段
-- **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），并可试用 `packages/client` 中的轻量 TypeScript SDK scaffold
+- **状态**：✅ v0.4.0 TypeScript SDK scaffold 已发布；🚧 v1.1 Python SDK scaffold 开发中
+- **现状**：用户可继续用原生 HTTP 或 OpenAI SDK（指向 gateway），也可试用 `packages/client` TypeScript SDK 与 `packages/python` Python SDK scaffold
 - **目标**：提供轻量 SDK 增强体验
 - **实现方案**：
   - ✅ TypeScript SDK（`@siftgate/client`）：支持 `baseUrl`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings helper、routing hint header、raw response access
-  - 📝 Python SDK（`siftgate-python`）：v0.4 先保留设计文档，不实现完整包
-  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、结构化错误
+  - 🚧 Python SDK（`siftgate`）：支持 `base_url`、Gateway API key、模型发现、Chat Completions、Responses、Messages、Embeddings、Rerank、Images、Audio、Video Jobs helper、routing hint header、raw response access
+  - 功能：自动 Gateway Key 认证、模型发现、路由 hint 注入、结构化错误、轻量本地安装
   - 与 OpenAI SDK 兼容（drop-in `base_url` 替换）
 
 #### 27. MCP (Model Context Protocol) 支持
@@ -1073,7 +1093,7 @@
 | 22  | 插件包管理器       |  ⭐⭐⭐⭐  |    中    |  ✅ v0.4   |
 | 23  | 官方插件集         |  ⭐⭐⭐⭐  |    大    |  ✅ v0.4   |
 | 25  | LiteLLM 配置兼容   |   ⭐⭐⭐   |    小    |  ✅ v0.4   |
-| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  ✅ v0.4 TS scaffold |
+| 26  | SDK / 客户端库     |   ⭐⭐⭐   |    小    |  🚧 v1.1 Python scaffold |
 | 28  | Redis 共享状态     | ⭐⭐⭐⭐⭐ |    大    |  ✅ v0.5   |
 | 29  | 多实例集群模式     | ⭐⭐⭐⭐⭐ |    中    |  ✅ v0.5   |
 | 31  | HTTP/2 连接池      |   ⭐⭐⭐   |    中    |  ✅ v0.5 experimental |
