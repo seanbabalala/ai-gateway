@@ -19,6 +19,24 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
+| v1.1 | Developer Experience | 进行中 — SDK、Playground、Session/Trace 与 Agent 框架集成示例 | 🚧 In Progress |
+
+---
+
+## v1.1 — Developer Experience（开发者体验）
+
+**v1.1 开发状态**：基于 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是让开发者更容易把现有 SDK、agent 框架和调试 workflow 接入 SiftGate，并通过 Dashboard 看清成本、fallback、session/trace 和 route explanation。
+
+### P1：Agent 框架集成示例
+
+- **状态**：🚧 feature branch
+- **目标**：提供可本地运行的示例，展示 LangChain、CrewAI、OpenAI Agents SDK 和 OpenAI SDK `base_url` 如何通过 SiftGate 发送请求
+- **实现方案**：
+  - 新增 `examples/agents`，包含 `.env.example`、共享 headers helper、requirements 和四个 Python 示例
+  - 示例统一使用 `SIFTGATE_BASE_URL`、`SIFTGATE_API_KEY`、`SIFTGATE_MODEL`、`SIFTGATE_NAMESPACE`、`SIFTGATE_SESSION_ID`、`SIFTGATE_TRACE_ID`、`SIFTGATE_ROUTING_HINT`
+  - 每个示例展示 Gateway API key、advisory routing hint、namespace label、session/trace correlation 和 structured output intent
+  - 文档说明如何在 Dashboard Logs、API Keys、Benchmarks、Route Explanation 中观察 agent 成本、fallback、选中的 node/model 和路由理由
+  - 不提交真实 provider key；静态测试检查示例文件、框架覆盖、headers、structured-output markers 和 secret hygiene
 
 ---
 

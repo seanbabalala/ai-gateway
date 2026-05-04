@@ -18,6 +18,7 @@
   <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
+  <a href="docs/AGENT_INTEGRATIONS.md">Agents</a> &bull;
   <a href="docs/GATEWAY_ROADMAP.md">Roadmap</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
   <a href="#contributing">Contributing</a>
@@ -149,6 +150,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`; guardrails supports local PII, secret/token, jailbreak, unsafe URL, schema, tool-call, policy checks, and optional metadata-only webhook findings
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
+- **Agent framework examples** — run LangChain, CrewAI, OpenAI Agents SDK, and OpenAI SDK `base_url` examples through SiftGate with routing hints, session headers, trace labels, namespace-aware keys, and structured output
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 
 ### Provider Catalog
@@ -1307,6 +1309,20 @@ const openai = new OpenAI({
 ```
 
 See the [TypeScript SDK README](packages/client/README.md) for routing hints, raw streaming access, and the forward-compatible embeddings helper. The Python SDK is design-only for this milestone; see [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
+
+## Agent Framework Examples
+
+Runnable Python examples live in [examples/agents](examples/agents). They cover OpenAI SDK `base_url`, LangChain, CrewAI, and OpenAI Agents SDK usage without committing real keys:
+
+```bash
+cp examples/agents/.env.example examples/agents/.env
+python -m venv .venv
+source .venv/bin/activate
+pip install -r examples/agents/requirements.txt
+python examples/agents/openai_sdk_base_url.py
+```
+
+Each example sends a Gateway API key, advisory `x-siftgate-routing-hint`, `x-session-id`, trace labels, and structured-output intent. Use the Dashboard Logs, API Keys, Benchmarks, and Route Explanation pages to inspect agent cost, fallback, selected node/model, and why each route was chosen. See [docs/AGENT_INTEGRATIONS.md](docs/AGENT_INTEGRATIONS.md).
 
 ## API Endpoints
 

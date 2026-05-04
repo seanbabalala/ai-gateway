@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added runnable v1.1 agent framework examples under `examples/agents` for OpenAI SDK `base_url`, LangChain, CrewAI, and OpenAI Agents SDK.
+- Added shared example headers for Gateway API keys, advisory routing hints, local namespace labels, session correlation, trace labels, and structured-output intent without committing real provider keys.
+- Added `docs/AGENT_INTEGRATIONS.md` and static coverage to explain how operators inspect agent cost, fallback, route explanation, session correlation, and namespace policy through SiftGate.
+
 ## 1.0.0 - 2026-05-05
 
 ### Added
