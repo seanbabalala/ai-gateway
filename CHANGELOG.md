@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1 - 2026-05-04
+
+### Fixed
+
+- Dashboard provider icons now resolve from catalog/provider identity, base URL, node name, tags, and model buckets before protocol fallbacks, so Voyage AI, Jina AI, Together AI, Fireworks AI, vLLM, Azure OpenAI, and custom OpenAI-compatible nodes no longer incorrectly show the OpenAI logo.
+- Added a provider-logo identity check to the frontend test suite to prevent `chat_completions` or `responses` protocol fallbacks from forcing the OpenAI mark for compatible providers.
+- Provider compatibility probes for OpenAI Responses-style upstreams now use a safer minimal `max_output_tokens` value, aligning single-node test responses with the Dashboard compatibility matrix.
+
 ## 0.9.0 - 2026-05-04
 
 ### Added

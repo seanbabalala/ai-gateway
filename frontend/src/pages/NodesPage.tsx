@@ -438,6 +438,10 @@ export function NodesPage() {
                       >
                         <NodeIcon
                           nodeId={node.id}
+                          providerName={node.name}
+                          baseUrl={node.base_url}
+                          modelIds={modelIdsForNode(node)}
+                          tags={node.tags}
                           protocol={node.protocol}
                           className="h-5 w-5"
                           style={{ color }}

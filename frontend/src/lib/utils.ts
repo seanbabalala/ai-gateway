@@ -83,6 +83,13 @@ export const NODE_COLORS: Record<string, string> = {
   mistral: '#F97316',
   groq: '#22D3EE',
   openrouter: '#CC3C7E',
+  cohere: '#395C4D',
+  voyage: '#4F46E5',
+  jina: '#DB2777',
+  together: '#059669',
+  fireworks: '#EA580C',
+  azure: '#0078D4',
+  vllm: '#0284C7',
   ollama: '#7B8F89',
 }
 

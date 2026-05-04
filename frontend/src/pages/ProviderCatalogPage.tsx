@@ -248,7 +248,15 @@ function ProviderPricingTable({
       <div className="flex flex-col gap-3 border-b border-[var(--border)] px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
-            <NodeIcon nodeId={provider.id} protocol={provider.default_protocol} className="h-5 w-5" />
+            <NodeIcon
+              providerId={provider.id}
+              providerName={provider.name}
+              baseUrl={provider.base_url}
+              modelIds={provider.models.map((model) => model.id)}
+              tags={provider.tags}
+              protocol={provider.default_protocol}
+              className="h-5 w-5"
+            />
           </span>
           <div className="min-w-0">
             <div className="truncate text-[13px] font-extrabold text-[var(--foreground)]">{provider.name}</div>

@@ -5,7 +5,7 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
-v0.9.0 keeps that deployment shape while adding the Operations + Trust layer on
+v0.9.1 keeps that deployment shape while adding the Operations + Trust layer on
 top of the v0.8 Provider Catalog and multimodal foundation: local config audit
 and rollback, optional secret manager references, shadow comparison reports,
 guardrails plugin upgrades, Helm/Kubernetes assets, benchmark reports,

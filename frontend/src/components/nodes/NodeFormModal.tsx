@@ -1564,7 +1564,15 @@ function ProviderStep({
           >
             <div className="flex w-full items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
-                <NodeIcon nodeId={preset.id} protocol={preset.protocol} className="h-5 w-5" />
+                <NodeIcon
+                  providerId={preset.id}
+                  providerName={preset.name}
+                  baseUrl={preset.base_url}
+                  modelIds={Object.values(preset.buckets).flat()}
+                  tags={preset.tags}
+                  protocol={preset.protocol}
+                  className="h-5 w-5"
+                />
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-extrabold text-[var(--foreground)]">{preset.name}</span>

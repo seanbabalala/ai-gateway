@@ -27,7 +27,7 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.9.0**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation.
+Current open-source release: **v0.9.1**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation. v0.9.1 is a small Dashboard/provider-ops patch that fixes provider compatibility probe behavior and catalog-aware provider logo identity for compatible providers such as Voyage AI.
 
 This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog pricing hygiene. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
 
