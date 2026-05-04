@@ -300,7 +300,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 
 ### Provider Catalog API
 
-`GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + local override catalog data. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
+`GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
 
 Dashboard copy calls this **price source status**. The internal response field remains `pricing_hygiene` for backward compatibility.
 

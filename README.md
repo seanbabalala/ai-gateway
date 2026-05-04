@@ -149,16 +149,16 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 ### Provider Catalog
 
-v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. v0.9 keeps the built-in data as a reviewable reference snapshot and adds a refresh-source workflow for providers with a stable public API. Dashboard Add Node and config validation now read from this catalog instead of hardcoded form lists.
+v0.8 adds a local built-in Provider / Model Catalog for the OSS Data Plane. v0.9 keeps the built-in data as a reviewable reference snapshot and adds a refresh-source workflow for providers with a stable public API. v1.0 expands the built-in catalog toward ecosystem coverage with 30+ providers while keeping Dashboard Add Node and config validation backed by catalog APIs instead of hardcoded form lists.
 
 Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatible proxy, select capabilities, pick/edit model buckets, confirm endpoints/auth/headers/pricing/capabilities, then test and save to the local Data Plane config. It supports `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models` without connecting to SiftGate Cloud.
 
 - Dashboard APIs:
   - `GET /api/dashboard/catalog/providers`
   - `GET /api/dashboard/catalog/models?provider=openai&modality=embedding`
-- Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
+- Built-in providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, OpenAI-compatible custom, plus v1.0 ecosystem entries such as AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud.
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
-- Pricing entries include `currency`, modality-specific units, `source`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `manual_review_required`.
+- Pricing entries include `currency`, modality-specific units, `source`, `source_url`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `manual_review_required`. Providers with region/account/model-specific pricing are marked as review-required references until you import local verified rates.
 - Dashboard includes a read-only Provider Catalog page for price source status, source URL, manual-review state, confidence, override markers, and available refresh sources.
 - `siftgate catalog sources` shows which providers can be refreshed automatically. OpenRouter can be refreshed from its public model catalog API; providers whose prices depend on region, deployment, account, or private model names remain docs-review or local-override workflows.
 - `siftgate catalog refresh openrouter --out catalog.override.yaml` writes a local override with current OpenRouter model IDs and prompt/completion pricing converted to USD per 1M tokens.

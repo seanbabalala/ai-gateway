@@ -342,6 +342,8 @@ function providerCategory(provider: CatalogProvider): ProviderFilter {
   if (
     provider.allows_unknown_models ||
     provider.tags?.includes('openai-compatible') ||
+    provider.capabilities?.includes('openai_compatible') ||
+    provider.capabilities?.includes('openai-compatible') ||
     ['openrouter', 'together', 'fireworks', 'ollama', 'vllm', 'groq'].includes(provider.id)
   ) {
     return 'compatible'

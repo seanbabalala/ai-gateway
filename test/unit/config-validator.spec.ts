@@ -826,6 +826,55 @@ describe('config validator', () => {
     expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
   });
 
+  it('recognizes v1.0 provider catalog models during config validation', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'alibaba-qwen',
+            name: 'Alibaba Qwen',
+            protocol: 'chat_completions',
+            base_url: 'https://dashscope.aliyuncs.com/compatible-mode',
+            endpoint: '/v1/chat/completions',
+            api_key: '${DASHSCOPE_API_KEY:-test}',
+            models: ['qwen-plus'],
+            embedding_models: ['text-embedding-v4'],
+            video_models: ['wan2.5-t2v-preview'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'alibaba-qwen', model: 'qwen-plus' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
+    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+  });
+
   it('warns about catalog pricing hygiene without duplicating missing pricing when catalog fallback exists', () => {
     const catalogLoad = loadMergedCatalog({
       cwd: os.tmpdir(),

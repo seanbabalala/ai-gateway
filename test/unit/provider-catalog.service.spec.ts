@@ -33,9 +33,24 @@ describe('ProviderCatalogService', () => {
         'fireworks',
         'ollama',
         'vllm',
+        'aws-bedrock',
+        'alibaba-qwen',
+        'baidu-qianfan',
+        'volcengine-ark',
+        'zhipu',
+        'moonshot',
+        'minimax',
+        'tencent-hunyuan',
+        '01ai',
+        'replicate',
+        'perplexity',
+        'nvidia-nim',
+        'cerebras',
+        'sambanova',
         'openai-compatible',
       ]),
     );
+    expect(providers.length).toBeGreaterThanOrEqual(30);
   });
 
   it('distinguishes protocol modalities including video and rerank', () => {
@@ -100,5 +115,41 @@ describe('ProviderCatalogService', () => {
     );
 
     expect(codes(issues)).not.toContain('catalog_unknown_model');
+  });
+
+  it('recognizes v1.0 providers and keeps pricing as review-required references', () => {
+    const service = new ProviderCatalogService();
+    const qwen = service.getProvider('alibaba-qwen');
+    const bedrock = service.getProvider('aws-bedrock');
+
+    expect(qwen).toMatchObject({
+      auth_type: 'bearer',
+      endpoints: expect.objectContaining({
+        chat_completions: '/v1/chat/completions',
+      }),
+      pricing: expect.objectContaining({
+        source: 'provider_docs',
+        source_url: expect.stringContaining('alibabacloud.com'),
+        manual_review_required: true,
+        pricing_confidence: 'low',
+      }),
+    });
+    expect(bedrock).toMatchObject({
+      auth_type: 'custom',
+      capabilities: expect.arrayContaining(['sigv4_required']),
+    });
+
+    const issues = diagnoseNodeAgainstCatalog(
+      {
+        id: 'qwen',
+        name: 'Alibaba Qwen',
+        base_url: 'https://dashscope.aliyuncs.com/compatible-mode',
+        models: ['qwen-plus'],
+      },
+      'nodes[0]',
+    );
+
+    expect(codes(issues)).not.toContain('catalog_unknown_model');
+    expect(codes(issues)).toContain('catalog_pricing_manual_review');
   });
 });

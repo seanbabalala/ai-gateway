@@ -80,6 +80,45 @@ describe('catalog service', () => {
     expect(hygiene.pricing_confidence).toBe('low');
   });
 
+  it('ships 30 plus built-in providers with reviewable pricing source URLs', () => {
+    const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
+    const providerIds = result.catalog.providers.map((provider) => provider.id);
+
+    expect(providerIds.length).toBeGreaterThanOrEqual(30);
+    expect(providerIds).toEqual(
+      expect.arrayContaining([
+        'aws-bedrock',
+        'alibaba-qwen',
+        'baidu-qianfan',
+        'volcengine-ark',
+        'zhipu',
+        'moonshot',
+        'minimax',
+        'tencent-hunyuan',
+        '01ai',
+        'replicate',
+        'perplexity',
+        'nvidia-nim',
+        'cerebras',
+        'sambanova',
+      ]),
+    );
+
+    const qwen = result.catalog.providers.find((provider) => provider.id === 'alibaba-qwen');
+    expect(qwen).toMatchObject({
+      base_url: 'https://dashscope.aliyuncs.com/compatible-mode',
+      pricing: expect.objectContaining({
+        source: 'provider-reference',
+        source_url: expect.stringContaining('alibabacloud.com'),
+        manual_review_required: true,
+        pricing_confidence: 'low',
+      }),
+    });
+    expect(qwen?.models.map((model) => model.id)).toEqual(
+      expect.arrayContaining(['qwen-plus', 'text-embedding-v4', 'wan2.5-t2v-preview']),
+    );
+  });
+
   it('reports stale and modality-unit pricing hygiene issues', () => {
     const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
     const provider = result.catalog.providers.find((entry) => entry.id === 'openai');

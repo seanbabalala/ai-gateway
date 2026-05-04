@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Expanded the built-in Provider / Model Catalog toward v1.0 ecosystem coverage with 30+ providers, adding AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud.
+- Added review-required pricing source metadata for the new providers, including source URLs, `last_updated`, `pricing_confidence`, and manual-review state without using placeholder wording in operator-facing catalog data.
+- Added provider identity mappings and tests so new OpenAI-compatible or compatible-style providers do not fall back to the OpenAI logo in Dashboard node/catalog surfaces.
+
+### Changed
+
+- Dashboard Add Node presets, catalog CLI output, config validation, and legacy catalog diagnostics now recognize the v1.0 provider set while preserving local `catalog.override.yaml` as the path for operator-reviewed model and price overrides.
+
 ## 0.9.3 - 2026-05-05
 
 ### Changed
