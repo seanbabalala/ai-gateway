@@ -17,17 +17,17 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
-| v0.9 | Operations + Trust | 进行中 — v0.7 backlog 迁移为本地运维、安全、治理、部署和迁移能力 | 🚧 In Progress |
+| v0.9 | Operations + Trust | 已发布 — v0.9.0 承接 v0.7 backlog，完成本地运维、安全、治理、部署和迁移能力 | ✅ Released |
 
 ---
 
 ## v0.9 — Operations + Trust（本地运维 + 信任基础）
 
-**阶段定位**：v0.7 不再单独发布；v0.9 承接原 v0.7 backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.9.0 发布状态**：v0.7 不再单独发布；v0.9 承接原 v0.7 Operations + Trust backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：本地配置审计与配置版本回滚
 
-- **状态**：🚧 Prompt 54 feature branch 开发中
+- **状态**：✅ v0.9.0 已发布
 - **目标**：让开源 Data Plane 在不依赖 Cloud 的情况下具备本地配置版本、审计事件和安全 rollback 能力
 - **实现方案**：
   - 新增 `config_versions` 与 `config_audit_events` 本地表，SQLite 默认可用，PostgreSQL 兼容
@@ -41,7 +41,7 @@
 
 ### P0：Secret Manager References
 
-- **状态**：🚧 feature branch 进行中
+- **状态**：✅ v0.9.0 已发布
 - **目标**：让开源 Data Plane 在不引入企业私有依赖的前提下支持可选 secret reference，减少明文 provider key 和控制面 token 出现在本地配置中的风险
 - **实现方案**：
   - 支持 `${env:OPENAI_API_KEY}`、`${vault:path/to/secret#field}`、`${aws-sm:secret-name#field}`、`${gcp-sm:secret-name#field}`
@@ -54,7 +54,7 @@
 
 ### Shadow Traffic Comparison Report
 
-- **状态**：✅ Prompt feature branch 已完成
+- **状态**：✅ v0.9.0 已发布
 - **目标**：把 v0.5 的只读 shadow results 升级为灰度决策报告，但不自动修改 routing 配置
 - **实现方案**：
   - 新增 `GET /api/dashboard/shadow/report`，按 namespace、API key、node、model、period、source format 过滤
@@ -68,7 +68,7 @@
 
 ### P0：官方 Guardrails 插件升级
 
-- **状态**：🚧 Prompt v0.9 guardrails feature branch 进行中
+- **状态**：✅ v0.9.0 已发布
 - **目标**：把 `plugins/guardrails` 从 skeleton 升级为可用的本地安全插件，同时保持默认 disabled/no-op 和隐私安全默认值
 - **实现方案**：
   - 支持 PII detection，并可按配置 `audit`、`redact` 或 `block`
@@ -82,7 +82,7 @@
 
 ### P0：Helm Chart 与 Kubernetes Manifests
 
-- **状态**：✅ Prompt v0.9 Helm/K8s feature branch 已完成
+- **状态**：✅ v0.9.0 已发布
 - **目标**：补齐开源 Data Plane 的 Kubernetes 部署入口，让用户可以从 Docker Compose 平滑进入集群部署
 - **实现方案**：
   - 新增 `deploy/helm/siftgate` Helm chart
@@ -95,7 +95,7 @@
 
 ### P1：Benchmark Report API 与 Dashboard 页面
 
-- **状态**：✅ Prompt v0.9 Benchmark Report feature branch 已完成
+- **状态**：✅ v0.9.0 已发布
 - **目标**：把本地 call_log 变成可读的性能证据页，帮助用户比较节点、模型、协议入口和部署变化，但不自动修改 routing 配置
 - **实现方案**：
   - 新增 `GET /api/dashboard/benchmarks/report`
@@ -109,7 +109,7 @@
 
 ### P1：兼容迁移工具扩展
 
-- **状态**：✅ Prompt v0.9 Migration Tools Expansion feature branch 已完成
+- **状态**：✅ v0.9.0 已发布
 - **目标**：降低从 LiteLLM、New API、One API 迁移到 SiftGate OSS Data Plane 的配置成本，同时允许把 SiftGate 配置导出成相邻网关 scaffold，方便评估和回迁
 - **实现方案**：
   - 保留 `siftgate migrate --from litellm --config ./litellm_config.yaml`
@@ -124,7 +124,7 @@
 
 ### Provider Catalog Pricing Hygiene
 
-- **状态**：🚧 Prompt 进行中
+- **状态**：✅ v0.9.0 已发布
 - **目标**：复用 v0.8 Provider / Model Catalog 与 `catalog.override.yaml`，补齐价格元数据卫生、过期检查和 cost routing fallback
 - **实现方案**：
   - 不新增第二套 Model Catalog；继续使用 built-in + local override 的合并 catalog

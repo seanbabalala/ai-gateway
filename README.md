@@ -18,7 +18,7 @@
   <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
-  <a href="docs/PRODUCT_ROADMAP.md">Roadmap</a> &bull;
+  <a href="docs/GATEWAY_ROADMAP.md">Roadmap</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
@@ -27,9 +27,9 @@
 
 ## What is SiftGate?
 
-Current open-source release: **v0.8.0**. This release focuses on Provider Catalog + Add Node Wizard + Multimodal Expansion + Video Preview: local provider/model presets, safer Dashboard node setup, hardened images/audio ingress, experimental async video jobs, provider compatibility checks, catalog overrides, and richer multimodal route explanation.
+Current open-source release: **v0.9.0**. v0.7 was intentionally skipped and not released; v0.9 carries the deferred Operations + Trust backlog on top of the v0.8 Provider Catalog and multimodal foundation.
 
-Unreleased v0.9 work starts the Operations + Trust track. The first capability adds local config audit, version snapshots, and validation-first rollback without sending provider keys, prompts, responses, or raw headers outside the open-source Data Plane.
+This release adds local config audit and rollback, optional secret manager references, shadow traffic comparison reports, a usable local guardrails plugin, OSS-only Helm/Kubernetes deployment assets, benchmark reports, LiteLLM/New API/One API migration expansion, and Provider Catalog pricing hygiene. The default deployment remains single-node memory/SQLite, with Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces strictly optional.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 

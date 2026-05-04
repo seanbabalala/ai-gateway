@@ -5,15 +5,16 @@ an optional control plane; a self-hosted gateway remains fully usable with
 local config, local provider credentials, SQLite for development, PostgreSQL
 for production, and optional Redis-backed shared state.
 
-v0.8.0 keeps that deployment shape while adding a local Provider / Model
-Catalog, Dashboard Add Node wizard, hardened images/audio endpoints,
-experimental async video preview, provider compatibility checks, catalog
-override CLI, and richer multimodal routing evidence. Structured output,
-rerank, images, audio, and video use the same local auth, namespace, budget,
-routing, call-log, and telemetry path as chat traffic. Realtime and video
-remain experimental previews and should only be enabled for production after
-upstream provider behavior, connection limits, job retention, and load balancer
-paths have been tested in your environment.
+v0.9.0 keeps that deployment shape while adding the Operations + Trust layer on
+top of the v0.8 Provider Catalog and multimodal foundation: local config audit
+and rollback, optional secret manager references, shadow comparison reports,
+guardrails plugin upgrades, Helm/Kubernetes assets, benchmark reports,
+compatibility migration expansion, and Provider Catalog pricing hygiene.
+Structured output, rerank, images, audio, video, secret resolution, audit
+metadata, and benchmark summaries all stay in the open-source Data Plane.
+Realtime and video remain experimental previews and should only be enabled for
+production after upstream provider behavior, connection limits, job retention,
+and load balancer paths have been tested in your environment.
 
 ## Baseline Topology
 

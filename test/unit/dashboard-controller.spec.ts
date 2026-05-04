@@ -339,6 +339,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
+    overrides.secretResolver as any,
     overrides.benchmarkReports as any,
   );
 
