@@ -56,6 +56,9 @@ export interface GatewayConfig {
   /** Optional async shadow traffic mirror — disabled by default */
   shadow?: ShadowTrafficConfig;
 
+  /** Optional local config audit log and rollback history. */
+  config_audit?: ConfigAuditConfig;
+
   /** Optional hosted control-plane connection — disabled by default */
   control_plane?: ControlPlaneConfig;
 }
@@ -63,6 +66,18 @@ export interface GatewayConfig {
 export interface CatalogConfig {
   /** Local model/provider catalog override file. Defaults to catalog.override.yaml. */
   override_file?: string;
+}
+
+// ===== Config Audit / Rollback =====
+export interface ConfigAuditConfig {
+  /** Master switch for local config audit/version history (default: true). */
+  enabled?: boolean;
+  /** Maximum stored config versions before oldest versions are pruned (default: 50). */
+  max_versions?: number;
+  /** Maximum audit events returned by Dashboard APIs (default: 200). */
+  max_events?: number;
+  /** Capture a startup baseline snapshot on boot (default: false). */
+  capture_startup_snapshot?: boolean;
 }
 
 // ===== Shared State Backend =====

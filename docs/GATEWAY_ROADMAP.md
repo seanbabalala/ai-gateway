@@ -17,6 +17,27 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 开发中 — v0.7 backlog 迁移为本地运维、安全、治理、部署和迁移能力 | 🚧 Active |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 安全治理）
+
+> v0.7 不再单独发布。原 v0.7 backlog 挪到 v0.9，并基于 v0.8.0 的 Provider Catalog、多模态入口和 Route Explanation 继续适配。
+
+### P0：本地配置审计与配置版本回滚
+
+- **状态**：🚧 Prompt 54 feature branch 开发中
+- **目标**：让开源 Data Plane 在不依赖 Cloud 的情况下具备本地配置版本、审计事件和安全 rollback 能力
+- **实现方案**：
+  - 新增 `config_versions` 与 `config_audit_events` 本地表，SQLite 默认可用，PostgreSQL 兼容
+  - `config_audit` 配置支持 `enabled`、`max_versions`、`max_events`、`capture_startup_snapshot`
+  - Dashboard reload、node create/update/delete、routing update、Dashboard API key 管理和 rollback 都记录审计事件
+  - 版本快照保存安全 YAML：provider API key、dashboard password hash、raw auth headers、secret/token/password-like 字段脱敏
+  - rollback 先解析和校验目标配置；如果 secret 不能从当前本地配置安全回填，或配置校验失败，则保留当前配置
+  - Dashboard 新增 Config Audit 只读页面：版本列表、脱敏版本详情、审计事件流、确认式 rollback
+  - `migrate-db` 覆盖 `config_versions` 与 `config_audit_events`
+  - 新增 `docs/CONFIG_AUDIT_ROLLBACK.md`，并更新 API、Architecture、Production 文档
 
 ---
 

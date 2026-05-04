@@ -35,6 +35,7 @@ import {
   FallbackPolicyConfig,
   StateBackendConfig,
   RealtimeConfig,
+  ConfigAuditConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -45,6 +46,9 @@ export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagno
 export type ConfigReloadSource =
   | 'manual'
   | 'dashboard'
+  | 'cli'
+  | 'rollback'
+  | 'system'
   | 'sighup'
   | 'watcher'
   | 'cluster';
@@ -157,6 +161,10 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       throw new Error(`Configuration file not found: ${this.configPath}`);
     }
     const raw = fs.readFileSync(this.configPath, 'utf8');
+    return this.loadConfigFromYaml(raw);
+  }
+
+  private loadConfigFromYaml(raw: string): GatewayConfig {
     const parsed = yaml.load(raw) as GatewayConfig;
     const resolved = this.resolveEnvVars(parsed) as GatewayConfig;
     this.normalizeConfig(resolved);
@@ -324,6 +332,64 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         success: false,
         source,
         message: `Configuration reload failed; retained previous config: ${error.message}`,
+        previous,
+        current,
+        changed: this.emptyChangeSummary(),
+        rolled_back: true,
+        error: {
+          name: error.name || 'Error',
+          message: error.message,
+        },
+      };
+
+      this.logger.error(result.message);
+      this.emitReloadResult(result);
+      if (throwOnError) {
+        throw new ConfigReloadError(result);
+      }
+      return result;
+    }
+  }
+
+  /**
+   * Restore a candidate YAML snapshot with the same atomic validation semantics
+   * as reload(). The file is written only after parsing and validation succeed.
+   */
+  restoreFromYaml(rawYaml: string, options: ConfigReloadOptions = {}): ConfigReloadResult {
+    const source = options.source ?? 'rollback';
+    const throwOnError = options.throwOnError ?? true;
+    const previousConfig = this.config;
+    const previous = this.getSnapshot();
+
+    try {
+      const nextConfig = this.loadConfigFromYaml(rawYaml);
+      const changed = this.describeChanges(previousConfig, nextConfig);
+      fs.writeFileSync(this.configPath, rawYaml, 'utf8');
+      this.commitConfig(nextConfig);
+      const current = this.getSnapshot();
+      const result: ConfigReloadResult = {
+        success: true,
+        source,
+        message: 'Configuration restored',
+        previous,
+        current,
+        changed,
+        rolled_back: false,
+      };
+
+      this.logger.log(
+        `Configuration restored to ${this.configPath} — version ${current.version}`,
+      );
+      this.emitReloadResult(result);
+      this.syncConfigWatcher();
+      return result;
+    } catch (err) {
+      const error = err as Error;
+      const current = this.getSnapshot();
+      const result: ConfigReloadResult = {
+        success: false,
+        source,
+        message: `Configuration restore failed; retained previous config: ${error.message}`,
         previous,
         current,
         changed: this.emptyChangeSummary(),
@@ -773,6 +839,24 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   get modelsPricing(): Record<string, ModelPricing> {
     return this.config.models_pricing;
+  }
+
+  get configAudit(): Required<ConfigAuditConfig> {
+    const audit = this.config.config_audit;
+    return {
+      enabled: audit?.enabled ?? true,
+      max_versions: audit?.max_versions ?? 50,
+      max_events: audit?.max_events ?? 200,
+      capture_startup_snapshot: audit?.capture_startup_snapshot ?? false,
+    };
+  }
+
+  getConfigPath(): string {
+    return this.configPath;
+  }
+
+  readRawConfigYaml(): string {
+    return fs.readFileSync(this.configPath, 'utf8');
   }
 
   private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {

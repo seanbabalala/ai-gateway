@@ -273,6 +273,10 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/alerts` | Local webhook alert channels and recent delivery status |
 | `GET` | `/api/dashboard/config` | Sanitized local configuration |
 | `POST` | `/api/dashboard/config/reload` | Reload `gateway.config.yaml` from disk |
+| `GET` | `/api/dashboard/config/versions` | List local sanitized config versions for audit and rollback |
+| `GET` | `/api/dashboard/config/versions/:id` | Read one sanitized config version snapshot |
+| `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore a previous local config version |
+| `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
@@ -310,6 +314,44 @@ For multimodal and capability-specific requests, traces may include:
 - `candidate_targets[].capability_evidence.catalog_source`
 
 These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.
+
+### Config Audit And Rollback
+
+The v0.9 Dashboard API exposes local config version history and audit events. It is backed by SQLite by default and PostgreSQL when configured; it does not require SiftGate Cloud.
+
+`GET /api/dashboard/config/versions` returns version metadata:
+
+```json
+{
+  "data": [
+    {
+      "version_id": "cfgv_m...",
+      "created_at": "2026-05-04T12:00:00.000Z",
+      "created_by": "dashboard:dashboard",
+      "source": "dashboard",
+      "checksum": "sha256...",
+      "node_count": 2,
+      "node_ids": ["openai", "anthropic"],
+      "route_tiers": ["standard"]
+    }
+  ],
+  "pagination": { "limit": 50, "count": 1 }
+}
+```
+
+`GET /api/dashboard/config/versions/:id` includes `sanitized_config`. Literal provider keys, dashboard password hashes, raw auth headers, and secret-like fields are redacted; raw provider key values are never returned.
+
+`POST /api/dashboard/config/versions/:id/rollback` accepts an optional reason:
+
+```json
+{
+  "reason": "Restore last known good routing config"
+}
+```
+
+Rollback parses and validates the target snapshot first. If validation or secret rehydration fails, SiftGate keeps the current config and returns `400` with a clear message.
+
+`GET /api/dashboard/config/audit-events` supports optional `limit`, `action`, `target`, and `result=success|failure` filters. Events record actor, action, target, before/after summaries, result, failure reason, source, and related version ids.
 
 ### Provider Compatibility Matrix
 

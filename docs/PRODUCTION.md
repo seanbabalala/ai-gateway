@@ -83,7 +83,8 @@ node dist/cli/siftgate.js migrate-db \
 The migrator:
 
 - Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
-  `route_decisions`, `provider_compatibility_results`, and `video_jobs`.
+  `route_decisions`, `config_versions`, `config_audit_events`,
+  `provider_compatibility_results`, and `video_jobs`.
 - Creates a timestamped SQLite backup when `--backup` is set.
 - Creates/updates the PostgreSQL schema through the OSS TypeORM entities before
   import.
@@ -123,6 +124,34 @@ Recommended production process:
 Future releases that change persistent schema should ship explicit TypeORM
 migration files. Production operators should run those release migrations as a
 deployment step instead of leaving runtime schema synchronization enabled.
+
+## Config Audit And Rollback
+
+The v0.9 OSS Data Plane keeps local config audit history in the same database
+used for runtime metadata. SQLite remains the default; PostgreSQL is recommended
+when config history should survive container replacement and be backed up with
+the rest of production metadata.
+
+```yaml
+config_audit:
+  enabled: true
+  max_versions: 50
+  max_events: 200
+  capture_startup_snapshot: false
+```
+
+Operational guidance:
+
+- Keep provider keys as environment references such as `${OPENAI_API_KEY}`
+  wherever possible.
+- Snapshots redact literal secrets before storage. Rollback rehydrates redacted
+  fields from the current local config only when the path or array `id` matches.
+- Rollback validates the target config before writing the file. Failed rollback
+  attempts keep the current config active and write a failure audit event.
+- In multi-instance deployments, rollback is local to one instance. Roll config
+  changes through your deployment system so every instance converges.
+- Include `config_versions` and `config_audit_events` in PostgreSQL backups and
+  restore tests if you rely on Dashboard rollback during incident response.
 
 ## Docker Compose PostgreSQL Profile
 

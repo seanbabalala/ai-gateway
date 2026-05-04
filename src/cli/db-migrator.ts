@@ -5,6 +5,8 @@ import { DataSource, EntityTarget } from "typeorm";
 import {
   BudgetRule,
   CallLog,
+  ConfigAuditEvent,
+  ConfigVersion,
   GatewayApiKey,
   NodeStatus,
   ProviderCompatibilityResult,
@@ -18,6 +20,8 @@ export type DbMigrationTableName =
   | "node_status"
   | "call_logs"
   | "route_decisions"
+  | "config_versions"
+  | "config_audit_events"
   | "provider_compatibility_results"
   | "video_jobs";
 
@@ -33,6 +37,8 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
   { table: "route_decisions", entity: RouteDecisionLog, generatedSequenceColumn: "id" },
+  { table: "config_versions", entity: ConfigVersion, generatedSequenceColumn: "id" },
+  { table: "config_audit_events", entity: ConfigAuditEvent, generatedSequenceColumn: "id" },
   {
     table: "provider_compatibility_results",
     entity: ProviderCompatibilityResult,
@@ -180,6 +186,8 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         NodeStatus,
         GatewayApiKey,
         RouteDecisionLog,
+        ConfigVersion,
+        ConfigAuditEvent,
         ProviderCompatibilityResult,
         VideoJob,
       ],
@@ -574,6 +582,22 @@ function normalizeRow(
       status_code: toNullableNumber,
       created_at: toDateOrNow,
       updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "config_versions") {
+    return normalizeFields(row, {
+      id: toNumber,
+      created_at: toDateOrNow,
+      runtime_version: toNumber,
+      node_count: toNumber,
+    });
+  }
+
+  if (table === "config_audit_events") {
+    return normalizeFields(row, {
+      id: toNumber,
+      timestamp: toDateOrNow,
     });
   }
 

@@ -15,6 +15,8 @@ const TABLES: DbMigrationTableName[] = [
   "node_status",
   "call_logs",
   "route_decisions",
+  "config_versions",
+  "config_audit_events",
   "provider_compatibility_results",
   "video_jobs",
 ];
@@ -171,6 +173,39 @@ function createSqliteFixture(dir: string): string {
       api_key_id varchar,
       namespace_id varchar,
       trace_json text
+    );
+
+    CREATE TABLE config_versions (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      version_id varchar,
+      created_at datetime,
+      created_by varchar,
+      source varchar,
+      checksum varchar,
+      config_path varchar,
+      runtime_version integer,
+      node_count integer,
+      node_ids_json text,
+      route_tiers_json text,
+      sanitized_summary_json text,
+      config_yaml text
+    );
+
+    CREATE TABLE config_audit_events (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      event_id varchar,
+      timestamp datetime,
+      actor varchar,
+      action varchar,
+      target varchar,
+      before_summary_json text,
+      after_summary_json text,
+      result varchar,
+      failure_reason text,
+      source varchar,
+      version_id varchar,
+      previous_version_id varchar,
+      metadata_json text
     );
 
     CREATE TABLE provider_compatibility_results (
@@ -343,6 +378,55 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO config_versions (
+      version_id, created_at, created_by, source, checksum, config_path,
+      runtime_version, node_count, node_ids_json, route_tiers_json,
+      sanitized_summary_json, config_yaml
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "cfgv_1",
+    "2026-05-01T00:01:30.000Z",
+    "dashboard:dashboard",
+    "dashboard",
+    "abc123",
+    "/etc/siftgate/gateway.config.yaml",
+    4,
+    1,
+    JSON.stringify(["openai"]),
+    JSON.stringify(["standard"]),
+    JSON.stringify({ node_count: 1, node_ids: ["openai"] }),
+    "nodes:\n  - id: openai\n    api_key: ${OPENAI_API_KEY}\n",
+  );
+
+  db.prepare(
+    `
+    INSERT INTO config_audit_events (
+      event_id, timestamp, actor, action, target, before_summary_json,
+      after_summary_json, result, failure_reason, source, version_id,
+      previous_version_id, metadata_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "cfge_1",
+    "2026-05-01T00:01:31.000Z",
+    "dashboard:dashboard",
+    "config.node.create",
+    "node:openai",
+    JSON.stringify({ node_count: 0 }),
+    JSON.stringify({ node_count: 1 }),
+    "success",
+    null,
+    "dashboard",
+    "cfgv_1",
+    null,
+    JSON.stringify({ fields: ["nodes"] }),
+  );
+
+  db.prepare(
+    `
     INSERT INTO provider_compatibility_results (
       node_id, capability, configured, tested, last_status, last_checked_at,
       latency_ms, status_code, failure_reason, test_mode, created_at, updated_at
@@ -411,7 +495,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(7);
+    expect(result.totals.source_rows).toBe(9);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -454,6 +538,17 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(routeDecision?.is_fallback).toBe(false);
     expect(routeDecision?.candidate_count).toBe(2);
     expect(routeDecision?.timestamp).toBeInstanceOf(Date);
+
+    const configVersion = target.rows.get("config_versions")?.[0];
+    expect(configVersion?.version_id).toBe("cfgv_1");
+    expect(configVersion?.created_at).toBeInstanceOf(Date);
+    expect(configVersion?.runtime_version).toBe(4);
+    expect(configVersion?.node_count).toBe(1);
+
+    const auditEvent = target.rows.get("config_audit_events")?.[0];
+    expect(auditEvent?.event_id).toBe("cfge_1");
+    expect(auditEvent?.timestamp).toBeInstanceOf(Date);
+    expect(auditEvent?.action).toBe("config.node.create");
 
     const compatibility = target.rows.get("provider_compatibility_results")?.[0];
     expect(compatibility?.configured).toBe(true);
@@ -498,7 +593,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(7);
+    expect(result.validation.mismatches).toHaveLength(9);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

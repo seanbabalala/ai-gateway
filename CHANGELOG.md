@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 local config audit and rollback for the OSS Data Plane with `config_versions` and `config_audit_events` persistence on SQLite/PostgreSQL.
+- Dashboard APIs `GET /api/dashboard/config/versions`, `GET /api/dashboard/config/versions/:id`, `POST /api/dashboard/config/versions/:id/rollback`, and `GET /api/dashboard/config/audit-events`.
+- Dashboard Config Audit page with sanitized version detail, audit event stream, and confirmation-based rollback.
+- Config audit settings under `config_audit` with validation for `enabled`, `max_versions`, `max_events`, and `capture_startup_snapshot`.
+- SQLite-to-PostgreSQL migrator coverage for config version and audit event tables.
+- Unit coverage for config audit redaction, rollback success, rollback failure, Dashboard APIs, config validation, and migration.
+
+### Changed
+
+- Dashboard config reload, node create/update/delete, routing edits, and Dashboard-managed API key mutations now record local audit metadata when config audit is enabled.
+- Rollback snapshots store redacted safe YAML and rehydrate secrets only from matching current local config fields; unresolved redactions fail safely without writing the config file.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

@@ -1,7 +1,7 @@
 {
   "action.cancel": "キャンセル",
-  "action.closeSidebar": "サイドバーを閉じる",
   "action.close": "閉じる",
+  "action.closeSidebar": "サイドバーを閉じる",
   "action.confirm": "確認",
   "action.create": "作成",
   "action.delete": "削除",
@@ -11,6 +11,9 @@
   "action.save": "保存",
   "action.signOut": "サインアウト",
   "action.toggleSidebar": "サイドバー切替",
+  "circuit.CLOSED": "クローズ",
+  "circuit.HALF_OPEN": "ハーフオープン",
+  "circuit.OPEN": "オープン",
   "error.failedToLoad": "読み込みに失敗しました",
   "error.generic": "問題が発生しました。もう一度お試しください。",
   "error.unauthorized": "認証されていません",
@@ -23,6 +26,7 @@
   "nav.analytics": "分析",
   "nav.apiKeys": "API Keys",
   "nav.budget": "予算",
+  "nav.configAudit": "設定監査",
   "nav.dashboard": "ダッシュボード",
   "nav.experiments": "実験",
   "nav.logs": "ログ",
@@ -52,8 +56,5 @@
   "tier.direct": "ダイレクト",
   "tier.reasoning": "推論",
   "tier.simple": "シンプル",
-  "tier.standard": "標準",
-  "circuit.CLOSED": "クローズ",
-  "circuit.HALF_OPEN": "ハーフオープン",
-  "circuit.OPEN": "オープン"
+  "tier.standard": "標準"
 }

@@ -1,7 +1,7 @@
 {
   "action.cancel": "取消",
-  "action.closeSidebar": "關閉側邊欄",
   "action.close": "關閉",
+  "action.closeSidebar": "關閉側邊欄",
   "action.confirm": "確認",
   "action.create": "建立",
   "action.delete": "刪除",
@@ -11,6 +11,9 @@
   "action.save": "儲存",
   "action.signOut": "登出",
   "action.toggleSidebar": "切換側邊欄",
+  "circuit.CLOSED": "已關閉",
+  "circuit.HALF_OPEN": "半開",
+  "circuit.OPEN": "已開啟",
   "error.failedToLoad": "載入失敗",
   "error.generic": "發生問題，請再試一次。",
   "error.unauthorized": "未授權",
@@ -23,6 +26,7 @@
   "nav.analytics": "分析",
   "nav.apiKeys": "API Keys",
   "nav.budget": "預算",
+  "nav.configAudit": "設定稽核",
   "nav.dashboard": "控制台",
   "nav.experiments": "實驗",
   "nav.logs": "記錄",
@@ -52,8 +56,5 @@
   "tier.direct": "直連",
   "tier.reasoning": "推理",
   "tier.simple": "簡單",
-  "tier.standard": "標準",
-  "circuit.CLOSED": "已關閉",
-  "circuit.HALF_OPEN": "半開",
-  "circuit.OPEN": "已開啟"
+  "tier.standard": "標準"
 }
