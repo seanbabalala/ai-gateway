@@ -21,6 +21,9 @@
 - v0.9 official guardrails plugin upgrade for the OSS Data Plane, replacing the skeleton with disabled-by-default local PII detection/redaction/blocking, lightweight prompt-injection checks, schema validation helpers, named allow/block/redact policies, input/output hooks, and conservative streaming delta handling.
 - Privacy-safe guardrails findings in the per-request plugin store, capped by `max_findings_per_request` and limited to metadata such as request id, rule, kind, action, count, and path without prompt text, response text, raw headers, provider keys, media bytes, or video bytes.
 - Unit coverage for guardrails privacy behavior, PII redaction/blocking, prompt-injection blocking, schema validation, allow/block policy exceptions, stream delta handling, and hook executor store propagation.
+- v0.9 OSS-only Helm chart under `deploy/helm/siftgate` with default single-node SQLite + memory state behavior and opt-in Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget, ServiceMonitor, existing Secret/ConfigMap, resources, and persistence settings.
+- v0.9 Kustomize/plain Kubernetes base under `deploy/kubernetes/base` with placeholder-only Secrets, SQLite PVC, config mount, health probes, and no SiftGate Cloud or enterprise image dependency.
+- `npm run validate:k8s` plus manifest validation tests for YAML parsing, required deployment assets, default Cloud-disabled behavior, secret hygiene, image/port checks, and config/data mounts.
 
 ### Changed
 

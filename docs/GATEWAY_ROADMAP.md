@@ -80,6 +80,19 @@
   - 与 structured output fallback 保持兼容：核心 fallback 继续由 `routing.fallback_policy.structured_output` 处理；guardrails schema finding 可按配置 block 并记录 fallback intent metadata
   - 插件继续进入 `dist-runtime-plugins`，兼容生产 Docker
 
+### P0：Helm Chart 与 Kubernetes Manifests
+
+- **状态**：✅ Prompt v0.9 Helm/K8s feature branch 已完成
+- **目标**：补齐开源 Data Plane 的 Kubernetes 部署入口，让用户可以从 Docker Compose 平滑进入集群部署
+- **实现方案**：
+  - 新增 `deploy/helm/siftgate` Helm chart
+  - 新增 `deploy/kubernetes/base` Kustomize/plain manifests
+  - 默认 `values.yaml` 保持单机可用：memory state backend、SQLite PVC、无 Cloud、无企业镜像、无真实 secrets
+  - Helm values 支持 Redis、PostgreSQL、Ingress、HPA、PodDisruptionBudget、ServiceMonitor、existing Secret/ConfigMap、resources、persistence
+  - Kubernetes Secret 示例只包含 placeholder，不提交真实 provider key
+  - gateway config 示例覆盖 v0.8 Provider Catalog、多模态 media/audio/image、structured output、realtime disabled、SQLite/memory defaults 等关键字段
+  - 新增 `npm run validate:k8s`，检查 YAML 解析、模板存在、Cloud 默认关闭、secret hygiene、image/port/config mount 基础正确性
+
 ---
 
 ## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）

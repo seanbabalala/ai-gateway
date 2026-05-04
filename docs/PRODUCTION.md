@@ -31,6 +31,24 @@ paths have been tested in your environment.
   coordination.
 - Keep `/health` on the load balancer health check path.
 
+## Kubernetes / Helm
+
+v0.9 adds OSS-only deployment assets for Kubernetes:
+
+- Helm chart: `deploy/helm/siftgate`
+- Kustomize/plain manifests: `deploy/kubernetes/base`
+- local validation: `npm run validate:k8s`
+
+The defaults stay conservative: one replica, SQLite on a PVC, memory state
+backend, `cluster.enabled=false`, `realtime.enabled=false`, no Ingress, no
+autoscaling, no SiftGate Cloud, no enterprise image, and no real secrets in the
+repository. Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget,
+ServiceMonitor, existing Secrets/ConfigMaps, resource requests/limits, and
+persistence controls are opt-in through Helm values.
+
+See [Kubernetes And Helm](KUBERNETES.md) before using these assets in a
+production cluster.
+
 ## Database Recommendation
 
 SQLite is the default because it keeps local development and small self-hosted
