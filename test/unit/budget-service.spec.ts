@@ -44,6 +44,14 @@ function mockBudgetRepo() {
           results = results.filter((r) => r.namespace_id === target);
         }
       }
+      if ('team_id' in where) {
+        const target = where.team_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          results = results.filter((r) => r.team_id === null || r.team_id === undefined);
+        } else {
+          results = results.filter((r) => r.team_id === target);
+        }
+      }
       return results;
     }),
     findOneBy: jest.fn(async (where: any) => {
@@ -386,6 +394,38 @@ describe('BudgetService', () => {
       await expect(svc.check(undefined, undefined, 'team-alpha')).rejects.toThrow(BudgetExceededError);
     });
 
+    it('should check team rules when teamId is provided', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_cost',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 1,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+        team_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_cost',
+        limit_value: 5,
+        alert_threshold: 0.8,
+        current_value: 5,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+        team_id: 'team-1',
+      });
+
+      await expect(svc.check(undefined, undefined, undefined, 'team-1')).rejects.toThrow(BudgetExceededError);
+    });
+
     it('should use api_key_id as the generated-key budget identity', async () => {
       const { svc, repo } = makeService();
       repo._store.push({
@@ -570,6 +610,41 @@ describe('BudgetService', () => {
       });
 
       await svc.record(500, 0.01, undefined, undefined, 'team-alpha');
+
+      expect(repo._store[0].current_value).toBe(500);
+      expect(repo._store[1].current_value).toBe(500);
+    });
+
+    it('should update team rules when teamId is provided', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+        team_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 10_000,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+        namespace_id: null,
+        team_id: 'team-1',
+      });
+
+      await svc.record(500, 0.01, undefined, undefined, undefined, 'team-1');
 
       expect(repo._store[0].current_value).toBe(500);
       expect(repo._store[1].current_value).toBe(500);
@@ -927,7 +1002,7 @@ describe('BudgetService', () => {
 
     it('should format per-key scope correctly', () => {
       const periodStart = new Date('2026-04-29T00:00:00.000Z');
-      const err = new BudgetExceededError('daily_cost', 6, 5, 'intern', 'key_123', null, periodStart);
+      const err = new BudgetExceededError('daily_cost', 6, 5, 'intern', 'key_123', null, null, periodStart);
       expect(err.message).toContain('key "intern"');
       expect(err.apiKeyName).toBe('intern');
       expect(err.toDetails()).toMatchObject({
@@ -947,6 +1022,15 @@ describe('BudgetService', () => {
       expect(err.toDetails()).toMatchObject({
         scope: 'namespace',
         namespace_id: 'team-alpha',
+      });
+    });
+
+    it('should format team scope correctly', () => {
+      const err = new BudgetExceededError('daily_cost', 6, 5, null, null, null, 'team-1');
+      expect(err.message).toContain('team "team-1"');
+      expect(err.toDetails()).toMatchObject({
+        scope: 'team',
+        team_id: 'team-1',
       });
     });
   });

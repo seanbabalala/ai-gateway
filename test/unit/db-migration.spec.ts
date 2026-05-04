@@ -11,6 +11,7 @@ import {
 
 const TABLES: DbMigrationTableName[] = [
   "gateway_api_keys",
+  "local_teams",
   "budget_rules",
   "node_status",
   "call_logs",
@@ -94,11 +95,30 @@ function createSqliteFixture(dir: string): string {
       allowed_models text,
       allowed_endpoints text,
       allowed_modalities text,
+      team_id varchar,
       daily_token_limit real,
       daily_cost_limit real,
       rate_limit_per_minute integer,
       last_used_at datetime,
       last_used_ip varchar,
+      created_at datetime,
+      updated_at datetime
+    );
+
+    CREATE TABLE local_teams (
+      id varchar PRIMARY KEY,
+      name varchar,
+      description text,
+      status varchar,
+      namespace_id varchar,
+      allowed_nodes text,
+      allowed_models text,
+      allowed_endpoints text,
+      allowed_modalities text,
+      daily_token_limit real,
+      daily_cost_limit real,
+      rate_limit_per_minute integer,
+      last_used_at datetime,
       created_at datetime,
       updated_at datetime
     );
@@ -112,7 +132,9 @@ function createSqliteFixture(dir: string): string {
       period_start datetime,
       is_active integer,
       api_key_name varchar,
-      api_key_id varchar
+      api_key_id varchar,
+      namespace_id varchar,
+      team_id varchar
     );
 
     CREATE TABLE node_status (
@@ -150,6 +172,7 @@ function createSqliteFixture(dir: string): string {
       error text,
       api_key_name varchar,
       api_key_id varchar,
+      team_id varchar,
       retry_count integer,
       cache_creation_input_tokens integer,
       cache_read_input_tokens integer,
@@ -302,11 +325,11 @@ function createSqliteFixture(dir: string): string {
     INSERT INTO gateway_api_keys (
       id, name, description, key_hash, key_prefix, status, allow_auto,
       allow_direct, allowed_nodes, allowed_models, allowed_endpoints,
-      allowed_modalities, daily_token_limit,
+      allowed_modalities, team_id, daily_token_limit,
       daily_cost_limit, rate_limit_per_minute, last_used_at, last_used_ip,
       created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     "key-1",
@@ -321,6 +344,7 @@ function createSqliteFixture(dir: string): string {
     JSON.stringify(["gpt-4o"]),
     JSON.stringify(["chat_completions", "responses"]),
     JSON.stringify(["text"]),
+    "team-1",
     1000,
     5.5,
     60,
@@ -332,11 +356,39 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO local_teams (
+      id, name, description, status, namespace_id, allowed_nodes,
+      allowed_models, allowed_endpoints, allowed_modalities,
+      daily_token_limit, daily_cost_limit, rate_limit_per_minute,
+      last_used_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "team-1",
+    "Platform",
+    "Platform team",
+    "active",
+    "team-alpha",
+    JSON.stringify(["openai"]),
+    JSON.stringify(["gpt-4o"]),
+    JSON.stringify(["chat_completions", "responses"]),
+    JSON.stringify(["text"]),
+    5000,
+    25,
+    120,
+    "2026-05-01T00:00:00.000Z",
+    "2026-05-01T00:00:00.000Z",
+    "2026-05-01T00:00:00.000Z",
+  );
+
+  db.prepare(
+    `
     INSERT INTO budget_rules (
       type, limit_value, alert_threshold, current_value, period_start,
-      is_active, api_key_name, api_key_id
+      is_active, api_key_name, api_key_id, namespace_id, team_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     "daily_cost",
@@ -347,6 +399,8 @@ function createSqliteFixture(dir: string): string {
     1,
     "prod-key",
     "key-1",
+    null,
+    null,
   );
 
   db.prepare(
@@ -367,10 +421,10 @@ function createSqliteFixture(dir: string): string {
       is_fallback, fallback_reason, structured_output_requested,
       structured_output_type, structured_output_strategy,
       structured_output_supported, structured_output_schema_name,
-      session_key, error, api_key_name, api_key_id, retry_count,
+      session_key, error, api_key_name, api_key_id, team_id, retry_count,
       cache_creation_input_tokens, cache_read_input_tokens, experiment_group
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     "req-1",
@@ -396,6 +450,7 @@ function createSqliteFixture(dir: string): string {
     null,
     "prod-key",
     "key-1",
+    "team-1",
     0,
     0,
     0,
@@ -623,7 +678,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(11);
+    expect(result.totals.source_rows).toBe(12);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -656,12 +711,20 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(apiKey?.allowed_nodes).toEqual(["openai"]);
     expect(apiKey?.allowed_endpoints).toEqual(["chat_completions", "responses"]);
     expect(apiKey?.allowed_modalities).toEqual(["text"]);
+    expect(apiKey?.team_id).toBe("team-1");
     expect(apiKey?.created_at).toBeInstanceOf(Date);
+
+    const team = target.rows.get("local_teams")?.[0];
+    expect(team?.name).toBe("Platform");
+    expect(team?.namespace_id).toBe("team-alpha");
+    expect(team?.allowed_endpoints).toEqual(["chat_completions", "responses"]);
+    expect(team?.last_used_at).toBeInstanceOf(Date);
 
     const callLog = target.rows.get("call_logs")?.[0];
     expect(callLog?.is_fallback).toBe(false);
     expect(callLog?.structured_output_requested).toBe(true);
     expect(callLog?.structured_output_supported).toBe(true);
+    expect(callLog?.team_id).toBe("team-1");
     expect(callLog?.timestamp).toBeInstanceOf(Date);
 
     const routeDecision = target.rows.get("route_decisions")?.[0];
@@ -739,7 +802,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(11);
+    expect(result.validation.mismatches).toHaveLength(12);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

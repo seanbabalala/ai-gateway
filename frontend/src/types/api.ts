@@ -1816,6 +1816,65 @@ export interface ApiKeysResponse {
   items: GatewayApiKey[]
 }
 
+export interface LocalTeam {
+  id: string
+  name: string
+  description: string | null
+  status: 'active' | 'disabled'
+  namespace_id: string | null
+  namespace_name: string | null
+  allowed_nodes: string[]
+  allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
+  daily_token_limit: number | null
+  daily_cost_limit: number | null
+  rate_limit_per_minute: number | null
+  created_at: string
+  updated_at: string
+  last_used_at: string | null
+  today: {
+    calls: number
+    errors: number
+    error_rate: number
+    cost_usd: number
+    input_tokens: number
+    output_tokens: number
+  }
+}
+
+export interface TeamsResponse {
+  teams: LocalTeam[]
+  mode: 'local_only'
+  enterprise_features: {
+    workspace: boolean
+    sso: boolean
+    scim: boolean
+    org_billing: boolean
+  }
+}
+
+export interface CreateTeamRequest {
+  name: string
+  description?: string | null
+  namespace_id?: string | null
+  allowed_nodes: string[]
+  allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
+  daily_token_limit?: number | null
+  daily_cost_limit?: number | null
+  rate_limit_per_minute?: number | null
+}
+
+export type UpdateTeamRequest = Partial<CreateTeamRequest> & {
+  status?: 'active' | 'disabled'
+}
+
+export interface TeamMutationResponse extends ActionResponse {
+  item: LocalTeam
+}
+
 // ── Gateway API Keys ──
 
 export interface GatewayApiKey {
@@ -1832,6 +1891,8 @@ export interface GatewayApiKey {
   allowed_modalities: string[]
   namespace_id: string | null
   namespace_name: string | null
+  team_id: string | null
+  team_name: string | null
   daily_token_limit: number | null
   daily_cost_limit: number | null
   rate_limit_per_minute: number | null
@@ -1859,6 +1920,7 @@ export interface CreateGatewayApiKeyRequest {
   allowed_endpoints: string[]
   allowed_modalities: string[]
   namespace_id?: string | null
+  team_id?: string | null
   daily_token_limit?: number | null
   daily_cost_limit?: number | null
   rate_limit_per_minute?: number | null

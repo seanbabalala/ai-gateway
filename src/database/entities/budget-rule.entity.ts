@@ -12,6 +12,8 @@ import {
 @Index(['api_key_id', 'type'])
 @Index(['namespace_id'])
 @Index(['namespace_id', 'type'])
+@Index(['team_id'])
+@Index(['team_id', 'type'])
 export class BudgetRule {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -42,4 +44,7 @@ export class BudgetRule {
 
   @Column({ type: 'varchar', nullable: true, default: null })
   namespace_id!: string | null;  // NULL = global/key rule, non-null = local namespace rule
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  team_id!: string | null;  // NULL = global/key/namespace rule, non-null = local team rule
 }

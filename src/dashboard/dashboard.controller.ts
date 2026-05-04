@@ -73,6 +73,11 @@ import {
 } from '../auth/dto/gateway-api-key.dto';
 import { GatewayApiKeyService } from '../auth/gateway-api-key.service';
 import {
+  CreateTeamDto,
+  UpdateTeamDto,
+} from '../auth/dto/team.dto';
+import { TeamService } from '../auth/team.service';
+import {
   ActionResponseDto,
   ErrorEnvelopeDto,
   GatewayApiKeyCreatedResponseDto,
@@ -216,6 +221,7 @@ export class DashboardController {
     private readonly telemetry: TelemetryService,
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
+    private readonly teams: TeamService,
     private readonly shadowTraffic: ShadowTrafficService,
     private readonly providerCompatibility: ProviderCompatibilityService,
     private readonly configAudit: ConfigAuditService,
@@ -1546,12 +1552,23 @@ export class DashboardController {
   @ApiQuery({ name: 'api_key', required: false })
   @ApiQuery({ name: 'api_key_id', required: false })
   @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'team_id', required: false })
   @ApiOkResponse({ description: 'Budget rules and current usage.' })
   async getBudget(
     @Query('api_key') apiKey?: string,
     @Query('api_key_id') apiKeyId?: string,
     @Query('namespace') namespaceId?: string,
+    @Query('team_id') teamId?: string,
   ) {
+    if (teamId) {
+      const globalStatus = await this.budgetService.getStatus();
+      const teamStatus = await this.budgetService.getStatus(null, null, null, teamId);
+      return {
+        rules: globalStatus.map((s) => this.serializeBudgetStatus(s)),
+        teamRules: teamStatus.map((s) => this.serializeBudgetStatus(s)),
+        teamId,
+      };
+    }
     if (namespaceId) {
       const globalStatus = await this.budgetService.getStatus();
       const namespaceStatus = await this.budgetService.getStatus(null, null, namespaceId);
@@ -1581,10 +1598,11 @@ export class DashboardController {
   private serializeBudgetStatus(s: {
     id: number;
     type: string;
-    scope: 'global' | 'api_key' | 'namespace';
+    scope: 'global' | 'api_key' | 'namespace' | 'team';
     apiKeyName: string | null;
     apiKeyId: string | null;
     namespaceId: string | null;
+    teamId?: string | null;
     limit: number;
     current: number;
     percentage: number;
@@ -1600,6 +1618,7 @@ export class DashboardController {
       apiKeyName: s.apiKeyName,
       apiKeyId: s.apiKeyId,
       namespaceId: s.namespaceId,
+      teamId: s.teamId ?? null,
       limit: s.limit,
       current: this.serializeBudgetCurrent(s.type, s.current),
       percentage: Number((s.percentage * 100).toFixed(1)),
@@ -1726,6 +1745,88 @@ export class DashboardController {
     return comparison;
   }
 
+  @Get('teams')
+  @ApiTags('Teams')
+  @ApiOperation({ summary: 'List local OSS teams and usage summaries' })
+  @ApiOkResponse({ description: 'Local teams with policy, budget, rate-limit, and usage metadata.' })
+  async getTeams() {
+    const teams = await this.teams.list();
+    return {
+      teams,
+      mode: 'local_only',
+      enterprise_features: {
+        workspace: false,
+        sso: false,
+        scim: false,
+        org_billing: false,
+      },
+    };
+  }
+
+  @Post('teams')
+  @ApiTags('Teams')
+  @ApiOperation({ summary: 'Create a local OSS team policy' })
+  @ApiBody({ type: CreateTeamDto })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async createTeam(@Body() body: CreateTeamDto) {
+    const created = await this.teams.create(body);
+    await this.configAudit.recordManagementEvent({
+      action: 'team.create',
+      target: `team:${created.id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+      afterSummary: this.teamAuditSummary(created),
+    });
+    return {
+      success: true,
+      message: 'Team created',
+      item: created,
+    };
+  }
+
+  @Put('teams/:id')
+  @ApiTags('Teams')
+  @ApiOperation({ summary: 'Update a local OSS team policy' })
+  @ApiParam({ name: 'id', example: 'team_01h...' })
+  @ApiBody({ type: UpdateTeamDto })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async updateTeam(
+    @Param('id') id: string,
+    @Body() body: UpdateTeamDto,
+  ) {
+    const before = await this.teams.getSummary(id);
+    const updated = await this.teams.update(id, body);
+    await this.configAudit.recordManagementEvent({
+      action: 'team.update',
+      target: `team:${id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+      beforeSummary: this.teamAuditSummary(before),
+      afterSummary: this.teamAuditSummary(updated),
+      metadata: { fields: Object.keys(body || {}) },
+    });
+    return {
+      success: true,
+      message: 'Team updated',
+      item: updated,
+    };
+  }
+
+  @Delete('teams/:id')
+  @ApiTags('Teams')
+  @ApiOperation({ summary: 'Delete a local OSS team policy' })
+  @ApiParam({ name: 'id', example: 'team_01h...' })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async deleteTeam(@Param('id') id: string) {
+    const before = await this.teams.getSummary(id);
+    await this.teams.remove(id);
+    await this.configAudit.recordManagementEvent({
+      action: 'team.delete',
+      target: `team:${id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+      beforeSummary: this.teamAuditSummary(before),
+    });
+    return { success: true, message: 'Team deleted' };
+  }
+
   @Get('api-keys')
   @ApiTags('API Keys')
   @ApiOperation({ summary: 'List Dashboard-managed Gateway API keys' })
@@ -1841,6 +1942,8 @@ export class DashboardController {
     daily_token_limit: number | null;
     daily_cost_limit: number | null;
     rate_limit_per_minute: number | null;
+    team_id?: string | null;
+    team_name?: string | null;
   }) {
     return {
       id: key.id,
@@ -1848,6 +1951,8 @@ export class DashboardController {
       status: key.status,
       key_prefix: key.key_prefix,
       namespace_id: key.namespace_id,
+      team_id: key.team_id || null,
+      team_name: key.team_name || null,
       allow_auto: key.allow_auto,
       allow_direct: key.allow_direct,
       allowed_nodes: key.allowed_nodes,
@@ -1860,6 +1965,43 @@ export class DashboardController {
       },
       rate_limit_per_minute: key.rate_limit_per_minute,
       secret: 'redacted',
+    };
+  }
+
+  private teamAuditSummary(team: {
+    id: string;
+    name: string;
+    status: string;
+    namespace_id: string | null;
+    allowed_nodes: string[];
+    allowed_models: string[];
+    allowed_endpoints: string[];
+    allowed_modalities: string[];
+    daily_token_limit: number | null;
+    daily_cost_limit: number | null;
+    rate_limit_per_minute: number | null;
+  }) {
+    return {
+      id: team.id,
+      name: team.name,
+      status: team.status,
+      namespace_id: team.namespace_id,
+      allowed_nodes: team.allowed_nodes,
+      allowed_models: team.allowed_models,
+      allowed_endpoints: team.allowed_endpoints,
+      allowed_modalities: team.allowed_modalities,
+      budget: {
+        daily_token_limit: team.daily_token_limit,
+        daily_cost_limit: team.daily_cost_limit,
+      },
+      rate_limit_per_minute: team.rate_limit_per_minute,
+      mode: 'local_only',
+      enterprise: {
+        sso: false,
+        scim: false,
+        workspace: false,
+      },
+      secret: 'not_applicable',
     };
   }
 

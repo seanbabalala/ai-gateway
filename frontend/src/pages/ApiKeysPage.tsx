@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   ShieldOff,
   Trash2,
+  Users,
   X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -43,17 +44,23 @@ import { SkeletonTable } from '@/components/ui/skeleton'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNodes } from '@/hooks/use-nodes'
 import { useNamespaces } from '@/hooks/use-namespaces'
+import { useTeams } from '@/hooks/use-teams'
 import {
   useCreateGatewayApiKey,
+  useCreateTeam,
   useDeleteGatewayApiKey,
+  useDeleteTeam,
   useRotateGatewayApiKey,
+  useUpdateTeam,
   useUpdateGatewayApiKey,
 } from '@/hooks/use-mutations'
 import { cn, formatCost, formatDate, formatNumber } from '@/lib/utils'
 import type {
   CreateGatewayApiKeyRequest,
+  CreateTeamRequest,
   GatewayApiKey,
   GatewayApiKeyMutationResponse,
+  LocalTeam,
 } from '@/types/api'
 
 interface KeyFormState {
@@ -61,6 +68,20 @@ interface KeyFormState {
   description: string
   allow_auto: boolean
   allow_direct: boolean
+  allowed_nodes: string[]
+  allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
+  namespace_id: string
+  team_id: string
+  daily_token_limit: string
+  daily_cost_limit: string
+  rate_limit_per_minute: string
+}
+
+interface TeamFormState {
+  name: string
+  description: string
   allowed_nodes: string[]
   allowed_models: string[]
   allowed_endpoints: string[]
@@ -113,6 +134,20 @@ const emptyForm: KeyFormState = {
   allowed_endpoints: [],
   allowed_modalities: [],
   namespace_id: '',
+  team_id: '',
+  daily_token_limit: '',
+  daily_cost_limit: '',
+  rate_limit_per_minute: '',
+}
+
+const emptyTeamForm: TeamFormState = {
+  name: '',
+  description: '',
+  allowed_nodes: [],
+  allowed_models: [],
+  allowed_endpoints: [],
+  allowed_modalities: [],
+  namespace_id: '',
   daily_token_limit: '',
   daily_cost_limit: '',
   rate_limit_per_minute: '',
@@ -159,6 +194,7 @@ function buildPayload(form: KeyFormState): CreateGatewayApiKeyRequest {
     allowed_endpoints: form.allowed_endpoints,
     allowed_modalities: form.allowed_modalities,
     namespace_id: form.namespace_id || null,
+    team_id: form.team_id || null,
     daily_token_limit: numberOrNull(form.daily_token_limit),
     daily_cost_limit: numberOrNull(form.daily_cost_limit),
     rate_limit_per_minute: numberOrNull(form.rate_limit_per_minute),
@@ -176,9 +212,40 @@ function formFromKey(key: GatewayApiKey): KeyFormState {
     allowed_endpoints: key.allowed_endpoints,
     allowed_modalities: key.allowed_modalities,
     namespace_id: key.namespace_id || '',
+    team_id: key.team_id || '',
     daily_token_limit: key.daily_token_limit?.toString() || '',
     daily_cost_limit: key.daily_cost_limit?.toString() || '',
     rate_limit_per_minute: key.rate_limit_per_minute?.toString() || '',
+  }
+}
+
+function buildTeamPayload(form: TeamFormState): CreateTeamRequest {
+  return {
+    name: form.name.trim(),
+    description: form.description.trim() || null,
+    allowed_nodes: form.allowed_nodes,
+    allowed_models: form.allowed_models,
+    allowed_endpoints: form.allowed_endpoints,
+    allowed_modalities: form.allowed_modalities,
+    namespace_id: form.namespace_id || null,
+    daily_token_limit: numberOrNull(form.daily_token_limit),
+    daily_cost_limit: numberOrNull(form.daily_cost_limit),
+    rate_limit_per_minute: numberOrNull(form.rate_limit_per_minute),
+  }
+}
+
+function formFromTeam(team: LocalTeam): TeamFormState {
+  return {
+    name: team.name,
+    description: team.description || '',
+    allowed_nodes: team.allowed_nodes,
+    allowed_models: team.allowed_models,
+    allowed_endpoints: team.allowed_endpoints,
+    allowed_modalities: team.allowed_modalities,
+    namespace_id: team.namespace_id || '',
+    daily_token_limit: team.daily_token_limit?.toString() || '',
+    daily_cost_limit: team.daily_cost_limit?.toString() || '',
+    rate_limit_per_minute: team.rate_limit_per_minute?.toString() || '',
   }
 }
 
@@ -450,6 +517,7 @@ function KeyFormDialog({
   initial,
   nodes,
   namespaces,
+  teams,
   onClose,
   onSubmit,
   pending,
@@ -464,6 +532,7 @@ function KeyFormDialog({
     models: string[]
   }[]
   namespaces: { id: string; name?: string }[]
+  teams: { id: string; name: string; status: 'active' | 'disabled' }[]
   onClose: () => void
   onSubmit: (form: KeyFormState) => void
   pending: boolean
@@ -529,6 +598,18 @@ function KeyFormDialog({
     ],
     [namespaces, t],
   )
+  const teamOptions = useMemo(
+    () => [
+      { value: '', label: t('form.noTeam') },
+      ...teams.map((team) => ({
+        value: team.id,
+        label: team.status === 'active'
+          ? team.name
+          : `${team.name} (${t(`status.${team.status}`)})`,
+      })),
+    ],
+    [teams, t],
+  )
   const visibleModelValues = useMemo(() => new Set(modelOptions.map((opt) => opt.value)), [modelOptions])
 
   useEffect(() => {
@@ -586,6 +667,21 @@ function KeyFormDialog({
               onChange={(namespace_id) => setForm((prev) => ({ ...prev, namespace_id }))}
               className="w-full"
             />
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('form.team')}
+            </label>
+            <Select
+              options={teamOptions}
+              value={form.team_id}
+              onChange={(team_id) => setForm((prev) => ({ ...prev, team_id }))}
+              className="w-full"
+            />
+            <div className="text-[11px] leading-5 text-[var(--foreground-dim)]">
+              {t('form.teamDescription')}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -732,20 +828,274 @@ function KeyFormDialog({
   )
 }
 
+function TeamFormDialog({
+  open,
+  mode,
+  initial,
+  nodes,
+  namespaces,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  open: boolean
+  mode: 'create' | 'edit'
+  initial: TeamFormState
+  nodes: {
+    id: string
+    name: string
+    protocol: string
+    models: string[]
+  }[]
+  namespaces: { id: string; name?: string }[]
+  onClose: () => void
+  onSubmit: (form: TeamFormState) => void
+  pending: boolean
+}) {
+  const { t } = useTranslation('apiKeys')
+  const [form, setForm] = useState<TeamFormState>(initial)
+  const nodeOptions = useMemo<PickerOption[]>(
+    () =>
+      nodes.map((node) => ({
+        value: node.id,
+        label: node.name || node.id,
+        description: t('form.nodeDescription', { id: node.id, protocol: node.protocol, count: node.models.length }),
+      })),
+    [nodes, t],
+  )
+  const endpointOptions = useMemo<PickerOption[]>(
+    () =>
+      API_KEY_ENDPOINTS.map((endpoint) => ({
+        value: endpoint,
+        label: t(`endpoints.${endpoint}`),
+        description: t(`endpointsDescription.${endpoint}`),
+      })),
+    [t],
+  )
+  const modalityOptions = useMemo<PickerOption[]>(
+    () =>
+      API_KEY_MODALITIES.map((modality) => ({
+        value: modality,
+        label: t(`modalities.${modality}`),
+        description: t(`modalitiesDescription.${modality}`),
+      })),
+    [t],
+  )
+  const modelOptions = useMemo<PickerOption[]>(() => {
+    const allowedNodeSet = new Set(form.allowed_nodes)
+    const visibleNodes = allowedNodeSet.size > 0
+      ? nodes.filter((node) => allowedNodeSet.has(node.id))
+      : nodes
+    const byModel = new Map<string, Set<string>>()
+    for (const node of visibleNodes) {
+      for (const model of node.models) {
+        if (!byModel.has(model)) byModel.set(model, new Set())
+        byModel.get(model)!.add(node.id)
+      }
+    }
+    return Array.from(byModel.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([model, nodeIds]) => ({
+        value: model,
+        label: model,
+        description: Array.from(nodeIds).join(', '),
+      }))
+  }, [nodes, form.allowed_nodes])
+  const namespaceOptions = useMemo(
+    () => [
+      { value: '', label: t('form.noNamespace') },
+      ...namespaces.map((namespace) => ({
+        value: namespace.id,
+        label: namespace.name || namespace.id,
+      })),
+    ],
+    [namespaces, t],
+  )
+  const visibleModelValues = useMemo(() => new Set(modelOptions.map((opt) => opt.value)), [modelOptions])
+
+  useEffect(() => {
+    if (open) setForm(initial)
+  }, [open, initial])
+
+  useEffect(() => {
+    setForm((prev) => {
+      const allowedModels = prev.allowed_models.filter((model) => visibleModelValues.has(model))
+      return allowedModels.length === prev.allowed_models.length
+        ? prev
+        : { ...prev, allowed_models: allowedModels }
+    })
+  }, [visibleModelValues])
+
+  const canSubmit = form.name.trim().length > 0
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{mode === 'create' ? t('teams.form.createTitle') : t('teams.form.editTitle')}</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-5">
+          <div className="grid gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('form.name')}
+            </label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder={t('teams.form.namePlaceholder')}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('form.description')}
+            </label>
+            <Input
+              value={form.description}
+              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+              placeholder={t('teams.form.descriptionPlaceholder')}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('form.namespace')}
+            </label>
+            <Select
+              options={namespaceOptions}
+              value={form.namespace_id}
+              onChange={(namespace_id) => setForm((prev) => ({ ...prev, namespace_id }))}
+              className="w-full"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <MultiResourcePicker
+              label={t('form.allowedUpstreams')}
+              options={nodeOptions}
+              value={form.allowed_nodes}
+              allLabel={t('form.allUpstreams')}
+              emptyLabel={t('form.allConfiguredUpstreams')}
+              searchPlaceholder={t('form.searchUpstreams')}
+              onChange={(allowed_nodes) =>
+                setForm((prev) => ({
+                  ...prev,
+                  allowed_nodes,
+                  allowed_models: prev.allowed_models.filter((model) => {
+                    if (allowed_nodes.length === 0) return true
+                    return nodes
+                      .filter((node) => allowed_nodes.includes(node.id))
+                      .some((node) => node.models.includes(model))
+                  }),
+                }))
+              }
+            />
+            <MultiResourcePicker
+              label={t('form.allowedModels')}
+              options={modelOptions}
+              value={form.allowed_models}
+              allLabel={t('form.allModels')}
+              emptyLabel={t('form.allModelsInAllowedUpstreams')}
+              searchPlaceholder={t('form.searchModels')}
+              onChange={(allowed_models) => setForm((prev) => ({ ...prev, allowed_models }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <MultiResourcePicker
+              label={t('form.allowedEndpoints')}
+              options={endpointOptions}
+              value={form.allowed_endpoints}
+              allLabel={t('form.allEndpoints')}
+              emptyLabel={t('form.allGatewayEndpoints')}
+              searchPlaceholder={t('form.searchEndpoints')}
+              onChange={(allowed_endpoints) => setForm((prev) => ({ ...prev, allowed_endpoints }))}
+            />
+            <MultiResourcePicker
+              label={t('form.allowedModalities')}
+              options={modalityOptions}
+              value={form.allowed_modalities}
+              allLabel={t('form.allModalities')}
+              emptyLabel={t('form.allGatewayModalities')}
+              searchPlaceholder={t('form.searchModalities')}
+              onChange={(allowed_modalities) => setForm((prev) => ({ ...prev, allowed_modalities }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                {t('form.dailyTokens')}
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={form.daily_token_limit}
+                onChange={(e) => setForm((prev) => ({ ...prev, daily_token_limit: e.target.value }))}
+                placeholder={t('form.unlimited')}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                {t('form.dailyCost')}
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.daily_cost_limit}
+                onChange={(e) => setForm((prev) => ({ ...prev, daily_cost_limit: e.target.value }))}
+                placeholder={t('form.unlimited')}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                {t('form.rpm')}
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={form.rate_limit_per_minute}
+                onChange={(e) => setForm((prev) => ({ ...prev, rate_limit_per_minute: e.target.value }))}
+                placeholder={t('form.global')}
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t('actions.cancel')}</Button>
+          <Button disabled={!canSubmit || pending} onClick={() => onSubmit(form)}>
+            {mode === 'create' ? t('teams.actions.createTeam') : t('actions.saveChanges')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ApiKeysPage() {
   const { t } = useTranslation('apiKeys')
   const { data, isLoading, isError, error, refetch } = useApiKeys()
   const { data: nodesData } = useNodes()
   const { data: namespacesData } = useNamespaces()
+  const { data: teamsData } = useTeams()
   const createKey = useCreateGatewayApiKey()
   const updateKey = useUpdateGatewayApiKey()
   const rotateKey = useRotateGatewayApiKey()
   const deleteKey = useDeleteGatewayApiKey()
+  const createTeam = useCreateTeam()
+  const updateTeam = useUpdateTeam()
+  const deleteTeam = useDeleteTeam()
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<GatewayApiKey | null>(null)
+  const [teamCreateOpen, setTeamCreateOpen] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<LocalTeam | null>(null)
   const [created, setCreated] = useState<GatewayApiKeyMutationResponse | null>(null)
 
   const keys = data?.items || []
+  const teams = teamsData?.teams || []
   const nodes = useMemo(
     () => (nodesData?.nodes || []).map((node) => ({
       ...node,
@@ -764,6 +1114,7 @@ export function ApiKeysPage() {
     }),
     { calls: 0, errors: 0, cost: 0, active: 0 },
   )
+  const activeTeams = teams.filter((team) => team.status === 'active').length
   const errorRate = totals.calls > 0 ? totals.errors / totals.calls : 0
 
   if (isError) {
@@ -777,13 +1128,27 @@ export function ApiKeysPage() {
         description={t('apiKeys.description')}
         icon={KeyRound}
       >
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" />
-          {t('actions.newKey')}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTeamCreateOpen(true)}>
+            <Users className="h-4 w-4" />
+            {t('teams.actions.newTeam')}
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {t('actions.newKey')}
+          </Button>
+        </div>
       </PageHeader>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <CardStatic>
+          <CardContent className="pt-6">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('summary.activeTeams')}
+            </div>
+            <div className="mt-2 text-3xl font-bold text-[var(--foreground)]">{activeTeams}</div>
+          </CardContent>
+        </CardStatic>
         <CardStatic>
           <CardContent className="pt-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
@@ -818,6 +1183,125 @@ export function ApiKeysPage() {
           </CardContent>
         </CardStatic>
       </div>
+
+      <CardStatic>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>{t('teams.table.title')}</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => setTeamCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              {t('teams.actions.createTeam')}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {teams.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title={t('teams.empty.title')}
+              description={t('teams.empty.description')}
+              action={
+                <Button onClick={() => setTeamCreateOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  {t('teams.actions.createTeam')}
+                </Button>
+              }
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('table.name')}</TableHead>
+                  <TableHead>{t('table.permissions')}</TableHead>
+                  <TableHead className="text-right">{t('table.today')}</TableHead>
+                  <TableHead>{t('table.lastUsed')}</TableHead>
+                  <TableHead>{t('table.status')}</TableHead>
+                  <TableHead className="text-right">{t('table.actions')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {teams.map((team) => (
+                  <TableRow key={team.id}>
+                    <TableCell>
+                      <div className="font-medium text-[var(--foreground)]">{team.name}</div>
+                      {team.description && (
+                        <div className="mt-0.5 text-[11px] text-[var(--foreground-dim)]">{team.description}</div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex max-w-[360px] flex-wrap gap-1.5">
+                        {team.namespace_id && <Badge variant="blue">{team.namespace_name || team.namespace_id}</Badge>}
+                        {team.allowed_nodes.length > 0 && <Badge variant="blue">{t('permissions.upstreams', { count: team.allowed_nodes.length })}</Badge>}
+                        {team.allowed_models.length > 0 && <Badge variant="purple">{t('permissions.models', { count: team.allowed_models.length })}</Badge>}
+                        {team.allowed_endpoints.length > 0 && <Badge variant="zinc">{t('permissions.endpoints', { count: team.allowed_endpoints.length })}</Badge>}
+                        {team.allowed_modalities.length > 0 && <Badge variant="zinc">{t('permissions.modalities', { count: team.allowed_modalities.length })}</Badge>}
+                      </div>
+                      <div className="mt-2 text-[10px] text-[var(--foreground-dim)]">
+                        {team.daily_token_limit || team.daily_cost_limit || team.rate_limit_per_minute
+                          ? [
+                              team.daily_token_limit ? t('limits.tokens', { value: formatNumber(team.daily_token_limit) }) : null,
+                              team.daily_cost_limit ? t('limits.cost', { value: formatCost(team.daily_cost_limit) }) : null,
+                              team.rate_limit_per_minute ? t('limits.rpm', { value: formatNumber(team.rate_limit_per_minute) }) : null,
+                            ].filter(Boolean).join(' · ')
+                          : t('teams.limits.inherited')}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="font-mono text-[11px] text-[var(--foreground)]">{formatCost(team.today.cost_usd)}</div>
+                      <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
+                        {t('table.calls', { count: formatNumber(team.today.calls) })}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
+                        {t('table.errorRate', { rate: pct(team.today.error_rate) })}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-[12px] text-[var(--foreground-muted)]">
+                      {team.last_used_at ? formatDate(team.last_used_at) : t('table.never')}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={team.status === 'active' ? 'emerald' : 'zinc'}>
+                        {t(`status.${team.status}`, { defaultValue: team.status })}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => setEditingTeam(team)} title={t('teams.actions.editTeam')}>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={team.status === 'active' ? t('teams.actions.disableTeam') : t('teams.actions.enableTeam')}
+                          onClick={() =>
+                            updateTeam.mutate({
+                              id: team.id,
+                              data: { status: team.status === 'active' ? 'disabled' : 'active' },
+                            })
+                          }
+                        >
+                          {team.status === 'active' ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t('teams.actions.deleteTeam')}
+                          onClick={() => {
+                            if (confirm(t('teams.confirm.deleteTeam', { name: team.name }))) {
+                              deleteTeam.mutate(team.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </CardStatic>
 
       <CardStatic>
         <CardHeader>
@@ -870,6 +1354,7 @@ export function ApiKeysPage() {
                       <div className="flex max-w-[360px] flex-wrap gap-1.5">
                         {key.allow_auto ? <Badge variant="emerald">{t('permissions.auto')}</Badge> : <Badge variant="zinc">{t('permissions.noAuto')}</Badge>}
                         {key.allow_direct ? <Badge variant="amber">{t('permissions.direct')}</Badge> : <Badge variant="zinc">{t('permissions.noDirect')}</Badge>}
+                        {key.team_id && <Badge variant="purple">{key.team_name || key.team_id}</Badge>}
                         {key.namespace_id && <Badge variant="blue">{key.namespace_name || key.namespace_id}</Badge>}
                         {key.allowed_nodes.length > 0 && <Badge variant="blue">{t('permissions.upstreams', { count: key.allowed_nodes.length })}</Badge>}
                         {key.allowed_models.length > 0 && <Badge variant="purple">{t('permissions.models', { count: key.allowed_models.length })}</Badge>}
@@ -966,6 +1451,7 @@ export function ApiKeysPage() {
         initial={emptyForm}
         nodes={nodes}
         namespaces={namespaces}
+        teams={teams}
         pending={createKey.isPending}
         onClose={() => setCreateOpen(false)}
         onSubmit={(form) => {
@@ -984,6 +1470,7 @@ export function ApiKeysPage() {
         initial={editing ? formFromKey(editing) : emptyForm}
         nodes={nodes}
         namespaces={namespaces}
+        teams={teams}
         pending={updateKey.isPending}
         onClose={() => setEditing(null)}
         onSubmit={(form) => {
@@ -991,6 +1478,38 @@ export function ApiKeysPage() {
           updateKey.mutate(
             { id: editing.id, data: buildPayload(form) },
             { onSuccess: () => setEditing(null) },
+          )
+        }}
+      />
+
+      <TeamFormDialog
+        open={teamCreateOpen}
+        mode="create"
+        initial={emptyTeamForm}
+        nodes={nodes}
+        namespaces={namespaces}
+        pending={createTeam.isPending}
+        onClose={() => setTeamCreateOpen(false)}
+        onSubmit={(form) => {
+          createTeam.mutate(buildTeamPayload(form), {
+            onSuccess: () => setTeamCreateOpen(false),
+          })
+        }}
+      />
+
+      <TeamFormDialog
+        open={!!editingTeam}
+        mode="edit"
+        initial={editingTeam ? formFromTeam(editingTeam) : emptyTeamForm}
+        nodes={nodes}
+        namespaces={namespaces}
+        pending={updateTeam.isPending}
+        onClose={() => setEditingTeam(null)}
+        onSubmit={(form) => {
+          if (!editingTeam) return
+          updateTeam.mutate(
+            { id: editingTeam.id, data: buildTeamPayload(form) },
+            { onSuccess: () => setEditingTeam(null) },
           )
         }}
       />

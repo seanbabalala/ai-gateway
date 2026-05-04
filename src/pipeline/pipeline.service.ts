@@ -4893,10 +4893,29 @@ export class PipelineService {
 
   private async checkBudget(canonical: LoggableCanonicalRequest): Promise<void> {
     if (canonical.metadata.namespace_id) {
+      if (canonical.metadata.team_id) {
+        await this.budgetService.check(
+          canonical.metadata.api_key_name || undefined,
+          canonical.metadata.api_key_id || undefined,
+          canonical.metadata.namespace_id,
+          canonical.metadata.team_id,
+        );
+      } else {
+        await this.budgetService.check(
+          canonical.metadata.api_key_name || undefined,
+          canonical.metadata.api_key_id || undefined,
+          canonical.metadata.namespace_id,
+        );
+      }
+      return;
+    }
+
+    if (canonical.metadata.team_id) {
       await this.budgetService.check(
         canonical.metadata.api_key_name || undefined,
         canonical.metadata.api_key_id || undefined,
-        canonical.metadata.namespace_id,
+        undefined,
+        canonical.metadata.team_id,
       );
       return;
     }
@@ -4923,12 +4942,32 @@ export class PipelineService {
     const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
 
     if (canonical.metadata.namespace_id) {
+      if (canonical.metadata.team_id) {
+        await this.budgetService.record(
+          totalTokens,
+          costUsd,
+          canonical.metadata.api_key_name || undefined,
+          canonical.metadata.api_key_id || undefined,
+          canonical.metadata.namespace_id,
+          canonical.metadata.team_id,
+        );
+      } else {
+        await this.budgetService.record(
+          totalTokens,
+          costUsd,
+          canonical.metadata.api_key_name || undefined,
+          canonical.metadata.api_key_id || undefined,
+          canonical.metadata.namespace_id,
+        );
+      }
+    } else if (canonical.metadata.team_id) {
       await this.budgetService.record(
         totalTokens,
         costUsd,
         canonical.metadata.api_key_name || undefined,
         canonical.metadata.api_key_id || undefined,
-        canonical.metadata.namespace_id,
+        undefined,
+        canonical.metadata.team_id,
       );
     } else if (canonical.metadata.api_key_id) {
       await this.budgetService.record(
@@ -5090,6 +5129,7 @@ export class PipelineService {
         api_key_name: params.canonical.metadata.api_key_name || null,
         api_key_id: params.canonical.metadata.api_key_id || null,
         namespace_id: params.canonical.metadata.namespace_id || null,
+        team_id: params.canonical.metadata.team_id || null,
         retry_count: params.retryCount || 0,
         experiment_group: params.experimentGroup || null,
       });

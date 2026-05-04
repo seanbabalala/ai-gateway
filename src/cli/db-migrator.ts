@@ -8,6 +8,7 @@ import {
   ConfigAuditEvent,
   ConfigVersion,
   GatewayApiKey,
+  LocalTeam,
   NodeStatus,
   BatchJob,
   ProviderCompatibilityResult,
@@ -18,6 +19,7 @@ import {
 
 export type DbMigrationTableName =
   | "gateway_api_keys"
+  | "local_teams"
   | "budget_rules"
   | "node_status"
   | "call_logs"
@@ -37,6 +39,7 @@ interface MigrationTableDefinition {
 
 const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "gateway_api_keys", entity: GatewayApiKey },
+  { table: "local_teams", entity: LocalTeam },
   { table: "budget_rules", entity: BudgetRule, generatedSequenceColumn: "id" },
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
@@ -195,6 +198,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         BudgetRule,
         NodeStatus,
         GatewayApiKey,
+        LocalTeam,
         RouteDecisionLog,
         ShadowTrafficResult,
         ConfigVersion,
@@ -541,6 +545,21 @@ function normalizeRow(
     return normalizeFields(row, {
       allow_auto: toBoolean,
       allow_direct: toBoolean,
+      allowed_nodes: toJsonArrayOrNull,
+      allowed_models: toJsonArrayOrNull,
+      allowed_endpoints: toJsonArrayOrNull,
+      allowed_modalities: toJsonArrayOrNull,
+      daily_token_limit: toNullableNumber,
+      daily_cost_limit: toNullableNumber,
+      rate_limit_per_minute: toNullableNumber,
+      last_used_at: toNullableDate,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "local_teams") {
+    return normalizeFields(row, {
       allowed_nodes: toJsonArrayOrNull,
       allowed_models: toJsonArrayOrNull,
       allowed_endpoints: toJsonArrayOrNull,

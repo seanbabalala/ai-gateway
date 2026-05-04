@@ -77,6 +77,7 @@ function makeService(seed: any[] = [], configOverrides: Record<string, unknown> 
     ...configOverrides,
   });
   const apiKeyRepo = makeRepo(seed);
+  const teamRepo = makeRepo<any>();
   const budgetRepo = makeRepo<any>();
   const callLogRepo = makeCallLogRepo({
     calls: '2',
@@ -88,10 +89,11 @@ function makeService(seed: any[] = [], configOverrides: Record<string, unknown> 
   const service = new GatewayApiKeyService(
     config,
     apiKeyRepo as any,
+    teamRepo as any,
     budgetRepo as any,
     callLogRepo as any,
   );
-  return { service, apiKeyRepo, budgetRepo, callLogRepo };
+  return { service, apiKeyRepo, teamRepo, budgetRepo, callLogRepo };
 }
 
 describe('GatewayApiKeyService', () => {
@@ -164,6 +166,8 @@ describe('GatewayApiKeyService', () => {
       allowed_models: [],
       allowed_endpoints: [],
       allowed_modalities: [],
+      team_id: null,
+      team_name: null,
       rate_limit_per_minute: null,
     }));
 
@@ -204,8 +208,113 @@ describe('GatewayApiKeyService', () => {
       allowed_models: ['gpt-4o'],
       allowed_endpoints: ['responses'],
       allowed_modalities: ['text'],
+      team_id: null,
+      team_name: null,
       rate_limit_per_minute: 25,
     }));
+  });
+
+  it('applies local team restrictions before namespace restrictions and updates team usage metadata', async () => {
+    const { service, teamRepo } = makeService([], {
+      namespaces: [
+        {
+          id: 'team-alpha',
+          name: 'Team Alpha',
+          allowed_nodes: ['openai'],
+          allowed_models: ['gpt-4o'],
+          rate_limit: { requests_per_minute: 25 },
+        },
+      ],
+    });
+    teamRepo._store.push({
+      id: 'team-1',
+      name: 'Platform',
+      description: null,
+      status: 'active',
+      namespace_id: 'team-alpha',
+      allowed_nodes: ['openai', 'anthropic'],
+      allowed_models: ['gpt-4o', 'claude-sonnet'],
+      allowed_endpoints: ['responses'],
+      allowed_modalities: ['text'],
+      daily_token_limit: null,
+      daily_cost_limit: null,
+      rate_limit_per_minute: 80,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    const created = await service.create({
+      name: 'Team-bound',
+      team_id: 'team-1',
+      allowed_nodes: ['openai', 'groq'],
+      allowed_models: ['gpt-4o', 'llama-3.1'],
+      allowed_endpoints: ['responses', 'embeddings'],
+      allowed_modalities: ['text', 'embedding'],
+      rate_limit_per_minute: 100,
+    });
+
+    const context = await service.findContextByPlainKey(created.key);
+
+    expect(context).toEqual(expect.objectContaining({
+      team_id: 'team-1',
+      team_name: 'Platform',
+      namespace_id: 'team-alpha',
+      namespace_name: 'Team Alpha',
+      allowed_nodes: ['openai'],
+      allowed_models: ['gpt-4o'],
+      allowed_endpoints: ['responses'],
+      allowed_modalities: ['text'],
+      rate_limit_per_minute: 25,
+    }));
+    expect(teamRepo._store[0].last_used_at).toBeInstanceOf(Date);
+  });
+
+  it('rejects keys bound to disabled local teams', async () => {
+    const plainKey = 'gw_sk_live_disabled_team_key';
+    const { service, teamRepo } = makeService([
+      {
+        id: 'key-disabled-team',
+        name: 'Disabled Team Key',
+        key_hash: createHash('sha256').update(plainKey).digest('hex'),
+        key_prefix: 'gw_sk_live_disabled..._key',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: false,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: [],
+        allowed_modalities: [],
+        namespace_id: null,
+        team_id: 'team-disabled',
+        daily_token_limit: null,
+        daily_cost_limit: null,
+        rate_limit_per_minute: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]);
+    teamRepo._store.push({
+      id: 'team-disabled',
+      name: 'Disabled Team',
+      status: 'disabled',
+      namespace_id: null,
+      allowed_nodes: [],
+      allowed_models: [],
+      allowed_endpoints: [],
+      allowed_modalities: [],
+      daily_token_limit: null,
+      daily_cost_limit: null,
+      rate_limit_per_minute: null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    await expect(service.create({
+      name: 'Blocked',
+      team_id: 'team-disabled',
+    })).rejects.toThrow(BadRequestException);
+    await expect(service.findContextByPlainKey(plainKey)).resolves.toBeNull();
+    await expect(service.getContextById('key-disabled-team')).rejects.toThrow(BadRequestException);
   });
 
   it('fails closed when a stored key references a namespace no longer in config', async () => {

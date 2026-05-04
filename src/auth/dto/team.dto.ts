@@ -1,6 +1,5 @@
 import {
   IsArray,
-  IsBoolean,
   IsIn,
   IsNumber,
   IsOptional,
@@ -10,28 +9,23 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { GatewayApiKeyStatus } from '../../database/entities/gateway-api-key.entity';
+import { LocalTeamStatus } from '../../database/entities/local-team.entity';
 
-export class CreateGatewayApiKeyDto {
-  @ApiProperty({ example: 'production-app', maxLength: 80 })
+export class CreateTeamDto {
+  @ApiProperty({ example: 'platform-team', maxLength: 80 })
   @IsString()
   @MaxLength(80)
   name!: string;
 
-  @ApiPropertyOptional({ example: 'Used by the production web app', nullable: true })
+  @ApiPropertyOptional({ example: 'Shared limits for the platform team', nullable: true })
   @IsOptional()
   @IsString()
   description?: string | null;
 
-  @ApiPropertyOptional({ default: true, description: 'Allow model: "auto" smart routing.' })
+  @ApiPropertyOptional({ example: 'production', nullable: true, description: 'Optional local OSS namespace binding.' })
   @IsOptional()
-  @IsBoolean()
-  allow_auto?: boolean;
-
-  @ApiPropertyOptional({ default: false, description: 'Allow direct model or node routing.' })
-  @IsOptional()
-  @IsBoolean()
-  allow_direct?: boolean;
+  @IsString()
+  namespace_id?: string | null;
 
   @ApiPropertyOptional({ type: [String], example: ['openai', 'anthropic'] })
   @IsOptional()
@@ -45,27 +39,17 @@ export class CreateGatewayApiKeyDto {
   @IsString({ each: true })
   allowed_models?: string[];
 
-  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings', 'mcp'] })
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   allowed_endpoints?: string[];
 
-  @ApiPropertyOptional({ type: [String], example: ['text', 'embedding', 'image'] })
+  @ApiPropertyOptional({ type: [String], example: ['text', 'image'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   allowed_modalities?: string[];
-
-  @ApiPropertyOptional({ example: 'team-alpha', nullable: true, description: 'Optional local OSS namespace binding.' })
-  @IsOptional()
-  @IsString()
-  namespace_id?: string | null;
-
-  @ApiPropertyOptional({ example: 'team_01h...', nullable: true, description: 'Optional local OSS team binding.' })
-  @IsOptional()
-  @IsString()
-  team_id?: string | null;
 
   @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
   @IsOptional()
@@ -89,14 +73,14 @@ export class CreateGatewayApiKeyDto {
   rate_limit_per_minute?: number | null;
 }
 
-export class UpdateGatewayApiKeyDto {
-  @ApiPropertyOptional({ example: 'production-app', maxLength: 80 })
+export class UpdateTeamDto {
+  @ApiPropertyOptional({ example: 'platform-team', maxLength: 80 })
   @IsOptional()
   @IsString()
   @MaxLength(80)
   name?: string;
 
-  @ApiPropertyOptional({ example: 'Used by the production web app', nullable: true })
+  @ApiPropertyOptional({ example: 'Shared limits for the platform team', nullable: true })
   @IsOptional()
   @IsString()
   description?: string | null;
@@ -104,17 +88,12 @@ export class UpdateGatewayApiKeyDto {
   @ApiPropertyOptional({ enum: ['active', 'disabled'], example: 'active' })
   @IsOptional()
   @IsIn(['active', 'disabled'])
-  status?: GatewayApiKeyStatus;
+  status?: LocalTeamStatus;
 
-  @ApiPropertyOptional({ description: 'Allow model: "auto" smart routing.' })
+  @ApiPropertyOptional({ example: 'production', nullable: true, description: 'Optional local OSS namespace binding.' })
   @IsOptional()
-  @IsBoolean()
-  allow_auto?: boolean;
-
-  @ApiPropertyOptional({ description: 'Allow direct model or node routing.' })
-  @IsOptional()
-  @IsBoolean()
-  allow_direct?: boolean;
+  @IsString()
+  namespace_id?: string | null;
 
   @ApiPropertyOptional({ type: [String], example: ['openai', 'anthropic'] })
   @IsOptional()
@@ -128,27 +107,17 @@ export class UpdateGatewayApiKeyDto {
   @IsString({ each: true })
   allowed_models?: string[];
 
-  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings', 'mcp'] })
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   allowed_endpoints?: string[];
 
-  @ApiPropertyOptional({ type: [String], example: ['text', 'embedding', 'image'] })
+  @ApiPropertyOptional({ type: [String], example: ['text'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   allowed_modalities?: string[];
-
-  @ApiPropertyOptional({ example: 'team-alpha', nullable: true, description: 'Optional local OSS namespace binding.' })
-  @IsOptional()
-  @IsString()
-  namespace_id?: string | null;
-
-  @ApiPropertyOptional({ example: 'team_01h...', nullable: true, description: 'Optional local OSS team binding.' })
-  @IsOptional()
-  @IsString()
-  team_id?: string | null;
 
   @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
   @IsOptional()
