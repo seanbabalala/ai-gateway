@@ -17,6 +17,28 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力；承接原 v0.7 backlog | 🚧 In Progress |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 安全治理）
+
+**v0.9 发布策略**：v0.7 不再单独发布，原 v0.7 backlog 迁移到 v0.9，并基于 v0.8.0 的 Provider Catalog、多模态入口、Video preview、Route Explanation 与 Dashboard localization 重新适配。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P1：兼容迁移工具扩展
+
+- **状态**：✅ Prompt v0.9 Migration Tools Expansion feature branch 已完成
+- **目标**：降低从 LiteLLM、New API、One API 迁移到 SiftGate OSS Data Plane 的配置成本，同时允许把 SiftGate 配置导出成相邻网关 scaffold，方便评估和回迁
+- **实现方案**：
+  - 保留 `siftgate migrate --from litellm --config ./litellm_config.yaml`
+  - 新增 `--from newapi` 与 `--from oneapi`，将 channel config 转为 SiftGate `gateway.config.yaml`
+  - 新增 `--to litellm|newapi|oneapi`，从 SiftGate `gateway.config.yaml` 生成 scaffold
+  - 默认不覆盖已有输出文件；`--force` 才允许覆盖，`--overwrite` 作为旧脚本兼容别名
+  - 映射 provider、model、base URL、API key env ref、fallback/router 设置和 v0.8 模型桶：`models`、`embedding_models`、`rerank_models`、`image_models`、`audio_models`、`video_models`、`realtime_models`
+  - 使用 Provider Catalog 生成 endpoint、pricing、capability、context/dimensions 等 hints，并在报告中标注 pricing/capability confidence
+  - 对无法准确映射的源字段写入 `manual_actions` 或 `partially_supported`，避免静默丢失
+  - 不复制 literal provider API key；改写为环境变量引用并写入手动处理项
+  - 补 LiteLLM、New API、One API、SiftGate v0.8 fixtures，以及 CLI、报告、overwrite protection 单测
 
 ---
 

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 compatibility migration expansion for the OSS Data Plane: `siftgate migrate` now imports LiteLLM, New API, and One API configs into SiftGate and exports SiftGate configs to LiteLLM/New API/One API scaffold YAML.
+- Migration reports now include compatible, partially supported, unsupported, manual actions, provider/model mapping notes, and pricing/capability confidence.
+- New migration fixtures and tests for LiteLLM, New API, One API, SiftGate v0.8 model buckets, reverse scaffold export, and overwrite protection.
+
+### Changed
+
+- `siftgate migrate` now supports `--to` and `--force`; `--overwrite` remains a backward-compatible alias.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

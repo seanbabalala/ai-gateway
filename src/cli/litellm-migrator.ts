@@ -17,8 +17,18 @@ export interface MigrationReportItem {
 
 export interface MigrationReport {
   compatible: MigrationReportItem[];
+  /** Fields that can be represented only as a scaffold or require behavior review. */
+  partially_supported: MigrationReportItem[];
+  /** Fields or entries that cannot be migrated safely. Alias of incompatible for older callers. */
+  unsupported: MigrationReportItem[];
   incompatible: MigrationReportItem[];
+  /** Operator follow-up items. Alias of manual for older callers. */
+  manual_actions: MigrationReportItem[];
   manual: MigrationReportItem[];
+  /** Provider/model mapping details preserved for review. */
+  mapping_notes: MigrationReportItem[];
+  pricing_confidence: 'high' | 'medium' | 'low';
+  capability_confidence: 'high' | 'medium' | 'low';
 }
 
 export interface LiteLlmMigrationResult {
@@ -219,6 +229,7 @@ export function migrateLiteLlmConfig(
     telemetry: { enabled: false },
   };
 
+  finalizeReport(report);
   const outputYaml = dumpGatewayConfig(config, report, sourcePath);
   return {
     sourcePath,
@@ -240,9 +251,20 @@ export function formatMigrationReport(result: LiteLlmMigrationResult): string {
     '',
     formatReportGroup('Compatible', result.report.compatible),
     '',
+    formatReportGroup('Partially supported', result.report.partially_supported),
+    '',
+    formatReportGroup('Unsupported', result.report.unsupported),
+    '',
     formatReportGroup('Incompatible', result.report.incompatible),
     '',
+    formatReportGroup('Manual actions', result.report.manual_actions),
+    '',
     formatReportGroup('Manual review', result.report.manual),
+    '',
+    formatReportGroup('Provider/model mapping notes', result.report.mapping_notes),
+    '',
+    `Pricing confidence: ${result.report.pricing_confidence}`,
+    `Capability confidence: ${result.report.capability_confidence}`,
   );
   return lines.join('\n');
 }
@@ -281,6 +303,10 @@ function normalizeModelEntry(
   report.compatible.push({
     path: `model_list[${index}]`,
     message: `Mapped LiteLLM model "${modelName}" to provider "${provider}" model "${upstreamModel}".`,
+  });
+  report.mapping_notes.push({
+    path: `model_list[${index}]`,
+    message: `provider=${provider}; source_model=${modelName}; upstream_model=${upstreamModel}`,
   });
 
   return {
@@ -686,8 +712,13 @@ function formatYamlReportComment(report: MigrationReport): string {
     '# ============================================================',
     '# Migration report summary',
     `# Compatible: ${report.compatible.length}`,
+    `# Partially supported: ${report.partially_supported.length}`,
+    `# Unsupported: ${report.unsupported.length}`,
     `# Incompatible: ${report.incompatible.length}`,
+    `# Manual actions: ${report.manual_actions.length}`,
     `# Manual review: ${report.manual.length}`,
+    `# Pricing confidence: ${report.pricing_confidence}`,
+    `# Capability confidence: ${report.capability_confidence}`,
     '# ============================================================',
     '',
   ];
@@ -804,5 +835,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function emptyReport(): MigrationReport {
-  return { compatible: [], incompatible: [], manual: [] };
+  return {
+    compatible: [],
+    partially_supported: [],
+    unsupported: [],
+    incompatible: [],
+    manual_actions: [],
+    manual: [],
+    mapping_notes: [],
+    pricing_confidence: 'low',
+    capability_confidence: 'low',
+  };
+}
+
+function finalizeReport(report: MigrationReport): MigrationReport {
+  if (report.unsupported.length === 0 && report.incompatible.length > 0) {
+    report.unsupported.push(...report.incompatible);
+  }
+  if (report.manual_actions.length === 0 && report.manual.length > 0) {
+    report.manual_actions.push(...report.manual);
+  }
+  if (report.pricing_confidence === 'low') {
+    report.pricing_confidence = report.manual.some((item) => item.path.startsWith('models_pricing'))
+      ? 'low'
+      : 'medium';
+  }
+  if (report.capability_confidence === 'low' && report.mapping_notes.length > 0) {
+    report.capability_confidence = 'medium';
+  }
+  return report;
 }
