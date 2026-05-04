@@ -118,13 +118,15 @@ auth:
 # ============================================================
 # Provider / Model Catalog Overrides (optional)
 # ============================================================
-# SiftGate ships a built-in static provider/model catalog for Dashboard
-# presets and config warnings. Keep provider API keys in nodes[].api_key
-# or environment variables, never in catalog.override.yaml.
+# SiftGate ships a built-in provider/model catalog for Dashboard presets,
+# config warnings, and price source status. Keep provider API keys in
+# nodes[].api_key or environment variables, never in catalog.override.yaml.
 #
 # CLI:
 #   npm run catalog -- list
 #   npm run catalog -- show openai
+#   npm run catalog -- sources
+#   npm run catalog -- refresh openrouter --out ./catalog.override.yaml
 #   npm run catalog -- import --file ./catalog.override.yaml
 #   npm run catalog -- validate
 #   npm run catalog -- validate --pricing
@@ -211,10 +213,11 @@ auth:
 # Each node represents one upstream provider account, deployment,
 # proxy route, or API endpoint. A node can expose one or more models.
 #
-# v0.8 includes a local static Provider / Model Catalog used by Dashboard
-# Add Node and `npm run validate:config`. v0.9 adds pricing hygiene and
+# v0.8 includes a local Provider / Model Catalog used by Dashboard
+# Add Node and `npm run validate:config`. v0.9 adds price source status and
 # cost-routing fallback from the merged built-in + override catalog. The catalog
-# is advisory and does not auto-update online. Built-in prices are often marked
+# is advisory; v0.9.2 can refresh OpenRouter into catalog.override.yaml while
+# other providers remain docs-review or operator-local workflows. Built-in prices are often marked
 # manual_review_required/low confidence, so production billing should still use
 # verified values in models_pricing or model_capabilities[].pricing below.
 #

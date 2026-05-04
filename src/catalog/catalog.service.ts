@@ -346,7 +346,7 @@ function validateOverrideProvider(
         ),
       );
     } else {
-      validateCatalogUrl(provider.base_url, `${basePath}.base_url`, issues);
+      validateCatalogUrl(provider.base_url, `${basePath}.base_url`, issues, 'Catalog provider base_url');
     }
   }
 
@@ -433,6 +433,7 @@ function validateCatalogUrl(
   value: string,
   issuePath: string,
   issues: CatalogIssue[],
+  label = 'Catalog URL',
 ): void {
   try {
     const url = new URL(value);
@@ -444,7 +445,7 @@ function validateCatalogUrl(
       issue(
         'error',
         'catalog_url_invalid',
-        'Catalog provider base_url must be an http(s) URL.',
+        `${label} must be an http(s) URL.`,
         issuePath,
       ),
     );
@@ -659,6 +660,20 @@ function validatePricing(
       ),
     );
   }
+  if (pricing.source_url !== undefined) {
+    if (!isNonEmptyString(pricing.source_url)) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_pricing_source_url_missing',
+          'pricing.source_url should be a non-empty URL when set.',
+          `${basePath}.source_url`,
+        ),
+      );
+    } else {
+      validateCatalogUrl(pricing.source_url, `${basePath}.source_url`, issues, 'pricing.source_url');
+    }
+  }
   if (!isNonEmptyString(pricing.last_updated)) {
     issues.push(
       issue(
@@ -675,6 +690,19 @@ function validatePricing(
         'catalog_pricing_last_updated_invalid',
         'pricing.last_updated should be an ISO date.',
         `${basePath}.last_updated`,
+      ),
+    );
+  }
+  if (
+    pricing.retrieved_at !== undefined &&
+    (!isNonEmptyString(pricing.retrieved_at) || Number.isNaN(Date.parse(pricing.retrieved_at)))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_retrieved_at_invalid',
+        'pricing.retrieved_at should be an ISO date/time when set.',
+        `${basePath}.retrieved_at`,
       ),
     );
   }
@@ -1059,7 +1087,7 @@ export function collectCatalogPricingHygieneIssues(
           issue(
             'info',
             'catalog_pricing_placeholder',
-            `Catalog pricing for "${model.id}" is placeholder or manual-review metadata.`,
+            `Catalog pricing for "${model.id}" is reference/manual-review metadata.`,
             modelPath,
           ),
         );

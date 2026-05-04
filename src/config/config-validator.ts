@@ -4285,7 +4285,7 @@ function validateCatalogPricingForConfiguredModel(
       issue(
         'warning',
         'catalog_pricing_placeholder',
-        `Catalog pricing for "${catalogModel.id}" is placeholder/manual-review metadata; add explicit pricing for production cost routing.`,
+        `Catalog pricing for "${catalogModel.id}" is reference/manual-review metadata; add explicit pricing for production cost routing.`,
         modelPath,
       ),
     );

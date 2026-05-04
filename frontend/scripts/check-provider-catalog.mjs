@@ -19,11 +19,20 @@ for (const expected of [
   'pricing_hygiene',
   'pricing_confidence',
   'stale_after_days',
+  'source_url',
   'catalogPage.status.stale',
+  'catalogPage.sources.openrouterApi',
+  'catalogPage.confidenceLevels.high',
+  'catalogPage.refreshSources.title',
+  'catalogPage.refreshSources.modes.operator_local',
 ]) {
   if (!page.includes(expected) && !apiTypes.includes(expected) && !enNodes.includes(expected)) {
-    throw new Error(`Provider Catalog pricing hygiene marker missing: ${expected}`)
+    throw new Error(`Provider Catalog price source status marker missing: ${expected}`)
   }
 }
 
-console.log('Open-source Dashboard Provider Catalog page validated.')
+if (enNodes.includes('Pricing hygiene')) {
+  throw new Error('Provider Catalog page copy should use pricing source/status wording, not "pricing hygiene".')
+}
+
+console.log('Open-source Dashboard Provider Catalog source status page validated.')

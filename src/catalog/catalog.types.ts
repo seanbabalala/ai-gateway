@@ -27,7 +27,9 @@ export interface CatalogPricing {
   units?: Partial<Record<CatalogPricingDimension, string>>;
   currency?: string;
   source: string;
+  source_url?: string;
   last_updated: string;
+  retrieved_at?: string;
   manual_review_required: boolean;
   stale_after_days?: number;
   pricing_confidence?: CatalogPricingConfidence;

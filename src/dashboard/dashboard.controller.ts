@@ -56,6 +56,7 @@ import { RoutingRecommendationService } from '../routing/routing-recommendation.
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 import { assessCatalogPricing, CatalogService } from '../catalog/catalog.service';
+import { getCatalogRefreshSources } from '../catalog/catalog-refresh';
 import type { CatalogModel, CatalogProvider } from '../catalog/catalog.types';
 import type { Modality } from '../config/modality';
 import type { ProviderCompatibilityCapability } from '../database/entities';
@@ -1548,6 +1549,7 @@ export class DashboardController {
     return {
       source: 'builtin_static',
       auto_update: false,
+      refresh_sources: getCatalogRefreshSources(),
       providers: loaded.catalog.providers.map(toDashboardCatalogProvider),
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
@@ -1582,6 +1584,7 @@ export class DashboardController {
     return {
       source: 'builtin_static',
       auto_update: false,
+      refresh_sources: getCatalogRefreshSources(),
       models,
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,

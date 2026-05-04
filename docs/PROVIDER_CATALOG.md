@@ -1,6 +1,8 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with pricing hygiene metadata and cost-routing fallback. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks. It is intentionally local and reviewable: the gateway does not call provider websites, scrape docs, or auto-update prices in v0.9.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
+
+The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
 ## Goals
 
@@ -31,7 +33,7 @@ Responses include merged built-in + override metadata:
 
 Provider and model rows include `overridden` markers when local override data replaced or added fields.
 
-Dashboard also includes a read-only Provider Catalog page. It shows pricing freshness, source, manual-review state, confidence, override state, and modality coverage without changing routing or node config.
+Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, and modality coverage without changing routing or node config.
 
 ## Dashboard Add Node Wizard
 
@@ -54,6 +56,8 @@ Run against source with npm:
 ```bash
 npm run catalog -- list
 npm run catalog -- show openai
+npm run catalog -- sources
+npm run catalog -- refresh openrouter --out ./catalog.override.yaml
 npm run catalog -- validate
 npm run catalog -- validate --pricing
 npm run catalog -- export --out ./catalog.merged.yaml
@@ -66,6 +70,8 @@ After a production build, the same commands are available through the executable
 ```bash
 node dist/cli/siftgate.js catalog list
 node dist/cli/siftgate.js catalog show anthropic
+node dist/cli/siftgate.js catalog sources
+node dist/cli/siftgate.js catalog refresh openrouter --out ./catalog.override.yaml
 node dist/cli/siftgate.js catalog validate
 ```
 
@@ -77,8 +83,24 @@ Useful options:
 - `--force` allows `catalog import` to replace an existing override file.
 - `--pricing` adds pricing freshness/unit checks to `catalog validate`.
 - `--include-pricing` is accepted by `catalog export`; pricing is included by default and the flag makes CI intent explicit.
+- `catalog sources` lists refresh modes. `public_api` means SiftGate can refresh without a provider key; `docs_review` means an operator should review provider docs; `operator_local` means pricing depends on local deployment/account choices.
+- `catalog refresh openrouter` calls OpenRouter's public model catalog, converts prompt/completion USD-per-token pricing to USD per 1M tokens, and writes a local override file. It refuses to replace an existing file unless `--force` is supplied.
 
 `catalog validate` exits non-zero on errors and is safe for CI. Warnings are printed without failing the command.
+
+## Refresh Sources
+
+SiftGate v0.9.2 exposes refresh-source metadata through the Dashboard catalog APIs and CLI. Current behavior:
+
+| Provider | Mode | Automatic | Why |
+| --- | --- | --- | --- |
+| OpenRouter | `public_api` | Yes | OpenRouter exposes a public `/api/v1/models` catalog with model metadata and prompt/completion pricing. |
+| OpenAI, Anthropic, Google Gemini / Vertex | `docs_review` | No | Public pricing is documented, but model availability and product surfaces change often; SiftGate keeps built-in entries as review-required references. |
+| Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks | `docs_review` | No | Pricing is public enough to review, but SiftGate does not scrape provider sites; use reviewed overrides for production cost routing. |
+| Azure OpenAI | `operator_local` | No | Pricing depends on region, Azure deployment, and SKU. |
+| Ollama, vLLM, custom OpenAI-compatible | `operator_local` | No | Model list and cost depend on the local host, cluster, or proxy. |
+
+For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference.
 
 ## Override File
 
@@ -121,6 +143,24 @@ providers:
 ```
 
 Overrides merge with the built-in catalog. If a provider or model already exists, only supplied fields are replaced. New providers and models are added and marked with `overridden: true`.
+
+## Price Source Status
+
+Older internal code and API fields still use `pricing_hygiene` for backward compatibility. In product copy and docs, SiftGate now calls this **price source status** because that is what operators actually need to know:
+
+- Is a price present?
+- Where did it come from?
+- How old is it?
+- Is it a placeholder/reference, a live public API value, or a local override?
+- Is it safe enough for `routing.optimization=cost`?
+
+Dashboard statuses map to these meanings:
+
+- `Fresh`: price is present, recent, and not marked for manual review.
+- `Needs review`: built-in/reference price or incomplete live metadata; use a local override for production billing decisions.
+- `Stale`: `last_updated + stale_after_days` has expired.
+- `Missing`: SiftGate has no usable price for the requested model/modality.
+- `Invalid`: metadata is malformed or unit fields do not match the modality.
 
 ## Validation
 
@@ -189,7 +229,7 @@ This makes the matrix suitable for CI-style smoke checks and local operator vali
 
 ## Boundaries
 
-- No automatic online updates in v0.9.
+- No broad automatic online scraping. v0.9.2 only refreshes providers with an explicit stable adapter, currently OpenRouter.
 - No provider API keys or secrets are stored in the catalog.
 - The catalog is advisory. Operators can still configure private deployments, proxy model IDs, and local model names.
 - Video is cataloged as a modality and can be configured through `nodes[].video_models`, `video_generations_endpoint`, `video_endpoint`, and optional async video endpoint fields.

@@ -74,7 +74,7 @@ describe('siftgate catalog CLI', () => {
     const validateExit = await runCli(['catalog', 'validate', '--pricing'], io);
     expect(validateExit).toBe(0);
     expect(stderr).toHaveLength(0);
-    expect(stdout.join('\n')).toContain('Pricing hygiene: checked');
+    expect(stdout.join('\n')).toContain('Pricing source status: checked');
 
     stdout.length = 0;
     const exportExit = await runCli(
@@ -90,7 +90,74 @@ describe('siftgate catalog CLI', () => {
       currency: 'USD',
       stale_after_days: 90,
       pricing_confidence: 'low',
+      source: 'builtin-reference',
     });
+  });
+
+  it('lists catalog refresh sources', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const exitCode = await runCli(['catalog', 'sources'], io);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toHaveLength(0);
+    expect(stdout.join('\n')).toContain('openrouter');
+    expect(stdout.join('\n')).toContain('automatic=yes');
+  });
+
+  it('refreshes OpenRouter public catalog into an override file', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            id: 'openai/gpt-test',
+            name: 'OpenAI: GPT Test',
+            context_length: 128000,
+            architecture: {
+              input_modalities: ['text', 'image'],
+              output_modalities: ['text'],
+            },
+            pricing: {
+              prompt: '0.000001',
+              completion: '0.000002',
+            },
+            supported_parameters: ['tools', 'response_format'],
+          },
+        ],
+      }),
+    } as Response));
+
+    try {
+      const exitCode = await runCli(
+        ['catalog', 'refresh', 'openrouter', '--out', 'catalog.override.yaml'],
+        io,
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toHaveLength(0);
+      expect(stdout.join('\n')).toContain('Models: 1');
+      const exported = yaml.load(fs.readFileSync(path.join(cwd, 'catalog.override.yaml'), 'utf8')) as any;
+      const model = exported.providers.openrouter.models[0];
+      expect(model).toMatchObject({
+        id: 'openai/gpt-test',
+        modalities: ['text', 'vision'],
+        pricing: expect.objectContaining({
+          input: 1,
+          output: 2,
+          source: 'openrouter-public-api',
+          manual_review_required: false,
+          pricing_confidence: 'high',
+        }),
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it('imports and validates a local override file', async () => {

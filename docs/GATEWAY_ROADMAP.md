@@ -17,13 +17,13 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
-| v0.9 | Operations + Trust | 已发布 — v0.9.1 承接 v0.7 backlog，并修复 Provider 测试与 logo identity 小版本问题 | ✅ Released |
+| v0.9 | Operations + Trust | 已发布 — v0.9.2 承接 v0.7 backlog，并补齐 Provider Catalog 价格来源状态与 OpenRouter 刷新小版本 | ✅ Released |
 
 ---
 
 ## v0.9 — Operations + Trust（本地运维 + 信任基础）
 
-**v0.9.1 发布状态**：v0.7 不再单独发布；v0.9 承接原 v0.7 Operations + Trust backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。v0.9.1 作为小版本修复 Dashboard provider compatibility probe 和 Provider Catalog logo identity，避免 Voyage AI、Jina AI、Together AI、Fireworks AI、vLLM、Azure OpenAI、OpenAI-compatible custom 节点被误显示为 OpenAI。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+**v0.9.2 发布状态**：v0.7 不再单独发布；v0.9 承接原 v0.7 Operations + Trust backlog，并基于已发布 v0.8.0 的 Provider Catalog、多模态入口、Video Preview、兼容性矩阵与 Route Explanation 继续增强。v0.9.1 修复 Dashboard provider compatibility probe 和 Provider Catalog logo identity；v0.9.2 进一步把“pricing hygiene”产品化为“价格来源状态”，改进 Provider Catalog 表格布局，并新增 OpenRouter 公开目录刷新 workflow。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
 
 ### P0：本地配置审计与配置版本回滚
 
@@ -122,18 +122,19 @@
   - 不复制 literal provider API key；改写为环境变量引用并写入手动处理项
   - 补 LiteLLM、New API、One API、SiftGate v0.8 fixtures，以及 CLI、报告、overwrite protection 单测
 
-### Provider Catalog Pricing Hygiene
+### Provider Catalog Price Source Status
 
 - **状态**：✅ v0.9.0 已发布
-- **目标**：复用 v0.8 Provider / Model Catalog 与 `catalog.override.yaml`，补齐价格元数据卫生、过期检查和 cost routing fallback
+- **目标**：复用 v0.8 Provider / Model Catalog 与 `catalog.override.yaml`，补齐价格来源状态、过期检查、可刷新来源和 cost routing fallback
 - **实现方案**：
   - 不新增第二套 Model Catalog；继续使用 built-in + local override 的合并 catalog
   - pricing metadata 扩展 `currency`、`units`、image/audio/video/rerank/embedding price/unit、`stale_after_days`、`pricing_confidence`
-  - Config validation 输出 pricing hygiene warnings：缺失、placeholder、stale、modality unit mismatch、`routing.optimization=cost` 缺必要价格
+  - Config validation 输出价格来源状态 warnings：缺失、需复核、stale、modality unit mismatch、`routing.optimization=cost` 缺必要价格
   - Cost/context routing 在显式 node/model pricing 与 `models_pricing` 缺失时回退到 merged catalog pricing；显式用户配置永远优先
-  - Dashboard 新增只读 Provider Catalog 页面，展示 freshness、manual review、source、confidence、override 状态
-  - Catalog CLI 支持 `siftgate catalog validate --pricing` 与 `siftgate catalog export --include-pricing`
-  - 第一版不联网抓官网价格，避免不稳定网络更新和 provider docs churn
+  - Dashboard 新增只读 Provider Catalog 页面，展示 freshness、manual review、source、source URL、confidence、override 状态和 refresh source
+  - Catalog CLI 支持 `siftgate catalog validate --pricing`、`siftgate catalog export --include-pricing`、`siftgate catalog sources`
+  - v0.9.2 新增 `siftgate catalog refresh openrouter --out catalog.override.yaml`，从 OpenRouter 公开模型 API 生成本地 override，并把 USD/token 转成 USD/1M tokens
+  - 不做广义官网抓取；OpenAI、Anthropic、Google、Azure、本地模型和自建 OpenAI-compatible 仍需要 docs review 或 operator-local override
 
 ---
 

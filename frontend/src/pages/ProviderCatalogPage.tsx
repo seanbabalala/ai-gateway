@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Boxes, RefreshCw, Search, Tag, WalletCards } from 'lucide-react'
+import { Boxes, ExternalLink, RefreshCw, Search, Tag, WalletCards } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +20,12 @@ import {
 } from '@/components/ui/table'
 import { useProviderCatalogProviders } from '@/hooks/use-provider-catalog'
 import { cn } from '@/lib/utils'
-import type { CatalogModel, CatalogPricingHygiene, CatalogProvider } from '@/types/api'
+import type {
+  CatalogModel,
+  CatalogPricingHygiene,
+  CatalogProvider,
+  CatalogProvidersResponse,
+} from '@/types/api'
 
 const MODALITY_FILTERS = [
   'all',
@@ -47,7 +52,7 @@ function statusVariant(status: PricingStatus) {
   if (status === 'fresh') return 'emerald'
   if (status === 'stale') return 'amber'
   if (status === 'missing' || status === 'invalid') return 'red'
-  return 'zinc'
+  return 'amber'
 }
 
 function formatPrice(value: number | null | undefined) {
@@ -57,7 +62,41 @@ function formatPrice(value: number | null | undefined) {
 
 function pricingUnit(model: CatalogModel) {
   const units = model.pricing?.units
-  return units?.input || model.pricing?.unit || '-'
+  return friendlyUnit(units?.input || model.pricing?.unit || '-')
+}
+
+function friendlyUnit(unit: string) {
+  const normalized = unit.replace(/^usd_per_/, '').replaceAll('_', ' ')
+  if (normalized === '-') return '-'
+  return normalized
+    .replace('1m input tokens', '/ 1M input tokens')
+    .replace('1m output tokens', '/ 1M output tokens')
+    .replace('1m tokens', '/ 1M tokens')
+}
+
+function sourceLabel(source: string | null | undefined) {
+  if (!source) return 'other'
+  if (source === 'builtin-reference' || source === 'builtin-static-placeholder') return 'builtinReference'
+  if (source === 'openrouter-public-api') return 'openrouterApi'
+  if (source === 'operator_required') return 'operatorRequired'
+  if (source.includes('override')) return 'localOverride'
+  return 'other'
+}
+
+function sourceVariant(source: string | null | undefined): 'zinc' | 'emerald' | 'amber' | 'blue' {
+  if (source === 'openrouter-public-api') return 'emerald'
+  if (source === 'builtin-reference' || source === 'builtin-static-placeholder') return 'blue'
+  if (!source || source === 'operator_required') return 'amber'
+  return 'zinc'
+}
+
+function refreshSourceVariant(
+  source: NonNullable<CatalogProvidersResponse['refresh_sources']>[number],
+): 'zinc' | 'emerald' | 'amber' | 'blue' {
+  if (source.automatic) return 'emerald'
+  if (source.mode === 'docs_review') return 'blue'
+  if (source.mode === 'operator_local') return 'amber'
+  return 'zinc'
 }
 
 function modelMatches(model: CatalogModel, query: string, modality: string) {
@@ -130,6 +169,8 @@ export function ProviderCatalogPage() {
             <CatalogMetric label={t('catalogPage.metrics.stale')} value={staleCount} icon={WalletCards} tone={staleCount > 0 ? 'amber' : 'emerald'} />
           </div>
 
+          <CatalogRefreshSources sources={catalog.data.refresh_sources || []} />
+
           <Card>
             <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -150,8 +191,8 @@ export function ProviderCatalogPage() {
                     className="pl-9"
                   />
                 </div>
-                <div className="flex rounded-lg bg-[var(--background-secondary)] p-1">
-                  {MODALITY_FILTERS.slice(0, 5).map((item) => (
+                <div className="flex max-w-full flex-wrap gap-1 rounded-lg bg-[var(--background-secondary)] p-1">
+                  {MODALITY_FILTERS.map((item) => (
                     <button
                       key={item}
                       type="button"
@@ -244,7 +285,7 @@ function ProviderPricingTable({
   const models = provider.models.filter((model) => modelMatches(model, query, modality))
 
   return (
-    <section className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)]">
+    <section className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background-secondary)]">
       <div className="flex flex-col gap-3 border-b border-[var(--border)] px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
@@ -264,72 +305,160 @@ function ProviderPricingTable({
           </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <Badge variant={provider.pricing?.manual_review_required ? 'amber' : 'emerald'}>
+          <Badge variant={provider.pricing?.manual_review_required ? 'amber' : 'emerald'} className="whitespace-nowrap">
             {provider.pricing?.manual_review_required ? t('catalogPage.badges.review') : t('catalogPage.badges.ready')}
           </Badge>
           {provider.tags?.includes('override') && <Badge variant="purple">{t('catalogPage.badges.override')}</Badge>}
-          <Badge variant="zinc">{provider.pricing?.source || 'model-level'}</Badge>
+          <Badge variant={sourceVariant(provider.pricing?.source)} className="whitespace-nowrap">
+            {t(`catalogPage.sources.${sourceLabel(provider.pricing?.source)}`, {
+              source: provider.pricing?.source || 'model-level',
+              defaultValue: provider.pricing?.source || 'model-level',
+            })}
+          </Badge>
         </div>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('catalogPage.columns.model')}</TableHead>
-            <TableHead>{t('catalogPage.columns.modalities')}</TableHead>
-            <TableHead>{t('catalogPage.columns.price')}</TableHead>
-            <TableHead>{t('catalogPage.columns.freshness')}</TableHead>
-            <TableHead>{t('catalogPage.columns.source')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {models.map((model) => {
-            const status = modelPricingStatus(model)
-            return (
-              <TableRow key={model.id}>
-                <TableCell>
-                  <div className="font-mono text-[12px] font-semibold text-[var(--foreground)]">{model.id}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {model.capabilities.slice(0, 3).map((capability) => (
-                      <Badge key={capability} variant="zinc" className="text-[9px]">{capability}</Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {model.modalities.map((item) => (
-                      <Badge key={item} variant="blue" className="text-[9px]">{item}</Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="font-mono text-[11px] text-[var(--foreground)]">
-                    {formatPrice(model.pricing?.input)} / {formatPrice(model.pricing?.output)}
-                  </div>
-                  <div className="mt-1 max-w-[240px] truncate text-[10px] text-[var(--foreground-dim)]">{pricingUnit(model)}</div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    <Badge variant={statusVariant(status)}>
-                      {t(`catalogPage.status.${status}`)}
-                    </Badge>
-                    <span className="text-[10px] text-[var(--foreground-dim)]">
-                      {model.pricing_hygiene?.age_days === null || model.pricing_hygiene?.age_days === undefined
-                        ? t('catalogPage.ageUnknown')
-                        : t('catalogPage.ageDays', { count: model.pricing_hygiene.age_days })}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="font-mono text-[10px] text-[var(--foreground-muted)]">{model.pricing?.source || '-'}</div>
-                  <div className="mt-1 text-[10px] text-[var(--foreground-dim)]">
-                    {model.pricing?.pricing_confidence || 'unknown'} · {model.pricing?.last_updated || '-'}
-                  </div>
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
+      <div className="overflow-x-auto">
+        <Table className="min-w-[980px] table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[32%]">{t('catalogPage.columns.model')}</TableHead>
+              <TableHead className="w-[16%]">{t('catalogPage.columns.modalities')}</TableHead>
+              <TableHead className="w-[18%]">{t('catalogPage.columns.price')}</TableHead>
+              <TableHead className="w-[16%]">{t('catalogPage.columns.freshness')}</TableHead>
+              <TableHead className="w-[18%]">{t('catalogPage.columns.source')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {models.map((model) => {
+              const status = modelPricingStatus(model)
+              return (
+                <TableRow key={model.id}>
+                  <TableCell className="align-top">
+                    <div className="break-words font-mono text-[12px] font-semibold text-[var(--foreground)]">{model.id}</div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {model.capabilities.slice(0, 3).map((capability) => (
+                        <Badge key={capability} variant="zinc" className="text-[9px]">{capability}</Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <div className="flex flex-wrap gap-1">
+                      {model.modalities.map((item) => (
+                        <Badge key={item} variant="blue" className="text-[9px]">{item}</Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <div className="font-mono text-[11px] text-[var(--foreground)]">
+                      {formatPrice(model.pricing?.input)} / {formatPrice(model.pricing?.output)}
+                    </div>
+                    <div className="mt-1 max-w-[220px] text-[10px] leading-4 text-[var(--foreground-dim)]">{pricingUnit(model)}</div>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <div className="flex flex-col gap-1">
+                      <Badge variant={statusVariant(status)} className="w-fit whitespace-nowrap">
+                        {t(`catalogPage.status.${status}`)}
+                      </Badge>
+                      <span className="text-[10px] text-[var(--foreground-dim)]">
+                        {model.pricing_hygiene?.age_days === null || model.pricing_hygiene?.age_days === undefined
+                          ? t('catalogPage.ageUnknown')
+                          : t('catalogPage.ageDays', { count: model.pricing_hygiene.age_days })}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Badge variant={sourceVariant(model.pricing?.source)} className="max-w-[160px] truncate whitespace-nowrap text-[9px]">
+                          {t(`catalogPage.sources.${sourceLabel(model.pricing?.source)}`, {
+                            source: model.pricing?.source || '-',
+                            defaultValue: model.pricing?.source || '-',
+                          })}
+                        </Badge>
+                        {model.pricing?.source_url && (
+                          <a
+                            href={model.pricing.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[var(--foreground-dim)] transition-colors hover:text-[var(--accent)]"
+                            title={model.pricing.source_url}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-[10px] leading-4 text-[var(--foreground-dim)]">
+                        {t('catalogPage.confidence', {
+                          confidence: t(`catalogPage.confidenceLevels.${model.pricing?.pricing_confidence || 'unknown'}`),
+                        })}
+                      </div>
+                      <div className="text-[10px] leading-4 text-[var(--foreground-dim)]">
+                        {model.pricing?.last_updated || '-'}
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </section>
+  )
+}
+
+function CatalogRefreshSources({
+  sources,
+}: {
+  sources: NonNullable<CatalogProvidersResponse['refresh_sources']>
+}) {
+  const { t } = useTranslation('nodes')
+  if (sources.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle>{t('catalogPage.refreshSources.title')}</CardTitle>
+        <p className="text-[12px] leading-5 text-[var(--foreground-dim)]">
+          {t('catalogPage.refreshSources.description')}
+        </p>
+      </CardHeader>
+      <CardContent className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {sources.map((source) => (
+          <div
+            key={source.provider}
+            className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-extrabold text-[var(--foreground)]">{source.label}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {source.provider}
+                </div>
+              </div>
+              <Badge variant={refreshSourceVariant(source)} className="shrink-0 whitespace-nowrap">
+                {source.automatic
+                  ? t('catalogPage.refreshSources.automatic')
+                  : t(`catalogPage.refreshSources.modes.${source.mode}`)}
+              </Badge>
+            </div>
+            <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-[var(--foreground-dim)]">
+              {source.notes}
+            </p>
+            {source.source_url && (
+              <a
+                href={source.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[var(--accent)]"
+              >
+                {t('catalogPage.refreshSources.sourceLink')}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
