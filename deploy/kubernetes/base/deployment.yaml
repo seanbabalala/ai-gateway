@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: siftgate
+  labels:
+    app.kubernetes.io/name: siftgate
+    app.kubernetes.io/part-of: siftgate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: siftgate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: siftgate
+        app.kubernetes.io/part-of: siftgate
+    spec:
+      serviceAccountName: siftgate
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: siftgate
+          image: ghcr.io/seanbabalala/ai-gateway:0.8.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 2099
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: GATEWAY_CONFIG_PATH
+              value: /app/config/gateway.config.yaml
+            - name: SIFTGATE_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          envFrom:
+            - secretRef:
+                name: siftgate-env
+                optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /app/config/gateway.config.yaml
+              subPath: gateway.config.yaml
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources: {}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 10001
+      volumes:
+        - name: config
+          configMap:
+            name: siftgate-config
+            items:
+              - key: gateway.config.yaml
+                path: gateway.config.yaml
+        - name: data
+          persistentVolumeClaim:
+            claimName: siftgate-data

@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: siftgate-config
+  labels:
+    app.kubernetes.io/name: siftgate
+    app.kubernetes.io/part-of: siftgate
+data:
+  gateway.config.yaml: |
+    server:
+      port: 2099
+      host: 0.0.0.0
+      trust_proxy: true
+
+    database:
+      type: sqlite
+      path: /app/data/gateway.db
+      synchronize: true
+      log_retention_days: 30
+
+    auth:
+      api_keys: []
+
+    dashboard:
+      password: "${DASHBOARD_PASSWORD_HASH:-}"
+
+    hot_reload:
+      watch: false
+
+    state:
+      backend: memory
+
+    cluster:
+      enabled: false
+
+    realtime:
+      enabled: false
+      path: /v1/realtime
+
+    nodes:
+      - id: openai
+        name: OpenAI
+        protocol: chat_completions
+        base_url: https://api.openai.com
+        endpoint: /v1/chat/completions
+        embeddings_endpoint: /v1/embeddings
+        images_generations_endpoint: /v1/images/generations
+        images_edits_endpoint: /v1/images/edits
+        images_variations_endpoint: /v1/images/variations
+        audio_transcriptions_endpoint: /v1/audio/transcriptions
+        audio_translations_endpoint: /v1/audio/translations
+        audio_speech_endpoint: /v1/audio/speech
+        api_key: "${OPENAI_API_KEY:-placeholder-set-me}"
+        models: [gpt-4o-mini]
+        embedding_models: [text-embedding-3-small]
+        image_models: [gpt-image-1]
+        audio_models: [gpt-4o-mini-transcribe, tts-1]
+        timeout_ms: 60000
+        max_context_tokens: 128000
+        structured_output: true
+        modalities: [text, vision, image, audio]
+        input_types: [text, image, audio]
+        output_types: [text, image, audio]
+        max_file_size: 20000000
+        supports_streaming: true
+        supports_realtime: false
+        supports_rerank: false
+        model_capabilities:
+          gpt-4o-mini:
+            modalities: [text, vision]
+            max_context_tokens: 128000
+            structured_output: true
+            supports_streaming: true
+            pricing: { input: 0.15, output: 0.60 }
+          text-embedding-3-small:
+            modalities: [text, embedding]
+            input_types: [text]
+            output_types: [embedding]
+            dimensions: [512, 1536]
+            pricing: { input: 0.02, output: 0.00 }
+          gpt-image-1:
+            modalities: [image]
+            output_types: [image]
+            pricing: { input: 5.00, output: 0.00 }
+          gpt-4o-mini-transcribe:
+            modalities: [audio]
+            input_types: [audio]
+            output_types: [text]
+            pricing: { input: 0.60, output: 0.00 }
+          tts-1:
+            modalities: [audio]
+            input_types: [text]
+            output_types: [audio]
+            pricing: { input: 15.00, output: 0.00 }
+
+    routing:
+      optimization: balanced
+      tiers:
+        simple:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        standard:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        complex:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        reasoning:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+
+    budget:
+      daily_token_limit: 5000000
+      daily_cost_limit: 50
+      alert_threshold: 0.8
+
+    models_pricing:
+      gpt-4o-mini: { input: 0.15, output: 0.60 }
+      text-embedding-3-small: { input: 0.02, output: 0.00 }
+      gpt-image-1: { input: 5.00, output: 0.00 }
+      gpt-4o-mini-transcribe: { input: 0.60, output: 0.00 }
+      tts-1: { input: 15.00, output: 0.00 }

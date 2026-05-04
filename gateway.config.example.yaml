@@ -83,6 +83,8 @@ auth:
 # If set, the dashboard UI requires a password to access.
 # On first startup the plain-text password is auto-hashed with bcrypt
 # and the hash is written back to this file.
+# For read-only mounts such as Kubernetes ConfigMaps, precompute a bcrypt hash
+# and pass it through an environment variable instead.
 # If omitted, the dashboard is open to everyone (backwards-compatible).
 # dashboard:
 #   password: "my-secret-password"

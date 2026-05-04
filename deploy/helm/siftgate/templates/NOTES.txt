@@ -1,0 +1,17 @@
+SiftGate OSS Data Plane has been installed.
+
+Default mode:
+  - one local Data Plane pod
+  - SQLite persisted at /app/data/gateway.db
+  - memory state backend
+  - no SiftGate Cloud or enterprise image
+
+Port-forward the Dashboard:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "siftgate.fullname" . }} 2099:2099
+
+Then open:
+  http://127.0.0.1:2099
+
+Set provider keys through a Kubernetes Secret, for example:
+  kubectl -n {{ .Release.Namespace }} create secret generic {{ include "siftgate.secretName" . }} \
+    --from-literal=OPENAI_API_KEY=replace-me

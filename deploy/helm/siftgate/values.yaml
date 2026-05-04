@@ -1,0 +1,269 @@
+# SiftGate OSS Data Plane Helm values.
+# Defaults are deliberately small and local: one replica, memory state backend,
+# SQLite on a PVC, no SiftGate Cloud, and no enterprise image.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/seanbabalala/ai-gateway
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Top-level aliases are kept for operators who expect these common names.
+existingSecret: ""
+existingConfigMap: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 10001
+
+service:
+  type: ClusterIP
+  port: 2099
+  targetPort: 2099
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: siftgate.example.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: null
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 2Gi
+  storageClassName: ""
+  annotations: {}
+
+config:
+  existingConfigMap: ""
+  key: gateway.config.yaml
+  mountPath: /app/config/gateway.config.yaml
+  data: |
+    server:
+      port: 2099
+      host: 0.0.0.0
+      trust_proxy: true
+
+    database:
+      type: sqlite
+      path: /app/data/gateway.db
+      synchronize: true
+      log_retention_days: 30
+
+    auth:
+      api_keys: []
+
+    # ConfigMap mounts are read-only. Use a bcrypt hash from a Secret instead
+    # of a plaintext password that SiftGate would try to write back.
+    dashboard:
+      password: "${DASHBOARD_PASSWORD_HASH:-}"
+
+    hot_reload:
+      watch: false
+
+    state:
+      backend: memory
+
+    cluster:
+      enabled: false
+
+    realtime:
+      enabled: false
+      path: /v1/realtime
+
+    nodes:
+      - id: openai
+        name: OpenAI
+        protocol: chat_completions
+        base_url: https://api.openai.com
+        endpoint: /v1/chat/completions
+        embeddings_endpoint: /v1/embeddings
+        images_generations_endpoint: /v1/images/generations
+        images_edits_endpoint: /v1/images/edits
+        images_variations_endpoint: /v1/images/variations
+        audio_transcriptions_endpoint: /v1/audio/transcriptions
+        audio_translations_endpoint: /v1/audio/translations
+        audio_speech_endpoint: /v1/audio/speech
+        # rerank_endpoint: /v1/rerank
+        # realtime_endpoint: /v1/realtime
+        # video_generations_endpoint: /v1/videos/generations
+        # video_status_endpoint: /v1/videos/:id
+        # video_content_endpoint: /v1/videos/:id/content
+        # video_cancel_endpoint: /v1/videos/:id/cancel
+        api_key: "${OPENAI_API_KEY:-placeholder-set-me}"
+        models:
+          - gpt-4o-mini
+        embedding_models:
+          - text-embedding-3-small
+        image_models:
+          - gpt-image-1
+        audio_models:
+          - gpt-4o-mini-transcribe
+          - tts-1
+        # rerank_models: [rerank-english-v3]
+        # realtime_models: [gpt-4o-realtime-preview]
+        # video_models: [veo-3.1-generate-preview]
+        timeout_ms: 60000
+        max_context_tokens: 128000
+        structured_output: true
+        modalities: [text, vision, image, audio]
+        input_types: [text, image, audio]
+        output_types: [text, image, audio]
+        max_file_size: 20000000
+        supports_streaming: true
+        supports_realtime: false
+        supports_rerank: false
+        model_capabilities:
+          gpt-4o-mini:
+            modalities: [text, vision]
+            max_context_tokens: 128000
+            structured_output: true
+            supports_streaming: true
+            pricing: { input: 0.15, output: 0.60 }
+          text-embedding-3-small:
+            modalities: [text, embedding]
+            input_types: [text]
+            output_types: [embedding]
+            dimensions: [512, 1536]
+            pricing: { input: 0.02, output: 0.00 }
+          gpt-image-1:
+            modalities: [image]
+            output_types: [image]
+            pricing: { input: 5.00, output: 0.00 }
+          gpt-4o-mini-transcribe:
+            modalities: [audio]
+            input_types: [audio]
+            output_types: [text]
+            pricing: { input: 0.60, output: 0.00 }
+          tts-1:
+            modalities: [audio]
+            input_types: [text]
+            output_types: [audio]
+            pricing: { input: 15.00, output: 0.00 }
+
+    routing:
+      optimization: balanced
+      scoring:
+        simple_max: 0.3
+        standard_max: 0.6
+        complex_max: 0.85
+      tiers:
+        simple:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        standard:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        complex:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+        reasoning:
+          primary: { node: openai, model: gpt-4o-mini }
+          fallbacks: []
+      fallback_policy:
+        immediate_429: true
+        structured_output:
+          enabled: true
+          fallback_on_parse_error: true
+          fallback_on_schema_error: true
+
+    budget:
+      daily_token_limit: 5000000
+      daily_cost_limit: 50
+      alert_threshold: 0.8
+
+    models_pricing:
+      gpt-4o-mini: { input: 0.15, output: 0.60 }
+      text-embedding-3-small: { input: 0.02, output: 0.00 }
+      gpt-image-1: { input: 5.00, output: 0.00 }
+      gpt-4o-mini-transcribe: { input: 0.60, output: 0.00 }
+      tts-1: { input: 15.00, output: 0.00 }
+
+secrets:
+  create: true
+  existingSecret: ""
+  env: {}
+  # env:
+  #   OPENAI_API_KEY: "replace-me"
+  #   DASHBOARD_PASSWORD_HASH: "$2b$12$replace-with-bcrypt-hash"
+
+extraEnv: []
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+
+postgres:
+  enabled: false
+  databaseUrlSecret:
+    name: ""
+    key: DATABASE_URL
+
+redis:
+  enabled: false
+  urlSecret:
+    name: ""
+    key: REDIS_URL
+
+probes:
+  liveness:
+    initialDelaySeconds: 20
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /metrics

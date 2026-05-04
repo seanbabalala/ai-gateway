@@ -15,6 +15,7 @@
   <a href="#api-endpoints">API Endpoints</a> &bull;
   <a href="#dashboard">Dashboard</a> &bull;
   <a href="#docker">Docker</a> &bull;
+  <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
   <a href="docs/PRODUCT_ROADMAP.md">Roadmap</a> &bull;
@@ -134,6 +135,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
+- **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
@@ -1443,6 +1445,18 @@ To try the optional Redis state backend locally, uncomment the `state` block in 
 ```bash
 docker compose --profile redis up -d --build
 ```
+
+### Kubernetes / Helm
+
+SiftGate also ships OSS-only deployment assets:
+
+```bash
+npm run validate:k8s
+helm upgrade --install siftgate ./deploy/helm/siftgate --namespace siftgate --create-namespace
+kubectl apply -k deploy/kubernetes/base
+```
+
+Defaults stay single-node friendly: memory state backend, SQLite PVC, no Cloud requirement, no enterprise image, and no real secrets in the repo. Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget, ServiceMonitor, existing Secrets/ConfigMaps, resources, and persistence are opt-in. See [Kubernetes And Helm](docs/KUBERNETES.md).
 
 ### Using Dockerfile directly
 

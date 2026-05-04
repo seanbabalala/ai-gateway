@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 OSS-only Helm chart under `deploy/helm/siftgate` with default single-node SQLite + memory state behavior and opt-in Redis, PostgreSQL, Ingress, HPA, PodDisruptionBudget, ServiceMonitor, existing Secret/ConfigMap, resources, and persistence settings.
+- v0.9 Kustomize/plain Kubernetes base under `deploy/kubernetes/base` with placeholder-only Secrets, SQLite PVC, config mount, health probes, and no SiftGate Cloud or enterprise image dependency.
+- `npm run validate:k8s` plus manifest validation tests for YAML parsing, required deployment assets, default Cloud-disabled behavior, secret hygiene, image/port checks, and config/data mounts.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

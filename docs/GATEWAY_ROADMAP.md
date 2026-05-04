@@ -17,6 +17,26 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力；承接原 v0.7 backlog | 🚧 In Progress |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 安全治理）
+
+**v0.9 发布策略**：v0.7 不再单独发布，原 v0.7 backlog 迁移到 v0.9，并基于 v0.8.0 的 Provider Catalog、多模态入口、Video preview、Route Explanation 与 Dashboard localization 重新适配。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：Helm Chart 与 Kubernetes Manifests
+
+- **状态**：✅ Prompt v0.9 Helm/K8s feature branch 已完成
+- **目标**：补齐开源 Data Plane 的 Kubernetes 部署入口，让用户可以从 Docker Compose 平滑进入集群部署
+- **实现方案**：
+  - 新增 `deploy/helm/siftgate` Helm chart
+  - 新增 `deploy/kubernetes/base` Kustomize/plain manifests
+  - 默认 `values.yaml` 保持单机可用：memory state backend、SQLite PVC、无 Cloud、无企业镜像、无真实 secrets
+  - Helm values 支持 Redis、PostgreSQL、Ingress、HPA、PodDisruptionBudget、ServiceMonitor、existing Secret/ConfigMap、resources、persistence
+  - Kubernetes Secret 示例只包含 placeholder，不提交真实 provider key
+  - gateway config 示例覆盖 v0.8 Provider Catalog、多模态 media/audio/image、structured output、realtime disabled、SQLite/memory defaults 等关键字段
+  - 新增 `npm run validate:k8s`，检查 YAML 解析、模板存在、Cloud 默认关闭、secret hygiene、image/port/config mount 基础正确性
 
 ---
 
