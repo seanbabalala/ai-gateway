@@ -133,6 +133,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog APIs, and config validation warnings without automatic network updates
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
+- **Optional secret manager references** — keep env as the default while allowing explicit `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` runtime references for provider keys, node headers, health/realtime auth, and the optional control-plane token
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
@@ -218,6 +219,11 @@ Set your provider API key in `.env`:
 ```bash
 OPENAI_API_KEY=sk-...
 ```
+
+For runtime resolution instead of startup interpolation, v0.9 configs can use
+`${env:OPENAI_API_KEY}`. Vault, AWS Secrets Manager, and GCP Secret Manager are
+available only when explicitly enabled under `secret_manager`; see
+[docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md).
 
 Validate the file before starting the gateway:
 

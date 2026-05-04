@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { NodeConfig } from '../config/gateway.config';
@@ -7,6 +7,7 @@ import {
   ProviderCompatibilityResult,
   ProviderCompatibilityStatus,
 } from '../database/entities';
+import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 
 export interface ProviderCompatibilityMatrixItem {
   capability: ProviderCompatibilityCapability;
@@ -60,6 +61,8 @@ export class ProviderCompatibilityService {
   constructor(
     @InjectRepository(ProviderCompatibilityResult)
     private readonly repo: Repository<ProviderCompatibilityResult>,
+    @Optional()
+    private readonly secretResolver?: SecretReferenceResolverService,
   ) {}
 
   async matrixForNodes(
@@ -299,7 +302,7 @@ export class ProviderCompatibilityService {
     try {
       const response = await this.fetchWithTimeout(url, {
         method: 'POST',
-        headers: this.authHeaders(node),
+        headers: await this.authHeaders(node),
         body: JSON.stringify(this.safeBodyFor(plan)),
       });
       const latencyMs = Date.now() - started;
@@ -334,7 +337,7 @@ export class ProviderCompatibilityService {
     try {
       const response = await this.fetchWithTimeout(url, {
         method: 'HEAD',
-        headers: this.authHeaders(node, false),
+        headers: await this.authHeaders(node, false),
       });
       return this.persistResult(node, plan, {
         configured: true,
@@ -407,16 +410,27 @@ export class ProviderCompatibilityService {
     }
   }
 
-  private authHeaders(node: NodeConfig, json = true): Record<string, string> {
+  private async authHeaders(node: NodeConfig, json = true): Promise<Record<string, string>> {
+    const nodeHeaders = this.secretResolver
+      ? await this.secretResolver.resolveRecord(node.headers, {
+          optional: true,
+          location: `nodes.${node.id}.headers`,
+        })
+      : { ...(node.headers || {}) };
+    const apiKey = this.secretResolver
+      ? await this.secretResolver.resolveString(node.api_key, {
+          location: `nodes.${node.id}.api_key`,
+        })
+      : node.api_key;
     const headers: Record<string, string> = json ? { 'Content-Type': 'application/json' } : {};
     const authType = node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
-      headers['anthropic-version'] = node.headers?.['anthropic-version'] || '2023-06-01';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
-      headers.Authorization = `Bearer ${node.api_key}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
-    for (const [key, value] of Object.entries(node.headers || {})) {
+    for (const [key, value] of Object.entries(nodeHeaders)) {
       if (!this.isUnsafeHeader(key)) headers[key] = value;
     }
     return headers;

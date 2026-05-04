@@ -86,9 +86,15 @@ hardening visible without blocking local development.
 - Optional `cluster` configuration, including boolean switches, instance id
   shape, heartbeat interval/TTL values, reload broadcast settings, and Redis
   overrides used by multi-instance Pub/Sub.
-- Environment references in the supported forms `${VAR}` and
-  `${VAR:-default}`.
+- Environment and secret references in the supported forms `${VAR}`,
+  `${VAR:-default}`, `${env:VAR}`, `${vault:path#field}`,
+  `${aws-sm:secret#field}`, and `${gcp-sm:secret#field}`.
+- `secret_manager` shape, disabled backend usage, malformed references, missing
+  env values without defaults, and optional backend timeout/failure-policy
+  settings.
 - Literal provider API keys and literal control-plane registration tokens.
+- Suspicious secret-like values in `catalog.override.yaml`; overrides are for
+  catalog metadata, not provider credentials.
 - `control_plane` safety when enabled, including required fields, HTTPS for
   non-local URLs, and prompt/response telemetry warnings.
 
@@ -102,6 +108,7 @@ hardening visible without blocking local development.
 ```
 
 If your CI environment intentionally does not have provider secrets, use
-`${VAR:-dummy}` in CI-only fixtures or accept the `env_reference_unset` warning.
-Malformed env references are errors; missing env values without defaults are
-warnings so config shape can still be validated without exposing secrets.
+`${VAR:-dummy}` or `${env:VAR:-dummy}` in CI-only fixtures, or accept the
+`env_reference_unset` warning. Malformed references are errors; missing env
+values without defaults are warnings so config shape can still be validated
+without exposing secrets.

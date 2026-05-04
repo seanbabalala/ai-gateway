@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Req, Res, Param, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, Param, Logger, UseGuards, Optional } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -18,6 +18,7 @@ import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig } from '../config/gateway.config';
+import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import { VideoJob } from '../database/entities';
 import {
   ErrorEnvelopeDto,
@@ -48,6 +49,8 @@ export class VideoController {
     private readonly config: ConfigService,
     @InjectRepository(VideoJob)
     private readonly videoJobs: Repository<VideoJob>,
+    @Optional()
+    private readonly secretResolver?: SecretReferenceResolverService,
   ) {}
 
   @Post('videos/generations')
@@ -245,18 +248,28 @@ export class VideoController {
     const url = endpoint.startsWith('http')
       ? endpoint
       : `${node.base_url.replace(/\/+$/, '')}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-    const headers = this.providerHeaders(node);
+    const headers = await this.providerHeaders(node);
     return fetch(url, { method, headers });
   }
 
-  private providerHeaders(node: NodeConfig): Record<string, string> {
+  private async providerHeaders(node: NodeConfig): Promise<Record<string, string>> {
     const authType = node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    const headers: Record<string, string> = { ...(node.headers || {}) };
+    const headers: Record<string, string> = this.secretResolver
+      ? await this.secretResolver.resolveRecord(node.headers, {
+          optional: true,
+          location: `nodes.${node.id}.headers`,
+        })
+      : { ...(node.headers || {}) };
+    const apiKey = this.secretResolver
+      ? await this.secretResolver.resolveString(node.api_key, {
+          location: `nodes.${node.id}.api_key`,
+        })
+      : node.api_key;
     if (authType === 'x-api-key') {
-      headers['x-api-key'] = node.api_key;
+      headers['x-api-key'] = apiKey;
       headers['anthropic-version'] ||= '2023-06-01';
     } else {
-      headers.Authorization = `Bearer ${node.api_key}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
     return headers;
   }

@@ -8,6 +8,15 @@
 #   ${VAR}            — required, fails if not set
 #   ${VAR:-default}   — optional, uses default if not set
 #
+# v0.9 also supports runtime secret references:
+#   ${env:VAR}
+#   ${vault:path/to/secret#field}
+#   ${aws-sm:secret-name#field}
+#   ${gcp-sm:secret-name#field}
+# Only env references are enabled by default. Vault/AWS/GCP require the
+# secret_manager section below and are resolved at request time, never returned
+# by Dashboard APIs.
+#
 # Validate before running:
 #   npm run validate:config -- --config gateway.config.yaml
 # ============================================================
@@ -121,6 +130,51 @@ auth:
 #   override_file: ./catalog.override.yaml
 
 # ============================================================
+# Secret Manager References (optional)
+# ============================================================
+# Default behavior keeps local env references enabled and external backends
+# disabled. Use ${env:OPENAI_API_KEY} in provider api_key fields when you want
+# runtime resolution instead of startup-time ${OPENAI_API_KEY} interpolation.
+#
+# Supported reference locations:
+#   - nodes[].api_key
+#   - nodes[].headers
+#   - health/realtime provider auth inherited from node auth fields
+#   - control_plane.registration_token
+#
+# External backends are SDK-less HTTP adapters and must be explicitly enabled.
+# Resolved values are never written to logs, call logs, Dashboard config,
+# route traces, compatibility results, or catalog overrides.
+# ============================================================
+# secret_manager:
+#   cache_ttl_seconds: 300
+#   failure_policy: fail_closed        # fail_closed | fail_open_for_optional
+#   backends:
+#     env:
+#       enabled: true
+#     vault:
+#       enabled: false
+#       address: "${env:VAULT_ADDR}"
+#       token: "${env:VAULT_TOKEN}"
+#       mount: secret
+#       kv_version: 2
+#       timeout_ms: 5000
+#     aws_sm:
+#       enabled: false
+#       region: "${env:AWS_REGION:-us-east-1}"
+#       # endpoint: "http://localhost:4566" # Optional for LocalStack/mocks
+#       access_key_id: "${env:AWS_ACCESS_KEY_ID}"
+#       secret_access_key: "${env:AWS_SECRET_ACCESS_KEY}"
+#       session_token: "${env:AWS_SESSION_TOKEN:-}"
+#       timeout_ms: 5000
+#     gcp_sm:
+#       enabled: false
+#       project_id: "${env:GOOGLE_CLOUD_PROJECT}"
+#       access_token: "${env:GCP_SECRET_MANAGER_TOKEN:-}"
+#       use_metadata: true
+#       timeout_ms: 5000
+
+# ============================================================
 # Cluster Mode — optional Redis Pub/Sub multi-instance inventory
 # ============================================================
 # SiftGate runs as a single local data plane by default. Enable Redis-backed
@@ -203,6 +257,8 @@ nodes:
     # video_status_endpoint: "/v1/videos/:id"              # Optional async video status endpoint
     # video_content_endpoint: "/v1/videos/:id/content"
     # video_cancel_endpoint: "/v1/videos/:id/cancel"
+    # Startup interpolation: api_key: "${OPENAI_API_KEY}"
+    # Runtime secret reference: api_key: "${env:OPENAI_API_KEY}"
     api_key: "${OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]

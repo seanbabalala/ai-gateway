@@ -21,6 +21,10 @@ paths have been tested in your environment.
   behind an HTTP load balancer for higher availability.
 - Put `gateway.config.yaml` on every instance through the same deployment
   process.
+- Keep provider credentials out of committed config. Use legacy `${VAR}` env
+  interpolation for simple deployments or v0.9 `${env:VAR}` runtime secret
+  references when you want SecretReferenceResolver caching and consistent
+  Dashboard redaction.
 - Use PostgreSQL for durable call logs and generated Gateway API key records
   when SQLite is not enough for production traffic.
 - Use Redis only for features that need shared state or multi-instance
@@ -178,6 +182,43 @@ database:
 For real production, use managed PostgreSQL or a hardened database deployment
 with backups, TLS/network controls, secret management, and regular restore
 tests.
+
+## Secret References
+
+The default production recommendation remains simple: store provider keys and
+tokens in environment variables and reference them from `gateway.config.yaml`.
+
+```yaml
+nodes:
+  - id: openai
+    api_key: "${env:OPENAI_API_KEY}"
+
+control_plane:
+  enabled: false
+  registration_token: "${env:SIFTGATE_CONTROL_TOKEN}"
+```
+
+Vault, AWS Secrets Manager, and GCP Secret Manager are optional SDK-less HTTP
+adapters and stay disabled until configured:
+
+```yaml
+secret_manager:
+  cache_ttl_seconds: 300
+  failure_policy: fail_closed
+  backends:
+    env:
+      enabled: true
+    vault:
+      enabled: true
+      address: "${env:VAULT_ADDR}"
+      token: "${env:VAULT_TOKEN}"
+```
+
+Use external managers when your deployment platform already manages those
+systems. Resolved values are used only at the outbound edge and are redacted
+from Dashboard config, compatibility results, call logs, route traces, and
+telemetry summaries. See [SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) for
+backend-specific syntax.
 
 ## Redis Shared State And Cluster Mode
 
