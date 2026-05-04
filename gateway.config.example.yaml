@@ -94,6 +94,16 @@ auth:
 #   watch: false
 #   debounce_ms: 500
 
+# Local config audit + rollback (optional)
+# Enabled by default. Snapshots are stored in the local SQLite/Postgres
+# database with literal secrets redacted; rollback validates the target config
+# before writing and keeps the current config on failure.
+# config_audit:
+#   enabled: true
+#   max_versions: 50
+#   max_events: 200
+#   capture_startup_snapshot: false
+
 # ============================================================
 # Provider / Model Catalog Overrides (optional)
 # ============================================================

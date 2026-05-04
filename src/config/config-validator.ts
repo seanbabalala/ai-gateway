@@ -245,6 +245,7 @@ export function validateConfigObject(
   validateCluster(config.cluster, config.state, issues);
   validatePricing(config.models_pricing, issues);
   validateCatalogConfig(config.catalog, issues);
+  validateConfigAudit(config.config_audit, issues);
   validateControlPlane(config.control_plane, issues);
   addSharedDiagnostics(config, issues);
   addCatalogIssues(options.catalogIssues, issues);
@@ -4014,6 +4015,62 @@ function normalizeComparableUrl(value: string): string {
   } catch {
     return value.replace(/\/+$/, '');
   }
+}
+
+function validateConfigAudit(
+  audit: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (audit === undefined) return;
+  if (!isRecord(audit)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_config_audit_config',
+        'config_audit must be an object.',
+        'config_audit',
+      ),
+    );
+    return;
+  }
+
+  if (audit.enabled !== undefined && !isBoolean(audit.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_config_audit_config',
+        'config_audit.enabled must be a boolean.',
+        'config_audit.enabled',
+      ),
+    );
+  }
+
+  if (
+    audit.capture_startup_snapshot !== undefined &&
+    !isBoolean(audit.capture_startup_snapshot)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_config_audit_config',
+        'config_audit.capture_startup_snapshot must be a boolean.',
+        'config_audit.capture_startup_snapshot',
+      ),
+    );
+  }
+
+  validatePositiveNumber(
+    audit.max_versions,
+    'config_audit.max_versions',
+    'invalid_config_audit_config',
+    issues,
+  );
+  validatePositiveNumber(
+    audit.max_events,
+    'config_audit.max_events',
+    'invalid_config_audit_config',
+    issues,
+  );
 }
 
 function validateControlPlane(

@@ -1,7 +1,7 @@
 {
   "action.cancel": "取消",
-  "action.closeSidebar": "关闭侧边栏",
   "action.close": "关闭",
+  "action.closeSidebar": "关闭侧边栏",
   "action.confirm": "确认",
   "action.create": "创建",
   "action.delete": "删除",
@@ -11,6 +11,9 @@
   "action.save": "保存",
   "action.signOut": "退出登录",
   "action.toggleSidebar": "切换侧边栏",
+  "circuit.CLOSED": "已关闭",
+  "circuit.HALF_OPEN": "半开",
+  "circuit.OPEN": "已打开",
   "error.failedToLoad": "加载失败",
   "error.generic": "出了点问题，请重试。",
   "error.unauthorized": "未授权",
@@ -23,6 +26,7 @@
   "nav.analytics": "分析",
   "nav.apiKeys": "API Keys",
   "nav.budget": "预算",
+  "nav.configAudit": "配置审计",
   "nav.dashboard": "控制台",
   "nav.experiments": "实验",
   "nav.logs": "日志",
@@ -52,8 +56,5 @@
   "tier.direct": "直连",
   "tier.reasoning": "推理",
   "tier.simple": "简单",
-  "tier.standard": "标准",
-  "circuit.CLOSED": "已关闭",
-  "circuit.HALF_OPEN": "半开",
-  "circuit.OPEN": "已打开"
+  "tier.standard": "标准"
 }

@@ -602,8 +602,83 @@ export interface ConfigResponse {
   }
   namespaces?: NamespaceInfo[]
   shadow?: ShadowTrafficStatus
+  config_audit?: {
+    enabled: boolean
+    max_versions: number
+    max_events: number
+    capture_startup_snapshot: boolean
+    storage: string
+    secrets: string
+  }
   models_pricing: Record<string, ModelPricing>
   diagnostics: ConfigDiagnostic[]
+}
+
+// ── Config Audit / Rollback ──
+
+export interface ConfigAuditPrivacy {
+  local_only: boolean
+  prompt_response_stored: boolean
+  raw_headers_stored: boolean
+  provider_keys_stored_in_audit: boolean
+  provider_keys_exposed_by_api: boolean
+  snapshot_storage: string
+}
+
+export interface ConfigVersionSummary {
+  id: number
+  version_id: string
+  created_at: string
+  created_by: string
+  source: 'dashboard' | 'cli' | 'reload' | 'rollback' | 'system'
+  checksum: string
+  config_path: string
+  runtime_version: number
+  node_count: number
+  node_ids: string[]
+  route_tiers: string[]
+  sanitized_summary: Record<string, unknown>
+}
+
+export interface ConfigVersionDetail extends ConfigVersionSummary {
+  sanitized_config: unknown
+  privacy: ConfigAuditPrivacy
+}
+
+export interface ConfigVersionsResponse {
+  data: ConfigVersionSummary[]
+  pagination: { limit: number; count: number }
+  privacy: ConfigAuditPrivacy
+}
+
+export interface ConfigAuditEvent {
+  id: number
+  event_id: string
+  timestamp: string
+  actor: string
+  action: string
+  target: string
+  before_summary: Record<string, unknown>
+  after_summary: Record<string, unknown>
+  result: 'success' | 'failure'
+  failure_reason: string | null
+  source: string | null
+  version_id: string | null
+  previous_version_id: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface ConfigAuditEventsResponse {
+  data: ConfigAuditEvent[]
+  pagination: { limit: number; count: number }
+  privacy: ConfigAuditPrivacy
+}
+
+export interface ConfigRollbackResponse extends ActionResponse {
+  target_version: ConfigVersionSummary
+  previous_version: ConfigVersionSummary | null
+  restored_version: ConfigVersionSummary | null
+  reload: unknown
 }
 
 // ── SSE Events ──

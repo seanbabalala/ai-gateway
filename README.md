@@ -28,6 +28,8 @@
 
 Current open-source release: **v0.8.0**. This release focuses on Provider Catalog + Add Node Wizard + Multimodal Expansion + Video Preview: local provider/model presets, safer Dashboard node setup, hardened images/audio ingress, experimental async video jobs, provider compatibility checks, catalog overrides, and richer multimodal route explanation.
 
+Unreleased v0.9 work starts the Operations + Trust track. The first capability adds local config audit, version snapshots, and validation-first rollback without sending provider keys, prompts, responses, or raw headers outside the open-source Data Plane.
+
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
 **The problem it solves:** Different AI providers use different API formats (`chat/completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`). If you use multiple providers, your code needs to handle each format separately. SiftGate gives you provider-compatible endpoints that normalize traffic internally and automatically pick the right provider.
@@ -135,6 +137,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
+- **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
@@ -481,6 +484,31 @@ hot_reload:
 ```
 
 Successful and failed reloads emit `config.reload.success` and `config.reload.failed` events on the in-process EventBus. Routing, node lookup, capabilities, budgets, and optional control-plane services read from the latest committed snapshot after a successful reload.
+
+### Config Audit And Rollback
+
+v0.9 adds local configuration audit history for the OSS Data Plane. Config reloads, Dashboard node create/update/delete, routing edits, Dashboard-managed API key changes, and rollback attempts write local audit events. Version snapshots are stored in SQLite by default or PostgreSQL when configured.
+
+Snapshots are secret-safe: literal provider keys, dashboard password hashes, raw auth headers, dashboard key hashes, and secret/token/password-like fields are redacted before storage. Environment references such as `${OPENAI_API_KEY}` remain intact. Rollback rehydrates redacted fields only from matching values in the current local config; if SiftGate cannot safely rehydrate a secret, rollback fails before writing and keeps the current config active.
+
+```yaml
+config_audit:
+  enabled: true
+  max_versions: 50
+  max_events: 200
+  capture_startup_snapshot: false
+```
+
+Dashboard APIs:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/dashboard/config/versions` | List local config versions |
+| `GET` | `/api/dashboard/config/versions/:id` | Read one sanitized version snapshot |
+| `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore a previous version |
+| `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
+
+See [Config Audit And Rollback](docs/CONFIG_AUDIT_ROLLBACK.md).
 
 ### Shared State Backend
 
@@ -1340,6 +1368,10 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/shadow`                  | Read-only shadow traffic status and recent sanitized results                                       |
 | `GET`  | `/api/dashboard/config`                  | Sanitized config (API keys masked)                                                                 |
 | `POST` | `/api/dashboard/config/reload`           | Atomically hot-reload config from disk; returns `400` and keeps the old config on failure          |
+| `GET`  | `/api/dashboard/config/versions`         | Local sanitized config version history                                                             |
+| `GET`  | `/api/dashboard/config/versions/:id`     | Sanitized detail for one config version                                                            |
+| `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore one local config version                                                 |
+| `GET`  | `/api/dashboard/config/audit-events`     | Local config audit event stream                                                                    |
 | `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
 | `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
@@ -1363,6 +1395,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
 - **API Keys** — Client Gateway API key generation, namespace binding, permissions, budgets, rate limits, rotation, and disable/delete controls
+- **Config Audit** — Local sanitized config versions, audit events, and confirmation-based rollback
 
 ## Plugins
 

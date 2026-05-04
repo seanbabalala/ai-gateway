@@ -57,6 +57,7 @@ import { CatalogService } from '../catalog/catalog.service';
 import type { Modality } from '../config/modality';
 import type { ProviderCompatibilityCapability } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
+import { ConfigAuditService } from './config-audit.service';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -94,6 +95,7 @@ export class DashboardController {
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly shadowTraffic: ShadowTrafficService,
     private readonly providerCompatibility: ProviderCompatibilityService,
+    private readonly configAudit: ConfigAuditService,
     private readonly catalog: CatalogService,
     @Optional()
     @Inject(RealtimeProxyService)
@@ -965,6 +967,18 @@ export class DashboardController {
   @ApiOkResponse({ type: GatewayApiKeyCreatedResponseDto })
   async createApiKey(@Body() body: CreateGatewayApiKeyDto) {
     const created = await this.gatewayApiKeys.create(body);
+    await this.configAudit.recordManagementEvent({
+      action: 'api_key.create',
+      target: `api_key:${created.item.id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+      afterSummary: {
+        id: created.item.id,
+        name: created.item.name,
+        namespace_id: created.item.namespace_id,
+        allow_auto: created.item.allow_auto,
+        allow_direct: created.item.allow_direct,
+      },
+    });
     return {
       success: true,
       message: 'Gateway API key created',
@@ -983,10 +997,25 @@ export class DashboardController {
     @Param('id') id: string,
     @Body() body: UpdateGatewayApiKeyDto,
   ) {
+    const updated = await this.gatewayApiKeys.update(id, body);
+    await this.configAudit.recordManagementEvent({
+      action: 'api_key.update',
+      target: `api_key:${id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+      afterSummary: {
+        id: updated.id,
+        name: updated.name,
+        status: updated.status,
+        namespace_id: updated.namespace_id,
+        allow_auto: updated.allow_auto,
+        allow_direct: updated.allow_direct,
+      },
+      metadata: { fields: Object.keys(body || {}) },
+    });
     return {
       success: true,
       message: 'Gateway API key updated',
-      item: await this.gatewayApiKeys.update(id, body),
+      item: updated,
     };
   }
 
@@ -997,6 +1026,16 @@ export class DashboardController {
   @ApiOkResponse({ type: GatewayApiKeyCreatedResponseDto })
   async rotateApiKey(@Param('id') id: string) {
     const rotated = await this.gatewayApiKeys.rotate(id);
+    await this.configAudit.recordManagementEvent({
+      action: 'api_key.rotate',
+      target: `api_key:${id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+      afterSummary: {
+        id: rotated.item.id,
+        name: rotated.item.name,
+        key_prefix: rotated.item.key_prefix,
+      },
+    });
     return {
       success: true,
       message: 'Gateway API key rotated',
@@ -1012,6 +1051,11 @@ export class DashboardController {
   @ApiOkResponse({ type: ActionResponseDto })
   async deleteApiKey(@Param('id') id: string) {
     await this.gatewayApiKeys.remove(id);
+    await this.configAudit.recordManagementEvent({
+      action: 'api_key.delete',
+      target: `api_key:${id}`,
+      actor: { type: 'dashboard', id: 'dashboard' },
+    });
     return { success: true, message: 'Gateway API key deleted' };
   }
 
@@ -1116,6 +1160,11 @@ export class DashboardController {
         max_session_ms: 0,
         recent: [],
       },
+      config_audit: {
+        ...this.config.configAudit,
+        storage: 'local_database',
+        secrets: 'redacted',
+      },
       models_pricing: full.models_pricing,
       diagnostics: this.config.getNodeModelDiagnostics(),
     };
@@ -1124,10 +1173,14 @@ export class DashboardController {
   @Post('config/reload')
   @ApiOperation({ summary: 'Reload gateway.config.yaml from disk' })
   @ApiOkResponse({ type: ActionResponseDto })
-  reloadConfig() {
+  async reloadConfig() {
     const result = this.config.reload({
       source: 'dashboard',
       throwOnError: false,
+    });
+    await this.configAudit.recordReload(result, {
+      type: 'dashboard',
+      id: 'dashboard',
     });
     if (!result.success) {
       throw new HttpException(
@@ -1143,6 +1196,86 @@ export class DashboardController {
     }
     this.activeHealth.refreshSchedules();
     return result;
+  }
+
+  @Get('config/versions')
+  @ApiOperation({ summary: 'List local config versions for rollback' })
+  @ApiQuery({ name: 'limit', required: false, example: 50 })
+  @ApiOkResponse({ description: 'Config version metadata. Raw rollback YAML is never returned.' })
+  async getConfigVersions(
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ) {
+    return this.configAudit.listVersions(limit);
+  }
+
+  @Get('config/versions/:id')
+  @ApiOperation({ summary: 'Get a sanitized config version snapshot' })
+  @ApiParam({ name: 'id', example: 'cfgv_...' })
+  @ApiOkResponse({ description: 'Config version metadata plus sanitized config object.' })
+  async getConfigVersion(@Param('id') id: string) {
+    const version = await this.configAudit.getVersion(id);
+    if (!version) {
+      throw new HttpException(
+        { success: false, message: `Config version "${id}" not found` },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return version;
+  }
+
+  @Post('config/versions/:id/rollback')
+  @ApiOperation({ summary: 'Rollback gateway.config.yaml to a stored local version' })
+  @ApiParam({ name: 'id', example: 'cfgv_...' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { reason: { type: 'string' } },
+      example: { reason: 'Restore last known good routing config' },
+    },
+    required: false,
+  })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async rollbackConfigVersion(
+    @Param('id') id: string,
+    @Body() body: { reason?: string } = {},
+  ) {
+    try {
+      const result = await this.configAudit.rollbackToVersion(id, {
+        reason: body?.reason,
+        actor: { type: 'dashboard', id: 'dashboard' },
+        source: 'dashboard',
+      });
+      if (!result.success) {
+        throw new HttpException(
+          { ...result, success: false },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      this.activeHealth.refreshSchedules();
+      return { ...result, success: true };
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new HttpException(
+        { success: false, message: (err as Error).message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('config/audit-events')
+  @ApiOperation({ summary: 'List local config audit events' })
+  @ApiQuery({ name: 'limit', required: false, example: 100 })
+  @ApiQuery({ name: 'action', required: false })
+  @ApiQuery({ name: 'target', required: false })
+  @ApiQuery({ name: 'result', required: false, enum: ['success', 'failure'] })
+  @ApiOkResponse({ description: 'Local config audit event metadata.' })
+  async getConfigAuditEvents(
+    @Query('limit', new DefaultValuePipe(100), ParseIntPipe) limit: number,
+    @Query('action') action?: string,
+    @Query('target') target?: string,
+    @Query('result') result?: 'success' | 'failure',
+  ) {
+    return this.configAudit.listEvents({ limit, action, target, result });
   }
 
   // ══════════════════════════════════════════════════════
@@ -1269,7 +1402,7 @@ export class DashboardController {
     },
   })
   @ApiOkResponse({ type: ActionResponseDto })
-  updateRouting(@Body() body: {
+  async updateRouting(@Body() body: {
     tiers?: Record<string, {
       primary?: { node: string; model: string };
       fallbacks?: { node: string; model: string }[];
@@ -1281,7 +1414,16 @@ export class DashboardController {
     domain_preferences?: Record<string, string[]>;
   }) {
     try {
-      this.config.updateRouting(body);
+      await this.configAudit.trackChange(
+        {
+          action: 'config.routing.update',
+          target: 'routing',
+          source: 'dashboard',
+          actor: { type: 'dashboard', id: 'dashboard' },
+          metadata: { fields: Object.keys(body || {}) },
+        },
+        () => this.config.updateRouting(body),
+      );
       return { success: true, message: 'Routing configuration updated' };
     } catch (err) {
       throw new HttpException(
@@ -1661,50 +1803,69 @@ export class DashboardController {
   @ApiOperation({ summary: 'Create a provider node' })
   @ApiBody({ type: CreateNodeDto })
   @ApiOkResponse({ type: ActionResponseDto })
-  createNode(@Body() dto: CreateNodeDto) {
+  async createNode(@Body() dto: CreateNodeDto) {
     try {
-      this.config.addNode({
-        id: dto.id,
-        name: dto.name,
-        protocol: dto.protocol,
-        base_url: dto.base_url,
-        endpoint: dto.endpoint,
-        api_key: dto.api_key,
-        models: dto.models,
-        embeddings_endpoint: dto.embeddings_endpoint,
-        embedding_models: dto.embedding_models,
-        rerank_endpoint: dto.rerank_endpoint,
-        rerank_models: dto.rerank_models,
-        images_generations_endpoint: dto.images_generations_endpoint,
-        images_edits_endpoint: dto.images_edits_endpoint,
-        images_variations_endpoint: dto.images_variations_endpoint,
-        image_models: dto.image_models,
-        audio_transcriptions_endpoint: dto.audio_transcriptions_endpoint,
-        audio_translations_endpoint: dto.audio_translations_endpoint,
-        audio_speech_endpoint: dto.audio_speech_endpoint,
-        audio_models: dto.audio_models,
-        video_generations_endpoint: dto.video_generations_endpoint,
-        video_endpoint: dto.video_endpoint,
-        video_status_endpoint: dto.video_status_endpoint,
-        video_content_endpoint: dto.video_content_endpoint,
-        video_cancel_endpoint: dto.video_cancel_endpoint,
-        video_models: dto.video_models,
-        realtime_models: dto.realtime_models,
-        realtime_endpoint: dto.realtime_endpoint,
-        timeout_ms: dto.timeout_ms,
-        max_concurrency: dto.max_concurrency,
-        queue_timeout_ms: dto.queue_timeout_ms,
-        queue_policy: dto.queue_policy,
-        capabilities: dto.capabilities,
-        modalities: dto.modalities as Modality[] | undefined,
-        tags: dto.tags,
-        model_aliases: dto.model_aliases,
-        model_prefixes: dto.model_prefixes,
-        headers: dto.headers,
-        auth_type: dto.auth_type,
-        model_capabilities: dto.model_capabilities as any,
-        health_check: dto.health_check,
-      });
+      await this.configAudit.trackChange(
+        {
+          action: 'config.node.create',
+          target: `node:${dto.id}`,
+          source: 'dashboard',
+          actor: { type: 'dashboard', id: 'dashboard' },
+          metadata: {
+            protocol: dto.protocol,
+            models: dto.models,
+            embedding_models: dto.embedding_models,
+            rerank_models: dto.rerank_models,
+            image_models: dto.image_models,
+            audio_models: dto.audio_models,
+            video_models: dto.video_models,
+            realtime_models: dto.realtime_models,
+          },
+        },
+        () =>
+          this.config.addNode({
+            id: dto.id,
+            name: dto.name,
+            protocol: dto.protocol,
+            base_url: dto.base_url,
+            endpoint: dto.endpoint,
+            api_key: dto.api_key,
+            models: dto.models,
+            embeddings_endpoint: dto.embeddings_endpoint,
+            embedding_models: dto.embedding_models,
+            rerank_endpoint: dto.rerank_endpoint,
+            rerank_models: dto.rerank_models,
+            images_generations_endpoint: dto.images_generations_endpoint,
+            images_edits_endpoint: dto.images_edits_endpoint,
+            images_variations_endpoint: dto.images_variations_endpoint,
+            image_models: dto.image_models,
+            audio_transcriptions_endpoint: dto.audio_transcriptions_endpoint,
+            audio_translations_endpoint: dto.audio_translations_endpoint,
+            audio_speech_endpoint: dto.audio_speech_endpoint,
+            audio_models: dto.audio_models,
+            video_generations_endpoint: dto.video_generations_endpoint,
+            video_endpoint: dto.video_endpoint,
+            video_status_endpoint: dto.video_status_endpoint,
+            video_content_endpoint: dto.video_content_endpoint,
+            video_cancel_endpoint: dto.video_cancel_endpoint,
+            video_models: dto.video_models,
+            realtime_models: dto.realtime_models,
+            realtime_endpoint: dto.realtime_endpoint,
+            timeout_ms: dto.timeout_ms,
+            max_concurrency: dto.max_concurrency,
+            queue_timeout_ms: dto.queue_timeout_ms,
+            queue_policy: dto.queue_policy,
+            capabilities: dto.capabilities,
+            modalities: dto.modalities as Modality[] | undefined,
+            tags: dto.tags,
+            model_aliases: dto.model_aliases,
+            model_prefixes: dto.model_prefixes,
+            headers: dto.headers,
+            auth_type: dto.auth_type,
+            model_capabilities: dto.model_capabilities as any,
+            health_check: dto.health_check,
+          }),
+      );
       this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${dto.id}" created` };
     } catch (err) {
@@ -1720,7 +1881,7 @@ export class DashboardController {
   @ApiParam({ name: 'id', example: 'openai' })
   @ApiBody({ type: UpdateNodeDto })
   @ApiOkResponse({ type: ActionResponseDto })
-  updateNode(@Param('id') nodeId: string, @Body() dto: UpdateNodeDto) {
+  async updateNode(@Param('id') nodeId: string, @Body() dto: UpdateNodeDto) {
     try {
       // Keep omitted fields intact. class-transformer may materialize optional
       // DTO properties as undefined, so strip them before merging into config.
@@ -1729,7 +1890,20 @@ export class DashboardController {
         if (value === undefined || value === '') continue;
         (updates as Record<string, unknown>)[key] = value;
       }
-      this.config.updateNode(nodeId, updates as Parameters<typeof this.config.updateNode>[1]);
+      await this.configAudit.trackChange(
+        {
+          action: 'config.node.update',
+          target: `node:${nodeId}`,
+          source: 'dashboard',
+          actor: { type: 'dashboard', id: 'dashboard' },
+          metadata: { fields: Object.keys(updates) },
+        },
+        () =>
+          this.config.updateNode(
+            nodeId,
+            updates as Parameters<typeof this.config.updateNode>[1],
+          ),
+      );
       this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${nodeId}" updated` };
     } catch (err) {
@@ -1744,11 +1918,21 @@ export class DashboardController {
   @ApiOperation({ summary: 'Delete a provider node' })
   @ApiParam({ name: 'id', example: 'openai' })
   @ApiOkResponse({ type: ActionResponseDto })
-  deleteNode(@Param('id') nodeId: string) {
+  async deleteNode(@Param('id') nodeId: string) {
     try {
-      // Reset circuit breaker for the node before deleting
-      this.circuitBreaker.reset(nodeId);
-      this.config.deleteNode(nodeId);
+      await this.configAudit.trackChange(
+        {
+          action: 'config.node.delete',
+          target: `node:${nodeId}`,
+          source: 'dashboard',
+          actor: { type: 'dashboard', id: 'dashboard' },
+        },
+        () => {
+          // Reset circuit breaker for the node before deleting
+          this.circuitBreaker.reset(nodeId);
+          this.config.deleteNode(nodeId);
+        },
+      );
       this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${nodeId}" deleted` };
     } catch (err) {

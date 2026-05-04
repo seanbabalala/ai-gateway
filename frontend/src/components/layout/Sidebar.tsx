@@ -13,6 +13,7 @@ import {
   Zap,
   Activity,
   X,
+  FileClock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -40,6 +41,7 @@ const navGroups = [
       { to: '/routing', icon: GitFork, labelKey: 'nav.routing' },
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
+      { to: '/config-audit', icon: FileClock, labelKey: 'nav.configAudit' },
     ],
   },
 ]

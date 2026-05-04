@@ -161,6 +161,20 @@ Multimodal requests add a privacy-safe evidence layer to the same trace. The top
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
+## Config Audit And Rollback
+
+The v0.9 OSS Data Plane adds a local configuration history layer:
+
+- `config_versions` stores sanitized rollback snapshots and summaries.
+- `config_audit_events` stores actor/action/target/result metadata for config changes.
+- Dashboard config reload, node create/update/delete, routing edits, Dashboard-managed API key mutations, and rollback attempts write audit events.
+
+The audit layer sits beside `ConfigService`; it does not change the request forwarding path. Mutating Dashboard operations are wrapped so SiftGate captures a before snapshot, runs the mutation, captures an after snapshot, and records success or failure.
+
+Rollback uses the same atomic validation semantics as config reload: SiftGate parses and validates the target YAML before writing `gateway.config.yaml` and committing the in-memory snapshot. If parsing, validation, or secret rehydration fails, the current file and active runtime config are retained.
+
+Snapshots are secret-safe storage. Literal provider keys, dashboard password hashes, raw auth headers, and secret/token/password-like values are redacted before persistence. Environment references such as `${OPENAI_API_KEY}` remain visible. When rollback needs a redacted value, SiftGate rehydrates it only from a matching field in the current local config; array entries with an `id` must match by `id`, preventing a deleted node from borrowing another node's secret.
+
 ## Shadow Traffic
 
 The open-source data plane includes optional shadow traffic for sampled test-node mirroring. When enabled, successful primary requests can enqueue an asynchronous copy to a configured shadow node/model. The primary response has already been produced, so shadow latency and failures do not affect the caller.
