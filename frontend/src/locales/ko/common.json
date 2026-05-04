@@ -34,6 +34,7 @@
   "nav.manage": "관리",
   "nav.monitor": "모니터링",
   "nav.nodes": "노드",
+  "nav.playground": "플레이그라운드",
   "nav.routeExplanation": "경로 설명",
   "nav.routing": "라우팅",
   "nav.shadow": "섀도우",

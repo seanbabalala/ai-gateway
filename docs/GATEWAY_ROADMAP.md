@@ -19,8 +19,43 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
+| v1.1 | Developer Experience | 开发中 — Python SDK、Dashboard Playground、Session/Trace、Agent 集成示例 | 🚧 In Progress |
 
 ---
+
+## v1.1 — Developer Experience（开发者体验）
+
+**v1.1 开发状态**：v1.1 基于已发布 v1.0.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是让开发者更容易接入、测试、排障和理解一次调用在 SiftGate 内的完整路径。
+
+### P0：Dashboard Playground 交互式测试页面
+
+- **状态**：🚧 feature branch `codex/v1.1-dashboard-playground`
+- **目标**：让本地 Dashboard 具备安全的交互式探测入口，覆盖主要协议和多模态能力，同时复用真实 routing、权限、预算、成本、telemetry、call log 和 route decision 路径
+- **实现方案**：
+  - 新增 Dashboard 页面 `/playground`，支持 chat、responses、messages、embeddings、rerank、images、audio、video、realtime probe
+  - 支持选择本地 Gateway API key、namespace、model、endpoint、routing hint 和 stream
+  - 默认样例保持 tiny/synthetic，避免自动发送用户真实内容；用户必须手动点击 run
+  - 新增 Dashboard API `POST /api/dashboard/playground/run`，由 Dashboard session 保护，并通过 API key id 套用权限上下文，不把明文 Gateway API key 或 provider key 传给前端
+  - 展示 request preview、response summary、usage、cost、latency、status 和 Route Decision link
+  - Realtime 只做 endpoint/auth/capability probe，不打开 WebSocket，不影响 HTTP/SSE streaming
+  - 默认不保存 Playground prompt、response、raw headers、provider key、media bytes 或 realtime frames；普通 call log 只保留元数据
+  - 新增 Dashboard 7 语言本地化和前端静态检查，覆盖 route、hook、endpoint coverage、privacy copy 和 API types
+
+### P0：Python SDK
+
+- **状态**：规划中
+- **目标**：提供 `pip install siftgate` 级别的轻量 Python SDK scaffold，同时保持用户可继续使用 OpenAI SDK + `base_url`
+- **范围**：base_url、gateway_api_key、models、chat completions、responses、messages、embeddings、rerank、images、audio、video jobs、routing hints
+
+### P1：Session / Trace 关联与 Session View
+
+- **状态**：规划中
+- **目标**：把多次调用按 session、request_id、route decision、fallback 和 shadow/benchmark evidence 串起来，帮助开发者排障
+
+### P1：Agent 框架集成示例
+
+- **状态**：规划中
+- **目标**：提供 LangChain、CrewAI、OpenAI Agents 等常见框架的 OSS 示例，说明如何通过 SiftGate 使用统一 base URL、routing hints 和 API key policy
 
 ## v1.0 — Extension Ecosystem（扩展生态）
 
@@ -372,7 +407,7 @@
 
 ## v0.2 — Resilience（生产环境可靠性 + 开发者体验）
 
-**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground 与 P2 安全加固继续保留在后续 roadmap 中；结构化输出已转入 v0.6 Protocol 阶段。
+**v0.2.0 发布状态**：已完成并发布配置校验 CLI、per-node 并发控制、配置热重载增强、主动健康检查、负载均衡 schema、OpenAPI/Swagger 文档。Playground 已进入 v1.1 Developer Experience 阶段；结构化输出已转入 v0.6 Protocol 阶段。
 
 ### P0：核心可靠性
 
@@ -466,19 +501,19 @@
 
 ### P1：开发者体验
 
-#### 5. 内置 Playground（Chat 测试界面）
+#### 5. 内置 Playground（交互式测试界面）
 
-- **状态**：未纳入 v0.2.0，保留为后续开发项
-- **现状**：测试需要 curl 或外部工具
-- **目标**：Dashboard 内嵌一个 Chat Playground
+- **状态**：🚧 已迁移到 v1.1 Developer Experience 实现
+- **现状**：v0.2 阶段仍主要依赖 curl 或外部工具；v1.1 将其升级为多协议 Dashboard Playground
+- **目标**：Dashboard 内嵌安全的交互式测试页面，复用真实 routing、权限、预算、成本、telemetry 和 route decision 路径
 - **实现方案**：
   - 新增 Dashboard 页面 `/playground`
-  - 支持选择模型（auto / 指定 node:model）
-  - 流式输出展示
-  - System prompt 编辑
-  - 请求/响应对比视图（展示路由决策）
-  - 延迟、Token、成本实时展示
-- **抽象到企业版**：多团队共享 Prompt Template
+  - 支持 chat、responses、messages、embeddings、rerank、images、audio、video 和 realtime probe
+  - 支持选择 API key、namespace、model、endpoint、routing hint 和 stream
+  - 展示 request preview、response summary、usage、cost、latency 和路由决策链接
+  - 默认 tiny synthetic sample，不自动发送用户真实内容
+  - 默认不保存 Playground prompt/response/media bytes；普通 call log 只保留元数据
+- **抽象到企业版**：多团队共享 Prompt Template 与实验用例管理
 
 #### 6. OpenAPI 文档自动生成
 
