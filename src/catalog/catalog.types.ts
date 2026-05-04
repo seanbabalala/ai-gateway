@@ -10,7 +10,9 @@ export type CatalogPricingDimension =
   | 'audio'
   | 'video'
   | 'rerank'
-  | 'embedding';
+  | 'embedding'
+  | 'cache_read_input'
+  | 'cache_creation_input';
 
 export type CatalogPricingConfidence = 'high' | 'medium' | 'low' | 'unknown';
 
@@ -22,6 +24,8 @@ export interface CatalogPricing {
   video?: number;
   rerank?: number;
   embedding?: number;
+  cache_read_input?: number;
+  cache_creation_input?: number;
   /** Legacy default unit retained for existing overrides. Prefer units.* for modality-specific pricing. */
   unit?: string;
   units?: Partial<Record<CatalogPricingDimension, string>>;
@@ -67,6 +71,9 @@ export interface CatalogModel {
   capabilities: string[];
   limits?: CatalogLimits;
   pricing?: CatalogPricing;
+  prompt_cache?: boolean;
+  read_cache?: boolean;
+  write_cache?: boolean;
   source: CatalogSource;
   overridden: boolean;
 }
@@ -80,6 +87,9 @@ export interface CatalogProvider {
   model_prefixes?: string[];
   capabilities?: string[];
   pricing?: CatalogPricing;
+  prompt_cache?: boolean;
+  read_cache?: boolean;
+  write_cache?: boolean;
   models: CatalogModel[];
   source: CatalogSource;
   overridden: boolean;
@@ -100,6 +110,9 @@ export interface CatalogOverrideModel {
   capabilities?: string[];
   limits?: CatalogLimits;
   pricing?: CatalogPricing;
+  prompt_cache?: boolean;
+  read_cache?: boolean;
+  write_cache?: boolean;
 }
 
 export interface CatalogOverrideProvider {
@@ -111,6 +124,9 @@ export interface CatalogOverrideProvider {
   model_prefixes?: string[];
   capabilities?: string[];
   pricing?: CatalogPricing;
+  prompt_cache?: boolean;
+  read_cache?: boolean;
+  write_cache?: boolean;
   models?: CatalogOverrideModel[];
 }
 

@@ -133,5 +133,9 @@
   "benchmark.table.target": "เป้าหมาย",
   "benchmark.table.throughput": "Req/min",
   "benchmark.title": "เบนช์มาร์ก",
-  "benchmark.source.batch": "แบตช์"
+  "benchmark.source.batch": "แบตช์",
+  "benchmark.cacheAware.title": "ผลของ cache-aware",
+  "benchmark.cacheAware.subtitle": "local {{local}} hit · provider read {{provider}} hit",
+  "benchmark.cacheAware.providerHitRate": "provider hit rate",
+  "benchmark.cacheAware.readTokenRatio": "read token ratio"
 }

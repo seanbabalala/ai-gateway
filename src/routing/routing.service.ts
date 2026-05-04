@@ -18,7 +18,7 @@ import {
   CapabilityService,
   ResolvedModelRoutingCapabilities,
 } from '../config/capability.service';
-import { CanonicalMediaSourceFormat, Tier } from '../canonical/canonical.types';
+import { CanonicalMediaSourceFormat, Tier, TokenUsage } from '../canonical/canonical.types';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
 import {
@@ -35,6 +35,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   RouteDecisionTrace,
   RouteDecisionCandidateCapabilityEvidence,
+  RouteDecisionCacheEvidence,
   RouteDecisionTraceCandidate,
   RouteDecisionTraceFilter,
   routeTargetKey,
@@ -107,6 +108,9 @@ export interface RouteSelectionHints {
   required_capabilities?: string[];
   endpoint_strategy?: string | null;
   source_format?: string | null;
+  local_prompt_cache_eligible?: boolean;
+  local_prompt_cache_hit?: boolean;
+  local_prompt_cache_lookup?: 'hit' | 'miss' | 'disabled' | 'skipped' | null;
 }
 
 export interface EmbeddingRouteDecision {
@@ -166,6 +170,13 @@ export class RoutingService {
   private readonly targetLastStatus = new Map<string, {
     latencyMs: number;
     statusCode: number;
+  }>();
+  private readonly targetCacheStats = new Map<string, {
+    calls: number;
+    cacheReadCalls: number;
+    cacheWriteCalls: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
   }>();
   private readonly lastSelections = new Map<string, RoutingTierStatus['last_selected']>();
   private readonly latencyWindowSize = 50;
@@ -446,7 +457,7 @@ export class RoutingService {
         finalTargets: orderedTargets,
         selected: this.toRouteTarget(primary),
         loadBalancing,
-        reason: this.selectionReason(selection.strategy, primary),
+        reason: this.selectionReason(selection.strategy, primary, selectionHints),
       }),
     };
   }
@@ -467,6 +478,30 @@ export class RoutingService {
       samples.splice(0, samples.length - this.latencyWindowSize);
     }
     this.latencyWindows.set(key, samples);
+  }
+
+  recordTargetUsage(
+    node: string,
+    model: string,
+    usage: Pick<TokenUsage, 'cache_read_input_tokens' | 'cache_creation_input_tokens'> | undefined,
+  ): void {
+    if (!usage || node === 'cache' || node === 'hook') return;
+    const key = this.buildExperimentTargetKey(node, model);
+    const current = this.targetCacheStats.get(key) || {
+      calls: 0,
+      cacheReadCalls: 0,
+      cacheWriteCalls: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    };
+    const readTokens = Math.max(0, Number(usage.cache_read_input_tokens || 0));
+    const creationTokens = Math.max(0, Number(usage.cache_creation_input_tokens || 0));
+    current.calls += 1;
+    if (readTokens > 0) current.cacheReadCalls += 1;
+    if (creationTokens > 0) current.cacheWriteCalls += 1;
+    current.cacheReadTokens += readTokens;
+    current.cacheCreationTokens += creationTokens;
+    this.targetCacheStats.set(key, current);
   }
 
   resolveEmbeddingRoute(
@@ -967,6 +1002,7 @@ export class RoutingService {
       index,
       cost: this.estimateTargetCost(target, selectionHints),
       latency: this.averageLatency(target.node, target.model),
+      cacheScore: this.estimateCacheScore(target, selectionHints),
     }));
     const costs = entries
       .map((entry) => entry.cost)
@@ -974,20 +1010,30 @@ export class RoutingService {
     const latencies = entries
       .map((entry) => entry.latency)
       .filter((value): value is number => value !== null);
+    const cacheScores = entries
+      .map((entry) => entry.cacheScore)
+      .filter((value): value is number => value !== null);
 
-    if (costs.length === 0 && latencies.length === 0) return null;
+    if (costs.length === 0 && latencies.length === 0 && cacheScores.length === 0) return null;
 
     const minCost = costs.length ? Math.min(...costs) : 0;
     const maxCost = costs.length ? Math.max(...costs) : 0;
     const minLatency = latencies.length ? Math.min(...latencies) : 0;
     const maxLatency = latencies.length ? Math.max(...latencies) : 0;
 
-    const normalized = entries.map((entry) => ({
-      ...entry,
-      score:
-        this.normalizeMetric(entry.cost, minCost, maxCost) * 0.6 +
-        this.normalizeMetric(entry.latency, minLatency, maxLatency) * 0.4,
-    }));
+    const cacheAware = cacheScores.length > 0;
+    const normalized = entries.map((entry) => {
+      const costWeight = cacheAware ? 0.55 : 0.6;
+      const latencyWeight = cacheAware ? 0.35 : 0.4;
+      const cachePenalty = cacheAware ? 1 - (entry.cacheScore ?? 0) : 0;
+      return {
+        ...entry,
+        score:
+          this.normalizeMetric(entry.cost, minCost, maxCost) * costWeight +
+          this.normalizeMetric(entry.latency, minLatency, maxLatency) * latencyWeight +
+          cachePenalty * (cacheAware ? 0.1 : 0),
+      };
+    });
 
     normalized.sort((a, b) => {
       if (a.score !== b.score) return a.score - b.score;
@@ -1032,10 +1078,127 @@ export class RoutingService {
 
     const inputTokens = selectionHints.estimated_input_tokens ?? 1_000_000;
     const outputTokens = selectionHints.estimated_output_tokens ?? 1_000_000;
-    return (
+    const evidence = this.buildCacheEvidence(target, selectionHints);
+    return evidence.estimated_cache_adjusted_cost_usd ?? (
       (inputTokens / 1_000_000) * pricing.input +
       (outputTokens / 1_000_000) * pricing.output
     );
+  }
+
+  private estimateCacheScore(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+  ): number | null {
+    return this.buildCacheEvidence(target, selectionHints).cache_score;
+  }
+
+  private buildCacheEvidence(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+  ): RouteDecisionCacheEvidence {
+    const capabilities =
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) || {};
+    const pricing = capabilities.pricing;
+    const stats = this.targetCacheStats.get(
+      this.buildExperimentTargetKey(target.node, target.model),
+    );
+    const observedHitRate =
+      stats && stats.calls > 0
+        ? Number((stats.cacheReadCalls / stats.calls).toFixed(4))
+        : null;
+    const providerReadCache = Boolean(
+      capabilities.read_cache ||
+      capabilities.prompt_cache ||
+      pricing?.cache_read_input !== undefined,
+    );
+    const providerWriteCache = Boolean(
+      capabilities.write_cache ||
+      capabilities.prompt_cache ||
+      pricing?.cache_creation_input !== undefined,
+    );
+    const providerPromptCache = Boolean(
+      capabilities.prompt_cache ||
+      providerReadCache ||
+      providerWriteCache,
+    );
+    const localEligible = selectionHints.local_prompt_cache_eligible === true;
+    const localHit = selectionHints.local_prompt_cache_hit === true;
+    const inputTokens = selectionHints.estimated_input_tokens ?? 1_000_000;
+    const outputTokens = selectionHints.estimated_output_tokens ?? 1_000_000;
+    const baseCost =
+      pricing && Number.isFinite(pricing.input) && Number.isFinite(pricing.output)
+        ? (inputTokens / 1_000_000) * pricing.input +
+          (outputTokens / 1_000_000) * pricing.output
+        : null;
+    const supportsDiscountedRead =
+      providerReadCache &&
+      pricing?.cache_read_input !== undefined &&
+      pricing.cache_read_input < pricing.input;
+    const priorHitRate =
+      observedHitRate !== null
+        ? observedHitRate
+        : supportsDiscountedRead && localEligible
+          ? 0.05
+          : supportsDiscountedRead
+            ? 0.02
+            : 0;
+    const adjustedCost =
+      pricing && baseCost !== null && supportsDiscountedRead
+        ? (inputTokens / 1_000_000) *
+            (priorHitRate * (pricing.cache_read_input as number) +
+              (1 - priorHitRate) * pricing.input) +
+          (outputTokens / 1_000_000) * pricing.output
+        : baseCost;
+    const savings =
+      baseCost !== null && adjustedCost !== null
+        ? Math.max(0, baseCost - adjustedCost)
+        : null;
+    const cacheScore = providerPromptCache
+      ? Math.min(
+          1,
+          0.35 +
+            (providerReadCache ? 0.25 : 0) +
+            (providerWriteCache ? 0.15 : 0) +
+            Math.min(0.25, priorHitRate * 0.25),
+        )
+      : localHit
+        ? 1
+        : null;
+    const reason = localHit
+      ? 'local_prompt_cache_hit'
+      : supportsDiscountedRead && (savings || 0) > 0
+        ? 'provider_cache_read_price_preferred'
+        : providerPromptCache
+          ? 'provider_prompt_cache_capable'
+          : localEligible
+            ? 'local_prompt_cache_miss'
+            : 'cache_not_applicable';
+
+    return {
+      local_prompt_cache_eligible: localEligible,
+      local_prompt_cache_hit: localHit,
+      local_prompt_cache_lookup: selectionHints.local_prompt_cache_lookup ?? null,
+      provider_prompt_cache: providerPromptCache,
+      provider_read_cache: providerReadCache,
+      provider_write_cache: providerWriteCache,
+      observed_cache_hit_rate: observedHitRate,
+      observed_cache_read_tokens: stats?.cacheReadTokens ?? 0,
+      observed_cache_creation_tokens: stats?.cacheCreationTokens ?? 0,
+      input_price_per_mtok: pricing?.input ?? null,
+      cache_read_price_per_mtok: pricing?.cache_read_input ?? null,
+      cache_write_price_per_mtok: pricing?.cache_creation_input ?? null,
+      estimated_base_cost_usd:
+        baseCost === null ? null : Number(baseCost.toFixed(6)),
+      estimated_cache_adjusted_cost_usd:
+        adjustedCost === null ? null : Number(adjustedCost.toFixed(6)),
+      estimated_cache_savings_usd:
+        savings === null ? null : Number(savings.toFixed(6)),
+      cache_score: cacheScore === null ? null : this.roundScore(cacheScore),
+      reason,
+    };
   }
 
   private getEmbeddingTargets(): RouteTarget[] {
@@ -1287,16 +1450,21 @@ export class RoutingService {
   private selectionReason(
     strategy: EffectiveRoutingStrategy,
     target: RouteTarget,
+    selectionHints: RouteSelectionHints = {},
   ): string {
     if (strategy === 'cost') {
-      const cost = this.estimateTargetCost(target, {});
+      const cost = this.estimateTargetCost(target, selectionHints);
+      const cache = this.buildCacheEvidence(target, selectionHints);
+      if (cache.estimated_cache_savings_usd && cache.estimated_cache_savings_usd > 0) {
+        return `lowest cache-adjusted estimated cost (${cost?.toFixed(6)} USD)`;
+      }
       return cost === null ? 'lowest configured cost' : `lowest estimated cost (${cost.toFixed(6)} USD)`;
     }
     if (strategy === 'latency') {
       const avg = this.averageLatency(target.node, target.model);
       return avg === null ? 'latency optimization cold-start fallback' : `lowest local average latency (${avg}ms)`;
     }
-    if (strategy === 'balanced') return 'balanced local cost and latency score';
+    if (strategy === 'balanced') return 'balanced local cost, latency, and cache-aware score';
     if (strategy === 'quality') return 'highest configured quality score';
     if (strategy === 'least_latency') {
       const avg = this.averageLatency(target.node, target.model);
@@ -1381,12 +1549,16 @@ export class RoutingService {
         reasoning_effort: input.selectionHints.reasoning_effort ?? null,
         reasoning_budget_tokens: input.selectionHints.reasoning_budget_tokens ?? null,
         reasoning_strategy: input.selectionHints.reasoning_strategy ?? null,
+        local_prompt_cache_eligible: Boolean(input.selectionHints.local_prompt_cache_eligible),
+        local_prompt_cache_hit: Boolean(input.selectionHints.local_prompt_cache_hit),
+        local_prompt_cache_lookup: input.selectionHints.local_prompt_cache_lookup ?? null,
       },
       modality_evidence: this.buildTraceModalityEvidence(
         input.selectionHints,
         input.modalityHints,
         candidates,
       ),
+      cache_evidence: this.buildTraceCacheEvidence(input.selectionHints, candidates),
       candidate_targets: candidates,
       filters,
       load_balancing: {
@@ -1438,6 +1610,7 @@ export class RoutingService {
       target,
       selectionHints,
     );
+    const cacheEvidence = this.buildCacheEvidence(target, selectionHints);
 
     return {
       node: target.node,
@@ -1456,6 +1629,7 @@ export class RoutingService {
         cost: estimatedCost === null ? null : this.roundScore(1 / (1 + estimatedCost)),
         latency: avgLatencyMs === null ? null : this.roundScore(1 / (1 + avgLatencyMs / 1000)),
         context: this.contextScore(contextTokens, maxContextTokens),
+        cache: cacheEvidence.cache_score,
       },
       metrics: {
         estimated_cost_usd:
@@ -1472,8 +1646,39 @@ export class RoutingService {
           typeof capabilities.supports_reasoning === 'boolean'
             ? capabilities.supports_reasoning
             : null,
+        provider_cache_hit_rate: cacheEvidence.observed_cache_hit_rate,
+        estimated_cache_savings_usd: cacheEvidence.estimated_cache_savings_usd,
       },
       capability_evidence: capabilityEvidence,
+      cache_evidence: cacheEvidence,
+    };
+  }
+
+  private buildTraceCacheEvidence(
+    selectionHints: RouteSelectionHints,
+    candidates: RouteDecisionTraceCandidate[],
+  ) {
+    const providerCacheCandidates = candidates.filter((candidate) =>
+      candidate.cache_evidence?.provider_prompt_cache,
+    );
+    const savingsCandidates = candidates.filter((candidate) =>
+      (candidate.cache_evidence?.estimated_cache_savings_usd || 0) > 0,
+    );
+    const notes = new Set<string>();
+    if (selectionHints.local_prompt_cache_hit) notes.add('local_prompt_cache_hit');
+    if (selectionHints.local_prompt_cache_eligible && !selectionHints.local_prompt_cache_hit) {
+      notes.add('local_prompt_cache_miss');
+    }
+    if (providerCacheCandidates.length > 0) notes.add('provider_cache_capable_candidates');
+    if (savingsCandidates.length > 0) notes.add('cache_read_price_considered');
+
+    return {
+      local_prompt_cache_eligible: Boolean(selectionHints.local_prompt_cache_eligible),
+      local_prompt_cache_hit: Boolean(selectionHints.local_prompt_cache_hit),
+      local_prompt_cache_lookup: selectionHints.local_prompt_cache_lookup ?? null,
+      cache_aware_routing: providerCacheCandidates.length > 0 || Boolean(selectionHints.local_prompt_cache_hit),
+      provider_cache_preference: savingsCandidates.length > 0 || providerCacheCandidates.length > 0,
+      notes: Array.from(notes),
     };
   }
 
@@ -1637,6 +1842,13 @@ export class RoutingService {
     if (normalized === 'reasoning' || normalized === 'thinking') {
       return capabilities.supports_reasoning === true;
     }
+    if (normalized === 'prompt_cache') {
+      return capabilities.prompt_cache === true ||
+        capabilities.read_cache === true ||
+        capabilities.write_cache === true;
+    }
+    if (normalized === 'read_cache') return capabilities.read_cache === true;
+    if (normalized === 'write_cache') return capabilities.write_cache === true;
     if (normalized === 'video') {
       return supportedModalities.includes('video') ||
         inputTypes.includes('video') ||

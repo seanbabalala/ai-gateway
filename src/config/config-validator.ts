@@ -1460,7 +1460,15 @@ function validateCapabilitySchemaFields(
     );
   }
 
-  for (const key of ['supports_streaming', 'supports_realtime', 'supports_rerank', 'supports_reasoning']) {
+  for (const key of [
+    'supports_streaming',
+    'supports_realtime',
+    'supports_rerank',
+    'supports_reasoning',
+    'prompt_cache',
+    'read_cache',
+    'write_cache',
+  ]) {
     if (capability[key] !== undefined && !isBoolean(capability[key])) {
       issues.push(
         issue(
@@ -4019,6 +4027,18 @@ function validatePricingEntry(
           'error',
           'invalid_pricing_entry',
           `${pricingPath}.${key} must be a non-negative number.`,
+          `${pricingPath}.${key}`,
+        ),
+      );
+    }
+  }
+  for (const key of ['cache_creation_input', 'cache_read_input']) {
+    if (entry[key] !== undefined && (!isFiniteNumber(entry[key]) || entry[key] < 0)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_pricing_entry',
+          `${pricingPath}.${key} must be a non-negative number when set.`,
           `${pricingPath}.${key}`,
         ),
       );

@@ -396,7 +396,7 @@ export function BenchmarkPage() {
         </CardContent>
       </CardStatic>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-4">
         <CardStatic>
           <CardHeader>
             <CardTitle>{t('benchmark.metrics.totalCost')}</CardTitle>
@@ -437,6 +437,36 @@ export function BenchmarkPage() {
             <p className="mt-2 text-[12px] text-[var(--foreground-dim)]">
               {t('benchmark.metrics.traceMatched', { count: data.route_trace_coverage.matched_requests })}
             </p>
+          </CardContent>
+        </CardStatic>
+        <CardStatic>
+          <CardHeader>
+            <CardTitle>{t('benchmark.cacheAware.title')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="font-mono text-[28px] font-bold text-[var(--foreground)]">
+              {formatPercent(data.summary.cache_summary.cache_aware_request_rate)}
+            </div>
+            <p className="mt-2 text-[12px] text-[var(--foreground-dim)]">
+              {t('benchmark.cacheAware.subtitle', {
+                local: data.summary.cache_summary.local_prompt_cache_hits,
+                provider: data.summary.cache_summary.provider_cache_read_hits,
+              })}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded-md bg-[var(--inset-bg)] px-2 py-1.5">
+                <div className="text-[var(--foreground-dim)]">{t('benchmark.cacheAware.providerHitRate')}</div>
+                <div className="font-mono font-semibold text-[var(--foreground)]">
+                  {formatPercent(data.summary.cache_summary.provider_cache_hit_rate)}
+                </div>
+              </div>
+              <div className="rounded-md bg-[var(--inset-bg)] px-2 py-1.5">
+                <div className="text-[var(--foreground-dim)]">{t('benchmark.cacheAware.readTokenRatio')}</div>
+                <div className="font-mono font-semibold text-[var(--foreground)]">
+                  {formatPercent(data.summary.cache_summary.cache_read_token_ratio)}
+                </div>
+              </div>
+            </div>
           </CardContent>
         </CardStatic>
       </div>

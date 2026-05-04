@@ -9,6 +9,7 @@ The important product rule is honesty: built-in provider/model/pricing data is a
 - Keep provider/model knowledge out of Dashboard form components.
 - Give config validation enough context to warn about likely model, pricing, endpoint, and modality mistakes.
 - Provide one shared vocabulary for text, vision, image, audio, video, embedding, rerank, and realtime routing work.
+- Provide one shared prompt-cache vocabulary for provider `prompt_cache`, `read_cache`, `write_cache`, and cache read/write token prices.
 - Preserve single-node memory/SQLite defaults. Redis, Postgres, and Cloud are not required.
 
 ## Dashboard APIs
@@ -127,14 +128,20 @@ providers:
         endpoints:
           chat_completions: /v1/chat/completions
         capabilities: [streaming]
+        prompt_cache: true
+        read_cache: true
         pricing:
           input: 0.25
           output: 0.75
+          cache_read_input: 0.05
+          cache_creation_input: 0.25
           currency: USD
           unit: usd_per_1m_tokens
           units:
             input: usd_per_1m_input_tokens
             output: usd_per_1m_output_tokens
+            cache_read_input: usd_per_1m_cache_read_input_tokens
+            cache_creation_input: usd_per_1m_cache_write_input_tokens
           source: internal-rate-card
           last_updated: "2026-05-03"
           manual_review_required: false
@@ -243,3 +250,14 @@ Cost routing, budget accounting, and route evidence resolve prices in this order
 3. merged Provider Catalog model pricing from the built-in catalog plus `catalog.override.yaml`
 
 The catalog fallback is intentionally conservative. Built-in prices are marked `manual_review_required` and low confidence until an operator verifies them or overrides them locally. Use explicit config pricing for production billing decisions.
+
+## Prompt Cache Metadata
+
+v1.2 uses the same catalog and node/model capability schema for prompt-cache-aware routing:
+
+- `prompt_cache: true` means the provider/model has prompt-cache semantics.
+- `read_cache: true` means the provider/model can reuse previously cached prompt/context tokens and may report cache-read token usage.
+- `write_cache: true` means the provider/model can create provider-side cache entries.
+- `pricing.cache_read_input` and `pricing.cache_creation_input` are USD per 1M cache-read or cache-write input tokens.
+
+Explicit `nodes[].model_capabilities[model]` always wins over top-level `models_pricing`, and both win over catalog fallback metadata. If cache prices are missing, routing still works and falls back to normal input pricing for cost accounting.

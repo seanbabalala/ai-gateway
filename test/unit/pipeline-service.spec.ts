@@ -2702,7 +2702,9 @@ describe('PipelineService — cache-aware cost calculation', () => {
   });
 
   it('should persist cache tokens in call log', async () => {
+    const recordTargetUsage = jest.fn();
     const { pipeline, mocks } = makePipeline({
+      routingService: { recordTargetUsage },
       providerClient: {
         forward: jest.fn().mockResolvedValue(
           makeCanonicalResponse({
@@ -2724,6 +2726,11 @@ describe('PipelineService — cache-aware cost calculation', () => {
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.cache_read_input_tokens).toBe(200);
     expect(savedLog.cache_creation_input_tokens).toBe(0);
+    expect(recordTargetUsage).toHaveBeenCalledWith(
+      'openai',
+      'gpt-4o',
+      expect.objectContaining({ cache_read_input_tokens: 200 }),
+    );
   });
 
   it('should use default input pricing when cache pricing not specified', async () => {

@@ -50,6 +50,8 @@ const PRICING_DIMENSIONS: CatalogPricingDimension[] = [
   'video',
   'rerank',
   'embedding',
+  'cache_read_input',
+  'cache_creation_input',
 ];
 const PRICING_CONFIDENCES = new Set(['high', 'medium', 'low', 'unknown']);
 const PLACEHOLDER_SOURCE_PATTERN = /(placeholder|operator_required|manual[_-]?placeholder|unknown|replace)/i;
@@ -367,6 +369,7 @@ function validateOverrideProvider(
   validateEndpointMap(provider.endpoints, `${basePath}.endpoints`, issues);
   validateStringArray(provider.model_prefixes, `${basePath}.model_prefixes`, issues);
   validateStringArray(provider.capabilities, `${basePath}.capabilities`, issues);
+  validateCacheFlags(provider, basePath, issues);
   validatePricing(provider.pricing, `${basePath}.pricing`, issues);
 
   if (provider.models !== undefined) {
@@ -416,6 +419,7 @@ function validateOverrideModel(
   validateModalities(model.modalities, `${basePath}.modalities`, issues);
   validateEndpointMap(model.endpoints, `${basePath}.endpoints`, issues);
   validateStringArray(model.capabilities, `${basePath}.capabilities`, issues);
+  validateCacheFlags(model, basePath, issues);
   validatePricing(model.pricing, `${basePath}.pricing`, issues);
   if (model.limits !== undefined && !isRecord(model.limits)) {
     issues.push(
@@ -426,6 +430,26 @@ function validateOverrideModel(
         `${basePath}.limits`,
       ),
     );
+  }
+}
+
+function validateCacheFlags(
+  value: unknown,
+  basePath: string,
+  issues: CatalogIssue[],
+): void {
+  if (!isRecord(value)) return;
+  for (const key of ['prompt_cache', 'read_cache', 'write_cache']) {
+    if (value[key] !== undefined && typeof value[key] !== 'boolean') {
+      issues.push(
+        issue(
+          'error',
+          'catalog_cache_flag_invalid',
+          `${key} must be a boolean when set.`,
+          `${basePath}.${key}`,
+        ),
+      );
+    }
   }
 }
 
@@ -611,7 +635,7 @@ function validatePricing(
         issue(
           'error',
           'catalog_pricing_units_invalid',
-          'pricing.units must be an object keyed by input/output/image/audio/video/rerank/embedding.',
+          'pricing.units must be an object keyed by input/output/image/audio/video/rerank/embedding/cache_read_input/cache_creation_input.',
           `${basePath}.units`,
         ),
       );
@@ -849,6 +873,9 @@ function mergeProvider(
   if (override.model_prefixes) target.model_prefixes = [...override.model_prefixes];
   if (override.capabilities) target.capabilities = [...override.capabilities];
   if (override.pricing) target.pricing = { ...override.pricing };
+  if (override.prompt_cache !== undefined) target.prompt_cache = override.prompt_cache;
+  if (override.read_cache !== undefined) target.read_cache = override.read_cache;
+  if (override.write_cache !== undefined) target.write_cache = override.write_cache;
 
   const modelsById = new Map(target.models.map((model) => [model.id, model]));
   for (const overrideModel of override.models || []) {
@@ -874,6 +901,9 @@ function providerFromOverride(override: CatalogOverrideProvider): CatalogProvide
     model_prefixes: override.model_prefixes ? [...override.model_prefixes] : [],
     capabilities: override.capabilities ? [...override.capabilities] : [],
     pricing: override.pricing ? { ...override.pricing } : undefined,
+    prompt_cache: override.prompt_cache,
+    read_cache: override.read_cache,
+    write_cache: override.write_cache,
     models: (override.models || []).map((model) => modelFromOverride(id, model)),
     source: 'override',
     overridden: true,
@@ -893,6 +923,9 @@ function mergeModel(
   if (override.capabilities) target.capabilities = [...override.capabilities];
   if (override.limits) target.limits = { ...override.limits };
   if (override.pricing) target.pricing = { ...override.pricing };
+  if (override.prompt_cache !== undefined) target.prompt_cache = override.prompt_cache;
+  if (override.read_cache !== undefined) target.read_cache = override.read_cache;
+  if (override.write_cache !== undefined) target.write_cache = override.write_cache;
 }
 
 function modelFromOverride(
@@ -908,6 +941,9 @@ function modelFromOverride(
     capabilities: override.capabilities ? [...override.capabilities] : [],
     limits: override.limits ? { ...override.limits } : undefined,
     pricing: override.pricing ? { ...override.pricing } : undefined,
+    prompt_cache: override.prompt_cache,
+    read_cache: override.read_cache,
+    write_cache: override.write_cache,
     source: 'override',
     overridden: true,
   };
@@ -967,6 +1003,12 @@ export function catalogModelToModelPricing(
   return {
     input: pricing.input,
     output: pricing.output,
+    cache_creation_input: isFiniteNonNegativeNumber(pricing.cache_creation_input)
+      ? pricing.cache_creation_input
+      : undefined,
+    cache_read_input: isFiniteNonNegativeNumber(pricing.cache_read_input)
+      ? pricing.cache_read_input
+      : undefined,
     source: `catalog:${model.provider}:${pricing.source}`,
     currency: pricing.currency || 'USD',
     catalog_source: model.overridden ? 'override' : model.source,
@@ -1143,6 +1185,9 @@ function hasCompatibleUnit(
   if (dimension === 'audio') return unit.includes('audio') || unit.includes('minute') || unit.includes('second');
   if (dimension === 'video') return unit.includes('video') || unit.includes('minute') || unit.includes('second');
   if (dimension === 'rerank') return unit.includes('rerank') || unit.includes('request');
+  if (dimension === 'cache_read_input' || dimension === 'cache_creation_input') {
+    return unit.includes('token') || unit.includes('cache');
+  }
   return true;
 }
 

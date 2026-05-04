@@ -220,6 +220,16 @@ function LogDetailRow({ log }: { log: CallLog }) {
                 <span className="text-[var(--foreground-dim)]">{t('cache.creationTokens')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">{log.cache_creation_input_tokens ?? 0}</span>
               </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('cache.routingEffect')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {isCache
+                    ? t('cache.localBypass')
+                    : (log.cache_read_input_tokens || log.cache_creation_input_tokens)
+                      ? t('cache.providerEvidence')
+                      : t('cache.noEvidence')}
+                </span>
+              </div>
             </>
           )}
           <div>

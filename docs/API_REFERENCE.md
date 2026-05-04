@@ -486,9 +486,11 @@ The report is calculated by pairing `shadow_traffic_results.request_id` with the
 
 `GET /api/dashboard/benchmarks/report` summarizes local gateway behavior from `call_logs`. It supports `period`, `namespace`, `api_key_id`, legacy `api_key`, `node`, `model`, `source_format`, and `limit` filters.
 
-The report includes total requests, success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimates, cost and token summaries, status-code distribution, `node:model` breakdown, source-format breakdown, source-family breakdown for chat/responses/messages/embeddings/rerank/images/audio/video/realtime, and route-trace coverage.
+The report includes total requests, success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimates, cost and token summaries, status-code distribution, `node:model` breakdown, source-format breakdown, source-family breakdown for chat/responses/messages/embeddings/rerank/images/audio/video/realtime, route-trace coverage, and `cache_summary` fields for local prompt-cache hits, provider cache-read hits, provider cache-write events, cache-aware request rate, and cache-read token ratio.
 
 This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
+
+Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, and estimated savings.
 
 ### Dashboard Playground
 

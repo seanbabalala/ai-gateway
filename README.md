@@ -86,6 +86,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Tier-based routing** — each complexity tier maps to a primary provider + fallback chain
 - **Load balancing strategies** — route within a tier using `weighted`, `round_robin`, `least_latency`, or `random` targets
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
+- **Prompt-cache-aware optimization** — cost and balanced routing can prefer provider paths with prompt-cache/read-cache capability, lower cache-read token prices, or observed provider cache hits while keeping local prompt-cache hits as a safe upstream bypass
 - **Reasoning-aware target preference** — explicit reasoning/thinking requests prefer models that declare `supports_reasoning` or reasoning capability tags, while keeping unknown legacy targets usable unless every configured target says no
 - **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
 - **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, endpoint/modality, budget, and rate-limit policy limits
@@ -1471,6 +1472,8 @@ Dashboard filters for generated Gateway API keys use the immutable `api_key_id`.
 
 Gateway prompt-cache hits are still logged and recorded against budgets using the cached response's usage and model pricing. They are marked as tier `cached` with node `cache`, so they remain attributable without making an upstream provider call.
 
+v1.2 route decisions also record cache evidence: local prompt-cache lookup status, provider prompt-cache/read-cache/write-cache capability, observed provider cache-read hit rate, and cache-adjusted estimated cost. This evidence is metadata-only and never stores prompts, responses, raw headers, provider keys, media bytes, or video bytes.
+
 Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, SiftGate tries merged Provider Catalog fallback pricing. If that is missing too, routing still works, token usage is tracked, and cost may be `0` until pricing is configured.
 
 When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"` and structured details such as `scope`, `api_key_id`, `budget_type`, `current`, `limit`, and `reset_at`.
@@ -1520,7 +1523,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
 - **Shadow** — Read-only sampled mirror results plus comparison reports for success, latency, cost, confidence, and risk
-- **Benchmarks** — Read-only local benchmark report from call-log metadata; it never applies routing changes
+- **Benchmarks** — Read-only local benchmark report from call-log metadata, including cache-aware impact summaries; it never applies routing changes
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules

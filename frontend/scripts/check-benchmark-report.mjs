@@ -58,6 +58,7 @@ for (const field of [
   'by_source_family',
   'cost_summary',
   'token_summary',
+  'cache_summary',
   'route_trace_coverage',
   'media_bytes_stored',
 ]) {
@@ -70,6 +71,7 @@ for (const key of [
   "t('benchmark.methodology.title')",
   "t('benchmark.slo.description')",
   "t('benchmark.privacy.metadataOnly')",
+  "t('benchmark.cacheAware.title')",
 ]) {
   if (!page.includes(key)) {
     throw new Error(`Benchmark page must keep methodology/privacy copy localized: ${key}`)

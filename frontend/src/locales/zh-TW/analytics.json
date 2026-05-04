@@ -133,5 +133,9 @@
   "benchmark.table.target": "目標",
   "benchmark.table.throughput": "請求/分",
   "benchmark.title": "基準報告",
-  "benchmark.source.batch": "批次"
+  "benchmark.source.batch": "批次",
+  "benchmark.cacheAware.title": "快取感知效果",
+  "benchmark.cacheAware.subtitle": "{{local}} 次本地命中 · {{provider}} 次 Provider 讀取命中",
+  "benchmark.cacheAware.providerHitRate": "Provider 命中率",
+  "benchmark.cacheAware.readTokenRatio": "讀快取 token 比例"
 }

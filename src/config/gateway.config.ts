@@ -517,6 +517,12 @@ export interface ModelCapabilityConfig {
   supports_rerank?: boolean;
   /** Whether this model supports explicit reasoning/thinking controls. */
   supports_reasoning?: boolean;
+  /** Whether this model/provider supports prompt caching in any form. */
+  prompt_cache?: boolean;
+  /** Whether this model/provider can read previously cached prompt tokens. */
+  read_cache?: boolean;
+  /** Whether this model/provider can write prompt/context tokens into provider cache. */
+  write_cache?: boolean;
   /** Maximum total context window for this model, including input and reserved output tokens. */
   max_context_tokens?: number;
   /** Whether this model should be considered safe for structured output requests. */
@@ -639,6 +645,12 @@ export interface NodeConfig {
   supports_realtime?: boolean;
   supports_rerank?: boolean;
   supports_reasoning?: boolean;
+  /** Node-level default provider prompt-cache support flag. */
+  prompt_cache?: boolean;
+  /** Node-level default provider prompt-cache read support flag. */
+  read_cache?: boolean;
+  /** Node-level default provider prompt-cache write support flag. */
+  write_cache?: boolean;
   /** Optional per-model capability and pricing metadata. Keys are model IDs. */
   model_capabilities?: Record<string, ModelCapabilityConfig>;
 

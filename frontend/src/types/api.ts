@@ -183,6 +183,7 @@ export interface RouteDecisionCandidate {
     cost: number | null
     latency: number | null
     context: number | null
+    cache?: number | null
   }
   metrics: {
     estimated_cost_usd: number | null
@@ -192,6 +193,8 @@ export interface RouteDecisionCandidate {
     context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown'
     structured_output: boolean | null
     reasoning?: boolean | null
+    provider_cache_hit_rate?: number | null
+    estimated_cache_savings_usd?: number | null
   }
   capability_evidence?: {
     requested_modality: string | null
@@ -211,6 +214,25 @@ export interface RouteDecisionCandidate {
     filtered_by_file_size: boolean
     pricing_source: string | null
     catalog_source: string | null
+  }
+  cache_evidence?: {
+    local_prompt_cache_eligible: boolean
+    local_prompt_cache_hit: boolean
+    local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null
+    provider_prompt_cache: boolean
+    provider_read_cache: boolean
+    provider_write_cache: boolean
+    observed_cache_hit_rate: number | null
+    observed_cache_read_tokens: number
+    observed_cache_creation_tokens: number
+    input_price_per_mtok: number | null
+    cache_read_price_per_mtok: number | null
+    cache_write_price_per_mtok: number | null
+    estimated_base_cost_usd: number | null
+    estimated_cache_adjusted_cost_usd: number | null
+    estimated_cache_savings_usd: number | null
+    cache_score: number | null
+    reason: string
   }
 }
 
@@ -250,6 +272,9 @@ export interface RouteDecisionTrace {
     reasoning_effort?: string | null
     reasoning_budget_tokens?: number | null
     reasoning_strategy?: string | null
+    local_prompt_cache_eligible?: boolean
+    local_prompt_cache_hit?: boolean
+    local_prompt_cache_lookup?: 'hit' | 'miss' | 'disabled' | 'skipped' | null
   }
   modality_evidence?: {
     requested_modality: string | null
@@ -275,6 +300,14 @@ export interface RouteDecisionTrace {
       byte_size?: number | null
       max_file_size?: number | null
     }>
+  }
+  cache_evidence?: {
+    local_prompt_cache_eligible: boolean
+    local_prompt_cache_hit: boolean
+    local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null
+    cache_aware_routing: boolean
+    provider_cache_preference: boolean
+    notes: string[]
   }
   candidate_targets: RouteDecisionCandidate[]
   filters: RouteDecisionFilter[]
@@ -835,6 +868,8 @@ export interface RoutingConfig {
 export interface ModelPricing {
   input: number
   output: number
+  cache_creation_input?: number
+  cache_read_input?: number
 }
 
 export interface ConfigResponse {
@@ -1023,6 +1058,17 @@ export interface BenchmarkTokenSummary {
   cache_read_input_tokens: number
 }
 
+export interface BenchmarkCacheSummary {
+  local_prompt_cache_hits: number
+  local_prompt_cache_hit_rate: number
+  provider_cache_read_hits: number
+  provider_cache_hit_rate: number
+  provider_cache_creation_hits: number
+  cache_aware_requests: number
+  cache_aware_request_rate: number
+  cache_read_token_ratio: number
+}
+
 export interface BenchmarkMetrics {
   calls: number
   total_requests: number
@@ -1042,6 +1088,7 @@ export interface BenchmarkMetrics {
   throughput: BenchmarkThroughputEstimate
   cost_summary: BenchmarkCostSummary
   token_summary: BenchmarkTokenSummary
+  cache_summary: BenchmarkCacheSummary
   latency_ms: BenchmarkLatencySummary
 }
 

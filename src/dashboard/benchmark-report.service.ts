@@ -48,6 +48,17 @@ export interface BenchmarkTokenSummary {
   cache_read_input_tokens: number;
 }
 
+export interface BenchmarkCacheSummary {
+  local_prompt_cache_hits: number;
+  local_prompt_cache_hit_rate: number;
+  provider_cache_read_hits: number;
+  provider_cache_hit_rate: number;
+  provider_cache_creation_hits: number;
+  cache_aware_requests: number;
+  cache_aware_request_rate: number;
+  cache_read_token_ratio: number;
+}
+
 export interface BenchmarkMetrics {
   calls: number;
   total_requests: number;
@@ -67,6 +78,7 @@ export interface BenchmarkMetrics {
   throughput: BenchmarkThroughputEstimate;
   cost_summary: BenchmarkCostSummary;
   token_summary: BenchmarkTokenSummary;
+  cache_summary: BenchmarkCacheSummary;
   latency_ms: BenchmarkLatencySummary;
 }
 
@@ -368,7 +380,16 @@ export class BenchmarkReportService {
       (sum, row) => sum + Number(row.cache_read_input_tokens || 0),
       0,
     );
-    const cacheHits = rows.filter((row) => Number(row.cache_read_input_tokens || 0) > 0).length;
+    const localCacheHits = rows.filter((row) => row.tier === 'cached' || row.node_id === 'cache').length;
+    const providerCacheHits = rows.filter((row) => Number(row.cache_read_input_tokens || 0) > 0).length;
+    const providerCacheWrites = rows.filter((row) => Number(row.cache_creation_input_tokens || 0) > 0).length;
+    const cacheAwareRequests = rows.filter((row) =>
+      row.tier === 'cached' ||
+      row.node_id === 'cache' ||
+      Number(row.cache_read_input_tokens || 0) > 0 ||
+      Number(row.cache_creation_input_tokens || 0) > 0,
+    ).length;
+    const cacheHits = localCacheHits + providerCacheHits;
     const cacheMisses = Math.max(calls - cacheHits, 0);
     const activeMinutes = Math.max(activeMs / 60_000, 1);
     const periodMinutes = Math.max(periodMs / 60_000, 1);
@@ -407,6 +428,16 @@ export class BenchmarkReportService {
         avg_tokens_per_request: calls > 0 ? Math.round(totalTokens / calls) : 0,
         cache_creation_input_tokens: cacheCreationTokens,
         cache_read_input_tokens: cacheReadTokens,
+      },
+      cache_summary: {
+        local_prompt_cache_hits: localCacheHits,
+        local_prompt_cache_hit_rate: this.percent(localCacheHits, calls),
+        provider_cache_read_hits: providerCacheHits,
+        provider_cache_hit_rate: this.percent(providerCacheHits, calls),
+        provider_cache_creation_hits: providerCacheWrites,
+        cache_aware_requests: cacheAwareRequests,
+        cache_aware_request_rate: this.percent(cacheAwareRequests, calls),
+        cache_read_token_ratio: this.percent(cacheReadTokens, Math.max(inputTokens + cacheReadTokens, 0)),
       },
       latency_ms: {
         avg_ms: Math.round(this.average(latencies)),

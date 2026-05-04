@@ -133,5 +133,9 @@
   "benchmark.table.target": "Destino",
   "benchmark.table.throughput": "Req/min",
   "benchmark.title": "Benchmarks",
-  "benchmark.source.batch": "Batch"
+  "benchmark.source.batch": "Batch",
+  "benchmark.cacheAware.title": "Impacto cache-aware",
+  "benchmark.cacheAware.subtitle": "{{local}} hits locales · {{provider}} hits de lectura provider",
+  "benchmark.cacheAware.providerHitRate": "hit rate provider",
+  "benchmark.cacheAware.readTokenRatio": "ratio tokens leídos"
 }
