@@ -73,6 +73,8 @@
   "form.backToProviderList": "Back to provider list",
   "form.connectivity.testConnection": "Test Connection",
   "form.connectivity.testing": "Testing...",
+  "form.connectivity.providerHttp": "Provider HTTP",
+  "form.connectivity.summaryStatus": "Summary",
   "form.connectivity.title": "Connectivity Test",
   "form.connectivity.usingSavedConfig": "(using saved config)",
   "form.custom": "Custom",

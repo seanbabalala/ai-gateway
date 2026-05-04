@@ -73,6 +73,8 @@
   "form.backToProviderList": "返回供應商列表",
   "form.connectivity.testConnection": "測試連線",
   "form.connectivity.testing": "測試中...",
+  "form.connectivity.providerHttp": "上游 HTTP",
+  "form.connectivity.summaryStatus": "彙總",
   "form.connectivity.title": "連線測試",
   "form.connectivity.usingSavedConfig": "（使用已儲存設定）",
   "form.custom": "自訂",

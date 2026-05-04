@@ -73,6 +73,8 @@
   "form.backToProviderList": "Volver a providers",
   "form.connectivity.testConnection": "Probar conexión",
   "form.connectivity.testing": "Probando...",
+  "form.connectivity.providerHttp": "HTTP del provider",
+  "form.connectivity.summaryStatus": "Resumen",
   "form.connectivity.title": "Prueba de conectividad",
   "form.connectivity.usingSavedConfig": "(usa config guardada)",
   "form.custom": "Personalizado",

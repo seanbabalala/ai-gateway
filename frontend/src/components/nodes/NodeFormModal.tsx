@@ -957,6 +957,7 @@ export function NodeFormModal({
   }
 
   const isTestPending = testNode.isPending || testExisting.isPending
+  const isMatrixTestResult = Boolean(testResult?.matrix?.length)
   const currentNodeId = isEdit ? editNode!.id : form.id.trim()
   const otherNodes = existingNodes.filter((node) => node.id !== currentNodeId)
   const allNodeIds = existingNodes.map((node) => node.id)
@@ -1435,7 +1436,10 @@ export function NodeFormModal({
                             <div className="font-semibold">{testResult.message}</div>
                             {testResult.latency_ms > 0 && (
                               <div className="mt-0.5 font-mono opacity-70">
-                                HTTP {testResult.status} / {testResult.latency_ms}ms
+                                {isMatrixTestResult
+                                  ? t('form.connectivity.summaryStatus')
+                                  : t('form.connectivity.providerHttp')}{' '}
+                                {testResult.status} / {testResult.latency_ms}ms
                               </div>
                             )}
                           </div>

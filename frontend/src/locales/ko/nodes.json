@@ -73,6 +73,8 @@
   "form.backToProviderList": "Provider 목록으로 돌아가기",
   "form.connectivity.testConnection": "연결 테스트",
   "form.connectivity.testing": "테스트 중...",
+  "form.connectivity.providerHttp": "Provider HTTP",
+  "form.connectivity.summaryStatus": "요약",
   "form.connectivity.title": "연결 테스트",
   "form.connectivity.usingSavedConfig": "(저장된 설정 사용)",
   "form.custom": "사용자 지정",

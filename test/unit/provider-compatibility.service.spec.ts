@@ -89,6 +89,32 @@ describe('ProviderCompatibilityService', () => {
     expect(JSON.stringify(repo.rows)).not.toContain('{"ok":true}');
   });
 
+  it('uses the minimum portable Responses output token limit', async () => {
+    const repo = makeRepo();
+    const service = new ProviderCompatibilityService(repo as any);
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 200,
+      text: jest.fn().mockResolvedValue('{"ok":true}'),
+    });
+    global.fetch = fetchMock as any;
+
+    const result = await service.runNodeMatrix(
+      node({
+        protocol: 'responses',
+        endpoint: '/v1/responses',
+        models: ['gpt-4.1'],
+      }),
+      { capabilities: ['responses'] },
+    );
+
+    expect(result.success).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual(expect.objectContaining({
+      model: 'gpt-4.1',
+      max_output_tokens: 16,
+    }));
+  });
+
   it('uses endpoint probes for realtime by default', async () => {
     const repo = makeRepo();
     const service = new ProviderCompatibilityService(repo as any);
