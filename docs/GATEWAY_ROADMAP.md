@@ -20,6 +20,26 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
+| v1.2 | Platform Capabilities | 进行中 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | 🚧 In Progress |
+
+---
+
+## v1.2 — Platform Capabilities（平台能力）
+
+**v1.2 进行中状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 SiftGate 从多协议网关推进到更完整的平台能力层。
+
+### P1：Model Pricing 自动同步框架
+
+- **状态**：🚧 功能分支进行中
+- **目标**：在现有 Provider Catalog refresh 基础上增加可选 scheduled sync，让成本路由能使用更及时的公开模型/价格元数据，同时避免覆盖用户显式配置
+- **实现方案**：
+  - `catalog.sync.enabled` 默认 `false`，不会在启动后自动联网
+  - 必须显式启用 provider adapter；v1.2 首批仅支持 `catalog.sync.adapters.openrouter.enabled: true`
+  - OpenRouter adapter 复用公开 `/api/v1/models` 数据，写入 `last_sync`、`source_url`、`pricing_confidence`、`stale_after_days`
+  - 默认 `write_to: cache`，写入 `.siftgate/catalog-sync-cache.yaml`；加载顺序为 built-in → sync cache → `catalog.override.yaml`
+  - 用户显式 `catalog.override.yaml`、node `model_capabilities[].pricing` 和 `models_pricing` 永远优先
+  - CLI 新增 `siftgate catalog sync openrouter`，Dashboard Provider Catalog 展示 sync status、last sync、stale 状态、source URL 和 confidence
+  - 其他 Provider 保持 `docs_review` / `operator_local`，由运维人员通过本地 override 管理
 
 ---
 

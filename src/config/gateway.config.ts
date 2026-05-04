@@ -69,6 +69,29 @@ export interface GatewayConfig {
 export interface CatalogConfig {
   /** Local model/provider catalog override file. Defaults to catalog.override.yaml. */
   override_file?: string;
+  /** Optional model/pricing sync. Disabled by default and requires explicit provider adapters. */
+  sync?: CatalogSyncConfig;
+}
+
+export interface CatalogSyncConfig {
+  /** Master switch for scheduled model/pricing sync (default: false). */
+  enabled?: boolean;
+  /** Scheduler interval in minutes (default: 1440). */
+  interval_minutes?: number;
+  /** Run once on startup when enabled (default: false). */
+  run_on_startup?: boolean;
+  /** Where automatic sync writes data. cache is safest and never overwrites user overrides. */
+  write_to?: 'cache' | 'override';
+  /** SiftGate-managed local catalog cache path. Defaults to .siftgate/catalog-sync-cache.yaml. */
+  cache_file?: string;
+  /** Optional override output path when write_to=override. Defaults to catalog.override_file. */
+  override_file?: string;
+  /** Explicit provider adapters. Only openrouter is supported in v1.2. */
+  adapters?: Record<string, CatalogSyncAdapterConfig>;
+}
+
+export interface CatalogSyncAdapterConfig {
+  enabled?: boolean;
 }
 
 // ===== Config Audit / Rollback =====

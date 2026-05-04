@@ -1008,6 +1008,47 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('catalog_override_secret_value');
   });
 
+  it('requires explicit supported provider adapters for scheduled catalog sync', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        catalog: {
+          sync: {
+            enabled: true,
+            interval_minutes: 60,
+            adapters: {
+              anthropic: { enabled: true },
+            },
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'catalog_sync_adapter_manual_only',
+        'catalog_sync_no_enabled_adapter',
+      ]),
+    );
+
+    const ok = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        catalog: {
+          sync: {
+            enabled: true,
+            write_to: 'cache',
+            cache_file: './.siftgate/catalog-sync-cache.yaml',
+            adapters: {
+              openrouter: { enabled: true },
+            },
+          },
+        },
+      }),
+      { env: {} },
+    );
+    expect(codes(ok.warnings)).not.toContain('catalog_sync_no_enabled_adapter');
+  });
+
   it('reuses shared node/model diagnostics for pricing and ambiguous names', () => {
     const result = validateConfigObject(
       {

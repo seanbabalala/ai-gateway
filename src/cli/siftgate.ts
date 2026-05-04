@@ -14,6 +14,10 @@ import {
   getCatalogRefreshSources,
   refreshCatalogProvider,
 } from "../catalog/catalog-refresh";
+import {
+  buildCatalogSyncStatus,
+  syncCatalogProvider,
+} from "../catalog/catalog-sync";
 import type {
   CatalogIssue,
   CatalogProvider,
@@ -99,11 +103,12 @@ interface MigrateDbArgs {
 }
 
 interface CatalogArgs {
-  action?: "list" | "show" | "validate" | "export" | "import" | "sources" | "refresh";
+  action?: "list" | "show" | "validate" | "export" | "import" | "sources" | "refresh" | "sync";
   provider?: string;
   filePath?: string;
   overridePath?: string;
   outputPath?: string;
+  writeTo?: "cache" | "override";
   force: boolean;
   json: boolean;
   help: boolean;
@@ -218,6 +223,10 @@ async function runCatalogCommand(args: string[], cli: CliIO): Promise<number> {
     return runCatalogRefreshCommand(parsedArgs, cli);
   }
 
+  if (parsedArgs.action === "sync") {
+    return runCatalogSyncCommand(parsedArgs, cli);
+  }
+
   const loaded = loadMergedCatalog({
     cwd: cli.cwd,
     env: cli.env,
@@ -329,6 +338,59 @@ async function runCatalogRefreshCommand(args: CatalogArgs, cli: CliIO): Promise<
     cli.stdout(formatCatalogRefreshResult(result, destinationPath));
   }
   return 0;
+}
+
+async function runCatalogSyncCommand(args: CatalogArgs, cli: CliIO): Promise<number> {
+  const provider = args.provider || "openrouter";
+  const writeTo = args.writeTo || (args.outputPath ? "override" : "cache");
+  const resolvedOutputPath = args.outputPath ? resolveCliPath(cli.cwd, args.outputPath) : undefined;
+  const resolvedOverridePath = args.overridePath ? resolveCliPath(cli.cwd, args.overridePath) : undefined;
+  const syncCachePath = writeTo === "cache" ? resolvedOutputPath : undefined;
+  const overridePath =
+    writeTo === "override" ? resolvedOutputPath || resolvedOverridePath : resolvedOverridePath;
+  const loadedBefore = loadMergedCatalog({
+    cwd: cli.cwd,
+    env: cli.env,
+    overridePath,
+    syncCachePath,
+  });
+  const result = await syncCatalogProvider({
+    provider,
+    now: cli.now(),
+    cwd: cli.cwd,
+    env: cli.env,
+    config: { catalog: { override_file: overridePath, sync: { cache_file: syncCachePath } } },
+    writeTo,
+    outputPath: resolvedOutputPath,
+    overridePath,
+    force: args.force,
+  });
+  const loadedAfter = loadMergedCatalog({
+    cwd: cli.cwd,
+    env: cli.env,
+    overridePath,
+    syncCachePath,
+  });
+  const status = buildCatalogSyncStatus({
+    config: { override_file: overridePath, sync: { cache_file: syncCachePath } },
+    catalog: loadedAfter.catalog,
+    cachePath: loadedAfter.syncCachePath,
+    cacheFound: loadedAfter.syncCacheFound,
+    overridePath: loadedAfter.overridePath,
+    overrideFound: loadedAfter.overrideFound,
+    issues: [...loadedBefore.issues, ...loadedAfter.issues],
+    lastRuns: new Map([[provider, result]]),
+    now: cli.now(),
+  });
+
+  if (args.json) {
+    cli.stdout(JSON.stringify({ ...result, sync_status: status }, null, 2));
+  } else if (result.status === "synced") {
+    cli.stdout(formatCatalogSyncResult(result, status));
+  } else {
+    cli.stderr(formatCatalogSyncResult(result, status));
+  }
+  return result.status === "synced" ? 0 : 1;
 }
 
 function runCatalogValidateCommand(args: CatalogArgs, cli: CliIO): number {
@@ -779,7 +841,7 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
     return parsed;
   }
 
-  if (!["list", "show", "validate", "export", "import", "sources", "refresh"].includes(action)) {
+  if (!["list", "show", "validate", "export", "import", "sources", "refresh", "sync"].includes(action)) {
     throw new Error(`Unknown catalog command: ${action}`);
   }
   parsed.action = action as CatalogArgs["action"];
@@ -804,6 +866,23 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
     }
     if (arg === "--include-pricing") {
       parsed.includePricing = true;
+      continue;
+    }
+    if (arg === "--write-to") {
+      const value = requireValue(rest, index, arg);
+      if (value !== "cache" && value !== "override") {
+        throw new Error("--write-to must be cache or override.");
+      }
+      parsed.writeTo = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--write-to=")) {
+      const value = requireInlineValue(arg, "--write-to");
+      if (value !== "cache" && value !== "override") {
+        throw new Error("--write-to must be cache or override.");
+      }
+      parsed.writeTo = value;
       continue;
     }
     if (arg === "--file" || arg === "-f") {
@@ -847,6 +926,10 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
       continue;
     }
     if (!parsed.provider && parsed.action === "refresh" && !arg.startsWith("-")) {
+      parsed.provider = arg;
+      continue;
+    }
+    if (!parsed.provider && parsed.action === "sync" && !arg.startsWith("-")) {
       parsed.provider = arg;
       continue;
     }
@@ -1197,6 +1280,36 @@ function formatCatalogRefreshResult(
   ].join("\n");
 }
 
+function formatCatalogSyncResult(
+  result: Awaited<ReturnType<typeof syncCatalogProvider>>,
+  status: ReturnType<typeof buildCatalogSyncStatus>,
+): string {
+  const providerStatus = status.providers.find((entry) => entry.provider === result.provider);
+  const issueLines = result.issues.length > 0
+    ? [
+        "",
+        "Issues:",
+        ...result.issues.map((issue) =>
+          `  - [${issue.severity}] ${issue.code}: ${issue.message}`,
+        ),
+      ]
+    : [];
+  return [
+    "SiftGate catalog sync",
+    `Provider: ${result.provider}`,
+    `Status: ${result.status}`,
+    `Output target: ${result.write_to}`,
+    `Output: ${result.written ? result.output : "not written"}`,
+    `Source URL: ${result.source_url || providerStatus?.source_url || "manual"}`,
+    `Models: ${result.model_count}`,
+    `Priced models: ${result.priced_model_count}`,
+    `Last sync: ${providerStatus?.last_sync || result.generated_at}`,
+    `Confidence: ${result.confidence || providerStatus?.confidence || "unknown"}`,
+    `Scheduler enabled: ${status.scheduled ? "yes" : "no"}`,
+    ...issueLines,
+  ].join("\n");
+}
+
 function formatCatalogOverrideAsYaml(override: unknown): string {
   return yaml.dump(override, {
     noRefs: true,
@@ -1345,6 +1458,7 @@ function formatUsage(): string {
     "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
     "  siftgate catalog sources [--json]",
     "  siftgate catalog refresh [openrouter|--provider openrouter] [--out catalog.override.yaml] [--force] [--json]",
+    "  siftgate catalog sync [openrouter|--provider openrouter] [--write-to cache|override] [--out catalog.override.yaml] [--force] [--json]",
     "  siftgate catalog validate [--file catalog.override.yaml] [--json]",
     "  siftgate catalog export [--override catalog.override.yaml] [--out catalog.yaml]",
     "  siftgate catalog import --file catalog.override.yaml [--override catalog.override.yaml] [--force]",
@@ -1371,6 +1485,7 @@ function formatCatalogUsage(): string {
     "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
     "  siftgate catalog sources [--json]",
     "  siftgate catalog refresh [openrouter|--provider openrouter] [--out catalog.override.yaml] [--force] [--json]",
+    "  siftgate catalog sync [openrouter|--provider openrouter] [--write-to cache|override] [--out catalog.override.yaml] [--force] [--json]",
     "  siftgate catalog validate [--pricing] [--file catalog.override.yaml] [--override catalog.override.yaml] [--json]",
     "  siftgate catalog export [--include-pricing] [--override catalog.override.yaml] [--out catalog.yaml] [--json]",
     "  siftgate catalog import --file catalog.override.yaml [--override catalog.override.yaml] [--force] [--json]",
@@ -1378,11 +1493,12 @@ function formatCatalogUsage(): string {
     "Options:",
     "      --override <path>  Local override destination/source path (default: catalog.override.yaml)",
     "      --provider <id>    Provider refresh adapter (currently openrouter)",
+    "      --write-to <mode>  Catalog sync target: cache (default) or override",
     "  -f, --file <path>      Override file to validate or import",
     "  -o, --out <path>       Write exported merged catalog or refreshed override to a file",
     "      --pricing          Include pricing freshness/unit checks during validation",
     "      --include-pricing  Accept explicit pricing export (pricing is included by default)",
-    "      --force            Replace an existing override during import/refresh",
+    "      --force            Replace an existing override during import/refresh/sync",
     "      --json             Print machine-readable JSON",
     "  -h, --help             Show help",
   ].join("\n");

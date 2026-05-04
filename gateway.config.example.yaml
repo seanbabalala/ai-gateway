@@ -140,6 +140,19 @@ auth:
 # ============================================================
 # catalog:
 #   override_file: ./catalog.override.yaml
+#   sync:
+#     # Disabled by default. Enable only explicit provider adapters.
+#     enabled: false
+#     interval_minutes: 1440
+#     run_on_startup: false
+#     # cache writes to .siftgate/catalog-sync-cache.yaml and never overwrites
+#     # operator-managed catalog.override.yaml. Use write_to: override only when
+#     # you intentionally want the scheduler to replace the configured override.
+#     write_to: cache
+#     cache_file: ./.siftgate/catalog-sync-cache.yaml
+#     adapters:
+#       openrouter:
+#         enabled: false
 
 # ============================================================
 # Secret Manager References (optional)

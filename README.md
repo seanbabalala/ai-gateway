@@ -172,6 +172,8 @@ Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatib
 - Dashboard includes a read-only Provider Catalog page for price source status, source URL, manual-review state, confidence, override markers, and available refresh sources.
 - `siftgate catalog sources` shows which providers can be refreshed automatically. OpenRouter can be refreshed from its public model catalog API; providers whose prices depend on region, deployment, account, or private model names remain docs-review or local-override workflows.
 - `siftgate catalog refresh openrouter --out catalog.override.yaml` writes a local override with current OpenRouter model IDs and prompt/completion pricing converted to USD per 1M tokens.
+- `siftgate catalog sync openrouter` writes the same OpenRouter public model/pricing metadata into `.siftgate/catalog-sync-cache.yaml` by default. This SiftGate-managed cache is merged before `catalog.override.yaml`, so user-reviewed overrides and explicit `models_pricing` continue to win.
+- Scheduled pricing sync is disabled by default. Enable it only with an explicit adapter such as `catalog.sync.adapters.openrouter.enabled: true`; other providers stay `docs_review` or manual override until stable public pricing adapters exist.
 - Cost routing falls back to merged catalog pricing only when explicit `model_capabilities[].pricing` and `models_pricing` are absent. Explicit user config always wins.
 - Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
 

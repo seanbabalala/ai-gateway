@@ -186,6 +186,14 @@ Multimodal requests add a privacy-safe evidence layer to the same trace. The top
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
+## Provider Catalog And Pricing Sync
+
+The Provider Catalog is local metadata, not a hosted dependency. SiftGate loads built-in provider/model references, then an optional SiftGate-managed sync cache, then the operator-managed `catalog.override.yaml`. That merge order lets automatic OpenRouter model/pricing sync improve defaults while keeping explicit local overrides authoritative.
+
+The v1.2 pricing sync scheduler is disabled by default and runs only when a supported adapter is explicitly enabled under `catalog.sync.adapters`. In v1.2 the only automatic adapter is OpenRouter's public model catalog API. Other providers remain docs-review or operator-local because prices often depend on region, deployment, account, or private model names.
+
+Runtime cost routing still prefers explicit node/model pricing from `model_capabilities[].pricing` or `models_pricing`. Catalog sync does not store provider API keys and does not modify routing decisions by itself; it only updates metadata used by validation, Dashboard source status, and pricing fallback when no explicit user price exists.
+
 ## Config Audit And Rollback
 
 The v0.9 OSS Data Plane adds a local configuration history layer:

@@ -25,6 +25,10 @@ for (const expected of [
   'catalogPage.confidenceLevels.high',
   'catalogPage.refreshSources.title',
   'catalogPage.refreshSources.modes.operator_local',
+  'catalogPage.sync.title',
+  'catalogPage.sync.status.fresh',
+  'sync_status',
+  'CatalogSyncStatus',
 ]) {
   if (!page.includes(expected) && !apiTypes.includes(expected) && !enNodes.includes(expected)) {
     throw new Error(`Provider Catalog price source status marker missing: ${expected}`)

@@ -11,7 +11,7 @@ v1.1 extends the Dashboard into a developer experience surface: the local Playgr
 | Overview | Live calls, cost, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | Nodes | Upstream node health, compatibility matrix, active probes, realtime status, and Add Node wizard |
-| Provider Catalog | Built-in + local override provider/model catalog, price source status, refresh sources, modality coverage, and provider identity |
+| Provider Catalog | Built-in + sync-cache + local override provider/model catalog, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
 | Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, and reasoning support |
 | Sessions | Metadata-only request timelines grouped by `session_id` / legacy `session_key`, with model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |

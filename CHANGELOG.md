@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added the v1.2 Model Pricing Sync framework for the OSS Data Plane. Catalog sync is disabled by default, requires explicit provider adapters, initially supports OpenRouter only, and can write public model/pricing metadata into a SiftGate-managed local cache without overwriting operator `catalog.override.yaml` entries.
+- Added `siftgate catalog sync openrouter`, local catalog sync-cache merge support, Dashboard sync status metadata, and config validation warnings for missing or unsupported sync adapters.
+
+### Changed
+
+- Provider Catalog responses now include scheduled sync status, last sync time, source URL, confidence, and stale state so operators can tell which prices came from automatic sync, docs review, local cache, or explicit override.
+
 ## 1.1.0 - 2026-05-05
 
 ### Added
