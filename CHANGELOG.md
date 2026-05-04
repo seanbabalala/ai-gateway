@@ -13,6 +13,9 @@
 - Added v1.1 Session/Trace correlation for the OSS Dashboard, normalizing `session_id`, legacy `session_key`, W3C `traceparent`, and trace headers into call logs and route decision traces.
 - Added read-only Dashboard APIs `GET /api/dashboard/sessions` and `GET /api/dashboard/sessions/:sessionId` for metadata-only session timelines across call logs, route decisions, shadow results, and recent guardrails findings.
 - Added the Dashboard Session View with 7-language localization, namespace/API key/model/source filters, model-switch/fallback/cost/latency summaries, and deep links into Route Explanation without storing prompts, responses, raw headers, provider keys, or media/video bytes.
+- Added runnable v1.1 agent framework examples under `examples/agents` for OpenAI SDK `base_url`, LangChain, CrewAI, and OpenAI Agents SDK.
+- Added shared example headers for Gateway API keys, advisory routing hints, local namespace labels, session correlation, trace labels, and structured-output intent without committing real provider keys.
+- Added `docs/AGENT_INTEGRATIONS.md` and static coverage to explain how operators inspect agent cost, fallback, route explanation, session correlation, and namespace policy through SiftGate.
 
 ## 1.0.0 - 2026-05-05
 

@@ -72,8 +72,14 @@
 
 ### P1：Agent 框架集成示例
 
-- **状态**：规划中
-- **目标**：提供 LangChain、CrewAI、OpenAI Agents 等常见框架的 OSS 示例，说明如何通过 SiftGate 使用统一 base URL、routing hints 和 API key policy
+- **状态**：🚧 feature branch `codex/v1.1-agent-framework-examples`
+- **目标**：提供可本地运行的示例，展示 LangChain、CrewAI、OpenAI Agents SDK 和 OpenAI SDK `base_url` 如何通过 SiftGate 发送请求
+- **实现方案**：
+  - 新增 `examples/agents`，包含 `.env.example`、共享 headers helper、requirements 和四个 Python 示例
+  - 示例统一使用 `SIFTGATE_BASE_URL`、`SIFTGATE_API_KEY`、`SIFTGATE_MODEL`、`SIFTGATE_NAMESPACE`、`SIFTGATE_SESSION_ID`、`SIFTGATE_TRACE_ID`、`SIFTGATE_ROUTING_HINT`
+  - 每个示例展示 Gateway API key、advisory routing hint、namespace label、session/trace correlation 和 structured output intent
+  - 文档说明如何在 Dashboard Logs、API Keys、Benchmarks、Route Explanation 中观察 agent 成本、fallback、选中的 node/model 和路由理由
+  - 不提交真实 provider key；静态测试检查示例文件、框架覆盖、headers、structured-output markers 和 secret hygiene
 
 ## v1.0 — Extension Ecosystem（扩展生态）
 
