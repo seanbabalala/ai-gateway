@@ -56,6 +56,26 @@ export interface RouteDecisionCandidateCapabilityEvidence {
   catalog_source: string | null;
 }
 
+export interface RouteDecisionCacheEvidence {
+  local_prompt_cache_eligible: boolean;
+  local_prompt_cache_hit: boolean;
+  local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null;
+  provider_prompt_cache: boolean;
+  provider_read_cache: boolean;
+  provider_write_cache: boolean;
+  observed_cache_hit_rate: number | null;
+  observed_cache_read_tokens: number;
+  observed_cache_creation_tokens: number;
+  input_price_per_mtok: number | null;
+  cache_read_price_per_mtok: number | null;
+  cache_write_price_per_mtok: number | null;
+  estimated_base_cost_usd: number | null;
+  estimated_cache_adjusted_cost_usd: number | null;
+  estimated_cache_savings_usd: number | null;
+  cache_score: number | null;
+  reason: string;
+}
+
 export interface RouteDecisionTraceCandidate {
   node: string;
   model: string;
@@ -70,6 +90,7 @@ export interface RouteDecisionTraceCandidate {
     cost: number | null;
     latency: number | null;
     context: number | null;
+    cache?: number | null;
   };
   metrics: {
     estimated_cost_usd: number | null;
@@ -79,8 +100,11 @@ export interface RouteDecisionTraceCandidate {
     context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown';
     structured_output: boolean | null;
     reasoning?: boolean | null;
+    provider_cache_hit_rate?: number | null;
+    estimated_cache_savings_usd?: number | null;
   };
   capability_evidence?: RouteDecisionCandidateCapabilityEvidence;
+  cache_evidence?: RouteDecisionCacheEvidence;
 }
 
 export interface RouteDecisionTraceFilter {
@@ -119,8 +143,19 @@ export interface RouteDecisionTrace {
     reasoning_effort?: string | null;
     reasoning_budget_tokens?: number | null;
     reasoning_strategy?: string | null;
+    local_prompt_cache_eligible?: boolean;
+    local_prompt_cache_hit?: boolean;
+    local_prompt_cache_lookup?: 'hit' | 'miss' | 'disabled' | 'skipped' | null;
   };
   modality_evidence?: RouteDecisionModalityEvidence;
+  cache_evidence?: {
+    local_prompt_cache_eligible: boolean;
+    local_prompt_cache_hit: boolean;
+    local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null;
+    cache_aware_routing: boolean;
+    provider_cache_preference: boolean;
+    notes: string[];
+  };
   candidate_targets: RouteDecisionTraceCandidate[];
   filters: RouteDecisionTraceFilter[];
   load_balancing: {

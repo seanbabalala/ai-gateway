@@ -536,6 +536,58 @@ describe('RoutingService', () => {
     expect(decision.loadBalancing.strategy).toBe('cost');
   });
 
+  it('should prefer cache-adjusted provider paths when cache reads are observed', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+        structured_output: null,
+        prompt_cache: model === 'cache-model',
+        read_cache: model === 'cache-model',
+        pricing:
+          model === 'cache-model'
+            ? { input: 10, output: 0, cache_read_input: 0.1 }
+            : { input: 2, output: 0 },
+      })),
+    };
+    const svc = makeRoutingService({
+      optimization: 'cost',
+      capabilityService,
+      tiers: {
+        standard: {
+          strategy: 'weighted',
+          targets: [
+            { node: 'n1', model: 'no-cache-model', weight: 100 },
+            { node: 'n2', model: 'cache-model', weight: 1 },
+          ],
+        },
+      },
+    });
+    svc.recordTargetUsage('n2', 'cache-model', { cache_read_input_tokens: 800 });
+
+    const decision = svc.resolve('standard' as Tier, 0.4, undefined, null, undefined, {
+      estimated_input_tokens: 1_000_000,
+      estimated_output_tokens: 0,
+      local_prompt_cache_eligible: true,
+      local_prompt_cache_hit: false,
+      local_prompt_cache_lookup: 'miss',
+    });
+
+    expect(decision.primary.model).toBe('cache-model');
+    expect(decision.loadBalancing.strategy).toBe('cost');
+    const selected = decision.trace.candidate_targets.find((candidate) => candidate.selected);
+    expect(selected?.cache_evidence).toMatchObject({
+      provider_prompt_cache: true,
+      provider_read_cache: true,
+      observed_cache_hit_rate: 1,
+      reason: 'provider_cache_read_price_preferred',
+    });
+    expect(selected?.scores.cache).toBeGreaterThan(0.5);
+    expect(decision.trace.cache_evidence).toMatchObject({
+      local_prompt_cache_lookup: 'miss',
+      provider_cache_preference: true,
+    });
+  });
+
   it('should remove targets whose configured context window is too small', () => {
     const capabilityService = {
       resolveModelModalities: jest.fn().mockReturnValue(['text']),

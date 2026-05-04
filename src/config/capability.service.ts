@@ -52,6 +52,9 @@ export interface ResolvedModelRoutingCapabilities {
   supports_realtime?: boolean;
   supports_rerank?: boolean;
   supports_reasoning: boolean | null;
+  prompt_cache?: boolean;
+  read_cache?: boolean;
+  write_cache?: boolean;
   max_context_tokens?: number;
   structured_output: boolean | null;
   dimensions?: number | number[];
@@ -339,6 +342,21 @@ export class CapabilityService {
       ? endpoints
       : undefined;
 
+    const pricing =
+      modelCapability?.pricing ?? this.config.getModelPricing(model, nodeId);
+    const promptCache =
+      modelCapability?.prompt_cache ??
+      node?.prompt_cache ??
+      Boolean(pricing?.cache_read_input !== undefined || pricing?.cache_creation_input !== undefined);
+    const readCache =
+      modelCapability?.read_cache ??
+      node?.read_cache ??
+      Boolean(pricing?.cache_read_input !== undefined);
+    const writeCache =
+      modelCapability?.write_cache ??
+      node?.write_cache ??
+      Boolean(pricing?.cache_creation_input !== undefined);
+
     return {
       modalities: this.resolveModelModalities(nodeId, model),
       endpoints: resolvedEndpoints,
@@ -353,13 +371,15 @@ export class CapabilityService {
       supports_rerank:
         modelCapability?.supports_rerank ?? node?.supports_rerank,
       supports_reasoning: this.resolveReasoningSupport(node, model, modelCapability),
+      prompt_cache: promptCache,
+      read_cache: readCache,
+      write_cache: writeCache,
       max_context_tokens:
         modelCapability?.max_context_tokens ?? node?.max_context_tokens,
       structured_output:
         modelCapability?.structured_output ?? node?.structured_output ?? null,
       dimensions: modelCapability?.dimensions,
-      pricing:
-        modelCapability?.pricing ?? this.config.getModelPricing(model, nodeId),
+      pricing,
       quality_score: modelCapability?.quality_score,
     };
   }

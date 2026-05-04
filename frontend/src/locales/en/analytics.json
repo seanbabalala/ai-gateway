@@ -132,5 +132,9 @@
   "benchmark.table.success": "Success",
   "benchmark.table.target": "Target",
   "benchmark.table.throughput": "Req/min",
-  "benchmark.title": "Benchmarks"
+  "benchmark.title": "Benchmarks",
+  "benchmark.cacheAware.title": "Cache-aware impact",
+  "benchmark.cacheAware.providerHitRate": "provider hit rate",
+  "benchmark.cacheAware.readTokenRatio": "read-token ratio",
+  "benchmark.cacheAware.subtitle": "{{local}} local hits · {{provider}} provider read hits"
 }

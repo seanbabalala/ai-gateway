@@ -132,5 +132,9 @@
   "benchmark.table.success": "성공률",
   "benchmark.table.target": "대상",
   "benchmark.table.throughput": "요청/분",
-  "benchmark.title": "벤치마크"
+  "benchmark.title": "벤치마크",
+  "benchmark.cacheAware.title": "캐시 인지 효과",
+  "benchmark.cacheAware.subtitle": "local {{local}} hit · provider read {{provider}} hit",
+  "benchmark.cacheAware.providerHitRate": "provider hit rate",
+  "benchmark.cacheAware.readTokenRatio": "read token ratio"
 }

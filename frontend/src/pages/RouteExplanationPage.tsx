@@ -10,6 +10,7 @@ import {
   Info,
   Route,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { TierBadge } from '@/components/shared/TierBadge'
@@ -31,7 +32,7 @@ import {
 } from '@/components/ui/table'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useRouteDecision, useRouteDecisions } from '@/hooks/use-route-decisions'
-import { cn, formatCost, formatLatency, formatTimestamp } from '@/lib/utils'
+import { cn, formatCost, formatLatency, formatPercent, formatTimestamp } from '@/lib/utils'
 import type {
   RouteDecisionCandidate,
   RouteDecisionFilter,
@@ -146,6 +147,16 @@ function endpointBadge(status: string | null | undefined) {
   if (status === 'native' || status === 'configured' || status === 'default') return 'emerald'
   if (status === 'passthrough' || status === 'fallback') return 'amber'
   if (status === 'missing') return 'red'
+  return 'zinc'
+}
+
+function cacheBadge(candidate: RouteDecisionCandidate) {
+  const evidence = candidate.cache_evidence
+  if (!evidence) return 'zinc'
+  if (evidence.local_prompt_cache_hit) return 'emerald'
+  if ((evidence.estimated_cache_savings_usd || 0) > 0) return 'emerald'
+  if (evidence.provider_prompt_cache) return 'blue'
+  if (evidence.local_prompt_cache_eligible) return 'amber'
   return 'zinc'
 }
 
@@ -297,6 +308,69 @@ function ModalityEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
   )
 }
 
+function CacheEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
+  const { t } = useTranslation('logs')
+  const evidence = trace.cache_evidence
+
+  if (!evidence) return null
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <CardTitle>{t('routeExplanation.sections.cacheEvidence')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.cache.localLookup')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={evidence.local_prompt_cache_hit ? 'emerald' : evidence.local_prompt_cache_eligible ? 'amber' : 'zinc'}>
+                {t(`routeExplanation.cache.lookup.${evidence.local_prompt_cache_lookup || 'skipped'}`)}
+              </Badge>
+              {evidence.local_prompt_cache_eligible && (
+                <Badge variant="blue">{t('routeExplanation.cache.localEligible')}</Badge>
+              )}
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.cache.providerPreference')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={evidence.provider_cache_preference ? 'emerald' : 'zinc'}>
+                {evidence.provider_cache_preference
+                  ? t('routeExplanation.cache.preferred')
+                  : t('routeExplanation.cache.notPreferred')}
+              </Badge>
+              <Badge variant={evidence.cache_aware_routing ? 'blue' : 'zinc'}>
+                {evidence.cache_aware_routing
+                  ? t('routeExplanation.cache.cacheAware')
+                  : t('routeExplanation.cache.notCacheAware')}
+              </Badge>
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.cache.notes')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {evidence.notes.length > 0 ? evidence.notes.map((note) => (
+                <Badge key={note} variant="zinc">
+                  {t(`routeExplanation.cache.notesMap.${note}`, { defaultValue: note.replaceAll('_', ' ') })}
+                </Badge>
+              )) : (
+                <Badge variant="zinc">{t('routeExplanation.values.none')}</Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
 function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }) {
   const { t } = useTranslation('logs')
 
@@ -318,6 +392,7 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
           <TableHead>{t('routeExplanation.table.circuit')}</TableHead>
           <TableHead>{t('routeExplanation.table.decision')}</TableHead>
           <TableHead>{t('routeExplanation.table.capability')}</TableHead>
+          <TableHead>{t('routeExplanation.table.cache')}</TableHead>
           <TableHead>{t('routeExplanation.table.tradeoffScores')}</TableHead>
           <TableHead className="text-right">{t('routeExplanation.table.cost')}</TableHead>
           <TableHead className="text-right">{t('routeExplanation.table.latency')}</TableHead>
@@ -431,10 +506,49 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
               )}
             </TableCell>
             <TableCell>
-              <div className="grid gap-2 sm:grid-cols-3">
+              {candidate.cache_evidence ? (
+                <div className="max-w-[190px] space-y-2">
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={cacheBadge(candidate)} className="gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      {t(`routeExplanation.cache.reasons.${candidate.cache_evidence.reason}`, {
+                        defaultValue: candidate.cache_evidence.reason.replaceAll('_', ' '),
+                      })}
+                    </Badge>
+                    {candidate.cache_evidence.provider_read_cache && (
+                      <Badge variant="blue">{t('routeExplanation.cache.read')}</Badge>
+                    )}
+                    {candidate.cache_evidence.provider_write_cache && (
+                      <Badge variant="blue">{t('routeExplanation.cache.write')}</Badge>
+                    )}
+                  </div>
+                  <div className="font-mono text-[10px] leading-4 text-[var(--foreground-dim)]">
+                    {candidate.cache_evidence.observed_cache_hit_rate !== null && (
+                      <div>
+                        {t('routeExplanation.cache.observedHitRate', {
+                          value: formatPercent(candidate.cache_evidence.observed_cache_hit_rate * 100),
+                        })}
+                      </div>
+                    )}
+                    {candidate.cache_evidence.estimated_cache_savings_usd !== null && (
+                      <div>
+                        {t('routeExplanation.cache.estimatedSavings', {
+                          value: formatCost(candidate.cache_evidence.estimated_cache_savings_usd),
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <Badge variant="zinc">{t('routeExplanation.values.unknown')}</Badge>
+              )}
+            </TableCell>
+            <TableCell>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 <ScoreMeter label={t('routeExplanation.scores.cost')} value={candidate.scores.cost} />
                 <ScoreMeter label={t('routeExplanation.scores.latency')} value={candidate.scores.latency} />
                 <ScoreMeter label={t('routeExplanation.scores.context')} value={candidate.scores.context} />
+                <ScoreMeter label={t('routeExplanation.scores.cache')} value={candidate.scores.cache ?? null} />
               </div>
             </TableCell>
             <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
@@ -655,6 +769,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
           </CardStatic>
 
           <ModalityEvidencePanel trace={trace} />
+          <CacheEvidencePanel trace={trace} />
 
           <CardStatic>
             <CardHeader>

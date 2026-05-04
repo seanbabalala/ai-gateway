@@ -604,6 +604,62 @@ describe('config validator', () => {
     expect(codes(result.errors)).not.toContain('missing_required_field');
   });
 
+  it('accepts prompt-cache capability flags and cache token prices', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            prompt_cache: true,
+            read_cache: true,
+            model_capabilities: {
+              'gpt-4o': {
+                prompt_cache: true,
+                read_cache: true,
+                write_cache: false,
+                pricing: {
+                  input: 2.5,
+                  output: 10,
+                  cache_read_input: 1.25,
+                  cache_creation_input: 2.5,
+                },
+              },
+            },
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          optimization: 'cost',
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: 0.3, standard_max: 0.6, complex_max: 0.85 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {} },
+    );
+
+    expect(result.errors).toEqual([]);
+  });
+
   it('validates experimental realtime preview controls', () => {
     const result = validateConfigObject(
       {

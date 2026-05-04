@@ -132,5 +132,9 @@
   "benchmark.table.success": "成功率",
   "benchmark.table.target": "ターゲット",
   "benchmark.table.throughput": "Req/分",
-  "benchmark.title": "ベンチマーク"
+  "benchmark.title": "ベンチマーク",
+  "benchmark.cacheAware.title": "キャッシュ考慮の効果",
+  "benchmark.cacheAware.subtitle": "local {{local}} hit · provider read {{provider}} hit",
+  "benchmark.cacheAware.providerHitRate": "provider hit rate",
+  "benchmark.cacheAware.readTokenRatio": "read token ratio"
 }

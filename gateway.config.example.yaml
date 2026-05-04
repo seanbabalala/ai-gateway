@@ -227,6 +227,9 @@ auth:
 # or operator-local workflows. Built-in prices are often marked
 # manual_review_required/low confidence, so production billing should still use
 # verified values in models_pricing or model_capabilities[].pricing below.
+# v1.2 adds prompt-cache-aware routing metadata. Declare prompt_cache/read_cache/
+# write_cache when an upstream provider can reuse prompt/context tokens, and add
+# cache_read_input/cache_creation_input prices when they differ from normal input.
 #
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
@@ -300,6 +303,9 @@ nodes:
     supports_streaming: true
     supports_realtime: false
     supports_rerank: false
+    prompt_cache: true                # Provider supports prompt-cache semantics
+    read_cache: true                  # Provider reports/charges cache-read input tokens
+    write_cache: true                 # Provider can create provider-side prompt cache entries
     model_capabilities:
       gpt-4o:
         modalities: ["text", "image", "audio"]
@@ -309,7 +315,15 @@ nodes:
         structured_output: true
         supports_reasoning: false
         supports_streaming: true
+        prompt_cache: true
+        read_cache: true
+        write_cache: true
         quality_score: 0.9
+        pricing:
+          input: 2.50
+          output: 10.00
+          cache_read_input: 1.25       # USD / 1M cache-read input tokens
+          cache_creation_input: 2.50   # USD / 1M cache-write input tokens
       gpt-4o-mini:
         modalities: ["text", "image"]
         max_context_tokens: 128000
@@ -318,7 +332,7 @@ nodes:
         supports_streaming: true
         quality_score: 0.6
         # Optional per-node/model pricing override. If omitted, models_pricing below is used.
-        pricing: { input: 0.15, output: 0.60 }
+        pricing: { input: 0.15, output: 0.60, cache_read_input: 0.075, cache_creation_input: 0.15 }
       # o3:
       #   modalities: ["text"]
       #   max_context_tokens: 200000
@@ -405,7 +419,15 @@ nodes:
         structured_output: false
         supports_reasoning: true
         supports_streaming: true
+        prompt_cache: true
+        read_cache: true
+        write_cache: true
         quality_score: 0.9
+        pricing:
+          input: 3.00
+          output: 15.00
+          cache_read_input: 0.30
+          cache_creation_input: 3.75
     tags: ["code", "backend", "reasoning", "math"]
     model_aliases:
       claude: claude-sonnet-4-20250514

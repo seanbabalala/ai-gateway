@@ -79,8 +79,11 @@ curl 'http://localhost:2099/api/dashboard/benchmarks/report?period=24h&source_fo
 The report includes request totals, success/error/fallback/cache rates,
 p50/p75/p95/p99 latency, throughput estimates, cost and token summaries,
 status-code distribution, node:model breakdowns, source-format breakdowns, and
-route-trace coverage. Filters include `period`, `namespace`, `api_key_id`
-or legacy `api_key`, `node`, `model`, and `source_format`.
+route-trace coverage. v1.2 adds cache-aware impact fields under
+`summary.cache_summary`, including local prompt-cache hits, provider cache-read
+hits, provider cache-write events, cache-aware request rate, and cache-read
+token ratio. Filters include `period`, `namespace`, `api_key_id` or legacy
+`api_key`, `node`, `model`, and `source_format`.
 
 This report is local operational evidence, not a strict cloud benchmark.
 Compare systems only when request body, concurrency, commit, machine, network
@@ -94,6 +97,10 @@ bytes.
   upstream has been tested with streaming and non-streaming traffic.
 - Stream cache is disabled by default and only stores completed deterministic
   streams; interrupted or partial streams are intentionally not cached.
+- Prompt-cache-aware routing does not change the local cache lookup path. Local
+  prompt-cache hits still bypass upstream; only cache misses continue into
+  cost/balanced routing where provider cache capability, observed provider
+  cache-read hit rate, and cache-read pricing can affect candidate ranking.
 - Embedding batching is disabled by default and only groups requests with the
   same routing-relevant node, model, dimensions, encoding format, user, input
   kind, and tenant context.

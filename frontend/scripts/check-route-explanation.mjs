@@ -41,7 +41,9 @@ for (const key of [
   "t('routeExplanation.empty.noTraceTitle')",
   "t('routeExplanation.empty.noDecisionsTitle')",
   "t('routeExplanation.sections.modalityEvidence')",
+  "t('routeExplanation.sections.cacheEvidence')",
   "t('routeExplanation.table.capability')",
+  "t('routeExplanation.table.cache')",
 ]) {
   if (!page.includes(key)) {
     throw new Error(`Route Explanation page must keep localized empty/no-trace compatibility state: ${key}`)
@@ -50,7 +52,9 @@ for (const key of [
 
 for (const field of [
   'trace.modality_evidence',
+  'trace.cache_evidence',
   'candidate.capability_evidence',
+  'candidate.cache_evidence',
   'pricing_source',
   'catalog_source',
   'endpoint_status',

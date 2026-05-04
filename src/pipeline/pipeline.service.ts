@@ -75,6 +75,7 @@ import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import {
   RouteDecisionCandidateCapabilityEvidence,
+  RouteDecisionCacheEvidence,
   RouteDecisionTrace,
   routeTargetKey,
 } from '../routing/route-decision-trace';
@@ -310,9 +311,15 @@ export class PipelineService {
           // ── Cache Lookup ──
           currentPhase = 'cacheLookup';
           const cacheStart = Date.now();
-          if (this.cacheService.shouldCache(canonical)) {
+          const promptCacheEligible = this.cacheService.shouldCache(canonical);
+          store.set('local_prompt_cache_eligible', promptCacheEligible);
+          store.set('local_prompt_cache_hit', false);
+          store.set('local_prompt_cache_lookup', promptCacheEligible ? 'miss' : 'disabled');
+          if (promptCacheEligible) {
             const cached = await this.lookupCachedResponse(canonical);
             if (cached) {
+              store.set('local_prompt_cache_hit', true);
+              store.set('local_prompt_cache_lookup', 'hit');
               const cacheLatency = Date.now() - cacheStart;
               this.telemetry.recordCacheHit();
               rootSpan.setAttribute('gateway.cache', 'hit');
@@ -320,7 +327,16 @@ export class PipelineService {
               await this.recordBudgetUsage(canonical, cached.usage, cached.model);
               await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
                 model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
-                usage: cached.usage, error: null, retryCount: 0 });
+                usage: cached.usage, error: null, retryCount: 0,
+                routeTrace: this.buildPipelineRouteTrace({
+                  mode: 'cache',
+                  canonical,
+                  tier: 'cached',
+                  score: 0,
+                  route: { primary: { node: 'cache', model: cached.model }, fallbacks: [] },
+                  reason: 'local prompt cache hit',
+                  selectionHints: this.cacheSelectionHintsFromStore(store),
+                }) });
               return { body: responseBody, statusCode: 200 };
             }
             this.telemetry.recordCacheMiss();
@@ -2342,10 +2358,16 @@ export class PipelineService {
 
       // ── Cache Lookup (stream) ──
       currentPhase = 'cacheLookup';
-      if (this.shouldUseStreamCache(canonical)) {
+      const streamPromptCacheEligible = this.shouldUseStreamCache(canonical);
+      store.set('local_prompt_cache_eligible', streamPromptCacheEligible);
+      store.set('local_prompt_cache_hit', false);
+      store.set('local_prompt_cache_lookup', streamPromptCacheEligible ? 'miss' : 'disabled');
+      if (streamPromptCacheEligible) {
         const cacheStart = Date.now();
         const cached = await this.lookupCachedResponse(canonical);
         if (cached) {
+          store.set('local_prompt_cache_hit', true);
+          store.set('local_prompt_cache_lookup', 'hit');
           const cacheLatency = Date.now() - cacheStart;
 
           await this.recordBudgetUsage(canonical, cached.usage, cached.model);
@@ -2354,7 +2376,16 @@ export class PipelineService {
 
           await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
             model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
-            usage: cached.usage, error: null, retryCount: 0 });
+            usage: cached.usage, error: null, retryCount: 0,
+            routeTrace: this.buildPipelineRouteTrace({
+              mode: 'cache',
+              canonical,
+              tier: 'cached',
+              score: 0,
+              route: { primary: { node: 'cache', model: cached.model }, fallbacks: [] },
+              reason: 'local stream prompt cache hit',
+              selectionHints: this.cacheSelectionHintsFromStore(store),
+            }) });
           this.telemetry.recordCacheHit();
           rootSpan.setAttribute('gateway.cache', 'hit');
           rootSpan.end();
@@ -3155,6 +3186,7 @@ export class PipelineService {
             score: 0,
             route,
             reason: 'Anthropic Messages compatibility pin',
+            selectionHints: this.cacheSelectionHintsFromStore(store),
           }),
         };
       }
@@ -3214,6 +3246,7 @@ export class PipelineService {
             score: 0,
             route,
             reason: `direct model match for "${requestedModel}"`,
+            selectionHints: this.cacheSelectionHintsFromStore(store),
           }),
         };
       }
@@ -3291,6 +3324,7 @@ export class PipelineService {
             estimated_input_tokens: tokenEstimate.input_tokens,
             estimated_output_tokens: tokenEstimate.output_tokens,
             estimated_context_tokens: tokenEstimate.context_tokens,
+            ...this.cacheSelectionHintsFromStore(store),
             requires_structured_output: requiresStructuredOutput,
             requires_reasoning: reasoningFields.requires_reasoning,
             reasoning_effort: reasoningFields.reasoning_effort,
@@ -3335,6 +3369,7 @@ export class PipelineService {
       reason: 'automatic routing',
       domainHint: routeDecision.domainHint || scoringResult.domainHint || null,
       modalityHints: scoringResult.modalityHints,
+      selectionHints: this.cacheSelectionHintsFromStore(store),
     });
     const routeTrace = this.applyTargetFilterToTrace(
       baseRouteTrace,
@@ -3367,6 +3402,7 @@ export class PipelineService {
     reason: string;
     domainHint?: string | null;
     modalityHints?: string[];
+    selectionHints?: Partial<RouteSelectionHints>;
   }): RouteDecisionTrace {
     const targets = [input.route.primary, ...input.route.fallbacks];
     const selectedKey = routeTargetKey(input.route.primary);
@@ -3390,6 +3426,7 @@ export class PipelineService {
           };
     const traceSelectionHints: RouteSelectionHints = {
       ...requestEvidenceHints,
+      ...input.selectionHints,
       estimated_input_tokens: tokenEstimate?.input_tokens ?? undefined,
       estimated_output_tokens: tokenEstimate?.output_tokens ?? undefined,
       estimated_context_tokens: tokenEstimate?.context_tokens ?? undefined,
@@ -3434,11 +3471,15 @@ export class PipelineService {
         reasoning_effort: traceSelectionHints.reasoning_effort ?? null,
         reasoning_budget_tokens: traceSelectionHints.reasoning_budget_tokens ?? null,
         reasoning_strategy: traceSelectionHints.reasoning_strategy ?? null,
+        local_prompt_cache_eligible: Boolean(traceSelectionHints.local_prompt_cache_eligible),
+        local_prompt_cache_hit: Boolean(traceSelectionHints.local_prompt_cache_hit),
+        local_prompt_cache_lookup: traceSelectionHints.local_prompt_cache_lookup ?? null,
       },
       modality_evidence: this.buildPipelineTraceModalityEvidence(
         traceSelectionHints,
         targets,
       ),
+      cache_evidence: this.buildPipelineTraceCacheEvidence(traceSelectionHints, targets),
       candidate_targets: targets.map((target, index) => {
         const capabilities =
           this.capabilityService.resolveModelRoutingCapabilities?.(
@@ -3459,6 +3500,10 @@ export class PipelineService {
         const maxContextTokens = capabilities.max_context_tokens ?? null;
         const contextTokens = tokenEstimate?.context_tokens;
         const capabilityEvidence = this.buildPipelineCandidateCapabilityEvidence(
+          target,
+          traceSelectionHints,
+        );
+        const cacheEvidence = this.buildPipelineCandidateCacheEvidence(
           target,
           traceSelectionHints,
         );
@@ -3484,6 +3529,7 @@ export class PipelineService {
               contextTokens && maxContextTokens
                 ? Number(Math.max(0, 1 - contextTokens / maxContextTokens).toFixed(4))
                 : null,
+            cache: cacheEvidence.cache_score,
           },
           metrics: {
             estimated_cost_usd:
@@ -3507,8 +3553,11 @@ export class PipelineService {
               typeof capabilities.supports_reasoning === 'boolean'
                 ? capabilities.supports_reasoning
                 : null,
+            provider_cache_hit_rate: cacheEvidence.observed_cache_hit_rate,
+            estimated_cache_savings_usd: cacheEvidence.estimated_cache_savings_usd,
           },
           capability_evidence: capabilityEvidence,
+          cache_evidence: cacheEvidence,
         };
       }),
       filters: [],
@@ -3744,6 +3793,145 @@ export class PipelineService {
     };
   }
 
+  private cacheSelectionHintsFromStore(
+    store?: Map<string, unknown>,
+  ): Partial<RouteSelectionHints> {
+    const lookup = store?.get('local_prompt_cache_lookup');
+    return {
+      local_prompt_cache_eligible: store?.get('local_prompt_cache_eligible') === true,
+      local_prompt_cache_hit: store?.get('local_prompt_cache_hit') === true,
+      local_prompt_cache_lookup:
+        lookup === 'hit' ||
+        lookup === 'miss' ||
+        lookup === 'disabled' ||
+        lookup === 'skipped'
+          ? lookup
+          : null,
+    };
+  }
+
+  private buildPipelineTraceCacheEvidence(
+    hints: RouteSelectionHints,
+    targets: RouteTarget[],
+  ) {
+    const candidates = targets.map((target) =>
+      this.buildPipelineCandidateCacheEvidence(target, hints),
+    );
+    const providerCache = candidates.some((candidate) => candidate.provider_prompt_cache);
+    const discounted = candidates.some((candidate) =>
+      (candidate.estimated_cache_savings_usd || 0) > 0,
+    );
+    const notes = new Set<string>();
+    if (hints.local_prompt_cache_hit) notes.add('local_prompt_cache_hit');
+    if (hints.local_prompt_cache_eligible && !hints.local_prompt_cache_hit) {
+      notes.add('local_prompt_cache_miss');
+    }
+    if (providerCache) notes.add('provider_cache_capable_candidates');
+    if (discounted) notes.add('cache_read_price_considered');
+    return {
+      local_prompt_cache_eligible: Boolean(hints.local_prompt_cache_eligible),
+      local_prompt_cache_hit: Boolean(hints.local_prompt_cache_hit),
+      local_prompt_cache_lookup: hints.local_prompt_cache_lookup ?? null,
+      cache_aware_routing: providerCache || Boolean(hints.local_prompt_cache_hit),
+      provider_cache_preference: providerCache || discounted,
+      notes: Array.from(notes),
+    };
+  }
+
+  private buildPipelineCandidateCacheEvidence(
+    target: RouteTarget,
+    hints: RouteSelectionHints,
+  ): RouteDecisionCacheEvidence {
+    const capabilities =
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) || {};
+    const pricing = capabilities.pricing || this.config.getModelPricing(target.model, target.node);
+    const localEligible = hints.local_prompt_cache_eligible === true;
+    const localHit = hints.local_prompt_cache_hit === true;
+    const providerReadCache = Boolean(
+      capabilities.read_cache ||
+      capabilities.prompt_cache ||
+      pricing?.cache_read_input !== undefined,
+    );
+    const providerWriteCache = Boolean(
+      capabilities.write_cache ||
+      capabilities.prompt_cache ||
+      pricing?.cache_creation_input !== undefined,
+    );
+    const providerPromptCache = Boolean(
+      capabilities.prompt_cache ||
+      providerReadCache ||
+      providerWriteCache,
+    );
+    const inputTokens = hints.estimated_input_tokens ?? 1_000_000;
+    const outputTokens = hints.estimated_output_tokens ?? 1_000_000;
+    const baseCost =
+      pricing && Number.isFinite(pricing.input) && Number.isFinite(pricing.output)
+        ? (inputTokens / 1_000_000) * pricing.input +
+          (outputTokens / 1_000_000) * pricing.output
+        : null;
+    const supportsDiscountedRead =
+      providerReadCache &&
+      pricing?.cache_read_input !== undefined &&
+      pricing.cache_read_input < pricing.input;
+    const priorHitRate = supportsDiscountedRead && localEligible ? 0.05 : supportsDiscountedRead ? 0.02 : 0;
+    const adjustedCost =
+      pricing && baseCost !== null && supportsDiscountedRead
+        ? (inputTokens / 1_000_000) *
+            (priorHitRate * (pricing.cache_read_input as number) +
+              (1 - priorHitRate) * pricing.input) +
+          (outputTokens / 1_000_000) * pricing.output
+        : baseCost;
+    const savings =
+      baseCost !== null && adjustedCost !== null
+        ? Math.max(0, baseCost - adjustedCost)
+        : null;
+    const cacheScore = providerPromptCache
+      ? Math.min(
+          1,
+          0.35 +
+            (providerReadCache ? 0.25 : 0) +
+            (providerWriteCache ? 0.15 : 0) +
+            Math.min(0.25, priorHitRate * 0.25),
+        )
+      : localHit
+        ? 1
+        : null;
+
+    return {
+      local_prompt_cache_eligible: localEligible,
+      local_prompt_cache_hit: localHit,
+      local_prompt_cache_lookup: hints.local_prompt_cache_lookup ?? null,
+      provider_prompt_cache: providerPromptCache,
+      provider_read_cache: providerReadCache,
+      provider_write_cache: providerWriteCache,
+      observed_cache_hit_rate: null,
+      observed_cache_read_tokens: 0,
+      observed_cache_creation_tokens: 0,
+      input_price_per_mtok: pricing?.input ?? null,
+      cache_read_price_per_mtok: pricing?.cache_read_input ?? null,
+      cache_write_price_per_mtok: pricing?.cache_creation_input ?? null,
+      estimated_base_cost_usd:
+        baseCost === null ? null : Number(baseCost.toFixed(6)),
+      estimated_cache_adjusted_cost_usd:
+        adjustedCost === null ? null : Number(adjustedCost.toFixed(6)),
+      estimated_cache_savings_usd:
+        savings === null ? null : Number(savings.toFixed(6)),
+      cache_score: cacheScore === null ? null : Number(cacheScore.toFixed(4)),
+      reason: localHit
+        ? 'local_prompt_cache_hit'
+        : supportsDiscountedRead && (savings || 0) > 0
+          ? 'provider_cache_read_price_preferred'
+          : providerPromptCache
+            ? 'provider_prompt_cache_capable'
+            : localEligible
+              ? 'local_prompt_cache_miss'
+              : 'cache_not_applicable',
+    };
+  }
+
   private buildPipelineCandidateCapabilityEvidence(
     target: RouteTarget,
     hints: RouteSelectionHints,
@@ -3853,6 +4041,13 @@ export class PipelineService {
     if (normalized === 'reasoning' || normalized === 'thinking') {
       return capabilities.supports_reasoning === true;
     }
+    if (normalized === 'prompt_cache') {
+      return capabilities.prompt_cache === true ||
+        capabilities.read_cache === true ||
+        capabilities.write_cache === true;
+    }
+    if (normalized === 'read_cache') return capabilities.read_cache === true;
+    if (normalized === 'write_cache') return capabilities.write_cache === true;
     if (normalized === 'video') {
       return supportedModalities.includes('video') ||
         inputTypes.includes('video') ||
@@ -4913,6 +5108,19 @@ export class PipelineService {
         fallbackReason: params.fallbackReason || null,
         fallbackFromNode: params.fallbackFromNode || null,
       });
+      if (
+        params.statusCode >= 200 &&
+        params.statusCode < 400 &&
+        !params.error &&
+        params.nodeId !== 'cache' &&
+        params.nodeId !== 'hook'
+      ) {
+        this.routingService.recordTargetUsage?.(
+          params.nodeId,
+          params.model,
+          params.usage,
+        );
+      }
       const saved = await this.callLogRepo.save(log);
 
       try {

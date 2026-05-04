@@ -20,8 +20,25 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
+| v1.2 | Platform Capabilities | 进行中 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | 🚧 In Progress |
 
 ---
+
+## v1.2 — Platform Capabilities（平台能力）
+
+**v1.2 进行中状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 SiftGate 从多协议网关推进到更完整的平台能力层。
+
+### P0：Prompt Cache 智能路由
+
+- **状态**：🚧 Prompt Cache 智能路由功能分支进行中
+- **目标**：在不改变本地 prompt cache 默认行为的前提下，让 `routing.optimization=cost` 与 `balanced` 能识别 provider cache 能力、cache-read 价格、观察到的 provider cache hit 率，并在 Route Explanation 中解释为什么偏好某个 node/model
+- **实现方案**：
+  - `nodes[]` 与 `model_capabilities[]` 增加 `prompt_cache`、`read_cache`、`write_cache` 标记
+  - `models_pricing`、`model_capabilities[].pricing` 与 Provider Catalog pricing 支持 `cache_read_input`、`cache_creation_input`
+  - Pipeline 仍先执行本地 prompt cache lookup；本地命中时直接返回，不进入上游路由，不改变现有默认行为
+  - 本地 miss 或 cache disabled 时，RoutingService 在 cost/balanced 模式下把 provider cache capability、cache-read 单价、观察到的 cache-read hit rate 纳入候选排序
+  - Route Decision Trace 增加 `cache_evidence`，只记录 metadata：本地 lookup 状态、provider cache capability、观察命中率、cache-read/write token 计数、估算节省，不保存 prompt/response/raw headers/provider keys
+  - Dashboard Route Explanation 展示 cache evidence；Logs 显示本地 bypass 或 provider cache evidence；Benchmarks 展示 `cache_summary`、provider/local hit rate 与 read-token ratio
 
 ## v1.1 — Developer Experience（开发者体验）
 

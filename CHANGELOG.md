@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added v1.2 prompt-cache-aware routing evidence for the OSS Data Plane. Routing now records local prompt-cache lookup state, provider prompt-cache/read-cache/write-cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted cost estimates, and cache savings in Route Decision Trace without storing prompts, responses, raw headers, provider keys, media bytes, or video bytes.
+- Added cache-aware Dashboard Route Explanation evidence, Logs cache routing-effect copy, and Benchmark cache-impact summaries with 7-language localization.
+- Added prompt-cache capability flags (`prompt_cache`, `read_cache`, `write_cache`) to node/model capability schema and cache read/write pricing metadata for model pricing/catalog fallback.
+
+### Changed
+
+- Cost and balanced optimization can prefer provider paths with lower cache-read prices or observed provider cache hits while preserving the existing local prompt cache short-circuit behavior.
+- Benchmark cache rates now include local prompt-cache hits and provider cache-read hits, with separate provider/local breakdowns in `cache_summary`.
+
 ## 1.1.0 - 2026-05-05
 
 ### Added

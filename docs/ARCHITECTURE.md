@@ -124,7 +124,9 @@ For automatic routing, the scoring engine evaluates request complexity across 14
 - complex
 - reasoning
 
-The router then applies tier config, domain preferences, modality compatibility, reasoning-support preference, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
+The router then applies tier config, domain preferences, modality compatibility, reasoning-support preference, cache-aware cost evidence, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
+
+v1.2 prompt-cache-aware routing keeps the existing local prompt-cache short-circuit intact. A local cache hit returns before upstream routing. For cache misses, `cost` and `balanced` optimization can consider provider prompt-cache/read-cache/write-cache capability, configured `cache_read_input` / `cache_creation_input` prices, and observed provider cache-read hit rate. Route traces expose only metadata evidence and never include prompt text, responses, raw headers, provider keys, or media/video bytes.
 
 ### Reliability
 
@@ -160,6 +162,7 @@ The gateway records call logs with:
 - reasoning requested status, effort, forwarding strategy, support flag, budget token count, source, and sanitized downgrade reason
 - retry count
 - cache token fields
+- cache-aware route evidence: local prompt-cache lookup status, provider cache capability, observed provider cache-read hit rate, cache-adjusted estimated cost, and estimated savings
 - experiment group
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
