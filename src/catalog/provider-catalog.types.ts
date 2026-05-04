@@ -51,8 +51,11 @@ export interface CatalogPricing {
     | 'unknown';
   currency: 'USD' | 'unknown';
   source: CatalogPricingSource;
+  source_url?: string;
   last_updated: string;
   manual_review_required: boolean;
+  stale_after_days?: number;
+  pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown';
   notes?: string;
 }
 

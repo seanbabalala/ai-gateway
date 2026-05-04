@@ -119,8 +119,11 @@ auth:
 # Provider / Model Catalog Overrides (optional)
 # ============================================================
 # SiftGate ships a built-in provider/model catalog for Dashboard presets,
-# config warnings, and price source status. Keep provider API keys in
-# nodes[].api_key or environment variables, never in catalog.override.yaml.
+# config warnings, and price source status. v1.0 expands this catalog to
+# 30+ providers, including Bedrock, Qwen/Tongyi, Wenxin/Qianfan, Doubao/Ark,
+# Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, Replicate, NVIDIA NIM,
+# Cerebras, and SambaNova. Keep provider API keys in nodes[].api_key or
+# environment variables, never in catalog.override.yaml.
 #
 # CLI:
 #   npm run catalog -- list
@@ -215,9 +218,10 @@ auth:
 #
 # v0.8 includes a local Provider / Model Catalog used by Dashboard
 # Add Node and `npm run validate:config`. v0.9 adds price source status and
-# cost-routing fallback from the merged built-in + override catalog. The catalog
-# is advisory; v0.9.2 can refresh OpenRouter into catalog.override.yaml while
-# other providers remain docs-review or operator-local workflows. Built-in prices are often marked
+# cost-routing fallback from the merged built-in + override catalog. v1.0 adds
+# 30+ ecosystem providers while keeping the catalog advisory; v0.9.2 can refresh
+# OpenRouter into catalog.override.yaml while other providers remain docs-review
+# or operator-local workflows. Built-in prices are often marked
 # manual_review_required/low confidence, so production billing should still use
 # verified values in models_pricing or model_capabilities[].pricing below.
 #

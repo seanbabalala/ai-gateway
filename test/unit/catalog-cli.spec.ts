@@ -39,6 +39,8 @@ describe('siftgate catalog CLI', () => {
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('SiftGate provider catalog');
     expect(stdout.join('\n')).toContain('- openai');
+    expect(stdout.join('\n')).toContain('- aws-bedrock');
+    expect(stdout.join('\n')).toContain('- alibaba-qwen');
   });
 
   it('shows a provider from the merged catalog', async () => {
@@ -51,6 +53,19 @@ describe('siftgate catalog CLI', () => {
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('Provider: openai');
     expect(stdout.join('\n')).toContain('gpt-4o');
+  });
+
+  it('shows v1.0 catalog provider pricing source metadata', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const exitCode = await runCli(['catalog', 'show', 'alibaba-qwen'], io);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toHaveLength(0);
+    expect(stdout.join('\n')).toContain('Provider: alibaba-qwen');
+    expect(stdout.join('\n')).toContain('qwen-plus');
+    expect(stdout.join('\n')).toContain('provider-reference');
   });
 
   it('exports the merged catalog to a YAML file', async () => {

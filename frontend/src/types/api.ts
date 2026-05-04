@@ -1119,13 +1119,7 @@ export interface CatalogProvider {
   key_placeholder?: string
   modalities: CatalogModality[]
   capabilities: string[]
-  pricing: {
-    source: string
-    last_updated: string
-    manual_review_required: boolean
-    stale_after_days?: number
-    pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
-  }
+  pricing: CatalogPricing
   pricing_hygiene?: CatalogPricingHygiene
   model_prefixes?: string[]
   tags?: string[]

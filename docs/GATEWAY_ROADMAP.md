@@ -18,6 +18,26 @@
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
+| v1.0 | Ecosystem Expansion | 进行中 — 扩展 provider 生态、reasoning 映射、guardrails webhook、API key 管理 | 🚧 In Progress |
+
+---
+
+## v1.0 — Ecosystem Expansion（扩展生态）
+
+**v1.0 目标**：在 v0.9.3 的 Operations + Trust 基础上，先把 Provider Catalog 从“够用的内置参考”扩展成真正能支撑 Add Node、配置校验和多模态路由的 30+ provider 数据源。默认仍然保持单机 memory/SQLite 可用；新增 provider/pricing 信息是 review-required reference，不自动联网抓取，不保存 provider key，不接入 Cloud。
+
+### P0：Provider Catalog 30+
+
+- **状态**：🚧 Prompt 63 feature branch 进行中
+- **目标**：优先补齐 Bedrock、千问、文心、豆包、智谱、Moonshot 等生态缺口，让 Dashboard Add Node 不再只能覆盖欧美主流 provider
+- **实现方案**：
+  - 内置 catalog 新增 AWS Bedrock、Alibaba Qwen/通义千问、Baidu Qianfan/文心、Volcengine Ark/豆包、Zhipu GLM/智谱、Moonshot/Kimi、MiniMax、Tencent Hunyuan/腾讯混元、01.AI/Yi、Replicate、Perplexity、NVIDIA NIM、Cerebras、SambaNova
+  - 每个 provider 都声明 provider id、display name、base URL、endpoint buckets、auth style、modalities、model buckets、capabilities、limits 和 pricing metadata
+  - pricing metadata 必须带 `source`、`source_url`、`last_updated`、`pricing_confidence`、`manual_review_required`，避免 Dashboard 显示“占位”式文案
+  - Dashboard Add Node 继续通过 catalog API/shared type 读取 provider/model，不在表单组件里硬编码 provider 列表
+  - Config validation 针对新 provider 输出 model、endpoint、pricing、capability warnings
+  - Dashboard provider identity registry 补齐新 provider，兼容 provider 不再误显示 OpenAI logo
+  - 补 catalog service、CLI、Dashboard API、provider logo identity、config validation tests
 
 ---
 
