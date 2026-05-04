@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "順位付けされたドキュメント結果",
   "modalitiesDescription.text": "テキスト生成と分析",
   "modalitiesDescription.video": "非同期動画生成",
-  "modalitiesDescription.vision": "テキストリクエスト内の画像入力"
+  "modalitiesDescription.vision": "テキストリクエスト内の画像入力",
+  "endpoints.mcp": "MCP Gateway",
+  "endpointsDescription.mcp": "ローカル MCP server プロキシ preview"
 }

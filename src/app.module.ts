@@ -13,12 +13,13 @@ import { AlertsModule } from './alerts/alerts.module';
 import { StateModule } from './state/state.module';
 import { ClusterModule } from './cluster/cluster.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'frontend', 'dist'),
-      exclude: ['/api{/*path}', '/v1{/*path}', '/health{/*path}', '/cluster{/*path}'],
+      exclude: ['/api{/*path}', '/v1{/*path}', '/mcp{/*path}', '/health{/*path}', '/cluster{/*path}'],
     }),
     ConfigModule,
     StateModule,
@@ -28,6 +29,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     AlertsModule,
     ClusterModule,
     RealtimeModule,
+    McpModule,
     PluginModule,
     AuthModule,
     IngestModule,

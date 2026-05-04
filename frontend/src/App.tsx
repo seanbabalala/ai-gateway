@@ -19,6 +19,7 @@ const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ 
 const ProviderCatalogPage = lazy(() => import('@/pages/ProviderCatalogPage').then((m) => ({ default: m.ProviderCatalogPage })))
 const PlaygroundPage = lazy(() => import('@/pages/PlaygroundPage').then((m) => ({ default: m.PlaygroundPage })))
 const SessionsPage = lazy(() => import('@/pages/SessionsPage').then((m) => ({ default: m.SessionsPage })))
+const McpGatewayPage = lazy(() => import('@/pages/McpGatewayPage').then((m) => ({ default: m.McpGatewayPage })))
 
 function RouteFallback() {
   return (
@@ -63,6 +64,7 @@ export function App() {
         <Route path="/route-decisions" element={page(<RouteExplanationPage />)} />
         <Route path="/route-decisions/:requestId" element={page(<RouteExplanationPage />)} />
         <Route path="/playground" element={page(<PlaygroundPage />)} />
+        <Route path="/mcp" element={page(<McpGatewayPage />)} />
         <Route path="/config-audit" element={page(<ConfigAuditPage />)} />
         <Route path="/benchmarks" element={page(<BenchmarkPage />)} />
       </Route>

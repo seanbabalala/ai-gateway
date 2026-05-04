@@ -73,6 +73,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **OpenAI Audio** (`/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/speech`) — transcription, translation, and speech routing with multipart input and binary audio output support
 - **Experimental Video** (`/v1/videos/generations`, `/v1/videos/:id`) — async video job preview with local metadata only; prompts, source media, and video bytes are not persisted
 - **Experimental Realtime** (`/v1/realtime`) — disabled-by-default WebSocket pass-through for OpenAI Realtime-style providers
+- **Experimental MCP Gateway** (`/mcp/:serverId`) — disabled-by-default local MCP server proxy with Gateway API key auth, namespace policy, rate limits, and metadata-only audit
 - **Structured output passthrough** — preserve Chat `response_format`, Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing
 - **Reasoning effort / thinking passthrough** — preserve OpenAI `reasoning_effort`, Responses `reasoning`, Anthropic `thinking`, and Gemini-style `thinking_config` intent with explicit downgrade markers when a target cannot safely honor it
 - Full **streaming** support across supported generative protocols
@@ -118,6 +119,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
 - **API key management** — create, edit, disable, delete, rotate, and copy one-time Gateway API keys with namespace, budget, rate-limit, endpoint, modality, node, and model restrictions
 - **Dashboard Playground** — run operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks with selected API key, namespace, model, stream mode, and routing hints
+- **MCP Gateway preview** — inspect local MCP servers, registered tools, recent calls, and error summaries without storing tool input/output text or secret headers
 - **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
@@ -149,6 +151,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
 - **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
 - **Interactive Dashboard probes** — use the local Playground to test requests through the same routing, permission, budget, cost, telemetry, and route-decision path while keeping sample bodies visible only on the current screen unless normal call-log metadata is enabled
+- **MCP Gateway preview** — proxy local MCP servers through `/mcp/:serverId` with Gateway API key auth, endpoint permissions, namespace allow-lists, rate limits, and metadata-only local audit
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`; guardrails supports local PII, secret/token, jailbreak, unsafe URL, schema, tool-call, policy checks, and optional metadata-only webhook findings
@@ -767,6 +770,31 @@ realtime:
 ```
 
 Clients connect to `ws://localhost:2099/v1/realtime?model=gpt-4o-realtime-preview` with `Authorization: Bearer <gateway-api-key>`. SiftGate forwards upstream with the provider API key and `OpenAI-Beta: realtime=v1`. Browser clients that cannot set an `Authorization` header should use a trusted backend to mint or proxy the connection; the preview intentionally does not accept Gateway API keys in query strings.
+
+### Experimental MCP Gateway Preview
+
+MCP Gateway is an experimental v1.2 local proxy preview. It is disabled by default and is intentionally OSS-local: there is no enterprise MCP marketplace, hosted tool catalog, remote workspace policy, or Cloud dependency. Configure known MCP servers locally and call them through `POST /mcp/:serverId` with a normal Gateway API key.
+
+```yaml
+mcp:
+  enabled: true
+  max_recent_calls: 100
+  servers:
+    - id: local-docs
+      name: "Local Docs MCP"
+      url: "http://localhost:8787/mcp"
+      transport: http_json_rpc
+      allowed_namespaces: [team-a]
+      headers:
+        Authorization: "Bearer ${env:LOCAL_DOCS_MCP_TOKEN}"
+      tools:
+        - name: search_docs
+          description: "Search local product docs"
+          input_schema:
+            type: object
+```
+
+The preview forwards JSON-RPC bodies to the configured upstream and applies Gateway API key auth, API-key `allowed_endpoints` (`mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`), namespace allow-lists, and the existing rate limiter. Dashboard MCP status only keeps metadata: server, method, tool name, API key id/name, namespace, status, latency, byte size, and sanitized error type. Tool input, tool output, raw headers, provider keys, and resolved secret values are not stored.
 
 ### Upstream Connection Pooling
 

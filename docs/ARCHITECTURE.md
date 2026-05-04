@@ -135,6 +135,7 @@ The data plane protects request flow with:
 - model-level circuit breakers
 - prompt cache
 - optional Redis shared state backend for circuit breakers, rate limits, prompt cache, and routing momentum
+- optional MCP Gateway preview for local MCP server proxying behind Gateway API key auth, namespace allow-lists, and the same rate limiter
 - graceful shutdown
 - body size limits
 - dashboard health and node status
@@ -185,6 +186,12 @@ For explainable routing, the pipeline also writes a separate `route_decisions` r
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
+
+## MCP Gateway Preview
+
+The v1.2 MCP Gateway preview is a small sidecar path beside the AI protocol pipeline. `McpGatewayController` exposes `POST /mcp/:serverId`, reusing `ApiKeyGuard` and `RateLimitGuard`. `McpGatewayService` resolves the local `mcp.servers` registry, checks API key endpoint permissions and namespace allow-lists, resolves configured upstream headers through `SecretReferenceResolverService`, and forwards the JSON-RPC body to the upstream MCP HTTP endpoint.
+
+The preview does not implement an enterprise MCP marketplace, remote workspace registry, stdio process supervisor, or Cloud dependency. Dashboard reads `GET /api/dashboard/mcp` for local registry metadata, static tool names, recent call metadata, and error summaries. The local audit buffer is metadata-only: server, method, tool name, API key id/name, namespace, status, latency, byte size, and sanitized error type. MCP tool input/output, raw headers, provider keys, resolved secret values, media bytes, and marketplace content are not stored.
 
 ## Config Audit And Rollback
 

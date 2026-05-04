@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "排序后的文档结果",
   "modalitiesDescription.text": "文本生成与分析",
   "modalitiesDescription.video": "异步视频生成",
-  "modalitiesDescription.vision": "文本请求中的图片输入"
+  "modalitiesDescription.vision": "文本请求中的图片输入",
+  "endpoints.mcp": "MCP 网关",
+  "endpointsDescription.mcp": "本地 MCP server 代理预览"
 }

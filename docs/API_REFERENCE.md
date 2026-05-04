@@ -312,6 +312,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
+| `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
 | `GET` | `/api/dashboard/benchmarks/report` | Read-only local benchmark report from call-log metadata |
 | `GET` | `/api/dashboard/budget` | Global and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
@@ -345,6 +346,19 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/cache/stats` | Prompt-cache statistics |
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
 | `GET` | `/api/dashboard/telemetry-status` | Optional connected-gateway telemetry status |
+
+### MCP Gateway Preview API
+
+MCP Gateway preview is disabled by default and uses local configuration only. It does not implement an enterprise MCP marketplace or hosted tool registry.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/mcp/:serverId` | Proxy one JSON-RPC MCP request or batch to a configured upstream MCP server |
+| `GET` | `/api/dashboard/mcp` | Read MCP registry, static tool metadata, recent call metadata, and error summaries |
+
+`POST /mcp/:serverId` requires `Authorization: Bearer <gateway-api-key>` and runs through the normal Gateway API key and rate-limit guards. API key endpoint restrictions may allow `mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`. If a server declares `allowed_namespaces`, the Gateway API key must be bound to one of those local namespaces.
+
+The Dashboard API is metadata-only. It returns server id/name, sanitized upstream endpoint without query strings, static tool names/descriptions, recent method/tool/status/latency/size entries, API key id/name, namespace id, and sanitized error type. Tool input, tool output, raw headers, provider keys, and resolved secret values are never returned or stored by the preview audit buffer.
 
 ### Provider Catalog API
 

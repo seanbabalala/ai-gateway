@@ -236,6 +236,7 @@ export function validateConfigObject(
   validateCache(config.cache, issues);
   validateEmbeddingBatching(config.embedding_batching, issues);
   validateRealtime(config.realtime, config.nodes, issues);
+  validateMcpGateway(config.mcp, config.namespaces, issues);
   validateShadow(config.shadow, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
@@ -2613,6 +2614,282 @@ function validateRealtime(
       ),
     );
   }
+}
+
+function validateMcpGateway(
+  mcp: unknown,
+  namespaces: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (mcp === undefined) return;
+  if (!isRecord(mcp)) {
+    issues.push(
+      issue('error', 'invalid_mcp_config', 'mcp must be an object.', 'mcp'),
+    );
+    return;
+  }
+
+  if (mcp.enabled !== undefined && typeof mcp.enabled !== 'boolean') {
+    issues.push(
+      issue(
+        'error',
+        'invalid_mcp_config',
+        'mcp.enabled must be a boolean.',
+        'mcp.enabled',
+      ),
+    );
+  }
+
+  if (mcp.path !== undefined) {
+    if (!isNonEmptyString(mcp.path) || !mcp.path.startsWith('/')) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_config',
+          'mcp.path must be an absolute HTTP path such as /mcp.',
+          'mcp.path',
+        ),
+      );
+    } else if (mcp.path !== '/mcp') {
+      issues.push(
+        issue(
+          'warning',
+          'mcp_custom_path_preview',
+          'MCP Gateway preview currently exposes /mcp/:serverId; custom paths should be handled by a reverse proxy.',
+          'mcp.path',
+        ),
+      );
+    }
+  }
+
+  validateOptionalPositiveNumber(
+    mcp.max_recent_calls,
+    'mcp.max_recent_calls',
+    'invalid_mcp_config',
+    issues,
+  );
+
+  const namespaceIds = new Set<string>(
+    Array.isArray(namespaces)
+      ? namespaces.filter(isRecord).map((namespace) => namespace.id).filter(isNonEmptyString)
+      : [],
+  );
+
+  if (mcp.servers === undefined) {
+    if (mcp.enabled === true) {
+      issues.push(
+        issue(
+          'warning',
+          'mcp_no_servers',
+          'mcp.enabled is true but no MCP servers are registered.',
+          'mcp.servers',
+        ),
+      );
+    }
+    return;
+  }
+
+  if (!Array.isArray(mcp.servers)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_mcp_config',
+        'mcp.servers must be an array when set.',
+        'mcp.servers',
+      ),
+    );
+    return;
+  }
+
+  const seenServerIds = new Set<string>();
+  mcp.servers.forEach((server, index) => {
+    const basePath = `mcp.servers[${index}]`;
+    if (!isRecord(server)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'MCP server entries must be objects.',
+          basePath,
+        ),
+      );
+      return;
+    }
+
+    if (!isNonEmptyString(server.id)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'mcp.servers[].id is required.',
+          `${basePath}.id`,
+        ),
+      );
+    } else {
+      if (seenServerIds.has(server.id)) {
+        issues.push(
+          issue(
+            'error',
+            'duplicate_mcp_server_id',
+            `MCP server id "${server.id}" is already used.`,
+            `${basePath}.id`,
+          ),
+        );
+      }
+      seenServerIds.add(server.id);
+    }
+
+    if (server.enabled !== undefined && typeof server.enabled !== 'boolean') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].enabled must be a boolean.',
+          `${basePath}.enabled`,
+        ),
+      );
+    }
+
+    if (!isNonEmptyString(server.url)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          'mcp.servers[].url is required.',
+          `${basePath}.url`,
+        ),
+      );
+    } else {
+      validateHttpUrl(
+        server.url,
+        `${basePath}.url`,
+        'invalid_mcp_server_url',
+        issues,
+      );
+    }
+
+    if (
+      server.transport !== undefined &&
+      server.transport !== 'http_json_rpc' &&
+      server.transport !== 'streamable_http'
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].transport must be http_json_rpc or streamable_http.',
+          `${basePath}.transport`,
+        ),
+      );
+    }
+
+    validateReferenceArray(
+      server.allowed_namespaces,
+      `${basePath}.allowed_namespaces`,
+      namespaceIds,
+      'unknown_mcp_namespace',
+      'MCP server allowed_namespaces references unknown namespace',
+      issues,
+    );
+
+    if (server.headers !== undefined && !isRecord(server.headers)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].headers must be an object.',
+          `${basePath}.headers`,
+        ),
+      );
+    } else if (isRecord(server.headers)) {
+      for (const [headerName, headerValue] of Object.entries(server.headers)) {
+        if (!isNonEmptyString(headerName) || typeof headerValue !== 'string') {
+          issues.push(
+            issue(
+              'error',
+              'invalid_mcp_server',
+              'MCP server headers must be string key/value pairs.',
+              `${basePath}.headers.${headerName}`,
+            ),
+          );
+        }
+      }
+    }
+
+    validateOptionalPositiveNumber(
+      server.timeout_ms,
+      `${basePath}.timeout_ms`,
+      'invalid_mcp_server',
+      issues,
+    );
+    validateOptionalPositiveNumber(
+      server.max_request_bytes,
+      `${basePath}.max_request_bytes`,
+      'invalid_mcp_server',
+      issues,
+    );
+
+    if (server.tools !== undefined) {
+      if (!Array.isArray(server.tools)) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_mcp_tools',
+            'mcp.servers[].tools must be an array when set.',
+            `${basePath}.tools`,
+          ),
+        );
+      } else {
+        const seenTools = new Set<string>();
+        server.tools.forEach((tool, toolIndex) => {
+          const toolPath = `${basePath}.tools[${toolIndex}]`;
+          if (!isRecord(tool)) {
+            issues.push(
+              issue(
+                'error',
+                'invalid_mcp_tools',
+                'MCP tool entries must be objects.',
+                toolPath,
+              ),
+            );
+            return;
+          }
+          if (!isNonEmptyString(tool.name)) {
+            issues.push(
+              issue(
+                'error',
+                'missing_required_field',
+                'mcp.servers[].tools[].name is required.',
+                `${toolPath}.name`,
+              ),
+            );
+          } else {
+            if (seenTools.has(tool.name)) {
+              issues.push(
+                issue(
+                  'warning',
+                  'duplicate_mcp_tool_name',
+                  `MCP tool "${tool.name}" is listed more than once for this server.`,
+                  `${toolPath}.name`,
+                ),
+              );
+            }
+            seenTools.add(tool.name);
+          }
+          if (tool.input_schema !== undefined && !isRecord(tool.input_schema)) {
+            issues.push(
+              issue(
+                'error',
+                'invalid_mcp_tools',
+                'mcp.servers[].tools[].input_schema must be an object when set.',
+                `${toolPath}.input_schema`,
+              ),
+            );
+          }
+        });
+      }
+    }
+  });
 }
 
 function validateShadow(

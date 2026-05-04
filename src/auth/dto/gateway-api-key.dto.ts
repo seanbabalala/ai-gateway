@@ -45,7 +45,7 @@ export class CreateGatewayApiKeyDto {
   @IsString({ each: true })
   allowed_models?: string[];
 
-  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings'] })
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings', 'mcp'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -123,7 +123,7 @@ export class UpdateGatewayApiKeyDto {
   @IsString({ each: true })
   allowed_models?: string[];
 
-  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings'] })
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings', 'mcp'] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

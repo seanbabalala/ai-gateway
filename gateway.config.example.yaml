@@ -142,6 +142,39 @@ auth:
 #   override_file: ./catalog.override.yaml
 
 # ============================================================
+# MCP Gateway Preview — optional local MCP server proxy
+# ============================================================
+# Disabled by default. This is an OSS-local proxy, not an enterprise MCP
+# marketplace. Clients call POST /mcp/:serverId with a Gateway API key.
+#
+# API key permissions can allow all MCP via allowed_endpoints: [mcp], one
+# server via [mcp:local-docs], or one tool via [mcp:local-docs:search_docs].
+# Audit data is metadata-only by default: server, method, tool name, API key,
+# namespace, status, latency, and byte size. Tool input/output, raw headers,
+# provider keys, and resolved secret values are not stored.
+# ============================================================
+# mcp:
+#   enabled: false
+#   path: /mcp
+#   max_recent_calls: 100
+#   servers:
+#     - id: local-docs
+#       name: "Local Docs MCP"
+#       description: "Local documentation MCP server"
+#       url: "http://localhost:8787/mcp"
+#       transport: http_json_rpc
+#       timeout_ms: 30000
+#       max_request_bytes: 1000000
+#       allowed_namespaces: [team-a]
+#       headers:
+#         Authorization: "Bearer ${env:LOCAL_DOCS_MCP_TOKEN}"
+#       tools:
+#         - name: search_docs
+#           description: "Search local product docs"
+#           input_schema:
+#             type: object
+
+# ============================================================
 # Secret Manager References (optional)
 # ============================================================
 # Default behavior keeps local env references enabled and external backends

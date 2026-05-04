@@ -175,6 +175,77 @@ describe('config validator', () => {
     );
   });
 
+  it('accepts MCP Gateway preview registry config', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        namespaces: [{ id: 'team-a', name: 'Team A' }],
+        mcp: {
+          enabled: true,
+          servers: [
+            {
+              id: 'local-tools',
+              name: 'Local Tools',
+              url: 'http://localhost:8787/mcp',
+              allowed_namespaces: ['team-a'],
+              headers: {
+                authorization: '${env:MCP_SERVER_TOKEN:-test}',
+              },
+              tools: [
+                {
+                  name: 'search_docs',
+                  description: 'Search local docs',
+                  input_schema: { type: 'object' },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_mcp_config');
+  });
+
+  it('validates MCP Gateway preview server references', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        namespaces: [{ id: 'team-a', name: 'Team A' }],
+        mcp: {
+          enabled: true,
+          path: 'mcp',
+          servers: [
+            {
+              id: 'local-tools',
+              url: 'file:///tmp/mcp.sock',
+              transport: 'stdio',
+              allowed_namespaces: ['missing-team'],
+              tools: [{ description: 'missing name' }],
+            },
+            {
+              id: 'local-tools',
+              url: 'http://localhost:8788/mcp',
+            },
+          ],
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_mcp_config',
+        'invalid_mcp_server_url',
+        'invalid_mcp_server',
+        'unknown_mcp_namespace',
+        'missing_required_field',
+        'duplicate_mcp_server_id',
+      ]),
+    );
+  });
+
   it('validates upstream connection pool settings', () => {
     const result = validateConfigObject(
       {

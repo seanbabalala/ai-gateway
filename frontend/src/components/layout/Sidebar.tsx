@@ -38,6 +38,7 @@ const navGroups = [
       { to: '/sessions', icon: Network, labelKey: 'nav.sessions' },
       { to: '/route-decisions', icon: GitFork, labelKey: 'nav.routeExplanation' },
       { to: '/playground', icon: SquareTerminal, labelKey: 'nav.playground' },
+      { to: '/mcp', icon: Network, labelKey: 'nav.mcp' },
       { to: '/benchmarks', icon: Gauge, labelKey: 'nav.benchmarks' },
     ],
   },

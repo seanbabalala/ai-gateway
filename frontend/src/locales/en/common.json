@@ -60,5 +60,6 @@
   "tier.simple": "simple",
   "tier.standard": "standard",
   "nav.benchmarks": "Benchmarks",
-  "nav.sessions": "Sessions"
+  "nav.sessions": "Sessions",
+  "nav.mcp": "MCP Gateway"
 }

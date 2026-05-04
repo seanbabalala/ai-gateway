@@ -1,0 +1,90 @@
+# MCP Gateway Preview
+
+MCP Gateway is an experimental v1.2 preview for the MIT open-source Data Plane.
+It proxies locally registered MCP servers through SiftGate so agent/tool traffic
+can reuse Gateway API keys, endpoint permissions, namespace boundaries, rate
+limits, and Dashboard metadata visibility.
+
+It is intentionally local-only. It does not include an enterprise MCP
+marketplace, remote workspace registry, SSO/RBAC policy, or SiftGate Cloud
+dependency.
+
+## Configuration
+
+```yaml
+mcp:
+  enabled: true
+  path: /mcp
+  max_recent_calls: 100
+  servers:
+    - id: local-docs
+      name: "Local Docs MCP"
+      url: "http://localhost:8787/mcp"
+      transport: http_json_rpc
+      timeout_ms: 30000
+      max_request_bytes: 1000000
+      allowed_namespaces: [team-a]
+      headers:
+        Authorization: "Bearer ${env:LOCAL_DOCS_MCP_TOKEN}"
+      tools:
+        - name: search_docs
+          description: "Search local product docs"
+          input_schema:
+            type: object
+```
+
+`headers` may use runtime secret references. Resolved values are used only for
+the upstream request and are not returned by Dashboard APIs.
+
+## Proxy Endpoint
+
+Clients call:
+
+```bash
+curl http://localhost:2099/mcp/local-docs \
+  -H "Authorization: Bearer $SIFTGATE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+The preview forwards JSON-RPC requests or batches over HTTP `POST`.
+
+## Permissions
+
+Gateway API keys can restrict MCP access with `allowed_endpoints`:
+
+- `mcp`: allow all configured MCP servers.
+- `mcp:<serverId>`: allow one MCP server.
+- `mcp:<serverId>:<toolName>`: allow one tool call on one MCP server.
+
+If `mcp.servers[].allowed_namespaces` is set, the Gateway API key must be bound
+to one of those namespaces.
+
+## Privacy
+
+The recent MCP audit buffer stores metadata only:
+
+- server id/name
+- JSON-RPC method
+- tool name when method is `tools/call`
+- API key id/name
+- namespace id
+- status code
+- latency
+- request byte size
+- sanitized error type
+
+It does not store tool input, tool output, raw headers, provider keys, resolved
+secret values, media bytes, or marketplace metadata.
+
+## Dashboard
+
+The Dashboard MCP Gateway page reads `GET /api/dashboard/mcp` and shows:
+
+- configured MCP servers
+- static tool metadata
+- recent metadata-only calls
+- error summaries
+
+The page is read-only and cannot modify MCP server configuration or apply
+routing changes.
