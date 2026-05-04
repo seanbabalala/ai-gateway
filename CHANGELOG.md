@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added the v1.1 lightweight Python SDK scaffold under `packages/python`, with a stdlib-only synchronous `SiftGateClient`, typed package metadata, Gateway API key auth, routing hints, structured errors, raw response access, and helpers for models, chat completions, responses, messages, embeddings, rerank, images, audio, and async video jobs.
+- Added Python SDK unit tests and the root `npm run test:python-sdk` quality-gate script for local package verification without publishing to PyPI.
+
 ## 1.0.0 - 2026-05-05
 
 ### Added

@@ -149,6 +149,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`; guardrails supports local PII, secret/token, jailbreak, unsafe URL, schema, tool-call, policy checks, and optional metadata-only webhook findings
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
+- **Python SDK scaffold** — install `packages/python` locally for a lightweight `siftgate` client with Gateway API key auth, routing hints, multimodal helpers, video jobs, and typed errors
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 
 ### Provider Catalog
@@ -1277,9 +1278,9 @@ File sinks write JSONL, one sanitized call-log record per line. Webhook sinks se
 
 By default exports include only safe call-log metadata and exclude prompt text, response text, provider API keys, raw headers, authorization values, and other secret-bearing fields. Use `fields` as an allow-list or `exclude_fields` as a deny-list for additional filtering. See [docs/LOG_SINKS.md](docs/LOG_SINKS.md).
 
-## TypeScript SDK
+## SDKs
 
-The v0.4 SDK scaffold lives in [packages/client](packages/client). It is a lightweight fetch-based wrapper for the open-source data plane with typed helpers for models, chat completions, responses, messages, embeddings, and advisory routing hints.
+The TypeScript SDK scaffold lives in [packages/client](packages/client). It is a lightweight fetch-based wrapper for the open-source data plane with typed helpers for models, chat completions, responses, messages, embeddings, and advisory routing hints.
 
 ```ts
 import { SiftGateClient } from '@siftgate/client';
@@ -1295,6 +1296,26 @@ await client.chat.completions.create({
 });
 ```
 
+The v1.1 Python SDK scaffold lives in [packages/python](packages/python). It is stdlib-only, synchronous, typed, and prepared for local install without publishing to PyPI:
+
+```bash
+python3 -m pip install -e packages/python
+```
+
+```py
+from siftgate import SiftGateClient
+
+client = SiftGateClient(
+    base_url="http://localhost:2099",
+    gateway_api_key="gw_sk_live_...",
+)
+
+client.responses.create({
+    "model": "auto",
+    "input": "Route this through SiftGate.",
+})
+```
+
 Existing OpenAI SDK users do not need to switch SDKs. Point the SDK at SiftGate and use a dashboard-generated Gateway API key:
 
 ```ts
@@ -1306,7 +1327,7 @@ const openai = new OpenAI({
 });
 ```
 
-See the [TypeScript SDK README](packages/client/README.md) for routing hints, raw streaming access, and the forward-compatible embeddings helper. The Python SDK is design-only for this milestone; see [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
+See the [TypeScript SDK README](packages/client/README.md) and [Python SDK README](packages/python/README.md) for routing hints, raw response access, endpoint helpers, and OpenAI SDK `base_url` replacement notes. The Python package shape is summarized in [docs/PYTHON_SDK_DESIGN.md](docs/PYTHON_SDK_DESIGN.md).
 
 ## API Endpoints
 
