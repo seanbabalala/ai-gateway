@@ -86,11 +86,14 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
       execute: jest.fn().mockResolvedValue(undefined),
     }),
   } as any;
+  const shadowTrafficRepo = {
+    find: jest.fn().mockResolvedValue([]),
+  } as any;
 
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, catalog, undefined, dataSource, callLogRepo, routeDecisionRepo,
+    gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, catalog, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

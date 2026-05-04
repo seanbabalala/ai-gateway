@@ -203,7 +203,27 @@ describe('ChatCompletionsNormalizer', () => {
       { model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }], stream: false },
       { ...headers, 'x-session-id': 'sess_abc123' },
     );
+    expect(result.metadata.session_id).toBe('sess_abc123');
     expect(result.metadata.session_key).toBe('sess_abc123');
+  });
+
+  it('should extract trace id from direct trace headers', () => {
+    const result = normalizer.normalize(
+      { model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }], stream: false },
+      { ...headers, 'x-trace-id': 'trace_direct_123' },
+    );
+    expect(result.metadata.trace_id).toBe('trace_direct_123');
+  });
+
+  it('should extract W3C traceparent trace id', () => {
+    const result = normalizer.normalize(
+      { model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }], stream: false },
+      {
+        ...headers,
+        traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      },
+    );
+    expect(result.metadata.trace_id).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
   });
 
   it('should normalize OpenAI response_format json_schema into canonical structured output', () => {

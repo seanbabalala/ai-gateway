@@ -1,4 +1,5 @@
 import { CanonicalEmbeddingRequest } from '../canonical.types';
+import { normalizeRequestIdentityHeaders } from './request-metadata';
 
 /**
  * Normalizes OpenAI-compatible Embeddings requests into the dedicated
@@ -24,9 +25,7 @@ export class EmbeddingsNormalizer {
       metadata: {
         source_format: 'embeddings',
         original_model: typeof req.model === 'string' ? req.model : 'auto',
-        session_key: (headers['x-session-id'] || headers['x-session-key']) as
-          | string
-          | undefined,
+        ...normalizeRequestIdentityHeaders(headers),
         raw_headers: headers,
         raw_body: req,
       },

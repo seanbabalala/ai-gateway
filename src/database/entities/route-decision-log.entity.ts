@@ -14,6 +14,8 @@ import {
 @Index(['selected_model'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
+@Index(['session_id'])
+@Index(['trace_id'])
 export class RouteDecisionLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -62,6 +64,12 @@ export class RouteDecisionLog {
 
   @Column({ type: 'varchar', nullable: true })
   fallback_reason!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  session_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  trace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   api_key_name!: string | null;

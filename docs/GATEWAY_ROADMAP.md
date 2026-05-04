@@ -19,7 +19,7 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
-| v1.1 | Developer Experience | 开发中 — Python SDK、Dashboard Playground、Session/Trace、Agent 集成示例 | 🚧 In Progress |
+| v1.1 | Developer Experience | 开发中 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | 🚧 In Progress |
 
 ---
 
@@ -56,10 +56,19 @@
   - 默认不保存 Playground prompt、response、raw headers、provider key、media bytes 或 realtime frames；普通 call log 只保留元数据
   - 新增 Dashboard 7 语言本地化和前端静态检查，覆盖 route、hook、endpoint coverage、privacy copy 和 API types
 
-### P1：Session / Trace 关联与 Session View
+### P0：Session / Trace 关联与 Session View
 
-- **状态**：规划中
-- **目标**：把多次调用按 session、request_id、route decision、fallback 和 shadow/benchmark evidence 串起来，帮助开发者排障
+- **状态**：🚧 feature branch `codex/v1.1-session-trace-view`
+- **目标**：把单条请求日志升级为会话级链路视图，方便开发者和运维人员排查一轮 agent、应用会话或多步骤工作流里的模型切换、fallback、成本、延迟和错误
+- **实现方案**：
+  - Normalizer 统一读取 `x-session-id`、legacy `x-session-key`、`x-siftgate-session-id`、`x-trace-id`、`x-siftgate-trace-id`、W3C `traceparent` 与 request-id fallback
+  - `call_logs`、`route_decisions`、`shadow_traffic_results` 增加 `session_id` / `trace_id` 关联字段，保留旧 `session_key` 兼容
+  - Pipeline 在 call log、Route Decision Trace、OpenTelemetry span attributes 和 shadow traffic result 中写入 session/trace metadata
+  - Dashboard API 新增 `GET /api/dashboard/sessions` 与 `GET /api/dashboard/sessions/:sessionId`
+  - Dashboard 新增只读 Session View，按 session 展示请求时间线、模型切换、fallback、成本、延迟、错误、shadow、guardrails finding 摘要和 Route Explanation 链接
+  - 支持 namespace、API key、model、source format、period 过滤
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
+  - Dashboard 文案保持 en、zh、zh-TW、ja、ko、th、es 七语言同步
 
 ### P1：Agent 框架集成示例
 

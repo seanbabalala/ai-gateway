@@ -295,6 +295,11 @@ function makeDashboard(overrides: Record<string, any> = {}) {
   const routeDecisionRepo = overrides.routeDecisionRepo || {
     ...mockRepo(qb),
     findOne: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
+  };
+  const shadowTrafficRepo = overrides.shadowTrafficRepo || {
+    ...mockRepo(qb),
+    find: jest.fn().mockResolvedValue([]),
   };
   const providerCompatibility = {
     matrixForNodes: jest.fn().mockResolvedValue({}),
@@ -340,12 +345,13 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
+    shadowTrafficRepo as any,
     overrides.secretResolver as any,
     overrides.benchmarkReports as any,
     overrides.plugins as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -485,6 +491,187 @@ describe('DashboardController — guardrails status', () => {
     expect(result.enabled).toBe(true);
     expect(JSON.stringify(result)).not.toContain('https://hooks.example');
     expect(JSON.stringify(result)).not.toContain('Authorization');
+  });
+});
+
+describe('DashboardController — sessions', () => {
+  const logRows = [
+    {
+      id: 1,
+      request_id: 'req_1',
+      session_id: 'sess_1',
+      session_key: 'sess_1',
+      trace_id: 'trace_1',
+      timestamp: new Date('2026-05-05T01:00:00Z'),
+      source_format: 'chat_completions',
+      tier: 'standard',
+      score: 0.42,
+      node_id: 'openai',
+      model: 'gpt-4o',
+      input_tokens: 100,
+      output_tokens: 20,
+      cost_usd: 0.001,
+      latency_ms: 120,
+      status_code: 200,
+      is_fallback: false,
+      fallback_reason: null,
+      error: null,
+      api_key_id: 'key_1',
+      api_key_name: 'default',
+      namespace_id: 'team-a',
+    },
+    {
+      id: 2,
+      request_id: 'req_2',
+      session_id: 'sess_1',
+      session_key: 'sess_1',
+      trace_id: 'trace_1',
+      timestamp: new Date('2026-05-05T01:01:00Z'),
+      source_format: 'responses',
+      tier: 'reasoning',
+      score: 0.91,
+      node_id: 'claude',
+      model: 'claude-3-opus',
+      input_tokens: 80,
+      output_tokens: 40,
+      cost_usd: 0.002,
+      latency_ms: 240,
+      status_code: 502,
+      is_fallback: true,
+      fallback_reason: 'upstream_error',
+      error: 'upstream failed',
+      api_key_id: 'key_1',
+      api_key_name: 'default',
+      namespace_id: 'team-a',
+    },
+  ];
+
+  it('should list sessions grouped by session id with privacy metadata', async () => {
+    const qb = mockQueryBuilder({}, [], [logRows, logRows.length]);
+    qb.getMany.mockResolvedValue(logRows);
+    const repo = mockRepo(qb);
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+
+    const result = await controller.getSessions(
+      '24h',
+      'team-a',
+      undefined,
+      'key_1',
+      undefined,
+      undefined,
+      1,
+      25,
+    );
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toMatchObject({
+      session_id: 'sess_1',
+      request_count: 2,
+      error_count: 1,
+      fallback_count: 1,
+      model_switch_count: 1,
+      total_tokens: 240,
+    });
+    expect(result.privacy).toMatchObject({
+      prompt: false,
+      response: false,
+      raw_headers: false,
+      provider_keys: false,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('log.namespace_id = :namespaceId', {
+      namespaceId: 'team-a',
+    });
+  });
+
+  it('should return a session timeline enriched with route, shadow, and guardrails metadata', async () => {
+    const qb = mockQueryBuilder({}, [], [logRows, logRows.length]);
+    qb.getMany.mockResolvedValue(logRows);
+    const repo = mockRepo(qb);
+    const routeDecisionRepo = {
+      ...mockRepo(qb),
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 10,
+          request_id: 'req_2',
+          trace_id: 'trace_1',
+          selected_node_id: 'claude',
+          selected_model: 'claude-3-opus',
+          candidate_count: 3,
+          filtered_count: 1,
+          route_mode: 'auto',
+          strategy: 'weighted',
+          trace_json: JSON.stringify({
+            trace_id: 'trace_1',
+            final_selection: { reason: 'fallback selected' },
+          }),
+        },
+      ]),
+    };
+    const shadowTrafficRepo = {
+      ...mockRepo(qb),
+      find: jest.fn().mockResolvedValue([
+        {
+          request_id: 'req_2',
+          status: 'sent',
+          shadow_node: 'shadow-openai',
+          shadow_model: 'gpt-4o-mini',
+          latency_ms: 90,
+        },
+      ]),
+    };
+    const plugins = {
+      getPluginStatus: jest.fn().mockReturnValue({
+        findings: {
+          recent: [
+            {
+              request_id: 'req_2',
+              kind: 'pii',
+              action: 'audit',
+              rule: 'pii.email',
+            },
+          ],
+        },
+      }),
+    };
+    const { controller } = makeDashboard({
+      callLogRepo: repo,
+      routeDecisionRepo,
+      shadowTrafficRepo,
+      plugins,
+      qb,
+    });
+
+    const result = await controller.getSessionDetail(
+      'sess_1',
+      '7d',
+      'team-a',
+      undefined,
+      'key_1',
+      undefined,
+      undefined,
+      200,
+    );
+
+    expect(result.summary.request_count).toBe(2);
+    expect(result.timeline[1]).toMatchObject({
+      request_id: 'req_2',
+      route_decision_link: '/route-decisions/req_2',
+      has_route_decision: true,
+      shadow: { count: 1 },
+      guardrails: { count: 1, kinds: ['pii'] },
+    });
+    expect(JSON.stringify(result)).not.toContain('sk-test');
+    expect(JSON.stringify(result)).not.toContain('Bearer ');
+  });
+
+  it('should return 404 when a session has no matching logs', async () => {
+    const qb = mockQueryBuilder({}, [], [[], 0]);
+    qb.getMany.mockResolvedValue([]);
+    const repo = mockRepo(qb);
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+
+    await expect(controller.getSessionDetail('missing')).rejects.toBeInstanceOf(HttpException);
   });
 });
 

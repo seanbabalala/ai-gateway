@@ -15,6 +15,7 @@ const TABLES: DbMigrationTableName[] = [
   "node_status",
   "call_logs",
   "route_decisions",
+  "shadow_traffic_results",
   "config_versions",
   "config_audit_events",
   "provider_compatibility_results",
@@ -175,6 +176,31 @@ function createSqliteFixture(dir: string): string {
       api_key_id varchar,
       namespace_id varchar,
       trace_json text
+    );
+
+    CREATE TABLE shadow_traffic_results (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      timestamp datetime,
+      request_id varchar,
+      kind varchar,
+      namespace_id varchar,
+      api_key_id varchar,
+      api_key_name varchar,
+      session_id varchar,
+      trace_id varchar,
+      source_format varchar,
+      primary_node varchar,
+      primary_model varchar,
+      shadow_node varchar,
+      shadow_model varchar,
+      status varchar,
+      latency_ms integer,
+      status_code integer,
+      error text,
+      input_tokens integer,
+      output_tokens integer,
+      prompt_sample text,
+      response_sample text
     );
 
     CREATE TABLE config_versions (
@@ -383,6 +409,40 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO shadow_traffic_results (
+      timestamp, request_id, kind, namespace_id, api_key_id, api_key_name,
+      session_id, trace_id, source_format, primary_node, primary_model,
+      shadow_node, shadow_model, status, latency_ms, status_code, error,
+      input_tokens, output_tokens, prompt_sample, response_sample
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "2026-05-01T00:01:05.000Z",
+    "req-1",
+    "chat",
+    "team-alpha",
+    "key-1",
+    "prod-key",
+    "session-1",
+    "trace-1",
+    "chat_completions",
+    "openai",
+    "gpt-4o",
+    "shadow-openai",
+    "gpt-4o-mini",
+    "sent",
+    88,
+    200,
+    null,
+    10,
+    20,
+    null,
+    null,
+  );
+
+  db.prepare(
+    `
     INSERT INTO config_versions (
       version_id, created_at, created_by, source, checksum, config_path,
       runtime_version, node_count, node_ids_json, route_tiers_json,
@@ -500,7 +560,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(9);
+    expect(result.totals.source_rows).toBe(10);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -545,6 +605,13 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(routeDecision?.is_fallback).toBe(false);
     expect(routeDecision?.candidate_count).toBe(2);
     expect(routeDecision?.timestamp).toBeInstanceOf(Date);
+
+    const shadowResult = target.rows.get("shadow_traffic_results")?.[0];
+    expect(shadowResult?.request_id).toBe("req-1");
+    expect(shadowResult?.session_id).toBe("session-1");
+    expect(shadowResult?.trace_id).toBe("trace-1");
+    expect(shadowResult?.latency_ms).toBe(88);
+    expect(shadowResult?.timestamp).toBeInstanceOf(Date);
 
     const configVersion = target.rows.get("config_versions")?.[0];
     expect(configVersion?.version_id).toBe("cfgv_1");
@@ -600,7 +667,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(9);
+    expect(result.validation.mismatches).toHaveLength(10);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

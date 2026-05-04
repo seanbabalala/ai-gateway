@@ -11,6 +11,8 @@ import {
 @Index(['tier'])
 @Index(['node_id'])
 @Index(['session_key'])
+@Index(['session_id'])
+@Index(['trace_id'])
 @Index(['experiment_group'])
 @Index(['api_key_name'])
 @Index(['api_key_id'])
@@ -123,7 +125,13 @@ export class CallLog {
   media_provider_response_type!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
+  session_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
   session_key!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  trace_id!: string | null;
 
   @Column({ type: 'text', nullable: true })
   error!: string | null;

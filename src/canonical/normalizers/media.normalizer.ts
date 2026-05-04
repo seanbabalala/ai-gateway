@@ -3,6 +3,7 @@ import {
   CanonicalMediaRequest,
   CanonicalMediaSourceFormat,
 } from '../canonical.types';
+import { normalizeRequestIdentityHeaders } from './request-metadata';
 
 function contentTypeFrom(headers: Record<string, string>): string {
   return headers['content-type'] || headers['Content-Type'] || 'application/json';
@@ -177,7 +178,7 @@ export class MediaNormalizer {
         metadata: {
           source_format: sourceFormat,
           original_model: model,
-          session_key: headers['x-session-id'] || headers['x-session-key'],
+          ...normalizeRequestIdentityHeaders(headers),
           raw_headers: headers,
           media,
           raw_body: {
@@ -211,7 +212,7 @@ export class MediaNormalizer {
       metadata: {
         source_format: sourceFormat,
         original_model: model,
-        session_key: headers['x-session-id'] || headers['x-session-key'],
+        ...normalizeRequestIdentityHeaders(headers),
         raw_headers: headers,
         media,
         raw_body: req,

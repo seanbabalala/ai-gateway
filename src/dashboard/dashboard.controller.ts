@@ -34,7 +34,7 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import { Observable, interval, map, merge } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { CapabilityService } from '../config/capability.service';
@@ -45,7 +45,7 @@ import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
 import { ActiveHealthProbeService } from '../routing/active-health-probe.service';
 import { BudgetService } from '../budget/budget.service';
-import { CallLog, RouteDecisionLog } from '../database/entities';
+import { CallLog, RouteDecisionLog, ShadowTrafficResult } from '../database/entities';
 import type { RouteDecisionTrace } from '../routing/route-decision-trace';
 import { LogEventBus } from './log-event-bus';
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from './dto/node.dto';
@@ -225,6 +225,8 @@ export class DashboardController {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    @InjectRepository(ShadowTrafficResult)
+    private readonly shadowTrafficRepo: Repository<ShadowTrafficResult>,
     @Optional()
     @Inject(SecretReferenceResolverService)
     private readonly secretResolver?: SecretReferenceResolverService,
@@ -453,6 +455,8 @@ export class DashboardController {
       status_code: decision.status_code,
       is_fallback: decision.is_fallback,
       fallback_reason: decision.fallback_reason,
+      session_id: decision.session_id || trace?.session_id || null,
+      trace_id: decision.trace_id || trace?.trace_id || null,
       api_key_name: decision.api_key_name,
       api_key_id: decision.api_key_id,
       namespace_id: decision.namespace_id,
@@ -477,6 +481,241 @@ export class DashboardController {
     } catch {
       return null;
     }
+  }
+
+  private sessionWindow(
+    period: string | undefined,
+    fallback: string,
+  ): { period: string; since: Date | null } {
+    const selected = (period || fallback).trim().toLowerCase();
+    if (selected === 'all') {
+      return { period: 'all', since: null };
+    }
+    const match = selected.match(/^(\d+)(h|d)$/);
+    if (!match) {
+      return this.sessionWindow(fallback, fallback);
+    }
+    const amount = Math.max(1, Math.min(Number(match[1]), match[2] === 'h' ? 24 * 90 : 365));
+    const millis = match[2] === 'h'
+      ? amount * 3_600_000
+      : amount * 86_400_000;
+    return {
+      period: `${amount}${match[2]}`,
+      since: new Date(Date.now() - millis),
+    };
+  }
+
+  private groupLogsBySession(logs: CallLog[]): Map<string, CallLog[]> {
+    const grouped = new Map<string, CallLog[]>();
+    for (const log of logs) {
+      const sessionId = log.session_id || log.session_key;
+      if (!sessionId) continue;
+      const rows = grouped.get(sessionId) || [];
+      rows.push(log);
+      grouped.set(sessionId, rows);
+    }
+    return grouped;
+  }
+
+  private buildSessionSummary(sessionId: string, logs: CallLog[]) {
+    const sorted = [...logs].sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const models = this.uniqueSorted(sorted.map((log) => log.model).filter(Boolean));
+    const nodes = this.uniqueSorted(sorted.map((log) => log.node_id).filter(Boolean));
+    const sourceFormats = this.uniqueSorted(
+      sorted.map((log) => log.source_format).filter(Boolean),
+    );
+    const traceIds = this.uniqueSorted(
+      sorted.map((log) => log.trace_id).filter((value): value is string => Boolean(value)),
+    );
+    const errorCount = sorted.filter((log) => log.status_code >= 400 || log.error).length;
+    const fallbackCount = sorted.filter(
+      (log) => log.is_fallback || Boolean(log.fallback_reason),
+    ).length;
+    const totalCost = sorted.reduce((sum, log) => sum + (log.cost_usd || 0), 0);
+    const totalTokens = sorted.reduce(
+      (sum, log) =>
+        sum + (log.input_tokens || 0) + (log.output_tokens || 0),
+      0,
+    );
+    const avgLatency = sorted.length > 0
+      ? sorted.reduce((sum, log) => sum + (log.latency_ms || 0), 0) / sorted.length
+      : 0;
+
+    return {
+      session_id: sessionId,
+      first_seen_at: first?.timestamp || null,
+      last_seen_at: last?.timestamp || null,
+      request_count: sorted.length,
+      error_count: errorCount,
+      fallback_count: fallbackCount,
+      model_switch_count: this.countModelSwitches(sorted),
+      total_cost_usd: Number(totalCost.toFixed(6)),
+      total_tokens: totalTokens,
+      avg_latency_ms: Math.round(avgLatency),
+      models,
+      nodes,
+      source_formats: sourceFormats,
+      trace_ids: traceIds,
+      latest_request_id: last?.request_id || null,
+      latest_trace_id: last?.trace_id || null,
+      latest_status_code: last?.status_code || null,
+      api_key_id: last?.api_key_id || null,
+      api_key_name: last?.api_key_name || null,
+      namespace_id: last?.namespace_id || null,
+    };
+  }
+
+  private serializeSessionTimelineEvent(
+    log: CallLog,
+    decision: RouteDecisionLog | null,
+    shadowRows: ShadowTrafficResult[],
+    guardrails:
+      | {
+          count: number;
+          kinds: string[];
+          actions: string[];
+          rules: string[];
+        }
+      | null,
+  ) {
+    const trace = decision ? this.parseRouteDecisionTrace(decision.trace_json) : null;
+    const shadowStatuses = shadowRows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.status] = (acc[row.status] || 0) + 1;
+      return acc;
+    }, {});
+    const shadowLatency = shadowRows
+      .map((row) => row.latency_ms)
+      .filter((value): value is number => typeof value === 'number');
+
+    return {
+      request_id: log.request_id,
+      session_id: log.session_id || log.session_key || null,
+      trace_id: log.trace_id || decision?.trace_id || trace?.trace_id || null,
+      timestamp: log.timestamp,
+      source_format: log.source_format,
+      tier: log.tier,
+      score: log.score,
+      node_id: log.node_id,
+      model: log.model,
+      status_code: log.status_code,
+      latency_ms: log.latency_ms,
+      cost_usd: Number((log.cost_usd || 0).toFixed(6)),
+      input_tokens: log.input_tokens,
+      output_tokens: log.output_tokens,
+      total_tokens: (log.input_tokens || 0) + (log.output_tokens || 0),
+      is_fallback: log.is_fallback,
+      fallback_reason: log.fallback_reason,
+      error: log.error,
+      route_decision_link: decision
+        ? `/route-decisions/${encodeURIComponent(log.request_id)}`
+        : null,
+      has_route_decision: Boolean(decision),
+      route_decision: decision
+        ? {
+            id: decision.id,
+            selected_node_id: decision.selected_node_id,
+            selected_model: decision.selected_model,
+            candidate_count: decision.candidate_count,
+            filtered_count: decision.filtered_count,
+            route_mode: decision.route_mode,
+            strategy: decision.strategy,
+            final_reason: trace?.final_selection?.reason || null,
+          }
+        : null,
+      shadow: {
+        count: shadowRows.length,
+        statuses: shadowStatuses,
+        nodes: this.uniqueSorted(shadowRows.map((row) => row.shadow_node)),
+        models: this.uniqueSorted(shadowRows.map((row) => row.shadow_model)),
+        avg_latency_ms: shadowLatency.length > 0
+          ? Math.round(shadowLatency.reduce((sum, value) => sum + value, 0) / shadowLatency.length)
+          : null,
+      },
+      guardrails: guardrails || {
+        count: 0,
+        kinds: [],
+        actions: [],
+        rules: [],
+      },
+    };
+  }
+
+  private guardrailsFindingsByRequest(): Map<
+    string,
+    { count: number; kinds: string[]; actions: string[]; rules: string[] }
+  > {
+    const status = this.plugins?.getPluginStatus('guardrails') as
+      | { findings?: { recent?: unknown[] } }
+      | undefined;
+    const recent = Array.isArray(status?.findings?.recent)
+      ? status.findings.recent
+      : [];
+    const grouped = new Map<
+      string,
+      { count: number; kinds: Set<string>; actions: Set<string>; rules: Set<string> }
+    >();
+    for (const item of recent) {
+      if (!item || typeof item !== 'object') continue;
+      const finding = item as Record<string, unknown>;
+      const requestId = typeof finding.request_id === 'string'
+        ? finding.request_id
+        : null;
+      if (!requestId) continue;
+      const bucket = grouped.get(requestId) || {
+        count: 0,
+        kinds: new Set<string>(),
+        actions: new Set<string>(),
+        rules: new Set<string>(),
+      };
+      bucket.count += 1;
+      if (typeof finding.kind === 'string') bucket.kinds.add(finding.kind);
+      if (typeof finding.action === 'string') bucket.actions.add(finding.action);
+      if (typeof finding.rule === 'string') bucket.rules.add(finding.rule);
+      grouped.set(requestId, bucket);
+    }
+
+    return new Map(
+      [...grouped.entries()].map(([requestId, bucket]) => [
+        requestId,
+        {
+          count: bucket.count,
+          kinds: this.uniqueSorted([...bucket.kinds]),
+          actions: this.uniqueSorted([...bucket.actions]),
+          rules: this.uniqueSorted([...bucket.rules]),
+        },
+      ]),
+    );
+  }
+
+  private countModelSwitches(logs: CallLog[]): number {
+    let switches = 0;
+    let previous: string | null = null;
+    for (const log of logs) {
+      if (previous && log.model && log.model !== previous) switches += 1;
+      if (log.model) previous = log.model;
+    }
+    return switches;
+  }
+
+  private uniqueSorted(values: string[]): string[] {
+    return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }
+
+  private sessionPrivacySummary() {
+    return {
+      prompt: false,
+      response: false,
+      raw_headers: false,
+      provider_keys: false,
+      media_bytes: false,
+      video_bytes: false,
+      storage: 'metadata_only',
+    };
   }
 
   private maskSecretHeaderRecord(
@@ -771,7 +1010,7 @@ export class DashboardController {
       .addSelect('SUM(log.output_tokens)', 'totalOutputTokens')
       .addSelect('SUM(log.cost_usd)', 'totalCost')
       .addSelect('AVG(log.latency_ms)', 'avgLatency')
-      .addSelect('COUNT(DISTINCT log.session_key)', 'uniqueSessions')
+      .addSelect('COUNT(DISTINCT COALESCE(log.session_id, log.session_key))', 'uniqueSessions')
       .addSelect('SUM(log.cache_creation_input_tokens)', 'cacheCreationTokens')
       .addSelect('SUM(log.cache_read_input_tokens)', 'cacheReadTokens');
     this.applyLogScopeFilter(aggQb, apiKey, apiKeyId, namespaceId, 'where');
@@ -836,6 +1075,179 @@ export class DashboardController {
         count: Number(n.count),
         avgLatencyMs: Number(Number(n.avgLatency || 0).toFixed(0)),
       })),
+    };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Sessions / Trace Correlation
+  // ══════════════════════════════════════════════════════
+
+  @Get('sessions')
+  @ApiOperation({ summary: 'List request sessions from privacy-safe call-log metadata' })
+  @ApiQuery({ name: 'period', required: false, example: '24h' })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'model', required: false })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 25 })
+  @ApiOkResponse({
+    description:
+      'Session summaries grouped by session_id/session_key without prompts, responses, raw headers, provider keys, media bytes, or video bytes.',
+  })
+  async getSessions(
+    @Query('period') period?: string,
+    @Query('namespace') namespaceId?: string,
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('model') model?: string,
+    @Query('source_format') sourceFormat?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number = 1,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number = 25,
+  ) {
+    const window = this.sessionWindow(period, '24h');
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const safePage = Math.max(page, 1);
+    const scanLimit = Math.min(Math.max(safeLimit * safePage * 80, 500), 5000);
+
+    const qb = this.callLogRepo
+      .createQueryBuilder('log')
+      .where('(log.session_id IS NOT NULL OR log.session_key IS NOT NULL)')
+      .orderBy('log.timestamp', 'DESC')
+      .take(scanLimit);
+    if (window.since) qb.andWhere('log.timestamp >= :since', { since: window.since });
+    if (model) qb.andWhere('log.model = :model', { model });
+    if (sourceFormat) qb.andWhere('log.source_format = :sourceFormat', { sourceFormat });
+    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
+
+    const logs = await qb.getMany();
+    const grouped = this.groupLogsBySession(logs);
+    const summaries = [...grouped.entries()]
+      .map(([sessionId, sessionLogs]) => this.buildSessionSummary(sessionId, sessionLogs))
+      .sort(
+        (a, b) =>
+          new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime(),
+      );
+
+    const total = summaries.length;
+    const offset = (safePage - 1) * safeLimit;
+    return {
+      data: summaries.slice(offset, offset + safeLimit),
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+      filters: {
+        period: window.period,
+        namespace_id: namespaceId || null,
+        api_key_id: apiKeyId || null,
+        api_key_name: apiKey || null,
+        model: model || null,
+        source_format: sourceFormat || null,
+      },
+      privacy: this.sessionPrivacySummary(),
+    };
+  }
+
+  @Get('sessions/:sessionId')
+  @ApiOperation({ summary: 'Get one session timeline correlated by request id' })
+  @ApiParam({ name: 'sessionId' })
+  @ApiQuery({ name: 'period', required: false, example: '7d' })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'model', required: false })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiQuery({ name: 'limit', required: false, example: 200 })
+  @ApiOkResponse({
+    description:
+      'Session timeline enriched with route-decision, shadow-result, benchmark-ready, and guardrails metadata without request/response bodies.',
+  })
+  async getSessionDetail(
+    @Param('sessionId') sessionId: string,
+    @Query('period') period?: string,
+    @Query('namespace') namespaceId?: string,
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('model') model?: string,
+    @Query('source_format') sourceFormat?: string,
+    @Query('limit', new DefaultValuePipe(200), ParseIntPipe) limit: number = 200,
+  ) {
+    const window = this.sessionWindow(period, '7d');
+    const safeLimit = Math.min(Math.max(limit, 1), 500);
+    const qb = this.callLogRepo
+      .createQueryBuilder('log')
+      .where('(log.session_id = :sessionId OR log.session_key = :sessionId)', {
+        sessionId,
+      })
+      .orderBy('log.timestamp', 'ASC')
+      .take(safeLimit);
+    if (window.since) qb.andWhere('log.timestamp >= :since', { since: window.since });
+    if (model) qb.andWhere('log.model = :model', { model });
+    if (sourceFormat) qb.andWhere('log.source_format = :sourceFormat', { sourceFormat });
+    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
+
+    const logs = await qb.getMany();
+    if (logs.length === 0) {
+      throw new HttpException('Session not found', HttpStatus.NOT_FOUND);
+    }
+
+    const requestIds = logs.map((log) => log.request_id);
+    const decisions = requestIds.length > 0
+      ? await this.routeDecisionRepo.find({
+          where: { request_id: In(requestIds) },
+        })
+      : [];
+    const shadows = requestIds.length > 0
+      ? await this.shadowTrafficRepo.find({
+          where: { request_id: In(requestIds) },
+          order: { timestamp: 'ASC' },
+        })
+      : [];
+    const decisionsByRequest = new Map(
+      decisions.map((decision) => [decision.request_id, decision]),
+    );
+    const shadowsByRequest = new Map<string, ShadowTrafficResult[]>();
+    for (const row of shadows) {
+      const rows = shadowsByRequest.get(row.request_id) || [];
+      rows.push(row);
+      shadowsByRequest.set(row.request_id, rows);
+    }
+    const guardrailsByRequest = this.guardrailsFindingsByRequest();
+
+    const timeline = logs.map((log) =>
+      this.serializeSessionTimelineEvent(
+        log,
+        decisionsByRequest.get(log.request_id) || null,
+        shadowsByRequest.get(log.request_id) || [],
+        guardrailsByRequest.get(log.request_id) || null,
+      ),
+    );
+
+    return {
+      session_id: sessionId,
+      summary: this.buildSessionSummary(sessionId, logs),
+      timeline,
+      filters: {
+        period: window.period,
+        namespace_id: namespaceId || null,
+        api_key_id: apiKeyId || null,
+        api_key_name: apiKey || null,
+        model: model || null,
+        source_format: sourceFormat || null,
+      },
+      links: {
+        route_decisions:
+          timeline.filter((item) => item.has_route_decision).length,
+        shadow_results:
+          timeline.reduce((sum, item) => sum + item.shadow.count, 0),
+        guardrails_findings:
+          timeline.reduce((sum, item) => sum + item.guardrails.count, 0),
+      },
+      privacy: this.sessionPrivacySummary(),
     };
   }
 
