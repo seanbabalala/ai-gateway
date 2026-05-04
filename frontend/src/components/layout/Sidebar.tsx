@@ -12,6 +12,7 @@ import {
   GitCompareArrows,
   Zap,
   Activity,
+  Boxes,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,7 @@ const navGroups = [
     labelKey: 'nav.manage',
     items: [
       { to: '/nodes', icon: Server, labelKey: 'nav.nodes' },
+      { to: '/catalog', icon: Boxes, labelKey: 'nav.catalog' },
       { to: '/routing', icon: GitFork, labelKey: 'nav.routing' },
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },

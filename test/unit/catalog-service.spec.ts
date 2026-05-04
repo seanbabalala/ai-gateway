@@ -1,5 +1,8 @@
 import * as path from 'path';
 import {
+  assessCatalogPricing,
+  catalogModelToModelPricing,
+  collectCatalogPricingHygieneIssues,
   loadMergedCatalog,
   validateCatalogOverrideFile,
 } from '../../src/catalog/catalog.service';
@@ -53,6 +56,63 @@ describe('catalog service', () => {
           severity: 'warning',
           code: 'catalog_override_secret_value',
         }),
+      ]),
+    );
+  });
+
+  it('adds pricing hygiene metadata and converts catalog pricing for cost fallback', () => {
+    const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
+    const model = result.catalog.providers
+      .flatMap((provider) => provider.models)
+      .find((entry) => entry.id === 'gpt-4o');
+
+    const pricing = catalogModelToModelPricing(model);
+    expect(pricing).toMatchObject({
+      input: 2.5,
+      output: 10,
+      currency: 'USD',
+      catalog_source: 'builtin',
+    });
+
+    const hygiene = assessCatalogPricing(model?.pricing, model?.modalities || [], new Date('2026-05-04T00:00:00.000Z'));
+    expect(hygiene.status).toBe('placeholder');
+    expect(hygiene.stale).toBe(false);
+    expect(hygiene.pricing_confidence).toBe('low');
+  });
+
+  it('reports stale and modality-unit pricing hygiene issues', () => {
+    const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
+    const provider = result.catalog.providers.find((entry) => entry.id === 'openai');
+    const imageModel = provider?.models.find((model) => model.id === 'gpt-image-1');
+
+    expect(imageModel?.pricing?.units?.image).toContain('image');
+    const issues = collectCatalogPricingHygieneIssues(
+      {
+        ...result.catalog,
+        providers: [
+          {
+            ...provider!,
+            models: [
+              {
+                ...imageModel!,
+                pricing: {
+                  ...imageModel!.pricing!,
+                  last_updated: '2025-01-01',
+                  stale_after_days: 10,
+                  units: { input: 'usd_per_1m_tokens', output: 'usd_per_1m_tokens' },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      new Date('2026-05-04T00:00:00.000Z'),
+    );
+
+    expect(issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining([
+        'catalog_pricing_stale',
+        'catalog_pricing_unit_mismatch',
       ]),
     );
   });

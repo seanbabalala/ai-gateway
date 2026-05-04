@@ -17,6 +17,26 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力 | 🚧 In Progress |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 信任层）
+
+**v0.9 方向**：承接原 v0.7 backlog，但基于 v0.8.0 main 重新适配，不直接硬合并旧分支。所有能力保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 只能作为可选能力。
+
+### Provider Catalog Pricing Hygiene
+
+- **状态**：🚧 Prompt 进行中
+- **目标**：复用 v0.8 Provider / Model Catalog 与 `catalog.override.yaml`，补齐价格元数据卫生、过期检查和 cost routing fallback
+- **实现方案**：
+  - 不新增第二套 Model Catalog；继续使用 built-in + local override 的合并 catalog
+  - pricing metadata 扩展 `currency`、`units`、image/audio/video/rerank/embedding price/unit、`stale_after_days`、`pricing_confidence`
+  - Config validation 输出 pricing hygiene warnings：缺失、placeholder、stale、modality unit mismatch、`routing.optimization=cost` 缺必要价格
+  - Cost/context routing 在显式 node/model pricing 与 `models_pricing` 缺失时回退到 merged catalog pricing；显式用户配置永远优先
+  - Dashboard 新增只读 Provider Catalog 页面，展示 freshness、manual review、source、confidence、override 状态
+  - Catalog CLI 支持 `siftgate catalog validate --pricing` 与 `siftgate catalog export --include-pricing`
+  - 第一版不联网抓官网价格，避免不稳定网络更新和 provider docs churn
 
 ---
 

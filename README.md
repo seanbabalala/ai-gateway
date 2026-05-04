@@ -89,7 +89,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 
 ### Cost & Budget Control
 
-- **Per-model pricing** — tracks cost per request based on actual token usage
+- **Per-model pricing** — tracks cost per request from explicit config or verified Provider Catalog fallback metadata
 - **Daily budget limits** — set daily token and cost limits
 - **Alert thresholds** — get warnings before hitting limits
 - **Budget enforcement** — requests are rejected (429) when limits are exceeded
@@ -128,7 +128,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Model-family prefixes** — route future names like `"claude-sonnet-..."` through a stable upstream node
 - **OpenAI-compatible `/v1/models`** endpoint — list all available models and aliases
 - **OpenAPI/Swagger docs** — browse `http://localhost:2099/docs` or fetch `http://localhost:2099/openapi.json`
-- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog APIs, and config validation warnings without automatic network updates
+- **Provider / Model Catalog** — built-in static provider and model capability catalog powers the Add Node wizard, Dashboard catalog/pricing hygiene APIs, cost fallback, and config validation warnings without automatic network updates
 - **Config validation CLI** — run `siftgate validate` or `npm run validate:config` before deploys and in CI
 - **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
@@ -150,7 +150,9 @@ Dashboard Add Node is now a catalog-backed wizard: choose a provider or compatib
   - `GET /api/dashboard/catalog/models?provider=openai&modality=embedding`
 - Initial providers include OpenAI, Anthropic, Google Gemini/Vertex, Azure OpenAI, OpenRouter, Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Ollama, vLLM, and OpenAI-compatible custom providers.
 - Catalog modalities distinguish `text`, `vision`, `image`, `audio`, `video`, `embedding`, `rerank`, and `realtime`.
-- Pricing entries include `source`, `last_updated`, and `manual_review_required`. Use local `models_pricing` or `model_capabilities[].pricing` for production cost routing.
+- Pricing entries include `currency`, modality-specific units, `source`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `manual_review_required`.
+- Dashboard includes a read-only Provider Catalog page for pricing freshness, source, manual-review state, confidence, and override markers.
+- Cost routing falls back to merged catalog pricing only when explicit `model_capabilities[].pricing` and `models_pricing` are absent. Explicit user config always wins.
 - Video is available as an experimental async preview through `video_models`, `video_endpoint` / `video_generations_endpoint`, and optional status/content/cancel endpoint fields.
 
 See [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) for the schema and validation behavior.
@@ -365,12 +367,14 @@ Use the catalog CLI to inspect the built-in catalog and manage local overrides:
 ```bash
 npm run catalog -- list
 npm run catalog -- show openai
+npm run catalog -- validate --pricing
 npm run catalog -- export --out ./catalog.merged.yaml
+npm run catalog -- export --include-pricing --out ./catalog.merged.yaml
 npm run catalog -- import --file ./catalog.override.yaml
 npm run catalog -- validate
 ```
 
-Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate` and `siftgate validate` flag suspicious secret fields and values. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
+Place local changes in `catalog.override.yaml`, or set `catalog.override_file` in `gateway.config.yaml`. Overrides can replace provider `base_url`, endpoints, capabilities, model lists, limits, and pricing metadata. Do not put provider API keys in the catalog; `siftgate catalog validate`, `siftgate catalog validate --pricing`, and `siftgate validate` flag suspicious secret fields, stale/placeholder prices, and modality unit mismatches. See [Provider Catalog](docs/PROVIDER_CATALOG.md).
 
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 
@@ -846,7 +850,7 @@ The gateway estimates request tokens from canonical messages, tools, and the req
 
 Optimization modes apply only within the already-eligible smart-routing target set:
 
-- `cost` chooses the lowest estimated input/output cost using per-model `pricing` or `models_pricing`.
+- `cost` chooses the lowest estimated input/output cost using per-model `pricing`, `models_pricing`, or merged Provider Catalog fallback pricing when explicit config is absent.
 - `latency` chooses the lowest local sliding-window latency, with stable cold-start fallback.
 - `balanced` combines normalized cost and latency.
 - `quality` uses `quality_score` when configured, otherwise keeps the existing tier/strategy order.
@@ -1320,7 +1324,7 @@ Dashboard filters for generated Gateway API keys use the immutable `api_key_id`.
 
 Gateway prompt-cache hits are still logged and recorded against budgets using the cached response's usage and model pricing. They are marked as tier `cached` with node `cache`, so they remain attributable without making an upstream provider call.
 
-Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, routing still works, token usage is still tracked, and cost may be `0` until pricing is configured.
+Failed upstream requests are logged with their status/error and zero usage/cost. Streaming requests record budget usage after a successful final usage event. If a model has no pricing entry in either model capabilities or `models_pricing`, SiftGate tries merged Provider Catalog fallback pricing. If that is missing too, routing still works, token usage is tracked, and cost may be `0` until pricing is configured.
 
 When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"` and structured details such as `scope`, `api_key_id`, `budget_type`, `current`, `limit`, and `reset_at`.
 

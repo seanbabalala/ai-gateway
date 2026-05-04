@@ -823,17 +823,43 @@ export type CatalogAuthType =
 export interface CatalogPricing {
   input?: number | null
   output?: number | null
-  unit: string
-  currency: string
+  image?: number | null
+  audio?: number | null
+  video?: number | null
+  rerank?: number | null
+  embedding?: number | null
+  unit?: string
+  units?: Partial<Record<'input' | 'output' | 'image' | 'audio' | 'video' | 'rerank' | 'embedding', string>>
+  currency?: string
   source: string
   last_updated: string
   manual_review_required: boolean
+  stale_after_days?: number
+  pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
   notes?: string
+}
+
+export interface CatalogPricingHygiene {
+  status: 'fresh' | 'stale' | 'placeholder' | 'missing' | 'invalid'
+  currency: string | null
+  source: string | null
+  manual_review_required: boolean
+  pricing_confidence: 'high' | 'medium' | 'low' | 'unknown' | null
+  last_updated: string | null
+  age_days: number | null
+  stale_after_days: number | null
+  stale: boolean
+  placeholder: boolean
+  missing_price_dimensions: string[]
+  unit_mismatches: string[]
+  warnings: string[]
 }
 
 export interface CatalogModel {
   id: string
   name?: string
+  display_name?: string
+  provider?: string
   provider_id: string
   modalities: CatalogModality[]
   endpoints: CatalogEndpoint[]
@@ -847,11 +873,14 @@ export interface CatalogModel {
     dimensions?: number[]
   }
   pricing: CatalogPricing
+  pricing_hygiene?: CatalogPricingHygiene
   structured_output?: boolean
   supports_streaming?: boolean
   supports_realtime?: boolean
   supports_rerank?: boolean
   manual_review_required?: boolean
+  source?: 'builtin' | 'override'
+  overridden?: boolean
   notes?: string
 }
 
@@ -872,11 +901,16 @@ export interface CatalogProvider {
     source: string
     last_updated: string
     manual_review_required: boolean
+    stale_after_days?: number
+    pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
   }
+  pricing_hygiene?: CatalogPricingHygiene
   model_prefixes?: string[]
   tags?: string[]
   allows_unknown_models?: boolean
   manual_review_required?: boolean
+  source?: 'builtin' | 'override'
+  overridden?: boolean
   models: CatalogModel[]
 }
 
@@ -885,6 +919,9 @@ export interface CatalogProvidersResponse {
   source: 'builtin_static'
   last_updated: string
   auto_update: false
+  override_file?: string
+  override_found?: boolean
+  issues?: Array<{ severity: string; code: string; message: string; path?: string }>
   providers: CatalogProvider[]
 }
 
@@ -893,6 +930,9 @@ export interface CatalogModelsResponse {
   source: 'builtin_static'
   last_updated: string
   auto_update: false
+  override_file?: string
+  override_found?: boolean
+  issues?: Array<{ severity: string; code: string; message: string; path?: string }>
   models: CatalogModel[]
 }
 

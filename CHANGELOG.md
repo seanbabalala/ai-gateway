@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 Provider Catalog pricing hygiene for the OSS Data Plane, extending the v0.8 catalog instead of introducing a second model catalog.
+- Catalog pricing metadata now includes currency, modality-specific price/unit fields, `stale_after_days`, and `pricing_confidence`.
+- Dashboard Provider Catalog page showing pricing freshness, manual-review state, source, confidence, and override markers in the 7-language operator UI.
+- `siftgate catalog validate --pricing` and `siftgate catalog export --include-pricing` for local pricing hygiene workflows without online updates.
+
+### Changed
+
+- Cost-aware routing and cost accounting can fall back to merged Provider Catalog pricing when explicit node/model pricing and `models_pricing` are absent; explicit user config always wins.
+- Config validation now warns for placeholder, stale, missing, and modality-unit-mismatched catalog pricing, including `routing.optimization=cost` cases with insufficient prices.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

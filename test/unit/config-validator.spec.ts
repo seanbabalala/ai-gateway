@@ -582,7 +582,7 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toEqual(
       expect.arrayContaining([
         'duplicate_model_id',
-        'missing_model_pricing',
+        'catalog_pricing_placeholder',
         'literal_provider_api_key',
         'literal_control_plane_token',
         'insecure_control_plane_url',
@@ -682,6 +682,55 @@ describe('config validator', () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
+  });
+
+  it('warns about catalog pricing hygiene without duplicating missing pricing when catalog fallback exists', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          optimization: 'cost',
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+    expect(codes(result.warnings)).not.toContain('missing_model_pricing');
+    expect(codes(result.warnings)).not.toContain('cost_routing_pricing_missing');
   });
 
   it('warns when configured endpoints differ from the catalog provider preset', () => {

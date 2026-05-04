@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ConfigService } from '../config/config.service';
+import type { ModelPricing } from '../config/gateway.config';
 import {
   VALID_CAPABILITY_ENDPOINTS,
   VALID_MODALITIES,
@@ -16,6 +17,9 @@ import type {
   CatalogOverrideFile,
   CatalogOverrideModel,
   CatalogOverrideProvider,
+  CatalogPricing,
+  CatalogPricingDimension,
+  CatalogPricingHygiene,
   CatalogProvider,
   ProviderCatalog,
 } from './catalog.types';
@@ -38,6 +42,18 @@ const VALID_ENDPOINT_SET = new Set<string>([
 ]);
 const SECRET_KEY_PATTERN = /(api[_-]?key|provider[_-]?key|secret|token|authorization|bearer|password)/i;
 const SECRET_VALUE_PATTERN = /\b(sk-[A-Za-z0-9._~+/-]{12,}|sk_[A-Za-z0-9._~+/-]{12,}|xox[A-Za-z0-9._~+/-]{12,}|Bearer\s+[A-Za-z0-9._~+/-]{12,})\b/i;
+const PRICING_DIMENSIONS: CatalogPricingDimension[] = [
+  'input',
+  'output',
+  'image',
+  'audio',
+  'video',
+  'rerank',
+  'embedding',
+];
+const PRICING_CONFIDENCES = new Set(['high', 'medium', 'low', 'unknown']);
+const PLACEHOLDER_SOURCE_PATTERN = /(placeholder|operator_required|manual[_-]?placeholder|unknown|replace)/i;
+const DEFAULT_STALE_AFTER_DAYS = 90;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -45,6 +61,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isFiniteNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function normalizeComparableUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`.replace(/\/+$/, '');
+  } catch {
+    return value.replace(/\/+$/, '');
+  }
 }
 
 function cloneProvider(provider: CatalogProvider): CatalogProvider {
@@ -550,10 +579,10 @@ function validatePricing(
     );
     return;
   }
-  for (const key of ['input', 'output']) {
+  for (const key of PRICING_DIMENSIONS) {
     if (
       pricing[key] !== undefined &&
-      (typeof pricing[key] !== 'number' || !Number.isFinite(pricing[key]) || pricing[key] < 0)
+      !isFiniteNonNegativeNumber(pricing[key])
     ) {
       issues.push(
         issue(
@@ -564,6 +593,61 @@ function validatePricing(
         ),
       );
     }
+  }
+  if (pricing.unit !== undefined && !isNonEmptyString(pricing.unit)) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_unit_missing',
+        'pricing.unit should be a non-empty string when set.',
+        `${basePath}.unit`,
+      ),
+    );
+  }
+  if (pricing.units !== undefined) {
+    if (!isRecord(pricing.units)) {
+      issues.push(
+        issue(
+          'error',
+          'catalog_pricing_units_invalid',
+          'pricing.units must be an object keyed by input/output/image/audio/video/rerank/embedding.',
+          `${basePath}.units`,
+        ),
+      );
+    } else {
+      for (const [key, value] of Object.entries(pricing.units)) {
+        if (!PRICING_DIMENSIONS.includes(key as CatalogPricingDimension)) {
+          issues.push(
+            issue(
+              'warning',
+              'catalog_pricing_unit_unknown',
+              `pricing.units.${key} is not a known pricing dimension.`,
+              `${basePath}.units.${key}`,
+            ),
+          );
+        }
+        if (!isNonEmptyString(value)) {
+          issues.push(
+            issue(
+              'error',
+              'catalog_pricing_units_invalid',
+              'pricing.units values must be non-empty strings.',
+              `${basePath}.units.${key}`,
+            ),
+          );
+        }
+      }
+    }
+  }
+  if (pricing.currency !== undefined && !isNonEmptyString(pricing.currency)) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_currency_missing',
+        'pricing.currency should be a non-empty currency code.',
+        `${basePath}.currency`,
+      ),
+    );
   }
   if (!isNonEmptyString(pricing.source)) {
     issues.push(
@@ -584,14 +668,59 @@ function validatePricing(
         `${basePath}.last_updated`,
       ),
     );
+  } else if (Number.isNaN(Date.parse(pricing.last_updated))) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_last_updated_invalid',
+        'pricing.last_updated should be an ISO date.',
+        `${basePath}.last_updated`,
+      ),
+    );
   }
-  if (pricing.manual_review_required !== undefined && typeof pricing.manual_review_required !== 'boolean') {
+  if (pricing.manual_review_required === undefined) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_manual_review_missing',
+        'pricing.manual_review_required should be set explicitly.',
+        `${basePath}.manual_review_required`,
+      ),
+    );
+  } else if (typeof pricing.manual_review_required !== 'boolean') {
     issues.push(
       issue(
         'error',
         'catalog_pricing_invalid',
         'pricing.manual_review_required must be a boolean when set.',
         `${basePath}.manual_review_required`,
+      ),
+    );
+  }
+  if (
+    pricing.stale_after_days !== undefined &&
+    (!isFiniteNonNegativeNumber(pricing.stale_after_days) || pricing.stale_after_days === 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_pricing_stale_after_invalid',
+        'pricing.stale_after_days must be a positive number when set.',
+        `${basePath}.stale_after_days`,
+      ),
+    );
+  }
+  if (
+    pricing.pricing_confidence !== undefined &&
+    (!isNonEmptyString(pricing.pricing_confidence) ||
+      !PRICING_CONFIDENCES.has(pricing.pricing_confidence))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_pricing_confidence_invalid',
+        'pricing.pricing_confidence must be high, medium, low, or unknown.',
+        `${basePath}.pricing_confidence`,
       ),
     );
   }
@@ -765,6 +894,228 @@ export function findCatalogModel(
   modelId: string,
 ): CatalogModel | undefined {
   return flattenCatalogModels(catalog).find((model) => model.id === modelId);
+}
+
+export function findCatalogModelForNode(
+  catalog: ProviderCatalog,
+  modelId: string,
+  node?: { id?: string; base_url?: string },
+): CatalogModel | undefined {
+  const matches = flattenCatalogModels(catalog).filter((model) => model.id === modelId);
+  if (matches.length === 0) return undefined;
+  if (!node) return matches[0];
+
+  const nodeId = typeof node.id === 'string' ? node.id : '';
+  const baseUrl = typeof node.base_url === 'string'
+    ? normalizeComparableUrl(node.base_url)
+    : '';
+  const providerById = nodeId
+    ? catalog.providers.find((provider) => provider.id === nodeId)
+    : undefined;
+  const providerByUrl = baseUrl
+    ? catalog.providers.find(
+        (provider) => normalizeComparableUrl(provider.base_url) === baseUrl,
+      )
+    : undefined;
+  const providerIds = new Set(
+    [providerById?.id, providerByUrl?.id, nodeId].filter(isNonEmptyString),
+  );
+  return matches.find((model) => providerIds.has(model.provider)) || matches[0];
+}
+
+export function catalogModelToModelPricing(
+  model: CatalogModel | undefined,
+): (ModelPricing & {
+  source?: string;
+  currency?: string;
+  catalog_source?: string;
+  manual_review_required?: boolean;
+  pricing_confidence?: string;
+}) | undefined {
+  const pricing = model?.pricing;
+  if (!pricing || !isFiniteNonNegativeNumber(pricing.input) || !isFiniteNonNegativeNumber(pricing.output)) {
+    return undefined;
+  }
+  return {
+    input: pricing.input,
+    output: pricing.output,
+    source: `catalog:${model.provider}:${pricing.source}`,
+    currency: pricing.currency || 'USD',
+    catalog_source: model.overridden ? 'override' : model.source,
+    manual_review_required: pricing.manual_review_required,
+    pricing_confidence: pricing.pricing_confidence || 'unknown',
+  };
+}
+
+export function assessCatalogPricing(
+  pricing: CatalogPricing | undefined,
+  modalities: readonly string[] = [],
+  now: Date = new Date(),
+): CatalogPricingHygiene {
+  if (!pricing) {
+    return {
+      status: 'missing',
+      currency: null,
+      source: null,
+      manual_review_required: false,
+      pricing_confidence: null,
+      last_updated: null,
+      age_days: null,
+      stale_after_days: null,
+      stale: false,
+      placeholder: false,
+      missing_price_dimensions: requiredPricingDimensions(modalities),
+      unit_mismatches: [],
+      warnings: ['catalog_pricing_missing'],
+    };
+  }
+
+  const required = requiredPricingDimensions(modalities);
+  const missing = required.filter((dimension) => !hasPricingDimension(pricing, dimension));
+  const unitMismatches = required.filter((dimension) => !hasCompatibleUnit(pricing, dimension));
+  const lastUpdated = isNonEmptyString(pricing.last_updated) ? pricing.last_updated : null;
+  const parsedLastUpdated = lastUpdated ? Date.parse(lastUpdated) : Number.NaN;
+  const ageDays = Number.isNaN(parsedLastUpdated)
+    ? null
+    : Math.max(0, Math.floor((now.getTime() - parsedLastUpdated) / 86_400_000));
+  const staleAfterDays = pricing.stale_after_days ?? DEFAULT_STALE_AFTER_DAYS;
+  const stale = ageDays !== null && ageDays > staleAfterDays;
+  const placeholder =
+    pricing.manual_review_required === true ||
+    pricing.pricing_confidence === 'low' ||
+    pricing.pricing_confidence === 'unknown' ||
+    PLACEHOLDER_SOURCE_PATTERN.test(pricing.source || '');
+  const warnings = [
+    ...missing.map((dimension) => `catalog_pricing_missing:${dimension}`),
+    ...unitMismatches.map((dimension) => `catalog_pricing_unit_mismatch:${dimension}`),
+    ...(stale ? ['catalog_pricing_stale'] : []),
+    ...(placeholder ? ['catalog_pricing_placeholder'] : []),
+  ];
+
+  return {
+    status: missing.length > 0
+      ? 'missing'
+      : stale
+        ? 'stale'
+        : placeholder
+          ? 'placeholder'
+          : 'fresh',
+    currency: pricing.currency || null,
+    source: pricing.source || null,
+    manual_review_required: pricing.manual_review_required === true,
+    pricing_confidence: pricing.pricing_confidence || null,
+    last_updated: lastUpdated,
+    age_days: ageDays,
+    stale_after_days: staleAfterDays,
+    stale,
+    placeholder,
+    missing_price_dimensions: missing,
+    unit_mismatches: unitMismatches,
+    warnings,
+  };
+}
+
+export function collectCatalogPricingHygieneIssues(
+  catalog: ProviderCatalog,
+  now: Date = new Date(),
+): CatalogIssue[] {
+  const issues: CatalogIssue[] = [];
+  for (const provider of catalog.providers) {
+    for (const model of provider.models) {
+      const hygiene = assessCatalogPricing(model.pricing, model.modalities, now);
+      const modelPath = `providers.${provider.id}.models.${model.id}.pricing`;
+      for (const dimension of hygiene.missing_price_dimensions) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_pricing_missing',
+            `Catalog model "${model.id}" is missing ${dimension} pricing metadata.`,
+            modelPath,
+          ),
+        );
+      }
+      for (const dimension of hygiene.unit_mismatches) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_pricing_unit_mismatch',
+            `Catalog model "${model.id}" has pricing units that do not describe ${dimension} workloads.`,
+            modelPath,
+          ),
+        );
+      }
+      if (hygiene.stale) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_pricing_stale',
+            `Catalog pricing for "${model.id}" is ${hygiene.age_days} day(s) old; review provider pricing before cost routing.`,
+            modelPath,
+          ),
+        );
+      }
+      if (hygiene.placeholder) {
+        issues.push(
+          issue(
+            'info',
+            'catalog_pricing_placeholder',
+            `Catalog pricing for "${model.id}" is placeholder or manual-review metadata.`,
+            modelPath,
+          ),
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+function requiredPricingDimensions(modalities: readonly string[]): CatalogPricingDimension[] {
+  const normalized = new Set(modalities.map((modality) => modality.toLowerCase()));
+  const required = new Set<CatalogPricingDimension>();
+  if (
+    normalized.size === 0 ||
+    normalized.has('text') ||
+    normalized.has('vision') ||
+    normalized.has('realtime')
+  ) {
+    required.add('input');
+    required.add('output');
+  }
+  if (normalized.has('image')) required.add('image');
+  if (normalized.has('audio')) required.add('audio');
+  if (normalized.has('video')) required.add('video');
+  if (normalized.has('rerank')) required.add('rerank');
+  if (normalized.has('embedding')) required.add('embedding');
+  return [...required];
+}
+
+function hasPricingDimension(
+  pricing: CatalogPricing,
+  dimension: CatalogPricingDimension,
+): boolean {
+  if (isFiniteNonNegativeNumber(pricing[dimension])) return true;
+  if (dimension === 'embedding' && isFiniteNonNegativeNumber(pricing.input)) return true;
+  if (dimension === 'rerank' && isFiniteNonNegativeNumber(pricing.input)) return true;
+  if (dimension === 'audio' && isFiniteNonNegativeNumber(pricing.input)) return true;
+  if (dimension === 'image' && isFiniteNonNegativeNumber(pricing.input)) return true;
+  if (dimension === 'video' && isFiniteNonNegativeNumber(pricing.input)) return true;
+  return false;
+}
+
+function hasCompatibleUnit(
+  pricing: CatalogPricing,
+  dimension: CatalogPricingDimension,
+): boolean {
+  const unit = (pricing.units?.[dimension] || pricing.unit || '').toLowerCase();
+  if (!unit) return false;
+  if (dimension === 'input' || dimension === 'output' || dimension === 'embedding') {
+    return unit.includes('token') || unit.includes('embedding');
+  }
+  if (dimension === 'image') return unit.includes('image');
+  if (dimension === 'audio') return unit.includes('audio') || unit.includes('minute') || unit.includes('second');
+  if (dimension === 'video') return unit.includes('video') || unit.includes('minute') || unit.includes('second');
+  if (dimension === 'rerank') return unit.includes('rerank') || unit.includes('request');
+  return true;
 }
 
 export function formatCatalogAsYaml(catalog: ProviderCatalog): string {

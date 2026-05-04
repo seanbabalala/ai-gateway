@@ -1,6 +1,6 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. The catalog is used by Dashboard Add Node, catalog APIs, config validation, and provider compatibility checks. It is intentionally local and reviewable: the gateway does not call provider websites, scrape docs, or auto-update prices in v0.8.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with pricing hygiene metadata and cost-routing fallback. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks. It is intentionally local and reviewable: the gateway does not call provider websites, scrape docs, or auto-update prices in v0.9.
 
 ## Goals
 
@@ -31,6 +31,8 @@ Responses include merged built-in + override metadata:
 
 Provider and model rows include `overridden` markers when local override data replaced or added fields.
 
+Dashboard also includes a read-only Provider Catalog page. It shows pricing freshness, source, manual-review state, confidence, override state, and modality coverage without changing routing or node config.
+
 ## Dashboard Add Node Wizard
 
 v0.8 uses the catalog as the source of truth for the Dashboard Add Node flow. The wizard no longer keeps a separate provider/model list inside the React form.
@@ -53,7 +55,9 @@ Run against source with npm:
 npm run catalog -- list
 npm run catalog -- show openai
 npm run catalog -- validate
+npm run catalog -- validate --pricing
 npm run catalog -- export --out ./catalog.merged.yaml
+npm run catalog -- export --include-pricing --out ./catalog.merged.yaml
 npm run catalog -- import --file ./catalog.override.yaml
 ```
 
@@ -71,6 +75,8 @@ Useful options:
 - `--override <path>` points the command at a non-default override file.
 - `--file <path>` is used by `catalog validate` and `catalog import`.
 - `--force` allows `catalog import` to replace an existing override file.
+- `--pricing` adds pricing freshness/unit checks to `catalog validate`.
+- `--include-pricing` is accepted by `catalog export`; pricing is included by default and the flag makes CI intent explicit.
 
 `catalog validate` exits non-zero on errors and is safe for CI. Warnings are printed without failing the command.
 
@@ -102,10 +108,16 @@ providers:
         pricing:
           input: 0.25
           output: 0.75
+          currency: USD
           unit: usd_per_1m_tokens
+          units:
+            input: usd_per_1m_input_tokens
+            output: usd_per_1m_output_tokens
           source: internal-rate-card
           last_updated: "2026-05-03"
           manual_review_required: false
+          stale_after_days: 90
+          pricing_confidence: high
 ```
 
 Overrides merge with the built-in catalog. If a provider or model already exists, only supplied fields are replaced. New providers and models are added and marked with `overridden: true`.
@@ -118,6 +130,11 @@ Overrides merge with the built-in catalog. If a provider or model already exists
 - a model is listed under a bucket that does not match its catalog modality
 - a node endpoint differs from a known provider preset
 - pricing is marked `manual_review_required`
+- pricing is missing for the configured modality
+- pricing is placeholder/manual-review metadata
+- pricing is stale according to `last_updated` + `stale_after_days`
+- pricing units do not match the model bucket, such as image models without image pricing units
+- `routing.optimization=cost` is enabled but a candidate lacks usable input/output token prices
 
 Catalog override parsing itself can fail validation when the file is malformed or contains suspicious secret fields.
 
@@ -172,7 +189,17 @@ This makes the matrix suitable for CI-style smoke checks and local operator vali
 
 ## Boundaries
 
-- No automatic online updates in v0.8.
+- No automatic online updates in v0.9.
 - No provider API keys or secrets are stored in the catalog.
 - The catalog is advisory. Operators can still configure private deployments, proxy model IDs, and local model names.
 - Video is cataloged as a modality and can be configured through `nodes[].video_models`, `video_generations_endpoint`, `video_endpoint`, and optional async video endpoint fields.
+
+## Pricing Fallback Order
+
+Cost routing, budget accounting, and route evidence resolve prices in this order:
+
+1. `nodes[].model_capabilities[model].pricing`
+2. top-level `models_pricing[model]`
+3. merged Provider Catalog model pricing from the built-in catalog plus `catalog.override.yaml`
+
+The catalog fallback is intentionally conservative. Built-in prices are marked `manual_review_required` and low confidence until an operator verifies them or overrides them locally. Use explicit config pricing for production billing decisions.

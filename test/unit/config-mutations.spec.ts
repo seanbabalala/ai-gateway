@@ -282,7 +282,22 @@ describe('ConfigService — model pricing', () => {
   it('should delete pricing', () => {
     const { svc } = loadConfigService();
     svc.deleteModelPricing('gpt-4o');
-    expect(svc.getModelPricing('gpt-4o')).toBeUndefined();
+    expect(svc.getModelPricing('gpt-4o')).toMatchObject({
+      input: 2.5,
+      output: 10,
+      catalog_source: 'builtin',
+    });
+  });
+
+  it('should fall back to merged provider catalog pricing when explicit pricing is absent', () => {
+    const { svc } = loadConfigService({ models_pricing: {} });
+
+    expect(svc.getModelPricing('gpt-4o', 'openai')).toMatchObject({
+      input: 2.5,
+      output: 10,
+      catalog_source: 'builtin',
+      pricing_confidence: 'low',
+    });
   });
 
   it('should throw when deleting non-existent pricing', () => {
