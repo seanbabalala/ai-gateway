@@ -169,6 +169,7 @@ const CANONICAL_SOURCE_FORMATS = [
   'audio_speech',
   'video_generation',
   'realtime',
+  'batch',
 ];
 
 const SOURCE_FAMILIES = [
@@ -181,6 +182,7 @@ const SOURCE_FAMILIES = [
   'audio',
   'video',
   'realtime',
+  'batch',
 ];
 
 @Injectable()
@@ -513,6 +515,7 @@ export class BenchmarkReportService {
     if (sourceFormat.startsWith('audio_')) return 'audio';
     if (sourceFormat.startsWith('video_')) return 'video';
     if (sourceFormat.startsWith('realtime')) return 'realtime';
+    if (sourceFormat === 'batch') return 'batch';
     return 'unknown';
   }
 

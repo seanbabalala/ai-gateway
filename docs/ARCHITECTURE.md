@@ -172,7 +172,7 @@ evidence for the Dashboard: request totals, success/error/fallback/cache rates,
 latency percentiles, throughput estimates, cost/token summaries, status-code
 distribution, `node:model` breakdowns, and source-format/source-family
 breakdowns across chat, responses, messages, embeddings, rerank, images, audio,
-video, and realtime. When matching `route_decisions` rows exist, the report also
+video, realtime, and batch. When matching `route_decisions` rows exist, the report also
 shows trace coverage so operators can see whether performance samples have
 explainable-routing evidence.
 
@@ -185,6 +185,8 @@ For explainable routing, the pipeline also writes a separate `route_decisions` r
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
+
+The v1.2 Batch API proxy follows the same metadata-only async pattern without running through the synchronous generation pipeline. `POST /v1/batches` resolves a provider node, enforces Gateway API key endpoint/node/model permissions, namespace scope, rate limits, and budget checks, then forwards the OpenAI-compatible create body to the upstream batch endpoint. It writes a `batch_jobs` row with request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, and sanitized error text. It stores metadata keys only, not metadata values. Status, cancel, output, and error-file routes look up `batch_jobs`, enforce the creating key/namespace boundary, and proxy provider file content without persisting input JSONL, output JSONL, raw headers, provider keys, or file bytes.
 
 ## Config Audit And Rollback
 

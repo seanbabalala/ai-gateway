@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "Ranked document outputs",
   "modalitiesDescription.text": "Text generation and analysis",
   "modalitiesDescription.video": "Async video generation",
-  "modalitiesDescription.vision": "Image input in text requests"
+  "modalitiesDescription.vision": "Image input in text requests",
+  "endpoints.batch": "Batch",
+  "endpointsDescription.batch": "Allow OpenAI-compatible Batch API create, status, cancel, and output download proxy calls."
 }

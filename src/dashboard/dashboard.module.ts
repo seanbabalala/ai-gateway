@@ -21,6 +21,7 @@ import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
 import { ConfigAuditService } from './config-audit.service';
 import { BenchmarkReportService } from './benchmark-report.service';
+import { BatchModule } from '../batch/batch.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { BenchmarkReportService } from './benchmark-report.service';
     AuthModule,
     ShadowModule,
     CatalogModule,
+    BatchModule,
     TypeOrmModule.forFeature([
       CallLog,
       ConfigAuditEvent,

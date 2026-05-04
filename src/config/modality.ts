@@ -29,7 +29,8 @@ export type CapabilityEndpoint =
   | 'audio_translation'
   | 'audio_speech'
   | 'rerank'
-  | 'realtime';
+  | 'realtime'
+  | 'batch';
 
 export type CapabilityIOType =
   | 'text'
@@ -68,6 +69,7 @@ export const VALID_CAPABILITY_ENDPOINTS: readonly CapabilityEndpoint[] = [
   'audio_speech',
   'rerank',
   'realtime',
+  'batch',
 ];
 
 export const VALID_CAPABILITY_IO_TYPES: readonly CapabilityIOType[] = [

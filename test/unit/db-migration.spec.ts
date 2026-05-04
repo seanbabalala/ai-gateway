@@ -19,6 +19,7 @@ const TABLES: DbMigrationTableName[] = [
   "config_versions",
   "config_audit_events",
   "provider_compatibility_results",
+  "batch_jobs",
   "video_jobs",
 ];
 
@@ -248,6 +249,32 @@ function createSqliteFixture(dir: string): string {
       status_code integer,
       failure_reason text,
       test_mode varchar,
+      created_at datetime,
+      updated_at datetime
+    );
+
+    CREATE TABLE batch_jobs (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      request_id varchar,
+      provider_batch_id varchar,
+      node_id varchar,
+      model varchar,
+      endpoint varchar,
+      input_file_id varchar,
+      output_file_id varchar,
+      error_file_id varchar,
+      completion_window varchar,
+      metadata_keys_json text,
+      request_counts_total integer,
+      request_counts_completed integer,
+      request_counts_failed integer,
+      api_key_id varchar,
+      api_key_name varchar,
+      namespace_id varchar,
+      namespace_name varchar,
+      status varchar,
+      error text,
+      expires_at text,
       created_at datetime,
       updated_at datetime
     );
@@ -515,6 +542,42 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO batch_jobs (
+      request_id, provider_batch_id, node_id, model, endpoint, input_file_id,
+      output_file_id, error_file_id, completion_window, metadata_keys_json,
+      request_counts_total, request_counts_completed, request_counts_failed,
+      api_key_id, api_key_name, namespace_id, namespace_name, status, error,
+      expires_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "req-batch-1",
+    "batch_123",
+    "openai",
+    "batch",
+    "/v1/chat/completions",
+    "file-input",
+    "file-output",
+    null,
+    "24h",
+    JSON.stringify(["purpose"]),
+    10,
+    8,
+    1,
+    "key-1",
+    "prod-key",
+    "team-alpha",
+    "Team Alpha",
+    "in_progress",
+    null,
+    "2026-05-02T00:00:00.000Z",
+    "2026-05-01T00:02:30.000Z",
+    "2026-05-01T00:02:30.000Z",
+  );
+
+  db.prepare(
+    `
     INSERT INTO video_jobs (
       request_id, provider_job_id, node_id, model, api_key_id, api_key_name,
       namespace_id, namespace_name, status, error, expires_at, created_at, updated_at
@@ -560,7 +623,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(10);
+    expect(result.totals.source_rows).toBe(11);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -630,6 +693,15 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(compatibility?.last_checked_at).toBe("2026-05-01T00:02:00.000Z");
     expect(compatibility?.created_at).toBeInstanceOf(Date);
 
+    const batchJob = target.rows.get("batch_jobs")?.[0];
+    expect(batchJob?.request_id).toBe("req-batch-1");
+    expect(batchJob?.provider_batch_id).toBe("batch_123");
+    expect(batchJob?.request_counts_total).toBe(10);
+    expect(batchJob?.api_key_id).toBe("key-1");
+    expect(batchJob?.namespace_id).toBe("team-alpha");
+    expect(batchJob?.status).toBe("in_progress");
+    expect(batchJob?.created_at).toBeInstanceOf(Date);
+
     const videoJob = target.rows.get("video_jobs")?.[0];
     expect(videoJob?.request_id).toBe("req-video-1");
     expect(videoJob?.api_key_id).toBe("key-1");
@@ -667,7 +739,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(10);
+    expect(result.validation.mismatches).toHaveLength(11);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

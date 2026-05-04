@@ -60,5 +60,6 @@
   "tier.simple": "简单",
   "tier.standard": "标准",
   "nav.benchmarks": "基准",
-  "nav.sessions": "会话"
+  "nav.sessions": "会话",
+  "nav.batches": "批处理"
 }

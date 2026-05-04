@@ -60,5 +60,6 @@
   "tier.simple": "簡單",
   "tier.standard": "標準",
   "nav.benchmarks": "基準",
-  "nav.sessions": "工作階段"
+  "nav.sessions": "工作階段",
+  "nav.batches": "批次任務"
 }

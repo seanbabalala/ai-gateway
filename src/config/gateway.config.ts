@@ -560,6 +560,14 @@ export interface NodeConfig {
   video_cancel_endpoint?: string;
   /** Video-capable model IDs exposed by this node. */
   video_models?: string[];
+  /** Optional OpenAI-compatible batch creation endpoint path (default: /v1/batches for compatible nodes). */
+  batch_endpoint?: string;
+  /** Optional endpoint path for batch status lookups. */
+  batch_status_endpoint?: string;
+  /** Optional endpoint path for batch cancellation. */
+  batch_cancel_endpoint?: string;
+  /** Optional endpoint path for batch output/error file content download. */
+  batch_result_endpoint?: string;
   /** Experimental OpenAI-compatible realtime WebSocket endpoint path (default: /v1/realtime). */
   realtime_endpoint?: string;
   /** Realtime-capable model IDs exposed by this node. */

@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "Salida de documentos reordenados",
   "modalitiesDescription.text": "Generación y análisis de texto",
   "modalitiesDescription.video": "Generación async de vídeo",
-  "modalitiesDescription.vision": "Entrada de imagen en peticiones de texto"
+  "modalitiesDescription.vision": "Entrada de imagen en peticiones de texto",
+  "endpoints.batch": "Batch",
+  "endpointsDescription.batch": "Permite proxy para crear, consultar, cancelar y descargar resultados de Batch API compatible con OpenAI."
 }

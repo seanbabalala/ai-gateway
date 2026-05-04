@@ -864,6 +864,10 @@ function validateNodes(
     validateOptionalEndpoint(node, basePath, 'video_status_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'video_content_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'video_cancel_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'batch_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'batch_status_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'batch_cancel_endpoint', issues);
+    validateOptionalEndpoint(node, basePath, 'batch_result_endpoint', issues);
     if (!isNonEmptyString(node.api_key)) {
       issues.push(
         issue(
@@ -4071,6 +4075,14 @@ function validateConfigAgainstCatalog(
       'realtime',
       node.realtime_endpoint,
       `${basePath}.realtime_endpoint`,
+      issues,
+    );
+    validateCatalogEndpointMatch(
+      node,
+      provider,
+      'batch',
+      node.batch_endpoint,
+      `${basePath}.batch_endpoint`,
       issues,
     );
 

@@ -20,6 +20,25 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
+| v1.2 | Platform Capabilities | 进行中 — MCP Gateway、Batch API、Prompt Cache 智能路由、Pricing 自动同步 | 🚧 In Progress |
+
+---
+
+## v1.2 — Platform Capabilities（平台能力）
+
+**v1.2 开发状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 SiftGate 从多协议代理扩展为更完整的平台能力层。
+
+### P0：Batch API Proxy
+
+- **状态**：🚧 当前分支开发中
+- **目标**：支持 OpenAI-compatible Batch API 创建、查询、取消和结果下载代理，同时保持本地 metadata-only 的隐私边界
+- **实现方案**：
+  - 新增 `POST /v1/batches`、`GET /v1/batches/:id`、`POST /v1/batches/:id/cancel`、`GET /v1/batches/:id/output`、`GET /v1/batches/:id/errors`
+  - 节点配置支持 `batch_endpoint`、`batch_status_endpoint`、`batch_cancel_endpoint`、`batch_result_endpoint`
+  - 本地 `batch_jobs` 只保存 request id、provider batch id、node/model hint、endpoint、file ids、request counts、status、timestamps、API key/namespace attribution、metadata keys 和脱敏错误
+  - 不保存 batch input JSONL、provider output JSONL、raw headers、provider keys、metadata values 或文件 bytes
+  - Gateway API key、namespace、budget、rate limit、call_log、telemetry 覆盖 Batch 路径
+  - Dashboard 新增只读 Batch Jobs 页面和 `GET /api/dashboard/batches`，文案保持 7 语言同步
 
 ---
 

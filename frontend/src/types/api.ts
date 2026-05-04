@@ -489,6 +489,10 @@ export interface NodeInfo {
   video_content_endpoint?: string | null
   video_cancel_endpoint?: string | null
   video_models?: string[]
+  batch_endpoint?: string | null
+  batch_status_endpoint?: string | null
+  batch_cancel_endpoint?: string | null
+  batch_result_endpoint?: string | null
   realtime_endpoint?: string | null
   realtime_models?: string[]
   capabilities: string[]
@@ -1062,6 +1066,55 @@ export interface BenchmarkReportResponse {
   }
 }
 
+// ── Batch Jobs ──
+
+export interface BatchDashboardItem {
+  id: number
+  request_id: string
+  provider_batch_id: string | null
+  node_id: string
+  model: string
+  endpoint: string | null
+  input_file_id: string | null
+  output_file_id: string | null
+  error_file_id: string | null
+  completion_window: string | null
+  metadata_keys: string[]
+  request_counts: {
+    total: number
+    completed: number
+    failed: number
+  }
+  api_key_id: string | null
+  api_key_name: string | null
+  namespace_id: string | null
+  namespace_name: string | null
+  status: string
+  error: string | null
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BatchDashboardResponse {
+  metadata_only: true
+  items: BatchDashboardItem[]
+  totals: {
+    total: number
+    active: number
+    completed: number
+    failed: number
+    cancelled: number
+  }
+  filters: {
+    period: string
+    status: string | null
+    node: string | null
+    namespace: string | null
+    api_key_id: string | null
+  }
+}
+
 // ── Dashboard Playground ──
 
 export type PlaygroundEndpoint =
@@ -1192,6 +1245,10 @@ export interface CreateNodeRequest {
   video_endpoint?: string
   video_content_endpoint?: string
   video_cancel_endpoint?: string
+  batch_endpoint?: string
+  batch_status_endpoint?: string
+  batch_cancel_endpoint?: string
+  batch_result_endpoint?: string
   timeout_ms: number
   max_concurrency?: number
   queue_timeout_ms?: number
@@ -1234,6 +1291,10 @@ export interface UpdateNodeRequest {
   video_endpoint?: string
   video_content_endpoint?: string
   video_cancel_endpoint?: string
+  batch_endpoint?: string
+  batch_status_endpoint?: string
+  batch_cancel_endpoint?: string
+  batch_result_endpoint?: string
   timeout_ms?: number
   max_concurrency?: number
   queue_timeout_ms?: number

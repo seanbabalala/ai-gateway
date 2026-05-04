@@ -132,5 +132,6 @@
   "benchmark.table.success": "สำเร็จ",
   "benchmark.table.target": "เป้าหมาย",
   "benchmark.table.throughput": "Req/min",
-  "benchmark.title": "เบนช์มาร์ก"
+  "benchmark.title": "เบนช์มาร์ก",
+  "benchmark.source.batch": "แบตช์"
 }

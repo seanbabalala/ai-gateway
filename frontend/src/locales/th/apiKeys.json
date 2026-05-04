@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "ผลลัพธ์เอกสารแบบจัดอันดับ",
   "modalitiesDescription.text": "สร้างและวิเคราะห์ข้อความ",
   "modalitiesDescription.video": "สร้างวิดีโอแบบ async",
-  "modalitiesDescription.vision": "อินพุตรูปภาพในคำขอ text"
+  "modalitiesDescription.vision": "อินพุตรูปภาพในคำขอ text",
+  "endpoints.batch": "แบตช์",
+  "endpointsDescription.batch": "อนุญาต proxy สำหรับ OpenAI-compatible Batch API create, status, cancel และดาวน์โหลดผลลัพธ์"
 }

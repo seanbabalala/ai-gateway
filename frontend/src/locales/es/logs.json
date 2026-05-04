@@ -240,5 +240,7 @@
   "detail.upstream": "Upstream",
   "table.routeResult": "Resultado de ruta",
   "table.source": "Origen",
-  "table.upstream": "Upstream"
+  "table.upstream": "Upstream",
+  "routeExplanation.sources.batch": "Batch",
+  "routeExplanation.endpointStrategy.batch": "Batch"
 }

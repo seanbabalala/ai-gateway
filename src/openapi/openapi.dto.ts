@@ -394,6 +394,45 @@ export class VideoGenerationRequestDto {
   metadata?: Record<string, unknown>;
 }
 
+export class BatchCreateRequestDto {
+  @ApiProperty({
+    example: 'file-batch-input',
+    description: 'Provider file id that contains OpenAI-compatible JSONL batch input. SiftGate forwards this id but does not store file contents.',
+  })
+  input_file_id!: string;
+
+  @ApiProperty({
+    example: '/v1/chat/completions',
+    description: 'Provider endpoint to process inside the batch, for example /v1/chat/completions or /v1/embeddings.',
+  })
+  endpoint!: string;
+
+  @ApiProperty({
+    example: '24h',
+    description: 'Provider completion window.',
+  })
+  completion_window!: string;
+
+  @ApiPropertyOptional({
+    example: 'gpt-4o-mini',
+    description: 'Optional SiftGate routing/model permission hint. Required when the Gateway API key restricts allowed_models.',
+  })
+  model?: string;
+
+  @ApiPropertyOptional({
+    example: 'openai-prod',
+    description: 'Optional SiftGate node hint for provider passthrough/custom endpoint selection.',
+  })
+  node?: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Forwarded provider metadata. SiftGate stores metadata keys only, never values.',
+  })
+  metadata?: Record<string, unknown>;
+}
+
 export class ModelItemDto {
   @ApiProperty({ example: 'gpt-4o' })
   id!: string;

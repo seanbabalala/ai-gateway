@@ -226,6 +226,52 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('experimental_http2_connection_pool');
   });
 
+  it('validates optional batch endpoint paths', () => {
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            batch_endpoint: 'v1/batches',
+            batch_status_endpoint: '/v1/batches/:id',
+            batch_cancel_endpoint: '/v1/batches/:id/cancel',
+            batch_result_endpoint: '/v1/files/:id/content',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 2.5, output: 10 } },
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('invalid_node_endpoint');
+    expect(result.errors.some((item) => item.path === 'nodes[0].batch_endpoint')).toBe(true);
+  });
+
   it('validates stream cache and embedding batching controls', () => {
     const result = validateConfigObject(
       {

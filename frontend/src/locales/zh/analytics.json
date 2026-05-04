@@ -132,5 +132,6 @@
   "benchmark.table.success": "成功率",
   "benchmark.table.target": "目标",
   "benchmark.table.throughput": "请求/分",
-  "benchmark.title": "基准报告"
+  "benchmark.title": "基准报告",
+  "benchmark.source.batch": "批处理"
 }

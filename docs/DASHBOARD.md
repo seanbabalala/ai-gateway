@@ -19,6 +19,7 @@ v1.1 extends the Dashboard into a developer experience surface: the local Playgr
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
 | Shadow | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
+| Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/namespace scope, and sanitized errors without local file-content storage |
 | Config Audit | Sanitized config versions, audit events, and validation-first rollback |
 
 ## API Key Safety
@@ -32,6 +33,10 @@ Dashboard API key create and rotate responses show the full key once. After that
 The Playground calls `POST /api/dashboard/playground/run` through the Dashboard session. It can apply a selected local Gateway API key by id, namespace restriction, model, endpoint, stream toggle, and routing hint, but the browser never receives the plaintext Gateway API key or any provider key.
 
 Default samples are intentionally tiny and synthetic. Realtime is a probe-only capability check; it does not open a WebSocket session. Playground request and response previews are returned to the current Dashboard view only. Normal call logs keep the same metadata as regular gateway traffic, including route decision ids when available, but Playground does not add a raw prompt/response/media store.
+
+## Batch Jobs
+
+The Batch Jobs page reads `GET /api/dashboard/batches` and stays read-only. It shows provider batch id, selected node/model hint, endpoint, input/output/error file ids, completion window, request counts, status, API key/namespace attribution, and sanitized error text. It does not show or persist batch input JSONL, provider output JSONL, raw headers, provider keys, or file bytes; result download routes proxy content on demand through `/v1/batches/:id/output` or `/v1/batches/:id/errors`.
 
 ## Session Traceability
 

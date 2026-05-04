@@ -87,6 +87,7 @@ const API_KEY_ENDPOINTS = [
   'audio',
   'video',
   'realtime',
+  'batch',
   'models',
 ] as const
 

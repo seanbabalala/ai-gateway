@@ -33,6 +33,10 @@ nodes:
     video_status_endpoint: /v1/videos/:id
     video_content_endpoint: /v1/videos/:id/content
     video_cancel_endpoint: /v1/videos/:id/cancel
+    batch_endpoint: /v1/batches
+    batch_status_endpoint: /v1/batches/:id
+    batch_cancel_endpoint: /v1/batches/:id/cancel
+    batch_result_endpoint: /v1/files/:id/content
     api_key: mock-openai-key
     models:
       - gpt-4o

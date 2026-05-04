@@ -280,6 +280,7 @@ export function BenchmarkPage() {
     { value: 'audio_speech', label: formatSource('audio_speech', t) },
     { value: 'video_generation', label: formatSource('video_generation', t) },
     { value: 'realtime', label: formatSource('realtime', t) },
+    { value: 'batch', label: formatSource('batch', t) },
   ]
   const periodOptions = [
     { value: '1h', label: t('benchmark.filters.oneHour') },

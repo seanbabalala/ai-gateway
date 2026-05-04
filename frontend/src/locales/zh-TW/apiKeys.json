@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "排序後的文件結果",
   "modalitiesDescription.text": "文字生成與分析",
   "modalitiesDescription.video": "非同步影片生成",
-  "modalitiesDescription.vision": "文字請求中的圖片輸入"
+  "modalitiesDescription.vision": "文字請求中的圖片輸入",
+  "endpoints.batch": "批次",
+  "endpointsDescription.batch": "允許 OpenAI 相容 Batch API 建立、查詢、取消與結果下載代理。"
 }

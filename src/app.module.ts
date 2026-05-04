@@ -13,6 +13,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { StateModule } from './state/state.module';
 import { ClusterModule } from './cluster/cluster.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { BatchModule } from './batch/batch.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     AlertsModule,
     ClusterModule,
     RealtimeModule,
+    BatchModule,
     PluginModule,
     AuthModule,
     IngestModule,

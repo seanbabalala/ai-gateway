@@ -75,7 +75,8 @@ export type SourceFormat =
   | 'audio_transcription'
   | 'audio_translation'
   | 'audio_speech'
-  | 'video_generation';
+  | 'video_generation'
+  | 'batch';
 
 export type CanonicalMediaType = 'image' | 'audio' | 'video';
 

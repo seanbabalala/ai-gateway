@@ -323,6 +323,21 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     trackChange: jest.fn((_input, mutation) => mutation()),
     ...overrides.configAudit,
   };
+  const batchJobs = {
+    dashboardSummary: jest.fn().mockResolvedValue({
+      metadata_only: true,
+      items: [],
+      totals: { total: 0, active: 0, completed: 0, failed: 0, cancelled: 0 },
+      filters: {
+        period: '24h',
+        status: null,
+        node: null,
+        namespace: null,
+        api_key_id: null,
+      },
+    }),
+    ...overrides.batchJobs,
+  };
 
   const controller = new DashboardController(
     config,
@@ -341,6 +356,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     providerCompatibility as any,
     configAudit as any,
     catalog as any,
+    batchJobs as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
@@ -351,7 +367,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     overrides.plugins as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, batchJobs, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════

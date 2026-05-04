@@ -133,5 +133,7 @@
   "modalitiesDescription.rerank": "정렬된 문서 결과",
   "modalitiesDescription.text": "텍스트 생성 및 분석",
   "modalitiesDescription.video": "비동기 비디오 생성",
-  "modalitiesDescription.vision": "텍스트 요청 안의 이미지 입력"
+  "modalitiesDescription.vision": "텍스트 요청 안의 이미지 입력",
+  "endpoints.batch": "배치",
+  "endpointsDescription.batch": "OpenAI 호환 Batch API 생성, 조회, 취소, 결과 다운로드 프록시를 허용합니다."
 }

@@ -11,6 +11,7 @@ import {
   ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
+  BatchJob,
   VideoJob,
 } from './entities';
 
@@ -30,6 +31,7 @@ import {
             ShadowTrafficResult,
             RouteDecisionLog,
             ProviderCompatibilityResult,
+            BatchJob,
             VideoJob,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
@@ -62,6 +64,7 @@ import {
       ShadowTrafficResult,
       RouteDecisionLog,
       ProviderCompatibilityResult,
+      BatchJob,
       VideoJob,
     ]),
   ],
