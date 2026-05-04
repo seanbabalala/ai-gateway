@@ -137,7 +137,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Provider/model catalog CLI** — inspect built-in provider presets, import local `catalog.override.yaml`, and validate catalog overrides without storing provider secrets
 - **Optional secret manager references** — keep env as the default while allowing explicit `${vault:...}`, `${aws-sm:...}`, and `${gcp-sm:...}` runtime references for provider keys, node headers, health/realtime auth, and the optional control-plane token
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
-- **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
+- **Compatibility migration CLI** — convert LiteLLM, New API, and One API channel configs into SiftGate, or export SiftGate configs back to LiteLLM/New API/One API scaffolds
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Helm / Kubernetes manifests** — deploy the OSS Data Plane with single-node SQLite defaults and opt-in Redis, PostgreSQL, Ingress, HPA, PDB, and ServiceMonitor
 - **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
@@ -387,16 +387,25 @@ Place local changes in `catalog.override.yaml`, or set `catalog.override_file` i
 
 Plugin declarations may live in `plugins.config.yaml` so package installs do not rewrite `gateway.config.yaml`. The gateway loads both `gateway.config.yaml` `plugins:` entries and `plugins.config.yaml` entries at startup.
 
-### LiteLLM Migration
+### Compatibility Migration
 
-Generate a SiftGate config from an existing LiteLLM YAML file:
+Generate a SiftGate config from an existing LiteLLM, New API, or One API YAML file:
 
 ```bash
 npm run build
 node dist/cli/siftgate.js migrate --from litellm --config ./litellm_config.yaml --out ./gateway.generated.yaml
+node dist/cli/siftgate.js migrate --from newapi --config ./channels.yaml --out ./gateway.generated.yaml
+node dist/cli/siftgate.js migrate --from oneapi --config ./channels.yaml --out ./gateway.generated.yaml
 ```
 
-The migrator maps `model_list`, provider/model names, API key environment references, fallbacks, router retry settings, and known routing strategies. It writes a migration report with compatible, incompatible, and manual-review items. Existing `gateway.config.yaml` is never overwritten unless `--overwrite` is passed. See [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
+You can also export a SiftGate config into scaffold YAML for adjacent gateways:
+
+```bash
+node dist/cli/siftgate.js migrate --to litellm --config ./gateway.config.yaml --out ./litellm.generated.yaml
+node dist/cli/siftgate.js migrate --to newapi --config ./gateway.config.yaml --out ./newapi.generated.yaml
+```
+
+The migrator maps provider, model name, base URL, API key environment references, fallback/router settings, v0.8 model buckets (`models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`), and catalog-backed pricing/capability hints. Reports include compatible, partially supported, unsupported, manual actions, provider/model mapping notes, and pricing/capability confidence. Existing outputs are never overwritten unless `--force` is passed. See [Compatibility Migration](docs/MIGRATION_COMPAT.md) and [LiteLLM Migration](docs/MIGRATION_LITELLM.md).
 
 ### Database Migration
 

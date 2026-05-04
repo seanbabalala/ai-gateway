@@ -1,0 +1,27 @@
+channels:
+  - id: 1
+    name: OpenAI prod
+    type: openai
+    base_url: https://api.openai.com
+    key: ${OPENAI_API_KEY}
+    models: gpt-4o,gpt-4o-mini,text-embedding-3-small,gpt-image-1,tts-1,gpt-4o-realtime-preview
+    model_mapping:
+      gpt4: gpt-4o
+    weight: 2
+    group: production
+
+  - id: 2
+    name: Claude private
+    type: anthropic
+    base_url: https://api.anthropic.com
+    key: literal-claude-secret
+    models:
+      - claude-sonnet-4-20250514
+
+  - id: 3
+    name: Video lab
+    type: openai_compatible
+    base_url: https://video.example.test
+    key: ${VIDEO_LAB_API_KEY}
+    models: veo-3.1-generate-preview
+    endpoint: /v1/chat/completions

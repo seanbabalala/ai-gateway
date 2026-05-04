@@ -27,6 +27,9 @@
 - v0.9 Benchmark Report API `GET /api/dashboard/benchmarks/report` for local call-log performance evidence, including success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimate, cost/token summaries, status-code distribution, node:model breakdowns, source-format/source-family breakdowns, and route-trace coverage.
 - Read-only Dashboard Benchmarks page with period, namespace, API key, node, model, and source-format filters plus methodology notes that warn against treating local samples as strict cloud benchmarks.
 - `npm run benchmark:upstream` JSON report output via `GATEWAY_BENCH_OUTPUT=report.json`, with p75 latency, top sanitized errors, labels, and methodology metadata.
+- v0.9 compatibility migration expansion for the OSS Data Plane: `siftgate migrate` now imports LiteLLM, New API, and One API configs into SiftGate and exports SiftGate configs to LiteLLM/New API/One API scaffold YAML.
+- Migration reports now include compatible, partially supported, unsupported, manual actions, provider/model mapping notes, and pricing/capability confidence.
+- New migration fixtures and tests for LiteLLM, New API, One API, SiftGate v0.8 model buckets, reverse scaffold export, and overwrite protection.
 
 ### Changed
 
@@ -35,6 +38,7 @@
 - Runtime config loading now preserves typed secret references such as `${env:OPENAI_API_KEY}` for request-time resolution while keeping legacy `${OPENAI_API_KEY}` startup interpolation compatible.
 - Dashboard sanitized config keeps secret references visible as references, masks literal provider keys and sensitive headers, and never resolves secrets for display.
 - Explicit shadow prompt/response sample storage now applies built-in redaction and `shadow.compare.sample_max_chars` truncation, and config validation warnings now call out the storage risk more clearly.
+- `siftgate migrate` now supports `--to` and `--force`; `--overwrite` remains a backward-compatible alias.
 
 ## 0.8.0 - 2026-05-04
 

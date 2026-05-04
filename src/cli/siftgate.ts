@@ -19,10 +19,12 @@ import {
   validateConfigFile,
 } from "../config/config-validator";
 import {
-  LiteLlmMigrationResult,
-  formatMigrationReport,
-  migrateLiteLlmConfigFile,
-} from "./litellm-migrator";
+  ConfigMigrationResult,
+  MigrationConfigType,
+  formatConfigMigrationReport,
+  migrateConfigFile,
+  supportedMigrationType,
+} from "./config-migrator";
 import {
   DbMigrationResult,
   formatDbMigrationReport,
@@ -66,9 +68,11 @@ interface PluginArgs {
 
 interface MigrateArgs {
   from?: string;
+  to?: string;
   configPath?: string;
   outputPath?: string;
   overwrite: boolean;
+  force: boolean;
   dryRun: boolean;
   json: boolean;
   help: boolean;
@@ -459,8 +463,15 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
     return 0;
   }
 
-  if (parsedArgs.from !== "litellm") {
-    cli.stderr("Only --from litellm is supported.");
+  const from = parsedArgs.from || (parsedArgs.to ? "siftgate" : undefined);
+  const to = parsedArgs.to || "siftgate";
+  if (!from) {
+    cli.stderr("--from is required unless --to is used for SiftGate export.");
+    cli.stderr(formatMigrateUsage());
+    return 1;
+  }
+  if (!supportedMigrationType(from) || !supportedMigrationType(to)) {
+    cli.stderr("Supported migration types are: litellm, newapi, oneapi, siftgate.");
     cli.stderr(formatMigrateUsage());
     return 1;
   }
@@ -470,13 +481,16 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
     return 1;
   }
 
-  let result: LiteLlmMigrationResult;
+  let result: ConfigMigrationResult;
   try {
-    result = migrateLiteLlmConfigFile({
+    result = migrateConfigFile({
+      from: from as MigrationConfigType,
+      to: to as MigrationConfigType,
       configPath: parsedArgs.configPath,
       cwd: cli.cwd,
       outputPath: parsedArgs.outputPath,
       overwrite: parsedArgs.overwrite,
+      force: parsedArgs.force,
       write: !parsedArgs.dryRun,
     });
   } catch (error) {
@@ -487,14 +501,14 @@ async function runMigrateCommand(args: string[], cli: CliIO): Promise<number> {
   if (parsedArgs.json) {
     cli.stdout(JSON.stringify(toJsonMigrationResult(result), null, 2));
   } else {
-    cli.stdout(formatMigrationReport(result));
+    cli.stdout(formatConfigMigrationReport(result));
     if (parsedArgs.dryRun) {
       cli.stdout("");
       cli.stdout(result.yaml);
     }
   }
 
-  return result.report.incompatible.length === 0 ? 0 : 2;
+  return result.report.unsupported.length === 0 && result.report.incompatible.length === 0 ? 0 : 2;
 }
 
 async function runMigrateDbCommand(
@@ -743,6 +757,7 @@ function parseCatalogArgs(args: string[]): CatalogArgs {
 function parseMigrateArgs(args: string[]): MigrateArgs {
   const parsed: MigrateArgs = {
     overwrite: false,
+    force: false,
     dryRun: false,
     json: false,
     help: false,
@@ -762,6 +777,10 @@ function parseMigrateArgs(args: string[]): MigrateArgs {
       parsed.overwrite = true;
       continue;
     }
+    if (arg === "--force") {
+      parsed.force = true;
+      continue;
+    }
     if (arg === "--dry-run") {
       parsed.dryRun = true;
       continue;
@@ -773,6 +792,15 @@ function parseMigrateArgs(args: string[]): MigrateArgs {
     }
     if (arg.startsWith("--from=")) {
       parsed.from = requireInlineValue(arg, "--from");
+      continue;
+    }
+    if (arg === "--to") {
+      parsed.to = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--to=")) {
+      parsed.to = requireInlineValue(arg, "--to");
       continue;
     }
     if (arg === "--config" || arg === "-c") {
@@ -1135,11 +1163,14 @@ function toJsonResult(
   };
 }
 
-function toJsonMigrationResult(result: LiteLlmMigrationResult): object {
+function toJsonMigrationResult(result: ConfigMigrationResult): object {
   return {
+    sourceType: result.sourceType,
+    targetType: result.targetType,
     sourcePath: result.sourcePath,
     outputPath: result.outputPath,
     report: result.report,
+    output: result.output,
     config: result.config,
   };
 }
@@ -1156,7 +1187,8 @@ function formatUsage(): string {
     `  siftgate plugin install <path|@siftgate/plugin-name> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin list [--config ${DEFAULT_PLUGINS_CONFIG}]`,
     `  siftgate plugin remove <name|package|path> [--config ${DEFAULT_PLUGINS_CONFIG}]`,
-    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
     "",
     "Commands:",
@@ -1220,13 +1252,17 @@ function formatPluginUsage(): string {
 function formatMigrateUsage(): string {
   return [
     "Usage:",
-    "  siftgate migrate --from litellm --config litellm_config.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
+    "  siftgate migrate --from siftgate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
+    "  siftgate migrate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "",
     "Options:",
-    '      --from <source>    Source config type. Currently only "litellm"',
-    "  -c, --config <path>   LiteLLM config file to migrate",
-    "  -o, --out <path>      Output SiftGate config path (default: gateway.config.yaml)",
-    "      --overwrite       Allow overwriting the output file",
+    '      --from <source>    Source type: "litellm", "newapi", "oneapi", or "siftgate"',
+    '      --to <target>      Target type: "siftgate", "litellm", "newapi", or "oneapi"',
+    "  -c, --config <path>   Source config file to migrate",
+    "  -o, --out <path>      Output path (default depends on target)",
+    "      --force           Allow overwriting the output file",
+    "      --overwrite       Backward-compatible alias for --force",
     "      --dry-run         Print generated YAML instead of writing it",
     "      --json            Print machine-readable migration report",
     "  -h, --help            Show help",

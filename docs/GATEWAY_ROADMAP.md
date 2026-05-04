@@ -107,6 +107,21 @@
   - 增强 `npm run benchmark:upstream`，支持 `GATEWAY_BENCH_OUTPUT=report.json` 输出 JSON 摘要
   - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
 
+### P1：兼容迁移工具扩展
+
+- **状态**：✅ Prompt v0.9 Migration Tools Expansion feature branch 已完成
+- **目标**：降低从 LiteLLM、New API、One API 迁移到 SiftGate OSS Data Plane 的配置成本，同时允许把 SiftGate 配置导出成相邻网关 scaffold，方便评估和回迁
+- **实现方案**：
+  - 保留 `siftgate migrate --from litellm --config ./litellm_config.yaml`
+  - 新增 `--from newapi` 与 `--from oneapi`，将 channel config 转为 SiftGate `gateway.config.yaml`
+  - 新增 `--to litellm|newapi|oneapi`，从 SiftGate `gateway.config.yaml` 生成 scaffold
+  - 默认不覆盖已有输出文件；`--force` 才允许覆盖，`--overwrite` 作为旧脚本兼容别名
+  - 映射 provider、model、base URL、API key env ref、fallback/router 设置和 v0.8 模型桶：`models`、`embedding_models`、`rerank_models`、`image_models`、`audio_models`、`video_models`、`realtime_models`
+  - 使用 Provider Catalog 生成 endpoint、pricing、capability、context/dimensions 等 hints，并在报告中标注 pricing/capability confidence
+  - 对无法准确映射的源字段写入 `manual_actions` 或 `partially_supported`，避免静默丢失
+  - 不复制 literal provider API key；改写为环境变量引用并写入手动处理项
+  - 补 LiteLLM、New API、One API、SiftGate v0.8 fixtures，以及 CLI、报告、overwrite protection 单测
+
 ---
 
 ## v0.8 — Provider + Media Maturity（Provider 体验 + 多模态生产化）
