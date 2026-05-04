@@ -5,7 +5,7 @@
  * in isolation with mocked dependencies.
  */
 
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { AuthController } from '../../src/auth/auth.controller';
 import { HealthController } from '../../src/dashboard/health.controller';
 import { ModelsController } from '../../src/ingest/models.controller';
@@ -353,5 +353,49 @@ describe('ModelsController', () => {
 
     expect(result.data).toHaveLength(1); // only "auto"
     expect(result.data[0].id).toBe('auto');
+  });
+
+  it('should filter model list by Dashboard-managed API key permissions', () => {
+    const config = mockConfigService({
+      listModels: jest.fn().mockReturnValue([
+        { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai'] },
+        { id: 'claude-3-opus', node: 'claude', nodeName: 'Claude', aliases: ['claude'] },
+      ]),
+    });
+    const controller = new ModelsController(config);
+    const result = controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        name: 'production',
+        status: 'active',
+        allow_auto: false,
+        allow_direct: true,
+        allowed_nodes: ['openai'],
+        allowed_models: ['gpt-4o'],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+        namespace_id: null,
+        namespace_name: null,
+        rate_limit_per_minute: null,
+      },
+    } as any);
+
+    expect(result.data.map((model: any) => model.id)).toEqual(['gpt-4o', 'openai']);
+  });
+
+  it('should reject model list when API key endpoint permissions exclude models', () => {
+    const config = mockConfigService({ listModels: jest.fn().mockReturnValue([]) });
+    const controller = new ModelsController(config);
+
+    expect(() => controller.list({
+      gatewayApiKey: {
+        allow_auto: true,
+        allow_direct: true,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['chat_completions'],
+        allowed_modalities: [],
+      },
+    } as any)).toThrow(ForbiddenException);
   });
 });

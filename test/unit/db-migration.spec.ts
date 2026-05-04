@@ -90,6 +90,8 @@ function createSqliteFixture(dir: string): string {
       allow_direct integer,
       allowed_nodes text,
       allowed_models text,
+      allowed_endpoints text,
+      allowed_modalities text,
       daily_token_limit real,
       daily_cost_limit real,
       rate_limit_per_minute integer,
@@ -246,11 +248,12 @@ function createSqliteFixture(dir: string): string {
     `
     INSERT INTO gateway_api_keys (
       id, name, description, key_hash, key_prefix, status, allow_auto,
-      allow_direct, allowed_nodes, allowed_models, daily_token_limit,
+      allow_direct, allowed_nodes, allowed_models, allowed_endpoints,
+      allowed_modalities, daily_token_limit,
       daily_cost_limit, rate_limit_per_minute, last_used_at, last_used_ip,
       created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     "key-1",
@@ -263,6 +266,8 @@ function createSqliteFixture(dir: string): string {
     0,
     JSON.stringify(["openai"]),
     JSON.stringify(["gpt-4o"]),
+    JSON.stringify(["chat_completions", "responses"]),
+    JSON.stringify(["text"]),
     1000,
     5.5,
     60,
@@ -526,6 +531,8 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(apiKey?.allow_auto).toBe(true);
     expect(apiKey?.allow_direct).toBe(false);
     expect(apiKey?.allowed_nodes).toEqual(["openai"]);
+    expect(apiKey?.allowed_endpoints).toEqual(["chat_completions", "responses"]);
+    expect(apiKey?.allowed_modalities).toEqual(["text"]);
     expect(apiKey?.created_at).toBeInstanceOf(Date);
 
     const callLog = target.rows.get("call_logs")?.[0];

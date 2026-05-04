@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Hardened the OSS Dashboard API Key management surface for v1.0 with local create/edit/disable/delete/rotate flows, one-time full-key copy, masked list values, namespace binding, per-key budgets, per-key rate limits, and status/last-used/calls/cost/error-rate summaries.
+- Added API key permission controls for `allowed_endpoints` and `allowed_modalities`, enforced before routing/provider forwarding and reflected in `/v1/models` filtering.
+- Added redacted config audit coverage for API key create/update/rotate/delete operations, plus tests to ensure one-time Gateway API key secrets are not persisted in audit metadata.
+
+### Changed
+
+- Dashboard API key forms and tables now include endpoint/modality permission pickers and 7-language localization for the new controls.
+- SQLite-to-PostgreSQL migration now preserves Dashboard-managed API key endpoint and modality permission arrays when present.
+
 ## 0.9.3 - 2026-05-05
 
 ### Changed

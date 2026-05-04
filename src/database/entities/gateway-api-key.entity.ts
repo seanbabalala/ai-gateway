@@ -45,6 +45,12 @@ export class GatewayApiKey {
   @Column({ type: 'simple-json', nullable: true })
   allowed_models!: string[] | null;
 
+  @Column({ type: 'simple-json', nullable: true })
+  allowed_endpoints!: string[] | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  allowed_modalities!: string[] | null;
+
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;
 

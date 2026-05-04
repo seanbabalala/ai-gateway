@@ -16,6 +16,11 @@ import { PipelineService, PipelineResult } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
+import {
+  attachGatewayApiKeyMetadata,
+  gatewayApiKeyFromRequest,
+} from '../auth/gateway-api-key-metadata';
+import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig } from '../config/gateway.config';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
@@ -24,17 +29,6 @@ import {
   ErrorEnvelopeDto,
   VideoGenerationRequestDto,
 } from '../openapi/openapi.dto';
-
-interface GatewayKeyContext {
-  id: string;
-  name: string;
-  allow_auto: boolean;
-  allow_direct: boolean;
-  allowed_nodes: string[];
-  allowed_models: string[];
-  namespace_id?: string | null;
-  namespace_name?: string | null;
-}
 
 @Controller('v1')
 @UseGuards(ApiKeyGuard, RateLimitGuard)
@@ -202,7 +196,7 @@ export class VideoController {
 
   private canAccessJob(job: VideoJob, req: Request): boolean {
     const gatewayKey = (req as unknown as Record<string, unknown>).gatewayApiKey as
-      | GatewayKeyContext
+      | GatewayApiKeyContext
       | undefined;
     if (!gatewayKey) return false;
     if (job.api_key_id && job.api_key_id !== gatewayKey.id) return false;
@@ -323,21 +317,7 @@ export class VideoController {
     req: Request,
     canonical: ReturnType<MediaNormalizer['normalize']>,
   ): void {
-    const gatewayKey = (req as unknown as Record<string, unknown>).gatewayApiKey as
-      | GatewayKeyContext
-      | undefined;
-    canonical.metadata.api_key_name = gatewayKey?.name;
-    canonical.metadata.api_key_id = gatewayKey?.id;
-    canonical.metadata.namespace_id = gatewayKey?.namespace_id || null;
-    canonical.metadata.namespace_name = gatewayKey?.namespace_name || null;
-    canonical.metadata.api_key_permissions = gatewayKey
-      ? {
-          allow_auto: gatewayKey.allow_auto,
-          allow_direct: gatewayKey.allow_direct,
-          allowed_nodes: gatewayKey.allowed_nodes,
-          allowed_models: gatewayKey.allowed_models,
-        }
-      : undefined;
+    attachGatewayApiKeyMetadata(canonical, gatewayApiKeyFromRequest(req));
   }
 
   private sendPipelineResult(res: ExpressResponse, result: PipelineResult): void {

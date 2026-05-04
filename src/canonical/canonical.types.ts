@@ -156,6 +156,8 @@ export interface CanonicalRequestMetadata {
     allow_direct: boolean;
     allowed_nodes: string[];
     allowed_models: string[];
+    allowed_endpoints: string[];
+    allowed_modalities: string[];
   };
 }
 

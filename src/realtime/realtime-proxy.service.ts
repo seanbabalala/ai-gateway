@@ -375,6 +375,14 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     apiKey: GatewayApiKeyContext,
     requestedModel?: string,
   ): boolean {
+    const allowedEndpoints = apiKey.allowed_endpoints || [];
+    const allowedModalities = apiKey.allowed_modalities || [];
+    if (allowedEndpoints.length > 0 && !allowedEndpoints.includes('realtime')) {
+      return false;
+    }
+    if (allowedModalities.length > 0 && !allowedModalities.includes('realtime')) {
+      return false;
+    }
     if (
       apiKey.allowed_nodes.length > 0 &&
       !apiKey.allowed_nodes.includes(target.node.id)

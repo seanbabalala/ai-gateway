@@ -1204,13 +1204,7 @@ export class DashboardController {
       action: 'api_key.create',
       target: `api_key:${created.item.id}`,
       actor: { type: 'dashboard', id: 'dashboard' },
-      afterSummary: {
-        id: created.item.id,
-        name: created.item.name,
-        namespace_id: created.item.namespace_id,
-        allow_auto: created.item.allow_auto,
-        allow_direct: created.item.allow_direct,
-      },
+      afterSummary: this.apiKeyAuditSummary(created.item),
     });
     return {
       success: true,
@@ -1230,19 +1224,14 @@ export class DashboardController {
     @Param('id') id: string,
     @Body() body: UpdateGatewayApiKeyDto,
   ) {
+    const before = await this.gatewayApiKeys.getSummary(id);
     const updated = await this.gatewayApiKeys.update(id, body);
     await this.configAudit.recordManagementEvent({
       action: 'api_key.update',
       target: `api_key:${id}`,
       actor: { type: 'dashboard', id: 'dashboard' },
-      afterSummary: {
-        id: updated.id,
-        name: updated.name,
-        status: updated.status,
-        namespace_id: updated.namespace_id,
-        allow_auto: updated.allow_auto,
-        allow_direct: updated.allow_direct,
-      },
+      beforeSummary: this.apiKeyAuditSummary(before),
+      afterSummary: this.apiKeyAuditSummary(updated),
       metadata: { fields: Object.keys(body || {}) },
     });
     return {
@@ -1258,16 +1247,14 @@ export class DashboardController {
   @ApiParam({ name: 'id', example: 'key_01h...' })
   @ApiOkResponse({ type: GatewayApiKeyCreatedResponseDto })
   async rotateApiKey(@Param('id') id: string) {
+    const before = await this.gatewayApiKeys.getSummary(id);
     const rotated = await this.gatewayApiKeys.rotate(id);
     await this.configAudit.recordManagementEvent({
       action: 'api_key.rotate',
       target: `api_key:${id}`,
       actor: { type: 'dashboard', id: 'dashboard' },
-      afterSummary: {
-        id: rotated.item.id,
-        name: rotated.item.name,
-        key_prefix: rotated.item.key_prefix,
-      },
+      beforeSummary: this.apiKeyAuditSummary(before),
+      afterSummary: this.apiKeyAuditSummary(rotated.item),
     });
     return {
       success: true,
@@ -1283,13 +1270,52 @@ export class DashboardController {
   @ApiParam({ name: 'id', example: 'key_01h...' })
   @ApiOkResponse({ type: ActionResponseDto })
   async deleteApiKey(@Param('id') id: string) {
+    const before = await this.gatewayApiKeys.getSummary(id);
     await this.gatewayApiKeys.remove(id);
     await this.configAudit.recordManagementEvent({
       action: 'api_key.delete',
       target: `api_key:${id}`,
       actor: { type: 'dashboard', id: 'dashboard' },
+      beforeSummary: this.apiKeyAuditSummary(before),
     });
     return { success: true, message: 'Gateway API key deleted' };
+  }
+
+  private apiKeyAuditSummary(key: {
+    id: string;
+    name: string;
+    status: string;
+    key_prefix: string;
+    namespace_id: string | null;
+    allow_auto: boolean;
+    allow_direct: boolean;
+    allowed_nodes: string[];
+    allowed_models: string[];
+    allowed_endpoints: string[];
+    allowed_modalities: string[];
+    daily_token_limit: number | null;
+    daily_cost_limit: number | null;
+    rate_limit_per_minute: number | null;
+  }) {
+    return {
+      id: key.id,
+      name: key.name,
+      status: key.status,
+      key_prefix: key.key_prefix,
+      namespace_id: key.namespace_id,
+      allow_auto: key.allow_auto,
+      allow_direct: key.allow_direct,
+      allowed_nodes: key.allowed_nodes,
+      allowed_models: key.allowed_models,
+      allowed_endpoints: key.allowed_endpoints,
+      allowed_modalities: key.allowed_modalities,
+      budget: {
+        daily_token_limit: key.daily_token_limit,
+        daily_cost_limit: key.daily_cost_limit,
+      },
+      rate_limit_per_minute: key.rate_limit_per_minute,
+      secret: 'redacted',
+    };
   }
 
   @Post('budget/:id/reset')

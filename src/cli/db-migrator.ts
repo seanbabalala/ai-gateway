@@ -531,6 +531,8 @@ function normalizeRow(
       allow_direct: toBoolean,
       allowed_nodes: toJsonArrayOrNull,
       allowed_models: toJsonArrayOrNull,
+      allowed_endpoints: toJsonArrayOrNull,
+      allowed_modalities: toJsonArrayOrNull,
       daily_token_limit: toNullableNumber,
       daily_cost_limit: toNullableNumber,
       rate_limit_per_minute: toNullableNumber,

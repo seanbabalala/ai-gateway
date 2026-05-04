@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  Activity,
   Check,
   Copy,
+  Gauge,
   KeyRound,
+  Layers3,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -60,6 +63,8 @@ interface KeyFormState {
   allow_direct: boolean
   allowed_nodes: string[]
   allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
   namespace_id: string
   daily_token_limit: string
   daily_cost_limit: string
@@ -72,6 +77,30 @@ interface PickerOption {
   description?: string
 }
 
+const API_KEY_ENDPOINTS = [
+  'chat_completions',
+  'responses',
+  'messages',
+  'embeddings',
+  'rerank',
+  'images',
+  'audio',
+  'video',
+  'realtime',
+  'models',
+] as const
+
+const API_KEY_MODALITIES = [
+  'text',
+  'vision',
+  'embedding',
+  'rerank',
+  'image',
+  'audio',
+  'video',
+  'realtime',
+] as const
+
 const emptyForm: KeyFormState = {
   name: '',
   description: '',
@@ -79,10 +108,36 @@ const emptyForm: KeyFormState = {
   allow_direct: false,
   allowed_nodes: [],
   allowed_models: [],
+  allowed_endpoints: [],
+  allowed_modalities: [],
   namespace_id: '',
   daily_token_limit: '',
   daily_cost_limit: '',
   rate_limit_per_minute: '',
+}
+
+function nodeModelBuckets(node: {
+  models?: string[]
+  embedding_models?: string[]
+  rerank_models?: string[]
+  image_models?: string[]
+  audio_models?: string[]
+  video_models?: string[]
+  realtime_models?: string[]
+}) {
+  return Array.from(new Set([
+    ...(node.models || []),
+    ...(node.embedding_models || []),
+    ...(node.rerank_models || []),
+    ...(node.image_models || []),
+    ...(node.audio_models || []),
+    ...(node.video_models || []),
+    ...(node.realtime_models || []),
+  ].filter(Boolean)))
+}
+
+function pct(value: number) {
+  return `${Math.round((Number.isFinite(value) ? value : 0) * 1000) / 10}%`
 }
 
 function numberOrNull(value: string): number | null {
@@ -99,6 +154,8 @@ function buildPayload(form: KeyFormState): CreateGatewayApiKeyRequest {
     allow_direct: form.allow_direct,
     allowed_nodes: form.allowed_nodes,
     allowed_models: form.allowed_models,
+    allowed_endpoints: form.allowed_endpoints,
+    allowed_modalities: form.allowed_modalities,
     namespace_id: form.namespace_id || null,
     daily_token_limit: numberOrNull(form.daily_token_limit),
     daily_cost_limit: numberOrNull(form.daily_cost_limit),
@@ -114,6 +171,8 @@ function formFromKey(key: GatewayApiKey): KeyFormState {
     allow_direct: key.allow_direct,
     allowed_nodes: key.allowed_nodes,
     allowed_models: key.allowed_models,
+    allowed_endpoints: key.allowed_endpoints,
+    allowed_modalities: key.allowed_modalities,
     namespace_id: key.namespace_id || '',
     daily_token_limit: key.daily_token_limit?.toString() || '',
     daily_cost_limit: key.daily_cost_limit?.toString() || '',
@@ -416,7 +475,25 @@ function KeyFormDialog({
         label: node.name || node.id,
         description: t('form.nodeDescription', { id: node.id, protocol: node.protocol, count: node.models.length }),
       })),
-    [nodes],
+    [nodes, t],
+  )
+  const endpointOptions = useMemo<PickerOption[]>(
+    () =>
+      API_KEY_ENDPOINTS.map((endpoint) => ({
+        value: endpoint,
+        label: t(`endpoints.${endpoint}`),
+        description: t(`endpointsDescription.${endpoint}`),
+      })),
+    [t],
+  )
+  const modalityOptions = useMemo<PickerOption[]>(
+    () =>
+      API_KEY_MODALITIES.map((modality) => ({
+        value: modality,
+        label: t(`modalities.${modality}`),
+        description: t(`modalitiesDescription.${modality}`),
+      })),
+    [t],
   )
   const modelOptions = useMemo<PickerOption[]>(() => {
     const allowedNodeSet = new Set(form.allowed_nodes)
@@ -442,13 +519,13 @@ function KeyFormDialog({
   }, [nodes, form.allowed_nodes])
   const namespaceOptions = useMemo(
     () => [
-      { value: '', label: 'No namespace' },
+      { value: '', label: t('form.noNamespace') },
       ...namespaces.map((namespace) => ({
         value: namespace.id,
         label: namespace.name || namespace.id,
       })),
     ],
-    [namespaces],
+    [namespaces, t],
   )
   const visibleModelValues = useMemo(() => new Set(modelOptions.map((opt) => opt.value)), [modelOptions])
 
@@ -499,7 +576,7 @@ function KeyFormDialog({
 
           <div className="grid gap-2">
             <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
-              Namespace
+              {t('form.namespace')}
             </label>
             <Select
               options={namespaceOptions}
@@ -580,6 +657,27 @@ function KeyFormDialog({
             />
           </div>
 
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <MultiResourcePicker
+              label={t('form.allowedEndpoints')}
+              options={endpointOptions}
+              value={form.allowed_endpoints}
+              allLabel={t('form.allEndpoints')}
+              emptyLabel={t('form.allGatewayEndpoints')}
+              searchPlaceholder={t('form.searchEndpoints')}
+              onChange={(allowed_endpoints) => setForm((prev) => ({ ...prev, allowed_endpoints }))}
+            />
+            <MultiResourcePicker
+              label={t('form.allowedModalities')}
+              options={modalityOptions}
+              value={form.allowed_modalities}
+              allLabel={t('form.allModalities')}
+              emptyLabel={t('form.allGatewayModalities')}
+              searchPlaceholder={t('form.searchModalities')}
+              onChange={(allowed_modalities) => setForm((prev) => ({ ...prev, allowed_modalities }))}
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="grid gap-2">
               <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
@@ -646,17 +744,25 @@ export function ApiKeysPage() {
   const [created, setCreated] = useState<GatewayApiKeyMutationResponse | null>(null)
 
   const keys = data?.items || []
-  const nodes = nodesData?.nodes || []
+  const nodes = useMemo(
+    () => (nodesData?.nodes || []).map((node) => ({
+      ...node,
+      models: nodeModelBuckets(node),
+    })),
+    [nodesData?.nodes],
+  )
   const namespaces = namespacesData?.namespaces || []
 
   const totals = keys.reduce(
     (acc, key) => ({
       calls: acc.calls + key.today.calls,
+      errors: acc.errors + key.today.errors,
       cost: acc.cost + key.today.cost_usd,
       active: acc.active + (key.status === 'active' ? 1 : 0),
     }),
-    { calls: 0, cost: 0, active: 0 },
+    { calls: 0, errors: 0, cost: 0, active: 0 },
   )
+  const errorRate = totals.calls > 0 ? totals.errors / totals.calls : 0
 
   if (isError) {
     return <ErrorState error={error} onRetry={refetch} />
@@ -675,7 +781,7 @@ export function ApiKeysPage() {
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <CardStatic>
           <CardContent className="pt-6">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
@@ -698,6 +804,15 @@ export function ApiKeysPage() {
               {t('summary.costToday')}
             </div>
             <div className="mt-2 text-3xl font-bold text-[var(--foreground)]">{formatCost(totals.cost)}</div>
+          </CardContent>
+        </CardStatic>
+        <CardStatic>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              <Activity className="h-3.5 w-3.5" />
+              {t('summary.errorRate')}
+            </div>
+            <div className="mt-2 text-3xl font-bold text-[var(--foreground)]">{pct(errorRate)}</div>
           </CardContent>
         </CardStatic>
       </div>
@@ -744,21 +859,47 @@ export function ApiKeysPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-[11px] text-[var(--foreground-muted)]">
-                      {key.key_prefix}
+                      <div>{key.key_prefix}</div>
+                      <div className="mt-0.5 font-sans text-[10px] uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                        {t('table.masked')}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex max-w-[360px] flex-wrap gap-1.5">
                         {key.allow_auto ? <Badge variant="emerald">{t('permissions.auto')}</Badge> : <Badge variant="zinc">{t('permissions.noAuto')}</Badge>}
                         {key.allow_direct ? <Badge variant="amber">{t('permissions.direct')}</Badge> : <Badge variant="zinc">{t('permissions.noDirect')}</Badge>}
                         {key.namespace_id && <Badge variant="blue">{key.namespace_name || key.namespace_id}</Badge>}
                         {key.allowed_nodes.length > 0 && <Badge variant="blue">{t('permissions.upstreams', { count: key.allowed_nodes.length })}</Badge>}
                         {key.allowed_models.length > 0 && <Badge variant="purple">{t('permissions.models', { count: key.allowed_models.length })}</Badge>}
+                        {key.allowed_endpoints.length > 0 && <Badge variant="zinc">{t('permissions.endpoints', { count: key.allowed_endpoints.length })}</Badge>}
+                        {key.allowed_modalities.length > 0 && <Badge variant="zinc">{t('permissions.modalities', { count: key.allowed_modalities.length })}</Badge>}
+                      </div>
+                      <div className="mt-2 grid gap-1 text-[10px] text-[var(--foreground-dim)]">
+                        <span className="inline-flex items-center gap-1">
+                          <Layers3 className="h-3 w-3" />
+                          {key.allowed_endpoints.length > 0
+                            ? key.allowed_endpoints.map((item) => t(`endpoints.${item}`, { defaultValue: item })).join(', ')
+                            : t('permissions.allEndpoints')}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Gauge className="h-3 w-3" />
+                          {key.daily_token_limit || key.daily_cost_limit || key.rate_limit_per_minute
+                            ? [
+                                key.daily_token_limit ? t('limits.tokens', { value: formatNumber(key.daily_token_limit) }) : null,
+                                key.daily_cost_limit ? t('limits.cost', { value: formatCost(key.daily_cost_limit) }) : null,
+                                key.rate_limit_per_minute ? t('limits.rpm', { value: formatNumber(key.rate_limit_per_minute) }) : null,
+                              ].filter(Boolean).join(' · ')
+                            : t('limits.inherited')}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="font-mono text-[11px] text-[var(--foreground)]">{formatCost(key.today.cost_usd)}</div>
                       <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
                         {t('table.calls', { count: formatNumber(key.today.calls) })}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--foreground-dim)]">
+                        {t('table.errorRate', { rate: pct(key.today.error_rate) })}
                       </div>
                     </TableCell>
                     <TableCell className="text-[12px] text-[var(--foreground-muted)]">

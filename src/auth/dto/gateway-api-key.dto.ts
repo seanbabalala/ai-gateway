@@ -45,6 +45,18 @@ export class CreateGatewayApiKeyDto {
   @IsString({ each: true })
   allowed_models?: string[];
 
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_endpoints?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text', 'embedding', 'image'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_modalities?: string[];
+
   @ApiPropertyOptional({ example: 'team-alpha', nullable: true, description: 'Optional local OSS namespace binding.' })
   @IsOptional()
   @IsString()
@@ -110,6 +122,18 @@ export class UpdateGatewayApiKeyDto {
   @IsArray()
   @IsString({ each: true })
   allowed_models?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_endpoints?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text', 'embedding', 'image'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_modalities?: string[];
 
   @ApiPropertyOptional({ example: 'team-alpha', nullable: true, description: 'Optional local OSS namespace binding.' })
   @IsOptional()

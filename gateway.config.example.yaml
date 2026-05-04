@@ -44,6 +44,9 @@ database:
 
 auth:
   # Client Gateway API keys are generated and managed in the Dashboard.
+  # Dashboard-managed keys support namespace binding, allowed_nodes,
+  # allowed_models, allowed_endpoints, allowed_modalities, per-key budgets,
+  # per-key rate limits, masked display, one-time copy, rotation, and audit.
   # Provider API keys still live under nodes[].api_key below.
   api_keys: []
 
