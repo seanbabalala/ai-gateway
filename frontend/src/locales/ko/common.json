@@ -55,5 +55,6 @@
   "tier.standard": "표준",
   "circuit.CLOSED": "닫힘",
   "circuit.HALF_OPEN": "반열림",
-  "circuit.OPEN": "열림"
+  "circuit.OPEN": "열림",
+  "nav.benchmarks": "벤치마크"
 }

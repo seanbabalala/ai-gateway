@@ -17,6 +17,27 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力；承接原 v0.7 backlog | 🚧 In Progress |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 安全治理）
+
+**v0.9 发布策略**：v0.7 不再单独发布，原 v0.7 backlog 迁移到 v0.9，并基于 v0.8.0 的 Provider Catalog、多模态入口、Video preview、Route Explanation 与 Dashboard localization 重新适配。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P1：Benchmark Report API 与 Dashboard 页面
+
+- **状态**：✅ Prompt v0.9 Benchmark Report feature branch 已完成
+- **目标**：把本地 call_log 变成可读的性能证据页，帮助用户比较节点、模型、协议入口和部署变化，但不自动修改 routing 配置
+- **实现方案**：
+  - 新增 `GET /api/dashboard/benchmarks/report`
+  - 报告包含 total requests、success/error/fallback/cache rate、p50/p75/p95/p99 latency、throughput estimate、cost/token summary、status code distribution、node:model breakdown、source_format/source_family breakdown
+  - source breakdown 覆盖 chat、responses、messages、embeddings、rerank、images、audio、video、realtime
+  - 支持 `period`、`namespace`、`api_key_id` / legacy `api_key`、`node`、`model`、`source_format` 过滤
+  - route trace coverage 会提示性能样本中有多少请求可继续打开 Route Explanation
+  - Dashboard 新增只读 Benchmarks 页面，展示 methodology notes，避免用户把本地样本误读为严格云 benchmark
+  - 增强 `npm run benchmark:upstream`，支持 `GATEWAY_BENCH_OUTPUT=report.json` 输出 JSON 摘要
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
 
 ---
 

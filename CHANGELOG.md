@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 Benchmark Report API `GET /api/dashboard/benchmarks/report` for local call-log performance evidence, including success/error/fallback/cache rates, p50/p75/p95/p99 latency, throughput estimate, cost/token summaries, status-code distribution, node:model breakdowns, source-format/source-family breakdowns, and route-trace coverage.
+- Read-only Dashboard Benchmarks page with period, namespace, API key, node, model, and source-format filters plus methodology notes that warn against treating local samples as strict cloud benchmarks.
+- `npm run benchmark:upstream` JSON report output via `GATEWAY_BENCH_OUTPUT=report.json`, with p75 latency, top sanitized errors, labels, and methodology metadata.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

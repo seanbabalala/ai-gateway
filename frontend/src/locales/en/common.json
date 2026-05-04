@@ -55,5 +55,6 @@
   "tier.standard": "standard",
   "circuit.CLOSED": "CLOSED",
   "circuit.HALF_OPEN": "HALF OPEN",
-  "circuit.OPEN": "OPEN"
+  "circuit.OPEN": "OPEN",
+  "nav.benchmarks": "Benchmarks"
 }

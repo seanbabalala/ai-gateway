@@ -16,6 +16,7 @@ import {
 } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
+import { BenchmarkReportService } from './benchmark-report.service';
 
 @Module({
   imports: [
@@ -33,7 +34,7 @@ import { CatalogModule } from '../catalog/catalog.module';
     ]),
   ],
   controllers: [HealthController, DashboardController],
-  providers: [LogEventBus, ProviderCompatibilityService],
+  providers: [LogEventBus, ProviderCompatibilityService, BenchmarkReportService],
   exports: [LogEventBus],
 })
 export class DashboardModule {}

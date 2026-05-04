@@ -55,5 +55,6 @@
   "tier.standard": "มาตรฐาน",
   "circuit.CLOSED": "ปิด",
   "circuit.HALF_OPEN": "กึ่งเปิด",
-  "circuit.OPEN": "เปิด"
+  "circuit.OPEN": "เปิด",
+  "nav.benchmarks": "เบนช์มาร์ก"
 }

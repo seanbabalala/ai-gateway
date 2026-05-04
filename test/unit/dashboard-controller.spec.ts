@@ -312,6 +312,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     dataSource as any,
     callLogRepo as any,
     routeDecisionRepo as any,
+    overrides.benchmarkReports as any,
   );
 
   return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, callLogRepo, routeDecisionRepo, qb, capabilityService, routingRecommendations, catalog };
@@ -383,6 +384,42 @@ describe('DashboardController — getCostAnalytics', () => {
     const result = await controller.getCostAnalytics('30d', 'model');
 
     expect(result.period).toBe(30);
+  });
+});
+
+describe('DashboardController — benchmark report', () => {
+  it('should return a read-only benchmark report with filters', async () => {
+    const benchmarkReports = {
+      getReport: jest.fn().mockResolvedValue({
+        summary: { total_requests: 0, success_rate: 0 },
+        by_node_model: [],
+        by_source_format: [],
+      }),
+    };
+    const { controller } = makeDashboard({ benchmarkReports });
+
+    const result = await controller.getBenchmarkReport(
+      '7d',
+      'team-alpha',
+      undefined,
+      'key_123',
+      'openai',
+      'gpt-4o',
+      'chat_completions',
+      '250',
+    );
+
+    expect(result.summary.total_requests).toBe(0);
+    expect(benchmarkReports.getReport).toHaveBeenCalledWith({
+      period: '7d',
+      namespace: 'team-alpha',
+      api_key: undefined,
+      api_key_id: 'key_123',
+      node: 'openai',
+      model: 'gpt-4o',
+      source_format: 'chat_completions',
+      limit: 250,
+    });
   });
 });
 

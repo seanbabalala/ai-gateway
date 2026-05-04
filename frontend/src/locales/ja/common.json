@@ -55,5 +55,6 @@
   "tier.standard": "標準",
   "circuit.CLOSED": "クローズ",
   "circuit.HALF_OPEN": "ハーフオープン",
-  "circuit.OPEN": "オープン"
+  "circuit.OPEN": "オープン",
+  "nav.benchmarks": "ベンチマーク"
 }

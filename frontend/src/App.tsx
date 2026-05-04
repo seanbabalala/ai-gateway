@@ -14,6 +14,7 @@ const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default:
 const ApiKeysPage = lazy(() => import('@/pages/ApiKeysPage').then((m) => ({ default: m.ApiKeysPage })))
 const ShadowPage = lazy(() => import('@/pages/ShadowPage').then((m) => ({ default: m.ShadowPage })))
 const RouteExplanationPage = lazy(() => import('@/pages/RouteExplanationPage').then((m) => ({ default: m.RouteExplanationPage })))
+const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ default: m.BenchmarkPage })))
 
 function RouteFallback() {
   return (
@@ -54,6 +55,7 @@ export function App() {
         <Route path="/shadow" element={page(<ShadowPage />)} />
         <Route path="/route-decisions" element={page(<RouteExplanationPage />)} />
         <Route path="/route-decisions/:requestId" element={page(<RouteExplanationPage />)} />
+        <Route path="/benchmarks" element={page(<BenchmarkPage />)} />
       </Route>
     </Routes>
   )

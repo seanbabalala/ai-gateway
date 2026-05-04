@@ -114,6 +114,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
+- **Benchmark reports** — inspect local performance evidence with latency percentiles, throughput estimates, status/source breakdowns, cost/token summaries, and methodology notes
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic results** — read-only view of sampled test-node mirror outcomes without applying changes
@@ -134,6 +135,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Plugin manager CLI** — run `siftgate plugin install/list/remove` for local or `@siftgate/plugin-*` packages
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
+- **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
@@ -1334,6 +1336,7 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/route-decisions`         | Paginated explainable routing summaries with tier, node, source format, key, and namespace filters |
 | `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
+| `GET`  | `/api/dashboard/benchmarks/report`       | Read-only benchmark report with latency, throughput, cost, token, status, node:model, and source-format breakdowns |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
@@ -1358,6 +1361,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Dashboard** — Real-time metrics, charts, and live request stream
 - **Logs** — Searchable, filterable log table with pagination and SSE notifications
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
+- **Benchmarks** — Read-only local benchmark report from call-log metadata; it never applies routing changes
 - **Shadow** — Read-only status and recent results for sampled test-node mirror traffic
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations

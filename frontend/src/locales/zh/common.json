@@ -55,5 +55,6 @@
   "tier.standard": "标准",
   "circuit.CLOSED": "已关闭",
   "circuit.HALF_OPEN": "半开",
-  "circuit.OPEN": "已打开"
+  "circuit.OPEN": "已打开",
+  "nav.benchmarks": "基准"
 }

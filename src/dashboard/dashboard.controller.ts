@@ -57,6 +57,7 @@ import { CatalogService } from '../catalog/catalog.service';
 import type { Modality } from '../config/modality';
 import type { ProviderCompatibilityCapability } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
+import { BenchmarkReportService } from './benchmark-report.service';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -103,6 +104,8 @@ export class DashboardController {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    @Optional()
+    private readonly benchmarkReports?: BenchmarkReportService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -129,6 +132,49 @@ export class DashboardController {
       .delete()
       .where('timestamp < :cutoff', { cutoff })
       .execute();
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Benchmark Report
+  // ══════════════════════════════════════════════════════
+
+  @Get('benchmarks/report')
+  @ApiOperation({ summary: 'Get local benchmark report from sanitized call-log metadata' })
+  @ApiQuery({ name: 'period', required: false, example: '24h' })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'node', required: false })
+  @ApiQuery({ name: 'model', required: false })
+  @ApiQuery({ name: 'source_format', required: false })
+  @ApiQuery({ name: 'limit', required: false, example: 5000 })
+  @ApiOkResponse({
+    description:
+      'Read-only benchmark summary with latency percentiles, throughput estimate, cost/tokens, status distribution, node:model and source-format breakdowns.',
+  })
+  async getBenchmarkReport(
+    @Query('period') period: string = '24h',
+    @Query('namespace') namespaceId?: string,
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('node') node?: string,
+    @Query('model') model?: string,
+    @Query('source_format') sourceFormat?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const service =
+      this.benchmarkReports ||
+      new BenchmarkReportService(this.callLogRepo, this.routeDecisionRepo, this.catalog);
+    return service.getReport({
+      period,
+      namespace: namespaceId,
+      api_key: apiKey,
+      api_key_id: apiKeyId,
+      node,
+      model,
+      source_format: sourceFormat,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   /** Return a SQL expression that truncates a timestamp column to YYYY-MM-DD string */
