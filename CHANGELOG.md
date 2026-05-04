@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- v0.9 official guardrails plugin upgrade for the OSS Data Plane, replacing the skeleton with disabled-by-default local PII detection/redaction/blocking, lightweight prompt-injection checks, schema validation helpers, named allow/block/redact policies, input/output hooks, and conservative streaming delta handling.
+- Privacy-safe guardrails findings in the per-request plugin store, capped by `max_findings_per_request` and limited to metadata such as request id, rule, kind, action, count, and path without prompt text, response text, raw headers, provider keys, media bytes, or video bytes.
+- Unit coverage for guardrails privacy behavior, PII redaction/blocking, prompt-injection blocking, schema validation, allow/block policy exceptions, stream delta handling, and hook executor store propagation.
+
 ## 0.8.0 - 2026-05-04
 
 ### Added

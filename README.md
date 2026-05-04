@@ -135,7 +135,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **LiteLLM migration CLI** — convert `litellm_config.yaml` into a SiftGate `gateway.config.yaml` with a compatibility report
 - **Database migration CLI** — run `siftgate migrate-db` to move local SQLite runtime data into PostgreSQL
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
-- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and guardrails skeleton plugins built into `dist-runtime-plugins`
+- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, disabled by default and privacy-safe by default
 
@@ -535,7 +535,7 @@ The first official batch is:
 | `plugins/redis-cache`       | Redis-backed response cache           | Disabled; only stores responses when `store_responses: true` is explicit |
 | `plugins/analytics-sink`    | Sanitized call-log analytics webhook  | Disabled; safe metadata allow-list only                                  |
 | `plugins/request-transform` | Local request rewrites before routing | Disabled; no-op until rules are configured                               |
-| `plugins/guardrails`        | Local audit/block guardrails skeleton | Disabled; logs finding counts only                                       |
+| `plugins/guardrails`        | Local PII, prompt-injection, schema, and policy guardrails | Disabled; stores/logs finding metadata only                              |
 
 Example:
 
@@ -554,6 +554,8 @@ plugins:
 ```
 
 Official plugins do not send prompts, responses, provider keys, or raw headers to external systems by default. See [Official Plugins](docs/plugins/OFFICIAL_PLUGINS.md) and each plugin README under `plugins/*/README.md` for safety notes and example configs.
+
+The official `plugins/guardrails` plugin is still opt-in, but it is now usable for local audit/redact/block flows. It supports built-in PII detection, lightweight prompt-injection checks, schema validation helpers, named allow/block/redact policy rules, input/output hooks, and conservative streaming delta handling. Findings are capped per request and contain only metadata such as `request_id`, rule, kind, action, count, and path; prompt text, response text, raw headers, provider keys, media bytes, and video bytes are not stored.
 
 ### Nodes (Upstream Providers)
 

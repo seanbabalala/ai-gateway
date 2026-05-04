@@ -673,7 +673,9 @@ models_pricing:
 #   explicit store_responses: true.
 # - analytics-sink exports sanitized call-log metadata only.
 # - request-transform runs local rewrites only.
-# - guardrails runs local audit/block checks only.
+# - guardrails runs local PII, prompt-injection, schema, and policy checks.
+#   Findings contain metadata only; prompt/response text and media bytes are
+#   not stored by default.
 # ============================================================
 # plugins:
 #   - path: plugins/request-transform
@@ -692,8 +694,25 @@ models_pricing:
 #     config:
 #       enabled: true
 #       mode: audit
-#       input_patterns:
-#         - "(?i)secret project"
+#       max_findings_per_request: 50
+#       pii:
+#         enabled: true
+#         action: redact
+#         entities: [email, api_key, credit_card]
+#       prompt_injection:
+#         enabled: true
+#         action: block
+#       policies:
+#         - name: block-secret-project
+#           direction: input
+#           pattern: "(?i)secret project"
+#           action: block
+#       schema:
+#         enabled: false
+#         output:
+#           enabled: false
+#           action: audit
+#           trigger_fallback: false
 #
 #   - path: plugins/analytics-sink
 #     required: false

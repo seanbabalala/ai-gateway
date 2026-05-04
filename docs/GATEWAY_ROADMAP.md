@@ -17,6 +17,27 @@
 | v0.5 | Scale        | 已发布 — v0.5.0 高可用 + 高性能 + 企业就绪 | ✅ Released |
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
+| v0.9 | Operations + Trust | 进行中 — 本地运维、安全、治理、部署和迁移能力；承接原 v0.7 backlog | 🚧 In Progress |
+
+---
+
+## v0.9 — Operations + Trust（本地运维 + 安全治理）
+
+**v0.9 发布策略**：v0.7 不再单独发布，原 v0.7 backlog 迁移到 v0.9，并基于 v0.8.0 的 Provider Catalog、多模态入口、Video preview、Route Explanation 与 Dashboard localization 重新适配。默认仍保持单机 memory/SQLite 可用；Redis/Postgres/Cloud 只作为可选能力。
+
+### P0：官方 Guardrails 插件升级
+
+- **状态**：🚧 Prompt v0.9 guardrails feature branch 进行中
+- **目标**：把 `plugins/guardrails` 从 skeleton 升级为可用的本地安全插件，同时保持默认 disabled/no-op 和隐私安全默认值
+- **实现方案**：
+  - 支持 PII detection，并可按配置 `audit`、`redact` 或 `block`
+  - 支持 lightweight prompt injection checks，例如忽略系统指令、隐藏 prompt 泄露、jailbreak、developer mode 等常见模式
+  - 支持 schema validation helper，覆盖安全的 request/response metadata 文档或 JSON output
+  - 支持 `policies[]` named allow/block/redact/audit rules，保留 legacy `input_patterns` / `output_patterns`
+  - 支持 input hook、output hook 与 conservative streaming delta handling
+  - 默认不保存 prompt/response；finding 只包含 `request_id`、rule、kind、action、path、count、schema error summary 等 metadata
+  - 与 structured output fallback 保持兼容：核心 fallback 继续由 `routing.fallback_policy.structured_output` 处理；guardrails schema finding 可按配置 block 并记录 fallback intent metadata
+  - 插件继续进入 `dist-runtime-plugins`，兼容生产 Docker
 
 ---
 
