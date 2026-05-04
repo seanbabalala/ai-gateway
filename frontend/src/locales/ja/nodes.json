@@ -73,6 +73,8 @@
   "form.backToProviderList": "プロバイダー一覧に戻る",
   "form.connectivity.testConnection": "接続テスト",
   "form.connectivity.testing": "テスト中...",
+  "form.connectivity.providerHttp": "プロバイダー HTTP",
+  "form.connectivity.summaryStatus": "サマリー",
   "form.connectivity.title": "接続テスト",
   "form.connectivity.usingSavedConfig": "（保存済み設定を使用）",
   "form.custom": "カスタム",

@@ -73,6 +73,8 @@
   "form.backToProviderList": "กลับไปที่รายชื่อ provider",
   "form.connectivity.testConnection": "ทดสอบการเชื่อมต่อ",
   "form.connectivity.testing": "กำลังทดสอบ...",
+  "form.connectivity.providerHttp": "Provider HTTP",
+  "form.connectivity.summaryStatus": "สรุป",
   "form.connectivity.title": "Connectivity Test",
   "form.connectivity.usingSavedConfig": "(ใช้ config ที่บันทึกไว้)",
   "form.custom": "Custom",

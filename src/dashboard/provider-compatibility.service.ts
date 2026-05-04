@@ -443,7 +443,7 @@ export class ProviderCompatibilityService {
         return {
           model,
           stream: false,
-          max_output_tokens: 1,
+          max_output_tokens: 16,
           input: [
             {
               type: 'message',

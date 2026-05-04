@@ -1,6 +1,6 @@
 {
   "name": "siftgate",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,

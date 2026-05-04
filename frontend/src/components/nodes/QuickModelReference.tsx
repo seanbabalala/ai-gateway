@@ -11,6 +11,19 @@ interface QuickModelReferenceProps {
   nodes: NodeInfo[]
 }
 
+function modelIdsForNode(node: NodeInfo): string[] {
+  return Array.from(new Set([
+    ...node.models,
+    ...(node.embedding_models || []),
+    ...(node.rerank_models || []),
+    ...(node.image_models || []),
+    ...(node.audio_models || []),
+    ...(node.video_models || []),
+    ...(node.realtime_models || []),
+    ...(node.realtime?.models || []),
+  ]))
+}
+
 export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
   const { t } = useTranslation('nodes')
   const [expanded, setExpanded] = useState(false)
@@ -76,6 +89,10 @@ export function QuickModelReference({ nodes }: QuickModelReferenceProps) {
                   >
                     <NodeIcon
                       nodeId={node.id}
+                      providerName={node.name}
+                      baseUrl={node.base_url}
+                      modelIds={modelIdsForNode(node)}
+                      tags={node.tags}
                       protocol={node.protocol}
                       className="h-3 w-3"
                       style={{ color: getNodeColor(node.id) }}
