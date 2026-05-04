@@ -305,6 +305,8 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/logs` | Paginated call logs |
 | `GET` | `/api/dashboard/logs/export` | Export logs as CSV or JSON |
 | `GET` | `/api/dashboard/logs/sse` | Server-Sent Events stream for live call logs |
+| `GET` | `/api/dashboard/sessions` | Metadata-only session summaries grouped by `session_id` / legacy `session_key` |
+| `GET` | `/api/dashboard/sessions/:sessionId` | One session timeline enriched with route decision, shadow result, and guardrails metadata |
 | `GET` | `/api/dashboard/route-decisions` | Paginated explainable routing summaries |
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
@@ -348,6 +350,16 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
 
 Dashboard copy calls this **price source status**. The internal response field remains `pricing_hygiene` for backward compatibility.
+
+### Session Trace API
+
+SiftGate normalizes request identity from `x-session-id`, `x-session-key`, `x-siftgate-session-id`, `x-trace-id`, `x-siftgate-trace-id`, standard W3C `traceparent`, and request-id fallback headers. `session_id` is also mirrored into the legacy `session_key` field for backward-compatible Dashboard statistics.
+
+`GET /api/dashboard/sessions` supports `period`, `namespace`, `api_key_id`, legacy `api_key`, `model`, `source_format`, `page`, and `limit` filters. It returns session summaries with first/last seen timestamps, request count, error/fallback count, model switches, cost, token totals, average latency, models, nodes, source formats, trace ids, and latest request metadata.
+
+`GET /api/dashboard/sessions/:sessionId` returns a request timeline for one session. Timeline events are keyed by `request_id` and can include a Route Explanation link, shadow result counts/statuses, and recent guardrails finding metadata when available.
+
+These endpoints are read-only and metadata-only. They do not expose prompt text, response text, raw headers, provider keys, media bytes, or video bytes, and they do not mutate routing configuration.
 
 ### Explainable Routing Traces
 

@@ -15,6 +15,7 @@ import {
   ConfigVersion,
   ProviderCompatibilityResult,
   RouteDecisionLog,
+  ShadowTrafficResult,
 } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
@@ -35,6 +36,7 @@ import { BenchmarkReportService } from './benchmark-report.service';
       ConfigAuditEvent,
       ConfigVersion,
       RouteDecisionLog,
+      ShadowTrafficResult,
       ProviderCompatibilityResult,
     ]),
   ],

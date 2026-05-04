@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added v1.1 Session/Trace correlation for the OSS Dashboard, normalizing `session_id`, legacy `session_key`, W3C `traceparent`, and trace headers into call logs and route decision traces.
+- Added read-only Dashboard APIs `GET /api/dashboard/sessions` and `GET /api/dashboard/sessions/:sessionId` for metadata-only session timelines across call logs, route decisions, shadow results, and recent guardrails findings.
+- Added the Dashboard Session View with 7-language localization, namespace/API key/model/source filters, model-switch/fallback/cost/latency summaries, and deep links into Route Explanation without storing prompts, responses, raw headers, provider keys, or media/video bytes.
+
 ## 1.0.0 - 2026-05-05
 
 ### Added

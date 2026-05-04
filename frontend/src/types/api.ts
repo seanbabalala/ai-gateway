@@ -77,7 +77,9 @@ export interface CallLog {
   media_requested_format?: string | null
   media_response_format?: string | null
   media_provider_response_type?: string | null
+  session_id?: string | null
   session_key: string | null
+  trace_id?: string | null
   error: string | null
   api_key_id?: string | null
   api_key_name?: string | null
@@ -158,6 +160,8 @@ export interface RouteDecisionFilter {
 export interface RouteDecisionTrace {
   version: 1
   request_id?: string
+  session_id?: string | null
+  trace_id?: string | null
   source_format?: string
   requested_model?: string | null
   mode: string
@@ -260,6 +264,8 @@ export interface RouteDecisionSummary {
   status_code: number
   is_fallback: boolean
   fallback_reason: string | null
+  session_id?: string | null
+  trace_id?: string | null
   api_key_name: string | null
   api_key_id: string | null
   namespace_id: string | null
@@ -275,6 +281,107 @@ export interface RouteDecisionSummary {
 export interface RouteDecisionsResponse {
   data: RouteDecisionSummary[]
   pagination: LogsPagination
+}
+
+// ── Sessions / Trace View ──
+
+export interface SessionSummary {
+  session_id: string
+  first_seen_at: string | null
+  last_seen_at: string | null
+  request_count: number
+  error_count: number
+  fallback_count: number
+  model_switch_count: number
+  total_cost_usd: number
+  total_tokens: number
+  avg_latency_ms: number
+  models: string[]
+  nodes: string[]
+  source_formats: string[]
+  trace_ids: string[]
+  latest_request_id: string | null
+  latest_trace_id: string | null
+  latest_status_code: number | null
+  api_key_id: string | null
+  api_key_name: string | null
+  namespace_id: string | null
+}
+
+export interface SessionTimelineEvent {
+  request_id: string
+  session_id: string | null
+  trace_id: string | null
+  timestamp: string
+  source_format: string
+  tier: string
+  score: number
+  node_id: string
+  model: string
+  status_code: number
+  latency_ms: number
+  cost_usd: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  is_fallback: boolean
+  fallback_reason: string | null
+  error: string | null
+  route_decision_link: string | null
+  has_route_decision: boolean
+  route_decision: {
+    id: number
+    selected_node_id: string | null
+    selected_model: string | null
+    candidate_count: number
+    filtered_count: number
+    route_mode: string | null
+    strategy: string | null
+    final_reason: string | null
+  } | null
+  shadow: {
+    count: number
+    statuses: Record<string, number>
+    nodes: string[]
+    models: string[]
+    avg_latency_ms: number | null
+  }
+  guardrails: {
+    count: number
+    kinds: string[]
+    actions: string[]
+    rules: string[]
+  }
+}
+
+export interface SessionPrivacy {
+  prompt: false
+  response: false
+  raw_headers: false
+  provider_keys: false
+  media_bytes: false
+  video_bytes: false
+  storage: 'metadata_only'
+}
+
+export interface SessionsResponse {
+  data: SessionSummary[]
+  pagination: LogsPagination
+  filters: Record<string, string | null>
+  privacy: SessionPrivacy
+}
+
+export interface SessionDetailResponse {
+  session_id: string
+  summary: SessionSummary
+  timeline: SessionTimelineEvent[]
+  filters: Record<string, string | null>
+  links: {
+    route_decisions: number
+    shadow_results: number
+    guardrails_findings: number
+  }
+  privacy: SessionPrivacy
 }
 
 // ── Budget ──

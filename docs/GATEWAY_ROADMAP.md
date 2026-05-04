@@ -19,6 +19,27 @@
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
+| v1.1 | Developer Experience | 开发中 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | 🚧 In Progress |
+
+---
+
+## v1.1 — Developer Experience（开发者体验）
+
+**v1.1 开发状态**：基于 v1.0.0 的扩展生态继续增强本地开发体验。默认仍保持开源 Data Plane 单机 memory/SQLite 可用；Redis/Postgres/Cloud 仅为可选能力。
+
+### P0：Session/Trace 关联与 Dashboard Session View
+
+- **状态**：🚧 当前分支实现中
+- **目标**：把单条请求日志升级为会话级链路视图，方便开发者和运维人员排查一轮 agent、应用会话或多步骤工作流里的模型切换、fallback、成本、延迟和错误
+- **实现方案**：
+  - Normalizer 统一读取 `x-session-id`、legacy `x-session-key`、`x-siftgate-session-id`、`x-trace-id`、`x-siftgate-trace-id`、W3C `traceparent` 与 request-id fallback
+  - `call_logs`、`route_decisions`、`shadow_traffic_results` 增加 `session_id` / `trace_id` 关联字段，保留旧 `session_key` 兼容
+  - Pipeline 在 call log、Route Decision Trace、OpenTelemetry span attributes 和 shadow traffic result 中写入 session/trace metadata
+  - Dashboard API 新增 `GET /api/dashboard/sessions` 与 `GET /api/dashboard/sessions/:sessionId`
+  - Dashboard 新增只读 Session View，按 session 展示请求时间线、模型切换、fallback、成本、延迟、错误、shadow、guardrails finding 摘要和 Route Explanation 链接
+  - 支持 namespace、API key、model、source format、period 过滤
+  - 不保存 prompt、response、raw headers、provider key、media bytes 或 video bytes
+  - Dashboard 文案保持 en、zh、zh-TW、ja、ko、th、es 七语言同步
 
 ---
 

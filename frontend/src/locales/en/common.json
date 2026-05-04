@@ -58,5 +58,6 @@
   "tier.reasoning": "reasoning",
   "tier.simple": "simple",
   "tier.standard": "standard",
-  "nav.benchmarks": "Benchmarks"
+  "nav.benchmarks": "Benchmarks",
+  "nav.sessions": "Sessions"
 }

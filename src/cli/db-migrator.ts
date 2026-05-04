@@ -11,6 +11,7 @@ import {
   NodeStatus,
   ProviderCompatibilityResult,
   RouteDecisionLog,
+  ShadowTrafficResult,
   VideoJob,
 } from "../database/entities";
 
@@ -20,6 +21,7 @@ export type DbMigrationTableName =
   | "node_status"
   | "call_logs"
   | "route_decisions"
+  | "shadow_traffic_results"
   | "config_versions"
   | "config_audit_events"
   | "provider_compatibility_results"
@@ -37,6 +39,7 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "node_status", entity: NodeStatus },
   { table: "call_logs", entity: CallLog, generatedSequenceColumn: "id" },
   { table: "route_decisions", entity: RouteDecisionLog, generatedSequenceColumn: "id" },
+  { table: "shadow_traffic_results", entity: ShadowTrafficResult, generatedSequenceColumn: "id" },
   { table: "config_versions", entity: ConfigVersion, generatedSequenceColumn: "id" },
   { table: "config_audit_events", entity: ConfigAuditEvent, generatedSequenceColumn: "id" },
   {
@@ -186,6 +189,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         NodeStatus,
         GatewayApiKey,
         RouteDecisionLog,
+        ShadowTrafficResult,
         ConfigVersion,
         ConfigAuditEvent,
         ProviderCompatibilityResult,
@@ -584,6 +588,17 @@ function normalizeRow(
       status_code: toNullableNumber,
       created_at: toDateOrNow,
       updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "shadow_traffic_results") {
+    return normalizeFields(row, {
+      id: toNumber,
+      timestamp: toDateOrNow,
+      latency_ms: toNullableNumber,
+      status_code: toNullableNumber,
+      input_tokens: toNumber,
+      output_tokens: toNumber,
     });
   }
 

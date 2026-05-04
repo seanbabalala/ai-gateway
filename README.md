@@ -124,6 +124,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
+- **Session timelines** — correlate `session_id`, `trace_id`, call logs, route decisions, shadow results, benchmark-ready metrics, and guardrails finding metadata into a privacy-safe request timeline
 - **Guardrails finding summary** — inspect local PII/secret/prompt-injection/schema/tool-call findings and optional webhook delivery state without exposing prompts, responses, raw headers, provider keys, or webhook secrets
 - **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
