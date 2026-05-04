@@ -8,10 +8,25 @@ plugins:
       pii:
         enabled: true
         action: redact
-        entities: [email, api_key, credit_card]
+        entities: [email, api_key, credit_card, ip_address, iban]
+      secrets:
+        enabled: true
+        action: webhook
       prompt_injection:
         enabled: true
         action: block
+      jailbreak:
+        enabled: true
+        action: block
+      unsafe_url:
+        enabled: true
+        action: audit
+        block_private_ips: true
+      tool_call_policy:
+        enabled: true
+        action: block
+        allowed_tools: [safe_lookup]
+        require_known_tools: true
       policies:
         - name: allow-ticket-template
           direction: input
@@ -26,8 +41,13 @@ plugins:
           pattern: "(?i)internal only"
           action: redact
           redaction: "[internal]"
+        - name: webhook-credential-dump
+          direction: both
+          pattern: "(?i)credential dump"
+          action: webhook
       schema:
         enabled: false
+        strict: true
         output:
           enabled: false
           action: audit
@@ -38,4 +58,15 @@ plugins:
             properties:
               ok:
                 type: boolean
+      webhook:
+        enabled: false
+        url: https://hooks.example.com/siftgate/guardrails
+        include_actions: [webhook, block]
+        debounce_seconds: 300
+        timeout_ms: 5000
+        max_queue: 100
+        drop_policy: drop_newest
+        retry:
+          attempts: 3
+          backoff_ms: 1000
       blocked_message: This content is blocked by local guardrails policy.

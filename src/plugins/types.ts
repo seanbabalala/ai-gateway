@@ -24,6 +24,9 @@ export interface GatewayPlugin {
   /** Called on application shutdown (reverse order of registration). */
   onDestroy?(): Promise<void> | void;
 
+  /** Optional privacy-safe status snapshot for Dashboard surfaces. */
+  getStatus?(): unknown;
+
   /** Pipeline hooks — partial, only implement what you need */
   hooks?: Partial<PipelineHooks>;
 

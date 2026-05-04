@@ -17,6 +17,7 @@ function makePlugin(
     onLoad: overrides.onLoad,
     onReady: overrides.onReady,
     onDestroy: overrides.onDestroy,
+    getStatus: overrides.getStatus,
   } as GatewayPlugin;
 }
 
@@ -49,6 +50,20 @@ describe('PluginRegistryService', () => {
     const plugins = registry.getRegisteredPlugins();
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toEqual({ name: 'alpha', version: '2.0.0', priority: 50 });
+  });
+
+  it('should return optional privacy-safe plugin status snapshots', () => {
+    registry.register(
+      makePlugin('guardrails', {
+        getStatus: () => ({ enabled: true, findings: { total: 1 } }),
+      }),
+    );
+
+    expect(registry.getPluginStatus('guardrails')).toEqual({
+      enabled: true,
+      findings: { total: 1 },
+    });
+    expect(registry.getPluginStatus('missing')).toBeNull();
   });
 
   // ── Hook Chains ───────────────────────────────────────────

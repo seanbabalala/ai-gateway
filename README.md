@@ -123,6 +123,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
 - **Shadow traffic comparison** — read-only sampled test-node outcomes plus success, latency, cost, token, fallback, confidence, and risk reports without applying routing changes
+- **Guardrails finding summary** — inspect local PII/secret/prompt-injection/schema/tool-call findings and optional webhook delivery state without exposing prompts, responses, raw headers, provider keys, or webhook secrets
 - **Seven-language operator UI** — English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish wording stays synchronized across new OSS Data Plane features, with product-aware labels instead of raw backend terms where possible
 - **Light / Dark theme** — system-aware with manual toggle
 
@@ -145,7 +146,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Benchmark workflow** — run `npm run benchmark:upstream` or open the read-only Dashboard Benchmarks page for local performance evidence; see [Performance](docs/PERFORMANCE.md)
 - **Hot reload** — reload `gateway.config.yaml` through the Dashboard API, `SIGHUP`, or an optional debounced file watcher with rollback on failure
 - **Config audit and rollback** — keep local sanitized config versions and audit events for Dashboard config changes, then validate and restore a previous version when needed
-- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`
+- **Official runtime plugins** — opt-in Redis cache, analytics sink, request transform, and local guardrails plugins built into `dist-runtime-plugins`; guardrails supports local PII, secret/token, jailbreak, unsafe URL, schema, tool-call, policy checks, and optional metadata-only webhook findings
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 

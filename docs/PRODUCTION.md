@@ -14,6 +14,9 @@ Structured output, rerank, images, audio, video, secret resolution, audit
 metadata, and benchmark summaries all stay in the open-source Data Plane.
 The v0.9.3 Dashboard also keeps prompt-cache hits separate from routing tiers
 and upstream node charts, so cache behavior is tracked as cache behavior.
+v1.0 expands guardrails with metadata-only webhook finding delivery and more
+local rules. Keep the webhook sink disabled until the receiver, queue limits,
+retry policy, and downstream retention policy have been reviewed.
 Realtime and video remain experimental previews and should only be enabled for
 production after upstream provider behavior, connection limits, job retention,
 and load balancer paths have been tested in your environment.

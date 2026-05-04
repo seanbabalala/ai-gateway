@@ -52,6 +52,19 @@
   - call logs、external log sinks、control-plane metadata、Route Decision Trace 和 Dashboard Logs/Route Explanation 展示 reasoning intent、effort、budget、strategy、support 与 fallback/downgrade reason
   - 不保存 prompt、response、hidden chain-of-thought、raw headers 或 provider keys
 
+### P0：Guardrails Webhook Finding Sink 与规则扩展
+
+- **状态**：🚧 Prompt 65 feature branch 进行中
+- **目标**：把官方 `plugins/guardrails` 升级为更完整的本地治理插件，支持 metadata-only webhook finding sink，并补齐 secret/token、jailbreak、unsafe URL、schema strictness、tool-call policy 等规则
+- **实现方案**：
+  - Guardrails rule action 扩展为 `audit`、`redact`、`block`、`allow`、`webhook`
+  - webhook sink 默认关闭，显式启用后异步发送 `siftgate.guardrails.findings.v1` metadata
+  - webhook 支持 `debounce_seconds`、`retry.attempts`、`retry.backoff_ms`、`timeout_ms`、`max_queue`、`drop_policy`
+  - webhook payload 和 Dashboard status 不包含 prompt、response、matched text、raw headers、provider key、media/video bytes、webhook URL 或 webhook headers
+  - 内置规则扩展：PII 扩展字段、secret/token pattern、prompt injection、jailbreak、unsafe URL、schema strictness、tool-call policy
+  - Dashboard 新增 `GET /api/dashboard/guardrails` 摘要和首页 Guardrails 卡片，展示 finding counters、最近 finding metadata、webhook queue/drop/recent 状态
+  - 插件继续默认 disabled/no-op，单机 memory/SQLite 默认可用，不依赖 Redis/Postgres/Cloud
+
 ---
 
 ## v0.9 — Operations + Trust（本地运维 + 信任基础）

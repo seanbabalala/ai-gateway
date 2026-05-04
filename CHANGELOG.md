@@ -10,6 +10,8 @@
 - Added v1.0 canonical reasoning/thinking intent for Chat `reasoning_effort`, Responses `reasoning`, Anthropic Messages `thinking`, and Gemini-style `thinking_config`.
 - Added reasoning-aware provider forwarding strategies, routing preference for `supports_reasoning` targets, call-log metadata, external log sink fields, control-plane metadata, and Route Explanation evidence without storing prompts, responses, hidden reasoning text, raw headers, or provider keys.
 - Added Dashboard Logs and Route Explanation localization for reasoning intent, effort, budget, strategy, support status, and downgrade notes across all 7 OSS Dashboard languages.
+- Upgraded the official guardrails plugin to v1.0 with metadata-only webhook finding delivery, per-rule `webhook` actions, debounce/retry/timeout/max-queue/drop-policy controls, expanded PII, secret/token, jailbreak, unsafe URL, strict schema, and tool-call policy rules.
+- Added `GET /api/dashboard/guardrails` and a Dashboard Guardrails summary card showing finding counters and recent webhook state without exposing prompts, responses, matched text, raw headers, provider keys, webhook URLs, webhook headers, media bytes, or video bytes.
 
 ### Changed
 

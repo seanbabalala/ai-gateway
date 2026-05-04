@@ -11,7 +11,7 @@ All official plugins are disabled or no-op by default. External exports never in
 | redis-cache | `plugins/redis-cache` | Optional Redis-backed canonical response cache |
 | analytics-sink | `plugins/analytics-sink` | Optional sanitized call-log analytics webhook |
 | request-transform | `plugins/request-transform` | Local canonical request rewrite rules |
-| guardrails | `plugins/guardrails` | Local PII, prompt-injection, schema, and policy guardrails |
+| guardrails | `plugins/guardrails` | Local PII, secret/token, prompt-injection, jailbreak, unsafe URL, schema, tool-call, policy, and optional webhook finding guardrails |
 
 ## Enabling
 
@@ -53,7 +53,7 @@ The Dockerfile builds plugins during the backend build stage and copies `dist-ru
 - `redis-cache`: sends hashed cache keys to Redis. It stores response bodies only when `store_responses: true` is explicitly set.
 - `analytics-sink`: uses a safe allow-list of call-log metadata. `include_prompt_response: true` is required before prompt/response-like fields are eligible for export.
 - `request-transform`: performs local request mutations only and has no network path.
-- `guardrails`: performs local PII, prompt-injection, schema, and policy checks. It stores/logs finding metadata only: request id, rule, kind, action, count, path, and schema error summaries. It does not log matched prompt/response text, raw headers, provider keys, media bytes, or video bytes.
+- `guardrails`: performs local PII, secret/token, prompt-injection, jailbreak, unsafe URL, schema, tool-call, and policy checks. It stores/logs finding metadata only: request id, rule, kind, action, count, path, and schema error summaries. Optional webhook delivery sends the same metadata asynchronously with debounce, retry, timeout, max queue, and drop policy controls. It does not log or export matched prompt/response text, raw headers, provider keys, media bytes, video bytes, webhook URLs, or webhook headers.
 
 Each plugin has its own README and example config:
 
