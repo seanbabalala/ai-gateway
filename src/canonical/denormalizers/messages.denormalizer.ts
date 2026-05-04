@@ -6,6 +6,7 @@ import {
   CanonicalContentBlock,
 } from '../canonical.types';
 import { toAnthropicMessagesOutputFormat } from '../structured-output';
+import { toAnthropicThinking } from '../reasoning-effort';
 
 /**
  * Denormalizes Canonical → Anthropic Messages API format.
@@ -68,6 +69,12 @@ export class MessagesDenormalizer implements RequestDenormalizer {
     if (canonical.top_p !== undefined) body.top_p = canonical.top_p;
     if (canonical.stop && canonical.stop.length > 0)
       body.stop_sequences = canonical.stop;
+
+    const thinking = toAnthropicThinking(
+      canonical.reasoning,
+      canonical.max_tokens || 4096,
+    );
+    if (thinking) body.thinking = thinking;
 
     const outputFormat = toAnthropicMessagesOutputFormat(
       canonical.response_format,

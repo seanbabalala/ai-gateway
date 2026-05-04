@@ -11,6 +11,7 @@ import {
   ToolResultBlock,
 } from '../canonical.types';
 import { normalizeStructuredOutputFromBody } from '../structured-output';
+import { normalizeReasoningFromBody } from '../reasoning-effort';
 
 /**
  * Normalizes OpenAI Chat Completions format → Canonical format.
@@ -32,6 +33,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
       'chat_completions',
       req,
     );
+    const reasoning = normalizeReasoningFromBody('chat_completions', req);
 
     return {
       messages: this.normalizeMessages(req.messages as unknown[]),
@@ -48,6 +50,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
       top_p: req.top_p as number | undefined,
       stop: this.normalizeStop(req.stop),
       ...structured,
+      ...reasoning,
       stream: Boolean(req.stream),
       metadata: {
         source_format: 'chat_completions',

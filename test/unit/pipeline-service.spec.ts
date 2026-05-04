@@ -1294,6 +1294,55 @@ describe('PipelineService — fallback policies', () => {
     expect(savedLog.structured_output_supported).toBe(true);
   });
 
+  it('should route and log reasoning effort metadata', async () => {
+    const { pipeline, mocks } = makePipeline({
+      capabilityService: {
+        resolveModelRoutingCapabilities: jest.fn().mockImplementation(
+          (_nodeId: string, model: string) => ({
+            max_context_tokens: 128000,
+            structured_output: null,
+            supports_reasoning: model === 'gpt-4o',
+            pricing: { input: 5, output: 15 },
+          }),
+        ),
+      },
+    });
+    mocks.providerClient.forward.mockResolvedValueOnce(makeCanonicalResponse({
+      model: 'gpt-4o',
+    }));
+
+    const request = makeRequest('Solve carefully', { originalModel: 'auto' });
+    request.reasoning_effort = 'high';
+    request.reasoning = {
+      requested: true,
+      source: 'chat_completions.reasoning_effort',
+      effort: 'high',
+      raw: 'high',
+    };
+    request.metadata.raw_body = { reasoning_effort: 'high' };
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.routingService.resolve).toHaveBeenCalledWith(
+      'standard',
+      0.45,
+      undefined,
+      undefined,
+      undefined,
+      expect.objectContaining({
+        requires_reasoning: true,
+        reasoning_effort: 'high',
+        required_capabilities: ['text', 'reasoning'],
+      }),
+    );
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.reasoning_requested).toBe(true);
+    expect(savedLog.reasoning_effort).toBe('high');
+    expect(savedLog.reasoning_strategy).toBe('passthrough');
+    expect(savedLog.reasoning_supported).toBe(true);
+  });
+
   it('should downgrade to a cheaper fallback before upstream when estimated cost exceeds policy', async () => {
     const cheapResponse = makeCanonicalResponse({ model: 'gpt-4o-mini' });
     const { pipeline, mocks } = makePipeline({

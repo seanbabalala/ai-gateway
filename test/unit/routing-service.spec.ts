@@ -308,6 +308,46 @@ describe('RoutingService', () => {
     );
   });
 
+  it('should prefer reasoning-capable targets when reasoning is requested', () => {
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_node: string, model: string) => ({
+        structured_output: null,
+        supports_reasoning: model === 'reasoning-model',
+        pricing: undefined,
+      })),
+    };
+    const svc = makeRoutingService({
+      tiers: {
+        standard: {
+          primary: { node: 'n1', model: 'fast-model' },
+          fallbacks: [{ node: 'n2', model: 'reasoning-model' }],
+        },
+      },
+      capabilityService,
+    });
+
+    const decision = svc.resolve('standard' as Tier, 0.5, undefined, null, ['text'], {
+      requires_reasoning: true,
+      reasoning_effort: 'high',
+      required_capabilities: ['text', 'reasoning'],
+    });
+
+    expect(decision.primary).toEqual({ node: 'n2', model: 'reasoning-model' });
+    expect(decision.trace.constraints).toMatchObject({
+      requires_reasoning: true,
+      reasoning_effort: 'high',
+    });
+    expect(decision.trace.candidate_targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node: 'n2',
+          metrics: expect.objectContaining({ reasoning: true }),
+        }),
+      ]),
+    );
+  });
+
   // ── Null domain hint ─────────────────────────────────────
 
   it('should handle null domain hint', () => {

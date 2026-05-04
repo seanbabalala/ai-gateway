@@ -11,6 +11,7 @@ import {
   ToolResultBlock,
 } from '../canonical.types';
 import { normalizeStructuredOutputFromBody } from '../structured-output';
+import { normalizeReasoningFromBody } from '../reasoning-effort';
 
 /**
  * Normalizes OpenAI Responses API format → Canonical format.
@@ -29,6 +30,7 @@ export class ResponsesNormalizer implements Normalizer {
   normalize(body: unknown, headers: Record<string, string>): CanonicalRequest {
     const req = body as Record<string, unknown>;
     const structured = normalizeStructuredOutputFromBody('responses', req);
+    const reasoning = normalizeReasoningFromBody('responses', req);
 
     const messages: CanonicalMessage[] = [];
 
@@ -52,6 +54,7 @@ export class ResponsesNormalizer implements Normalizer {
       top_p: req.top_p as number | undefined,
       stop: undefined, // Responses API doesn't have stop sequences
       ...structured,
+      ...reasoning,
       stream: Boolean(req.stream),
       metadata: {
         source_format: 'responses',

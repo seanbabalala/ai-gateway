@@ -82,6 +82,8 @@ Normalizers convert client input into canonical requests. Denormalizers convert 
 
 v0.6 adds canonical structured-output fields so the pipeline preserves OpenAI Chat `response_format`, OpenAI Responses `text.format`, and Anthropic Messages `output_config.format` intent across routing. Provider forwarding records whether the target received a native passthrough, a safe native mapping, or an explicit downgrade/unsupported strategy.
 
+v1.0 extends the same canonical layer for reasoning controls. Normalizers preserve OpenAI Chat `reasoning_effort`, OpenAI Responses `reasoning`, Anthropic Messages `thinking`, and Gemini-style `thinking_config` intent as metadata-safe fields: requested status, effort, source, budget token count, and raw provider-specific shape. Denormalizers only emit a cross-protocol value when the mapping is safe; otherwise the provider call is marked downgraded or unsupported for logs and route explanations without storing prompts, responses, hidden reasoning text, raw headers, or provider keys.
+
 ### Authentication And Governance
 
 Gateway API keys are generated in the Dashboard and used by client applications. Provider API keys are configured on upstream nodes and used only by the gateway.
@@ -118,7 +120,7 @@ For automatic routing, the scoring engine evaluates request complexity across 14
 - complex
 - reasoning
 
-The router then applies tier config, domain preferences, modality compatibility, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
+The router then applies tier config, domain preferences, modality compatibility, reasoning-support preference, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
 
 ### Reliability
 
@@ -149,6 +151,7 @@ The gateway records call logs with:
 - status code
 - fallback status and fallback reason
 - structured-output requested status, type, strategy, support flag, and schema name
+- reasoning requested status, effort, forwarding strategy, support flag, budget token count, source, and sanitized downgrade reason
 - retry count
 - cache token fields
 - experiment group
@@ -169,7 +172,7 @@ Benchmark reports are read-only. They never mutate routing config and never
 store or expose prompts, responses, raw headers, provider keys, media bytes, or
 video bytes.
 
-For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
+For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, structured-output and reasoning constraints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
 
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
 

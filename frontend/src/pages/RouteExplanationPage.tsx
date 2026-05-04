@@ -383,6 +383,13 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                         'endpointStatus',
                       )}
                     </Badge>
+                    {candidate.metrics.reasoning !== undefined && candidate.metrics.reasoning !== null && (
+                      <Badge variant={candidate.metrics.reasoning ? 'emerald' : 'red'}>
+                        {candidate.metrics.reasoning
+                          ? t('routeExplanation.badges.reasoningSupported')
+                          : t('routeExplanation.badges.reasoningUnsupported')}
+                      </Badge>
+                    )}
                     <Badge variant="zinc">
                       {t('routeExplanation.table.pricingSource', {
                         source: candidate.capability_evidence.pricing_source ||
@@ -627,6 +634,21 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
                       ? t('routeExplanation.detail.structuredOutputRequired')
                       : t('routeExplanation.detail.structuredOutputNotRequired')}
                   </div>
+                  <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+                    {trace.constraints.requires_reasoning
+                      ? t('routeExplanation.detail.reasoningRequired', {
+                          effort: trace.constraints.reasoning_effort || t('routeExplanation.values.unknown'),
+                          strategy: trace.constraints.reasoning_strategy || t('routeExplanation.values.unknown'),
+                        })
+                      : t('routeExplanation.detail.reasoningNotRequired')}
+                  </div>
+                  {trace.constraints.reasoning_budget_tokens ? (
+                    <div className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+                      {t('routeExplanation.detail.reasoningBudget', {
+                        value: trace.constraints.reasoning_budget_tokens.toLocaleString(),
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </CardContent>

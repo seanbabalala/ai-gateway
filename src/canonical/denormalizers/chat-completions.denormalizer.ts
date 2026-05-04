@@ -6,6 +6,7 @@ import {
   CanonicalContentBlock,
 } from '../canonical.types';
 import { toOpenAiChatResponseFormat } from '../structured-output';
+import { toOpenAiChatReasoning } from '../reasoning-effort';
 
 /**
  * Denormalizes Canonical → OpenAI Chat Completions format.
@@ -55,6 +56,8 @@ export class ChatCompletionsDenormalizer implements RequestDenormalizer {
       canonical.response_format,
     );
     if (responseFormat) body.response_format = responseFormat;
+
+    Object.assign(body, toOpenAiChatReasoning(canonical.reasoning));
 
     return body;
   }

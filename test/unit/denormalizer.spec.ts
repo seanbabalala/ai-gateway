@@ -192,6 +192,44 @@ describe('ChatCompletionsDenormalizer', () => {
         },
       });
     });
+
+    it('should map canonical reasoning effort to Chat reasoning_effort', () => {
+      const canonical = makeCanonicalRequest({
+        reasoning_effort: 'high',
+        reasoning: {
+          requested: true,
+          source: 'responses.reasoning',
+          effort: 'high',
+          raw: { effort: 'high' },
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'gpt-5');
+
+      expect(result.reasoning_effort).toBe('high');
+    });
+
+    it('should preserve Gemini thinking_config for compatible chat forwarding', () => {
+      const raw = { thinking_budget: 1024, include_thoughts: false };
+      const canonical = makeCanonicalRequest({
+        reasoning: {
+          requested: true,
+          source: 'gemini.thinking_config',
+          budget_tokens: 1024,
+          thinking: {
+            source: 'gemini.thinking_config',
+            raw,
+            budget_tokens: 1024,
+            include_thoughts: false,
+          },
+          raw,
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'gemini-2.5-pro');
+
+      expect(result.thinking_config).toEqual(raw);
+    });
   });
 
   describe('Response denormalization', () => {
@@ -322,6 +360,22 @@ describe('ResponsesDenormalizer', () => {
           strict: true,
         },
       });
+    });
+
+    it('should map canonical reasoning effort to Responses reasoning object', () => {
+      const canonical = makeCanonicalRequest({
+        reasoning_effort: 'medium',
+        reasoning: {
+          requested: true,
+          source: 'chat_completions.reasoning_effort',
+          effort: 'medium',
+          raw: 'medium',
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'gpt-5');
+
+      expect(result.reasoning).toEqual({ effort: 'medium' });
     });
 
     it('should convert tools to function type', () => {
@@ -481,6 +535,61 @@ describe('MessagesDenormalizer', () => {
           schema,
         },
       });
+    });
+
+    it('should map canonical reasoning effort to Anthropic thinking budget', () => {
+      const canonical = makeCanonicalRequest({
+        max_tokens: 4096,
+        reasoning_effort: 'medium',
+        reasoning: {
+          requested: true,
+          source: 'chat_completions.reasoning_effort',
+          effort: 'medium',
+          raw: 'medium',
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'claude-sonnet-4-20250514');
+
+      expect(result.thinking).toEqual({
+        type: 'enabled',
+        budget_tokens: 2048,
+      });
+    });
+
+    it('should preserve native Anthropic thinking blocks', () => {
+      const raw = { type: 'enabled', budget_tokens: 1024 };
+      const canonical = makeCanonicalRequest({
+        metadata: {
+          source_format: 'messages',
+          original_model: 'claude-sonnet-4-20250514',
+          raw_headers: {},
+        },
+        thinking: {
+          source: 'messages.thinking',
+          raw,
+          type: 'enabled',
+          budget_tokens: 1024,
+        },
+        budget_tokens: 1024,
+        reasoning: {
+          requested: true,
+          source: 'messages.thinking',
+          effort: 'unknown',
+          budget_tokens: 1024,
+          thinking: {
+            source: 'messages.thinking',
+            raw,
+            type: 'enabled',
+            budget_tokens: 1024,
+          },
+          raw,
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'claude-sonnet-4-20250514');
+
+      expect(result.thinking).toEqual(raw);
     });
   });
 

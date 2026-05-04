@@ -78,6 +78,7 @@ export interface RouteDecisionTraceCandidate {
     max_context_tokens: number | null;
     context_fit: 'safe' | 'near_limit' | 'overflow' | 'unknown';
     structured_output: boolean | null;
+    reasoning?: boolean | null;
   };
   capability_evidence?: RouteDecisionCandidateCapabilityEvidence;
 }
@@ -112,6 +113,10 @@ export interface RouteDecisionTrace {
     estimated_output_tokens: number | null;
     estimated_context_tokens: number | null;
     requires_structured_output: boolean;
+    requires_reasoning?: boolean;
+    reasoning_effort?: string | null;
+    reasoning_budget_tokens?: number | null;
+    reasoning_strategy?: string | null;
   };
   modality_evidence?: RouteDecisionModalityEvidence;
   candidate_targets: RouteDecisionTraceCandidate[];

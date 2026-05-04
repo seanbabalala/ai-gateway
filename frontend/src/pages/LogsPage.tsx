@@ -138,6 +138,37 @@ function LogDetailRow({ log }: { log: CallLog }) {
               {log.structured_output_supported === false ? ` / ${t('detail.unsupported')}` : ''}
             </span>
           </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.reasoning')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.reasoning_requested ? t('common.yes') : t('common.no')}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.reasoningEffort')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.reasoning_effort ?? t('common.na')}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.reasoningStrategy')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.reasoning_strategy ?? t('common.na')}
+              {log.reasoning_supported === false ? ` / ${t('detail.unsupported')}` : ''}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.reasoningBudget')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.reasoning_budget_tokens?.toLocaleString() ?? t('common.na')}
+            </span>
+          </div>
+          {log.reasoning_reason && (
+            <div>
+              <span className="text-[var(--foreground-dim)]">{t('detail.reasoningReason')}: </span>
+              <span className="font-mono text-[var(--foreground-muted)]">{log.reasoning_reason}</span>
+            </div>
+          )}
           {log.media_type && (
             <>
               <div>

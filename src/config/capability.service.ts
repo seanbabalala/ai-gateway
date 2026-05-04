@@ -51,6 +51,7 @@ export interface ResolvedModelRoutingCapabilities {
   supports_streaming?: boolean;
   supports_realtime?: boolean;
   supports_rerank?: boolean;
+  supports_reasoning: boolean | null;
   max_context_tokens?: number;
   structured_output: boolean | null;
   dimensions?: number | number[];
@@ -351,6 +352,7 @@ export class CapabilityService {
         modelCapability?.supports_realtime ?? node?.supports_realtime,
       supports_rerank:
         modelCapability?.supports_rerank ?? node?.supports_rerank,
+      supports_reasoning: this.resolveReasoningSupport(node, model, modelCapability),
       max_context_tokens:
         modelCapability?.max_context_tokens ?? node?.max_context_tokens,
       structured_output:
@@ -372,6 +374,38 @@ export class CapabilityService {
       return this.inferCapabilitiesFromTags(node.tags);
     }
     return [];
+  }
+
+  private resolveReasoningSupport(
+    node: NodeConfig | undefined,
+    model: string,
+    modelCapability?: ModelCapabilityConfig,
+  ): boolean | null {
+    if (modelCapability?.supports_reasoning !== undefined) {
+      return modelCapability.supports_reasoning;
+    }
+    if (node?.supports_reasoning !== undefined) {
+      return node.supports_reasoning;
+    }
+    if (node) {
+      const capabilities = this.resolveNodeCapabilities(node);
+      if (capabilities.includes('reasoning')) return true;
+    }
+
+    const normalizedModel = (model || '').toLowerCase();
+    if (
+      normalizedModel.startsWith('o1') ||
+      normalizedModel.startsWith('o3') ||
+      normalizedModel.startsWith('o4') ||
+      normalizedModel.includes('reasoning') ||
+      normalizedModel.includes('thinking') ||
+      normalizedModel.includes('deepseek-r1') ||
+      normalizedModel.includes('qwq')
+    ) {
+      return true;
+    }
+
+    return null;
   }
 
   private getPriceFactor(

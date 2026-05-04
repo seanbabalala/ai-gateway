@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added v1.0 canonical reasoning/thinking intent for Chat `reasoning_effort`, Responses `reasoning`, Anthropic Messages `thinking`, and Gemini-style `thinking_config`.
+- Added reasoning-aware provider forwarding strategies, routing preference for `supports_reasoning` targets, call-log metadata, external log sink fields, control-plane metadata, and Route Explanation evidence without storing prompts, responses, hidden reasoning text, raw headers, or provider keys.
+- Added Dashboard Logs and Route Explanation localization for reasoning intent, effort, budget, strategy, support status, and downgrade notes across all 7 OSS Dashboard languages.
+
 ## 0.9.3 - 2026-05-05
 
 ### Changed
