@@ -48,7 +48,7 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
 
-All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access.
+All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access. Dashboard-managed keys can also restrict endpoint families (`chat_completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, `realtime`, `models`) and modalities (`text`, `vision`, `embedding`, `rerank`, `image`, `audio`, `video`, `realtime`) before routing reaches an upstream provider.
 
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
 
@@ -444,13 +444,15 @@ Supported capabilities are `chat`, `responses`, `messages`, `embeddings`, `reran
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/api/dashboard/api-keys` | List Dashboard-managed Gateway API keys |
+| `GET` | `/api/dashboard/api-keys` | List Dashboard-managed Gateway API keys with masked prefix and per-key usage summary |
 | `POST` | `/api/dashboard/api-keys` | Create a Gateway API key and return the plain key once |
-| `PUT` | `/api/dashboard/api-keys/:id` | Update key name, status, permissions, budgets, or rate limits |
+| `PUT` | `/api/dashboard/api-keys/:id` | Update key name, status, namespace binding, permissions, budgets, or rate limits |
 | `POST` | `/api/dashboard/api-keys/:id/rotate` | Rotate the Gateway API key secret and return the new plain key once |
 | `DELETE` | `/api/dashboard/api-keys/:id` | Delete a Gateway API key |
 
-OpenAPI examples redact plain Gateway API key values. Runtime create and rotate responses still return the plain key once so the operator can copy it into their client configuration.
+Create and update payloads support `allowed_nodes`, `allowed_models`, `allowed_endpoints`, `allowed_modalities`, `namespace_id`, `daily_token_limit`, `daily_cost_limit`, and `rate_limit_per_minute`. Empty permission arrays mean "all configured" for that dimension; namespace node/model restrictions still intersect with the key's own node/model restrictions.
+
+List responses include `status`, `last_used_at`, `key_prefix`, and a `today` summary with calls, cost, tokens, errors, and `error_rate`. OpenAPI examples redact plain Gateway API key values. Runtime create and rotate responses still return the plain key once so the operator can copy it into client configuration; after that, Dashboard APIs only return the masked prefix. Mutating API key operations write local config audit events with redacted summaries and never store the one-time secret.
 
 ## Secret Handling In The Spec
 

@@ -630,6 +630,12 @@ export class GatewayApiKeyTodayDto {
   @ApiProperty({ example: 10 })
   calls!: number;
 
+  @ApiProperty({ example: 1 })
+  errors!: number;
+
+  @ApiProperty({ example: 0.1 })
+  error_rate!: number;
+
   @ApiProperty({ example: 0.123456 })
   cost_usd!: number;
 
@@ -667,6 +673,12 @@ export class GatewayApiKeySummaryDto {
 
   @ApiProperty({ type: [String], example: [] })
   allowed_models!: string[];
+
+  @ApiProperty({ type: [String], example: [] })
+  allowed_endpoints!: string[];
+
+  @ApiProperty({ type: [String], example: [] })
+  allowed_modalities!: string[];
 
   @ApiProperty({ example: null, nullable: true })
   namespace_id!: string | null;

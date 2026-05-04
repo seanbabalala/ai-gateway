@@ -18,13 +18,13 @@
 | v0.6 | Protocol + Explainability | 已发布 — v0.6.1 协议广度 + 可解释路由 + Dashboard 本地化补丁 | ✅ Released |
 | v0.8 | Provider + Multimodal Ops | 已发布 — v0.8.0 Provider Catalog + Add Node Wizard + 多模态生产运维 | ✅ Released |
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
-| v1.0 | Ecosystem Expansion | 进行中 — Provider Catalog 扩展、Reasoning Effort 跨协议映射、Guardrails webhook、API Key 管理完善 | 🚧 In Progress |
+| v1.0 | Extension Ecosystem | 进行中 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | 🚧 In Progress |
 
 ---
 
-## v1.0 — Ecosystem Expansion（扩展生态）
+## v1.0 — Extension Ecosystem（扩展生态）
 
-**目标**：在 v0.9.3 稳定运维基础上扩大 provider/model 覆盖，并补齐生产应用常用的跨协议能力，让 SiftGate 继续保持开源 Data Plane 自洽可用。默认仍然保持单机 memory/SQLite 可用；新增 provider/pricing 信息是 review-required reference，不自动联网抓取，不保存 provider key，不接入 Cloud。
+**v1.0 开发状态**：v1.0 基于已发布 v0.9.3，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是扩展 provider 生态、跨协议能力映射、安全插件和本地 Dashboard 运维体验，不引入企业 workspace/RBAC/SSO/SCIM。
 
 ### P0：Provider Catalog 30+
 
@@ -64,6 +64,20 @@
   - 内置规则扩展：PII 扩展字段、secret/token pattern、prompt injection、jailbreak、unsafe URL、schema strictness、tool-call policy
   - Dashboard 新增 `GET /api/dashboard/guardrails` 摘要和首页 Guardrails 卡片，展示 finding counters、最近 finding metadata、webhook queue/drop/recent 状态
   - 插件继续默认 disabled/no-op，单机 memory/SQLite 默认可用，不依赖 Redis/Postgres/Cloud
+
+### P0：API Key 管理 Dashboard 完善
+
+- **状态**：🚧 feature branch `codex/v1.0-api-key-dashboard-hardening`
+- **目标**：把本地 Gateway API Key 页面补齐到生产可用的密钥治理入口，同时保持开源边界清晰
+- **实现方案**：
+  - Dashboard 支持创建、编辑、禁用、删除、rotate、一次性复制完整 key；列表和详情只显示 masked prefix
+  - Key policy 支持 `allowed_nodes`、`allowed_models`、`allowed_endpoints`、`allowed_modalities`
+  - 支持本地 namespace 绑定、per-key daily token/cost budget、per-key RPM rate limit
+  - API key summary 展示 status、last used、calls、cost、error rate
+  - 请求管线在 provider forwarding 前执行 endpoint/modality 权限检查；`/v1/models` 按 key 权限过滤 model list
+  - Dashboard API key 变更写入本地 config audit event，审计摘要不保存完整 key、provider key、raw auth headers 或 secret
+  - Dashboard 新增文案补齐 en、zh、zh-TW、ja、ko、th、es 七语言本地化
+  - 补 auth service、Dashboard API、pipeline permissions、DB migrator、frontend static checks 和隐私测试
 
 ---
 

@@ -27,7 +27,7 @@ import {
   TokenUsage,
 } from '../canonical/canonical.types';
 import { detectRequestModalities } from '../canonical/modality-detection';
-import { supportsModalities } from '../config/modality';
+import { Modality, supportsModalities } from '../config/modality';
 import {
   normalizeStructuredOutputFromBody,
   resolveStructuredOutputForwarding,
@@ -236,6 +236,8 @@ export class PipelineService {
         let currentPhase = 'preRequest';
 
         try {
+          this.assertApiKeyRequestAllowed(canonical);
+
           // ── preRequest Hook ──
           if (!this.hooks.isEmpty()) {
             const hookResult = await this.hooks.run(
@@ -597,6 +599,8 @@ export class PipelineService {
       },
       async (rootSpan) => {
         try {
+          this.assertApiKeyRequestAllowed(canonical);
+
           const validationError = this.validateEmbeddingRequest(canonical);
           if (validationError) {
             return {
@@ -795,6 +799,8 @@ export class PipelineService {
       },
       async (rootSpan) => {
         try {
+          this.assertApiKeyRequestAllowed(canonical);
+
           const validationError = this.validateRerankRequest(canonical);
           if (validationError) {
             return {
@@ -990,6 +996,8 @@ export class PipelineService {
       },
       async (rootSpan) => {
         try {
+          this.assertApiKeyRequestAllowed(canonical);
+
           const validationError = this.validateMediaRequest(canonical);
           if (validationError) {
             return {
@@ -2244,6 +2252,8 @@ export class PipelineService {
     };
 
     try {
+      this.assertApiKeyRequestAllowed(canonical);
+
       // ── preRequest Hook (stream) ──
       if (!this.hooks.isEmpty()) {
         const hookResult = await this.hooks.run(
@@ -4100,6 +4110,91 @@ export class PipelineService {
         403,
       );
     }
+  }
+
+  private assertApiKeyRequestAllowed(canonical: LoggableCanonicalRequest): void {
+    const permissions = canonical.metadata.api_key_permissions;
+    if (!permissions) return;
+
+    const endpoint = this.permissionEndpointForRequest(canonical);
+    const allowedEndpoints = permissions.allowed_endpoints || [];
+    const allowedModalities = permissions.allowed_modalities || [];
+
+    if (
+      allowedEndpoints.length > 0 &&
+      !this.permissionEndpointAliases(endpoint, canonical.metadata.source_format)
+        .some((candidate) => allowedEndpoints.includes(candidate))
+    ) {
+      throw new GatewayRequestRejectedError(
+        `This API key is not allowed to use endpoint "${endpoint}".`,
+        403,
+      );
+    }
+
+    const requestedModalities = this.permissionModalitiesForRequest(canonical);
+    if (
+      allowedModalities.length > 0 &&
+      requestedModalities.some(
+        (modality) => !allowedModalities.includes(modality),
+      )
+    ) {
+      throw new GatewayRequestRejectedError(
+        `This API key is not allowed to use modality "${requestedModalities.join(',')}".`,
+        403,
+      );
+    }
+  }
+
+  private permissionEndpointForRequest(canonical: LoggableCanonicalRequest): string {
+    const source = canonical.metadata.source_format;
+    if (
+      source === 'image_generation' ||
+      source === 'image_edit' ||
+      source === 'image_variation'
+    ) {
+      return 'images';
+    }
+    if (
+      source === 'audio_transcription' ||
+      source === 'audio_translation' ||
+      source === 'audio_speech'
+    ) {
+      return 'audio';
+    }
+    if (source === 'video_generation') return 'video';
+    return source;
+  }
+
+  private permissionEndpointAliases(endpoint: string, source: SourceFormat): string[] {
+    const aliases = new Set<string>([endpoint, source]);
+    if (endpoint === 'images') aliases.add('image');
+    if (endpoint === 'audio') aliases.add('audio');
+    if (endpoint === 'video') aliases.add('video');
+    return Array.from(aliases);
+  }
+
+  private permissionModalitiesForRequest(canonical: LoggableCanonicalRequest): Modality[] {
+    const source = canonical.metadata.source_format;
+    if (source === 'embeddings') return ['embedding'];
+    if (source === 'rerank') return ['rerank'];
+    if (
+      source === 'image_generation' ||
+      source === 'image_edit' ||
+      source === 'image_variation'
+    ) {
+      return ['image'];
+    }
+    if (
+      source === 'audio_transcription' ||
+      source === 'audio_translation' ||
+      source === 'audio_speech'
+    ) {
+      return ['audio'];
+    }
+    if (source === 'video_generation') return ['video'];
+
+    const detected = detectRequestModalities(canonical as CanonicalRequest);
+    return detected.has('vision') ? ['vision'] : ['text'];
   }
 
   private assertTargetAllowed(

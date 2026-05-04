@@ -26,6 +26,8 @@ export interface GatewayApiKeyContext {
   allow_direct: boolean;
   allowed_nodes: string[];
   allowed_models: string[];
+  allowed_endpoints: string[];
+  allowed_modalities: string[];
   namespace_id: string | null;
   namespace_name: string | null;
   rate_limit_per_minute: number | null;
@@ -41,6 +43,8 @@ export interface GatewayApiKeySummary {
   allow_direct: boolean;
   allowed_nodes: string[];
   allowed_models: string[];
+  allowed_endpoints: string[];
+  allowed_modalities: string[];
   namespace_id: string | null;
   namespace_name: string | null;
   daily_token_limit: number | null;
@@ -52,6 +56,8 @@ export interface GatewayApiKeySummary {
   last_used_ip: string | null;
   today: {
     calls: number;
+    errors: number;
+    error_rate: number;
     cost_usd: number;
     input_tokens: number;
     output_tokens: number;
@@ -99,6 +105,10 @@ export class GatewayApiKeyService {
   async list(): Promise<GatewayApiKeySummary[]> {
     const keys = await this.apiKeyRepo.find({ order: { created_at: 'DESC' } });
     return Promise.all(keys.map((key) => this.toSummary(key)));
+  }
+
+  async getSummary(id: string): Promise<GatewayApiKeySummary> {
+    return this.toSummary(await this.getById(id));
   }
 
   async findContextByPlainKey(
@@ -189,6 +199,8 @@ export class GatewayApiKeyService {
         entity.allowed_models || [],
         namespace?.allowed_models || [],
       ),
+      allowed_endpoints: entity.allowed_endpoints || [],
+      allowed_modalities: entity.allowed_modalities || [],
       namespace_id: entity.namespace_id || null,
       namespace_name: namespace?.name || null,
       rate_limit_per_minute: this.combineRateLimit(
@@ -208,10 +220,13 @@ export class GatewayApiKeyService {
         name: entity.name,
       })
       .select('COUNT(*)', 'calls')
+      .addSelect('SUM(CASE WHEN log.status_code >= 400 THEN 1 ELSE 0 END)', 'errors')
       .addSelect('SUM(log.cost_usd)', 'cost')
       .addSelect('SUM(log.input_tokens)', 'inputTokens')
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .getRawOne();
+    const calls = Number(aggregate?.calls || 0);
+    const errors = Number(aggregate?.errors || 0);
 
     return {
       id: entity.id,
@@ -223,6 +238,8 @@ export class GatewayApiKeyService {
       allow_direct: entity.allow_direct,
       allowed_nodes: entity.allowed_nodes || [],
       allowed_models: entity.allowed_models || [],
+      allowed_endpoints: entity.allowed_endpoints || [],
+      allowed_modalities: entity.allowed_modalities || [],
       namespace_id: entity.namespace_id || null,
       namespace_name: this.config.getNamespace(entity.namespace_id)?.name || null,
       daily_token_limit: entity.daily_token_limit,
@@ -233,7 +250,9 @@ export class GatewayApiKeyService {
       last_used_at: entity.last_used_at ?? null,
       last_used_ip: entity.last_used_ip,
       today: {
-        calls: Number(aggregate?.calls || 0),
+        calls,
+        errors,
+        error_rate: calls > 0 ? Number((errors / calls).toFixed(4)) : 0,
         cost_usd: Number(Number(aggregate?.cost || 0).toFixed(6)),
         input_tokens: Number(aggregate?.inputTokens || 0),
         output_tokens: Number(aggregate?.outputTokens || 0),
@@ -250,6 +269,8 @@ export class GatewayApiKeyService {
       allow_direct: dto.allow_direct ?? false,
       allowed_nodes: this.normalizeStringArray(dto.allowed_nodes),
       allowed_models: this.normalizeStringArray(dto.allowed_models),
+      allowed_endpoints: this.normalizeStringArray(dto.allowed_endpoints),
+      allowed_modalities: this.normalizeStringArray(dto.allowed_modalities),
       namespace_id: this.normalizeNamespaceId(dto.namespace_id),
       daily_token_limit: this.normalizeOptionalLimit(dto.daily_token_limit),
       daily_cost_limit: this.normalizeOptionalLimit(dto.daily_cost_limit),
@@ -271,6 +292,8 @@ export class GatewayApiKeyService {
     if (dto.allow_direct !== undefined) normalized.allow_direct = Boolean(dto.allow_direct);
     if (dto.allowed_nodes !== undefined) normalized.allowed_nodes = this.normalizeStringArray(dto.allowed_nodes);
     if (dto.allowed_models !== undefined) normalized.allowed_models = this.normalizeStringArray(dto.allowed_models);
+    if (dto.allowed_endpoints !== undefined) normalized.allowed_endpoints = this.normalizeStringArray(dto.allowed_endpoints);
+    if (dto.allowed_modalities !== undefined) normalized.allowed_modalities = this.normalizeStringArray(dto.allowed_modalities);
     if (dto.namespace_id !== undefined) normalized.namespace_id = this.normalizeNamespaceId(dto.namespace_id);
     if (dto.daily_token_limit !== undefined) normalized.daily_token_limit = this.normalizeOptionalLimit(dto.daily_token_limit);
     if (dto.daily_cost_limit !== undefined) normalized.daily_cost_limit = this.normalizeOptionalLimit(dto.daily_cost_limit);

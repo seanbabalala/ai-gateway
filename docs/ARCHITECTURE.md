@@ -94,11 +94,15 @@ Gateway API keys can carry:
 - direct model routing permission
 - allowed nodes
 - allowed models
+- allowed endpoint families such as `responses`, `embeddings`, `images`, `audio`, `video`, `realtime`, and `models`
+- allowed modalities such as `text`, `vision`, `embedding`, `rerank`, `image`, `audio`, and `video`
 - per-key budgets
 - per-key rate limits
 - optional local namespace binding
 
-Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Namespace restrictions are intersected with API-key restrictions before routing.
+Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Namespace node/model restrictions are intersected with API-key node/model restrictions before routing. Endpoint and modality restrictions are key-local checks enforced before a request reaches routing or provider forwarding.
+
+Dashboard API key list responses expose only `key_prefix`, status, usage summary, and permission metadata. The full key is returned once on create or rotate, then discarded. API key mutations write local config audit events with redacted before/after summaries, including `secret: redacted` instead of the generated key.
 
 ### Routing
 

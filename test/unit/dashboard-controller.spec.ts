@@ -172,6 +172,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
 
   const gatewayApiKeys = {
     list: jest.fn().mockResolvedValue([]),
+    getSummary: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     rotate: jest.fn(),
@@ -1331,6 +1332,23 @@ describe('DashboardController — per-key budget', () => {
 });
 
 describe('DashboardController — api-keys', () => {
+  const keySummary = {
+    id: 'key_123',
+    name: 'production',
+    status: 'active',
+    key_prefix: 'gw_sk_live_abcd...1234',
+    namespace_id: 'team-alpha',
+    allow_auto: true,
+    allow_direct: true,
+    allowed_nodes: ['openai'],
+    allowed_models: ['gpt-4o'],
+    allowed_endpoints: ['chat_completions', 'responses'],
+    allowed_modalities: ['text'],
+    daily_token_limit: 10000,
+    daily_cost_limit: 5,
+    rate_limit_per_minute: 60,
+  };
+
   it('should return managed gateway api keys', async () => {
     const { controller } = makeDashboard({
       gatewayApiKeys: {
@@ -1343,6 +1361,106 @@ describe('DashboardController — api-keys', () => {
     const result = await controller.getApiKeyNames();
     expect(result.keys).toEqual(['sean', 'intern']);
     expect(result.items).toHaveLength(2);
+  });
+
+  it('should create API keys with endpoint and modality permissions and audit redacted metadata', async () => {
+    const gatewayApiKeys = {
+      create: jest.fn().mockResolvedValue({
+        key: 'gw_sk_live_full_secret_value',
+        item: keySummary,
+      }),
+    };
+    const { controller, configAudit } = makeDashboard({ gatewayApiKeys });
+
+    const result = await controller.createApiKey({
+      name: 'production',
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: ['openai'],
+      allowed_models: ['gpt-4o'],
+      allowed_endpoints: ['chat_completions', 'responses'],
+      allowed_modalities: ['text'],
+      namespace_id: 'team-alpha',
+    });
+
+    expect(result.key).toBe('gw_sk_live_full_secret_value');
+    expect(gatewayApiKeys.create).toHaveBeenCalledWith(expect.objectContaining({
+      allowed_endpoints: ['chat_completions', 'responses'],
+      allowed_modalities: ['text'],
+      namespace_id: 'team-alpha',
+    }));
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'api_key.create',
+        afterSummary: expect.objectContaining({
+          key_prefix: 'gw_sk_live_abcd...1234',
+          allowed_endpoints: ['chat_completions', 'responses'],
+          allowed_modalities: ['text'],
+          secret: 'redacted',
+        }),
+      }),
+    );
+    const auditPayload = JSON.stringify(configAudit.recordManagementEvent.mock.calls[0][0]);
+    expect(auditPayload).not.toContain('gw_sk_live_full_secret_value');
+  });
+
+  it('should audit API key policy updates with before and after summaries', async () => {
+    const before = { ...keySummary, allowed_endpoints: ['chat_completions'] };
+    const after = { ...keySummary, allowed_endpoints: ['embeddings'], allowed_modalities: ['embedding'] };
+    const gatewayApiKeys = {
+      getSummary: jest.fn().mockResolvedValue(before),
+      update: jest.fn().mockResolvedValue(after),
+    };
+    const { controller, configAudit } = makeDashboard({ gatewayApiKeys });
+
+    const result = await controller.updateApiKey('key_123', {
+      allowed_endpoints: ['embeddings'],
+      allowed_modalities: ['embedding'],
+      daily_cost_limit: 10,
+    });
+
+    expect(result.item).toBe(after);
+    expect(gatewayApiKeys.getSummary).toHaveBeenCalledWith('key_123');
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'api_key.update',
+        target: 'api_key:key_123',
+        beforeSummary: expect.objectContaining({ allowed_endpoints: ['chat_completions'], secret: 'redacted' }),
+        afterSummary: expect.objectContaining({ allowed_endpoints: ['embeddings'], allowed_modalities: ['embedding'], secret: 'redacted' }),
+        metadata: { fields: ['allowed_endpoints', 'allowed_modalities', 'daily_cost_limit'] },
+      }),
+    );
+  });
+
+  it('should audit API key rotation and deletion without storing the one-time secret', async () => {
+    const gatewayApiKeys = {
+      getSummary: jest.fn().mockResolvedValue(keySummary),
+      rotate: jest.fn().mockResolvedValue({
+        key: 'gw_sk_live_rotated_secret_value',
+        item: { ...keySummary, key_prefix: 'gw_sk_live_efgh...5678' },
+      }),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
+    const { controller, configAudit } = makeDashboard({ gatewayApiKeys });
+
+    await controller.rotateApiKey('key_123');
+    await controller.deleteApiKey('key_123');
+
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'api_key.rotate',
+        beforeSummary: expect.objectContaining({ secret: 'redacted' }),
+        afterSummary: expect.objectContaining({ key_prefix: 'gw_sk_live_efgh...5678', secret: 'redacted' }),
+      }),
+    );
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'api_key.delete',
+        beforeSummary: expect.objectContaining({ key_prefix: 'gw_sk_live_abcd...1234', secret: 'redacted' }),
+      }),
+    );
+    const auditPayload = JSON.stringify(configAudit.recordManagementEvent.mock.calls);
+    expect(auditPayload).not.toContain('gw_sk_live_rotated_secret_value');
   });
 });
 

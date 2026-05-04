@@ -362,6 +362,61 @@ describe('PipelineService — direct routing', () => {
     expect(mocks.routingService.resolve).toHaveBeenCalled();
   });
 
+  it('should reject chat requests when API key endpoint permissions exclude chat', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    request.metadata.api_key_permissions = {
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: [],
+      allowed_endpoints: ['embeddings'],
+      allowed_modalities: [],
+    };
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(403);
+    expect(mocks.providerClient.forward).not.toHaveBeenCalled();
+    expect(mocks.scoringService.score).not.toHaveBeenCalled();
+  });
+
+  it('should reject vision requests when API key modality permissions only allow text', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('', {
+      originalModel: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'describe this image' },
+            {
+              type: 'image',
+              source: {
+                type: 'url',
+                media_type: 'image/png',
+                data: 'https://example.test/image.png',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    request.metadata.api_key_permissions = {
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: [],
+      allowed_endpoints: ['chat_completions'],
+      allowed_modalities: ['text'],
+    };
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(403);
+    expect(mocks.providerClient.forward).not.toHaveBeenCalled();
+  });
+
   it('should reject a direct route when the configured context window is too small', async () => {
     const { pipeline, mocks } = makePipeline({
       capabilityService: {
@@ -570,6 +625,8 @@ describe('PipelineService — embeddings', () => {
           allow_direct: true,
           allowed_nodes: [],
           allowed_models: [],
+          allowed_endpoints: [],
+          allowed_modalities: [],
         },
       },
       ...overrides,
@@ -668,6 +725,17 @@ describe('PipelineService — embeddings', () => {
     expect(mocks.providerClient.forwardEmbeddings).not.toHaveBeenCalled();
   });
 
+  it('should reject embeddings when API key endpoint permissions exclude embeddings', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeEmbeddingRequest();
+    request.metadata.api_key_permissions.allowed_endpoints = ['chat_completions'];
+
+    const result = await pipeline.processEmbeddings(request);
+
+    expect(result.statusCode).toBe(403);
+    expect(mocks.providerClient.forwardEmbeddings).not.toHaveBeenCalled();
+  });
+
   it('should try embedding fallbacks and preserve fallback_reason in call logs', async () => {
     const { pipeline, mocks } = makePipeline({
       config: {
@@ -738,6 +806,8 @@ describe('PipelineService — rerank', () => {
           allow_direct: true,
           allowed_nodes: [],
           allowed_models: [],
+          allowed_endpoints: [],
+          allowed_modalities: [],
         },
       },
       ...overrides,
@@ -2516,6 +2586,24 @@ describe('PipelineService — images and audio', () => {
     expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ source_format: 'audio_speech' }),
     );
+  });
+
+  it('should reject media requests when API key modality permissions exclude the media type', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeMediaRequest();
+    request.metadata.api_key_permissions = {
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: [],
+      allowed_endpoints: ['images'],
+      allowed_modalities: ['text'],
+    };
+
+    const result = await pipeline.processMedia(request);
+
+    expect(result.statusCode).toBe(403);
+    expect(mocks.providerClient.forwardMedia).not.toHaveBeenCalled();
   });
 
   it('should use fallback media targets after an upstream failure', async () => {

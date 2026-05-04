@@ -12,10 +12,15 @@
 - Added Dashboard Logs and Route Explanation localization for reasoning intent, effort, budget, strategy, support status, and downgrade notes across all 7 OSS Dashboard languages.
 - Upgraded the official guardrails plugin to v1.0 with metadata-only webhook finding delivery, per-rule `webhook` actions, debounce/retry/timeout/max-queue/drop-policy controls, expanded PII, secret/token, jailbreak, unsafe URL, strict schema, and tool-call policy rules.
 - Added `GET /api/dashboard/guardrails` and a Dashboard Guardrails summary card showing finding counters and recent webhook state without exposing prompts, responses, matched text, raw headers, provider keys, webhook URLs, webhook headers, media bytes, or video bytes.
+- Hardened the OSS Dashboard API Key management surface for v1.0 with local create/edit/disable/delete/rotate flows, one-time full-key copy, masked list values, namespace binding, per-key budgets, per-key rate limits, and status/last-used/calls/cost/error-rate summaries.
+- Added API key permission controls for `allowed_endpoints` and `allowed_modalities`, enforced before routing/provider forwarding and reflected in `/v1/models` filtering.
+- Added redacted config audit coverage for API key create/update/rotate/delete operations, plus tests to ensure one-time Gateway API key secrets are not persisted in audit metadata.
 
 ### Changed
 
 - Dashboard Add Node presets, catalog CLI output, config validation, and legacy catalog diagnostics now recognize the v1.0 provider set while preserving local `catalog.override.yaml` as the path for operator-reviewed model and price overrides.
+- Dashboard API key forms and tables now include endpoint/modality permission pickers and 7-language localization for the new controls.
+- SQLite-to-PostgreSQL migration now preserves Dashboard-managed API key endpoint and modality permission arrays when present.
 
 ## 0.9.3 - 2026-05-05
 

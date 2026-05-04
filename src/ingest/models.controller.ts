@@ -1,4 +1,11 @@
-import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  Logger,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -9,7 +16,9 @@ import {
 import { ConfigService } from '../config/config.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
+import { gatewayApiKeyFromRequest } from '../auth/gateway-api-key-metadata';
 import { ErrorEnvelopeDto, ModelListResponseDto } from '../openapi/openapi.dto';
+import type { Request } from 'express';
 
 /**
  * GET /v1/models — OpenAI-compatible model listing endpoint.
@@ -28,19 +37,37 @@ export class ModelsController {
   @ApiOperation({ summary: 'List OpenAI-compatible models and SiftGate aliases' })
   @ApiOkResponse({ type: ModelListResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
-  list() {
-    const models = this.config.listModels();
+  list(@Req() req?: Request) {
+    const gatewayKey = gatewayApiKeyFromRequest(req);
+    if (
+      gatewayKey?.allowed_endpoints.length &&
+      !gatewayKey.allowed_endpoints.includes('models')
+    ) {
+      throw new ForbiddenException('This API key is not allowed to use /v1/models.');
+    }
+    const models = this.config.listModels().filter((model) => {
+      const nodeAllowed =
+        !gatewayKey?.allowed_nodes.length ||
+        gatewayKey.allowed_nodes.includes(model.node);
+      const modelAllowed =
+        !gatewayKey?.allowed_models.length ||
+        gatewayKey.allowed_models.includes(model.id) ||
+        model.aliases.some((alias) => gatewayKey.allowed_models.includes(alias));
+      return nodeAllowed && modelAllowed;
+    });
 
     // Build OpenAI-compatible response
     const data = [
       // "auto" — the gateway's smart routing model
-      {
-        id: 'auto',
-        object: 'model',
-        created: 0,
-        owned_by: 'siftgate',
-        description: 'Automatic routing — gateway scores request complexity and picks the best node.',
-      },
+      ...(gatewayKey?.allow_auto === false
+        ? []
+        : [{
+            id: 'auto',
+            object: 'model',
+            created: 0,
+            owned_by: 'siftgate',
+            description: 'Automatic routing — gateway scores request complexity and picks the best node.',
+          }]),
       // Real models
       ...models.map((m) => ({
         id: m.id,

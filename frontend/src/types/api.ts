@@ -1430,6 +1430,8 @@ export interface GatewayApiKey {
   allow_direct: boolean
   allowed_nodes: string[]
   allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
   namespace_id: string | null
   namespace_name: string | null
   daily_token_limit: number | null
@@ -1441,6 +1443,8 @@ export interface GatewayApiKey {
   last_used_ip: string | null
   today: {
     calls: number
+    errors: number
+    error_rate: number
     cost_usd: number
     input_tokens: number
     output_tokens: number
@@ -1454,6 +1458,8 @@ export interface CreateGatewayApiKeyRequest {
   allow_direct: boolean
   allowed_nodes: string[]
   allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
   namespace_id?: string | null
   daily_token_limit?: number | null
   daily_cost_limit?: number | null

@@ -80,6 +80,7 @@ function makeService(seed: any[] = [], configOverrides: Record<string, unknown> 
   const budgetRepo = makeRepo<any>();
   const callLogRepo = makeCallLogRepo({
     calls: '2',
+    errors: '1',
     cost: '0.0123456',
     inputTokens: '100',
     outputTokens: '50',
@@ -104,6 +105,8 @@ describe('GatewayApiKeyService', () => {
       allow_direct: true,
       allowed_nodes: ['openai', 'openai', ' anthropic '],
       allowed_models: ['gpt-4o-mini'],
+      allowed_endpoints: ['chat_completions', 'chat_completions', ' embeddings '],
+      allowed_modalities: ['text', ' image ', 'text'],
       daily_token_limit: 1000,
       daily_cost_limit: 2.5,
       rate_limit_per_minute: 60,
@@ -113,7 +116,11 @@ describe('GatewayApiKeyService', () => {
     expect(created.item.name).toBe('Production App');
     expect(created.item.description).toBe('user-facing app');
     expect(created.item.allowed_nodes).toEqual(['openai', 'anthropic']);
+    expect(created.item.allowed_endpoints).toEqual(['chat_completions', 'embeddings']);
+    expect(created.item.allowed_modalities).toEqual(['text', 'image']);
     expect(created.item.today.calls).toBe(2);
+    expect(created.item.today.errors).toBe(1);
+    expect(created.item.today.error_rate).toBe(0.5);
 
     const stored = apiKeyRepo._store[0] as any;
     expect(stored.key_hash).toBe(createHash('sha256').update(created.key).digest('hex'));
@@ -155,6 +162,8 @@ describe('GatewayApiKeyService', () => {
       allow_direct: false,
       allowed_nodes: [],
       allowed_models: [],
+      allowed_endpoints: [],
+      allowed_modalities: [],
       rate_limit_per_minute: null,
     }));
 
@@ -181,6 +190,8 @@ describe('GatewayApiKeyService', () => {
       namespace_id: 'team-alpha',
       allowed_nodes: ['openai', 'anthropic'],
       allowed_models: ['gpt-4o', 'claude-sonnet'],
+      allowed_endpoints: ['responses'],
+      allowed_modalities: ['text'],
       rate_limit_per_minute: 100,
     });
 
@@ -191,6 +202,8 @@ describe('GatewayApiKeyService', () => {
       namespace_name: 'Team Alpha',
       allowed_nodes: ['openai'],
       allowed_models: ['gpt-4o'],
+      allowed_endpoints: ['responses'],
+      allowed_modalities: ['text'],
       rate_limit_per_minute: 25,
     }));
   });
@@ -208,6 +221,8 @@ describe('GatewayApiKeyService', () => {
         allow_direct: false,
         allowed_nodes: [],
         allowed_models: [],
+        allowed_endpoints: [],
+        allowed_modalities: [],
         namespace_id: 'deleted-namespace',
         daily_token_limit: null,
         daily_cost_limit: null,

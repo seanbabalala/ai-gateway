@@ -33,6 +33,7 @@ and load balancer paths have been tested in your environment.
   Dashboard redaction.
 - Use PostgreSQL for durable call logs and generated Gateway API key records
   when SQLite is not enough for production traffic.
+- Manage client credentials from the OSS Dashboard API Keys page. It supports local namespace binding, endpoint/modality/node/model restrictions, per-key budgets, per-key rate limits, disable/delete/rotate, masked display, one-time copy on create/rotate, and audit events without requiring Cloud workspace/RBAC.
 - Use Redis only for features that need shared state or multi-instance
   coordination.
 - Keep `/health` on the load balancer health check path.
@@ -296,5 +297,6 @@ Redis Pub/Sub does not carry provider keys, prompts, responses, raw headers, or 
 ## Security Notes
 
 - Provider API keys should stay in environment variables or a local secret manager referenced from `gateway.config.yaml`.
-- Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`.
+- Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`. Operators should scope them with endpoint/modalities, allowed nodes/models, namespace, daily budgets, and rate limits instead of sharing one global client key.
+- Gateway API key list/update/delete responses only expose masked prefixes. Create and rotate responses show the full key once; config audit events store redacted summaries and do not persist that one-time secret.
 - The open-source Data Plane does not require SiftGate Cloud. If `control_plane` is enabled, it is an outbound optional integration and AI traffic still flows from the gateway to the configured providers.

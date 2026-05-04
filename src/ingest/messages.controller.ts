@@ -14,6 +14,10 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
+import {
+  attachGatewayApiKeyMetadata,
+  gatewayApiKeyFromRequest,
+} from '../auth/gateway-api-key-metadata';
 import { AnthropicMessagesRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -39,30 +43,7 @@ export class MessagesController {
     try {
       const headers = this.extractHeaders(req);
       const canonical = this.normalizer.normalize(req.body, headers);
-      const gatewayKey = (req as unknown as Record<string, unknown>).gatewayApiKey as
-        | {
-            id: string;
-            name: string;
-            allow_auto: boolean;
-            allow_direct: boolean;
-            allowed_nodes: string[];
-            allowed_models: string[];
-            namespace_id?: string | null;
-            namespace_name?: string | null;
-          }
-        | undefined;
-      canonical.metadata.api_key_name = gatewayKey?.name;
-      canonical.metadata.api_key_id = gatewayKey?.id;
-      canonical.metadata.namespace_id = gatewayKey?.namespace_id || null;
-      canonical.metadata.namespace_name = gatewayKey?.namespace_name || null;
-      canonical.metadata.api_key_permissions = gatewayKey
-        ? {
-            allow_auto: gatewayKey.allow_auto,
-            allow_direct: gatewayKey.allow_direct,
-            allowed_nodes: gatewayKey.allowed_nodes,
-            allowed_models: gatewayKey.allowed_models,
-          }
-        : undefined;
+      attachGatewayApiKeyMetadata(canonical, gatewayApiKeyFromRequest(req));
 
       this.logger.log(
         `[messages] ${canonical.messages.length} msg, stream=${canonical.stream}`,

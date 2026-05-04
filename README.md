@@ -85,7 +85,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Cost/context-aware optimization** — optional `routing.optimization` can prefer cheaper, lower-latency, balanced, or quality-scored targets, while avoiding configured context windows that are too small
 - **Reasoning-aware target preference** — explicit reasoning/thinking requests prefer models that declare `supports_reasoning` or reasoning capability tags, while keeping unknown legacy targets usable unless every configured target says no
 - **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
-- **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, budget, and rate-limit policy limits
+- **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, endpoint/modality, budget, and rate-limit policy limits
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
@@ -115,6 +115,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
+- **API key management** — create, edit, disable, delete, rotate, and copy one-time Gateway API keys with namespace, budget, rate-limit, endpoint, modality, node, and model restrictions
 - **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
 - **Routing visualization** — see tiers, scoring thresholds, fallback chains, load-balancing targets, weights, and recent selections
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
@@ -267,7 +268,7 @@ There are two different kinds of keys:
 - **Provider API keys** live in `.env` / `nodes[].api_key` and let the gateway call OpenAI, Anthropic, Google, or another upstream provider.
 - **Gateway API keys** are generated in the dashboard and let your apps call this gateway.
 
-The full Gateway API key is shown only once when it is created.
+The full Gateway API key is shown only once when it is created or rotated. After that, the Dashboard and APIs only show the masked prefix.
 
 ### 5. Test It
 
@@ -291,7 +292,7 @@ SiftGate uses two different kinds of secrets:
 | Key type         | Where it lives              | Who uses it       | Purpose                                                                                            |
 | ---------------- | --------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
 | Provider API key | `.env` or `nodes[].api_key` | SiftGate          | Lets the gateway call upstream providers such as OpenAI, Anthropic, Gemini, Azure, or a proxy      |
-| Gateway API key  | Dashboard → API Keys        | Your applications | Lets clients call SiftGate and enables attribution, permissions, budgets, rate limits, and billing |
+| Gateway API key  | Dashboard → API Keys        | Your applications | Lets clients call SiftGate and enables attribution, endpoint/model permissions, budgets, rate limits, and billing |
 
 Client applications should never use provider API keys. They call the gateway with:
 
@@ -467,7 +468,7 @@ Client applications call the proxy endpoints with a dashboard-generated Gateway 
 Authorization: Bearer gw_sk_live_...
 ```
 
-Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, rate limits, daily token/cost budgets, and an optional local namespace.
+Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, allowed endpoints/modalities, rate limits, daily token/cost budgets, and an optional local namespace. The Dashboard records these changes as local config audit events when config audit is enabled.
 
 ### Local Namespaces
 
@@ -902,7 +903,7 @@ routing:
   optimization: cost # cost | latency | balanced | quality
 ```
 
-The gateway estimates request tokens from canonical messages, tools, and the requested output budget before automatic routing. Targets whose configured `max_context_tokens` cannot fit the estimate are removed; targets above 80% of their window are demoted behind longer-context alternatives. Direct model routing is not silently changed: if a direct model has a configured window and the estimate exceeds it, the gateway returns a clear 400 error instead of rerouting around the caller's choice. API key `allow_auto`, `allow_direct`, `allowed_nodes`, and `allowed_models` checks still run before a request reaches an upstream provider.
+The gateway estimates request tokens from canonical messages, tools, and the requested output budget before automatic routing. Targets whose configured `max_context_tokens` cannot fit the estimate are removed; targets above 80% of their window are demoted behind longer-context alternatives. Direct model routing is not silently changed: if a direct model has a configured window and the estimate exceeds it, the gateway returns a clear 400 error instead of rerouting around the caller's choice. API key `allow_auto`, `allow_direct`, `allowed_nodes`, `allowed_models`, `allowed_endpoints`, and `allowed_modalities` checks still run before a request reaches an upstream provider.
 
 Optimization modes apply only within the already-eligible smart-routing target set:
 
@@ -1356,7 +1357,7 @@ For each accepted request, the gateway applies the same accounting path:
 1. Authenticate the Gateway API key.
 2. Rate-limit by `api_key_id` when available.
 3. Check global budgets, the key's own budgets, and namespace budgets when the key is namespace-bound.
-4. Resolve `auto` or direct routing according to the key's permissions.
+4. Check the key's endpoint/modality restrictions, then resolve `auto` or direct routing according to node/model permissions.
 5. Serve from gateway prompt cache or call the upstream provider.
 6. Compute token usage and estimated cost from node/model `pricing` overrides or `models_pricing`.
 7. Record usage against global budgets and, when present, the key budget and namespace budget.
@@ -1410,8 +1411,11 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/config/versions/:id`     | Sanitized detail for one config version                                                            |
 | `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore one local config version                                                 |
 | `GET`  | `/api/dashboard/config/audit-events`     | Local config audit event stream                                                                    |
-| `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys                                                                              |
-| `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key                                                                           |
+| `GET`  | `/api/dashboard/api-keys`                | List Gateway API keys with masked prefix, permissions, status, last use, calls, cost, and error rate |
+| `POST` | `/api/dashboard/api-keys`                | Create a Gateway API key and return the full secret once                                           |
+| `PUT`  | `/api/dashboard/api-keys/:id`            | Edit key status, namespace binding, endpoint/model permissions, budgets, and rate limits           |
+| `POST` | `/api/dashboard/api-keys/:id/rotate`     | Rotate a Gateway API key and return the new full secret once                                       |
+| `DELETE` | `/api/dashboard/api-keys/:id`          | Delete a Gateway API key and disable its generated budget rules                                    |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
 | `POST` | `/api/dashboard/nodes/:id/reset`         | Reset circuit breaker                                                                              |
 | `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id`, legacy `api_key`, and `namespace` filters                    |
@@ -1433,7 +1437,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
-- **API Keys** — Client Gateway API key generation, namespace binding, permissions, budgets, rate limits, rotation, and disable/delete controls
+- **API Keys** — Client Gateway API key generation, namespace binding, endpoint/modality/node/model permissions, budgets, rate limits, masked key display, one-time copy, rotation, and disable/delete controls
 - **Config Audit** — Local sanitized config versions, audit events, and confirmation-based rollback
 
 ## Plugins

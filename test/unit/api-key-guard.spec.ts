@@ -49,6 +49,8 @@ describe('ApiKeyGuard', () => {
       allow_direct: false,
       allowed_nodes: ['openai'],
       allowed_models: ['gpt-4o-mini'],
+      allowed_endpoints: [],
+      allowed_modalities: [],
       rate_limit_per_minute: 60,
     };
     const service = makeApiKeyService(keyContext);
