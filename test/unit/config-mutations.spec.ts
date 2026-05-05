@@ -12,7 +12,11 @@ import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'js-yaml';
 import { Logger } from '@nestjs/common';
-import { ConfigReloadError, ConfigService } from '../../src/config/config.service';
+import {
+  ConfigReloadError,
+  ConfigService,
+  MissingRequiredEnvVarError,
+} from '../../src/config/config.service';
 
 function createTempConfig(config: Record<string, unknown>): string {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-test-'));
@@ -53,6 +57,29 @@ function makeMinimalConfig(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeMinimalNodes(openAiApiKey: string) {
+  return [
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      protocol: 'chat_completions',
+      base_url: 'https://api.openai.com',
+      endpoint: '/v1/chat/completions',
+      api_key: openAiApiKey,
+      models: ['gpt-4o', 'gpt-4o-mini'],
+    },
+    {
+      id: 'claude',
+      name: 'Claude',
+      protocol: 'messages',
+      base_url: 'https://api.anthropic.com',
+      endpoint: '/v1/messages',
+      api_key: 'sk-ant',
+      models: ['claude-3-opus'],
+    },
+  ];
+}
+
 function loadConfigService(overrides: Record<string, unknown> = {}): { svc: ConfigService; configPath: string } {
   const configPath = createTempConfig(makeMinimalConfig(overrides));
   process.env.GATEWAY_CONFIG_PATH = configPath;
@@ -62,6 +89,43 @@ function loadConfigService(overrides: Record<string, unknown> = {}): { svc: Conf
 
 afterEach(() => {
   delete process.env.GATEWAY_CONFIG_PATH;
+  delete process.env.REQUIRED_OPENAI_KEY;
+  delete process.env.RELOAD_OPENAI_KEY;
+  delete process.env.SIGHUP_OPENAI_KEY;
+  delete process.env.RUNTIME_ONLY_OPENAI_KEY;
+  delete process.env.OPENAI_WITH_DEFAULT;
+});
+
+describe('ConfigService — required env interpolation', () => {
+  it('fails fast on startup when a required ${VAR} reference is missing', () => {
+    expect(() =>
+      loadConfigService({
+        nodes: makeMinimalNodes('${REQUIRED_OPENAI_KEY}'),
+      }),
+    ).toThrow(MissingRequiredEnvVarError);
+
+    expect(() =>
+      loadConfigService({
+        nodes: makeMinimalNodes('${REQUIRED_OPENAI_KEY}'),
+      }),
+    ).toThrow('Missing required environment variable "REQUIRED_OPENAI_KEY"');
+  });
+
+  it('keeps ${VAR:-default} startup default semantics', () => {
+    const { svc } = loadConfigService({
+      nodes: makeMinimalNodes('${OPENAI_WITH_DEFAULT:-sk-default-openai}'),
+    });
+
+    expect(svc.getNode('openai')?.api_key).toBe('sk-default-openai');
+  });
+
+  it('does not eagerly resolve typed runtime secret references like ${env:VAR}', () => {
+    const { svc } = loadConfigService({
+      nodes: makeMinimalNodes('${env:RUNTIME_ONLY_OPENAI_KEY}'),
+    });
+
+    expect(svc.getNode('openai')?.api_key).toBe('${env:RUNTIME_ONLY_OPENAI_KEY}');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -166,6 +230,36 @@ describe('ConfigService — reload', () => {
     );
   });
 
+  it('should retain the previous config when reload hits a missing required env', () => {
+    const { svc, configPath } = loadConfigService();
+    const eventBus = { emit: jest.fn() };
+    svc.setEventBus(eventBus as any);
+
+    fs.writeFileSync(
+      configPath,
+      yaml.dump(
+        makeMinimalConfig({
+          nodes: makeMinimalNodes('${RELOAD_OPENAI_KEY}'),
+        }),
+      ),
+      'utf8',
+    );
+
+    expect(() => svc.reload()).toThrow(ConfigReloadError);
+    expect(svc.getNode('openai')?.api_key).toBe('sk-test');
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      'config.reload.failed',
+      expect.objectContaining({
+        success: false,
+        rolled_back: true,
+        error: expect.objectContaining({
+          name: 'MissingRequiredEnvVarError',
+          message: expect.stringContaining('RELOAD_OPENAI_KEY'),
+        }),
+      }),
+    );
+  });
+
   it('should reload on SIGHUP without throwing on failure', () => {
     const { svc, configPath } = loadConfigService();
     const eventBus = { emit: jest.fn() };
@@ -200,6 +294,42 @@ describe('ConfigService — reload', () => {
       expect(eventBus.emit).toHaveBeenCalledWith(
         'config.reload.success',
         expect.objectContaining({ source: 'sighup' }),
+      );
+    } finally {
+      svc.onModuleDestroy();
+    }
+  });
+
+  it('should retain the previous config when SIGHUP reload hits a missing required env', () => {
+    const { svc, configPath } = loadConfigService();
+    const eventBus = { emit: jest.fn() };
+    svc.setEventBus(eventBus as any);
+    svc.onModuleInit();
+
+    try {
+      fs.writeFileSync(
+        configPath,
+        yaml.dump(
+          makeMinimalConfig({
+            nodes: makeMinimalNodes('${SIGHUP_OPENAI_KEY}'),
+          }),
+        ),
+        'utf8',
+      );
+
+      process.emit('SIGHUP', 'SIGHUP');
+
+      expect(svc.getNode('openai')?.api_key).toBe('sk-test');
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        'config.reload.failed',
+        expect.objectContaining({
+          source: 'sighup',
+          success: false,
+          error: expect.objectContaining({
+            name: 'MissingRequiredEnvVarError',
+            message: expect.stringContaining('SIGHUP_OPENAI_KEY'),
+          }),
+        }),
       );
     } finally {
       svc.onModuleDestroy();

@@ -13,13 +13,16 @@ import { Request, Response } from 'express';
 import { MediaNormalizer } from '../canonical/normalizers/media.normalizer';
 import { CanonicalMediaSourceFormat } from '../canonical/canonical.types';
 import { PipelineService, PipelineResult } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
   attachGatewayApiKeyMetadata,
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
+import {
+  sendMappedPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-error-handling';
 import {
   AudioSpeechRequestDto,
   AudioTranscriptionRequestDto,
@@ -155,23 +158,7 @@ export class MediaController {
     } catch (err) {
       this.logger.error(`[${this.sourcePath(sourceFormat)}] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
-        if (err instanceof BudgetExceededError) {
-          res.status(429).json({
-            error: {
-              message: err.message,
-              type: 'budget_exceeded',
-              code: err.budgetType,
-              details: err.toDetails(),
-            },
-          });
-          return;
-        }
-        res.status(500).json({
-          error: {
-            message: (err as Error).message,
-            type: 'internal_error',
-          },
-        });
+        sendMappedPublicErrorResponse(res, req, err);
       }
     } finally {
       req.off?.('aborted', abort);
@@ -187,16 +174,7 @@ export class MediaController {
   }
 
   private sendPipelineResult(res: Response, result: PipelineResult): void {
-    res.status(result.statusCode);
-    if (Buffer.isBuffer(result.body)) {
-      res.type(result.contentType || 'application/octet-stream').send(result.body);
-      return;
-    }
-    if (result.contentType && !result.contentType.includes('application/json')) {
-      res.type(result.contentType).send(result.body);
-      return;
-    }
-    res.json(result.body);
+    sendPublicResponse(res, result);
   }
 
   private sourcePath(sourceFormat: CanonicalMediaSourceFormat): string {

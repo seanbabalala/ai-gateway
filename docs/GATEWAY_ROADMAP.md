@@ -22,11 +22,51 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
-| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.1 Public Contract Consistency Patch（基于 v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles） | ✅ Released |
+| v1.5 | Contract Hardening + Runtime Safety | 已发布 — required env fail-fast、统一 public error mapping、request-id / reload 安全收敛 | ✅ Released |
 
 ---
 
+## v1.5 — Contract Hardening + Runtime Safety（公开契约加固与运行时安全）
+
+**v1.5.0 发布状态**：已发布。v1.5 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本次 minor release 的目标不是横向继续堆 provider 或云能力，而是把 1.x 的公开契约和运行时安全做扎实：legacy `${VAR}` 启动期 required env fail-fast、reload/rollback 原子保留旧配置、gateway-generated public error mapping 收敛、request-id 规则在公开错误路径上继续对齐。
+
+### P0：Required Env Fail-Fast
+
+- **状态**：✅ v1.5.0 已发布
+- **目标**：把 legacy `${VAR}` 从“文档上推荐 required”收紧为“运行时真的 required”，避免缺失 env 被静默解析为空串后带来错误路由、假成功启动或 reload 后配置漂移。
+- **实现方案**：
+  - 启动、手动 reload、Dashboard reload、watcher reload、rollback restore 和 `SIGHUP` 都走同一套 `${VAR}` 校验
+  - `${VAR}` 缺失时直接拒绝加载；`${VAR:-default}` 保持显式 fallback 语义
+  - `${env:VAR}`、`${vault:...}`、`${aws-sm:...}`、`${gcp-sm:...}` 保持 runtime secret reference 语义，不提前解析
+  - reload 失败时继续运行旧配置，不发生半替换
+  - README、Quickstart、Production、Secret Management 和 config example 同步补 migration note，提醒 v1.4.x 升级前先补齐环境变量
+
+### P0：Gateway Public Error Mapping
+
+- **状态**：✅ v1.5.0 已发布
+- **目标**：减少各公开 controller 的手写 catch + envelope 分散逻辑，同时保持 OpenAI / Anthropic / Batch / MCP / Video 现有成功响应形状不变。
+- **实现方案**：
+  - 引入统一 public error mapping 层，按请求路径推导 OpenAI-compatible 或 Anthropic-compatible error outer shape
+  - 统一 gateway-generated public error 的 `message`、`type`、`request_id`、status 语义和 request-id 头
+  - Batch / MCP / Video 保持各自已存在的协议兼容输出，不重写为第二套 envelope
+  - pre-controller parser/body-limit 错误也纳入同一层，避免出现 request-id 或 envelope 漂移
+
+### P0：Request-Id / Reload Safety 收口
+
+- **状态**：✅ v1.5.0 已发布
+- **目标**：让 request-id、日志、Dashboard、SDK 和 OpenAPI 文档在“哪一条 request id 是公开契约”上保持一致，并让 reload 失败时的运行态始终可预期。
+- **实现方案**：
+  - 继续公开 `x-siftgate-request-id`，并保持 `x-request-id` 兼容
+  - gateway-generated error body 稳定暴露 `request_id`
+  - SDK 继续优先读取 `x-siftgate-request-id`，再回退 `x-request-id` / `x-correlation-id`
+  - OpenAPI error schema 明确 request id 字段与响应头规则
+  - reload / restore 失败时 Dashboard 和 event bus 都收到明确 failure result，旧配置保持生效
+
+
 ## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
+
+**v1.4.1 发布状态**：已发布。作为 v1.4.0 之后的 patch release，v1.4.1 不扩张新功能、不引入 breaking change，也不改变 `${VAR}` 缺失时的当前启动语义；重点是把 MIT 开源 Data Plane 的公开契约和 release 元数据重新拉齐，包括 request-id 响应头、SDK request-id 提取顺序、gateway-generated error 最小契约，以及 OpenAPI / package / Python package 的版本同步。
 
 **v1.4.0 发布状态**：已发布。v1.4 基于 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
 

@@ -11,13 +11,16 @@ import {
 import { Request, Response } from 'express';
 import { RerankNormalizer } from '../canonical/normalizers/rerank.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
   attachGatewayApiKeyMetadata,
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
+import {
+  sendMappedPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-error-handling';
 import { ErrorEnvelopeDto, RerankRequestDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -60,27 +63,11 @@ export class RerankController {
       const result = await this.pipeline.processRerank(canonical, {
         signal: abortController.signal,
       });
-      res.status(result.statusCode).json(result.body);
+      sendPublicResponse(res, result);
     } catch (err) {
       this.logger.error(`[rerank] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
-        if (err instanceof BudgetExceededError) {
-          res.status(429).json({
-            error: {
-              message: err.message,
-              type: 'budget_exceeded',
-              code: err.budgetType,
-              details: err.toDetails(),
-            },
-          });
-          return;
-        }
-        res.status(500).json({
-          error: {
-            message: (err as Error).message,
-            type: 'internal_error',
-          },
-        });
+        sendMappedPublicErrorResponse(res, req, err);
       }
     } finally {
       req.off?.('aborted', abort);
