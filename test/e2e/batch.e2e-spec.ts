@@ -47,6 +47,8 @@ describe('Batch API proxy (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe('batch-e2e-1');
+    expect(res.headers['x-siftgate-request-id']).toBeDefined();
+    expect(res.headers['x-request-id']).toBe(res.headers['x-siftgate-request-id']);
     expect(harness.fetchMock.calls[0].url).toBe('http://mock-upstream.test/v1/batches');
     expect(harness.fetchMock.calls[0].headers.Authorization).toBe('Bearer mock-openai-key');
 

@@ -640,6 +640,7 @@ describe('PipelineService — embeddings', () => {
     const result = await pipeline.processEmbeddings(request);
 
     expect(result.statusCode).toBe(200);
+    expect(result.requestId).toEqual(expect.any(String));
     expect(result.body).toMatchObject({
       object: 'list',
       model: 'text-embedding-3-small',
@@ -821,6 +822,7 @@ describe('PipelineService — rerank', () => {
     const result = await pipeline.processRerank(request);
 
     expect(result.statusCode).toBe(200);
+    expect(result.requestId).toEqual(expect.any(String));
     expect(result.body).toMatchObject({
       object: 'rerank',
       model: 'rerank-english-v3',
@@ -945,7 +947,13 @@ describe('PipelineService — budget enforcement', () => {
     const result = await pipeline.process(request);
 
     expect(result.statusCode).toBe(429);
-    expect(result.body).toHaveProperty('error');
+    expect(result.requestId).toEqual(expect.any(String));
+    expect(result.body).toMatchObject({
+      error: expect.objectContaining({
+        type: 'budget_exceeded',
+        request_id: result.requestId,
+      }),
+    });
   });
 
   it('should record usage after successful response', async () => {
@@ -1590,6 +1598,7 @@ describe('PipelineService — error formatting', () => {
         message: expect.stringContaining('Budget exceeded'),
         type: 'budget_exceeded',
         code: 'tokens',
+        request_id: result.requestId,
         details: expect.objectContaining({
           scope: 'global',
           api_key_id: null,
@@ -1619,6 +1628,7 @@ describe('PipelineService — error formatting', () => {
       error: {
         type: 'budget_exceeded',
         message: expect.stringContaining('Budget exceeded'),
+        request_id: result.requestId,
         details: expect.objectContaining({
           scope: 'global',
           api_key_id: null,
@@ -1934,7 +1944,16 @@ describe('PipelineService — processStream', () => {
     await pipeline.processStream(request, res);
 
     expect(res.status).toHaveBeenCalledWith(429);
-    expect(res.json).toHaveBeenCalled();
+    expect(res.setHeader).toHaveBeenCalledWith('x-siftgate-request-id', expect.any(String));
+    expect(res.setHeader).toHaveBeenCalledWith('x-request-id', expect.any(String));
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          type: 'budget_exceeded',
+          request_id: expect.any(String),
+        }),
+      }),
+    );
   });
 
   it('should replay cached response as synthetic SSE stream', async () => {
@@ -2479,6 +2498,7 @@ describe('PipelineService — images and audio', () => {
     const result = await pipeline.processMedia(request);
 
     expect(result.statusCode).toBe(200);
+    expect(result.requestId).toEqual(expect.any(String));
     expect(result.body).toMatchObject({
       data: [{ url: 'https://example.test/generated.png' }],
     });
@@ -2582,6 +2602,7 @@ describe('PipelineService — images and audio', () => {
     const result = await pipeline.processMedia(request);
 
     expect(result.statusCode).toBe(200);
+    expect(result.requestId).toEqual(expect.any(String));
     expect(Buffer.isBuffer(result.body)).toBe(true);
     expect(result.contentType).toBe('audio/mpeg');
     expect(mocks.callLogRepo.create).toHaveBeenCalledWith(

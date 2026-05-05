@@ -106,8 +106,9 @@ export class ChatCompletionsStreamSerializer {
         return this.sse({
           error: {
             message: event.error.message,
-            type: 'server_error',
+            type: event.error.type || 'server_error',
             code: event.error.code || null,
+            request_id: event.error.request_id || null,
           },
         });
       }
@@ -248,7 +249,9 @@ export class ResponsesStreamSerializer {
       case 'error': {
         return this.sseEvent('error', {
           message: event.error.message,
+          type: event.error.type || 'server_error',
           code: event.error.code || null,
+          request_id: event.error.request_id || null,
         });
       }
     }
@@ -369,8 +372,9 @@ export class MessagesStreamSerializer {
         return this.sseEvent('error', {
           type: 'error',
           error: {
-            type: 'api_error',
+            type: event.error.type || 'api_error',
             message: event.error.message,
+            request_id: event.error.request_id || null,
           },
         });
       }

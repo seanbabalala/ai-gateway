@@ -22,11 +22,13 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
-| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.1 Public Contract Consistency Patch（基于 v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles） | ✅ Released |
 
 ---
 
 ## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
+
+**v1.4.1 发布状态**：已发布。作为 v1.4.0 之后的 patch release，v1.4.1 不扩张新功能、不引入 breaking change，也不改变 `${VAR}` 缺失时的当前启动语义；重点是把 MIT 开源 Data Plane 的公开契约和 release 元数据重新拉齐，包括 request-id 响应头、SDK request-id 提取顺序、gateway-generated error 最小契约，以及 OpenAPI / package / Python package 的版本同步。
 
 **v1.4.0 发布状态**：已发布。v1.4 基于 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
 

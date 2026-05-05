@@ -160,4 +160,27 @@ describe("@siftgate/client", () => {
       requestId: "req_test",
     } satisfies Partial<SiftGateError>);
   });
+
+  it("prefers x-siftgate-request-id over legacy response headers", async () => {
+    const body = {
+      error: {
+        type: "internal_error",
+        message: "Gateway failed",
+      },
+    };
+    const { fetch } = makeFetch(body, {
+      status: 500,
+      statusText: "Internal Server Error",
+      headers: {
+        "x-siftgate-request-id": "req_public_123",
+        "x-request-id": "req_legacy_123",
+        "x-correlation-id": "corr_123",
+      },
+    });
+    const client = new SiftGateClient({ fetch });
+
+    await expect(client.models.list()).rejects.toMatchObject({
+      requestId: "req_public_123",
+    } satisfies Partial<SiftGateError>);
+  });
 });

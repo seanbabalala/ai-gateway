@@ -27,6 +27,15 @@ describe('Guards (e2e)', () => {
       .send({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] });
 
     expect(res.status).toBe(401);
+    expect(res.headers['x-siftgate-request-id']).toBeDefined();
+    expect(res.headers['x-request-id']).toBe(res.headers['x-siftgate-request-id']);
+    expect(res.body).toMatchObject({
+      error: {
+        type: 'authentication_error',
+        message: 'Missing API key. Use Authorization: Bearer <key>',
+        request_id: expect.any(String),
+      },
+    });
   });
 
   it('Bearer wrong-key → 401', async () => {

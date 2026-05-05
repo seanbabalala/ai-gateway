@@ -264,7 +264,11 @@ def _parse_response_body(response: SiftGateResponse) -> JsonValue:
 
 def _to_siftgate_error(response: SiftGateResponse) -> SiftGateError:
     body = _parse_response_body(response)
-    request_id = _header(response.headers, "x-request-id") or _header(response.headers, "x-correlation-id")
+    request_id = (
+        _header(response.headers, "x-siftgate-request-id")
+        or _header(response.headers, "x-request-id")
+        or _header(response.headers, "x-correlation-id")
+    )
     message = _extract_error_message(body, response.status_code)
     return SiftGateError(message, status_code=response.status_code, body=body, request_id=request_id)
 

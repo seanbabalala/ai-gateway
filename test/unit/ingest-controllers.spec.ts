@@ -52,6 +52,28 @@ function mockPipeline(overrides: Record<string, any> = {}): any {
 // ═══════════════════════════════════════════════════════════
 
 describe('ChatCompletionsController', () => {
+  it('should expose both public request id headers for non-stream gateway responses', async () => {
+    const pipeline = mockPipeline({
+      process: jest.fn().mockResolvedValue({
+        statusCode: 200,
+        body: { id: 'test' },
+        requestId: 'req_chat_123',
+      }),
+    });
+    const controller = new ChatCompletionsController(pipeline);
+    const req = mockReq({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'Hi' }],
+      stream: false,
+    });
+    const res = mockRes();
+
+    await controller.handle(req, res);
+
+    expect(res.setHeader).toHaveBeenCalledWith('x-siftgate-request-id', 'req_chat_123');
+    expect(res.setHeader).toHaveBeenCalledWith('x-request-id', 'req_chat_123');
+  });
+
   it('should handle non-stream request', async () => {
     const pipeline = mockPipeline();
     const controller = new ChatCompletionsController(pipeline);
@@ -104,7 +126,10 @@ describe('ChatCompletionsController', () => {
 
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      error: expect.objectContaining({ type: 'budget_exceeded' }),
+      error: expect.objectContaining({
+        type: 'budget_exceeded',
+        request_id: expect.any(String),
+      }),
     }));
   });
 
@@ -125,7 +150,10 @@ describe('ChatCompletionsController', () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      error: expect.objectContaining({ type: 'internal_error' }),
+      error: expect.objectContaining({
+        type: 'internal_error',
+        request_id: expect.any(String),
+      }),
     }));
   });
 
@@ -369,7 +397,10 @@ describe('MessagesController', () => {
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       type: 'error',
-      error: expect.objectContaining({ type: 'budget_exceeded' }),
+      error: expect.objectContaining({
+        type: 'budget_exceeded',
+        request_id: expect.any(String),
+      }),
     }));
   });
 
@@ -392,7 +423,10 @@ describe('MessagesController', () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       type: 'error',
-      error: expect.objectContaining({ type: 'internal_error' }),
+      error: expect.objectContaining({
+        type: 'internal_error',
+        request_id: expect.any(String),
+      }),
     }));
   });
 });
@@ -447,7 +481,10 @@ describe('ResponsesController', () => {
 
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      error: expect.objectContaining({ type: 'budget_exceeded' }),
+      error: expect.objectContaining({
+        type: 'budget_exceeded',
+        request_id: expect.any(String),
+      }),
     }));
   });
 

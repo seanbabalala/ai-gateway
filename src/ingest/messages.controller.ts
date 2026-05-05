@@ -18,6 +18,10 @@ import {
   attachGatewayApiKeyMetadata,
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
+import {
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
 import { AnthropicMessagesRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -53,25 +57,20 @@ export class MessagesController {
         await this.pipeline.processStream(canonical, res);
       } else {
         const result = await this.pipeline.process(canonical);
-        res.status(result.statusCode).json(result.body);
+        sendPublicResponse(res, result);
       }
     } catch (err) {
       this.logger.error(`[messages] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
         const status = err instanceof BudgetExceededError ? 429 : 500;
         if (err instanceof BudgetExceededError) {
-          res.status(429).json({
-            type: 'error',
-            error: {
-              type: 'budget_exceeded',
-              message: err.message,
-              details: err.toDetails(),
-            },
+          sendPublicErrorResponse(res, 429, 'anthropic', err.message, {
+            type: 'budget_exceeded',
+            details: err.toDetails(),
           });
         } else {
-          res.status(500).json({
-            type: 'error',
-            error: { type: 'internal_error', message: (err as Error).message },
+          sendPublicErrorResponse(res, status, 'anthropic', (err as Error).message, {
+            type: 'internal_error',
           });
         }
       }

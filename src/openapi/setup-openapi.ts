@@ -28,13 +28,17 @@ import {
   SanitizedConfigResponseDto,
 } from './openapi.dto';
 
+const { version: releaseVersion } = require('../../package.json') as {
+  version: string;
+};
+
 export function setupOpenApi(app: INestApplication): void {
   const config = new DocumentBuilder()
     .setTitle('SiftGate Data Plane API')
     .setDescription(
       'OpenAPI documentation for the MIT open-source SiftGate data plane, local dashboard API, and provider-compatible ingress endpoints.',
     )
-    .setVersion('0.2')
+    .setVersion(releaseVersion)
     .addBearerAuth(
       {
         type: 'http',

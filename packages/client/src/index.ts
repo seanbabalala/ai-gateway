@@ -205,6 +205,7 @@ function createSignal(
 async function createSiftGateError(response: Response): Promise<SiftGateError> {
   const body = await parseBody(response);
   const requestId =
+    response.headers.get("x-siftgate-request-id") ??
     response.headers.get("x-request-id") ??
     response.headers.get("x-correlation-id") ??
     undefined;

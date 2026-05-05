@@ -412,6 +412,8 @@ export interface StreamErrorEvent {
   error: {
     message: string;
     code?: string;
+    type?: string;
+    request_id?: string;
   };
 }
 

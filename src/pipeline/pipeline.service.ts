@@ -67,6 +67,11 @@ import {
   ResponsesStreamSerializer,
   MessagesStreamSerializer,
 } from '../providers/stream/stream-serializers';
+import {
+  anthropicCompatibleError,
+  applyGatewayRequestIdHeaders,
+  openAiCompatibleError,
+} from '../http/public-contract';
 import { CallLog, RouteDecisionLog } from '../database/entities';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
@@ -265,10 +270,11 @@ export class PipelineService {
               } catch (err) {
                 if (err instanceof BudgetExceededError) {
                   this.logger.warn(`Budget exceeded: ${err.message}`);
-                  return {
-                    body: this.formatBudgetError(canonical.metadata.source_format, err),
-                    statusCode: 429,
-                  };
+                  return this.budgetErrorResult(
+                    canonical.metadata.source_format,
+                    err,
+                    requestId,
+                  );
                 }
                 throw err;
               }
@@ -288,10 +294,10 @@ export class PipelineService {
                 error: null,
                 retryCount: 0,
               });
-              return {
-                body: this.denormalizeForClient(scResponse, canonical.metadata.source_format),
-                statusCode: 200,
-              };
+              return this.successResult(
+                requestId,
+                this.denormalizeForClient(scResponse, canonical.metadata.source_format),
+              );
             }
             canonical = (hookResult.data as { request: CanonicalRequest }).request;
           }
@@ -303,10 +309,11 @@ export class PipelineService {
           } catch (err) {
             if (err instanceof BudgetExceededError) {
               this.logger.warn(`Budget exceeded: ${err.message}`);
-              return {
-                body: this.formatBudgetError(canonical.metadata.source_format, err),
-                statusCode: 429,
-              };
+              return this.budgetErrorResult(
+                canonical.metadata.source_format,
+                err,
+                requestId,
+              );
             }
             throw err;
           }
@@ -340,7 +347,7 @@ export class PipelineService {
                   reason: 'local prompt cache hit',
                   selectionHints: this.cacheSelectionHintsFromStore(store),
                 }) });
-              return { body: responseBody, statusCode: 200 };
+              return this.successResult(requestId, responseBody);
             }
             this.telemetry.recordCacheMiss();
           }
@@ -407,7 +414,7 @@ export class PipelineService {
                   selectionHints: this.cacheSelectionHintsFromStore(store),
                 }),
               });
-              return { body: responseBody, statusCode: 200 };
+              return this.successResult(requestId, responseBody);
             }
           }
 
@@ -527,10 +534,10 @@ export class PipelineService {
                 fallbackFromNode,
                 routeTrace: activeRouteTrace,
               });
-              return {
-                body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
-                statusCode: 200,
-              };
+              return this.successResult(
+                requestId,
+                this.denormalizeForClient(recovered, canonical.metadata.source_format),
+              );
             }
             this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
             await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
@@ -539,10 +546,12 @@ export class PipelineService {
               retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
               domainHint, modalityHints, fallbackReason,
               fallbackFromNode, routeTrace: activeRouteTrace });
-            return {
-              body: this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
-              statusCode: failureStatus,
-            };
+            return this.errorResult(
+              canonical.metadata.source_format,
+              failureStatus,
+              errorMsg,
+              requestId,
+            );
           }
 
           // ── postUpstream Hook ──
@@ -623,7 +632,7 @@ export class PipelineService {
             usedModel,
           );
 
-          return { body: responseBody, statusCode: 200 };
+          return this.successResult(requestId, responseBody);
         } catch (err) {
           const recovered = await this.runOnErrorHooks(
             canonical,
@@ -641,30 +650,26 @@ export class PipelineService {
               nodeId: 'hook',
               latencyMs: Date.now() - startTime,
             });
-            return {
-              body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
-              statusCode: 200,
-            };
+            return this.successResult(
+              requestId,
+              this.denormalizeForClient(recovered, canonical.metadata.source_format),
+            );
           }
           if (err instanceof GatewayRequestRejectedError) {
-            return {
-              body: this.formatError(
-                canonical.metadata.source_format,
-                err.statusCode,
-                err.message,
-              ),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              canonical.metadata.source_format,
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           if (err instanceof RoutingConstraintError) {
-            return {
-              body: this.formatError(
-                canonical.metadata.source_format,
-                err.statusCode,
-                err.message,
-              ),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              canonical.metadata.source_format,
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           throw err;
         }
@@ -699,10 +704,7 @@ export class PipelineService {
 
           const validationError = this.validateEmbeddingRequest(canonical);
           if (validationError) {
-            return {
-              body: this.formatError('embeddings', 400, validationError),
-              statusCode: 400,
-            };
+            return this.errorResult('embeddings', 400, validationError, requestId);
           }
 
           try {
@@ -710,10 +712,7 @@ export class PipelineService {
           } catch (err) {
             if (err instanceof BudgetExceededError) {
               this.logger.warn(`Budget exceeded (embeddings): ${err.message}`);
-              return {
-                body: this.formatBudgetError('embeddings', err),
-                statusCode: 429,
-              };
+              return this.budgetErrorResult('embeddings', err, requestId);
             }
             throw err;
           }
@@ -794,10 +793,12 @@ export class PipelineService {
               fallbackFromNode,
               routeTrace: route.trace,
             });
-            return {
-              body: this.formatError('embeddings', failureStatus, errorMsg),
-              statusCode: failureStatus,
-            };
+            return this.errorResult(
+              'embeddings',
+              failureStatus,
+              errorMsg,
+              requestId,
+            );
           }
 
           if (response.usage.input_tokens === 0) {
@@ -852,22 +853,26 @@ export class PipelineService {
             usedModel,
           );
 
-          return {
-            body: this.denormalizeEmbeddingForClient(response),
-            statusCode: 200,
-          };
+          return this.successResult(
+            requestId,
+            this.denormalizeEmbeddingForClient(response),
+          );
         } catch (err) {
           if (err instanceof GatewayRequestRejectedError) {
-            return {
-              body: this.formatError('embeddings', err.statusCode, err.message),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              'embeddings',
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           if (err instanceof RoutingConstraintError) {
-            return {
-              body: this.formatError('embeddings', err.statusCode, err.message),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              'embeddings',
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           throw err;
         }
@@ -902,10 +907,7 @@ export class PipelineService {
 
           const validationError = this.validateRerankRequest(canonical);
           if (validationError) {
-            return {
-              body: this.formatError('rerank', 400, validationError),
-              statusCode: 400,
-            };
+            return this.errorResult('rerank', 400, validationError, requestId);
           }
 
           try {
@@ -913,10 +915,7 @@ export class PipelineService {
           } catch (err) {
             if (err instanceof BudgetExceededError) {
               this.logger.warn(`Budget exceeded (rerank): ${err.message}`);
-              return {
-                body: this.formatBudgetError('rerank', err),
-                statusCode: 429,
-              };
+              return this.budgetErrorResult('rerank', err, requestId);
             }
             throw err;
           }
@@ -997,10 +996,12 @@ export class PipelineService {
               fallbackFromNode,
               routeTrace: route.trace,
             });
-            return {
-              body: this.formatError('rerank', failureStatus, errorMsg),
-              statusCode: failureStatus,
-            };
+            return this.errorResult(
+              'rerank',
+              failureStatus,
+              errorMsg,
+              requestId,
+            );
           }
 
           if (response.usage.input_tokens === 0) {
@@ -1048,22 +1049,26 @@ export class PipelineService {
             routeTrace: route.trace,
           });
 
-          return {
-            body: this.denormalizeRerankForClient(response),
-            statusCode: 200,
-          };
+          return this.successResult(
+            requestId,
+            this.denormalizeRerankForClient(response),
+          );
         } catch (err) {
           if (err instanceof GatewayRequestRejectedError) {
-            return {
-              body: this.formatError('rerank', err.statusCode, err.message),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              'rerank',
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           if (err instanceof RoutingConstraintError) {
-            return {
-              body: this.formatError('rerank', err.statusCode, err.message),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              'rerank',
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           throw err;
         }
@@ -1102,10 +1107,12 @@ export class PipelineService {
 
           const validationError = this.validateMediaRequest(canonical);
           if (validationError) {
-            return {
-              body: this.formatError(canonical.source_format, 400, validationError),
-              statusCode: 400,
-            };
+            return this.errorResult(
+              canonical.source_format,
+              400,
+              validationError,
+              requestId,
+            );
           }
 
           try {
@@ -1113,10 +1120,11 @@ export class PipelineService {
           } catch (err) {
             if (err instanceof BudgetExceededError) {
               this.logger.warn(`Budget exceeded (${canonical.source_format}): ${err.message}`);
-              return {
-                body: this.formatBudgetError(canonical.source_format, err),
-                statusCode: 429,
-              };
+              return this.budgetErrorResult(
+                canonical.source_format,
+                err,
+                requestId,
+              );
             }
             throw err;
           }
@@ -1198,10 +1206,12 @@ export class PipelineService {
               fallbackFromNode,
               routeTrace: route.trace,
             });
-            return {
-              body: this.formatError(canonical.source_format, failureStatus, errorMsg),
-              statusCode: failureStatus,
-            };
+            return this.errorResult(
+              canonical.source_format,
+              failureStatus,
+              errorMsg,
+              requestId,
+            );
           }
 
           if (response.usage.input_tokens === 0 && response.usage.output_tokens === 0) {
@@ -1250,26 +1260,27 @@ export class PipelineService {
               routeTrace: route.trace,
             });
 
-          return {
-            body: response.body,
-            statusCode: 200,
+          return this.successResult(requestId, response.body, 200, {
             contentType: response.content_type,
-            requestId,
             nodeId: usedNodeId,
             model: usedModel,
-          };
+          });
         } catch (err) {
           if (err instanceof GatewayRequestRejectedError) {
-            return {
-              body: this.formatError(canonical.source_format, err.statusCode, err.message),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              canonical.source_format,
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           if (err instanceof RoutingConstraintError) {
-            return {
-              body: this.formatError(canonical.source_format, err.statusCode, err.message),
-              statusCode: err.statusCode,
-            };
+            return this.errorResult(
+              canonical.source_format,
+              err.statusCode,
+              err.message,
+              requestId,
+            );
           }
           throw err;
         }
@@ -2352,12 +2363,22 @@ export class PipelineService {
 
     const ensureStreamHeaders = () => {
       if (headersFlushed) return;
+      applyGatewayRequestIdHeaders(res, requestId);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
       headersFlushed = true;
+    };
+
+    const sendStreamErrorResponse = (
+      statusCode: number,
+      body: Record<string, unknown>,
+    ) => {
+      applyGatewayRequestIdHeaders(res, requestId);
+      headersFlushed = true;
+      res.status(statusCode).json(body);
     };
 
     try {
@@ -2379,8 +2400,13 @@ export class PipelineService {
           } catch (err) {
             if (err instanceof BudgetExceededError) {
               this.logger.warn(`Budget exceeded (stream): ${err.message}`);
-              res.status(429).json(
-                this.formatBudgetError(canonical.metadata.source_format, err),
+              sendStreamErrorResponse(
+                429,
+                this.formatBudgetError(
+                  canonical.metadata.source_format,
+                  err,
+                  requestId,
+                ),
               );
               rootSpan.end();
               return;
@@ -2403,7 +2429,12 @@ export class PipelineService {
             error: null,
             retryCount: 0,
           });
-          this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, scResponse);
+          this.writeSyntheticStreamResponse(
+            res,
+            canonical.metadata.source_format,
+            scResponse,
+            requestId,
+          );
           rootSpan.end();
           return;
         }
@@ -2417,8 +2448,13 @@ export class PipelineService {
       } catch (err) {
         if (err instanceof BudgetExceededError) {
           this.logger.warn(`Budget exceeded (stream): ${err.message}`);
-          res.status(429).json(
-            this.formatBudgetError(canonical.metadata.source_format, err),
+          sendStreamErrorResponse(
+            429,
+            this.formatBudgetError(
+              canonical.metadata.source_format,
+              err,
+              requestId,
+            ),
           );
           rootSpan.end();
           return;
@@ -2442,7 +2478,12 @@ export class PipelineService {
 
           await this.recordBudgetUsage(canonical, cached.usage, cached.model);
           streamCompleted = true;
-          this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, cached);
+          this.writeSyntheticStreamResponse(
+            res,
+            canonical.metadata.source_format,
+            cached,
+            requestId,
+          );
 
           await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
             model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
@@ -2541,6 +2582,7 @@ export class PipelineService {
             res,
             canonical.metadata.source_format,
             scResponse,
+            requestId,
           );
           rootSpan.end();
           return;
@@ -2742,11 +2784,13 @@ export class PipelineService {
               this.logger.warn(lastError.message);
               if (!lastError.fallbackAllowed) {
                 if (!headersFlushed) {
-                  res.status(lastError.statusCode).json(
+                  sendStreamErrorResponse(
+                    lastError.statusCode,
                     this.formatError(
                       canonical.metadata.source_format,
                       lastError.statusCode,
                       lastError.message,
+                      requestId,
                     ),
                   );
                   rootSpan.end();
@@ -2754,7 +2798,12 @@ export class PipelineService {
                 }
                 const errorEvent: CanonicalStreamEvent = {
                   type: 'error',
-                  error: { message: lastError.message, code: 'concurrency_limited' },
+                  error: {
+                    message: lastError.message,
+                    code: 'concurrency_limited',
+                    type: 'server_error',
+                    request_id: requestId,
+                  },
                 };
                 ensureStreamHeaders();
                 res.write(serializer.serialize(errorEvent));
@@ -2805,13 +2854,23 @@ export class PipelineService {
                   fallbackFromNode,
                   routeTrace: activeRouteTrace,
                 });
-                this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+                this.writeSyntheticStreamResponse(
+                  res,
+                  canonical.metadata.source_format,
+                  recovered,
+                  requestId,
+                );
                 rootSpan.end();
                 return;
               }
               const errorEvent: CanonicalStreamEvent = {
                 type: 'error',
-                error: { message: lastError.message, code: 'stream_error' },
+                error: {
+                  message: lastError.message,
+                  code: 'stream_error',
+                  type: 'server_error',
+                  request_id: requestId,
+                },
               };
               ensureStreamHeaders();
               res.write(serializer.serialize(errorEvent));
@@ -2898,7 +2957,12 @@ export class PipelineService {
           fallbackFromNode,
           routeTrace: activeRouteTrace,
         });
-        this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+        this.writeSyntheticStreamResponse(
+          res,
+          canonical.metadata.source_format,
+          recovered,
+          requestId,
+        );
         rootSpan.end();
         return;
       }
@@ -2909,8 +2973,14 @@ export class PipelineService {
         domainHint, modalityHints, fallbackReason,
         fallbackFromNode, routeTrace: activeRouteTrace });
       this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
-      res.status(failureStatus).json(
-        this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
+      sendStreamErrorResponse(
+        failureStatus,
+        this.formatError(
+          canonical.metadata.source_format,
+          failureStatus,
+          errorMsg,
+          requestId,
+        ),
       );
       rootSpan.end();
     } catch (err) {
@@ -2930,17 +3000,24 @@ export class PipelineService {
           nodeId: 'hook',
           latencyMs: Date.now() - streamStartTime,
         });
-        this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+        this.writeSyntheticStreamResponse(
+          res,
+          canonical.metadata.source_format,
+          recovered,
+          requestId,
+        );
         rootSpan.end();
         return;
       }
 
       if (err instanceof GatewayRequestRejectedError && !headersFlushed) {
-        res.status(err.statusCode).json(
+        sendStreamErrorResponse(
+          err.statusCode,
           this.formatError(
             canonical.metadata.source_format,
             err.statusCode,
             err.message,
+            requestId,
           ),
         );
         rootSpan.end();
@@ -2948,11 +3025,13 @@ export class PipelineService {
       }
 
       if (err instanceof RoutingConstraintError && !headersFlushed) {
-        res.status(err.statusCode).json(
+        sendStreamErrorResponse(
+          err.statusCode,
           this.formatError(
             canonical.metadata.source_format,
             err.statusCode,
             err.message,
+            requestId,
           ),
         );
         rootSpan.end();
@@ -2961,11 +3040,13 @@ export class PipelineService {
 
       if (!headersFlushed) {
         const failureStatus = this.resolveFailureStatus(err as Error);
-        res.status(failureStatus).json(
+        sendStreamErrorResponse(
+          failureStatus,
           this.formatError(
             canonical.metadata.source_format,
             failureStatus,
             (err as Error).message,
+            requestId,
           ),
         );
       }
@@ -4853,47 +4934,105 @@ export class PipelineService {
   // Error Formatting
   // ══════════════════════════════════════════════════════
 
-  private formatError(sourceFormat: SourceFormat, statusCode: number, message: string): Record<string, unknown> {
+  private successResult(
+    requestId: string,
+    body: PipelineResult['body'],
+    statusCode = 200,
+    extra: Partial<Pick<PipelineResult, 'contentType' | 'nodeId' | 'model'>> = {},
+  ): PipelineResult {
+    return {
+      requestId,
+      body,
+      statusCode,
+      ...extra,
+    };
+  }
+
+  private errorResult(
+    sourceFormat: SourceFormat,
+    statusCode: number,
+    message: string,
+    requestId: string,
+  ): PipelineResult {
+    return this.successResult(
+      requestId,
+      this.formatError(sourceFormat, statusCode, message, requestId),
+      statusCode,
+    );
+  }
+
+  private budgetErrorResult(
+    sourceFormat: SourceFormat,
+    err: BudgetExceededError,
+    requestId: string,
+  ): PipelineResult {
+    return this.successResult(
+      requestId,
+      this.formatBudgetError(sourceFormat, err, requestId),
+      429,
+    );
+  }
+
+  private formatError(
+    sourceFormat: SourceFormat,
+    statusCode: number,
+    message: string,
+    requestId?: string,
+  ): Record<string, unknown> {
     switch (sourceFormat) {
-      case 'chat_completions': return { error: { message, type: 'server_error', code: String(statusCode) } };
-      case 'responses': return { error: { message, type: 'server_error', code: String(statusCode) } };
-      case 'embeddings': return { error: { message, type: 'server_error', code: String(statusCode) } };
-      case 'rerank': return { error: { message, type: 'server_error', code: String(statusCode) } };
+      case 'chat_completions':
+      case 'responses':
+      case 'embeddings':
+      case 'rerank':
       case 'image_generation':
       case 'image_edit':
       case 'image_variation':
       case 'audio_transcription':
       case 'audio_translation':
       case 'audio_speech':
-        return { error: { message, type: 'server_error', code: String(statusCode) } };
-      case 'messages': return { type: 'error', error: { type: 'api_error', message } };
-      default: return { error: { message } };
+      case 'video_generation':
+      case 'batch':
+        return openAiCompatibleError(message, {
+          type: 'server_error',
+          code: String(statusCode),
+          requestId,
+        });
+      case 'messages':
+        return anthropicCompatibleError(message, {
+          type: 'api_error',
+          requestId,
+        });
+      default:
+        return openAiCompatibleError(message, {
+          type: 'internal_error',
+          code: String(statusCode),
+          requestId,
+        });
     }
   }
 
-  private formatBudgetError(sourceFormat: SourceFormat, err: BudgetExceededError): Record<string, unknown> {
+  private formatBudgetError(
+    sourceFormat: SourceFormat,
+    err: BudgetExceededError,
+    requestId?: string,
+  ): Record<string, unknown> {
     const details = err.toDetails();
     switch (sourceFormat) {
       case 'messages':
-        return {
-          type: 'error',
-          error: {
-            type: 'budget_exceeded',
-            message: err.message,
-            details,
-          },
-        };
+        return anthropicCompatibleError(err.message, {
+          type: 'budget_exceeded',
+          details,
+          requestId,
+        });
       case 'chat_completions':
       case 'responses':
       default:
-        return {
-          error: {
-            message: err.message,
-            type: 'budget_exceeded',
-            code: err.budgetType,
-            details,
-          },
-        };
+        return openAiCompatibleError(err.message, {
+          type: 'budget_exceeded',
+          code: err.budgetType,
+          details,
+          requestId,
+        });
     }
   }
 
@@ -4970,8 +5109,10 @@ export class PipelineService {
     res: ExpressResponse,
     sourceFormat: SourceFormat,
     canonical: CanonicalResponse,
+    requestId?: string,
   ): void {
     const serializer = this.createSerializer(sourceFormat);
+    applyGatewayRequestIdHeaders(res, requestId);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');

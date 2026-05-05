@@ -118,6 +118,7 @@ client.chat.completions.create(
 ## Errors
 
 Non-2xx responses raise `SiftGateError`.
+`SiftGateError.request_id` prefers `x-siftgate-request-id`, then falls back to `x-request-id` and `x-correlation-id`.
 
 ```python
 from siftgate import SiftGateError

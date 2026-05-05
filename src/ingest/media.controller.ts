@@ -21,6 +21,10 @@ import {
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
 import {
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
+import {
   AudioSpeechRequestDto,
   AudioTranscriptionRequestDto,
   AudioTranslationRequestDto,
@@ -156,21 +160,15 @@ export class MediaController {
       this.logger.error(`[${this.sourcePath(sourceFormat)}] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
         if (err instanceof BudgetExceededError) {
-          res.status(429).json({
-            error: {
-              message: err.message,
-              type: 'budget_exceeded',
-              code: err.budgetType,
-              details: err.toDetails(),
-            },
+          sendPublicErrorResponse(res, 429, 'openai', err.message, {
+            type: 'budget_exceeded',
+            code: err.budgetType,
+            details: err.toDetails(),
           });
           return;
         }
-        res.status(500).json({
-          error: {
-            message: (err as Error).message,
-            type: 'internal_error',
-          },
+        sendPublicErrorResponse(res, 500, 'openai', (err as Error).message, {
+          type: 'internal_error',
         });
       }
     } finally {
@@ -187,16 +185,7 @@ export class MediaController {
   }
 
   private sendPipelineResult(res: Response, result: PipelineResult): void {
-    res.status(result.statusCode);
-    if (Buffer.isBuffer(result.body)) {
-      res.type(result.contentType || 'application/octet-stream').send(result.body);
-      return;
-    }
-    if (result.contentType && !result.contentType.includes('application/json')) {
-      res.type(result.contentType).send(result.body);
-      return;
-    }
-    res.json(result.body);
+    sendPublicResponse(res, result);
   }
 
   private sourcePath(sourceFormat: CanonicalMediaSourceFormat): string {
