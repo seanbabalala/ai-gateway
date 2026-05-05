@@ -1,14 +1,16 @@
-import { Body, Controller, HttpException, Logger, Param, Post, Req, Res, UseGuards } from '@nestjs/common'
+import { Body, Controller, Logger, Param, Post, Req, Res, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { ApiKeyGuard } from '../auth/api-key.guard'
 import { RateLimitGuard } from '../auth/rate-limit.guard'
 import { gatewayApiKeyFromRequest } from '../auth/gateway-api-key-metadata'
 import {
-  MCP_REQUEST_ID_HEADER,
-  extractRequestIdFromHttpException,
-  sendPublicErrorResponse,
+  sendMappedPublicErrorResponse,
   sendPublicResponse,
+} from '../http/public-error-handling'
+import {
+  MCP_REQUEST_ID_HEADER,
+  sendPublicErrorResponse,
 } from '../http/public-contract'
 import { ErrorEnvelopeDto } from '../openapi/openapi.dto'
 import { McpGatewayService } from './mcp-gateway.service'
@@ -52,54 +54,12 @@ export class McpGatewayController {
       this.logger.warn(
         `mcp proxy failed: ${error instanceof Error ? error.message : String(error)}`,
       )
-      if (error instanceof HttpException) {
-        const status = error.getStatus()
-        const response = error.getResponse()
-        const bodyRecord =
-          typeof response === 'object' && response ? response as Record<string, unknown> : null
-        const errorRecord =
-          bodyRecord && typeof bodyRecord.error === 'object' && bodyRecord.error
-            ? bodyRecord.error as Record<string, unknown>
-            : null
-        sendPublicErrorResponse(
-          res,
-          status,
-          'openai',
-          typeof response === 'string'
-            ? response
-            : typeof errorRecord?.message === 'string'
-              ? errorRecord.message
-              : typeof bodyRecord?.message === 'string'
-                ? bodyRecord.message
-                : error.message,
-          {
-            type:
-              typeof errorRecord?.type === 'string'
-                ? errorRecord.type
-                : status === 404
-                  ? 'not_found'
-                  : status === 403
-                    ? 'forbidden'
-                    : status === 413
-                      ? 'payload_too_large'
-                      : 'mcp_proxy_error',
-            code:
-              typeof errorRecord?.code === 'string'
-                ? errorRecord.code
-                : typeof bodyRecord?.code === 'string'
-                  ? bodyRecord.code
-                  : undefined,
-            details: errorRecord?.details ?? bodyRecord?.details,
-            requestId: extractRequestIdFromHttpException(error),
-            extraHeaders: [MCP_REQUEST_ID_HEADER],
-          },
-        )
-        return
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, error, {
+          fallbackMessage: 'MCP proxy request failed.',
+          extraHeaders: [MCP_REQUEST_ID_HEADER],
+        })
       }
-      sendPublicErrorResponse(res, 500, 'openai', 'MCP proxy request failed.', {
-        type: 'internal_error',
-        extraHeaders: [MCP_REQUEST_ID_HEADER],
-      })
     }
   }
 }

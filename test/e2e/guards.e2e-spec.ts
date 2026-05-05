@@ -96,6 +96,33 @@ describe('Guards (e2e)', () => {
       .send(largeBody);
 
     expect(res.status).toBe(413);
+    expect(res.headers['x-siftgate-request-id']).toBeDefined();
+    expect(res.headers['x-request-id']).toBe(res.headers['x-siftgate-request-id']);
+    expect(res.body).toMatchObject({
+      error: {
+        type: 'payload_too_large',
+        request_id: expect.any(String),
+      },
+    });
+  });
+
+  it('invalid JSON on /v1/messages → 400 + Anthropic-compatible error envelope', async () => {
+    const res = await harness.agent
+      .post('/v1/messages')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .set('Content-Type', 'application/json')
+      .send('{"model":"claude-sonnet-4-20250514",');
+
+    expect(res.status).toBe(400);
+    expect(res.headers['x-siftgate-request-id']).toBeDefined();
+    expect(res.headers['x-request-id']).toBe(res.headers['x-siftgate-request-id']);
+    expect(res.body).toMatchObject({
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        request_id: expect.any(String),
+      },
+    });
   });
 
   // ── Helmet Security Headers ──

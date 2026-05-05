@@ -129,7 +129,7 @@ hardening visible without blocking local development.
 ```
 
 If your CI environment intentionally does not have provider secrets, use
-`${VAR:-dummy}` or `${env:VAR:-dummy}` in CI-only fixtures, or accept the
-`env_reference_unset` warning. Malformed references are errors; missing env
-values without defaults are warnings so config shape can still be validated
-without exposing secrets.
+`${VAR:-dummy}` or `${env:VAR:-dummy}` in CI-only fixtures. The static validator
+can still warn about unset env references without blocking offline config-shape
+checks, but the runtime changed in v1.5.0: startup and reload now fail fast
+when a legacy `${VAR}` reference has no value and no default.

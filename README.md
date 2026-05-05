@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.4.1 Public Contract Consistency Patch**.
+Current release: **v1.5.0 Contract Hardening and Runtime Safety**.
 
-Current development focus after v1.4.1: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
+Current development focus after v1.5.0: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
 
 ## Why SiftGate
 
@@ -49,11 +49,11 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
-## v1.4.1 Patch Highlights
+## v1.5 Highlights
 
-- Public request-id consistency: gateway-generated public responses now expose `x-siftgate-request-id` and the legacy-compatible `x-request-id`.
-- SDK compatibility hardening: the TypeScript client and Python SDK now prefer `x-siftgate-request-id`, then fall back to `x-request-id` and `x-correlation-id`.
-- Release/version consistency: `/openapi.json`, the root package, the TypeScript client package, and the Python package now stay aligned on the published release version.
+- Required env fail-fast: legacy `${VAR}` references are now enforced during startup and config reload. `${VAR:-default}` still works for local defaults and CI-safe placeholders, while `${env:VAR}` and external secret backends stay runtime-resolved.
+- Runtime-safe reloads: dashboard reload, watcher reload, rollback restore, and `SIGHUP` now reject invalid configs atomically and keep the last known-good config in memory.
+- Public error contract hardening: gateway-generated public errors now go through one mapping layer so `message`, `type`, `request_id`, `x-siftgate-request-id`, and protocol-compatible OpenAI / Anthropic / Batch / MCP / Video envelopes stay aligned.
 
 ## v1.4 Highlights
 
@@ -77,7 +77,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
 
-## After v1.4 Priorities
+## After v1.5 Priorities
 
 - Add an optional Redis semantic-cache backend while keeping memory/SQLite defaults safe.
 - Explore a local Prompt Registry / Template layer as a future governance feature.
@@ -86,6 +86,8 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 ## Configuration
 
 The default path is `gateway.config.yaml`. Start from `gateway.config.example.yaml` and keep real provider keys out of git.
+
+In v1.5, legacy `${VAR}` references are treated as required config inputs: startup and reload fail fast if the variable is missing. Use `${VAR:-default}` when you intentionally want a local default, or `${env:VAR}` / Vault / AWS / GCP references when you want request-time secret resolution.
 
 Common settings:
 

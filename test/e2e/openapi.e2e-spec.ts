@@ -73,6 +73,9 @@ describe('OpenAPI documentation endpoints', () => {
     expect(res.body.components.schemas.SanitizedNodeConfigDto.properties.api_key).toMatchObject({
       readOnly: true,
     });
+    expect(res.body.components.schemas.ErrorDetailDto.properties.request_id).toMatchObject({
+      type: 'string',
+    });
 
     const spec = JSON.stringify(res.body);
     expect(spec).not.toContain('mock-openai-key');

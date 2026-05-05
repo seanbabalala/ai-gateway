@@ -4,6 +4,20 @@
 
 No unreleased changes yet.
 
+## 1.5.0 - 2026-05-05
+
+### Changed
+
+- Released the v1.5.0 Contract Hardening and Runtime Safety minor for the MIT OSS Data Plane, focusing on stable public contracts and safer runtime behavior instead of new provider breadth or cloud features.
+- Tightened legacy `${VAR}` config interpolation so missing required env values now fail fast during startup and reload, while `${VAR:-default}` keeps explicit fallback semantics and `${env:VAR}` / Vault / AWS / GCP references keep runtime resolution behavior.
+- Added one public gateway error mapping layer for OSS ingress so gateway-generated public errors keep consistent `message`, `type`, `request_id`, status semantics, and request-id headers without changing successful OpenAI / Anthropic / Batch / MCP / Video response shapes.
+- Extended request-id consistency across gateway-generated non-streaming and pre-controller error paths, including parser/body-limit failures, while preserving `x-siftgate-request-id` and legacy-compatible `x-request-id`.
+
+### Fixed
+
+- Hot reload, Dashboard reload, rollback restore, file-watcher reload, and `SIGHUP` now reject invalid configs atomically and keep the previously active config in memory instead of replacing it with a partially resolved or broken candidate.
+- Updated OpenAPI error schema and release documentation so request-id and required-env behavior are documented consistently for v1.5.0 operators upgrading from the v1.4.x line.
+
 ## 1.4.1 - 2026-05-05
 
 ### Fixed

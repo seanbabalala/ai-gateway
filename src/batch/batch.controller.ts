@@ -23,9 +23,10 @@ import {
 import type { Request, Response as ExpressResponse } from 'express';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
-import { BudgetExceededError } from '../budget/budget.service';
 import {
-  extractRequestIdFromHttpException,
+  sendMappedPublicErrorResponse,
+} from '../http/public-error-handling';
+import {
   sendPublicErrorResponse,
   sendPublicResponse,
 } from '../http/public-contract';
@@ -65,7 +66,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch create');
+      this.handleError(req, res, error, 'batch create');
     }
   }
 
@@ -86,7 +87,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch retrieve');
+      this.handleError(req, res, error, 'batch retrieve');
     }
   }
 
@@ -107,7 +108,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch cancel');
+      this.handleError(req, res, error, 'batch cancel');
     }
   }
 
@@ -132,7 +133,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch output download');
+      this.handleError(req, res, error, 'batch output download');
     }
   }
 
@@ -156,7 +157,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch error download');
+      this.handleError(req, res, error, 'batch error download');
     }
   }
 
@@ -167,56 +168,17 @@ export class BatchController {
     sendPublicResponse(res, response);
   }
 
-  private handleError(res: ExpressResponse, error: unknown, operation: string): void {
+  private handleError(
+    req: Request,
+    res: ExpressResponse,
+    error: unknown,
+    operation: string,
+  ): void {
     this.logger.warn(`${operation} failed: ${error instanceof Error ? error.message : String(error)}`);
-    if (error instanceof BudgetExceededError) {
-      sendPublicErrorResponse(res, 429, 'openai', error.message, {
-        type: 'budget_exceeded',
-        code: error.budgetType,
-        details: error.toDetails(),
+    if (!res.headersSent) {
+      sendMappedPublicErrorResponse(res, req, error, {
+        fallbackMessage: 'Batch proxy request failed.',
       });
-      return;
     }
-    if (error instanceof HttpException) {
-      const status = error.getStatus();
-      const response = error.getResponse();
-      const body = typeof response === 'object' && response ? response as Record<string, unknown> : null;
-      const errorBody =
-        body && typeof body.error === 'object' && body.error
-          ? body.error as Record<string, unknown>
-          : null;
-      sendPublicErrorResponse(
-        res,
-        status,
-        'openai',
-        typeof response === 'string'
-          ? response
-          : typeof errorBody?.message === 'string'
-            ? errorBody.message
-            : typeof body?.message === 'string'
-              ? body.message
-              : error.message,
-        {
-          type:
-            typeof errorBody?.type === 'string'
-              ? errorBody.type
-              : status === 404
-                ? 'not_found'
-                : 'batch_proxy_error',
-          code:
-            typeof errorBody?.code === 'string'
-              ? errorBody.code
-              : typeof body?.code === 'string'
-                ? body.code
-                : undefined,
-          details: errorBody?.details ?? body?.details,
-          requestId: extractRequestIdFromHttpException(error),
-        },
-      );
-      return;
-    }
-    sendPublicErrorResponse(res, 500, 'openai', 'Batch proxy request failed.', {
-      type: 'internal_error',
-    });
   }
 }

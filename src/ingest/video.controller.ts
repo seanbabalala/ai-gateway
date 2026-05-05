@@ -13,7 +13,6 @@ import { Repository } from 'typeorm';
 import { Request, Response as ExpressResponse } from 'express';
 import { MediaNormalizer } from '../canonical/normalizers/media.normalizer';
 import { PipelineService, PipelineResult } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
@@ -25,6 +24,7 @@ import { ConfigService } from '../config/config.service';
 import { NodeConfig } from '../config/gateway.config';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import { VideoJob } from '../database/entities';
+import { sendMappedPublicErrorResponse } from '../http/public-error-handling';
 import {
   sendPublicErrorResponse,
   sendPublicResponse,
@@ -77,17 +77,9 @@ export class VideoController {
       this.sendPipelineResult(res, result);
     } catch (err) {
       this.logger.error(`[videos/generations] Error: ${(err as Error).message}`);
-      if (err instanceof BudgetExceededError) {
-        sendPublicErrorResponse(res, 429, 'openai', err.message, {
-          type: 'budget_exceeded',
-          code: err.budgetType,
-          details: err.toDetails(),
-        });
-        return;
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, err);
       }
-      sendPublicErrorResponse(res, 500, 'openai', (err as Error).message, {
-        type: 'internal_error',
-      });
     }
   }
 
@@ -140,10 +132,13 @@ export class VideoController {
       await this.proxyProvider(node, node.video_content_endpoint, job, 'GET', res);
     } catch (err) {
       this.logger.warn(`Video content proxy failed for ${id}: ${(err as Error).message}`);
-      sendPublicErrorResponse(res, 502, 'openai', (err as Error).message, {
-        type: 'video_proxy_error',
-        requestId: job.request_id,
-      });
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, err, {
+          statusCode: 502,
+          type: 'video_proxy_error',
+          requestId: job.request_id,
+        });
+      }
     }
   }
 
@@ -178,10 +173,13 @@ export class VideoController {
       });
     } catch (err) {
       this.logger.warn(`Video cancel proxy failed for ${id}: ${(err as Error).message}`);
-      sendPublicErrorResponse(res, 502, 'openai', (err as Error).message, {
-        type: 'video_proxy_error',
-        requestId: job.request_id,
-      });
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, err, {
+          statusCode: 502,
+          type: 'video_proxy_error',
+          requestId: job.request_id,
+        });
+      }
     }
   }
 

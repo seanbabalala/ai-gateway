@@ -11,7 +11,6 @@ import {
 import { Request, Response } from 'express';
 import { MessagesNormalizer } from '../canonical/normalizers/messages.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
@@ -19,9 +18,9 @@ import {
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
 import {
-  sendPublicErrorResponse,
+  sendMappedPublicErrorResponse,
   sendPublicResponse,
-} from '../http/public-contract';
+} from '../http/public-error-handling';
 import { AnthropicMessagesRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -62,17 +61,7 @@ export class MessagesController {
     } catch (err) {
       this.logger.error(`[messages] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
-        const status = err instanceof BudgetExceededError ? 429 : 500;
-        if (err instanceof BudgetExceededError) {
-          sendPublicErrorResponse(res, 429, 'anthropic', err.message, {
-            type: 'budget_exceeded',
-            details: err.toDetails(),
-          });
-        } else {
-          sendPublicErrorResponse(res, status, 'anthropic', (err as Error).message, {
-            type: 'internal_error',
-          });
-        }
+        sendMappedPublicErrorResponse(res, req, err, { protocol: 'anthropic' });
       }
     }
   }

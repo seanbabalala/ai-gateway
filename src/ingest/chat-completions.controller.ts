@@ -11,7 +11,6 @@ import {
 import { Request, Response } from 'express';
 import { ChatCompletionsNormalizer } from '../canonical/normalizers/chat-completions.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
@@ -19,9 +18,9 @@ import {
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
 import {
-  sendPublicErrorResponse,
+  sendMappedPublicErrorResponse,
   sendPublicResponse,
-} from '../http/public-contract';
+} from '../http/public-error-handling';
 import { ChatCompletionsRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -62,17 +61,7 @@ export class ChatCompletionsController {
     } catch (err) {
       this.logger.error(`[chat/completions] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
-        if (err instanceof BudgetExceededError) {
-          sendPublicErrorResponse(res, 429, 'openai', err.message, {
-            type: 'budget_exceeded',
-            code: err.budgetType,
-            details: err.toDetails(),
-          });
-          return;
-        }
-        sendPublicErrorResponse(res, 500, 'openai', (err as Error).message, {
-          type: 'internal_error',
-        });
+        sendMappedPublicErrorResponse(res, req, err);
       }
     }
   }

@@ -8,6 +8,11 @@
 #   ${VAR}            — required, fails if not set
 #   ${VAR:-default}   — optional, uses default if not set
 #
+# v1.5.0 migration note:
+#   legacy ${VAR} references are now enforced during startup and reload.
+#   If you are upgrading from v1.4.x, populate every required env before
+#   rollout or switch intentional placeholders to ${VAR:-default}.
+#
 # v0.9 also supports runtime secret references:
 #   ${env:VAR}
 #   ${vault:path/to/secret#field}
