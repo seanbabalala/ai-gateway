@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Added Provider Catalog Dashboard UX 2.0 for the v1.4 provider ecosystem work: catalog responses now expose Dashboard-ready provider family, provider type, compatibility profile, aliases, logo id, links, model buckets, limits, and pricing-unit metadata without introducing a second catalog.
+- Added a grouped Provider Catalog explorer with summary cards, family/type/modality/compatibility/price-source filters, stale/review quick filters, collapsed provider groups, detail panels, sync status, override markers, and 7-language operator copy.
+- Added Add Node Wizard provider family filters, alias/model search, provider type badges, catalog identity logos, and a bounded scroll area so 50+ providers remain usable while advanced endpoint/header/pricing/health fields stay editable.
+
+### Changed
+
+- Dashboard Logs and Route Explanation candidate tables now render provider identity icons from node/model hints so compatible providers remain visually distinct from OpenAI fallbacks.
+
 ## 1.3.2 - 2026-05-05
 
 ### Added

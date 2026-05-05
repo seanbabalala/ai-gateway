@@ -370,7 +370,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
-| `GET` | `/api/dashboard/catalog/providers` | Merged Provider Catalog providers, price source status, override metadata, refresh-source availability, and pricing sync status |
+| `GET` | `/api/dashboard/catalog/providers` | Merged Provider Catalog providers, Dashboard provider identity/family/type metadata, price source status, override metadata, refresh-source availability, and pricing sync status |
 | `GET` | `/api/dashboard/catalog/models` | Flattened Provider Catalog models with provider/modality/endpoint filters, price source metadata, and pricing sync status |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
@@ -404,6 +404,8 @@ The Dashboard API is metadata-only. It returns server id/name, sanitized upstrea
 `GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + sync cache + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `last_sync`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
 
 v1.2 adds `sync_status` to these responses. It reports whether scheduled sync is enabled, whether it is actually scheduled, the `write_to` target, cache/override paths, enabled adapters, provider `last_sync`, source URL, confidence, stale state, and recent sync issues. Scheduled sync is disabled by default and only OpenRouter has an automatic adapter in v1.2.
+
+v1.4 adds Dashboard UX metadata to provider rows without introducing a second catalog. Fields include `provider_id`, `display_name`, `aliases`, `family`, `category`, `provider_type`, `compatibility_profile`, `logo_id`, `homepage_url`, `docs_url`, `pricing_url`, `input_types`, `output_types`, `model_buckets`, `limits`, and `pricing_units`. These fields power provider-family filters, alias search, Add Node presets, provider detail panels, and consistent logo identity across Catalog, Nodes, Logs, and Route Explanation. They are metadata-only and never include provider keys, raw headers, prompts, responses, media bytes, or generated video bytes.
 
 Dashboard copy calls this **price source status**. The internal response field remains `pricing_hygiene` for backward compatibility.
 

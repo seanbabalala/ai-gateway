@@ -87,6 +87,152 @@ import {
 } from '../openapi/openapi.dto';
 
 const DASHBOARD_PROTOCOLS = ['chat_completions', 'responses', 'messages'] as const;
+const DASHBOARD_PROVIDER_FAMILIES = [
+  'foundation',
+  'aggregators',
+  'cloud',
+  'china',
+  'self_hosted',
+  'image_video',
+  'speech_audio',
+  'embedding_rerank',
+] as const;
+const DASHBOARD_MODEL_BUCKETS = [
+  'models',
+  'embedding_models',
+  'rerank_models',
+  'image_models',
+  'audio_models',
+  'video_models',
+  'realtime_models',
+  'batch_models',
+] as const;
+type DashboardProviderFamily = typeof DASHBOARD_PROVIDER_FAMILIES[number];
+type DashboardProviderType = 'direct' | 'aggregator' | 'cloud' | 'self_hosted' | 'media' | 'speech' | 'local' | 'custom' | 'compatible';
+type DashboardCompatibilityProfile = 'native' | 'openai-compatible' | 'anthropic-compatible' | 'google-compatible' | 'local' | 'custom';
+type DashboardModelBucket = typeof DASHBOARD_MODEL_BUCKETS[number];
+
+const DASHBOARD_PROVIDER_ALIAS_HINTS: Record<string, string[]> = {
+  'openai': ['gpt', 'o-series', 'dall-e', 'openai api'],
+  'anthropic': ['claude'],
+  'google-gemini': ['gemini', 'google ai studio'],
+  'google-vertex': ['vertex', 'gemini vertex', 'veo', 'imagen'],
+  'azure-openai': ['azure', 'azure ai foundry'],
+  'aws-bedrock': ['bedrock', 'amazon bedrock', 'amazon titan'],
+  'alibaba-qwen': ['qwen', 'tongyi', 'dashscope', '通义', '千问'],
+  'baidu-qianfan': ['baidu', 'wenxin', 'qianfan', 'ernie', '文心', '千帆'],
+  'volcengine-ark': ['doubao', 'volcengine', 'ark', '火山', '豆包'],
+  'zhipu': ['zhipu', 'glm', 'chatglm', '智谱'],
+  'moonshot': ['moonshot', 'kimi', '月之暗面'],
+  'tencent-hunyuan': ['hunyuan', 'tencent', '混元', '腾讯'],
+  '01ai': ['01.ai', 'yi', 'lingyiwanwu', '零一万物'],
+  'openrouter': ['router', 'aggregator'],
+  'huggingface': ['hugging face', 'hf', 'inference endpoint'],
+  'cloudflare-workers-ai': ['cloudflare', 'workers ai'],
+  'stability-ai': ['stability', 'stable diffusion'],
+  'black-forest-labs': ['bfl', 'flux'],
+  'fal-ai': ['fal'],
+  'luma-ai': ['luma', 'dream machine'],
+  'elevenlabs': ['eleven labs', 'tts', 'voice'],
+  'deepgram': ['speech to text', 'stt'],
+  'openai-compatible': ['compatible proxy', 'custom provider', 'self hosted'],
+};
+
+const DASHBOARD_AGGREGATOR_PROVIDER_IDS = new Set([
+  'openrouter',
+  'together',
+  'fireworks',
+  'replicate',
+  'fal-ai',
+  'perplexity',
+]);
+const DASHBOARD_CLOUD_PROVIDER_IDS = new Set([
+  'aws-bedrock',
+  'azure-openai',
+  'google-vertex',
+  'cloudflare-workers-ai',
+  'ibm-watsonx',
+  'nvidia-nim',
+  'baseten',
+  'lepton-ai',
+  'modal',
+  'runpod',
+  'predibase',
+  'cerebras',
+  'sambanova',
+]);
+const DASHBOARD_CHINA_PROVIDER_IDS = new Set([
+  'alibaba-qwen',
+  'baidu-qianfan',
+  'volcengine-ark',
+  'zhipu',
+  'moonshot',
+  'minimax',
+  'tencent-hunyuan',
+  '01ai',
+  'deepseek',
+]);
+const DASHBOARD_LOCAL_PROVIDER_IDS = new Set([
+  'ollama',
+  'lm-studio',
+  'llama-cpp',
+  'vllm',
+  'tgi',
+  'text-generation-inference',
+  'sglang',
+  'xinference',
+]);
+const DASHBOARD_IMAGE_VIDEO_PROVIDER_IDS = new Set([
+  'stability-ai',
+  'black-forest-labs',
+  'ideogram',
+  'luma-ai',
+  'runway',
+  'pika',
+  'replicate',
+  'fal-ai',
+]);
+const DASHBOARD_SPEECH_PROVIDER_IDS = new Set([
+  'elevenlabs',
+  'deepgram',
+  'assemblyai',
+  'cartesia',
+  'speechmatics',
+]);
+const DASHBOARD_EMBEDDING_RERANK_PROVIDER_IDS = new Set([
+  'cohere',
+  'voyage',
+  'jina',
+]);
+const DASHBOARD_HOMEPAGE_URLS: Record<string, string> = {
+  'openai': 'https://openai.com',
+  'anthropic': 'https://www.anthropic.com',
+  'google-gemini': 'https://ai.google.dev',
+  'google-vertex': 'https://cloud.google.com/vertex-ai',
+  'azure-openai': 'https://azure.microsoft.com/products/ai-services/openai-service',
+  'openrouter': 'https://openrouter.ai',
+  'aws-bedrock': 'https://aws.amazon.com/bedrock',
+  'alibaba-qwen': 'https://www.alibabacloud.com/product/modelstudio',
+  'baidu-qianfan': 'https://cloud.baidu.com/product/wenxinworkshop',
+  'volcengine-ark': 'https://www.volcengine.com/product/ark',
+  'zhipu': 'https://www.bigmodel.cn',
+  'moonshot': 'https://www.moonshot.cn',
+  'tencent-hunyuan': 'https://hunyuan.tencent.com',
+  '01ai': 'https://www.01.ai',
+  'huggingface': 'https://huggingface.co',
+  'cloudflare-workers-ai': 'https://developers.cloudflare.com/workers-ai',
+  'stability-ai': 'https://stability.ai',
+  'black-forest-labs': 'https://blackforestlabs.ai',
+  'fal-ai': 'https://fal.ai',
+  'luma-ai': 'https://lumalabs.ai',
+  'runway': 'https://runwayml.com',
+  'pika': 'https://pika.art',
+  'elevenlabs': 'https://elevenlabs.io',
+  'deepgram': 'https://deepgram.com',
+  'assemblyai': 'https://www.assemblyai.com',
+  'cartesia': 'https://cartesia.ai',
+  'speechmatics': 'https://www.speechmatics.com',
+};
 
 function toDashboardCatalogProvider(provider: CatalogProvider) {
   const endpoints = withDashboardEndpointAliases(provider.endpoints);
@@ -100,15 +246,33 @@ function toDashboardCatalogProvider(provider: CatalogProvider) {
     last_updated: '',
     manual_review_required: true,
   };
+  const providerType = deriveDashboardProviderType(provider, modalities);
+  const family = deriveDashboardProviderFamily(provider, providerType, modalities);
 
   return {
     ...provider,
+    provider_id: provider.id,
+    display_name: provider.name,
     description: `${provider.name} provider preset`,
     base_url_matchers: baseUrlMatchers(provider.base_url),
     protocols: protocols.length > 0 ? protocols : ['chat_completions'],
     default_protocol: protocols[0] || 'chat_completions',
     endpoints,
     modalities,
+    input_types: inferDashboardInputTypes(modalities),
+    output_types: inferDashboardOutputTypes(modalities),
+    aliases: deriveDashboardProviderAliases(provider),
+    family,
+    category: family,
+    provider_type: providerType,
+    compatibility_profile: deriveDashboardCompatibilityProfile(provider, providerType),
+    logo_id: provider.id,
+    homepage_url: dashboardProviderHomepage(provider),
+    docs_url: dashboardProviderDocsUrl(provider),
+    pricing_url: pricing.source_url || dashboardProviderDocsUrl(provider),
+    model_buckets: dashboardProviderModelBuckets(models),
+    limits: dashboardProviderLimits(models),
+    pricing_units: pricing.units || (pricing.unit ? { default: pricing.unit } : {}),
     pricing,
     tags: [
       provider.source,
@@ -145,6 +309,124 @@ function toDashboardCatalogModel(model: CatalogModel, provider?: CatalogProvider
 
 function firstModelPricing(provider: CatalogProvider | undefined) {
   return provider?.models.find((model) => model.pricing)?.pricing;
+}
+
+function deriveDashboardProviderAliases(provider: CatalogProvider): string[] {
+  return Array.from(new Set([
+    provider.id,
+    provider.name,
+    ...(provider.model_prefixes || []),
+    ...(provider.capabilities || []),
+    ...(DASHBOARD_PROVIDER_ALIAS_HINTS[provider.id] || []),
+  ].map((value) => value.trim()).filter(Boolean)));
+}
+
+function deriveDashboardProviderType(
+  provider: CatalogProvider,
+  modalities: string[],
+): DashboardProviderType {
+  const id = provider.id.toLowerCase();
+  const baseUrl = provider.base_url.toLowerCase();
+  if (id === 'openai-compatible') return 'custom';
+  if (DASHBOARD_LOCAL_PROVIDER_IDS.has(id) || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) return 'local';
+  if (DASHBOARD_AGGREGATOR_PROVIDER_IDS.has(id)) return 'aggregator';
+  if (DASHBOARD_CLOUD_PROVIDER_IDS.has(id)) return 'cloud';
+  if (DASHBOARD_SPEECH_PROVIDER_IDS.has(id) || (modalities.includes('audio') && !modalities.includes('text'))) return 'speech';
+  if (DASHBOARD_IMAGE_VIDEO_PROVIDER_IDS.has(id) || ((modalities.includes('image') || modalities.includes('video')) && !modalities.includes('text'))) return 'media';
+  if (
+    provider.capabilities?.some((capability) => capability.includes('openai-compatible') || capability.includes('openai_compatible')) ||
+    provider.model_prefixes?.some((prefix) => prefix.includes('/')) ||
+    provider.id.endsWith('-compatible')
+  ) {
+    return 'compatible';
+  }
+  return 'direct';
+}
+
+function deriveDashboardProviderFamily(
+  provider: CatalogProvider,
+  providerType: DashboardProviderType,
+  modalities: string[],
+): DashboardProviderFamily {
+  const id = provider.id.toLowerCase();
+  if (DASHBOARD_CHINA_PROVIDER_IDS.has(id)) return 'china';
+  if (providerType === 'aggregator') return 'aggregators';
+  if (providerType === 'cloud') return 'cloud';
+  if (providerType === 'local' || providerType === 'self_hosted') return 'self_hosted';
+  if (DASHBOARD_IMAGE_VIDEO_PROVIDER_IDS.has(id) || modalities.includes('video') || (modalities.includes('image') && !modalities.includes('text'))) {
+    return 'image_video';
+  }
+  if (DASHBOARD_SPEECH_PROVIDER_IDS.has(id) || (modalities.includes('audio') && !modalities.includes('text'))) {
+    return 'speech_audio';
+  }
+  if (DASHBOARD_EMBEDDING_RERANK_PROVIDER_IDS.has(id) || (modalities.every((modality) => ['embedding', 'rerank', 'text'].includes(modality)) && (modalities.includes('embedding') || modalities.includes('rerank')))) {
+    return 'embedding_rerank';
+  }
+  return 'foundation';
+}
+
+function deriveDashboardCompatibilityProfile(
+  provider: CatalogProvider,
+  providerType: DashboardProviderType,
+): DashboardCompatibilityProfile {
+  const id = provider.id.toLowerCase();
+  if (id === 'openai-compatible' || providerType === 'custom') return 'custom';
+  if (providerType === 'local') return 'local';
+  if (id.includes('anthropic') || provider.endpoints.messages) return 'anthropic-compatible';
+  if (id.includes('gemini') || id.includes('vertex')) return 'google-compatible';
+  if (
+    provider.endpoints.chat_completions ||
+    provider.endpoints.responses ||
+    provider.capabilities?.some((capability) => capability.includes('openai-compatible') || capability.includes('openai_compatible')) ||
+    ['openrouter', 'groq', 'mistral', 'deepseek', 'xai', 'together', 'fireworks', 'ollama', 'vllm'].includes(id)
+  ) {
+    return 'openai-compatible';
+  }
+  return 'native';
+}
+
+function dashboardProviderHomepage(provider: CatalogProvider): string | null {
+  if (DASHBOARD_HOMEPAGE_URLS[provider.id]) return DASHBOARD_HOMEPAGE_URLS[provider.id];
+  try {
+    const url = new URL(provider.base_url);
+    return `${url.protocol}//${url.hostname}`;
+  } catch {
+    return null;
+  }
+}
+
+function dashboardProviderDocsUrl(provider: CatalogProvider): string | null {
+  return provider.pricing?.source_url || dashboardProviderHomepage(provider);
+}
+
+function dashboardProviderModelBuckets(
+  models: ReturnType<typeof toDashboardCatalogModel>[],
+): Record<DashboardModelBucket, string[]> {
+  const buckets = Object.fromEntries(
+    DASHBOARD_MODEL_BUCKETS.map((bucket) => [bucket, [] as string[]]),
+  ) as Record<DashboardModelBucket, string[]>;
+  for (const model of models) {
+    if (model.endpoints.includes('embeddings') || model.modalities.includes('embedding')) buckets.embedding_models.push(model.id);
+    else if (model.endpoints.includes('rerank') || model.modalities.includes('rerank')) buckets.rerank_models.push(model.id);
+    else if (model.endpoints.includes('image_generations') || model.endpoints.includes('image_edits') || model.modalities.includes('image')) buckets.image_models.push(model.id);
+    else if (model.endpoints.includes('audio_transcriptions') || model.endpoints.includes('audio_speech') || model.modalities.includes('audio')) buckets.audio_models.push(model.id);
+    else if (model.endpoints.includes('video_generations') || model.endpoints.includes('video_status') || model.modalities.includes('video')) buckets.video_models.push(model.id);
+    else if (model.endpoints.includes('realtime') || model.modalities.includes('realtime')) buckets.realtime_models.push(model.id);
+    else buckets.models.push(model.id);
+  }
+  return buckets;
+}
+
+function dashboardProviderLimits(
+  models: ReturnType<typeof toDashboardCatalogModel>[],
+): { model_count: number; max_context_tokens: number | null; max_file_size: number | null } {
+  const maxContext = Math.max(0, ...models.map((model) => model.limits?.max_context_tokens || 0));
+  const maxFileSize = Math.max(0, ...models.map((model) => model.limits?.max_file_size || 0));
+  return {
+    model_count: models.length,
+    max_context_tokens: maxContext || null,
+    max_file_size: maxFileSize || null,
+  };
 }
 
 function withDashboardEndpointAliases(

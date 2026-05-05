@@ -1,6 +1,6 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers, including AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers, including AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud. v1.4 prepares the Dashboard and catalog API shape for 50+ providers by adding provider family, provider type, compatibility profile, aliases, logo identity, model buckets, links, limits, and pricing-unit metadata. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
 
 The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
@@ -34,7 +34,20 @@ Responses include merged built-in + override metadata:
 
 Provider and model rows include `overridden` markers when local override data replaced or added fields.
 
-Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, and modality coverage without changing routing or node config.
+Dashboard provider rows also include operator-facing fields derived from the merged catalog:
+
+| Field | Purpose |
+| --- | --- |
+| `family` / `category` | Groups providers into Foundation Models, Aggregators, Cloud Platforms, China Providers, Self-hosted / Local, Image / Video, Speech / Audio, and Embedding / Rerank. |
+| `provider_type` | Distinguishes direct, aggregator, cloud, self-hosted, media, speech, local, compatible, and custom providers. |
+| `compatibility_profile` | Shows whether the provider is native, OpenAI-compatible, Anthropic-compatible, Google-compatible, local, or custom. |
+| `aliases` | Search hints such as `kimi`, `moonshot`, `qwen`, `tongyi`, `doubao`, or `volcengine`; these are for Dashboard search, not routing aliases. |
+| `logo_id` | Provider identity hint used by Dashboard rows, Nodes, Logs, and Route Explanation. |
+| `homepage_url`, `docs_url`, `pricing_url` | Safe public links for operator review. |
+| `model_buckets` | Catalog-derived `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`, and `batch_models`. |
+| `limits` / `pricing_units` | Summaries for detail panels and validation UI. |
+
+Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, modality coverage, provider family/type filters, compatibility filters, stale/review quick filters, and provider detail panels without changing routing or node config.
 
 ## Dashboard Add Node Wizard
 
@@ -48,7 +61,9 @@ The OSS Data Plane wizard saves only local `gateway.config.yaml` node fields:
 4. Confirm `base_url`, native protocol endpoint, per-capability endpoints, auth type, custom headers, aliases, prefixes, model pricing overrides, routing capability tags, health probe, and concurrency/queue controls.
 5. Run a safe connectivity or compatibility check, then save the node.
 
-Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, and review-required pricing source metadata from the merged catalog. Operators can still edit every generated field before saving.
+Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, compatibility profile, logo identity, and review-required pricing source metadata from the merged catalog. Operators can still edit every generated field before saving.
+
+For large catalogs, the provider step uses family filters and alias search instead of a hardcoded provider grid. This keeps 50+ providers usable while preserving custom provider setup and advanced local configuration fields.
 
 ## CLI
 

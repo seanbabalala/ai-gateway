@@ -68,6 +68,10 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
 
+## Unreleased v1.4 Work
+
+- Provider Catalog Dashboard UX 2.0 turns the catalog into a provider explorer with family/type/modality/compatibility/price-source filters, collapsed provider groups, provider detail panels, and catalog-backed Add Node search that works with aliases such as Kimi/Moonshot, Qwen/Tongyi, and Doubao/Volcengine.
+
 ## Configuration
 
 The default path is `gateway.config.yaml`. Start from `gateway.config.example.yaml` and keep real provider keys out of git.

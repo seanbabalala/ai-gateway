@@ -1011,6 +1011,16 @@ describe('DashboardController — catalog', () => {
     });
     expect(result.providers[0]).toMatchObject({
       id: 'openai',
+      provider_id: 'openai',
+      family: 'foundation',
+      provider_type: 'direct',
+      compatibility_profile: 'openai-compatible',
+      logo_id: 'openai',
+      aliases: expect.arrayContaining(['openai']),
+      model_buckets: expect.objectContaining({
+        models: expect.arrayContaining(['gpt-4o']),
+        embedding_models: expect.arrayContaining(['text-embedding-3-small']),
+      }),
       overridden: false,
       pricing_hygiene: expect.objectContaining({
         status: expect.any(String),

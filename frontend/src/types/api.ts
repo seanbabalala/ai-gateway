@@ -1585,6 +1585,8 @@ export type CatalogModality =
   | 'embedding'
   | 'rerank'
   | 'realtime'
+  | 'batch'
+  | 'mcp'
 
 export type CatalogEndpoint =
   | 'chat_completions'
@@ -1597,8 +1599,12 @@ export type CatalogEndpoint =
   | 'audio_speech'
   | 'video_generations'
   | 'video_status'
+  | 'video_content'
+  | 'video_cancel'
   | 'rerank'
   | 'realtime'
+  | 'batch'
+  | 'mcp'
 
 export type CatalogAuthType =
   | 'bearer'
@@ -1617,7 +1623,18 @@ export interface CatalogPricing {
   rerank?: number | null
   embedding?: number | null
   unit?: string
-  units?: Partial<Record<'input' | 'output' | 'image' | 'audio' | 'video' | 'rerank' | 'embedding', string>>
+  units?: Partial<Record<
+    | 'input'
+    | 'output'
+    | 'image'
+    | 'audio'
+    | 'video'
+    | 'rerank'
+    | 'embedding'
+    | 'cache_read_input'
+    | 'cache_creation_input',
+    string
+  >>
   currency?: string
   source: string
   source_url?: string
@@ -1676,9 +1693,51 @@ export interface CatalogModel {
   notes?: string
 }
 
+export type CatalogProviderFamily =
+  | 'foundation'
+  | 'aggregators'
+  | 'cloud'
+  | 'china'
+  | 'self_hosted'
+  | 'image_video'
+  | 'speech_audio'
+  | 'embedding_rerank'
+
+export type CatalogProviderType =
+  | 'direct'
+  | 'aggregator'
+  | 'cloud'
+  | 'self_hosted'
+  | 'media'
+  | 'speech'
+  | 'local'
+  | 'custom'
+  | 'compatible'
+
+export type CatalogCompatibilityProfile =
+  | 'native'
+  | 'openai-compatible'
+  | 'anthropic-compatible'
+  | 'google-compatible'
+  | 'local'
+  | 'custom'
+
+export interface CatalogProviderModelBuckets {
+  models: string[]
+  embedding_models: string[]
+  rerank_models: string[]
+  image_models: string[]
+  audio_models: string[]
+  video_models: string[]
+  realtime_models: string[]
+  batch_models?: string[]
+}
+
 export interface CatalogProvider {
   id: string
+  provider_id?: string
   name: string
+  display_name?: string
   description?: string
   base_url: string
   base_url_matchers: string[]
@@ -1688,9 +1747,27 @@ export interface CatalogProvider {
   auth_type: CatalogAuthType
   key_placeholder?: string
   modalities: CatalogModality[]
+  input_types?: string[]
+  output_types?: string[]
   capabilities: string[]
   pricing: CatalogPricing
   pricing_hygiene?: CatalogPricingHygiene
+  aliases?: string[]
+  family?: CatalogProviderFamily
+  category?: CatalogProviderFamily | string
+  provider_type?: CatalogProviderType
+  compatibility_profile?: CatalogCompatibilityProfile | string
+  logo_id?: string
+  homepage_url?: string | null
+  docs_url?: string | null
+  pricing_url?: string | null
+  model_buckets?: CatalogProviderModelBuckets
+  limits?: {
+    model_count?: number
+    max_context_tokens?: number | null
+    max_file_size?: number | null
+  }
+  pricing_units?: Record<string, string>
   model_prefixes?: string[]
   tags?: string[]
   allows_unknown_models?: boolean

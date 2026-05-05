@@ -43,6 +43,8 @@ import type {
   CatalogEndpoint,
   CatalogModel,
   CatalogProvider,
+  CatalogProviderFamily,
+  CatalogProviderType,
   CreateNodeRequest,
   ModelCapabilityInfo,
   NodeInfo,
@@ -53,6 +55,7 @@ import type {
 type Protocol = CreateNodeRequest['protocol']
 type WizardStep = 'provider' | 'capabilities' | 'models' | 'settings' | 'test'
 type ProviderFilter = 'all' | 'official' | 'compatible' | 'custom'
+type ProviderFamilyFilter = 'all' | CatalogProviderFamily
 type WizardCapability =
   | 'chat'
   | 'responses'
@@ -174,11 +177,27 @@ const BUCKET_MODALITIES: Record<ModelBucketKey, string[]> = {
   realtime_models: ['text', 'audio', 'realtime'],
 }
 
+const PROVIDER_FAMILY_FILTERS: CatalogProviderFamily[] = [
+  'foundation',
+  'aggregators',
+  'cloud',
+  'china',
+  'self_hosted',
+  'image_video',
+  'speech_audio',
+  'embedding_rerank',
+]
+
 interface ProviderPreset {
   id: string
   name: string
   description?: string
   category: ProviderFilter
+  family: CatalogProviderFamily
+  provider_type: CatalogProviderType
+  compatibility_profile?: string
+  aliases: string[]
+  logo_id?: string
   protocol: Protocol
   base_url: string
   endpoint: string
@@ -338,7 +357,8 @@ function ensureInputRows(values: string[]): string[] {
 }
 
 function providerCategory(provider: CatalogProvider): ProviderFilter {
-  if (provider.id === 'openai-compatible' || provider.auth_type === 'custom') return 'custom'
+  if (provider.provider_type === 'custom' || provider.id === 'openai-compatible' || provider.auth_type === 'custom') return 'custom'
+  if (provider.provider_type === 'aggregator' || provider.provider_type === 'compatible' || provider.provider_type === 'local') return 'compatible'
   if (
     provider.allows_unknown_models ||
     provider.tags?.includes('openai-compatible') ||
@@ -349,6 +369,14 @@ function providerCategory(provider: CatalogProvider): ProviderFilter {
     return 'compatible'
   }
   return 'official'
+}
+
+function providerFamily(provider: CatalogProvider): CatalogProviderFamily {
+  return provider.family || 'foundation'
+}
+
+function providerType(provider: CatalogProvider): CatalogProviderType {
+  return provider.provider_type || (provider.allows_unknown_models ? 'compatible' : 'direct')
 }
 
 function providerCapabilities(provider: CatalogProvider): WizardCapability[] {
@@ -404,6 +432,17 @@ function providerToPreset(provider: CatalogProvider): ProviderPreset {
     name: provider.name,
     description: provider.description,
     category: providerCategory(provider),
+    family: providerFamily(provider),
+    provider_type: providerType(provider),
+    compatibility_profile: provider.compatibility_profile,
+    aliases: unique([
+      ...(provider.aliases || []),
+      ...(provider.tags || []),
+      ...(provider.model_prefixes || []),
+      provider.id,
+      provider.name,
+    ]),
+    logo_id: provider.logo_id,
     protocol,
     base_url: provider.base_url,
     endpoint: provider.endpoints[protocol] || PROTOCOL_ENDPOINTS[protocol] || '/v1/chat/completions',
@@ -512,6 +551,7 @@ export function NodeFormModal({
   const isEdit = !!editNode
   const [step, setStep] = useState<WizardStep>('provider')
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all')
+  const [providerFamilyFilter, setProviderFamilyFilter] = useState<ProviderFamilyFilter>('all')
   const [providerSearch, setProviderSearch] = useState('')
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -549,6 +589,7 @@ export function NodeFormModal({
     setPrefixInput('')
     setTagInput('')
     setProviderFilter('all')
+    setProviderFamilyFilter('all')
     setProviderSearch('')
     setErrors({})
 
@@ -607,14 +648,18 @@ export function NodeFormModal({
     const query = providerSearch.trim().toLowerCase()
     return providerPresets.filter((preset) => {
       if (providerFilter !== 'all' && preset.category !== providerFilter) return false
+      if (providerFamilyFilter !== 'all' && preset.family !== providerFamilyFilter) return false
       if (!query) return true
+      const modelHints = Object.values(preset.buckets).flat()
       return (
         preset.name.toLowerCase().includes(query) ||
         preset.id.toLowerCase().includes(query) ||
-        preset.tags.some((tag) => tag.toLowerCase().includes(query))
+        preset.aliases.some((alias) => alias.toLowerCase().includes(query)) ||
+        preset.capabilities.some((capability) => capability.toLowerCase().includes(query)) ||
+        modelHints.some((model) => model.toLowerCase().includes(query))
       )
     })
-  }, [providerPresets, providerFilter, providerSearch])
+  }, [providerPresets, providerFilter, providerFamilyFilter, providerSearch])
 
   const currentStepIndex = WIZARD_STEPS.findIndex((item) => item.id === step)
   const activeBuckets = activeBucketKeys(form.selectedCapabilities)
@@ -1091,9 +1136,11 @@ export function NodeFormModal({
                   presets={filteredPresets}
                   loading={providerCatalog.isLoading}
                   selectedFilter={providerFilter}
+                  selectedFamily={providerFamilyFilter}
                   search={providerSearch}
                   existingIds={existingIds}
                   onFilter={setProviderFilter}
+                  onFamily={setProviderFamilyFilter}
                   onSearch={setProviderSearch}
                   onPick={pickPreset}
                   onCustom={pickCustom}
@@ -1500,9 +1547,11 @@ function ProviderStep({
   presets,
   loading,
   selectedFilter,
+  selectedFamily,
   search,
   existingIds,
   onFilter,
+  onFamily,
   onSearch,
   onPick,
   onCustom,
@@ -1511,9 +1560,11 @@ function ProviderStep({
   presets: ProviderPreset[]
   loading: boolean
   selectedFilter: ProviderFilter
+  selectedFamily: ProviderFamilyFilter
   search: string
   existingIds: string[]
   onFilter: (filter: ProviderFilter) => void
+  onFamily: (filter: ProviderFamilyFilter) => void
   onSearch: (value: string) => void
   onPick: (preset: ProviderPreset) => void
   onCustom: () => void
@@ -1533,7 +1584,7 @@ function ProviderStep({
             className="pl-9"
           />
         </div>
-        <div className="flex rounded-lg bg-[var(--background-secondary)] p-1">
+        <div className="flex flex-wrap rounded-lg bg-[var(--background-secondary)] p-1">
           {filters.map((filter) => (
             <button
               key={filter}
@@ -1551,10 +1602,49 @@ function ProviderStep({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-2">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+          {t('form.providerFamilyFilter')}
+        </div>
+        <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+          <button
+            type="button"
+            onClick={() => onFamily('all')}
+            className={`rounded-md px-2.5 py-1.5 text-[11px] font-bold transition-all ${
+              selectedFamily === 'all'
+                ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
+                : 'bg-[var(--background-tertiary)] text-[var(--foreground-dim)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            {t('form.providerFamilies.all')}
+          </button>
+          {PROVIDER_FAMILY_FILTERS.map((family) => (
+            <button
+              key={family}
+              type="button"
+              onClick={() => onFamily(family)}
+              className={`max-w-full rounded-md px-2.5 py-1.5 text-[11px] font-bold transition-all ${
+                selectedFamily === family
+                  ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
+                  : 'bg-[var(--background-tertiary)] text-[var(--foreground-dim)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <span className="block truncate">{t(`form.providerFamilies.${family}`)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-h-[430px] overflow-y-auto pr-1">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {loading && (
           <div className="flex min-h-28 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background-secondary)]">
             <Loader2 className="h-5 w-5 animate-spin text-[var(--foreground-dim)]" />
+          </div>
+        )}
+        {!loading && presets.length === 0 && (
+          <div className="flex min-h-28 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-4 text-center text-[12px] font-semibold text-[var(--foreground-dim)] sm:col-span-2 xl:col-span-3">
+            {t('form.providerEmpty')}
           </div>
         )}
         {presets.map((preset) => (
@@ -1568,6 +1658,7 @@ function ProviderStep({
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
                 <NodeIcon
                   providerId={preset.id}
+                  nodeId={preset.logo_id || preset.id}
                   providerName={preset.name}
                   baseUrl={preset.base_url}
                   modelIds={Object.values(preset.buckets).flat()}
@@ -1582,6 +1673,12 @@ function ProviderStep({
               </span>
             </div>
             <div className="flex flex-wrap gap-1">
+              <Badge variant="blue" className="max-w-[140px] truncate text-[9px]">
+                {t(`form.providerFamilies.${preset.family}`)}
+              </Badge>
+              <Badge variant="zinc" className="max-w-[120px] truncate text-[9px]">
+                {t(`form.providerTypes.${preset.provider_type}`)}
+              </Badge>
               {preset.suggestedCapabilities.slice(0, 5).map((capability) => (
                 <Badge key={capability} variant="zinc" className="text-[9px]">
                   {t(`form.capabilityChoices.${capability}`)}
@@ -1613,6 +1710,7 @@ function ProviderStep({
             {t('form.providerFilters.custom')}
           </span>
         </button>
+        </div>
       </div>
     </section>
   )

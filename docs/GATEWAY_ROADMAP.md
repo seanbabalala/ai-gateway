@@ -22,8 +22,25 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 进行中 — Provider 50+、价格来源治理、Provider Catalog Dashboard UX 2.0 | 🚧 In Progress |
 
 ---
+
+## v1.4 — Provider Ecosystem + Catalog Governance（进行中）
+
+**目标**：在 v1.3.2 的生产就绪基础上，把 Provider Catalog 从“配置数据源”升级为适合 50+ providers 的可浏览、可筛选、可理解的本地运维界面，同时继续保持单机 memory/SQLite 默认可用，不引入 Cloud 或私有依赖。
+
+### P0：Provider Catalog Dashboard UX 2.0
+
+- **状态**：🚧 已实现功能分支 `codex/v1.4-provider-catalog-dashboard-ux`
+- **实现方案**：
+  - Dashboard Catalog API 为 provider 行补充 `family`、`provider_type`、`compatibility_profile`、`aliases`、`logo_id`、links、`model_buckets`、limits 与 `pricing_units`
+  - Provider Catalog 页面改为 provider explorer：顶部 summary cards、family/type/modality/compatibility/price-source filters、stale/review quick filters、分组折叠列表与详情面板
+  - Provider family 覆盖 Foundation Models、Aggregators、Cloud Platforms、China Providers、Self-hosted / Local、Image / Video、Speech / Audio、Embedding / Rerank
+  - Add Node Wizard 继续通过 Catalog API 读取 provider preset，新增 family filter 与 alias/model 搜索，支持 Kimi/Moonshot、Qwen/Tongyi、Doubao/Volcengine 等别名
+  - Add Node Wizard provider 列表使用受控滚动区域，50+ providers 时不撑爆表单，并保留 endpoint、headers、model aliases、prefixes、pricing、health check、custom provider 等高级字段
+  - Nodes、Logs 与 Route Explanation 继续使用 provider identity，避免兼容 provider 错显示为 OpenAI
+  - Dashboard 文案保持 en、zh、zh-TW、ja、ko、th、es 七语言同步
 
 ## v1.3 — Production Ready（生产就绪）
 
