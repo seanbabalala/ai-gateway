@@ -107,12 +107,19 @@ describe('McpGatewayService', () => {
     })
 
     expect(result.statusCode).toBe(200)
+    expect(result.requestId).toEqual(expect.any(String))
+    expect(result.headers['x-siftgate-request-id']).toBe(result.requestId)
+    expect(result.headers['x-request-id']).toBe(result.requestId)
+    expect(result.headers['x-siftgate-mcp-request-id']).toBe(result.requestId)
     expect(global.fetch).toHaveBeenCalledWith(
       'http://mcp.local/rpc?token=secret',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
           authorization: 'Bearer resolved',
+          'x-siftgate-request-id': result.requestId,
+          'x-request-id': result.requestId,
+          'x-siftgate-mcp-request-id': result.requestId,
         }),
       }),
     )

@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.4.0 Provider Ecosystem + Catalog Governance**.
+Current release: **v1.4.1 Public Contract Consistency Patch**.
 
-Current development focus after v1.4: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
+Current development focus after v1.4.1: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
 
 ## Why SiftGate
 
@@ -48,6 +48,12 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v1.4.1 Patch Highlights
+
+- Public request-id consistency: gateway-generated public responses now expose `x-siftgate-request-id` and the legacy-compatible `x-request-id`.
+- SDK compatibility hardening: the TypeScript client and Python SDK now prefer `x-siftgate-request-id`, then fall back to `x-request-id` and `x-correlation-id`.
+- Release/version consistency: `/openapi.json`, the root package, the TypeScript client package, and the Python package now stay aligned on the published release version.
 
 ## v1.4 Highlights
 

@@ -4,6 +4,7 @@ import {
   Get,
   Logger,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,7 +19,11 @@ import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import { gatewayApiKeyFromRequest } from '../auth/gateway-api-key-metadata';
 import { ErrorEnvelopeDto, ModelListResponseDto } from '../openapi/openapi.dto';
-import type { Request } from 'express';
+import {
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
+import type { Request, Response } from 'express';
 
 /**
  * GET /v1/models — OpenAI-compatible model listing endpoint.
@@ -33,16 +38,30 @@ export class ModelsController {
 
   constructor(private readonly config: ConfigService) {}
 
+  list(): { object: 'list'; data: Record<string, unknown>[] };
+  list(req: Request): { object: 'list'; data: Record<string, unknown>[] };
+  list(req: Request | undefined, res: Response): void;
+
   @Get('models')
   @ApiOperation({ summary: 'List OpenAI-compatible models and SiftGate aliases' })
   @ApiOkResponse({ type: ModelListResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
-  list(@Req() req?: Request) {
+  list(@Req() req?: Request, @Res() res?: Response) {
     const gatewayKey = gatewayApiKeyFromRequest(req);
     if (
       gatewayKey?.allowed_endpoints.length &&
       !gatewayKey.allowed_endpoints.includes('models')
     ) {
+      if (res) {
+        sendPublicErrorResponse(
+          res,
+          403,
+          'openai',
+          'This API key is not allowed to use /v1/models.',
+          { type: 'forbidden' },
+        );
+        return;
+      }
       throw new ForbiddenException('This API key is not allowed to use /v1/models.');
     }
     const models = this.config.listModels().filter((model) => {
@@ -81,10 +100,20 @@ export class ModelsController {
       ...this.buildAliasEntries(models),
     ];
 
-    return {
+    const payload: { object: 'list'; data: Record<string, unknown>[] } = {
       object: 'list',
       data,
     };
+
+    if (res) {
+      sendPublicResponse(res, {
+        statusCode: 200,
+        body: payload,
+      });
+      return;
+    }
+
+    return payload;
   }
 
   private buildAliasEntries(models: ReturnType<ConfigService['listModels']>) {

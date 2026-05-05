@@ -12,7 +12,7 @@ export function normalizeRequestIdentityHeaders(
   const traceId =
     firstHeader(headers, ['x-trace-id', 'x-siftgate-trace-id']) ||
     traceIdFromTraceparent(firstHeader(headers, ['traceparent'])) ||
-    firstHeader(headers, ['x-request-id', 'request-id']);
+    firstHeader(headers, ['x-siftgate-request-id', 'x-request-id', 'request-id']);
 
   return {
     session_id: sessionId,

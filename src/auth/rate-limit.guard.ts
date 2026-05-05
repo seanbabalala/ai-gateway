@@ -8,6 +8,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { StateBackendService } from '../state/state-backend.service';
+import {
+  applyGatewayRequestIdHeaders,
+  buildPublicErrorBody,
+  ensureGatewayRequestId,
+  extractRequestIdFromHeaders,
+  protocolForPublicPath,
+} from '../http/public-contract';
 
 interface WindowEntry {
   timestamps: number[];
@@ -47,6 +54,10 @@ export class RateLimitGuard implements CanActivate {
     const apiKeyId: string | undefined = request.apiKeyId || gatewayApiKey?.id;
     const apiKeyName: string | undefined = request.apiKeyName;
     const ip: string = request.ip || request.connection?.remoteAddress || 'unknown';
+    const requestId = ensureGatewayRequestId(
+      extractRequestIdFromHeaders((request.headers || {}) as Record<string, unknown>),
+    );
+    const protocol = protocolForPublicPath(request.originalUrl || request.url);
 
     const key = apiKeyId ? `key:${apiKeyId}` : apiKeyName ? `key-name:${apiKeyName}` : `ip:${ip}`;
     const limit = gatewayApiKey?.rate_limit_per_minute
@@ -66,15 +77,18 @@ export class RateLimitGuard implements CanActivate {
 
     if (!result.allowed) {
       response.setHeader('Retry-After', String(Math.max(1, result.retryAfterSec)));
+      applyGatewayRequestIdHeaders(response, requestId);
       throw new HttpException(
-        {
-          error: {
-            message: this.state!.shouldFailClosed()
-              ? 'Rate limit state backend unavailable.'
-              : `Rate limit exceeded. Max ${limit} requests per minute.`,
+        buildPublicErrorBody(
+          protocol,
+          this.state!.shouldFailClosed()
+            ? 'Rate limit state backend unavailable.'
+            : `Rate limit exceeded. Max ${limit} requests per minute.`,
+          {
             type: 'rate_limit_exceeded',
+            requestId,
           },
-        },
+        ),
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -93,6 +107,10 @@ export class RateLimitGuard implements CanActivate {
     const apiKeyId: string | undefined = request.apiKeyId || gatewayApiKey?.id;
     const apiKeyName: string | undefined = request.apiKeyName;
     const ip: string = request.ip || request.connection?.remoteAddress || 'unknown';
+    const requestId = ensureGatewayRequestId(
+      extractRequestIdFromHeaders((request.headers || {}) as Record<string, unknown>),
+    );
+    const protocol = protocolForPublicPath(request.originalUrl || request.url);
 
     const key = apiKeyId ? `key:${apiKeyId}` : apiKeyName ? `key-name:${apiKeyName}` : `ip:${ip}`;
     const limit = gatewayApiKey?.rate_limit_per_minute
@@ -141,13 +159,16 @@ export class RateLimitGuard implements CanActivate {
     if (entry.timestamps.length >= limit) {
       const retryAfterSec = Math.ceil((entry.timestamps[0] + windowMs - now) / 1000);
       response.setHeader('Retry-After', String(Math.max(1, retryAfterSec)));
+      applyGatewayRequestIdHeaders(response, requestId);
       throw new HttpException(
-        {
-          error: {
-            message: `Rate limit exceeded. Max ${limit} requests per minute.`,
+        buildPublicErrorBody(
+          protocol,
+          `Rate limit exceeded. Max ${limit} requests per minute.`,
+          {
             type: 'rate_limit_exceeded',
+            requestId,
           },
-        },
+        ),
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }

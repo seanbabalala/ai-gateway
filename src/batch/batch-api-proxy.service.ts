@@ -513,7 +513,7 @@ export class BatchApiProxyService {
   }
 
   private requestId(headers: Record<string, string>): string {
-    return headers['x-request-id'] || headers['x-siftgate-request-id'] || uuidv4();
+    return headers['x-siftgate-request-id'] || headers['x-request-id'] || uuidv4();
   }
 
   private assertBody(body: unknown): asserts body is Record<string, unknown> {

@@ -4,6 +4,17 @@
 
 No unreleased changes yet.
 
+## 1.4.1 - 2026-05-05
+
+### Fixed
+
+- Released the v1.4.1 public contract consistency patch for the MIT OSS Data Plane without expanding scope into new features or breaking startup semantics.
+- Unified public gateway request-id responses so gateway-generated responses now return `x-siftgate-request-id` while keeping `x-request-id` for backward compatibility, including Batch, MCP, streaming, and provider-compatible ingress paths.
+- Hardened gateway-generated public error envelopes so OpenAI-compatible, Anthropic-compatible, Batch, MCP, and Video gateway errors consistently expose `message`, `type`, and `request_id` while preserving the existing outer protocol shapes.
+- Updated the TypeScript client and Python SDK to prefer `x-siftgate-request-id` and then fall back to `x-request-id` and `x-correlation-id`.
+- Synced the published release version across the root package, the TypeScript client package, the Python package, and OpenAPI/Swagger metadata so `/openapi.json` no longer reports a stale `0.x` version.
+- Added regression coverage for public request-id headers, SDK request-id extraction, OpenAPI version sync, gateway-generated error contracts, and cross-package release version alignment.
+
 ## 1.4.0 - 2026-05-05
 
 ### Added

@@ -27,6 +27,7 @@ npm run test:sdk
 ```
 
 Use it when you want typed gateway helpers without replacing your app framework.
+`SiftGateError.requestId` prefers the gateway's public `x-siftgate-request-id` header and falls back to legacy request-id headers for older deployments.
 
 ## Python SDK
 
@@ -38,6 +39,7 @@ python3 -m unittest discover -s packages/python/tests
 ```
 
 It supports base URL, Gateway API key auth, routing hints, chat, responses, messages, embeddings, rerank, images, audio, video jobs, and raw response access.
+`SiftGateError.request_id` prefers `x-siftgate-request-id`, then falls back to `x-request-id` and `x-correlation-id`.
 
 ## Agent Examples
 

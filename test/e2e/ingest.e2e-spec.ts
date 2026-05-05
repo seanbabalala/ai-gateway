@@ -40,6 +40,8 @@ describe('Ingest (e2e)', () => {
     expect(Array.isArray(res.body.choices)).toBe(true);
     expect(res.body.choices[0].message.content).toBeDefined();
     expect(res.body.usage).toBeDefined();
+    expect(res.headers['x-siftgate-request-id']).toBeDefined();
+    expect(res.headers['x-request-id']).toBe(res.headers['x-siftgate-request-id']);
   });
 
   it('POST /v1/chat/completions — fetch called with correct URL and headers', async () => {
@@ -148,6 +150,8 @@ describe('Ingest (e2e)', () => {
     expect(Array.isArray(res.body.content)).toBe(true);
     expect(res.body.content[0].type).toBe('text');
     expect(res.body.content[0].text).toBeDefined();
+    expect(res.headers['x-siftgate-request-id']).toBeDefined();
+    expect(res.headers['x-request-id']).toBe(res.headers['x-siftgate-request-id']);
   });
 
   it('POST /v1/messages — fetch uses x-api-key header', async () => {

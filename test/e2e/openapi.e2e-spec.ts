@@ -1,5 +1,9 @@
 import { createE2EHarness, E2EHarness } from './setup';
 
+const { version: releaseVersion } = require('../../package.json') as {
+  version: string;
+};
+
 describe('OpenAPI documentation endpoints', () => {
   let harness: E2EHarness;
 
@@ -17,6 +21,7 @@ describe('OpenAPI documentation endpoints', () => {
     expect(res.headers['content-type']).toContain('application/json');
     expect(res.body.openapi).toMatch(/^3\./);
     expect(res.body.info.title).toBe('SiftGate Data Plane API');
+    expect(res.body.info.version).toBe(releaseVersion);
 
     expect(res.body.components.securitySchemes.gatewayApiKey).toMatchObject({
       type: 'http',

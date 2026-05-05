@@ -18,6 +18,10 @@ import {
   attachGatewayApiKeyMetadata,
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
+import {
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
 import { ErrorEnvelopeDto, RerankRequestDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -60,26 +64,20 @@ export class RerankController {
       const result = await this.pipeline.processRerank(canonical, {
         signal: abortController.signal,
       });
-      res.status(result.statusCode).json(result.body);
+      sendPublicResponse(res, result);
     } catch (err) {
       this.logger.error(`[rerank] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
         if (err instanceof BudgetExceededError) {
-          res.status(429).json({
-            error: {
-              message: err.message,
-              type: 'budget_exceeded',
-              code: err.budgetType,
-              details: err.toDetails(),
-            },
+          sendPublicErrorResponse(res, 429, 'openai', err.message, {
+            type: 'budget_exceeded',
+            code: err.budgetType,
+            details: err.toDetails(),
           });
           return;
         }
-        res.status(500).json({
-          error: {
-            message: (err as Error).message,
-            type: 'internal_error',
-          },
+        sendPublicErrorResponse(res, 500, 'openai', (err as Error).message, {
+          type: 'internal_error',
         });
       }
     } finally {

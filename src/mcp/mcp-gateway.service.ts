@@ -4,6 +4,11 @@ import { ConfigService } from '../config/config.service'
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service'
 import type { McpServerConfig, McpToolConfig } from '../config/gateway.config'
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service'
+import {
+  GATEWAY_REQUEST_ID_HEADER,
+  LEGACY_REQUEST_ID_HEADER,
+  MCP_REQUEST_ID_HEADER,
+} from '../http/public-contract'
 
 export interface McpGatewayAuditEntry {
   id: string
@@ -154,7 +159,9 @@ export class McpGatewayService {
       const bodyText = await upstream.text()
       const contentType = upstream.headers.get('content-type') || 'application/json; charset=utf-8'
       const responseHeaders = this.safeResponseHeaders(upstream.headers)
-      responseHeaders['x-siftgate-mcp-request-id'] = requestId
+      responseHeaders[GATEWAY_REQUEST_ID_HEADER] = requestId
+      responseHeaders[LEGACY_REQUEST_ID_HEADER] = requestId
+      responseHeaders[MCP_REQUEST_ID_HEADER] = requestId
 
       this.recordAudit({
         requestId,
@@ -315,7 +322,9 @@ export class McpGatewayService {
     return {
       'content-type': 'application/json',
       accept: 'application/json, text/event-stream',
-      'x-siftgate-mcp-request-id': requestId,
+      [GATEWAY_REQUEST_ID_HEADER]: requestId,
+      [LEGACY_REQUEST_ID_HEADER]: requestId,
+      [MCP_REQUEST_ID_HEADER]: requestId,
       ...configured,
     }
   }

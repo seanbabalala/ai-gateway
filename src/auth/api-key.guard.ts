@@ -6,6 +6,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { GatewayApiKeyService } from './gateway-api-key.service';
+import {
+  applyGatewayRequestIdHeaders,
+  buildPublicErrorBody,
+  ensureGatewayRequestId,
+  extractRequestIdFromHeaders,
+  protocolForPublicPath,
+} from '../http/public-contract';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -15,10 +22,25 @@ export class ApiKeyGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse?.();
     const authHeader: string | undefined = request.headers?.authorization;
+    const requestId = ensureGatewayRequestId(
+      extractRequestIdFromHeaders((request.headers || {}) as Record<string, unknown>),
+    );
+    const protocol = protocolForPublicPath(request.originalUrl || request.url);
 
     if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing API key. Use Authorization: Bearer <key>');
+      if (response) applyGatewayRequestIdHeaders(response, requestId);
+      throw new UnauthorizedException(
+        buildPublicErrorBody(
+          protocol,
+          'Missing API key. Use Authorization: Bearer <key>',
+          {
+            type: 'authentication_error',
+            requestId,
+          },
+        ),
+      );
     }
 
     const key = authHeader.slice(7);
@@ -27,7 +49,13 @@ export class ApiKeyGuard implements CanActivate {
 
     if (!match) {
       this.logger.warn('Invalid or disabled gateway API key rejected');
-      throw new UnauthorizedException('Invalid API key');
+      if (response) applyGatewayRequestIdHeaders(response, requestId);
+      throw new UnauthorizedException(
+        buildPublicErrorBody(protocol, 'Invalid API key', {
+          type: 'authentication_error',
+          requestId,
+        }),
+      );
     }
 
     // Attach key context to request for logging, budget, rate-limit, and permissions.

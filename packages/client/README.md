@@ -90,6 +90,8 @@ const response = await client.requestRaw("POST", "/v1/chat/completions", {
 });
 ```
 
+When SiftGate returns a non-2xx response, the client throws `SiftGateError`. Its `requestId` prefers `x-siftgate-request-id`, then falls back to `x-request-id` and `x-correlation-id` for older gateway releases or upstream proxies.
+
 ## OpenAI SDK Compatibility
 
 You do not need this SDK to use SiftGate. Existing OpenAI SDK users can keep their client and replace only the base URL and API key:

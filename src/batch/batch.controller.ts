@@ -24,6 +24,11 @@ import type { Request, Response as ExpressResponse } from 'express';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import { BudgetExceededError } from '../budget/budget.service';
+import {
+  extractRequestIdFromHttpException,
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
 import { BatchCreateRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 import { BatchApiProxyService } from './batch-api-proxy.service';
 import type { BatchProxyResponse } from './batch.types';
@@ -156,50 +161,62 @@ export class BatchController {
   }
 
   private send(res: ExpressResponse, response: BatchProxyResponse): void {
-    res.setHeader('x-siftgate-request-id', response.requestId);
     for (const [key, value] of Object.entries(response.headers || {})) {
       res.setHeader(key, value);
     }
-    res.status(response.statusCode);
-    if (Buffer.isBuffer(response.body)) {
-      res.type(response.contentType || 'application/octet-stream').send(response.body);
-      return;
-    }
-    if (response.contentType && !response.contentType.includes('application/json')) {
-      res.type(response.contentType).send(response.body);
-      return;
-    }
-    res.json(response.body);
+    sendPublicResponse(res, response);
   }
 
   private handleError(res: ExpressResponse, error: unknown, operation: string): void {
     this.logger.warn(`${operation} failed: ${error instanceof Error ? error.message : String(error)}`);
     if (error instanceof BudgetExceededError) {
-      res.status(429).json({
-        error: {
-          message: error.message,
-          type: 'budget_exceeded',
-          code: error.budgetType,
-          details: error.toDetails(),
-        },
+      sendPublicErrorResponse(res, 429, 'openai', error.message, {
+        type: 'budget_exceeded',
+        code: error.budgetType,
+        details: error.toDetails(),
       });
       return;
     }
     if (error instanceof HttpException) {
       const status = error.getStatus();
       const response = error.getResponse();
-      res.status(status).json(
+      const body = typeof response === 'object' && response ? response as Record<string, unknown> : null;
+      const errorBody =
+        body && typeof body.error === 'object' && body.error
+          ? body.error as Record<string, unknown>
+          : null;
+      sendPublicErrorResponse(
+        res,
+        status,
+        'openai',
         typeof response === 'string'
-          ? { error: { message: response, type: status === 404 ? 'not_found' : 'batch_proxy_error' } }
-          : response,
+          ? response
+          : typeof errorBody?.message === 'string'
+            ? errorBody.message
+            : typeof body?.message === 'string'
+              ? body.message
+              : error.message,
+        {
+          type:
+            typeof errorBody?.type === 'string'
+              ? errorBody.type
+              : status === 404
+                ? 'not_found'
+                : 'batch_proxy_error',
+          code:
+            typeof errorBody?.code === 'string'
+              ? errorBody.code
+              : typeof body?.code === 'string'
+                ? body.code
+                : undefined,
+          details: errorBody?.details ?? body?.details,
+          requestId: extractRequestIdFromHttpException(error),
+        },
       );
       return;
     }
-    res.status(500).json({
-      error: {
-        message: 'Batch proxy request failed.',
-        type: 'internal_error',
-      },
+    sendPublicErrorResponse(res, 500, 'openai', 'Batch proxy request failed.', {
+      type: 'internal_error',
     });
   }
 }

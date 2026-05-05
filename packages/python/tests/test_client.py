@@ -176,6 +176,27 @@ class SiftGateClientTest(unittest.TestCase):
         self.assertEqual(ctx.exception.request_id, "req_123")
         self.assertEqual(ctx.exception.body, {"error": {"message": "Budget exceeded"}})
 
+    def test_error_prefers_x_siftgate_request_id(self) -> None:
+        transport = FakeTransport(
+            SiftGateResponse(
+                status_code=500,
+                headers={
+                    "content-type": "application/json",
+                    "x-siftgate-request-id": "req_public_123",
+                    "x-request-id": "req_legacy_123",
+                    "x-correlation-id": "corr_123",
+                },
+                content=b'{"error":{"message":"Gateway failed"}}',
+                url="",
+            )
+        )
+        client = SiftGateClient(base_url="http://gateway", transport=transport)
+
+        with self.assertRaises(SiftGateError) as ctx:
+            client.models.list()
+
+        self.assertEqual(ctx.exception.request_id, "req_public_123")
+
 
 if __name__ == "__main__":
     unittest.main()
