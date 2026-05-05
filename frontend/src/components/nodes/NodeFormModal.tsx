@@ -187,6 +187,7 @@ interface ProviderPreset {
   buckets: Record<ModelBucketKey, string[]>
   suggestedCapabilities: WizardCapability[]
   model_prefixes: string[]
+  aliases: string[]
   capabilities: string[]
   tags: string[]
   keyPlaceholder: string
@@ -415,6 +416,7 @@ function providerToPreset(provider: CatalogProvider): ProviderPreset {
     buckets,
     suggestedCapabilities: providerCapabilities(provider),
     model_prefixes: provider.model_prefixes || [],
+    aliases: provider.aliases || [],
     capabilities: unique(provider.capabilities.filter((capability) => capability !== 'custom')),
     tags: provider.tags || [],
     keyPlaceholder: provider.key_placeholder || 'provider key...',
@@ -611,6 +613,8 @@ export function NodeFormModal({
       return (
         preset.name.toLowerCase().includes(query) ||
         preset.id.toLowerCase().includes(query) ||
+        preset.aliases.some((alias) => alias.toLowerCase().includes(query)) ||
+        preset.model_prefixes.some((prefix) => prefix.toLowerCase().includes(query)) ||
         preset.tags.some((tag) => tag.toLowerCase().includes(query))
       )
     })

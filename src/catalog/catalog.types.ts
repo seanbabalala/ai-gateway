@@ -84,9 +84,31 @@ export interface CatalogModel {
 export interface CatalogProvider {
   id: string;
   name: string;
+  aliases?: string[];
+  family?: string;
+  category?: string;
+  provider_type?: 'direct' | 'aggregator' | 'cloud' | 'self_hosted' | 'media' | 'speech' | 'local';
+  homepage_url?: string;
+  docs_url?: string;
+  pricing_url?: string;
+  logo_id?: string;
+  input_types?: string[];
+  output_types?: string[];
+  model_buckets?: {
+    models?: string[];
+    embedding_models?: string[];
+    rerank_models?: string[];
+    image_models?: string[];
+    audio_models?: string[];
+    video_models?: string[];
+    realtime_models?: string[];
+    batch_models?: string[];
+  };
+  compatibility_profile?: string | string[];
   base_url: string;
   auth_type: AuthType | 'none';
   endpoints: Partial<Record<CapabilityEndpoint | string, string>>;
+  modalities?: Modality[];
   model_prefixes?: string[];
   capabilities?: string[];
   pricing?: CatalogPricing;
@@ -122,6 +144,19 @@ export interface CatalogOverrideModel {
 export interface CatalogOverrideProvider {
   id?: string;
   name?: string;
+  aliases?: string[];
+  family?: string;
+  category?: string;
+  provider_type?: CatalogProvider['provider_type'];
+  homepage_url?: string;
+  docs_url?: string;
+  pricing_url?: string;
+  logo_id?: string;
+  input_types?: string[];
+  output_types?: string[];
+  model_buckets?: CatalogProvider['model_buckets'];
+  compatibility_profile?: CatalogProvider['compatibility_profile'];
+  modalities?: Modality[];
   base_url?: string;
   auth_type?: AuthType | 'none';
   endpoints?: Partial<Record<CapabilityEndpoint | string, string>>;

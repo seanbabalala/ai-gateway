@@ -1085,6 +1085,102 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
   });
 
+  it('recognizes v1.4 provider catalog models and warns on auth type mismatch', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'huggingface',
+            name: 'Hugging Face',
+            protocol: 'chat_completions',
+            base_url: 'https://router.huggingface.co',
+            endpoint: '/v1/chat/completions',
+            auth_type: 'x-api-key',
+            api_key: '${HF_TOKEN:-test}',
+            models: ['meta-llama/Llama-3.3-70B-Instruct'],
+            embedding_models: ['sentence-transformers/all-MiniLM-L6-v2'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'huggingface', model: 'meta-llama/Llama-3.3-70B-Instruct' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
+    expect(codes(result.warnings)).toContain('catalog_auth_type_mismatch');
+    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+  });
+
+  it('marks custom nodes as unknown provider catalog entries without blocking startup', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'internal-lab',
+            name: 'Internal Lab',
+            protocol: 'chat_completions',
+            base_url: 'https://models.internal.example',
+            endpoint: '/v1/chat/completions',
+            api_key: '${INTERNAL_MODEL_KEY:-test}',
+            models: ['internal-chat'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'internal-lab', model: 'internal-chat' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'internal-chat': { input: 1, output: 2 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.info)).toContain('catalog_unknown_provider');
+  });
+
   it('warns about catalog pricing hygiene without duplicating missing pricing when catalog fallback exists', () => {
     const catalogLoad = loadMergedCatalog({
       cwd: os.tmpdir(),

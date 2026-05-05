@@ -1585,6 +1585,7 @@ export type CatalogModality =
   | 'embedding'
   | 'rerank'
   | 'realtime'
+  | 'batch'
 
 export type CatalogEndpoint =
   | 'chat_completions'
@@ -1599,6 +1600,7 @@ export type CatalogEndpoint =
   | 'video_status'
   | 'rerank'
   | 'realtime'
+  | 'batch'
 
 export type CatalogAuthType =
   | 'bearer'
@@ -1680,6 +1682,27 @@ export interface CatalogProvider {
   id: string
   name: string
   description?: string
+  aliases?: string[]
+  family?: string
+  category?: string
+  provider_type?: 'direct' | 'aggregator' | 'cloud' | 'self_hosted' | 'media' | 'speech' | 'local'
+  homepage_url?: string
+  docs_url?: string
+  pricing_url?: string
+  logo_id?: string
+  input_types?: string[]
+  output_types?: string[]
+  model_buckets?: {
+    models?: string[]
+    embedding_models?: string[]
+    rerank_models?: string[]
+    image_models?: string[]
+    audio_models?: string[]
+    video_models?: string[]
+    realtime_models?: string[]
+    batch_models?: string[]
+  }
+  compatibility_profile?: string | string[]
   base_url: string
   base_url_matchers: string[]
   protocols: Array<'chat_completions' | 'responses' | 'messages'>

@@ -281,6 +281,7 @@
   "catalogPage.modalities.embedding": "Embedding",
   "catalogPage.modalities.rerank": "Rerank",
   "catalogPage.modalities.realtime": "Realtime",
+  "catalogPage.modalities.batch": "Batch",
   "catalogPage.emptyTitle": "No catalog models",
   "catalogPage.emptyDescription": "Change the search or modality filter.",
   "catalogPage.badges.review": "Review",

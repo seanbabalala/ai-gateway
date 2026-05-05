@@ -174,6 +174,7 @@ function inferDashboardInputTypes(modalities: readonly Modality[] | readonly str
     if (modality === 'vision' || modality === 'image') values.add('image');
     if (modality === 'audio') values.add('audio');
     if (modality === 'video') values.add('video');
+    if (modality === 'batch') values.add('file');
     if (modality === 'realtime') values.add('events');
   }
   return [...values];
@@ -187,6 +188,7 @@ function inferDashboardOutputTypes(modalities: readonly Modality[] | readonly st
     if (modality === 'image') values.add('image');
     if (modality === 'audio') values.add('audio');
     if (modality === 'video') values.add('video');
+    if (modality === 'batch') values.add('file');
     if (modality === 'realtime') values.add('events');
   }
   return [...values];

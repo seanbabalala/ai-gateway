@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- Expanded the built-in Provider Catalog for v1.4 to 50+ providers, adding Hugging Face, Cloudflare Workers AI, IBM watsonx.ai, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini, AI21 Labs, fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika, ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics, LM Studio, llama.cpp server, TGI, SGLang, and Xinference.
+- Added v1.4 provider governance metadata across the built-in catalog, including aliases, family/category, provider type, homepage/docs/pricing URLs, logo identity, input/output types, model buckets, batch modality metadata, compatibility profile, and review-required pricing source metadata.
+- Added Dashboard/provider-logo identity coverage for the new providers so OpenAI-compatible or compatible-style providers do not fall back to the OpenAI logo.
+
+### Changed
+
+- Unified legacy provider catalog diagnostics with the merged built-in Provider Catalog so Dashboard APIs, Add Node Wizard presets, catalog CLI, and config validation all read the same provider/model data.
+- Config validation now reports catalog auth-type mismatches for known providers and marks unknown providers as custom catalog entries without blocking single-node startup.
+
 ## 1.3.2 - 2026-05-05
 
 ### Added

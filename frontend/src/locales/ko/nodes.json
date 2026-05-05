@@ -281,6 +281,7 @@
   "catalogPage.modalities.embedding": "Embedding",
   "catalogPage.modalities.rerank": "Rerank",
   "catalogPage.modalities.realtime": "Realtime",
+  "catalogPage.modalities.batch": "Batch",
   "catalogPage.emptyTitle": "일치하는 모델 없음",
   "catalogPage.emptyDescription": "검색어나 모달리티 필터를 조정하세요.",
   "catalogPage.badges.review": "검토",

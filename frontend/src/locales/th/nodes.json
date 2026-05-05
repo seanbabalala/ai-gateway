@@ -281,6 +281,7 @@
   "catalogPage.modalities.embedding": "Embedding",
   "catalogPage.modalities.rerank": "Rerank",
   "catalogPage.modalities.realtime": "Realtime",
+  "catalogPage.modalities.batch": "Batch",
   "catalogPage.emptyTitle": "ไม่พบโมเดล",
   "catalogPage.emptyDescription": "ปรับคำค้นหาหรือตัวกรอง modality",
   "catalogPage.badges.review": "ตรวจทาน",

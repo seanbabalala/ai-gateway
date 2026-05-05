@@ -113,24 +113,141 @@ function rerankPricing(input: number, notes?: string): CatalogPricing {
   });
 }
 
-function provider(
-  providerConfig: Omit<CatalogProvider, 'source' | 'overridden'>,
-): CatalogProvider {
+type BuiltinCatalogModelInput = Omit<
+  CatalogProvider['models'][number],
+  'provider' | 'source' | 'overridden'
+> &
+  Partial<Pick<CatalogProvider['models'][number], 'provider' | 'source' | 'overridden'>>;
+
+type BuiltinCatalogProviderInput = Omit<CatalogProvider, 'source' | 'overridden' | 'models'> & {
+  models: BuiltinCatalogModelInput[];
+};
+
+function provider(providerConfig: BuiltinCatalogProviderInput): CatalogProvider {
   const providerPricing = providerConfig.pricing
     ? { ...providerConfig.pricing }
     : providerConfig.models.find((model) => model.pricing)?.pricing;
+  const models = providerConfig.models.map((model) => ({
+    ...model,
+    provider: model.provider || providerConfig.id,
+    source: 'builtin' as const,
+    overridden: false,
+  }));
   return {
     ...providerConfig,
+    aliases: providerConfig.aliases || defaultProviderAliases(providerConfig),
+    family: providerConfig.family || inferProviderFamily(providerConfig),
+    category: providerConfig.category || inferProviderFamily(providerConfig),
+    provider_type: providerConfig.provider_type || inferProviderType(providerConfig),
+    homepage_url: providerConfig.homepage_url || defaultProviderHomepage(providerConfig),
+    docs_url: providerConfig.docs_url || providerPricing?.source_url || defaultProviderHomepage(providerConfig),
+    pricing_url: providerConfig.pricing_url || providerPricing?.source_url || defaultProviderHomepage(providerConfig),
+    logo_id: providerConfig.logo_id || providerConfig.id,
+    modalities: providerConfig.modalities || inferProviderModalities(models),
+    input_types: providerConfig.input_types || inferProviderInputTypes(models),
+    output_types: providerConfig.output_types || inferProviderOutputTypes(models),
+    model_buckets: providerConfig.model_buckets || inferProviderModelBuckets(models),
+    compatibility_profile: providerConfig.compatibility_profile || inferCompatibilityProfile(providerConfig),
     pricing: providerPricing ? { ...providerPricing } : undefined,
     source: 'builtin',
     overridden: false,
-    models: providerConfig.models.map((model) => ({
-      ...model,
-      provider: providerConfig.id,
-      source: 'builtin',
-      overridden: false,
-    })),
+    models,
   };
+}
+
+function defaultProviderAliases(providerConfig: BuiltinCatalogProviderInput): string[] {
+  return Array.from(
+    new Set([
+      providerConfig.id,
+      providerConfig.name,
+      ...(providerConfig.model_prefixes || []),
+    ].map((item) => item.toLowerCase())),
+  );
+}
+
+function defaultProviderHomepage(providerConfig: BuiltinCatalogProviderInput): string {
+  try {
+    const url = new URL(providerConfig.base_url.replace('{resource}', 'example').replace('{region}', 'us-east-1'));
+    return `${url.protocol}//${url.hostname}`;
+  } catch {
+    return providerConfig.base_url;
+  }
+}
+
+function inferProviderFamily(providerConfig: BuiltinCatalogProviderInput): string {
+  if (providerConfig.id === 'openai-compatible') return 'custom';
+  if (providerConfig.capabilities?.includes('china_region')) return 'china_provider';
+  if (providerConfig.capabilities?.includes('local')) return 'self_hosted';
+  if (providerConfig.capabilities?.includes('model_marketplace') || providerConfig.capabilities?.includes('multi_provider')) return 'aggregator';
+  if (providerConfig.modalities?.some((modality) => modality === 'image' || modality === 'video')) return 'media';
+  if (providerConfig.modalities?.includes('audio')) return 'speech_audio';
+  if (providerConfig.capabilities?.includes('managed_models')) return 'cloud_platform';
+  return 'foundation_model';
+}
+
+function inferProviderType(providerConfig: BuiltinCatalogProviderInput): NonNullable<CatalogProvider['provider_type']> {
+  if (providerConfig.capabilities?.includes('local')) return 'local';
+  if (providerConfig.capabilities?.includes('self_hosted')) return 'self_hosted';
+  if (providerConfig.capabilities?.includes('model_marketplace') || providerConfig.capabilities?.includes('multi_provider')) return 'aggregator';
+  if (providerConfig.capabilities?.includes('managed_models') || providerConfig.capabilities?.includes('cloud_platform')) return 'cloud';
+  if (providerConfig.modalities?.some((modality) => modality === 'image' || modality === 'video')) return 'media';
+  if (providerConfig.modalities?.includes('audio')) return 'speech';
+  return 'direct';
+}
+
+function inferProviderInputTypes(models: CatalogProvider['models']): string[] {
+  return Array.from(new Set(models.flatMap((model) => model.modalities).map((modality) => {
+    if (modality === 'vision' || modality === 'image') return 'image';
+    if (modality === 'embedding' || modality === 'rerank') return 'text';
+    if (modality === 'realtime') return 'events';
+    if (modality === 'batch') return 'file';
+    return modality;
+  })));
+}
+
+function inferProviderModalities(models: CatalogProvider['models']): NonNullable<CatalogProvider['modalities']> {
+  return Array.from(new Set(models.flatMap((model) => model.modalities)));
+}
+
+function inferProviderOutputTypes(models: CatalogProvider['models']): string[] {
+  return Array.from(new Set(models.flatMap((model) => model.modalities).map((modality) => {
+    if (modality === 'vision') return 'text';
+    if (modality === 'embedding') return 'embedding';
+    if (modality === 'rerank') return 'ranked_documents';
+    if (modality === 'realtime') return 'events';
+    if (modality === 'batch') return 'file';
+    return modality;
+  })));
+}
+
+function inferProviderModelBuckets(models: CatalogProvider['models']): NonNullable<CatalogProvider['model_buckets']> {
+  const buckets: NonNullable<CatalogProvider['model_buckets']> = {};
+  for (const model of models) {
+    const endpoints = Object.keys(model.endpoints);
+    const push = (key: keyof NonNullable<CatalogProvider['model_buckets']>) => {
+      buckets[key] = Array.from(new Set([...(buckets[key] || []), model.id]));
+    };
+    if (model.modalities.includes('embedding') || endpoints.includes('embeddings')) push('embedding_models');
+    if (model.modalities.includes('rerank') || endpoints.includes('rerank')) push('rerank_models');
+    if (model.modalities.includes('image') || endpoints.includes('image')) push('image_models');
+    if (model.modalities.includes('audio') || endpoints.includes('audio') || endpoints.includes('audio_speech')) push('audio_models');
+    if (model.modalities.includes('video') || endpoints.includes('video')) push('video_models');
+    if (model.modalities.includes('realtime') || endpoints.includes('realtime')) push('realtime_models');
+    if (model.modalities.includes('batch') || endpoints.includes('batch')) push('batch_models');
+    if (model.modalities.includes('text') || model.modalities.includes('vision')) push('models');
+  }
+  return buckets;
+}
+
+function inferCompatibilityProfile(providerConfig: BuiltinCatalogProviderInput): string | string[] {
+  if (providerConfig.id === 'aws-bedrock') return 'aws_bedrock_converse';
+  if (providerConfig.id === 'google') return ['google_gemini_compatible', 'google_vertex_compatible'];
+  if (providerConfig.id === 'anthropic') return 'anthropic_messages_compatible';
+  if (providerConfig.capabilities?.includes('local')) return 'openai_compatible_local';
+  if (providerConfig.capabilities?.includes('async_predictions')) return 'media_generation_async';
+  if (providerConfig.capabilities?.includes('speech')) return 'speech_compatible';
+  if (providerConfig.capabilities?.includes('openai_compatible')) return 'openai_compatible';
+  return 'provider_native';
 }
 
 export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
@@ -146,6 +263,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
       image: '/v1/images/generations',
       audio: '/v1/audio/transcriptions',
       realtime: '/v1/realtime',
+      batch: '/v1/batches',
     },
     model_prefixes: ['gpt', 'o', 'text-embedding', 'dall-e'],
     capabilities: ['structured_output', 'streaming', 'tools', 'prompt_cache', 'read_cache'],
@@ -155,8 +273,8 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
       {
         id: 'gpt-4o',
         provider: 'openai',
-        modalities: ['text', 'vision'],
-        endpoints: { chat_completions: '/v1/chat/completions', responses: '/v1/responses' },
+        modalities: ['text', 'vision', 'batch'],
+        endpoints: { chat_completions: '/v1/chat/completions', responses: '/v1/responses', batch: '/v1/batches' },
         capabilities: ['structured_output', 'streaming', 'tools', 'prompt_cache', 'read_cache'],
         limits: { max_context_tokens: 128000 },
         pricing: promptCachingPricing(2.5, 10, 1.25, 2.5),
@@ -168,8 +286,8 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
       {
         id: 'gpt-4o-mini',
         provider: 'openai',
-        modalities: ['text', 'vision'],
-        endpoints: { chat_completions: '/v1/chat/completions', responses: '/v1/responses' },
+        modalities: ['text', 'vision', 'batch'],
+        endpoints: { chat_completions: '/v1/chat/completions', responses: '/v1/responses', batch: '/v1/batches' },
         capabilities: ['structured_output', 'streaming', 'tools', 'prompt_cache', 'read_cache'],
         limits: { max_context_tokens: 128000 },
         pricing: promptCachingPricing(0.15, 0.6, 0.075, 0.15),
@@ -1296,6 +1414,941 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         ),
         source: 'builtin',
         overridden: false,
+      },
+    ],
+  }),
+  provider({
+    id: 'huggingface',
+    name: 'Hugging Face',
+    aliases: ['hf', 'huggingface', 'hugging face', 'inference providers', 'tgi'],
+    family: 'aggregator',
+    provider_type: 'aggregator',
+    homepage_url: 'https://huggingface.co',
+    docs_url: 'https://huggingface.co/docs/inference-providers',
+    pricing_url: 'https://huggingface.co/pricing#inference-providers',
+    logo_id: 'huggingface',
+    base_url: 'https://router.huggingface.co',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['meta-llama/', 'mistralai/', 'Qwen/', 'sentence-transformers/'],
+    capabilities: ['openai_compatible', 'multi_provider', 'hosted_inference', 'model_marketplace'],
+    pricing: referencePricing(
+      'https://huggingface.co/pricing#inference-providers',
+      'Hugging Face Inference Providers route across multiple upstream providers; model prices and routing providers should be reviewed per model.',
+    ),
+    models: [
+      {
+        id: 'meta-llama/Llama-3.3-70B-Instruct',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['streaming', 'open_weights'],
+        pricing: referencePricing(
+          'https://huggingface.co/docs/inference-providers/pricing',
+          'Inference Provider prices depend on selected routed provider and model.',
+        ),
+      },
+      {
+        id: 'sentence-transformers/all-MiniLM-L6-v2',
+        modalities: ['text', 'embedding'],
+        endpoints: { embeddings: '/v1/embeddings' },
+        capabilities: ['embeddings'],
+        pricing: referencePricing(
+          'https://huggingface.co/docs/inference-providers/tasks/feature-extraction',
+          'Feature extraction cost depends on selected inference provider.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'cloudflare-workers-ai',
+    name: 'Cloudflare Workers AI',
+    aliases: ['cloudflare', 'workers ai', 'cf ai'],
+    family: 'cloud_platform',
+    provider_type: 'cloud',
+    homepage_url: 'https://developers.cloudflare.com/workers-ai/',
+    docs_url: 'https://developers.cloudflare.com/workers-ai/',
+    pricing_url: 'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+    logo_id: 'cloudflare',
+    base_url: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai',
+    auth_type: 'bearer',
+    endpoints: {
+      chat_completions: '/v1/chat/completions',
+      embeddings: '/v1/embeddings',
+      image: '/run/{model}',
+    },
+    model_prefixes: ['@cf/', '@hf/'],
+    capabilities: ['cloud_platform', 'openai_compatible', 'edge_inference'],
+    pricing: referencePricing(
+      'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+      'Workers AI pricing uses neurons, requests, and model-specific units. Add reviewed local rates before cost routing.',
+    ),
+    models: [
+      {
+        id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['streaming', 'edge_inference'],
+        pricing: referencePricing(
+          'https://developers.cloudflare.com/workers-ai/models/',
+          'Workers AI model availability and pricing are plan/model dependent.',
+        ),
+      },
+      {
+        id: '@cf/baai/bge-base-en-v1.5',
+        modalities: ['text', 'embedding'],
+        endpoints: { embeddings: '/v1/embeddings' },
+        capabilities: ['embeddings', 'edge_inference'],
+        pricing: referencePricing(
+          'https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/',
+          'Workers AI embedding pricing should be reviewed against Cloudflare model docs.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'ibm-watsonx',
+    name: 'IBM watsonx.ai',
+    aliases: ['ibm', 'watsonx', 'watsonx.ai'],
+    family: 'cloud_platform',
+    provider_type: 'cloud',
+    homepage_url: 'https://www.ibm.com/products/watsonx-ai',
+    docs_url: 'https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-api.html',
+    pricing_url: 'https://www.ibm.com/products/watsonx-ai/pricing',
+    logo_id: 'ibm',
+    base_url: 'https://{region}.ml.cloud.ibm.com',
+    auth_type: 'bearer',
+    endpoints: {
+      chat_completions: '/ml/v1/text/chat?version=2023-05-29',
+      embeddings: '/ml/v1/text/embeddings?version=2023-05-29',
+    },
+    model_prefixes: ['ibm/', 'meta-llama/', 'mistralai/'],
+    capabilities: ['cloud_platform', 'managed_models', 'enterprise'],
+    pricing: referencePricing(
+      'https://www.ibm.com/products/watsonx-ai/pricing',
+      'watsonx.ai pricing depends on deployment region, account plan, and foundation model units.',
+    ),
+    models: [
+      {
+        id: 'ibm/granite-3-8b-instruct',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/ml/v1/text/chat?version=2023-05-29' },
+        capabilities: ['enterprise', 'streaming'],
+        pricing: referencePricing(
+          'https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models.html',
+          'IBM Granite model prices should be reviewed against watsonx account pricing.',
+        ),
+      },
+      {
+        id: 'meta-llama/llama-3-3-70b-instruct',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/ml/v1/text/chat?version=2023-05-29' },
+        capabilities: ['open_weights'],
+        pricing: referencePricing(
+          'https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-models.html',
+          'Third-party watsonx model prices are docs-review references.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'baseten',
+    name: 'Baseten',
+    aliases: ['baseten', 'truss'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://www.baseten.co',
+    docs_url: 'https://docs.baseten.co',
+    pricing_url: 'https://www.baseten.co/pricing',
+    logo_id: 'baseten',
+    base_url: 'https://model-{model_id}.api.baseten.co',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['baseten-', 'custom-'],
+    capabilities: ['self_hosted', 'openai_compatible', 'deployment_pricing'],
+    pricing: referencePricing(
+      'https://www.baseten.co/pricing',
+      'Baseten costs depend on deployment hardware and autoscaling. Store exact deployment costs in local overrides.',
+    ),
+    models: [
+      {
+        id: 'baseten/custom-chat-model',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['self_hosted', 'streaming'],
+        pricing: referencePricing(
+          'https://docs.baseten.co/deploy/invoke/model-apis',
+          'Baseten model APIs are deployment-specific.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'lepton',
+    name: 'Lepton AI',
+    aliases: ['lepton', 'lepton ai'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://www.lepton.ai',
+    docs_url: 'https://www.lepton.ai/docs',
+    pricing_url: 'https://www.lepton.ai/pricing',
+    logo_id: 'lepton',
+    base_url: 'https://api.lepton.ai',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/api/v1/chat/completions', embeddings: '/api/v1/embeddings' },
+    model_prefixes: ['llama', 'qwen', 'mistral', 'custom'],
+    capabilities: ['self_hosted', 'openai_compatible', 'deployment_pricing'],
+    pricing: referencePricing(
+      'https://www.lepton.ai/pricing',
+      'Lepton pricing depends on endpoint deployment resources and selected hosted models.',
+    ),
+    models: [
+      {
+        id: 'llama3.1-8b',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/api/v1/chat/completions' },
+        capabilities: ['streaming', 'open_weights'],
+        pricing: referencePricing(
+          'https://www.lepton.ai/docs/guides/inference',
+          'Lepton model IDs and prices are deployment-specific.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'modal',
+    name: 'Modal',
+    aliases: ['modal', 'modal labs'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://modal.com',
+    docs_url: 'https://modal.com/docs',
+    pricing_url: 'https://modal.com/pricing',
+    logo_id: 'modal',
+    base_url: 'https://{workspace}--{app}.modal.run',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['modal-', 'custom-', 'llama'],
+    capabilities: ['self_hosted', 'openai_compatible', 'serverless_gpu'],
+    pricing: referencePricing(
+      'https://modal.com/pricing',
+      'Modal costs depend on GPU/CPU resources, duration, and custom app behavior.',
+    ),
+    models: [
+      {
+        id: 'modal/custom-openai-compatible',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['self_hosted', 'serverless_gpu'],
+        pricing: referencePricing(
+          'https://modal.com/docs/examples/vllm_inference',
+          'Modal OpenAI-compatible serving is app-specific.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'runpod',
+    name: 'RunPod',
+    aliases: ['runpod', 'runpod serverless'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://www.runpod.io',
+    docs_url: 'https://docs.runpod.io',
+    pricing_url: 'https://www.runpod.io/pricing',
+    logo_id: 'runpod',
+    base_url: 'https://api.runpod.ai/v2/{endpoint_id}',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/openai/v1/chat/completions', embeddings: '/openai/v1/embeddings' },
+    model_prefixes: ['runpod-', 'llama', 'qwen', 'custom'],
+    capabilities: ['self_hosted', 'openai_compatible', 'serverless_gpu'],
+    pricing: referencePricing(
+      'https://www.runpod.io/pricing',
+      'RunPod pricing depends on GPU type, endpoint mode, runtime duration, and storage/network usage.',
+    ),
+    models: [
+      {
+        id: 'runpod/vllm-openai-compatible',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/openai/v1/chat/completions' },
+        capabilities: ['self_hosted', 'streaming'],
+        pricing: referencePricing(
+          'https://docs.runpod.io/serverless/workers/vllm/get-started',
+          'RunPod vLLM endpoints are deployment-specific.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'predibase',
+    name: 'Predibase',
+    aliases: ['predibase', 'lorax'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://predibase.com',
+    docs_url: 'https://docs.predibase.com',
+    pricing_url: 'https://predibase.com/pricing',
+    logo_id: 'predibase',
+    base_url: 'https://serving.app.predibase.com',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['predibase/', 'llama', 'mistral'],
+    capabilities: ['self_hosted', 'openai_compatible', 'fine_tuning'],
+    pricing: referencePricing(
+      'https://predibase.com/pricing',
+      'Predibase prices depend on serving deployment, fine-tuned adapter, and compute tier.',
+    ),
+    models: [
+      {
+        id: 'predibase/llama-3-1-8b-instruct',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['fine_tuning', 'streaming'],
+        pricing: referencePricing(
+          'https://docs.predibase.com/user-guide/inference/overview',
+          'Predibase model endpoints and adapters are deployment-specific.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'lamini',
+    name: 'Lamini',
+    aliases: ['lamini'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://www.lamini.ai',
+    docs_url: 'https://docs.lamini.ai',
+    pricing_url: 'https://www.lamini.ai/pricing',
+    logo_id: 'lamini',
+    base_url: 'https://api.lamini.ai',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions' },
+    model_prefixes: ['lamini', 'llama', 'custom'],
+    capabilities: ['fine_tuning', 'enterprise', 'deployment_pricing'],
+    pricing: referencePricing(
+      'https://www.lamini.ai/pricing',
+      'Lamini pricing depends on hosted/private deployment and fine-tuning plan.',
+    ),
+    models: [
+      {
+        id: 'lamini/custom-model',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['fine_tuning'],
+        pricing: referencePricing(
+          'https://docs.lamini.ai',
+          'Lamini model IDs and deployment costs are operator-specific.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'ai21',
+    name: 'AI21 Labs',
+    aliases: ['ai21', 'jamba'],
+    family: 'foundation_model',
+    provider_type: 'direct',
+    homepage_url: 'https://www.ai21.com',
+    docs_url: 'https://docs.ai21.com',
+    pricing_url: 'https://www.ai21.com/pricing',
+    logo_id: 'ai21',
+    base_url: 'https://api.ai21.com',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/studio/v1/chat/completions' },
+    model_prefixes: ['jamba'],
+    capabilities: ['streaming', 'tools', 'enterprise'],
+    pricing: referencePricing(
+      'https://www.ai21.com/pricing',
+      'AI21 pricing should be reviewed by model family and plan.',
+    ),
+    models: [
+      {
+        id: 'jamba-large',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/studio/v1/chat/completions' },
+        capabilities: ['streaming', 'tools'],
+        pricing: referencePricing(
+          'https://docs.ai21.com/docs/jamba-foundation-models',
+          'Jamba model availability and rates are docs-review metadata.',
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'fal',
+    name: 'fal.ai',
+    aliases: ['fal', 'fal.ai'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://fal.ai',
+    docs_url: 'https://docs.fal.ai',
+    pricing_url: 'https://fal.ai/pricing',
+    logo_id: 'fal',
+    base_url: 'https://queue.fal.run',
+    auth_type: 'bearer',
+    endpoints: { image: '/fal-ai/{model}', video: '/fal-ai/{model}' },
+    model_prefixes: ['fal-ai/', 'black-forest-labs/', 'luma/'],
+    capabilities: ['image_generation', 'video_generation', 'async_predictions'],
+    pricing: referencePricing(
+      'https://fal.ai/pricing',
+      'fal.ai pricing depends on model, queue/runtime, resolution, and generation parameters.',
+      { units: { image: 'usd_per_generation', video: 'usd_per_generation_or_second' } },
+    ),
+    models: [
+      {
+        id: 'fal-ai/flux/dev',
+        modalities: ['image'],
+        endpoints: { image: '/fal-ai/flux/dev' },
+        capabilities: ['image_generation', 'async_predictions'],
+        pricing: referencePricing(
+          'https://fal.ai/models/fal-ai/flux/dev',
+          'fal.ai image model prices are model-specific.',
+          { units: { image: 'usd_per_generation' } },
+        ),
+      },
+      {
+        id: 'fal-ai/veo3',
+        modalities: ['video'],
+        endpoints: { video: '/fal-ai/veo3' },
+        capabilities: ['video_generation', 'async_predictions'],
+        pricing: referencePricing(
+          'https://fal.ai/models/fal-ai/veo3',
+          'fal.ai video model prices vary by duration and model.',
+          { units: { video: 'usd_per_generation_or_second' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'stability-ai',
+    name: 'Stability AI',
+    aliases: ['stability', 'stability ai', 'stable diffusion'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://stability.ai',
+    docs_url: 'https://platform.stability.ai/docs',
+    pricing_url: 'https://platform.stability.ai/pricing',
+    logo_id: 'stability',
+    base_url: 'https://api.stability.ai',
+    auth_type: 'bearer',
+    endpoints: { image: '/v2beta/stable-image/generate/core', image_edit: '/v2beta/stable-image/edit' },
+    model_prefixes: ['stable-', 'sd3'],
+    capabilities: ['image_generation', 'image_edit'],
+    pricing: referencePricing(
+      'https://platform.stability.ai/pricing',
+      'Stability AI pricing uses credits and image/video endpoint-specific units.',
+      { units: { image: 'usd_or_credits_per_image' } },
+    ),
+    models: [
+      {
+        id: 'stable-image-core',
+        modalities: ['image'],
+        endpoints: { image: '/v2beta/stable-image/generate/core' },
+        capabilities: ['image_generation'],
+        pricing: referencePricing(
+          'https://platform.stability.ai/docs/api-reference#tag/Generate',
+          'Stable Image Core credit costs should be reviewed against current Stability pricing.',
+          { units: { image: 'credits_per_image' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'black-forest-labs',
+    name: 'Black Forest Labs',
+    aliases: ['black forest labs', 'bfl', 'flux'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://blackforestlabs.ai',
+    docs_url: 'https://docs.bfl.ai',
+    pricing_url: 'https://docs.bfl.ai/pricing',
+    logo_id: 'black-forest-labs',
+    base_url: 'https://api.bfl.ai',
+    auth_type: 'bearer',
+    endpoints: { image: '/v1/flux-pro-1.1' },
+    model_prefixes: ['flux'],
+    capabilities: ['image_generation', 'async_predictions'],
+    pricing: referencePricing(
+      'https://docs.bfl.ai/pricing',
+      'Black Forest Labs pricing is image model and parameter dependent.',
+      { units: { image: 'usd_per_image' } },
+    ),
+    models: [
+      {
+        id: 'flux-pro-1.1',
+        modalities: ['image'],
+        endpoints: { image: '/v1/flux-pro-1.1' },
+        capabilities: ['image_generation'],
+        pricing: referencePricing(
+          'https://docs.bfl.ai',
+          'FLUX model prices should be reviewed against current BFL docs.',
+          { units: { image: 'usd_per_image' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'ideogram',
+    name: 'Ideogram',
+    aliases: ['ideogram'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://ideogram.ai',
+    docs_url: 'https://developer.ideogram.ai',
+    pricing_url: 'https://ideogram.ai/pricing',
+    logo_id: 'ideogram',
+    base_url: 'https://api.ideogram.ai',
+    auth_type: 'bearer',
+    endpoints: { image: '/v1/ideogram-v3/generate', image_edit: '/v1/ideogram-v3/edit' },
+    model_prefixes: ['ideogram'],
+    capabilities: ['image_generation', 'image_edit'],
+    pricing: referencePricing(
+      'https://ideogram.ai/pricing',
+      'Ideogram API costs depend on plan, generation endpoint, and image parameters.',
+      { units: { image: 'usd_or_credits_per_image' } },
+    ),
+    models: [
+      {
+        id: 'ideogram-v3',
+        modalities: ['image'],
+        endpoints: { image: '/v1/ideogram-v3/generate' },
+        capabilities: ['image_generation'],
+        pricing: referencePricing(
+          'https://developer.ideogram.ai/api-reference/api-reference/generate',
+          'Ideogram image generation prices should be verified against current API pricing.',
+          { units: { image: 'credits_per_image' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'luma',
+    name: 'Luma AI',
+    aliases: ['luma', 'luma ai', 'dream machine'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://lumalabs.ai',
+    docs_url: 'https://docs.lumalabs.ai',
+    pricing_url: 'https://lumalabs.ai/api/pricing',
+    logo_id: 'luma',
+    base_url: 'https://api.lumalabs.ai',
+    auth_type: 'bearer',
+    endpoints: { video: '/dream-machine/v1/generations', video_status: '/dream-machine/v1/generations/{id}' },
+    model_prefixes: ['ray', 'dream-machine'],
+    capabilities: ['video_generation', 'async_predictions'],
+    pricing: referencePricing(
+      'https://lumalabs.ai/api/pricing',
+      'Luma video/image pricing varies by model, duration, and generation settings.',
+      { units: { video: 'usd_per_generation_or_second' } },
+    ),
+    models: [
+      {
+        id: 'ray-2',
+        modalities: ['video'],
+        endpoints: { video: '/dream-machine/v1/generations' },
+        capabilities: ['video_generation', 'async_predictions'],
+        pricing: referencePricing(
+          'https://docs.lumalabs.ai/docs/api',
+          'Luma generation costs are async and model-specific.',
+          { units: { video: 'usd_per_generation_or_second' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'runway',
+    name: 'Runway',
+    aliases: ['runway', 'runwayml', 'gen-4'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://runwayml.com',
+    docs_url: 'https://docs.dev.runwayml.com',
+    pricing_url: 'https://runwayml.com/pricing',
+    logo_id: 'runway',
+    base_url: 'https://api.dev.runwayml.com',
+    auth_type: 'bearer',
+    endpoints: { video: '/v1/image_to_video', video_status: '/v1/tasks/{id}' },
+    model_prefixes: ['gen4', 'gen3'],
+    capabilities: ['video_generation', 'async_predictions'],
+    pricing: referencePricing(
+      'https://runwayml.com/pricing',
+      'Runway API pricing depends on plan, credits, model generation type, and duration.',
+      { units: { video: 'credits_per_generation_or_second' } },
+    ),
+    models: [
+      {
+        id: 'gen4_turbo',
+        modalities: ['video'],
+        endpoints: { video: '/v1/image_to_video' },
+        capabilities: ['video_generation', 'async_predictions'],
+        pricing: referencePricing(
+          'https://docs.dev.runwayml.com/api/',
+          'Runway model IDs and credit costs should be reviewed before routing.',
+          { units: { video: 'credits_per_generation_or_second' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'pika',
+    name: 'Pika',
+    aliases: ['pika', 'pika labs'],
+    family: 'media',
+    provider_type: 'media',
+    homepage_url: 'https://pika.art',
+    docs_url: 'https://docs.pika.art',
+    pricing_url: 'https://pika.art/pricing',
+    logo_id: 'pika',
+    base_url: 'https://api.pika.art',
+    auth_type: 'bearer',
+    endpoints: { video: '/v1/videos', video_status: '/v1/videos/{id}' },
+    model_prefixes: ['pika'],
+    capabilities: ['video_generation', 'async_predictions'],
+    pricing: referencePricing(
+      'https://pika.art/pricing',
+      'Pika API pricing and availability are plan/model dependent.',
+      { units: { video: 'credits_per_generation_or_second' } },
+    ),
+    models: [
+      {
+        id: 'pika-2.2',
+        modalities: ['video'],
+        endpoints: { video: '/v1/videos' },
+        capabilities: ['video_generation', 'async_predictions'],
+        pricing: referencePricing(
+          'https://docs.pika.art',
+          'Pika video generation metadata should be reviewed against current docs.',
+          { units: { video: 'credits_per_generation_or_second' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'elevenlabs',
+    name: 'ElevenLabs',
+    aliases: ['elevenlabs', 'eleven labs', '11labs'],
+    family: 'speech_audio',
+    provider_type: 'speech',
+    homepage_url: 'https://elevenlabs.io',
+    docs_url: 'https://elevenlabs.io/docs',
+    pricing_url: 'https://elevenlabs.io/pricing',
+    logo_id: 'elevenlabs',
+    base_url: 'https://api.elevenlabs.io',
+    auth_type: 'x-api-key',
+    endpoints: { audio_speech: '/v1/text-to-speech/{voice_id}', audio: '/v1/speech-to-text' },
+    model_prefixes: ['eleven_', 'scribe_'],
+    capabilities: ['speech', 'transcription', 'voice'],
+    pricing: referencePricing(
+      'https://elevenlabs.io/pricing',
+      'ElevenLabs pricing uses character/minute and plan-specific units. Configure verified local rates for billing.',
+      { units: { audio: 'usd_per_character_or_minute' } },
+    ),
+    models: [
+      {
+        id: 'eleven_multilingual_v2',
+        modalities: ['audio'],
+        endpoints: { audio_speech: '/v1/text-to-speech/{voice_id}' },
+        capabilities: ['speech', 'voice'],
+        pricing: referencePricing(
+          'https://elevenlabs.io/docs/api-reference/text-to-speech/convert',
+          'ElevenLabs TTS costs are character/plan dependent.',
+          { units: { audio: 'characters_or_credits' } },
+        ),
+      },
+      {
+        id: 'scribe_v1',
+        modalities: ['audio'],
+        endpoints: { audio: '/v1/speech-to-text' },
+        capabilities: ['transcription'],
+        pricing: referencePricing(
+          'https://elevenlabs.io/docs/api-reference/speech-to-text/convert',
+          'ElevenLabs STT costs should be reviewed against current plan pricing.',
+          { units: { audio: 'usd_per_audio_minute_or_credit' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'deepgram',
+    name: 'Deepgram',
+    aliases: ['deepgram'],
+    family: 'speech_audio',
+    provider_type: 'speech',
+    homepage_url: 'https://deepgram.com',
+    docs_url: 'https://developers.deepgram.com',
+    pricing_url: 'https://deepgram.com/pricing',
+    logo_id: 'deepgram',
+    base_url: 'https://api.deepgram.com',
+    auth_type: 'bearer',
+    endpoints: { audio: '/v1/listen', audio_speech: '/v1/speak' },
+    model_prefixes: ['nova', 'aura'],
+    capabilities: ['transcription', 'speech', 'streaming_audio'],
+    pricing: referencePricing(
+      'https://deepgram.com/pricing',
+      'Deepgram pricing varies by speech-to-text/text-to-speech model and audio duration.',
+      { units: { audio: 'usd_per_audio_minute_or_character' } },
+    ),
+    models: [
+      {
+        id: 'nova-3',
+        modalities: ['audio'],
+        endpoints: { audio: '/v1/listen' },
+        capabilities: ['transcription', 'streaming_audio'],
+        pricing: referencePricing(
+          'https://developers.deepgram.com/docs/model',
+          'Deepgram STT prices should be reviewed against current pricing.',
+          { units: { audio: 'usd_per_audio_minute' } },
+        ),
+      },
+      {
+        id: 'aura-2',
+        modalities: ['audio'],
+        endpoints: { audio_speech: '/v1/speak' },
+        capabilities: ['speech'],
+        pricing: referencePricing(
+          'https://developers.deepgram.com/docs/tts-models',
+          'Deepgram TTS pricing is model and character dependent.',
+          { units: { audio: 'usd_per_character_or_minute' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'assemblyai',
+    name: 'AssemblyAI',
+    aliases: ['assemblyai', 'assembly ai'],
+    family: 'speech_audio',
+    provider_type: 'speech',
+    homepage_url: 'https://www.assemblyai.com',
+    docs_url: 'https://www.assemblyai.com/docs',
+    pricing_url: 'https://www.assemblyai.com/pricing',
+    logo_id: 'assemblyai',
+    base_url: 'https://api.assemblyai.com',
+    auth_type: 'x-api-key',
+    endpoints: { audio: '/v2/transcript' },
+    model_prefixes: ['best', 'nano'],
+    capabilities: ['transcription', 'audio_intelligence', 'async_jobs'],
+    pricing: referencePricing(
+      'https://www.assemblyai.com/pricing',
+      'AssemblyAI prices are audio duration and feature dependent.',
+      { units: { audio: 'usd_per_audio_hour_or_minute' } },
+    ),
+    models: [
+      {
+        id: 'best',
+        modalities: ['audio'],
+        endpoints: { audio: '/v2/transcript' },
+        capabilities: ['transcription', 'async_jobs'],
+        pricing: referencePricing(
+          'https://www.assemblyai.com/docs/speech-to-text/pre-recorded-audio',
+          'AssemblyAI transcription pricing should be reviewed by selected model and features.',
+          { units: { audio: 'usd_per_audio_hour_or_minute' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'cartesia',
+    name: 'Cartesia',
+    aliases: ['cartesia', 'sonic'],
+    family: 'speech_audio',
+    provider_type: 'speech',
+    homepage_url: 'https://cartesia.ai',
+    docs_url: 'https://docs.cartesia.ai',
+    pricing_url: 'https://cartesia.ai/pricing',
+    logo_id: 'cartesia',
+    base_url: 'https://api.cartesia.ai',
+    auth_type: 'bearer',
+    endpoints: { audio_speech: '/tts/bytes' },
+    model_prefixes: ['sonic'],
+    capabilities: ['speech', 'low_latency_audio'],
+    pricing: referencePricing(
+      'https://cartesia.ai/pricing',
+      'Cartesia pricing is voice/model and character/audio-duration dependent.',
+      { units: { audio: 'usd_per_character_or_minute' } },
+    ),
+    models: [
+      {
+        id: 'sonic-2',
+        modalities: ['audio'],
+        endpoints: { audio_speech: '/tts/bytes' },
+        capabilities: ['speech', 'low_latency_audio'],
+        pricing: referencePricing(
+          'https://docs.cartesia.ai/api-reference/tts/bytes',
+          'Cartesia TTS pricing should be reviewed before cost routing.',
+          { units: { audio: 'usd_per_character_or_minute' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'speechmatics',
+    name: 'Speechmatics',
+    aliases: ['speechmatics'],
+    family: 'speech_audio',
+    provider_type: 'speech',
+    homepage_url: 'https://www.speechmatics.com',
+    docs_url: 'https://docs.speechmatics.com',
+    pricing_url: 'https://www.speechmatics.com/pricing',
+    logo_id: 'speechmatics',
+    base_url: 'https://asr.api.speechmatics.com',
+    auth_type: 'bearer',
+    endpoints: { audio: '/v2/jobs' },
+    model_prefixes: ['speechmatics'],
+    capabilities: ['transcription', 'async_jobs'],
+    pricing: referencePricing(
+      'https://www.speechmatics.com/pricing',
+      'Speechmatics pricing depends on transcription mode, language features, and audio duration.',
+      { units: { audio: 'usd_per_audio_hour_or_minute' } },
+    ),
+    models: [
+      {
+        id: 'speechmatics-asr',
+        modalities: ['audio'],
+        endpoints: { audio: '/v2/jobs' },
+        capabilities: ['transcription', 'async_jobs'],
+        pricing: referencePricing(
+          'https://docs.speechmatics.com/api-ref/asr-transcription/submit-a-job',
+          'Speechmatics transcription costs are duration and feature dependent.',
+          { units: { audio: 'usd_per_audio_hour_or_minute' } },
+        ),
+      },
+    ],
+  }),
+  provider({
+    id: 'lm-studio',
+    name: 'LM Studio',
+    aliases: ['lm studio', 'lmstudio'],
+    family: 'self_hosted',
+    provider_type: 'local',
+    homepage_url: 'https://lmstudio.ai',
+    docs_url: 'https://lmstudio.ai/docs',
+    pricing_url: 'https://lmstudio.ai/docs',
+    logo_id: 'lm-studio',
+    base_url: 'http://localhost:1234',
+    auth_type: 'none',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['local', 'llama', 'qwen', 'mistral', 'gemma'],
+    capabilities: ['local', 'openai_compatible', 'self_hosted'],
+    pricing: pricing(0, 0, 'Local LM Studio costs depend on operator hardware and are not provider-billed.'),
+    models: [
+      {
+        id: 'local-model',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['local', 'streaming'],
+        pricing: pricing(0, 0, 'Local model; hardware cost is not included.'),
+      },
+    ],
+  }),
+  provider({
+    id: 'llama-cpp',
+    name: 'llama.cpp server',
+    aliases: ['llama.cpp', 'llama cpp', 'llamacpp'],
+    family: 'self_hosted',
+    provider_type: 'local',
+    homepage_url: 'https://github.com/ggml-org/llama.cpp',
+    docs_url: 'https://github.com/ggml-org/llama.cpp/tree/master/examples/server',
+    pricing_url: 'https://github.com/ggml-org/llama.cpp/tree/master/examples/server',
+    logo_id: 'llama-cpp',
+    base_url: 'http://localhost:8080',
+    auth_type: 'none',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['local', 'llama', 'gguf'],
+    capabilities: ['local', 'openai_compatible', 'self_hosted'],
+    pricing: pricing(0, 0, 'Local llama.cpp costs depend on operator hardware and are not provider-billed.'),
+    models: [
+      {
+        id: 'local-gguf-model',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['local', 'streaming'],
+        pricing: pricing(0, 0, 'Local GGUF model; hardware cost is not included.'),
+      },
+    ],
+  }),
+  provider({
+    id: 'huggingface-tgi',
+    name: 'Text Generation Inference / TGI',
+    aliases: ['tgi', 'text generation inference', 'hf tgi'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://huggingface.co/docs/text-generation-inference',
+    docs_url: 'https://huggingface.co/docs/text-generation-inference/en/basic_tutorials/using_guidance',
+    pricing_url: 'https://huggingface.co/docs/text-generation-inference',
+    logo_id: 'huggingface',
+    base_url: 'http://localhost:8080',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/embed' },
+    model_prefixes: ['local', 'meta-llama', 'mistral', 'qwen'],
+    capabilities: ['self_hosted', 'openai_compatible', 'streaming'],
+    pricing: pricing(0, 0, 'Self-hosted TGI cost depends on operator hardware and deployment.'),
+    models: [
+      {
+        id: 'tgi-local-model',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['self_hosted', 'streaming'],
+        pricing: pricing(0, 0, 'Self-hosted TGI model; hardware cost is not included.'),
+      },
+    ],
+  }),
+  provider({
+    id: 'sglang',
+    name: 'SGLang',
+    aliases: ['sglang', 'sgl'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://github.com/sgl-project/sglang',
+    docs_url: 'https://docs.sglang.ai',
+    pricing_url: 'https://docs.sglang.ai',
+    logo_id: 'sglang',
+    base_url: 'http://localhost:30000',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings' },
+    model_prefixes: ['local', 'llama', 'qwen', 'deepseek'],
+    capabilities: ['self_hosted', 'openai_compatible', 'low_latency'],
+    pricing: pricing(0, 0, 'Self-hosted SGLang cost depends on operator hardware and deployment.'),
+    models: [
+      {
+        id: 'sglang-local-model',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['self_hosted', 'streaming'],
+        pricing: pricing(0, 0, 'Self-hosted SGLang model; hardware cost is not included.'),
+      },
+    ],
+  }),
+  provider({
+    id: 'xinference',
+    name: 'Xinference',
+    aliases: ['xinference', 'xorbits inference'],
+    family: 'self_hosted',
+    provider_type: 'self_hosted',
+    homepage_url: 'https://inference.readthedocs.io',
+    docs_url: 'https://inference.readthedocs.io/en/latest/user_guide/client_api.html',
+    pricing_url: 'https://inference.readthedocs.io',
+    logo_id: 'xinference',
+    base_url: 'http://localhost:9997',
+    auth_type: 'bearer',
+    endpoints: { chat_completions: '/v1/chat/completions', embeddings: '/v1/embeddings', rerank: '/v1/rerank' },
+    model_prefixes: ['local', 'llama', 'qwen', 'bge', 'rerank'],
+    capabilities: ['self_hosted', 'openai_compatible', 'embedding', 'rerank'],
+    pricing: pricing(0, 0, 'Self-hosted Xinference cost depends on operator hardware and deployment.'),
+    models: [
+      {
+        id: 'xinference-local-chat',
+        modalities: ['text'],
+        endpoints: { chat_completions: '/v1/chat/completions' },
+        capabilities: ['self_hosted', 'streaming'],
+        pricing: pricing(0, 0, 'Self-hosted Xinference chat model; hardware cost is not included.'),
+      },
+      {
+        id: 'bge-reranker-v2-m3',
+        modalities: ['rerank'],
+        endpoints: { rerank: '/v1/rerank' },
+        capabilities: ['rerank', 'self_hosted'],
+        pricing: rerankPricing(0, 'Self-hosted rerank model; hardware cost is not included.'),
       },
     ],
   }),

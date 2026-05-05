@@ -83,6 +83,18 @@ function normalizeComparableUrl(value: string): string {
 function cloneProvider(provider: CatalogProvider): CatalogProvider {
   return {
     ...provider,
+    aliases: provider.aliases ? [...provider.aliases] : undefined,
+    input_types: provider.input_types ? [...provider.input_types] : undefined,
+    output_types: provider.output_types ? [...provider.output_types] : undefined,
+    model_buckets: provider.model_buckets
+      ? Object.fromEntries(
+          Object.entries(provider.model_buckets).map(([key, values]) => [
+            key,
+            Array.isArray(values) ? [...values] : values,
+          ]),
+        ) as CatalogProvider['model_buckets']
+      : undefined,
+    modalities: provider.modalities ? [...provider.modalities] : undefined,
     endpoints: { ...provider.endpoints },
     model_prefixes: provider.model_prefixes ? [...provider.model_prefixes] : undefined,
     capabilities: provider.capabilities ? [...provider.capabilities] : undefined,
@@ -956,6 +968,30 @@ function mergeProvider(
     target.synced = true;
   }
   if (override.name !== undefined) target.name = override.name;
+  if (override.aliases) target.aliases = [...override.aliases];
+  if (override.family !== undefined) target.family = override.family;
+  if (override.category !== undefined) target.category = override.category;
+  if (override.provider_type !== undefined) target.provider_type = override.provider_type;
+  if (override.homepage_url !== undefined) target.homepage_url = override.homepage_url;
+  if (override.docs_url !== undefined) target.docs_url = override.docs_url;
+  if (override.pricing_url !== undefined) target.pricing_url = override.pricing_url;
+  if (override.logo_id !== undefined) target.logo_id = override.logo_id;
+  if (override.input_types) target.input_types = [...override.input_types];
+  if (override.output_types) target.output_types = [...override.output_types];
+  if (override.model_buckets) {
+    target.model_buckets = Object.fromEntries(
+      Object.entries(override.model_buckets).map(([key, values]) => [
+        key,
+        Array.isArray(values) ? [...values] : values,
+      ]),
+    ) as CatalogProvider['model_buckets'];
+  }
+  if (override.compatibility_profile !== undefined) {
+    target.compatibility_profile = Array.isArray(override.compatibility_profile)
+      ? [...override.compatibility_profile]
+      : override.compatibility_profile;
+  }
+  if (override.modalities) target.modalities = [...override.modalities];
   if (override.base_url !== undefined) target.base_url = override.base_url;
   if (override.auth_type !== undefined) target.auth_type = override.auth_type;
   if (override.endpoints) target.endpoints = { ...target.endpoints, ...override.endpoints };
@@ -987,6 +1023,28 @@ function providerFromOverride(
   return {
     id,
     name: override.name || id,
+    aliases: override.aliases ? [...override.aliases] : undefined,
+    family: override.family,
+    category: override.category,
+    provider_type: override.provider_type,
+    homepage_url: override.homepage_url,
+    docs_url: override.docs_url,
+    pricing_url: override.pricing_url,
+    logo_id: override.logo_id,
+    input_types: override.input_types ? [...override.input_types] : undefined,
+    output_types: override.output_types ? [...override.output_types] : undefined,
+    model_buckets: override.model_buckets
+      ? Object.fromEntries(
+          Object.entries(override.model_buckets).map(([key, values]) => [
+            key,
+            Array.isArray(values) ? [...values] : values,
+          ]),
+        ) as CatalogProvider['model_buckets']
+      : undefined,
+    compatibility_profile: Array.isArray(override.compatibility_profile)
+      ? [...override.compatibility_profile]
+      : override.compatibility_profile,
+    modalities: override.modalities ? [...override.modalities] : undefined,
     base_url: override.base_url || 'https://provider.example',
     auth_type: override.auth_type || 'bearer',
     endpoints: { ...(override.endpoints || {}) },

@@ -6,6 +6,7 @@ const sidebar = readFileSync(fileURLToPath(new URL('../src/components/layout/Sid
 const page = readFileSync(fileURLToPath(new URL('../src/pages/ProviderCatalogPage.tsx', import.meta.url)), 'utf8')
 const apiTypes = readFileSync(fileURLToPath(new URL('../src/types/api.ts', import.meta.url)), 'utf8')
 const enNodes = readFileSync(fileURLToPath(new URL('../src/locales/en/nodes.json', import.meta.url)), 'utf8')
+const nodeForm = readFileSync(fileURLToPath(new URL('../src/components/nodes/NodeFormModal.tsx', import.meta.url)), 'utf8')
 
 if (!app.includes('ProviderCatalogPage') || !app.includes('path="/catalog"')) {
   throw new Error('Provider Catalog page must be mounted at /catalog.')
@@ -29,6 +30,10 @@ for (const expected of [
   'catalogPage.sync.status.fresh',
   'sync_status',
   'CatalogSyncStatus',
+  'provider_type',
+  'compatibility_profile',
+  'model_buckets',
+  'batch',
 ]) {
   if (!page.includes(expected) && !apiTypes.includes(expected) && !enNodes.includes(expected)) {
     throw new Error(`Provider Catalog price source status marker missing: ${expected}`)
@@ -37,6 +42,14 @@ for (const expected of [
 
 if (enNodes.includes('Pricing hygiene')) {
   throw new Error('Provider Catalog page copy should use pricing source/status wording, not "pricing hygiene".')
+}
+
+if (!nodeForm.includes('useProviderCatalogProviders') || !nodeForm.includes('providerCatalog.data?.providers')) {
+  throw new Error('Add Node wizard must load provider presets from the catalog API.')
+}
+
+if (nodeForm.includes('const PROVIDER_PRESETS') || nodeForm.includes('PROVIDER_PRESETS =')) {
+  throw new Error('Add Node wizard must not keep a hardcoded provider preset list.')
 }
 
 console.log('Open-source Dashboard Provider Catalog source status page validated.')

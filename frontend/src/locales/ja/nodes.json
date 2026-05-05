@@ -281,6 +281,7 @@
   "catalogPage.modalities.embedding": "Embedding",
   "catalogPage.modalities.rerank": "Rerank",
   "catalogPage.modalities.realtime": "Realtime",
+  "catalogPage.modalities.batch": "Batch",
   "catalogPage.emptyTitle": "一致するモデルがありません",
   "catalogPage.emptyDescription": "検索またはモダリティの条件を変更してください。",
   "catalogPage.badges.review": "確認",

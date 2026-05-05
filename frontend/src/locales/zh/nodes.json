@@ -281,6 +281,7 @@
   "catalogPage.modalities.embedding": "Embedding",
   "catalogPage.modalities.rerank": "Rerank",
   "catalogPage.modalities.realtime": "实时",
+  "catalogPage.modalities.batch": "批处理",
   "catalogPage.emptyTitle": "没有匹配模型",
   "catalogPage.emptyDescription": "调整搜索或模态筛选。",
   "catalogPage.badges.review": "需复核",
