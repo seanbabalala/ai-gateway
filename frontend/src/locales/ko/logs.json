@@ -277,5 +277,18 @@
   "cache.routingEffect": "라우팅 효과",
   "cache.localBypass": "로컬 캐시가 upstream 우회",
   "cache.providerEvidence": "Provider 캐시 근거 기록됨",
-  "cache.noEvidence": "캐시 근거 없음"
+  "cache.noEvidence": "캐시 근거 없음",
+  "cache.semanticHit": "Semantic cache hit",
+  "cache.semanticCache": "Semantic cache replay",
+  "cache.semanticScore": "semantic score",
+  "cache.semanticBypass": "Semantic cache가 upstream 우회",
+  "routeExplanation.cache.semantic": "Semantic cache",
+  "routeExplanation.cache.semanticHit": "semantic hit",
+  "routeExplanation.cache.semanticMetadataMatch": "metadata match",
+  "routeExplanation.cache.semanticMiss": "semantic miss",
+  "routeExplanation.cache.semanticScore": "score {{value}}",
+  "routeExplanation.cache.semanticThreshold": "threshold {{value}}",
+  "routeExplanation.cache.semanticMetadataOnly": "metadata only",
+  "routeExplanation.cache.notesMap.semantic_cache_hit": "Semantic cache가 응답",
+  "routeExplanation.cache.notesMap.semantic_cache_metadata_match": "Semantic cache metadata 일치"
 }

@@ -158,6 +158,12 @@ export class CallLog {
   @Column({ type: 'integer', default: 0 })
   cache_read_input_tokens!: number;
 
+  @Column({ type: 'boolean', default: false })
+  semantic_cache_hit!: boolean;
+
+  @Column({ type: 'real', nullable: true })
+  semantic_cache_score!: number | null;
+
   @Column({ type: 'varchar', nullable: true })
   experiment_group!: string | null;
 }

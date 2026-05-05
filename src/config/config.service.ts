@@ -16,6 +16,7 @@ import {
   RetryConfig,
   BudgetConfig,
   CacheConfig,
+  SemanticCacheConfig,
   LoggingConfig,
   LogSinkConfig,
   ControlPlaneConfig,
@@ -693,6 +694,21 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       stream_cache: {
         enabled: c?.stream_cache?.enabled ?? false,
       },
+    };
+  }
+
+  /** Get semantic cache preview config with privacy-safe defaults. */
+  get semanticCache(): Required<SemanticCacheConfig> {
+    const semantic = this.config.semantic_cache;
+    return {
+      enabled: semantic?.enabled ?? false,
+      backend: semantic?.backend ?? 'memory',
+      similarity_threshold: semantic?.similarity_threshold ?? 0.92,
+      ttl_seconds: semantic?.ttl_seconds ?? 3600,
+      max_entries: semantic?.max_entries ?? 500,
+      vector_dimensions: semantic?.vector_dimensions ?? 256,
+      store_responses: semantic?.store_responses ?? false,
+      max_response_bytes: semantic?.max_response_bytes ?? 65_536,
     };
   }
 

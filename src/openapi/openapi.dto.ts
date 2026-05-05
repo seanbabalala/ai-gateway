@@ -759,7 +759,7 @@ export class GatewayApiKeyMutationResponseDto extends ActionResponseDto {
 
 export class GatewayApiKeyCreatedResponseDto extends GatewayApiKeyMutationResponseDto {
   @ApiProperty({
-    example: 'gw_sk_live_example_redacted',
+    example: 'gw_sk_redacted',
     description: 'Plain Gateway API key returned once. Example is redacted.',
   })
   key!: string;

@@ -16,7 +16,12 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { ConfigService } from '../config/config.service';
 import { CacheConfig } from '../config/gateway.config';
-import { CanonicalRequest, CanonicalResponse } from '../canonical/canonical.types';
+import {
+  CanonicalContentBlock,
+  CanonicalMessage,
+  CanonicalRequest,
+  CanonicalResponse,
+} from '../canonical/canonical.types';
 import { StateBackendService } from '../state/state-backend.service';
 
 interface CacheEntry {
@@ -36,6 +41,49 @@ export interface CacheStats {
   memoryMb: number;
 }
 
+interface SemanticCacheEntry {
+  vector: number[];
+  requestHash: string;
+  createdAt: number;
+  expiresAt: number;
+  metadata: {
+    source_format: string;
+    model: string;
+    api_key_id: string | null;
+    namespace_id: string | null;
+    team_id: string | null;
+  };
+  response?: CanonicalResponse;
+  responseSizeBytes?: number;
+}
+
+export interface SemanticCacheLookupResult {
+  matched: boolean;
+  hit: boolean;
+  score: number | null;
+  threshold: number;
+  response: CanonicalResponse | null;
+  metadataOnly: boolean;
+  reason:
+    | 'disabled'
+    | 'ineligible'
+    | 'miss'
+    | 'metadata_match'
+    | 'hit';
+}
+
+export interface SemanticCacheStats {
+  enabled: boolean;
+  backend: string;
+  entries: number;
+  maxEntries: number;
+  matches: number;
+  hits: number;
+  misses: number;
+  threshold: number;
+  storeResponses: boolean;
+}
+
 @Injectable()
 export class PromptCacheService {
   private readonly logger = new Logger(PromptCacheService.name);
@@ -43,6 +91,10 @@ export class PromptCacheService {
   private hits = 0;
   private misses = 0;
   private totalSizeBytes = 0;
+  private readonly semanticCache = new Map<string, SemanticCacheEntry>();
+  private semanticHits = 0;
+  private semanticMatches = 0;
+  private semanticMisses = 0;
 
   constructor(
     private readonly config: ConfigService,
@@ -288,6 +340,126 @@ export class PromptCacheService {
     }
   }
 
+  shouldSemanticCache(canonical: CanonicalRequest): boolean {
+    const cfg = this.config.semanticCache;
+    if (!cfg.enabled) return false;
+    if (canonical.stream) return false;
+    if (!canonical.messages || canonical.messages.length === 0) return false;
+    if (this.extractSemanticText(canonical).length === 0) return false;
+    return true;
+  }
+
+  lookupSemantic(canonical: CanonicalRequest): SemanticCacheLookupResult {
+    const cfg = this.config.semanticCache;
+    if (!cfg.enabled) {
+      return this.semanticResult('disabled', cfg.similarity_threshold);
+    }
+    if (!this.shouldSemanticCache(canonical)) {
+      return this.semanticResult('ineligible', cfg.similarity_threshold);
+    }
+
+    const now = Date.now();
+    this.evictExpiredSemanticEntries(now);
+    const vector = this.buildSemanticVector(canonical);
+    const scope = this.semanticScope(canonical);
+    let best: { entry: SemanticCacheEntry; score: number } | null = null;
+
+    for (const entry of this.semanticCache.values()) {
+      if (!this.sameSemanticScope(scope, entry.metadata)) continue;
+      const score = this.cosineSimilarity(vector, entry.vector);
+      if (!best || score > best.score) {
+        best = { entry, score };
+      }
+    }
+
+    if (!best || best.score < cfg.similarity_threshold) {
+      this.semanticMisses++;
+      return {
+        matched: false,
+        hit: false,
+        score: best ? Number(best.score.toFixed(4)) : null,
+        threshold: cfg.similarity_threshold,
+        response: null,
+        metadataOnly: false,
+        reason: 'miss',
+      };
+    }
+
+    this.semanticMatches++;
+    const score = Number(best.score.toFixed(4));
+    if (!best.entry.response) {
+      return {
+        matched: true,
+        hit: false,
+        score,
+        threshold: cfg.similarity_threshold,
+        response: null,
+        metadataOnly: true,
+        reason: 'metadata_match',
+      };
+    }
+
+    this.semanticHits++;
+    return {
+      matched: true,
+      hit: true,
+      score,
+      threshold: cfg.similarity_threshold,
+      response: JSON.parse(JSON.stringify(best.entry.response)),
+      metadataOnly: false,
+      reason: 'hit',
+    };
+  }
+
+  storeSemantic(canonical: CanonicalRequest, response: CanonicalResponse): void {
+    const cfg = this.config.semanticCache;
+    if (!cfg.enabled || !this.shouldSemanticCache(canonical)) return;
+    if (cfg.backend !== 'memory') {
+      this.logger.warn(
+        `Semantic cache backend "${cfg.backend}" is preview-only; using local memory for this process.`,
+      );
+    }
+
+    const responseJson = JSON.stringify(response);
+    const responseSizeBytes = Buffer.byteLength(responseJson, 'utf8');
+    const canStoreResponse =
+      cfg.store_responses && responseSizeBytes <= cfg.max_response_bytes;
+    const key = this.semanticCacheKey(canonical);
+    const entry: SemanticCacheEntry = {
+      vector: this.buildSemanticVector(canonical),
+      requestHash: key,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + cfg.ttl_seconds * 1000,
+      metadata: this.semanticScope(canonical),
+      response: canStoreResponse ? JSON.parse(responseJson) : undefined,
+      responseSizeBytes: canStoreResponse ? responseSizeBytes : undefined,
+    };
+
+    this.semanticCache.delete(key);
+    while (this.semanticCache.size >= cfg.max_entries) {
+      const oldest = this.semanticCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.semanticCache.delete(oldest);
+    }
+    this.semanticCache.set(key, entry);
+  }
+
+  getSemanticStats(): SemanticCacheStats {
+    const cfg = this.config.semanticCache;
+    this.evictExpiredSemanticEntries(Date.now());
+    return {
+      enabled: cfg.enabled,
+      backend: cfg.backend,
+      entries: this.semanticCache.size,
+      maxEntries: cfg.max_entries,
+      matches: this.semanticMatches,
+      hits: this.semanticHits,
+      misses: this.semanticMisses,
+      threshold: cfg.similarity_threshold,
+      storeResponses: cfg.store_responses,
+    };
+  }
+
   // ══════════════════════════════════════════════════════
   // Internal
   // ══════════════════════════════════════════════════════
@@ -338,6 +510,124 @@ export class PromptCacheService {
     }
 
     return true;
+  }
+
+  private semanticResult(
+    reason: SemanticCacheLookupResult['reason'],
+    threshold: number,
+  ): SemanticCacheLookupResult {
+    return {
+      matched: false,
+      hit: false,
+      score: null,
+      threshold,
+      response: null,
+      metadataOnly: false,
+      reason,
+    };
+  }
+
+  private semanticCacheKey(canonical: CanonicalRequest): string {
+    const keyData = {
+      text_hash: createHash('sha256')
+        .update(this.extractSemanticText(canonical))
+        .digest('hex'),
+      scope: this.semanticScope(canonical),
+      tools: canonical.tools ? this.hashObject(canonical.tools) : null,
+      tool_choice: canonical.tool_choice ? this.hashObject(canonical.tool_choice) : null,
+      temperature: canonical.temperature ?? 0,
+      max_tokens: canonical.max_tokens ?? null,
+    };
+    return createHash('sha256').update(JSON.stringify(keyData)).digest('hex');
+  }
+
+  private semanticScope(canonical: CanonicalRequest): SemanticCacheEntry['metadata'] {
+    return {
+      source_format: canonical.metadata.source_format,
+      model: canonical.metadata.original_model || 'auto',
+      api_key_id: canonical.metadata.api_key_id ?? null,
+      namespace_id: canonical.metadata.namespace_id ?? null,
+      team_id: canonical.metadata.team_id ?? null,
+    };
+  }
+
+  private sameSemanticScope(
+    scope: SemanticCacheEntry['metadata'],
+    candidate: SemanticCacheEntry['metadata'],
+  ): boolean {
+    return (
+      scope.source_format === candidate.source_format &&
+      scope.model === candidate.model &&
+      scope.api_key_id === candidate.api_key_id &&
+      scope.namespace_id === candidate.namespace_id &&
+      scope.team_id === candidate.team_id
+    );
+  }
+
+  private buildSemanticVector(canonical: CanonicalRequest): number[] {
+    const dimensions = Math.max(16, Math.floor(this.config.semanticCache.vector_dimensions));
+    const vector = new Array<number>(dimensions).fill(0);
+    const tokens = this.extractSemanticText(canonical)
+      .toLowerCase()
+      .replace(/https?:\/\/\S+/g, ' url ')
+      .replace(/[^a-z0-9_\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/giu, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 1);
+
+    for (const token of tokens) {
+      const hash = createHash('sha256').update(token).digest();
+      const index = hash.readUInt32BE(0) % dimensions;
+      const sign = hash[4] % 2 === 0 ? 1 : -1;
+      vector[index] += sign;
+    }
+
+    const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+    return norm > 0 ? vector.map((value) => value / norm) : vector;
+  }
+
+  private cosineSimilarity(left: number[], right: number[]): number {
+    const length = Math.min(left.length, right.length);
+    let score = 0;
+    for (let index = 0; index < length; index++) {
+      score += left[index] * right[index];
+    }
+    return Math.max(0, Math.min(1, score));
+  }
+
+  private extractSemanticText(canonical: CanonicalRequest): string {
+    return canonical.messages
+      .map((message) => this.messageText(message))
+      .join('\n')
+      .trim();
+  }
+
+  private messageText(message: CanonicalMessage): string {
+    if (typeof message.content === 'string') return message.content;
+    return message.content.map((block) => this.blockText(block)).join('\n');
+  }
+
+  private blockText(block: CanonicalContentBlock): string {
+    if (block.type === 'text') return block.text;
+    if (block.type === 'tool_result') {
+      return typeof block.content === 'string'
+        ? block.content
+        : block.content.map((nested) => this.blockText(nested)).join('\n');
+    }
+    if (block.type === 'tool_use') return block.name;
+    return '';
+  }
+
+  private hashObject(value: unknown): string {
+    return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  }
+
+  private evictExpiredSemanticEntries(now: number): void {
+    for (const [key, entry] of this.semanticCache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.semanticCache.delete(key);
+      }
+    }
   }
 
   /**

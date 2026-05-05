@@ -3,9 +3,14 @@ import type { CallLog, NodeDistribution, TierDistribution } from '@/types/api'
 
 const PROMPT_CACHE_TIER = 'cached'
 const PROMPT_CACHE_NODE = 'cache'
+const SEMANTIC_CACHE_NODE = 'semantic_cache'
 
-export function isPromptCacheLog(log: Pick<CallLog, 'tier' | 'node_id'>): boolean {
-  return log.tier === PROMPT_CACHE_TIER || log.node_id === PROMPT_CACHE_NODE
+export function isPromptCacheLog(log: Pick<CallLog, 'tier' | 'node_id' | 'semantic_cache_hit'>): boolean {
+  return log.node_id === PROMPT_CACHE_NODE || (log.tier === PROMPT_CACHE_TIER && !log.semantic_cache_hit && log.node_id !== SEMANTIC_CACHE_NODE)
+}
+
+export function isSemanticCacheLog(log: Pick<CallLog, 'node_id' | 'semantic_cache_hit'>): boolean {
+  return log.node_id === SEMANTIC_CACHE_NODE || log.semantic_cache_hit === true
 }
 
 export function visibleTierDistribution(items: TierDistribution[]): TierDistribution[] {
@@ -13,7 +18,7 @@ export function visibleTierDistribution(items: TierDistribution[]): TierDistribu
 }
 
 export function visibleNodeDistribution(items: NodeDistribution[]): NodeDistribution[] {
-  return items.filter((item) => item.nodeId !== PROMPT_CACHE_NODE)
+  return items.filter((item) => item.nodeId !== PROMPT_CACHE_NODE && item.nodeId !== SEMANTIC_CACHE_NODE)
 }
 
 export function hiddenPromptCacheCount(

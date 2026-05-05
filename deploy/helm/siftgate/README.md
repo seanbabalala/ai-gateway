@@ -1,7 +1,7 @@
 # SiftGate Helm Chart
 
 This chart deploys the MIT open-source SiftGate Data Plane only. It does not
-install SiftGate Cloud, enterprise dashboard components, or private images.
+install external control-plane components or private images.
 
 ## Quickstart
 

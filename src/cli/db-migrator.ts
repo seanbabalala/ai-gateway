@@ -744,6 +744,8 @@ function normalizeRow(
     retry_count: toNumber,
     cache_creation_input_tokens: toNumber,
     cache_read_input_tokens: toNumber,
+    semantic_cache_hit: toBoolean,
+    semantic_cache_score: toNullableNumber,
   });
 }
 

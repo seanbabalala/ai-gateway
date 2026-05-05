@@ -26,7 +26,7 @@ import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
-import { isPromptCacheLog, sourceFormatLabel } from '@/lib/call-log-display'
+import { isPromptCacheLog, isSemanticCacheLog, sourceFormatLabel } from '@/lib/call-log-display'
 import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
@@ -43,6 +43,9 @@ function LogRouteBadge({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
   if (isPromptCacheLog(log)) {
     return <Badge variant="emerald">{t('cache.hit')}</Badge>
+  }
+  if (isSemanticCacheLog(log)) {
+    return <Badge variant="emerald">{t('cache.semanticHit')}</Badge>
   }
   return <TierBadge tier={log.tier} />
 }
@@ -66,13 +69,22 @@ function UpstreamCell({ log }: { log: CallLog }) {
       </div>
     )
   }
+  if (isSemanticCacheLog(log)) {
+    return (
+      <div className="min-w-0">
+        <span className="font-medium text-[var(--foreground-dim)]">{t('cache.noUpstream')}</span>
+        <div className="mt-1 font-mono text-[10px] text-[var(--foreground-dim)]">{t('cache.semanticCache')}</div>
+      </div>
+    )
+  }
   return <span className="font-medium text-[var(--foreground)]">{log.node_id}</span>
 }
 
 function LogDetailRow({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
   const mediaByteSize = formatBytes(log.media_byte_size)
-  const isCache = isPromptCacheLog(log)
+  const isSemanticCache = isSemanticCacheLog(log)
+  const isCache = isPromptCacheLog(log) || isSemanticCache
   return (
     <TableRow>
       <TableCell colSpan={10} className="bg-[var(--inset-bg)] px-6 py-4">
@@ -94,7 +106,11 @@ function LogDetailRow({ log }: { log: CallLog }) {
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.routeResult')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
-              {isCache ? t('cache.hit') : t(`tiers.${log.tier}`, { defaultValue: log.tier })}
+              {isSemanticCache
+                ? t('cache.semanticHit')
+                : isCache
+                  ? t('cache.hit')
+                  : t(`tiers.${log.tier}`, { defaultValue: log.tier })}
             </span>
           </div>
           <div>
@@ -209,9 +225,23 @@ function LogDetailRow({ log }: { log: CallLog }) {
               <div>
                 <span className="text-[var(--foreground-dim)]">{t('cache.kind')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">
-                  {isCache ? t('cache.promptCache') : t('cache.providerCache')}
+                  {isSemanticCache
+                    ? t('cache.semanticCache')
+                    : isPromptCacheLog(log)
+                      ? t('cache.promptCache')
+                      : t('cache.providerCache')}
                 </span>
               </div>
+              {isSemanticCache && (
+                <div>
+                  <span className="text-[var(--foreground-dim)]">{t('cache.semanticScore')}: </span>
+                  <span className="font-mono text-[var(--foreground-muted)]">
+                    {log.semantic_cache_score !== null && log.semantic_cache_score !== undefined
+                      ? log.semantic_cache_score.toFixed(3)
+                      : t('common.na')}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="text-[var(--foreground-dim)]">{t('cache.readTokens')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">{log.cache_read_input_tokens ?? 0}</span>
@@ -224,7 +254,9 @@ function LogDetailRow({ log }: { log: CallLog }) {
                 <span className="text-[var(--foreground-dim)]">{t('cache.routingEffect')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">
                   {isCache
-                    ? t('cache.localBypass')
+                    ? isSemanticCache
+                      ? t('cache.semanticBypass')
+                      : t('cache.localBypass')
                     : (log.cache_read_input_tokens || log.cache_creation_input_tokens)
                       ? t('cache.providerEvidence')
                       : t('cache.noEvidence')}

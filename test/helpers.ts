@@ -102,6 +102,16 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       exclude_tool_use: true,
       stream_cache: { enabled: false },
     },
+    semanticCache: {
+      enabled: false,
+      backend: 'memory',
+      similarity_threshold: 0.92,
+      ttl_seconds: 3600,
+      max_entries: 500,
+      vector_dimensions: 256,
+      store_responses: false,
+      max_response_bytes: 65_536,
+    },
     embeddingBatching: {
       enabled: false,
       window_ms: 10,

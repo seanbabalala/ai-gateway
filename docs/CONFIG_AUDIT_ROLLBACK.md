@@ -2,7 +2,7 @@
 
 SiftGate v0.9 adds local configuration audit and rollback for the MIT open-source Data Plane. It is designed for single-node SQLite installs first, and the same entities are compatible with PostgreSQL when you move production metadata there.
 
-The feature is local-only. It does not require SiftGate Cloud, Redis, an enterprise dashboard, or private packages.
+The feature is local-only. It does not require any external control plane, Redis, PostgreSQL, or private package.
 
 ## What It Records
 

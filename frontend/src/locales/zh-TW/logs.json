@@ -277,5 +277,18 @@
   "cache.routingEffect": "路由影響",
   "cache.localBypass": "本地快取繞過上游",
   "cache.providerEvidence": "已記錄 Provider 快取證據",
-  "cache.noEvidence": "無快取證據"
+  "cache.noEvidence": "無快取證據",
+  "cache.semanticHit": "語義快取命中",
+  "cache.semanticCache": "語義快取複用",
+  "cache.semanticScore": "語義分數",
+  "cache.semanticBypass": "語義快取繞過上游",
+  "routeExplanation.cache.semantic": "語義快取",
+  "routeExplanation.cache.semanticHit": "語義命中",
+  "routeExplanation.cache.semanticMetadataMatch": "中繼資料匹配",
+  "routeExplanation.cache.semanticMiss": "語義未命中",
+  "routeExplanation.cache.semanticScore": "分數 {{value}}",
+  "routeExplanation.cache.semanticThreshold": "閾值 {{value}}",
+  "routeExplanation.cache.semanticMetadataOnly": "僅中繼資料",
+  "routeExplanation.cache.notesMap.semantic_cache_hit": "語義快取已返回",
+  "routeExplanation.cache.notesMap.semantic_cache_metadata_match": "語義快取中繼資料匹配"
 }

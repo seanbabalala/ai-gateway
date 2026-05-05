@@ -131,6 +131,8 @@ The router then applies tier config, domain preferences, modality compatibility,
 
 v1.2 prompt-cache-aware routing keeps the existing local prompt-cache short-circuit intact. A local cache hit returns before upstream routing. For cache misses, `cost` and `balanced` optimization can consider provider prompt-cache/read-cache/write-cache capability, configured `cache_read_input` / `cache_creation_input` prices, and observed provider cache-read hit rate. Route traces expose only metadata evidence and never include prompt text, responses, raw headers, provider keys, or media/video bytes.
 
+v1.3 adds Semantic Cache preview as a separate disabled-by-default layer. It computes a local hashed-vector embedding from canonical request text, stores embedding/hash/metadata by default, and records semantic match evidence in call logs and Route Decision Trace. Replayable response storage is off unless `semantic_cache.store_responses=true`; when off, semantic matches are advisory evidence and traffic still goes upstream.
+
 ### Reliability
 
 The data plane protects request flow with:

@@ -8,8 +8,7 @@ Plane:
 - Local validator: `npm run validate:k8s`
 
 These assets deploy only the local SiftGate Data Plane. They do not install
-SiftGate Cloud, enterprise dashboard components, private images, or real
-provider secrets.
+external control-plane components, private images, or real provider secrets.
 
 ## Defaults
 
@@ -24,7 +23,7 @@ open-source default:
 - no Ingress
 - no autoscaling
 - no Redis or PostgreSQL dependency
-- no SiftGate Cloud configuration
+- no external control-plane configuration
 
 The default config includes a placeholder OpenAI-compatible node so the gateway
 can boot and the Dashboard can be used. Replace the placeholder Secret before

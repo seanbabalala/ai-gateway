@@ -365,6 +365,39 @@ function CacheEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
               )}
             </div>
           </div>
+          {evidence.semantic_cache_enabled && (
+            <div className="rounded-lg bg-[var(--inset-bg)] p-3 md:col-span-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+                {t('routeExplanation.cache.semantic')}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Badge variant={evidence.semantic_cache_hit ? 'emerald' : evidence.semantic_cache_match ? 'amber' : 'zinc'}>
+                  {evidence.semantic_cache_hit
+                    ? t('routeExplanation.cache.semanticHit')
+                    : evidence.semantic_cache_match
+                      ? t('routeExplanation.cache.semanticMetadataMatch')
+                      : t('routeExplanation.cache.semanticMiss')}
+                </Badge>
+                {typeof evidence.semantic_cache_score === 'number' && (
+                  <Badge variant="blue">
+                    {t('routeExplanation.cache.semanticScore', {
+                      value: evidence.semantic_cache_score.toFixed(3),
+                    })}
+                  </Badge>
+                )}
+                {typeof evidence.semantic_cache_threshold === 'number' && (
+                  <Badge variant="zinc">
+                    {t('routeExplanation.cache.semanticThreshold', {
+                      value: evidence.semantic_cache_threshold.toFixed(2),
+                    })}
+                  </Badge>
+                )}
+                {evidence.semantic_cache_metadata_only && (
+                  <Badge variant="amber">{t('routeExplanation.cache.semanticMetadataOnly')}</Badge>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </CardStatic>

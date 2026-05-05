@@ -234,6 +234,7 @@ export function validateConfigObject(
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
   validateCache(config.cache, issues);
+  validateSemanticCache(config.semantic_cache, issues);
   validateEmbeddingBatching(config.embedding_batching, issues);
   validateRealtime(config.realtime, config.nodes, issues);
   validateMcpGateway(config.mcp, config.namespaces, issues);
@@ -2420,6 +2421,134 @@ function validateCache(
         ),
       );
     }
+  }
+}
+
+function validateSemanticCache(
+  semanticCache: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (semanticCache === undefined) return;
+  if (!isRecord(semanticCache)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache must be an object.',
+        'semantic_cache',
+      ),
+    );
+    return;
+  }
+
+  if (
+    semanticCache.enabled !== undefined &&
+    !isBoolean(semanticCache.enabled)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.enabled must be a boolean.',
+        'semantic_cache.enabled',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.backend !== undefined &&
+    semanticCache.backend !== 'memory' &&
+    semanticCache.backend !== 'redis' &&
+    semanticCache.backend !== 'vector'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.backend must be memory, redis, or vector.',
+        'semantic_cache.backend',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.backend !== undefined &&
+    semanticCache.backend !== 'memory'
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'semantic_cache_backend_preview',
+        'semantic_cache backend support beyond memory is preview-only; memory remains the default local backend.',
+        'semantic_cache.backend',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.similarity_threshold !== undefined &&
+    (!isFiniteNumber(semanticCache.similarity_threshold) ||
+      semanticCache.similarity_threshold <= 0 ||
+      semanticCache.similarity_threshold > 1)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.similarity_threshold must be a number greater than 0 and at most 1.',
+        'semantic_cache.similarity_threshold',
+      ),
+    );
+  }
+
+  validateOptionalPositiveNumber(
+    semanticCache.ttl_seconds,
+    'semantic_cache.ttl_seconds',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    semanticCache.max_entries,
+    'semantic_cache.max_entries',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    semanticCache.vector_dimensions,
+    'semantic_cache.vector_dimensions',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    semanticCache.max_response_bytes,
+    'semantic_cache.max_response_bytes',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+
+  if (
+    semanticCache.store_responses !== undefined &&
+    !isBoolean(semanticCache.store_responses)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.store_responses must be a boolean.',
+        'semantic_cache.store_responses',
+      ),
+    );
+  }
+
+  if (semanticCache.store_responses === true) {
+    issues.push(
+      issue(
+        'warning',
+        'semantic_cache_response_storage_enabled',
+        'semantic_cache.store_responses=true can retain replayable response bodies locally; keep it disabled unless explicitly needed and documented.',
+        'semantic_cache.store_responses',
+      ),
+    );
   }
 }
 

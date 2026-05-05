@@ -1,19 +1,18 @@
 # Production Deployment
 
-This guide covers the open-source SiftGate Data Plane only. SiftGate Cloud is
-an optional control plane; a self-hosted gateway remains fully usable with
-local config, local provider credentials, SQLite for development, PostgreSQL
-for production, and optional Redis-backed shared state.
+This guide covers the open-source SiftGate Data Plane only. A self-hosted
+gateway remains fully usable with local config, local provider credentials,
+SQLite for small deployments, PostgreSQL for durable production metadata, and
+optional Redis-backed shared state.
 
-v1.0.0 keeps that deployment shape while adding the Extension Ecosystem layer
-on top of the v0.9.3 Operations + Trust foundation: Provider Catalog coverage
-for 30+ providers, reasoning/thinking intent across protocols, metadata-only
-guardrails webhook findings with more local rules, and a fuller OSS Dashboard
-API Key management surface. Structured output, rerank, images, audio, video,
-Batch API metadata, secret resolution, audit metadata, benchmark summaries, provider catalog
-metadata, and API key policy stay in the open-source Data Plane. Keep the
-guardrails webhook sink disabled until the receiver, queue limits, retry
-policy, and downstream retention policy have been reviewed.
+v1.3.0 keeps that deployment shape while adding the Production Ready layer:
+local Virtual Key + Team management, Semantic Cache preview, Evaluation
+Framework preview, and community documentation assets. Structured output,
+rerank, images, audio, video, Batch API metadata, secret resolution, audit
+metadata, benchmark summaries, provider catalog metadata, and API key policy
+stay in the open-source Data Plane. Keep the guardrails webhook sink disabled
+until the receiver, queue limits, retry policy, and downstream retention policy
+have been reviewed.
 Realtime, video, and Batch result download proxying should only be enabled for
 production after upstream provider behavior, connection limits, job/file
 retention, and load balancer paths have been tested in your environment.
@@ -24,6 +23,10 @@ requests to a supported public catalog. In v1.2 only OpenRouter has an
 automatic adapter; the recommended target is the local sync cache so reviewed
 `catalog.override.yaml`, node `model_capabilities[].pricing`, and
 `models_pricing` stay authoritative.
+
+Run `npm run docs:check` before releases to catch broken documentation links,
+common secret patterns, private repository references, and accidentally present
+`gateway.config.yaml` files.
 
 ## Baseline Topology
 
@@ -40,6 +43,9 @@ automatic adapter; the recommended target is the local sync cache so reviewed
 - Manage client credentials from the OSS Dashboard API Keys page. It supports local namespace binding, endpoint/modality/node/model restrictions, per-key budgets, per-key rate limits, disable/delete/rotate, masked display, one-time copy on create/rotate, and audit events without requiring Cloud workspace/RBAC.
 - Use Redis only for features that need shared state or multi-instance
   coordination.
+- Keep `semantic_cache.store_responses=false` and `evaluation.store_samples=false`
+  unless local policy explicitly allows replayable responses or redacted sample
+  previews.
 - Keep `/health` on the load balancer health check path.
 
 ## Kubernetes / Helm

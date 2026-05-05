@@ -120,6 +120,8 @@ export interface CallLog {
   retry_count?: number
   cache_creation_input_tokens?: number
   cache_read_input_tokens?: number
+  semantic_cache_hit?: boolean
+  semantic_cache_score?: number | null
   experiment_group?: string | null
   structured_output_requested?: boolean
   structured_output_type?: string | null
@@ -305,6 +307,13 @@ export interface RouteDecisionTrace {
     local_prompt_cache_eligible: boolean
     local_prompt_cache_hit: boolean
     local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null
+    semantic_cache_enabled?: boolean
+    semantic_cache_match?: boolean
+    semantic_cache_hit?: boolean
+    semantic_cache_score?: number | null
+    semantic_cache_threshold?: number | null
+    semantic_cache_metadata_only?: boolean
+    semantic_cache_reason?: string | null
     cache_aware_routing: boolean
     provider_cache_preference: boolean
     notes: string[]

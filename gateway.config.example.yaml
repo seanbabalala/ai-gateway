@@ -821,6 +821,24 @@ models_pricing:
 #     enabled: false           # Opt-in stream cache + SSE replay (default: false)
 
 # ============================================================
+# Semantic Cache Preview — optional embedding-similarity cache
+# ============================================================
+# Disabled by default. The first OSS preview uses a local memory hashed-vector
+# embedding for similarity metadata. It stores only embedding/hash/metadata by
+# default; replayable response bodies require explicit store_responses: true.
+# Keep namespace/API key/model isolation enabled through the gateway metadata.
+# ============================================================
+# semantic_cache:
+#   enabled: false             # Master switch (default: false)
+#   backend: memory            # memory now; redis/vector reserved for later previews
+#   similarity_threshold: 0.92 # Cosine threshold for a metadata match
+#   ttl_seconds: 3600          # Entry TTL
+#   max_entries: 500           # Local LRU cap
+#   vector_dimensions: 256     # Hashed-vector dimensions
+#   store_responses: false     # Privacy-safe default: no replay bodies
+#   max_response_bytes: 65536  # Cap when store_responses=true
+
+# ============================================================
 # Embedding Batching — optional /v1/embeddings request coalescing
 # ============================================================
 # Disabled by default. When enabled, small same-target embedding

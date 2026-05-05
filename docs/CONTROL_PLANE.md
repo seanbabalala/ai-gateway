@@ -1,110 +1,69 @@
-# Connected Gateway Control Plane
+# Optional Control Plane Contract
 
-Connected Gateway is the bridge between the open-source SiftGate Data Plane and SiftGate Cloud. It is disabled by default, and the data plane continues to run fully self-hosted unless `control_plane.enabled` is set to `true`.
+SiftGate can optionally connect an open-source Data Plane to an external control plane. This feature is disabled by default and is not required for local gateway traffic.
+
+The Data Plane remains fully usable with local configuration, local provider credentials, SQLite or PostgreSQL, and optional Redis shared state.
 
 ## Architecture
 
 ```text
-User App -> Customer SiftGate Data Plane -> Provider APIs
+User App -> SiftGate Data Plane -> Provider APIs
                      |
-                     | heartbeat / telemetry / policy sync
+                     | optional heartbeat / telemetry / policy pull
                      v
-              SiftGate Cloud Control Plane
+              External Control Plane API
 ```
 
-The data plane initiates outbound connections. Customers do not need to expose inbound ports for control-plane access.
+The Data Plane initiates outbound requests. Operators do not need to expose inbound gateway ports for control-plane access.
 
-## Data Plane Configuration
-
-For local Cloud development, create a registration token in the Cloud Dashboard or use the dev seed token printed by `npm run dev:local` in the private `siftgate-cloud` workspace:
-
-```text
-grt_demo_local_registration_token_do_not_use_prod_20260501
-```
+## Configuration
 
 ```yaml
 control_plane:
-  enabled: true
-  url: "http://localhost:3100"
-  gateway_id: "gw_local_dev"
-  registration_token: "${GATEWAY_REGISTRATION_TOKEN}"
+  enabled: false
+  url: "https://control-plane.example.com"
+  gateway_id: "gw_prod_us"
+  registration_token: "${env:GATEWAY_REGISTRATION_TOKEN}"
   telemetry:
     upload_interval_seconds: 30
     include_prompt: false
     include_response: false
 ```
 
-Use `https://api.siftgate.dev` as the production API placeholder until the hosted domain is finalized.
+Use a secret reference or environment variable for registration tokens. Do not commit resolved tokens.
 
-## Automatic Lifecycle
+## Data Plane Endpoints Expected Upstream
 
-When enabled, the data plane starts the Cloud connection lifecycle during NestJS module initialization:
-
-- **Register:** `POST /api/control/register` runs automatically on boot with the configured `gateway_id`, package version, supported protocols, and privacy defaults.
-- **Access token:** Cloud returns `workspace_id`, `gateway_id`, and a gateway access JWT. The registration token is only used for registration or token rotation.
-- **Heartbeat:** the data plane sends `POST /api/control/heartbeat` every 30 seconds with `workspace_id`, `gateway_id`, `status: online`, and a timestamp.
-- **Telemetry:** call metadata is queued from local `call_logs` and uploaded to `POST /api/control/telemetry/batch` every `control_plane.telemetry.upload_interval_seconds` seconds.
-- **Policy sync:** the data plane polls `GET /api/control/policy/latest?gateway_id=<gateway_id>` every 60 seconds and keeps the latest bundle in memory.
-
-## Control Plane Endpoints
-
-The current Data Plane client expects SiftGate Cloud to expose exactly these Data Plane-facing endpoints:
+An external control plane can implement these Data Plane-facing endpoints:
 
 - `POST /api/control/register`
 - `POST /api/control/heartbeat`
 - `POST /api/control/telemetry/batch`
 - `GET /api/control/policy/latest`
 
-Realtime control events are intentionally future work. If added later, they should use outbound SSE, WebSocket, or long-polling so customers do not need to expose inbound gateway ports. When a control event arrives, the gateway should pull the latest policy bundle instead of trusting large policy payloads pushed over the event stream.
-
-Dashboard/workspace APIs are separate from this Data Plane contract:
-
-- `POST /api/workspaces`
-- `GET /api/workspaces/:id/gateways`
-- `POST /api/workspaces/:id/gateway-tokens`
-- `GET /api/workspaces/:id/telemetry/summary`
-- `GET /api/workspaces/:id/recommendations`
-- `POST /api/workspaces/:id/policies`
-- `POST /api/workspaces/:id/policies/:version/publish`
-- `POST /api/workspaces/:id/policies/:version/rollback`
-
-## Local Compatibility Smoke
-
-From the private `siftgate-cloud` workspace, run:
-
-```bash
-npm run data-plane:smoke
-```
-
-The smoke test reads the public Data Plane contract sources, starts the local Cloud API against test PostgreSQL/Redis, registers a gateway with the same payload shape emitted by `src/control-plane/control-plane-client.service.ts`, sends heartbeat and telemetry, pulls the latest policy, verifies `ETag`/`304`, and confirms the Cloud Fleet API shows the gateway online with one telemetry event.
+Realtime control events are future work. If added later, they should use outbound SSE, WebSocket, or long-polling so the Data Plane does not need inbound exposure.
 
 ## Telemetry Payload
 
-Telemetry events are derived from `call_logs` and contain metadata only:
+Telemetry is derived from local call-log metadata:
 
-- workspace id and gateway id
-- request id and Gateway API key id
+- request id
+- Gateway API key id
 - node, model, tier, score
-- latency, status, input/output tokens, estimated cost
-- fallback used, fallback reason, retry count, cache hit, policy hits
+- latency, status, tokens, estimated cost
+- fallback, fallback reason, retry count
+- cache hit and policy metadata
 - timestamp
 
-By default telemetry does not include:
-
-- prompt text
-- response text
-- tool input payloads
-- provider API keys
-- raw headers containing secrets
+By default telemetry does not include prompt text, response text, tool input payloads, provider API keys, raw authorization headers, media bytes, video bytes, or secret manager resolved values.
 
 ## Policy Bundles
 
-The hosted control plane can return a policy bundle:
+The Data Plane can pull a policy bundle shape such as:
 
 ```json
 {
   "version": 42,
-  "workspace_id": "ws_123",
   "gateway_id": "gw_prod_us",
   "mode": "recommendation_or_enforced",
   "routing": {},
@@ -117,63 +76,8 @@ The hosted control plane can return a policy bundle:
 }
 ```
 
-The first connected-gateway implementation stores the latest bundle in memory. Applying cloud policies to live local routing should be introduced behind an explicit mode and rollback path.
+Applying remote policy to live local routing should remain behind explicit operator configuration and rollback semantics.
 
-## Feedback Loop
+## Boundary
 
-```text
-metadata upload
-  -> cloud analytics
-  -> router recommendation
-  -> admin approval or explicit Autopilot
-  -> policy bundle publish
-  -> gateway pulls policy
-  -> local gateway executes
-```
-
-Recommendations must stay inside customer-defined allowed nodes, allowed models, budgets, rate limits, and emergency disables. Autopilot should be unavailable unless the workspace explicitly enables it and should always preserve rollback.
-
-## Cloud Product Surface
-
-Workspace roles:
-
-- owner
-- admin
-- developer
-- viewer
-
-Gateway fleet:
-
-- gateway registration
-- online and offline state
-- version drift
-- config drift
-- last heartbeat
-- throughput, latency, and error rate
-
-Policy bundles:
-
-- routing tiers
-- fallback chains
-- rate limits
-- budgets
-- allowed nodes and models
-- emergency disables
-- policy version and expiry
-
-Audit events:
-
-- user login
-- invite accepted
-- gateway registered
-- policy published
-- routing changed
-- API key changed
-- budget exceeded
-- emergency override
-
-Smart router tiers:
-
-- open source: user-managed router parameters
-- paid cloud: recommendations from metadata analytics
-- enterprise: Autopilot with guardrails and approval workflow
+The open-source repository owns the Data Plane contract and runtime. It must not import private packages or require a hosted service to serve `/v1/*`, `/mcp/*`, Dashboard, batch, cache, eval, or routing traffic.

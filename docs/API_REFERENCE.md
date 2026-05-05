@@ -493,7 +493,23 @@ The report includes total requests, success/error/fallback/cache rates, p50/p75/
 
 This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
 
-Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, and estimated savings.
+Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, estimated savings, and v1.3 semantic cache match state.
+
+### Semantic Cache Preview
+
+`semantic_cache` is a disabled-by-default local preview. It uses a local hashed-vector embedding to compare request text and records only similarity metadata unless replayable response storage is explicitly enabled.
+
+```yaml
+semantic_cache:
+  enabled: false
+  backend: memory
+  similarity_threshold: 0.92
+  ttl_seconds: 3600
+  max_entries: 500
+  store_responses: false
+```
+
+When `store_responses: false`, a semantic match is evidence only and the gateway still calls upstream. When `store_responses: true`, a high-confidence match can return a cached response and call logs include `semantic_cache_hit=true` with `node_id=semantic_cache`. The cache is isolated by source format, requested model, API key, namespace, and local team metadata.
 
 ### Evaluation Reports
 

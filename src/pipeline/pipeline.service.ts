@@ -342,6 +342,72 @@ export class PipelineService {
             this.telemetry.recordCacheMiss();
           }
 
+          const semanticCacheEligible =
+            typeof this.cacheService.shouldSemanticCache === 'function'
+              ? this.cacheService.shouldSemanticCache(canonical)
+              : false;
+          store.set('semantic_cache_enabled', this.config.semanticCache.enabled);
+          store.set('semantic_cache_match', false);
+          store.set('semantic_cache_hit', false);
+          store.set('semantic_cache_score', null);
+          store.set('semantic_cache_threshold', this.config.semanticCache.similarity_threshold);
+          store.set('semantic_cache_metadata_only', false);
+          store.set('semantic_cache_reason', semanticCacheEligible ? 'miss' : 'disabled');
+          if (semanticCacheEligible) {
+            const semanticStart = Date.now();
+            const semantic = this.lookupSemanticCachedResponse(canonical);
+            store.set('semantic_cache_match', semantic.matched);
+            store.set('semantic_cache_hit', semantic.hit);
+            store.set('semantic_cache_score', semantic.score);
+            store.set('semantic_cache_threshold', semantic.threshold);
+            store.set('semantic_cache_metadata_only', semantic.metadataOnly);
+            store.set('semantic_cache_reason', semantic.reason);
+            rootSpan.setAttribute('gateway.semantic_cache', semantic.reason);
+            if (semantic.response) {
+              const cacheLatency = Date.now() - semanticStart;
+              this.telemetry.recordCacheHit();
+              rootSpan.setAttribute('gateway.cache', 'semantic_hit');
+              const responseBody = this.denormalizeForClient(
+                semantic.response,
+                canonical.metadata.source_format,
+              );
+              await this.recordBudgetUsage(
+                canonical,
+                semantic.response.usage,
+                semantic.response.model,
+              );
+              await this.logCall({
+                requestId,
+                canonical,
+                tier: 'cached',
+                score: 0,
+                nodeId: 'semantic_cache',
+                model: semantic.response.model,
+                statusCode: 200,
+                isFallback: false,
+                latencyMs: cacheLatency,
+                usage: semantic.response.usage,
+                error: null,
+                retryCount: 0,
+                semanticCacheHit: true,
+                semanticCacheScore: semantic.score,
+                routeTrace: this.buildPipelineRouteTrace({
+                  mode: 'cache',
+                  canonical,
+                  tier: 'cached',
+                  score: 0,
+                  route: {
+                    primary: { node: 'semantic_cache', model: semantic.response.model },
+                    fallbacks: [],
+                  },
+                  reason: 'semantic cache hit',
+                  selectionHints: this.cacheSelectionHintsFromStore(store),
+                }),
+              });
+              return { body: responseBody, statusCode: 200 };
+            }
+          }
+
           // ── Route Resolution ──
           currentPhase = 'routeResolution';
           const { route, tier, score, domainHint, modalityHints, experimentGroup, experimentGroupsByTarget, routeTrace } =
@@ -505,6 +571,7 @@ export class PipelineService {
           // ── Cache Store ──
           currentPhase = 'cacheStore';
           await this.storeCachedResponse(canonical, canonicalResponse);
+          this.storeSemanticCachedResponse(canonical, canonicalResponse);
           this.telemetry.recordCacheStore();
 
           // ── Budget Record ──
@@ -3474,6 +3541,14 @@ export class PipelineService {
         local_prompt_cache_eligible: Boolean(traceSelectionHints.local_prompt_cache_eligible),
         local_prompt_cache_hit: Boolean(traceSelectionHints.local_prompt_cache_hit),
         local_prompt_cache_lookup: traceSelectionHints.local_prompt_cache_lookup ?? null,
+        semantic_cache_enabled: Boolean(traceSelectionHints.semantic_cache_enabled),
+        semantic_cache_match: Boolean(traceSelectionHints.semantic_cache_match),
+        semantic_cache_hit: Boolean(traceSelectionHints.semantic_cache_hit),
+        semantic_cache_score: traceSelectionHints.semantic_cache_score ?? null,
+        semantic_cache_threshold: traceSelectionHints.semantic_cache_threshold ?? null,
+        semantic_cache_metadata_only:
+          Boolean(traceSelectionHints.semantic_cache_metadata_only),
+        semantic_cache_reason: traceSelectionHints.semantic_cache_reason ?? null,
       },
       modality_evidence: this.buildPipelineTraceModalityEvidence(
         traceSelectionHints,
@@ -3807,6 +3882,23 @@ export class PipelineService {
         lookup === 'skipped'
           ? lookup
           : null,
+      semantic_cache_enabled: store?.get('semantic_cache_enabled') === true,
+      semantic_cache_match: store?.get('semantic_cache_match') === true,
+      semantic_cache_hit: store?.get('semantic_cache_hit') === true,
+      semantic_cache_score:
+        typeof store?.get('semantic_cache_score') === 'number'
+          ? (store.get('semantic_cache_score') as number)
+          : null,
+      semantic_cache_threshold:
+        typeof store?.get('semantic_cache_threshold') === 'number'
+          ? (store.get('semantic_cache_threshold') as number)
+          : null,
+      semantic_cache_metadata_only:
+        store?.get('semantic_cache_metadata_only') === true,
+      semantic_cache_reason:
+        typeof store?.get('semantic_cache_reason') === 'string'
+          ? (store.get('semantic_cache_reason') as string)
+          : null,
     };
   }
 
@@ -3826,13 +3918,27 @@ export class PipelineService {
     if (hints.local_prompt_cache_eligible && !hints.local_prompt_cache_hit) {
       notes.add('local_prompt_cache_miss');
     }
+    if (hints.semantic_cache_hit) notes.add('semantic_cache_hit');
+    if (hints.semantic_cache_match && !hints.semantic_cache_hit) {
+      notes.add('semantic_cache_metadata_match');
+    }
     if (providerCache) notes.add('provider_cache_capable_candidates');
     if (discounted) notes.add('cache_read_price_considered');
     return {
       local_prompt_cache_eligible: Boolean(hints.local_prompt_cache_eligible),
       local_prompt_cache_hit: Boolean(hints.local_prompt_cache_hit),
       local_prompt_cache_lookup: hints.local_prompt_cache_lookup ?? null,
-      cache_aware_routing: providerCache || Boolean(hints.local_prompt_cache_hit),
+      semantic_cache_enabled: Boolean(hints.semantic_cache_enabled),
+      semantic_cache_match: Boolean(hints.semantic_cache_match),
+      semantic_cache_hit: Boolean(hints.semantic_cache_hit),
+      semantic_cache_score: hints.semantic_cache_score ?? null,
+      semantic_cache_threshold: hints.semantic_cache_threshold ?? null,
+      semantic_cache_metadata_only: Boolean(hints.semantic_cache_metadata_only),
+      semantic_cache_reason: hints.semantic_cache_reason ?? null,
+      cache_aware_routing:
+        providerCache ||
+        Boolean(hints.local_prompt_cache_hit) ||
+        Boolean(hints.semantic_cache_match),
       provider_cache_preference: providerCache || discounted,
       notes: Array.from(notes),
     };
@@ -4874,6 +4980,30 @@ export class PipelineService {
     this.cacheService.store(canonical, response);
   }
 
+  private lookupSemanticCachedResponse(canonical: CanonicalRequest) {
+    if (typeof this.cacheService.lookupSemantic === 'function') {
+      return this.cacheService.lookupSemantic(canonical);
+    }
+    return {
+      matched: false,
+      hit: false,
+      score: null,
+      threshold: this.config.semanticCache.similarity_threshold,
+      response: null,
+      metadataOnly: false,
+      reason: 'disabled' as const,
+    };
+  }
+
+  private storeSemanticCachedResponse(
+    canonical: CanonicalRequest,
+    response: CanonicalResponse,
+  ): void {
+    if (typeof this.cacheService.storeSemantic === 'function') {
+      this.cacheService.storeSemantic(canonical, response);
+    }
+  }
+
   private resolveExperimentGroupForTarget(
     experimentGroupsByTarget: Record<string, string> | undefined,
     nodeId: string,
@@ -4997,6 +5127,8 @@ export class PipelineService {
     isFallback?: boolean;
     latencyMs: number;
     retryCount?: number;
+    semanticCacheHit?: boolean;
+    semanticCacheScore?: number | null;
     experimentGroup?: string | null;
     domainHint?: string | null;
     modalityHints?: string[];
@@ -5058,6 +5190,8 @@ export class PipelineService {
     nodeId: string; model: string; statusCode: number; isFallback: boolean;
     latencyMs: number; usage: TokenUsage; error: string | null;
     retryCount?: number;
+    semanticCacheHit?: boolean;
+    semanticCacheScore?: number | null;
     experimentGroup?: string | null;
     domainHint?: string | null;
     modalityHints?: string[];
@@ -5131,6 +5265,9 @@ export class PipelineService {
         namespace_id: params.canonical.metadata.namespace_id || null,
         team_id: params.canonical.metadata.team_id || null,
         retry_count: params.retryCount || 0,
+        semantic_cache_hit: params.semanticCacheHit || false,
+        semantic_cache_score:
+          params.semanticCacheScore === undefined ? null : params.semanticCacheScore,
         experiment_group: params.experimentGroup || null,
       });
       this.telemetry.recordCallMetrics({

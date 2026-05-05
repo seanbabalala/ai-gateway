@@ -1,0 +1,27 @@
+name: Config help
+description: Ask for help with sanitized local configuration
+title: "[Config]: "
+labels: ["question", "config"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What are you trying to configure?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Sanitized config
+      description: Replace all real secrets with placeholders such as ${env:OPENAI_API_KEY}.
+      render: yaml
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I removed real provider keys, Gateway API keys, webhook secrets, raw headers, prompts, and responses.
+          required: true

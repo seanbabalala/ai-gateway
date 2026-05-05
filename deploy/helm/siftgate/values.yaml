@@ -1,6 +1,6 @@
 # SiftGate OSS Data Plane Helm values.
 # Defaults are deliberately small and local: one replica, memory state backend,
-# SQLite on a PVC, no SiftGate Cloud, and no enterprise image.
+# SQLite on a PVC, no external control plane, and no private image.
 
 replicaCount: 1
 
