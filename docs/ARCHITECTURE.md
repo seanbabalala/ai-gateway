@@ -229,6 +229,8 @@ By default, these tables do not store prompt text, response text, raw headers, p
 
 The Provider Catalog is local metadata, not a hosted dependency. SiftGate loads built-in provider/model references, then an optional SiftGate-managed sync cache, then the operator-managed `catalog.override.yaml`. That merge order lets automatic OpenRouter model/pricing sync improve defaults while keeping explicit local overrides authoritative.
 
+v1.4 expands the built-in catalog to 50+ providers and adds `docs/ADDING_PROVIDERS.md` as the maintenance checklist for provider additions. The codebase still keeps a legacy provider diagnostics projection alongside the built-in catalog for compatibility with older validation paths; the long-term architecture direction is one catalog source with generated Dashboard/API/diagnostic views.
+
 The v1.2 pricing sync scheduler is disabled by default and runs only when a supported adapter is explicitly enabled under `catalog.sync.adapters`. In v1.2 the only automatic adapter is OpenRouter's public model catalog API. Other providers remain docs-review or operator-local because prices often depend on region, deployment, account, or private model names.
 
 Runtime cost routing still prefers explicit node/model pricing from `model_capabilities[].pricing` or `models_pricing`. Catalog sync does not store provider API keys and does not modify routing decisions by itself; it only updates metadata used by validation, Dashboard source status, and pricing fallback when no explicit user price exists.

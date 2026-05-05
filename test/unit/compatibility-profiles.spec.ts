@@ -89,6 +89,22 @@ describe('provider compatibility profiles', () => {
     expect(JSON.stringify(evidence)).not.toContain('prompt');
   });
 
+  it('allows gateway-translated OpenAI chat requests to route to Anthropic Messages fallbacks', () => {
+    const profile = getCompatibilityProfile('anthropic_messages_compatible')!;
+
+    expect(profile.supported_source_formats).toEqual(
+      expect.arrayContaining(['chat_completions', 'responses', 'messages']),
+    );
+    expect(
+      compatibilityFilteredReason({
+        profiles: [profile],
+        sourceFormat: 'chat_completions',
+        requestedModality: 'text',
+      }),
+    ).toBeNull();
+    expect(profile.downgraded_fields).toContain('response_format');
+  });
+
   it('flags unsupported streaming and multipart strategies', () => {
     const profiles = [getCompatibilityProfile('media_generation_sync')!];
 

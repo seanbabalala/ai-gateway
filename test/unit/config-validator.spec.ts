@@ -1132,7 +1132,8 @@ describe('config validator', () => {
     expect(result.ok).toBe(true);
     expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
     expect(codes(result.warnings)).toContain('catalog_auth_type_mismatch');
-    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+    expect(codes(result.warnings)).toContain('catalog_pricing_review_required');
+    expect(codes(result.warnings)).not.toContain('catalog_pricing_placeholder');
   });
 
   it('marks custom nodes as unknown provider catalog entries without blocking startup', () => {
@@ -1377,7 +1378,7 @@ describe('config validator', () => {
             api_key: '${OPENAI_API_KEY:-test}',
             models: ['gpt-4o'],
             timeout_ms: 60000,
-            compatibility_profile: ['anthropic_messages_compatible'],
+            compatibility_profile: ['aws_bedrock_converse'],
           },
         ],
         routing: {

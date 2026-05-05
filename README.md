@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.3.2 Production Ready**.
+Current release: **v1.4.0 Provider Ecosystem + Catalog Governance**.
 
-Current development focus: **v1.4 Provider Ecosystem + Catalog Governance**, expanding the built-in Provider Catalog beyond 50 providers while keeping all pricing metadata review-required unless it comes from an explicit local override or supported sync source.
+Current development focus after v1.4: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
 
 ## Why SiftGate
 
@@ -49,14 +49,14 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
-## v1.3 Highlights
+## v1.4 Highlights
 
 | Area | What changed |
 | --- | --- |
-| Virtual Key + Team | Local teams for grouping Gateway API keys with team-level budgets, rate limits, namespace policy, and endpoint/model/modality restrictions. |
-| Semantic Cache Preview | Disabled-by-default semantic similarity metadata cache. It stores embedding/hash/metadata by default; replayable responses require explicit opt-in. |
-| Evaluation Framework | Local metadata-only primary-vs-candidate experiment reports with LLM-as-judge calls routed through SiftGate. |
-| Community Assets | Quickstart, production, security, SDK, playground, MCP, batch, caching, eval docs, issue templates, PR template, contribution guide, and docs checks. |
+| Provider Catalog 50+ | Built-in providers now cover foundation models, aggregators, cloud platforms, China providers, self-hosted/local runtimes, media, speech/audio, embedding, and rerank providers. |
+| Pricing Source Governance | Routing, benchmarks, config validation, CLI, and Dashboard views share one pricing resolver with source, freshness, confidence, and review-required evidence. |
+| Catalog Dashboard UX | Provider Catalog is now a filterable explorer with family/type/modality/compatibility/price-source filters, grouped rows, detail panels, and catalog-backed Add Node search. |
+| Compatibility Profiles | Providers and nodes can expose protocol/endpoint/streaming/multipart/async-job strategies, with routing and Route Explanation evidence for supported, downgraded, and unsupported fields. |
 
 ## Core Features
 
@@ -71,9 +71,11 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
 
-## Unreleased v1.4 Work
+## After v1.4 Priorities
 
-- Provider Catalog Dashboard UX 2.0 turns the catalog into a provider explorer with family/type/modality/compatibility/price-source filters, collapsed provider groups, provider detail panels, and catalog-backed Add Node search that works with aliases such as Kimi/Moonshot, Qwen/Tongyi, and Doubao/Volcengine.
+- Add an optional Redis semantic-cache backend while keeping memory/SQLite defaults safe.
+- Explore a local Prompt Registry / Template layer as a future governance feature.
+- Reduce Provider Catalog maintenance cost by moving toward one catalog source with generated compatibility/API projections.
 
 ## Configuration
 
@@ -107,6 +109,7 @@ npm run validate:config
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
 | Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |
+| Adding Providers | [docs/ADDING_PROVIDERS.md](docs/ADDING_PROVIDERS.md) |
 | Provider Compatibility | [docs/PROVIDER_COMPATIBILITY.md](docs/PROVIDER_COMPATIBILITY.md) |
 | SDKs | [docs/SDKS.md](docs/SDKS.md) |
 | Playground | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) |

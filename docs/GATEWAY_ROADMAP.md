@@ -22,17 +22,17 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
-| v1.4 | Provider Ecosystem + Catalog Governance | 进行中 — Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | 🚧 In Progress |
+| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | ✅ Released |
 
 ---
 
 ## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
 
-**v1.4.0 开发状态**：v1.4 基于已发布 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
+**v1.4.0 发布状态**：已发布。v1.4 基于 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
 
 ### P0：Provider Catalog 50+
 
-- **状态**：🚧 Prompt 83 feature branch 进行中
+- **状态**：✅ v1.4.0 已发布
 - **目标**：将内置 Provider Catalog 扩展到 50+ providers，并优先补齐 Hugging Face、Cloudflare Workers AI、IBM watsonx.ai、Baseten、Lepton AI、Modal、RunPod、Predibase、Lamini、AI21 Labs、fal.ai、Stability AI、Black Forest Labs、Ideogram、Luma AI、Runway、Pika、ElevenLabs、Deepgram、AssemblyAI、Cartesia、Speechmatics、LM Studio、llama.cpp server、TGI、SGLang、Xinference 等高知名度 provider。
 - **实现方案**：
   - 不新增第二套 catalog；继续复用 v0.8 引入并在 v0.9-v1.3 强化的 built-in + sync cache + `catalog.override.yaml` merge 结构
@@ -46,7 +46,7 @@
 
 ### P0：Provider Catalog Pricing Source Governance
 
-- **状态**：🚧 本分支实现中
+- **状态**：✅ v1.4.0 已发布
 - **目标**：统一所有 provider/model 的 pricing schema、来源、新鲜度和路由成本回退，让成本路由与 Dashboard 解释使用同一套证据
 - **实现方案**：
   - 保留 legacy `input/output/cache_read_input/cache_creation_input`，新增 `input_per_1m_tokens`、`output_per_1m_tokens`、cache、embedding、rerank、image、audio、video、realtime、batch 等统一字段
@@ -58,7 +58,7 @@
 
 ### P0：Provider Catalog Dashboard UX 2.0
 
-- **状态**：🚧 已实现功能分支 `codex/v1.4-provider-catalog-dashboard-ux`
+- **状态**：✅ v1.4.0 已发布
 - **实现方案**：
   - Dashboard Catalog API 为 provider 行补充 `family`、`provider_type`、`compatibility_profile`、`aliases`、`logo_id`、links、`model_buckets`、limits 与 `pricing_units`
   - Provider Catalog 页面改为 provider explorer：顶部 summary cards、family/type/modality/compatibility/price-source filters、stale/review quick filters、分组折叠列表与详情面板
@@ -70,7 +70,7 @@
 
 ### P0：Provider Compatibility Profiles
 
-- **状态**：🚧 Prompt 86 feature branch 进行中
+- **状态**：✅ v1.4.0 已发布
 - **目标**：把 50+ providers 的协议兼容、端点策略、能力映射和限制统一建模，并接入 routing、validation、Dashboard explanation
 - **实现方案**：
   - 新增本地 `compatibility_profile` registry，覆盖 OpenAI-compatible、Responses、Anthropic Messages、Gemini、Vertex、Bedrock、Azure OpenAI、Hugging Face、OpenRouter、Cohere、Mistral、Ollama、vLLM、TGI、LM Studio、media、speech、rerank、embedding 等 profile
@@ -80,6 +80,13 @@
   - Route Decision Trace 增加 compatibility evidence：provider id、profile、endpoint/protocol strategy、passthrough/downgraded/unsupported fields、selected reason、filtered reason
   - Provider Compatibility Matrix 根据 profile 选择 safe probe，Dashboard Nodes、Provider Catalog、Logs、Route Explanation 展示只读 profile 证据
   - 不实现真实 provider SDK，不自动联网检测 provider；prompt/response/raw headers/provider keys/media bytes/video bytes 不落库
+
+### v1.4 后续优化候选
+
+- **Semantic Cache Redis backend**：Semantic Cache 仍为 preview，下一步优先补可选 Redis/vector-like 后端，同时保持 memory 默认和 metadata-only 隐私边界。
+- **Prompt Registry / Template**：作为相对 Helicone 的功能性短板进入后续版本评估；优先做本地 registry、版本、审计和调用关联，不引入企业 Cloud 依赖。
+- **Provider Catalog 单源化**：当前 `src/catalog/built-in-catalog.ts` 与 `src/catalog/provider-catalog.data.ts` 仍存在历史双投影维护成本。长期目标是收敛为一个 catalog source，再生成 Dashboard/API/legacy diagnostics 视图。
+- **Provider contribution docs**：v1.4.0 新增 `docs/ADDING_PROVIDERS.md`，规范新增 provider 时的字段、pricing source、compatibility profile、logo identity 和测试清单。
 
 ## v1.3 — Production Ready（生产就绪）
 

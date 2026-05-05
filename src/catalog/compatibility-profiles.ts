@@ -195,7 +195,7 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     streaming_strategy: 'provider_specific',
     multipart_strategy: 'translated',
     async_job_strategy: 'unsupported',
-    supported_source_formats: ['messages'],
+    supported_source_formats: ['chat_completions', 'responses', 'messages'],
     supported_modalities: ['text', 'vision'],
     passthrough_fields: ['metadata', 'tools', 'tool_choice', 'thinking', 'stream'],
     downgraded_fields: ['response_format', 'reasoning_effort'],

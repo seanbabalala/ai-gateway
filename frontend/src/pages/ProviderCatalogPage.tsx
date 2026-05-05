@@ -846,7 +846,7 @@ function ProviderDetailPanel({
             {Object.keys(pricingUnits).length === 0 ? (
               <span className="text-[11px] text-[var(--foreground-dim)]">{t('catalogPage.detail.noPricing')}</span>
             ) : Object.entries(pricingUnits).map(([key, value]) => (
-              <KeyValue key={key} label={key} value={friendlyUnit(value)} />
+              <KeyValue key={key} label={key} value={friendlyUnit(value ?? '-')} />
             ))}
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">

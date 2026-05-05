@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 1.4.0 - 2026-05-05
+
 ### Added
 
 - Expanded the built-in Provider Catalog for v1.4 to 50+ providers, adding Hugging Face, Cloudflare Workers AI, IBM watsonx.ai, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini, AI21 Labs, fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika, ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics, LM Studio, llama.cpp server, TGI, SGLang, and Xinference.

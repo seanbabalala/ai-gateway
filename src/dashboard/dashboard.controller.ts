@@ -333,6 +333,7 @@ function deriveDashboardProviderType(
   const id = provider.id.toLowerCase();
   const baseUrl = provider.base_url.toLowerCase();
   if (id === 'openai-compatible') return 'custom';
+  if (provider.provider_type) return provider.provider_type;
   if (DASHBOARD_LOCAL_PROVIDER_IDS.has(id) || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) return 'local';
   if (DASHBOARD_AGGREGATOR_PROVIDER_IDS.has(id)) return 'aggregator';
   if (DASHBOARD_CLOUD_PROVIDER_IDS.has(id)) return 'cloud';

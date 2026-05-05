@@ -13,6 +13,10 @@ The important product rule is honesty: built-in provider/model/pricing data is a
 - Provide one shared compatibility vocabulary for source formats, modalities, protocol strategy, passthrough fields, downgraded fields, and unsupported fields.
 - Preserve single-node memory/SQLite defaults. Redis, Postgres, and Cloud are not required.
 
+## Adding Providers
+
+Use [docs/ADDING_PROVIDERS.md](ADDING_PROVIDERS.md) when adding or reviewing provider metadata. v1.4 still carries both `src/catalog/built-in-catalog.ts` and the legacy `src/catalog/provider-catalog.data.ts` projection, so provider additions may need both paths until the catalog is fully single-sourced. Do not hardcode provider/model lists in Dashboard components, and do not store provider API keys or resolved secrets in catalog override files.
+
 ## Dashboard APIs
 
 ```http
