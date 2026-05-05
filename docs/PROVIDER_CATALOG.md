@@ -1,6 +1,6 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers, including AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers, including AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud. v1.4 adds Provider Compatibility Profiles so catalog providers also advertise protocol family, endpoint strategy, streaming/multipart behavior, async-job support, and field mapping limits. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, route explanation, and provider compatibility checks.
 
 The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
@@ -10,6 +10,7 @@ The important product rule is honesty: built-in provider/model/pricing data is a
 - Give config validation enough context to warn about likely model, pricing, endpoint, and modality mistakes.
 - Provide one shared vocabulary for text, vision, image, audio, video, embedding, rerank, and realtime routing work.
 - Provide one shared prompt-cache vocabulary for provider `prompt_cache`, `read_cache`, `write_cache`, and cache read/write token prices.
+- Provide one shared compatibility vocabulary for source formats, modalities, protocol strategy, passthrough fields, downgraded fields, and unsupported fields.
 - Preserve single-node memory/SQLite defaults. Redis, Postgres, and Cloud are not required.
 
 ## Dashboard APIs
@@ -36,6 +37,8 @@ Provider and model rows include `overridden` markers when local override data re
 
 Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, and modality coverage without changing routing or node config.
 
+v1.4 provider rows also include `compatibility_profiles`, and the providers response includes a `compatibility_profiles` registry. Dashboard uses these values for Provider Catalog detail, Add Node Wizard defaults, Node identity, and Route Explanation labels. The registry is local metadata and does not trigger provider network checks by itself.
+
 ## Dashboard Add Node Wizard
 
 v0.8 uses the catalog as the source of truth for the Dashboard Add Node flow. The wizard no longer keeps a separate provider/model list inside the React form.
@@ -49,6 +52,8 @@ The OSS Data Plane wizard saves only local `gateway.config.yaml` node fields:
 5. Run a safe connectivity or compatibility check, then save the node.
 
 Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, and review-required pricing source metadata from the merged catalog. Operators can still edit every generated field before saving.
+
+v1.4 also fills suggested `compatibility_profile` values. Leave the field blank for catalog-known providers unless you need to narrow a custom gateway or local server. Explicit node values always win over catalog inference, and validation will warn when the selected profile does not match the provider, source format, endpoint family, or model bucket.
 
 ## CLI
 
@@ -87,6 +92,7 @@ Useful options:
 - `--write-to cache|override` selects where `catalog sync` writes. The default is `cache`, which writes SiftGate-managed metadata to `.siftgate/catalog-sync-cache.yaml`.
 - `--pricing` adds pricing freshness/unit checks to `catalog validate`.
 - `--include-pricing` is accepted by `catalog export`; pricing is included by default and the flag makes CI intent explicit.
+- `catalog list` and `catalog show <provider>` include provider compatibility profiles so CI or operators can confirm which protocol profile the Dashboard will use.
 - `catalog sources` lists refresh modes. `public_api` means SiftGate can refresh without a provider key; `docs_review` means an operator should review provider docs; `operator_local` means pricing depends on local deployment/account choices.
 - `catalog refresh openrouter` calls OpenRouter's public model catalog, converts prompt/completion USD-per-token pricing to USD per 1M tokens, and writes a local override file. It refuses to replace an existing file unless `--force` is supplied.
 - `catalog sync openrouter` uses the same OpenRouter adapter but writes to the managed local sync cache by default. The merged catalog loads built-ins first, then sync cache, then operator `catalog.override.yaml`, so explicit local overrides remain authoritative.
@@ -181,6 +187,29 @@ providers:
 
 Overrides merge with the built-in catalog. If a provider or model already exists, only supplied fields are replaced. New providers and models are added and marked with `overridden: true`.
 
+Provider overrides can also set `compatibility_profiles`:
+
+```yaml
+version: 1
+providers:
+  local-vllm:
+    name: Local vLLM
+    base_url: http://localhost:8000
+    auth_type: none
+    endpoints:
+      chat_completions: /v1/chat/completions
+      embeddings: /v1/embeddings
+    compatibility_profiles: [local_vllm, embedding_compatible]
+    models:
+      - id: local-model
+        modalities: [text]
+        endpoints:
+          chat_completions: /v1/chat/completions
+        capabilities: [streaming]
+```
+
+Unknown profile ids are validation errors. A provider with no explicit profiles gets catalog inference based on provider id, endpoints, capabilities, model buckets, and base URL.
+
 ## Price Source Status
 
 Older internal code and API fields still use `pricing_hygiene` for backward compatibility. In product copy and docs, SiftGate now calls this **price source status** because that is what operators actually need to know:
@@ -215,6 +244,20 @@ Dashboard statuses map to these meanings:
 
 Catalog override parsing itself can fail validation when the file is malformed or contains suspicious secret fields.
 
+## Compatibility Profiles
+
+Provider Compatibility Profiles model the protocol surface behind a catalog provider. Each profile includes:
+
+- `profile_id` and `display_name`
+- `protocol_family`, `request_style`, and `response_style`
+- `auth_strategy`, `endpoint_strategy`, `streaming_strategy`, `multipart_strategy`, and `async_job_strategy`
+- `supported_source_formats` and `supported_modalities`
+- `passthrough_fields`, `downgraded_fields`, `unsupported_fields`, and `known_limitations`
+
+The built-in registry covers OpenAI-compatible, Responses-compatible, Anthropic Messages, Gemini, Vertex, Bedrock Converse, Azure OpenAI, Hugging Face Inference, OpenRouter, Cohere, Mistral, Ollama, vLLM, TGI, LM Studio, media generation, speech, rerank, and embedding profiles.
+
+Routing uses profile support to filter candidates when a source format, modality, streaming request, multipart media request, video async job, or batch path is unsafe for a node. Route Decision Trace records `compatibility_evidence` with provider id, profile id, endpoint/protocol strategy, passthrough/downgraded/unsupported field lists, selected reason, and filter reason. See [Provider Compatibility](./PROVIDER_COMPATIBILITY.md) for the full profile registry and routing behavior.
+
 ## Secret Safety
 
 Do not put provider keys, dashboard passwords, bearer tokens, or raw auth headers in `catalog.override.yaml`.
@@ -232,6 +275,8 @@ nodes:
 Dashboard Nodes shows a read-only matrix per node:
 
 - `capability`: `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, or `realtime`
+- `compatibility_profiles`: profile ids used to decide whether the capability is safe for this node
+- `profile_supported`: whether at least one profile supports the capability
 - `configured`: whether the node has the required model bucket and endpoint metadata
 - `tested`: whether the Dashboard has run a safe check
 - `last_status`: `pass`, `warning`, `fail`, or `skipped`

@@ -348,5 +348,13 @@
   "catalogPage.sync.status.manual_only": "手動のみ",
   "catalogPage.sync.status.unsupported": "未対応",
   "catalogPage.sync.status.failed": "失敗",
-  "catalogPage.sync.status.synced": "同期済み"
+  "catalogPage.sync.status.synced": "同期済み",
+  "compatibility.capabilities.batch": "Batch",
+  "compatibility.profileUnsupported": "profile 未対応",
+  "catalogPage.metrics.compatibilityProfiles": "Profiles",
+  "form.summary.compatibilityProfiles": "Profiles",
+  "form.summary.inferred": "推定",
+  "form.labels.compatibilityProfiles": "互換 profile",
+  "form.placeholders.compatibilityProfile": "例: openai_compatible",
+  "form.help.compatibilityProfiles": "空欄なら Provider Catalog から推定します。カスタム provider では明示 profile を追加できます。"
 }

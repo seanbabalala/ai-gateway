@@ -22,6 +22,57 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 进行中 — 50+ Provider、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | 🚧 In Progress |
+
+---
+
+## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态 + Catalog 治理）
+
+**v1.4.0 发布状态**：进行中。v1.4 基于已发布 v1.3.2，目标是在不引入 Cloud 或企业依赖的前提下，把 Provider Catalog 从“可用目录”升级为更完整的本地 provider 生态治理层。单机 memory/SQLite 继续默认可用，Redis/Postgres/Cloud 仍为可选能力。
+
+### P0：Provider Catalog 50+
+
+- **状态**：🚧 进行中
+- **目标**：把内置 Provider Catalog 扩展到 50+ providers，优先补齐 Hugging Face、Cloudflare Workers AI、IBM watsonx.ai、Baseten、Lepton AI、RunPod、Predibase、Lamini、Fal.ai、Stability AI、Black Forest Labs、Ideogram、Luma AI、Runway、Pika、ElevenLabs、Deepgram、AssemblyAI、Cartesia、Speechmatics、LM Studio、llama.cpp server、TGI、SGLang、Xinference 等高知名度 provider，并复核中国主流 provider
+- **实现方案**：
+  - 继续复用 v0.8+ Provider Catalog，不新增第二套 catalog
+  - 每个 provider 统一声明 provider id、display name、aliases、category、provider type、homepage/docs/pricing URL、logo id、auth type、base URL、endpoints、modalities、model buckets、capabilities、limits、pricing metadata 和 compatibility profile
+  - Dashboard Add Node、Config validation、Catalog API、Catalog CLI 读取同一份 catalog 数据，不在前端表单硬编码 provider/model
+  - 价格无法确认时使用 `manual_review_required` / `pricing_confidence=low` / `docs_review_required`，避免显示“占位”
+
+### P0：Pricing Source Governance
+
+- **状态**：🚧 进行中
+- **目标**：统一 provider/model 定价 schema、来源、新鲜度、复核状态和路由成本回退，替代不直观的“价格卫生”文案
+- **实现方案**：
+  - 统一 token、cache、embedding、rerank、image、audio、video、realtime、batch discount 等 pricing units
+  - 增加 source type、source URL、retrieved/verified/updated 时间、stale_after_days、confidence、review reason
+  - 明确价格优先级：显式 node/model pricing > `catalog.override.yaml` > local sync cache > built-in catalog
+  - Config validation、Route Decision Trace、Benchmark Report 和 Dashboard Provider Catalog 使用同一个 pricing resolver
+  - 产品文案统一为 “Price source status” / “价格来源状态”
+
+### P0：Provider Catalog Dashboard UX 2.0
+
+- **状态**：🚧 进行中
+- **目标**：让 50+ providers 在 Dashboard 中可浏览、可筛选、可理解，并顺畅服务 Add Node Wizard
+- **实现方案**：
+  - Provider Catalog 页面提供 family/category、modality、provider type、pricing source status、compatibility profile、search、stale/review-required quick filters
+  - Provider 列表支持分组折叠/展开，详情展示 docs/pricing/homepage links、auth、base URL、endpoint map、model buckets、capabilities、limits、pricing units、override/sync 状态
+  - Add Node Wizard 支持 category/filter/alias 搜索，选择 provider 后自动填 base URL、auth、endpoints、model buckets、capabilities、logo 和 compatibility profile
+  - Provider logo identity 在 Nodes、Logs、Route Explanation 中保持一致，不把兼容 provider 误显示为 OpenAI
+
+### P0：Provider Compatibility Profiles
+
+- **状态**：🚧 本分支实现
+- **目标**：把 50+ providers 的协议兼容、端点策略、能力映射和限制统一建模，并接入 routing、validation、Dashboard explanation
+- **实现方案**：
+  - 新增本地 `compatibility_profile` registry，覆盖 OpenAI-compatible、Responses、Anthropic Messages、Gemini、Vertex、Bedrock、Azure OpenAI、Hugging Face、OpenRouter、Cohere、Mistral、Ollama、vLLM、TGI、LM Studio、media、speech、rerank、embedding 等 profile
+  - Provider Catalog providers 引用 `compatibility_profiles`；node config 可显式覆盖 `nodes[].compatibility_profile`
+  - Config validation 检查 profile 是否存在、provider/profile 是否匹配、endpoint/source_format/modality 是否支持
+  - RoutingService 根据 profile 过滤 source format、modality、stream、multipart、video async job 和 batch endpoint 不匹配的候选，并记录 filter/downgrade evidence
+  - Route Decision Trace 增加 `compatibility_evidence`：provider id、profile、endpoint/protocol strategy、passthrough/downgraded/unsupported fields、selected reason、filtered reason
+  - Provider Compatibility Matrix 根据 profile 选择 safe probe，Dashboard Nodes、Provider Catalog、Logs、Route Explanation 展示只读 profile 证据
+  - 不实现真实 provider SDK，不自动联网检测 provider；prompt/response/raw headers/provider keys/media bytes/video bytes 不落库
 
 ---
 

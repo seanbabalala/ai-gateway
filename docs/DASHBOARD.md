@@ -11,12 +11,12 @@ v1.2 adds an MCP Gateway preview page for local MCP server proxying. It shows se
 | Overview | Live calls, cost, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | MCP Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
-| Nodes | Upstream node health, compatibility matrix, active probes, realtime status, and Add Node wizard |
-| Provider Catalog | Built-in + sync-cache + local override provider/model catalog, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
+| Nodes | Upstream node health, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
+| Provider Catalog | Built-in + sync-cache + local override provider/model catalog, compatibility profiles, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
-| Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, and reasoning support |
+| Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, compatibility evidence, and reasoning support |
 | Sessions | Metadata-only request timelines grouped by `session_id` / legacy `session_key`, with model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
-| Logs | Request metadata, source format, route result, cache outcome, structured-output intent, reasoning intent, fallback reason, and export-safe call details |
+| Logs | Request metadata, source format, route result, cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, and export-safe call details |
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
 | Shadow | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
@@ -50,6 +50,16 @@ The Batch Jobs page reads `GET /api/dashboard/batches` and stays read-only. It s
 Applications can pass `x-session-id`, legacy `x-session-key`, `x-siftgate-session-id`, `x-trace-id`, `x-siftgate-trace-id`, or standard W3C `traceparent` headers. SiftGate records only the identifiers and operational metadata. The Session View does not persist prompt text, response text, raw authorization headers, provider keys, uploaded media, or generated video bytes.
 
 The page is read-only. It helps operators understand when a session changed models, fell back, hit shadow traffic, produced guardrails findings, or has a route-decision trace available. It does not change routing policy or replay traffic.
+
+## Provider Compatibility
+
+v1.4 Provider Compatibility Profiles are shown consistently across Provider Catalog, Nodes, Route Explanation, and Logs. Profiles describe provider protocol behavior such as request style, response style, endpoint strategy, streaming, multipart, async jobs, supported source formats, supported modalities, passthrough fields, downgraded fields, unsupported fields, and known limitations.
+
+The Add Node Wizard reads suggested profiles from the catalog API and lets operators set `compatibility_profile` for custom gateways or local model servers. Provider Catalog and Node detail pages show profiles as read-only metadata. They do not modify routing config from detail pages.
+
+The Provider Compatibility Matrix uses profiles to choose safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, realtime, and batch. Text-like probes use tiny synthetic inputs. Media, video, realtime, and batch probes default to endpoint/auth checks.
+
+Route Explanation displays why a provider was selected or filtered by profile, including source-format support, modality support, endpoint strategy, protocol strategy, and fields that were passed through, downgraded, or unsupported. Logs detail shows a compact compatibility summary. Neither view stores or exposes prompts, responses, raw headers, provider keys, media bytes, or video bytes.
 
 ## Localization
 

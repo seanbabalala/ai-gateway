@@ -8,6 +8,10 @@ import {
   ProviderCompatibilityStatus,
 } from '../database/entities';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import {
+  compatibilityCapabilityConfigured,
+  resolveNodeCompatibilityProfiles,
+} from '../catalog/compatibility-profiles';
 
 export interface ProviderCompatibilityMatrixItem {
   capability: ProviderCompatibilityCapability;
@@ -20,6 +24,8 @@ export interface ProviderCompatibilityMatrixItem {
   status_code: number | null;
   test_mode: string | null;
   requires_confirmation: boolean;
+  compatibility_profiles: string[];
+  profile_supported: boolean;
 }
 
 export interface ProviderCompatibilityTestOptions {
@@ -42,6 +48,8 @@ type CapabilityPlan = {
   model: string | null;
   testMode: 'safe_request' | 'endpoint_probe' | 'skipped';
   requiresConfirmation: boolean;
+  compatibilityProfiles: string[];
+  profileSupported: boolean;
 };
 
 const CAPABILITIES: ProviderCompatibilityCapability[] = [
@@ -54,6 +62,7 @@ const CAPABILITIES: ProviderCompatibilityCapability[] = [
   'audio',
   'video',
   'realtime',
+  'batch',
 ];
 
 @Injectable()
@@ -104,7 +113,10 @@ export class ProviderCompatibilityService {
 
     for (const plan of plans) {
       if (!plan.configured) {
-        tested.push(await this.persistSkipped(node, plan, 'Capability is not configured on this node.'));
+        const reason = plan.profileSupported
+          ? 'Capability is not configured on this node.'
+          : `Compatibility profile does not support ${plan.capability}.`;
+        tested.push(await this.persistSkipped(node, plan, reason));
         continue;
       }
       if (plan.requiresConfirmation && !options.confirm_expensive) {
@@ -184,79 +196,103 @@ export class ProviderCompatibilityService {
 
   private plansForNode(node: NodeConfig): CapabilityPlan[] {
     const textModel = node.models?.[0] || null;
+    const profiles = resolveNodeCompatibilityProfiles(node);
+    const profileIds = profiles.map((profile) => profile.profile_id);
+    const wrap = (
+      plan: Omit<CapabilityPlan, 'compatibilityProfiles' | 'profileSupported'>,
+    ): CapabilityPlan => {
+      const profileSupported = compatibilityCapabilityConfigured(
+        profiles,
+        plan.capability,
+      );
+      return {
+        ...plan,
+        configured: plan.configured && profileSupported,
+        compatibilityProfiles: profileIds,
+        profileSupported,
+      };
+    };
     return [
-      {
+      wrap({
         capability: 'chat',
         configured: node.protocol === 'chat_completions' && Boolean(textModel),
         endpoint: node.endpoint,
         model: textModel,
         testMode: 'safe_request',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'responses',
         configured: node.protocol === 'responses' && Boolean(textModel),
         endpoint: node.endpoint,
         model: textModel,
         testMode: 'safe_request',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'messages',
         configured: node.protocol === 'messages' && Boolean(textModel),
         endpoint: node.endpoint,
         model: textModel,
         testMode: 'safe_request',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'embeddings',
         configured: Boolean(node.embedding_models?.length),
         endpoint: node.embeddings_endpoint || '/v1/embeddings',
         model: node.embedding_models?.[0] || null,
         testMode: 'safe_request',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'rerank',
         configured: Boolean(node.rerank_models?.length),
         endpoint: node.rerank_endpoint || '/v1/rerank',
         model: node.rerank_models?.[0] || null,
         testMode: 'safe_request',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'images',
         configured: Boolean(node.image_models?.length),
         endpoint: node.images_generations_endpoint || '/v1/images/generations',
         model: node.image_models?.[0] || null,
         testMode: 'endpoint_probe',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'audio',
         configured: Boolean(node.audio_models?.length),
         endpoint: node.audio_transcriptions_endpoint || '/v1/audio/transcriptions',
         model: node.audio_models?.[0] || null,
         testMode: 'endpoint_probe',
         requiresConfirmation: false,
-      },
-      {
+      }),
+      wrap({
         capability: 'video',
         configured: Boolean(node.video_models?.length),
         endpoint: node.video_endpoint || node.video_generations_endpoint || '/v1/videos/generations',
         model: node.video_models?.[0] || null,
         testMode: 'endpoint_probe',
         requiresConfirmation: true,
-      },
-      {
+      }),
+      wrap({
         capability: 'realtime',
         configured: Boolean(node.realtime_models?.length),
         endpoint: node.realtime_endpoint || '/v1/realtime',
         model: node.realtime_models?.[0] || null,
         testMode: 'endpoint_probe',
         requiresConfirmation: true,
-      },
+      }),
+      wrap({
+        capability: 'batch',
+        configured: Boolean(node.batch_endpoint),
+        endpoint: node.batch_endpoint || '/v1/batches',
+        model: textModel,
+        testMode: 'endpoint_probe',
+        requiresConfirmation: true,
+      }),
     ];
   }
 
@@ -275,6 +311,8 @@ export class ProviderCompatibilityService {
       status_code: saved?.status_code ?? null,
       test_mode: saved?.test_mode || plan.testMode,
       requires_confirmation: plan.requiresConfirmation,
+      compatibility_profiles: plan.compatibilityProfiles,
+      profile_supported: plan.profileSupported,
     };
   }
 
@@ -470,6 +508,13 @@ export class ProviderCompatibilityService {
           query: 'ping',
           documents: ['ping'],
           top_n: 1,
+        };
+      case 'batch':
+        return {
+          input_file_id: 'file-safe-probe',
+          endpoint: '/v1/chat/completions',
+          completion_window: '24h',
+          metadata: { siftgate_probe: true },
         };
       case 'chat':
       default:

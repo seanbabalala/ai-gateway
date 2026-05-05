@@ -196,6 +196,11 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       },
     },
     getNode: jest.fn().mockReturnValue(undefined),
+    getMergedCatalog: jest.fn().mockReturnValue({
+      version: 1,
+      generated_at: '2026-05-02T00:00:00.000Z',
+      providers: [],
+    }),
     resolveRerankModel: jest.fn().mockReturnValue(null),
     getNamespace: jest.fn((namespaceId?: string | null) =>
       namespaceId ? config.namespaces.find((namespace: { id: string }) => namespace.id === namespaceId) : undefined,

@@ -348,5 +348,13 @@
   "catalogPage.sync.status.manual_only": "Manual only",
   "catalogPage.sync.status.unsupported": "Unsupported",
   "catalogPage.sync.status.failed": "Failed",
-  "catalogPage.sync.status.synced": "Synced"
+  "catalogPage.sync.status.synced": "Synced",
+  "compatibility.capabilities.batch": "Batch",
+  "compatibility.profileUnsupported": "profile unsupported",
+  "catalogPage.metrics.compatibilityProfiles": "Profiles",
+  "form.summary.compatibilityProfiles": "Profiles",
+  "form.summary.inferred": "inferred",
+  "form.labels.compatibilityProfiles": "Compatibility profiles",
+  "form.placeholders.compatibilityProfile": "e.g. openai_compatible",
+  "form.help.compatibilityProfiles": "Leave blank to use Provider Catalog inference, or add explicit profiles for custom providers."
 }

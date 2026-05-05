@@ -8,6 +8,7 @@ import {
   loadMergedCatalog,
   validateCatalogOverrideFile,
 } from '../../src/catalog/catalog.service';
+import { getCompatibilityProfile } from '../../src/catalog/compatibility-profiles';
 
 const fixture = (name: string) =>
   path.resolve(__dirname, '../fixtures/catalog', name);
@@ -237,6 +238,21 @@ describe('catalog service', () => {
     });
     expect(qwen?.models.map((model) => model.id)).toEqual(
       expect.arrayContaining(['qwen-plus', 'text-embedding-v4', 'wan2.5-t2v-preview']),
+    );
+  });
+
+  it('ships catalog providers with valid compatibility profile references', () => {
+    const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
+
+    for (const provider of result.catalog.providers) {
+      expect(provider.compatibility_profiles?.length).toBeGreaterThan(0);
+      for (const profile of provider.compatibility_profiles || []) {
+        expect(getCompatibilityProfile(profile)).toBeDefined();
+      }
+    }
+
+    expect(result.catalog.providers.find((provider) => provider.id === 'openai')?.compatibility_profiles).toEqual(
+      expect.arrayContaining(['openai_compatible', 'openai_responses_compatible']),
     );
   });
 

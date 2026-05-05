@@ -348,5 +348,13 @@
   "catalogPage.sync.status.manual_only": "僅手動",
   "catalogPage.sync.status.unsupported": "未支援",
   "catalogPage.sync.status.failed": "失敗",
-  "catalogPage.sync.status.synced": "已同步"
+  "catalogPage.sync.status.synced": "已同步",
+  "compatibility.capabilities.batch": "批次",
+  "compatibility.profileUnsupported": "Profile 不支援",
+  "catalogPage.metrics.compatibilityProfiles": "相容 Profile",
+  "form.summary.compatibilityProfiles": "相容 Profile",
+  "form.summary.inferred": "自動推斷",
+  "form.labels.compatibilityProfiles": "相容 Profile",
+  "form.placeholders.compatibilityProfile": "例如 openai_compatible",
+  "form.help.compatibilityProfiles": "留空會使用 Provider Catalog 自動推斷；自訂 provider 可明確加入 profile。"
 }

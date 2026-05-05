@@ -76,6 +76,18 @@ export interface RouteDecisionCacheEvidence {
   reason: string;
 }
 
+export interface RouteDecisionCompatibilityEvidence {
+  provider_id: string | null;
+  compatibility_profile: string[];
+  endpoint_strategy: string | null;
+  protocol_strategy: string | null;
+  passthrough_fields: string[];
+  downgraded_fields: string[];
+  unsupported_fields: string[];
+  selected_reason: string;
+  filtered_by_profile_reason: string | null;
+}
+
 export interface RouteDecisionTraceCandidate {
   node: string;
   model: string;
@@ -105,6 +117,7 @@ export interface RouteDecisionTraceCandidate {
   };
   capability_evidence?: RouteDecisionCandidateCapabilityEvidence;
   cache_evidence?: RouteDecisionCacheEvidence;
+  compatibility_evidence?: RouteDecisionCompatibilityEvidence;
 }
 
 export interface RouteDecisionTraceFilter {

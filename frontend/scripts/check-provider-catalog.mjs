@@ -29,6 +29,9 @@ for (const expected of [
   'catalogPage.sync.status.fresh',
   'sync_status',
   'CatalogSyncStatus',
+  'compatibility_profiles',
+  'ProviderCompatibilityProfile',
+  'catalogPage.metrics.compatibilityProfiles',
 ]) {
   if (!page.includes(expected) && !apiTypes.includes(expected) && !enNodes.includes(expected)) {
     throw new Error(`Provider Catalog price source status marker missing: ${expected}`)

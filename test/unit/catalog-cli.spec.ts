@@ -41,6 +41,7 @@ describe('siftgate catalog CLI', () => {
     expect(stdout.join('\n')).toContain('- openai');
     expect(stdout.join('\n')).toContain('- aws-bedrock');
     expect(stdout.join('\n')).toContain('- alibaba-qwen');
+    expect(stdout.join('\n')).toContain('profiles=openai_compatible');
   });
 
   it('shows a provider from the merged catalog', async () => {
@@ -52,6 +53,7 @@ describe('siftgate catalog CLI', () => {
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('Provider: openai');
+    expect(stdout.join('\n')).toContain('Compatibility profiles: openai_compatible');
     expect(stdout.join('\n')).toContain('gpt-4o');
   });
 

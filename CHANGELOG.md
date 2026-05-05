@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Added v1.4 Provider Compatibility Profiles for the OSS Data Plane, with a local registry covering OpenAI-compatible, Responses-compatible, Anthropic Messages, Gemini, Vertex, Bedrock, Azure OpenAI, Hugging Face, OpenRouter, Cohere, Mistral, Ollama, vLLM, TGI, LM Studio, media generation, speech, rerank, and embedding protocol styles.
+- Added `nodes[].compatibility_profile` and Provider Catalog `compatibility_profiles`, with validation for unknown profiles, provider/profile mismatch, source-format mismatch, endpoint mismatch, and modality/model-bucket mismatch.
+- Added compatibility-profile routing evidence so Route Decision Trace and Dashboard Route Explanation can show selected/filtered profiles, endpoint/protocol strategy, passthrough fields, downgraded fields, unsupported fields, and profile filter reasons without storing prompts, responses, raw headers, provider keys, media bytes, or video bytes.
+- Added compatibility-profile-aware safe probes for the Provider Compatibility Matrix, including batch endpoint/auth probing alongside chat, responses, messages, embeddings, rerank, images, audio, video, and realtime.
+- Added Dashboard Provider Catalog, Nodes, Add Node Wizard, Route Explanation, and Logs localization for compatibility profile metadata across all seven OSS Dashboard languages.
+- Added `docs/PROVIDER_COMPATIBILITY.md` and updated API, architecture, dashboard, provider catalog, config example, and CLI documentation for compatibility profiles.
+
 ## 1.3.2 - 2026-05-05
 
 ### Added

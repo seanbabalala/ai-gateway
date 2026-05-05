@@ -65,6 +65,7 @@ function sourceOptions(t: TFunction) {
     { value: 'images', label: t('routeExplanation.sources.images') },
     { value: 'audio', label: t('routeExplanation.sources.audio') },
     { value: 'video', label: t('routeExplanation.sources.video') },
+    { value: 'batch', label: t('routeExplanation.sources.batch') },
   ]
 }
 
@@ -158,6 +159,15 @@ function cacheBadge(candidate: RouteDecisionCandidate) {
   if (evidence.provider_prompt_cache) return 'blue'
   if (evidence.local_prompt_cache_eligible) return 'amber'
   return 'zinc'
+}
+
+function compatibilityBadge(candidate: RouteDecisionCandidate) {
+  const evidence = candidate.compatibility_evidence
+  if (!evidence) return 'zinc'
+  if (evidence.filtered_by_profile_reason) return 'red'
+  if (evidence.unsupported_fields.length > 0) return 'amber'
+  if (evidence.downgraded_fields.length > 0) return 'blue'
+  return 'emerald'
 }
 
 function ScoreMeter({
@@ -404,6 +414,95 @@ function CacheEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
   )
 }
 
+function CompatibilityEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
+  const { t } = useTranslation('logs')
+  const selected = trace.candidate_targets.find((candidate) => candidate.selected)
+  const evidence = selected?.compatibility_evidence || trace.candidate_targets.find(
+    (candidate) => candidate.compatibility_evidence,
+  )?.compatibility_evidence
+
+  if (!evidence) return null
+
+  const filtered = trace.candidate_targets.filter(
+    (candidate) => candidate.compatibility_evidence?.filtered_by_profile_reason,
+  )
+  const downgraded = trace.candidate_targets.filter(
+    (candidate) => (candidate.compatibility_evidence?.downgraded_fields.length || 0) > 0,
+  )
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <CardTitle>{t('routeExplanation.sections.compatibilityEvidence')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.compatibility.selectedProfile')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(evidence.compatibility_profile.length > 0
+                ? evidence.compatibility_profile
+                : [t('routeExplanation.values.unknown')]
+              ).map((profile) => (
+                <Badge key={profile} variant="blue" className="max-w-full break-all font-mono text-[9px]">
+                  {profile}
+                </Badge>
+              ))}
+            </div>
+            <div className="mt-2 text-[11px] leading-5 text-[var(--foreground-dim)]">
+              {t('routeExplanation.compatibility.provider', {
+                provider: evidence.provider_id || t('routeExplanation.values.unknown'),
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.compatibility.strategy')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={evidence.filtered_by_profile_reason ? 'red' : 'emerald'}>
+                {formatReason(evidence.selected_reason, t)}
+              </Badge>
+              <Badge variant="zinc">
+                {evidence.endpoint_strategy || t('routeExplanation.values.unknown')}
+              </Badge>
+            </div>
+            <div className="mt-2 line-clamp-2 font-mono text-[10px] text-[var(--foreground-dim)]">
+              {evidence.protocol_strategy || t('routeExplanation.values.unknown')}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.compatibility.mapping')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant="emerald">
+                {t('routeExplanation.compatibility.passthroughCount', { count: evidence.passthrough_fields.length })}
+              </Badge>
+              <Badge variant={evidence.downgraded_fields.length > 0 ? 'amber' : 'zinc'}>
+                {t('routeExplanation.compatibility.downgradedCount', { count: evidence.downgraded_fields.length })}
+              </Badge>
+              <Badge variant={evidence.unsupported_fields.length > 0 ? 'red' : 'zinc'}>
+                {t('routeExplanation.compatibility.unsupportedCount', { count: evidence.unsupported_fields.length })}
+              </Badge>
+            </div>
+            <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+              {t('routeExplanation.compatibility.filteredSummary', {
+                filtered: filtered.length,
+                downgraded: downgraded.length,
+              })}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
 function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }) {
   const { t } = useTranslation('logs')
 
@@ -498,6 +597,12 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                           : t('routeExplanation.badges.reasoningUnsupported')}
                       </Badge>
                     )}
+                    {candidate.compatibility_evidence && (
+                      <Badge variant={compatibilityBadge(candidate)}>
+                        {candidate.compatibility_evidence.compatibility_profile[0] ||
+                          t('routeExplanation.compatibility.profileUnknown')}
+                      </Badge>
+                    )}
                     <Badge variant="zinc">
                       {t('routeExplanation.table.pricingSource', {
                         source: candidate.capability_evidence.pricing_source ||
@@ -518,6 +623,33 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                       'modalities',
                     )}
                   </div>
+                  {candidate.compatibility_evidence && (
+                    <div className="space-y-1 rounded-md bg-[var(--inset-bg)] px-2 py-1.5 text-[10px] leading-4 text-[var(--foreground-dim)]">
+                      <div className="font-mono">
+                        {candidate.compatibility_evidence.protocol_strategy ||
+                          t('routeExplanation.values.unknown')}
+                      </div>
+                      {candidate.compatibility_evidence.filtered_by_profile_reason && (
+                        <div className="font-semibold text-red-500">
+                          {formatReason(candidate.compatibility_evidence.filtered_by_profile_reason, t)}
+                        </div>
+                      )}
+                      {candidate.compatibility_evidence.downgraded_fields.length > 0 && (
+                        <div>
+                          {t('routeExplanation.compatibility.downgradedFields', {
+                            fields: candidate.compatibility_evidence.downgraded_fields.slice(0, 4).join(', '),
+                          })}
+                        </div>
+                      )}
+                      {candidate.compatibility_evidence.unsupported_fields.length > 0 && (
+                        <div>
+                          {t('routeExplanation.compatibility.unsupportedFields', {
+                            fields: candidate.compatibility_evidence.unsupported_fields.slice(0, 4).join(', '),
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {(candidate.capability_evidence.filtered_by_capability ||
                     candidate.capability_evidence.filtered_by_file_size) && (
                     <div className="flex flex-wrap gap-1">
@@ -802,6 +934,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
           </CardStatic>
 
           <ModalityEvidencePanel trace={trace} />
+          <CompatibilityEvidencePanel trace={trace} />
           <CacheEvidencePanel trace={trace} />
 
           <CardStatic>

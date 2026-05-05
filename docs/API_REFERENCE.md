@@ -370,12 +370,12 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
-| `GET` | `/api/dashboard/catalog/providers` | Merged Provider Catalog providers, price source status, override metadata, refresh-source availability, and pricing sync status |
+| `GET` | `/api/dashboard/catalog/providers` | Merged Provider Catalog providers, compatibility profile registry, price source status, override metadata, refresh-source availability, and pricing sync status |
 | `GET` | `/api/dashboard/catalog/models` | Flattened Provider Catalog models with provider/modality/endpoint filters, price source metadata, and pricing sync status |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
-| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, realtime summary, and provider compatibility matrix |
+| `GET` | `/api/dashboard/nodes` | Node health, configured models, tags, circuit state, resolved compatibility profiles, realtime summary, and provider compatibility matrix |
 | `POST` | `/api/dashboard/nodes/test` | Test an arbitrary node payload before saving |
 | `POST` | `/api/dashboard/nodes` | Create a node in local config |
 | `PUT` | `/api/dashboard/nodes/:id` | Update a node in local config |
@@ -401,11 +401,30 @@ The Dashboard API is metadata-only. It returns server id/name, sanitized upstrea
 
 ### Provider Catalog API
 
-`GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + sync cache + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `last_sync`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
+`GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + sync cache + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. v1.4 provider rows include `compatibility_profiles`, and the providers response includes a `compatibility_profiles` registry with profile id, protocol family, request/response style, endpoint/streaming/multipart/async strategies, supported source formats, supported modalities, passthrough fields, downgraded fields, unsupported fields, and known limitations. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `last_sync`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
 
 v1.2 adds `sync_status` to these responses. It reports whether scheduled sync is enabled, whether it is actually scheduled, the `write_to` target, cache/override paths, enabled adapters, provider `last_sync`, source URL, confidence, stale state, and recent sync issues. Scheduled sync is disabled by default and only OpenRouter has an automatic adapter in v1.2.
 
 Dashboard copy calls this **price source status**. The internal response field remains `pricing_hygiene` for backward compatibility.
+
+### Provider Compatibility Profiles
+
+Node config accepts an optional `compatibility_profile` string or string array. If omitted, SiftGate resolves profiles from the merged Provider Catalog or infers them from protocol, endpoints, model buckets, and base URL.
+
+```json
+{
+  "id": "local-vllm",
+  "protocol": "chat_completions",
+  "base_url": "http://localhost:8000",
+  "endpoint": "/v1/chat/completions",
+  "models": ["local-model"],
+  "compatibility_profile": ["local_vllm", "embedding_compatible"]
+}
+```
+
+Dashboard node create/update DTOs preserve this field. `GET /api/dashboard/nodes` returns both `compatibility_profile` and `resolved_compatibility_profiles` so the UI can distinguish explicit operator overrides from catalog inference.
+
+Validation reports unknown profile ids as errors and warns when the configured provider, endpoint, source format, modality, or model bucket is not supported by the selected profile. Compatibility profile details are read-only evidence; they do not automatically modify routing config.
 
 ### Session Trace API
 
@@ -436,6 +455,18 @@ For multimodal and capability-specific requests, traces may include:
 - `candidate_targets[].capability_evidence.endpoint_status`
 - `candidate_targets[].capability_evidence.pricing_source`
 - `candidate_targets[].capability_evidence.catalog_source`
+
+v1.4 adds compatibility evidence to candidate targets:
+
+- `candidate_targets[].compatibility_evidence.provider_id`
+- `candidate_targets[].compatibility_evidence.compatibility_profile`
+- `candidate_targets[].compatibility_evidence.endpoint_strategy`
+- `candidate_targets[].compatibility_evidence.protocol_strategy`
+- `candidate_targets[].compatibility_evidence.passthrough_fields`
+- `candidate_targets[].compatibility_evidence.downgraded_fields`
+- `candidate_targets[].compatibility_evidence.unsupported_fields`
+- `candidate_targets[].compatibility_evidence.selected_reason`
+- `candidate_targets[].compatibility_evidence.filtered_by_profile_reason`
 
 These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.
 
@@ -541,7 +572,7 @@ Realtime is a probe-only check and does not open a WebSocket. Playground preview
 
 ### Provider Compatibility Matrix
 
-`GET /api/dashboard/nodes` includes `compatibility_matrix` for every node. Each row contains `capability`, `configured`, `tested`, `last_status`, `last_checked_at`, `failure_reason`, `latency_ms`, `status_code`, `test_mode`, and `requires_confirmation`.
+`GET /api/dashboard/nodes` includes `compatibility_matrix` for every node. Each row contains `capability`, `configured`, `profile_supported`, `compatibility_profiles`, `tested`, `last_status`, `last_checked_at`, `failure_reason`, `latency_ms`, `status_code`, `test_mode`, and `requires_confirmation`.
 
 `POST /api/dashboard/nodes/:id/test` accepts an optional body:
 
@@ -552,7 +583,7 @@ Realtime is a probe-only check and does not open a WebSocket. Playground preview
 }
 ```
 
-Supported capabilities are `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, and `realtime`. Text, embedding, and rerank checks send tiny synthetic requests. Media, video, and realtime checks default to endpoint/auth probes; video/realtime generation or long-lived sessions are not started unless a future explicit confirmation flow enables it. Results are local metadata only and never include prompt text, response bodies, raw headers, or provider API keys.
+Supported capabilities are `chat`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, `realtime`, and `batch`. Text, embedding, and rerank checks send tiny synthetic requests. Media, video, realtime, and batch checks default to endpoint/auth probes; video/realtime generation or long-lived sessions are not started unless a future explicit confirmation flow enables it. Results are local metadata only and never include prompt text, response bodies, raw headers, provider API keys, media bytes, video bytes, or realtime frames.
 
 ## Gateway API Key Management
 

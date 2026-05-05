@@ -605,6 +605,11 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.config.catalog;
   }
 
+  /** Return the merged Provider Catalog cached for this config version. */
+  getMergedCatalog(): ProviderCatalog | undefined {
+    return this.getMergedCatalogForPricing();
+  }
+
   /** Get the dashboard password hash (if set) */
   get dashboardPasswordHash(): string | undefined {
     return this.config.dashboard?.password;

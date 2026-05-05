@@ -281,6 +281,9 @@ auth:
 # v1.2 adds prompt-cache-aware routing metadata. Declare prompt_cache/read_cache/
 # write_cache when an upstream provider can reuse prompt/context tokens, and add
 # cache_read_input/cache_creation_input prices when they differ from normal input.
+# v1.4 adds compatibility_profile metadata. Leave it empty for catalog-known
+# providers, or set it explicitly for custom gateways/local servers so routing,
+# validation, safe probes, and Route Explanation agree on protocol behavior.
 #
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
@@ -313,6 +316,11 @@ nodes:
   - id: openai
     name: "OpenAI"
     protocol: chat_completions
+    # Optional. If omitted, SiftGate resolves profiles from the Provider Catalog
+    # or infers them from protocol/endpoints/model buckets. Examples:
+    #   compatibility_profile: openai_compatible
+    #   compatibility_profile: [openai_compatible, embedding_compatible, media_generation_sync]
+    compatibility_profile: [openai_compatible, openai_responses_compatible, embedding_compatible, media_generation_sync, speech_transcription, speech_tts]
     base_url: "https://api.openai.com"
     endpoint: "/v1/chat/completions"
     embeddings_endpoint: "/v1/embeddings"

@@ -35,11 +35,17 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   RouteDecisionTrace,
   RouteDecisionCandidateCapabilityEvidence,
+  RouteDecisionCompatibilityEvidence,
   RouteDecisionCacheEvidence,
   RouteDecisionTraceCandidate,
   RouteDecisionTraceFilter,
   routeTargetKey,
 } from './route-decision-trace';
+import {
+  compatibilityEvidence,
+  compatibilityFilteredReason,
+  resolveNodeCompatibilityProfiles,
+} from '../catalog/compatibility-profiles';
 
 export interface RouteDecision {
   primary: RouteTarget;
@@ -118,6 +124,8 @@ export interface RouteSelectionHints {
   semantic_cache_threshold?: number | null;
   semantic_cache_metadata_only?: boolean;
   semantic_cache_reason?: string | null;
+  stream?: boolean;
+  multipart?: boolean;
 }
 
 export interface EmbeddingRouteDecision {
@@ -235,9 +243,14 @@ export class RoutingService {
         this.normalizeTierTargets(fallbackConfig).targets,
         modalityHints,
       );
-      const fallbackTargets = this.applyCapabilityConstraints(
+      const profileCompatibleTargets = this.filterTargetsByCompatibilityProfiles(
         effectiveTier,
         modalityCompatibleTargets,
+        selectionHints,
+      );
+      const fallbackTargets = this.applyCapabilityConstraints(
+        effectiveTier,
+        profileCompatibleTargets,
         selectionHints,
       );
       const selected = fallbackTargets[0];
@@ -266,7 +279,7 @@ export class RoutingService {
           domainHint: hint,
           modalityHints,
           selectionHints,
-          initialTargets: modalityCompatibleTargets,
+          initialTargets: this.normalizeTierTargets(fallbackConfig).targets,
           finalTargets: fallbackTargets,
           selected,
           loadBalancing,
@@ -301,6 +314,11 @@ export class RoutingService {
         effectiveTier,
         splitAvailable,
         modalityHints,
+      );
+      splitAvailable = this.filterTargetsByCompatibilityProfiles(
+        effectiveTier,
+        splitAvailable,
+        selectionHints,
       );
 
       // Domain hint reordering on split targets
@@ -382,6 +400,11 @@ export class RoutingService {
       effectiveTier,
       availableTargets,
       modalityHints,
+    );
+    availableTargets = this.filterTargetsByCompatibilityProfiles(
+      effectiveTier,
+      availableTargets,
+      selectionHints,
     );
 
     // ── Step 4: Apply domain hint reordering ──
@@ -535,6 +558,7 @@ export class RoutingService {
           403,
         );
       }
+      this.assertTargetCompatibility(primary, selectionHints);
       if (!this.embeddingDimensionsCompatible(primary, dimensions)) {
         throw new RoutingConstraintError(
           `Embedding model ${primary.node}/${primary.model} does not advertise support for dimensions=${dimensions}.`,
@@ -642,6 +666,7 @@ export class RoutingService {
           403,
         );
       }
+      this.assertTargetCompatibility(primary, evidenceHints);
       const fallbacks = this.rankRerankTargets(
         this.filterRerankTargets(
           allTargets.filter((target) =>
@@ -745,6 +770,7 @@ export class RoutingService {
           403,
         );
       }
+      this.assertTargetCompatibility(primary, evidenceHints);
       const fallbacks = this.rankMediaTargets(
         this.filterMediaTargets(
           allTargets.filter((target) =>
@@ -1262,7 +1288,8 @@ export class RoutingService {
   ): RouteTarget[] {
     const allowed = targets
       .filter(targetFilter)
-      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model))
+      .filter((target) => !this.targetCompatibilityReason(target, selectionHints));
     const byteSize = selectionHints.byte_size;
     if (byteSize === null || byteSize === undefined || byteSize <= 0) return allowed;
 
@@ -1300,7 +1327,10 @@ export class RoutingService {
   ): RouteTarget[] {
     const allowed = targets
       .filter(targetFilter)
-      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model))
+      .filter((target) =>
+        !this.targetCompatibilityReason(target, this.embeddingSelectionHints(dimensions)),
+      );
     if (!dimensions) return allowed;
 
     const exact = allowed.filter((target) =>
@@ -1343,7 +1373,10 @@ export class RoutingService {
   ): RouteTarget[] {
     return targets
       .filter(targetFilter)
-      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model));
+      .filter((target) => this.circuitBreaker.isAvailable(target.node, target.model))
+      .filter((target) =>
+        !this.targetCompatibilityReason(target, this.rerankSelectionHints()),
+      );
   }
 
   private rankRerankTargets(targets: RouteTarget[]): RouteTarget[] {
@@ -1618,6 +1651,12 @@ export class RoutingService {
       selectionHints,
     );
     const cacheEvidence = this.buildCacheEvidence(target, selectionHints);
+    const compatibility = this.buildCompatibilityEvidence(
+      target,
+      selectionHints,
+      selected,
+      fallback || selected,
+    );
 
     return {
       node: target.node,
@@ -1658,7 +1697,27 @@ export class RoutingService {
       },
       capability_evidence: capabilityEvidence,
       cache_evidence: cacheEvidence,
+      compatibility_evidence: compatibility,
     };
+  }
+
+  private buildCompatibilityEvidence(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+    selected: boolean,
+    eligible: boolean,
+  ): RouteDecisionCompatibilityEvidence {
+    const node = this.config.getNode(target.node);
+    return compatibilityEvidence({
+      node,
+      catalog: this.config.getMergedCatalog(),
+      sourceFormat: selectionHints.source_format,
+      requestedModality: selectionHints.requested_modality,
+      stream: selectionHints.stream,
+      multipart: selectionHints.multipart,
+      selected,
+      eligible,
+    });
   }
 
   private buildTraceCacheEvidence(
@@ -1921,8 +1980,11 @@ export class RoutingService {
     if (!node) return null;
     if (sourceFormat === 'image_generation') return node.images_generations_endpoint || null;
     if (sourceFormat === 'image_edit') return node.images_edits_endpoint || null;
+    if (sourceFormat === 'image_variation') return node.images_variations_endpoint || null;
     if (sourceFormat === 'audio_transcription') return node.audio_transcriptions_endpoint || null;
+    if (sourceFormat === 'audio_translation') return node.audio_translations_endpoint || null;
     if (sourceFormat === 'audio_speech') return node.audio_speech_endpoint || null;
+    if (sourceFormat === 'video_generation') return node.video_endpoint || node.video_generations_endpoint || null;
     if (requestedModality === 'embedding') return node.embeddings_endpoint || null;
     if (requestedModality === 'rerank') return node.rerank_endpoint || null;
     if (requestedModality === 'realtime') return node.realtime_endpoint || null;
@@ -1935,8 +1997,11 @@ export class RoutingService {
   ): string | null {
     if (sourceFormat === 'image_generation') return '/v1/images/generations';
     if (sourceFormat === 'image_edit') return '/v1/images/edits';
+    if (sourceFormat === 'image_variation') return '/v1/images/variations';
     if (sourceFormat === 'audio_transcription') return '/v1/audio/transcriptions';
+    if (sourceFormat === 'audio_translation') return '/v1/audio/translations';
     if (sourceFormat === 'audio_speech') return '/v1/audio/speech';
+    if (sourceFormat === 'video_generation') return '/v1/videos/generations';
     if (requestedModality === 'embedding') return '/v1/embeddings';
     if (requestedModality === 'rerank') return '/v1/rerank';
     if (requestedModality === 'realtime') return '/v1/realtime';
@@ -1947,8 +2012,9 @@ export class RoutingService {
     requestedModality: string | null,
     sourceFormat: string | null | undefined,
   ): string | null {
-    if (sourceFormat === 'image_generation' || sourceFormat === 'image_edit') return 'image';
-    if (sourceFormat === 'audio_transcription' || sourceFormat === 'audio_speech') return 'audio';
+    if (sourceFormat === 'image_generation' || sourceFormat === 'image_edit' || sourceFormat === 'image_variation') return 'image';
+    if (sourceFormat === 'audio_transcription' || sourceFormat === 'audio_translation' || sourceFormat === 'audio_speech') return 'audio';
+    if (sourceFormat === 'video_generation') return 'video';
     if (requestedModality === 'embedding') return 'embeddings';
     if (requestedModality === 'rerank') return 'rerank';
     if (requestedModality === 'realtime') return 'realtime';
@@ -2088,6 +2154,16 @@ export class RoutingService {
         source_format: sourceFormat,
       };
     }
+    if (sourceFormat === 'image_variation') {
+      return {
+        requested_modality: 'image',
+        input_types: ['image', 'file'],
+        output_types: ['image'],
+        required_capabilities: ['image'],
+        endpoint_strategy: 'image_variation',
+        source_format: sourceFormat,
+      };
+    }
     if (sourceFormat === 'audio_transcription') {
       return {
         requested_modality: 'audio',
@@ -2095,6 +2171,26 @@ export class RoutingService {
         output_types: ['text'],
         required_capabilities: ['audio'],
         endpoint_strategy: 'audio_transcription',
+        source_format: sourceFormat,
+      };
+    }
+    if (sourceFormat === 'audio_translation') {
+      return {
+        requested_modality: 'audio',
+        input_types: ['audio', 'file'],
+        output_types: ['text'],
+        required_capabilities: ['audio'],
+        endpoint_strategy: 'audio_translation',
+        source_format: sourceFormat,
+      };
+    }
+    if (sourceFormat === 'video_generation') {
+      return {
+        requested_modality: 'video',
+        input_types: ['text', 'image'],
+        output_types: ['video'],
+        required_capabilities: ['video'],
+        endpoint_strategy: 'video_generation',
         source_format: sourceFormat,
       };
     }
@@ -2223,6 +2319,11 @@ export class RoutingService {
       reasons.push(isFinalTarget ? 'file_size_demoted' : 'file_size_exceeded');
     }
 
+    const compatibilityReason = this.targetCompatibilityReason(target, selectionHints);
+    if (compatibilityReason) {
+      reasons.push(isFinalTarget ? `${compatibilityReason}:demoted` : compatibilityReason);
+    }
+
     if (!isFinalTarget && reasons.length === 0) {
       reasons.push('routing_constraint_filtered');
     }
@@ -2234,6 +2335,7 @@ export class RoutingService {
     if (reason.startsWith('context')) return 'context_window';
     if (reason.startsWith('structured')) return 'structured_output';
     if (reason.startsWith('reasoning')) return 'reasoning';
+    if (reason.startsWith('compatibility_profile')) return 'compatibility_profile';
     if (reason.startsWith('modality')) return 'modality';
     if (reason.startsWith('capability')) return 'capability';
     if (reason.startsWith('file_size')) return 'file_size';
@@ -2372,6 +2474,72 @@ export class RoutingService {
     }
 
     return compatible;
+  }
+
+  private filterTargetsByCompatibilityProfiles<T extends RouteTarget>(
+    tier: string,
+    targets: T[],
+    selectionHints: RouteSelectionHints,
+  ): T[] {
+    if (
+      targets.length === 0 ||
+      (!selectionHints.source_format &&
+        !selectionHints.requested_modality &&
+        !selectionHints.stream &&
+        !selectionHints.multipart)
+    ) {
+      return targets;
+    }
+
+    const compatible = targets.filter((target) =>
+      !this.targetCompatibilityReason(target, selectionHints),
+    );
+    if (compatible.length === 0) {
+      const source = selectionHints.source_format || selectionHints.requested_modality || 'request';
+      throw new RoutingConstraintError(
+        `No route targets for tier "${tier}" have a compatibility_profile that supports ${source}.`,
+        400,
+      );
+    }
+
+    const removed = targets.length - compatible.length;
+    if (removed > 0) {
+      this.logger.debug(
+        `Compatibility-profile routing removed ${removed} target(s) for tier "${tier}".`,
+      );
+    }
+    return compatible;
+  }
+
+  private assertTargetCompatibility(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+  ): void {
+    const reason = this.targetCompatibilityReason(target, selectionHints);
+    if (!reason) return;
+    throw new RoutingConstraintError(
+      `Target ${target.node}/${target.model} is not compatible with ${selectionHints.source_format || selectionHints.requested_modality || 'this request'} (${reason}).`,
+      reason.includes('multipart') ? 400 : 400,
+    );
+  }
+
+  private targetCompatibilityReason(
+    target: RouteTarget,
+    selectionHints: RouteSelectionHints,
+  ): string | null {
+    const node = this.config.getNode(target.node);
+    if (!node) return 'compatibility_profile_missing_node';
+    const profiles = resolveNodeCompatibilityProfiles(
+      node,
+      this.config.getMergedCatalog(),
+    );
+    return compatibilityFilteredReason({
+      profiles,
+      sourceFormat: selectionHints.source_format,
+      requestedModality: selectionHints.requested_modality,
+      stream: selectionHints.stream,
+      multipart: selectionHints.multipart,
+    });
   }
 
   private preferStructuredOutputTargets<T extends RouteTarget>(

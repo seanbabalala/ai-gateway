@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Boxes, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Search, Tag, WalletCards } from 'lucide-react'
+import { Boxes, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Search, ShieldCheck, Tag, WalletCards } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { Badge } from '@/components/ui/badge'
@@ -139,6 +139,7 @@ export function ProviderCatalogPage() {
   const reviewCount = allModels.filter((model) => model.pricing?.manual_review_required).length
   const overriddenCount = providers.filter((provider) => provider.overridden || provider.tags?.includes('override')).length +
     allModels.filter((model) => model.overridden).length
+  const compatibilityProfileCount = catalog.data?.compatibility_profiles?.length || 0
 
   return (
     <div className="space-y-6">
@@ -170,9 +171,10 @@ export function ProviderCatalogPage() {
 
       {catalog.data && (
         <>
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
             <CatalogMetric label={t('catalogPage.metrics.providers')} value={providers.length} icon={Boxes} />
             <CatalogMetric label={t('catalogPage.metrics.models')} value={allModels.length} icon={Tag} />
+            <CatalogMetric label={t('catalogPage.metrics.compatibilityProfiles')} value={compatibilityProfileCount} icon={ShieldCheck} tone="emerald" />
             <CatalogMetric label={t('catalogPage.metrics.overrides')} value={overriddenCount} icon={Tag} tone={overriddenCount > 0 ? 'emerald' : 'zinc'} />
             <CatalogMetric label={t('catalogPage.metrics.review')} value={reviewCount} icon={WalletCards} tone="amber" />
             <CatalogMetric label={t('catalogPage.metrics.stale')} value={staleCount} icon={WalletCards} tone={staleCount > 0 ? 'amber' : 'emerald'} />
@@ -419,6 +421,16 @@ function ProviderPricingTable({
             {provider.pricing?.manual_review_required ? t('catalogPage.badges.review') : t('catalogPage.badges.ready')}
           </Badge>
           {provider.tags?.includes('override') && <Badge variant="purple">{t('catalogPage.badges.override')}</Badge>}
+          {(provider.compatibility_profiles || []).slice(0, 3).map((profile) => (
+            <Badge key={profile} variant="blue" className="max-w-[170px] truncate whitespace-nowrap font-mono text-[9px]">
+              {profile}
+            </Badge>
+          ))}
+          {(provider.compatibility_profiles || []).length > 3 && (
+            <Badge variant="zinc" className="whitespace-nowrap">
+              +{(provider.compatibility_profiles || []).length - 3}
+            </Badge>
+          )}
           <Badge variant={sourceVariant(provider.pricing?.source)} className="whitespace-nowrap">
             {t(`catalogPage.sources.${sourceLabel(provider.pricing?.source)}`, {
               source: provider.pricing?.source || 'model-level',
