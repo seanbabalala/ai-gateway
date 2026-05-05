@@ -72,8 +72,8 @@ database:
 ```
 
 For production, use PostgreSQL so call logs, Dashboard-managed Gateway API
-keys, budgets, and node status can be backed up and operated independently from
-one container filesystem:
+keys, local teams, budgets, and node status can be backed up and operated
+independently from one container filesystem:
 
 ```yaml
 database:
@@ -324,6 +324,7 @@ Redis Pub/Sub does not carry provider keys, prompts, responses, raw headers, or 
 ## Security Notes
 
 - Provider API keys should stay in environment variables or a local secret manager referenced from `gateway.config.yaml`.
-- Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`. Operators should scope them with endpoint/modalities, allowed nodes/models, namespace, daily budgets, and rate limits instead of sharing one global client key.
+- Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`. Operators should scope them with local teams, endpoint/modalities, allowed nodes/models, namespace, daily budgets, and rate limits instead of sharing one global client key.
+- Local teams are OSS-only shared policy groups. They help manage multiple keys locally, but they are not enterprise SSO, SCIM, workspaces, RBAC, or org billing.
 - Gateway API key list/update/delete responses only expose masked prefixes. Create and rotate responses show the full key once; config audit events store redacted summaries and do not persist that one-time secret.
 - The open-source Data Plane does not require SiftGate Cloud. If `control_plane` is enabled, it is an outbound optional integration and AI traffic still flows from the gateway to the configured providers.

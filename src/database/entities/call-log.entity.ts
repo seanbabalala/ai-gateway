@@ -17,6 +17,7 @@ import {
 @Index(['api_key_name'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
+@Index(['team_id'])
 @Index(['fallback_reason'])
 export class CallLog {
   @PrimaryGeneratedColumn()
@@ -144,6 +145,9 @@ export class CallLog {
 
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  team_id!: string | null;
 
   @Column({ type: 'integer', default: 0 })
   retry_count!: number;

@@ -7,15 +7,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type GatewayApiKeyStatus = 'active' | 'disabled';
+export type LocalTeamStatus = 'active' | 'disabled';
 
-@Entity('gateway_api_keys')
-@Index(['key_hash'], { unique: true })
+@Entity('local_teams')
 @Index(['name'], { unique: true })
 @Index(['status'])
 @Index(['namespace_id'])
-@Index(['team_id'])
-export class GatewayApiKey {
+export class LocalTeam {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -25,20 +23,11 @@ export class GatewayApiKey {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @Column({ type: 'varchar' })
-  key_hash!: string;
-
-  @Column({ type: 'varchar' })
-  key_prefix!: string;
-
   @Column({ type: 'varchar', default: 'active' })
-  status!: GatewayApiKeyStatus;
+  status!: LocalTeamStatus;
 
-  @Column({ type: 'boolean', default: true })
-  allow_auto!: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  allow_direct!: boolean;
+  @Column({ type: 'varchar', nullable: true })
+  namespace_id!: string | null;
 
   @Column({ type: 'simple-json', nullable: true })
   allowed_nodes!: string[] | null;
@@ -52,12 +41,6 @@ export class GatewayApiKey {
   @Column({ type: 'simple-json', nullable: true })
   allowed_modalities!: string[] | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  namespace_id!: string | null;
-
-  @Column({ type: 'varchar', nullable: true })
-  team_id!: string | null;
-
   @Column({ type: 'real', nullable: true })
   daily_token_limit!: number | null;
 
@@ -69,9 +52,6 @@ export class GatewayApiKey {
 
   @Column({ nullable: true })
   last_used_at?: Date;
-
-  @Column({ type: 'varchar', nullable: true })
-  last_used_ip!: string | null;
 
   @CreateDateColumn()
   created_at!: Date;

@@ -179,6 +179,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     remove: jest.fn(),
     ...overrides.gatewayApiKeys,
   };
+  const teams = {
+    list: jest.fn().mockResolvedValue([]),
+    getSummary: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
+    ...overrides.teams,
+  };
   const shadowTraffic = {
     getStatus: jest.fn().mockReturnValue({
       enabled: false,
@@ -354,6 +362,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     new TelemetryService(),
     routingRecommendations as any,
     gatewayApiKeys as any,
+    teams as any,
     shadowTraffic as any,
     providerCompatibility as any,
     configAudit as any,
@@ -370,7 +379,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     overrides.mcp as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, batchJobs, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, teams, shadowTraffic, providerCompatibility, configAudit, batchJobs, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1714,6 +1723,84 @@ describe('DashboardController — api-keys', () => {
     );
     const auditPayload = JSON.stringify(configAudit.recordManagementEvent.mock.calls);
     expect(auditPayload).not.toContain('gw_sk_live_rotated_secret_value');
+  });
+});
+
+describe('DashboardController — local teams', () => {
+  const teamSummary = {
+    id: 'team_123',
+    name: 'platform',
+    description: 'Shared backend limits',
+    status: 'active',
+    namespace_id: 'team-alpha',
+    namespace_name: 'Team Alpha',
+    allowed_nodes: ['openai'],
+    allowed_models: ['gpt-4o'],
+    allowed_endpoints: ['chat_completions', 'responses'],
+    allowed_modalities: ['text'],
+    daily_token_limit: 100000,
+    daily_cost_limit: 25,
+    rate_limit_per_minute: 120,
+    today: { calls: 0, errors: 0, error_rate: 0, cost_usd: 0, input_tokens: 0, output_tokens: 0 },
+  };
+
+  it('should list local teams with OSS-only enterprise markers', async () => {
+    const { controller } = makeDashboard({
+      teams: {
+        list: jest.fn().mockResolvedValue([teamSummary]),
+      },
+    });
+
+    const result = await controller.getTeams();
+
+    expect(result.mode).toBe('local_only');
+    expect(result.enterprise_features.sso).toBe(false);
+    expect(result.teams[0]).toMatchObject({ id: 'team_123', name: 'platform' });
+  });
+
+  it('should audit team create/update/delete without secret material', async () => {
+    const teams = {
+      list: jest.fn().mockResolvedValue([]),
+      getSummary: jest.fn().mockResolvedValue(teamSummary),
+      create: jest.fn().mockResolvedValue(teamSummary),
+      update: jest.fn().mockResolvedValue({ ...teamSummary, status: 'disabled' }),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
+    const { controller, configAudit } = makeDashboard({ teams });
+
+    await controller.createTeam({
+      name: 'platform',
+      namespace_id: 'team-alpha',
+      allowed_endpoints: ['responses'],
+      allowed_modalities: ['text'],
+    });
+    await controller.updateTeam('team_123', { status: 'disabled' });
+    await controller.deleteTeam('team_123');
+
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'team.create',
+        afterSummary: expect.objectContaining({
+          id: 'team_123',
+          secret: 'not_applicable',
+          enterprise: expect.objectContaining({ sso: false, scim: false }),
+        }),
+      }),
+    );
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'team.update',
+        beforeSummary: expect.objectContaining({ status: 'active' }),
+        afterSummary: expect.objectContaining({ status: 'disabled' }),
+      }),
+    );
+    expect(configAudit.recordManagementEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'team.delete',
+        beforeSummary: expect.objectContaining({ secret: 'not_applicable' }),
+      }),
+    );
+    expect(JSON.stringify(configAudit.recordManagementEvent.mock.calls)).not.toContain('gw_sk_live');
   });
 });
 

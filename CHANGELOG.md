@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Added v1.3 local Virtual Key + Team management for the OSS Data Plane. Dashboard-generated Gateway API keys can now bind to local teams with team-level namespace, allowed node/model, endpoint/modality, budget, and rate-limit policy.
+- Added `local_teams` persistence on SQLite/PostgreSQL, `team_id` attribution in call logs, and team-scoped budget rules that are checked alongside global, namespace, and key budgets.
+- Added Dashboard APIs `GET/POST/PUT/DELETE /api/dashboard/teams` with sanitized audit events for team create/update/delete, plus 7-language Dashboard Team management UI on the API Keys page.
+- Added migration coverage for local teams and key/team metadata while preserving one-time-only Gateway API key secret behavior and masked list responses.
+
 ## 1.2.0 - 2026-05-05
 
 ### Added

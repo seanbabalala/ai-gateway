@@ -31,6 +31,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   const logEventBus = {} as any;
   const routingRecommendations = {} as any;
   const gatewayApiKeys = {} as any;
+  const teams = {} as any;
   const catalog = {
     load: jest.fn().mockReturnValue({
       catalog: { providers: [] },
@@ -107,7 +108,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, shadowTraffic, providerCompatibility, configAudit, catalog, batchJobs, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, teams, shadowTraffic, providerCompatibility, configAudit, catalog, batchJobs, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

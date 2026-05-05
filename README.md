@@ -30,6 +30,8 @@
 
 Current open-source release: **v1.2.0**. v1.2 is the SiftGate platform capabilities release: MCP Gateway preview, OpenAI-compatible Batch API proxying, cache-aware routing evidence, and optional OpenRouter pricing sync extend the local Data Plane beyond request proxying into platform operations.
 
+Unreleased v1.3 work adds local Virtual Key + Team management on top of v1.2: operators can create local teams, bind Gateway API keys to teams, and enforce team-level namespace, budget, rate-limit, endpoint, modality, node, and model policy without adding enterprise SSO, SCIM, workspace, or Cloud dependencies.
+
 The release builds on v1.1.0 Developer Experience and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
@@ -90,6 +92,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Reasoning-aware target preference** — explicit reasoning/thinking requests prefer models that declare `supports_reasoning` or reasoning capability tags, while keeping unknown legacy targets usable unless every configured target says no
 - **Multimodal capability filtering** — node/model metadata declares text, image/vision, audio, embedding, rerank, and realtime support so smart routing keeps only compatible candidates
 - **Local namespace boundaries** — bind Gateway API keys to OSS-local namespaces with node/model, endpoint/modality, budget, and rate-limit policy limits
+- **Local team boundaries** — group Dashboard-generated Gateway API keys under OSS-local teams with team-level permissions, budgets, rate limits, usage summaries, and audit events; this is not enterprise workspace/RBAC/SSO
 - **Domain-aware routing** — detects request domains (frontend, backend, math, etc.) and prefers providers that excel in those areas
 - **Momentum routing** — tracks which provider is performing well and subtly favors it
 - **Adaptive routing recommendations** — analyzes local call logs and suggests safer route changes without applying them automatically
@@ -119,7 +122,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **SSE log stream** — see requests flowing through the gateway in real time
 - **Node health** — monitor provider status, active probes, circuit breaker state, current concurrency, and queue depth
 - **Realtime status** — when the experimental realtime preview is enabled, node and health APIs show realtime capability, active connections, last close time, and sanitized errors
-- **API key management** — create, edit, disable, delete, rotate, and copy one-time Gateway API keys with namespace, budget, rate-limit, endpoint, modality, node, and model restrictions
+- **API key and local team management** — create, edit, disable, delete, rotate, and copy one-time Gateway API keys with team, namespace, budget, rate-limit, endpoint, modality, node, and model restrictions
 - **Dashboard Playground** — run operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks with selected API key, namespace, model, stream mode, and routing hints
 - **MCP Gateway preview** — inspect local MCP servers, registered tools, recent calls, and error summaries without storing tool input/output text or secret headers
 - **Provider compatibility matrix** — safely test whether each node really supports chat, responses, messages, embeddings, rerank, images, audio, video, and realtime without storing prompts, responses, raw headers, or provider keys
@@ -482,7 +485,15 @@ Client applications call the proxy endpoints with a dashboard-generated Gateway 
 Authorization: Bearer gw_sk_live_...
 ```
 
-Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, allowed endpoints/modalities, rate limits, daily token/cost budgets, and an optional local namespace. The Dashboard records these changes as local config audit events when config audit is enabled.
+Each Gateway API key can be configured with automatic routing access, direct model access, allowed nodes/models, allowed endpoints/modalities, rate limits, daily token/cost budgets, an optional local namespace, and an optional local team. The Dashboard records these changes as local config audit events when config audit is enabled.
+
+### Local Teams
+
+Teams are local OSS policy groups for Dashboard-generated Gateway API keys. They are stored in SQLite by default or PostgreSQL when configured, and they do not introduce enterprise SSO, SCIM, RBAC, workspaces, org billing, or Cloud coupling.
+
+A team can define namespace binding, allowed nodes/models, allowed endpoints/modalities, daily token/cost budgets, and RPM limits. When a Gateway API key is bound to a team, SiftGate intersects key, team, and namespace restrictions, then applies the strictest configured rate limit and checks global, namespace, team, and key budgets. Disabling a team makes bound keys fail closed. The full key secret is still only shown once on create/rotate; team APIs never return secret material.
+
+Dashboard Team and API Key mutations write local config audit events with sanitized summaries when config audit is enabled. Call logs include `team_id` for usage summaries and future filtering.
 
 ### Local Namespaces
 
@@ -1508,6 +1519,10 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `PUT`  | `/api/dashboard/api-keys/:id`            | Edit key status, namespace binding, endpoint/model permissions, budgets, and rate limits           |
 | `POST` | `/api/dashboard/api-keys/:id/rotate`     | Rotate a Gateway API key and return the new full secret once                                       |
 | `DELETE` | `/api/dashboard/api-keys/:id`          | Delete a Gateway API key and disable its generated budget rules                                    |
+| `GET`  | `/api/dashboard/teams`                   | List local teams with permissions, status, usage, budget, and rate-limit summaries                 |
+| `POST` | `/api/dashboard/teams`                   | Create a local team policy                                                                         |
+| `PUT`  | `/api/dashboard/teams/:id`               | Edit or disable a local team policy                                                                |
+| `DELETE` | `/api/dashboard/teams/:id`             | Delete a local team and disable its team budget rules                                              |
 | `GET`  | `/api/dashboard/nodes`                   | Node health, active probe, circuit breaker, concurrency, and queue depth                           |
 | `POST` | `/api/dashboard/nodes/:id/reset`         | Reset circuit breaker                                                                              |
 | `GET`  | `/api/dashboard/budget`                  | Budget status; supports `api_key_id`, legacy `api_key`, and `namespace` filters                    |
@@ -1529,7 +1544,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
-- **API Keys** — Client Gateway API key generation, namespace binding, endpoint/modality/node/model permissions, budgets, rate limits, masked key display, one-time copy, rotation, and disable/delete controls
+- **API Keys** — Client Gateway API key generation, local team binding, namespace binding, endpoint/modality/node/model permissions, budgets, rate limits, masked key display, one-time copy, rotation, and disable/delete controls
 - **Config Audit** — Local sanitized config versions, audit events, and confirmation-based rollback
 
 ## Plugins

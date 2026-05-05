@@ -99,10 +99,13 @@ Gateway API keys can carry:
 - per-key budgets
 - per-key rate limits
 - optional local namespace binding
+- optional local team binding
 
-Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Namespace node/model restrictions are intersected with API-key node/model restrictions before routing. Endpoint and modality restrictions are key-local checks enforced before a request reaches routing or provider forwarding.
+Local teams are open-source data-plane policy groups stored in SQLite/PostgreSQL. They can define namespace binding, allowed nodes/models/endpoints/modalities, daily token/cost budgets, and rate limits for multiple Dashboard-generated Gateway API keys. A disabled team makes bound keys fail closed. Teams intentionally do not implement enterprise SSO, SCIM, organization billing, Cloud workspaces, or workspace RBAC.
 
-Dashboard API key list responses expose only `key_prefix`, status, usage summary, and permission metadata. The full key is returned once on create or rotate, then discarded. API key mutations write local config audit events with redacted before/after summaries, including `secret: redacted` instead of the generated key.
+Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Key, team, and namespace restrictions are intersected before routing. The effective rate limit is the strictest configured key/team/namespace limit. Budget checks run across global, namespace, team, and key scopes before a request reaches an upstream provider.
+
+Dashboard API key list responses expose only `key_prefix`, status, team/namespace labels, usage summary, and permission metadata. The full key is returned once on create or rotate, then discarded. API key and team mutations write local config audit events with redacted before/after summaries, including `secret: redacted` for keys and no secret-bearing fields for teams.
 
 ### Routing
 
@@ -151,6 +154,7 @@ The gateway records call logs with:
 - trace id from direct trace headers or W3C `traceparent`
 - Gateway API key id and name
 - namespace id
+- team id
 - source protocol
 - selected tier
 - upstream node and model

@@ -2,12 +2,15 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiPost, apiPut, apiDelete } from '@/lib/api'
 import type {
   ActionResponse,
+  CreateTeamRequest,
   CreateGatewayApiKeyRequest,
   CreateNodeRequest,
   GatewayApiKeyMutationResponse,
+  TeamMutationResponse,
   TestNodeRequest,
   TestNodeResponse,
   UpdateGatewayApiKeyRequest,
+  UpdateTeamRequest,
   UpdateNodeRequest,
 } from '@/types/api'
 
@@ -114,6 +117,48 @@ export function useCreateGatewayApiKey() {
     mutationFn: (data) =>
       apiPost<GatewayApiKeyMutationResponse>('/api/dashboard/api-keys', data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      queryClient.invalidateQueries({ queryKey: ['budget'] })
+    },
+  })
+}
+
+export function useCreateTeam() {
+  const queryClient = useQueryClient()
+  return useMutation<TeamMutationResponse, Error, CreateTeamRequest>({
+    mutationFn: (data) =>
+      apiPost<TeamMutationResponse>('/api/dashboard/teams', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] })
+      queryClient.invalidateQueries({ queryKey: ['budget'] })
+    },
+  })
+}
+
+export function useUpdateTeam() {
+  const queryClient = useQueryClient()
+  return useMutation<
+    TeamMutationResponse,
+    Error,
+    { id: string; data: UpdateTeamRequest }
+  >({
+    mutationFn: ({ id, data }) =>
+      apiPut<TeamMutationResponse>(`/api/dashboard/teams/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] })
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      queryClient.invalidateQueries({ queryKey: ['budget'] })
+    },
+  })
+}
+
+export function useDeleteTeam() {
+  const queryClient = useQueryClient()
+  return useMutation<ActionResponse, Error, string>({
+    mutationFn: (id) =>
+      apiDelete<ActionResponse>(`/api/dashboard/teams/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] })
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       queryClient.invalidateQueries({ queryKey: ['budget'] })
     },
