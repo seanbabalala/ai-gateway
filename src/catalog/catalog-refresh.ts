@@ -329,6 +329,249 @@ export const CATALOG_REFRESH_SOURCES: CatalogRefreshSource[] = [
     notes: 'Self-hosted OpenAI-compatible deployments need operator-supplied model and infrastructure cost metadata.',
   },
   {
+    provider: 'huggingface',
+    label: 'Hugging Face',
+    mode: 'docs_review',
+    source_url: 'https://huggingface.co/pricing#inference-providers',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Inference Providers route to multiple upstreams; review model/provider-specific pricing before cost routing.',
+  },
+  {
+    provider: 'cloudflare-workers-ai',
+    label: 'Cloudflare Workers AI',
+    mode: 'docs_review',
+    source_url: 'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Workers AI pricing uses model-specific units and Cloudflare account plan settings.',
+  },
+  {
+    provider: 'ibm-watsonx',
+    label: 'IBM watsonx.ai',
+    mode: 'docs_review',
+    source_url: 'https://www.ibm.com/products/watsonx-ai/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'watsonx pricing depends on region, plan, and selected foundation model.',
+  },
+  {
+    provider: 'baseten',
+    label: 'Baseten',
+    mode: 'operator_local',
+    source_url: 'https://www.baseten.co/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Baseten model costs are deployment and hardware dependent.',
+  },
+  {
+    provider: 'lepton',
+    label: 'Lepton AI',
+    mode: 'operator_local',
+    source_url: 'https://www.lepton.ai/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Lepton endpoint pricing depends on deployment resources and hosted model selection.',
+  },
+  {
+    provider: 'modal',
+    label: 'Modal',
+    mode: 'operator_local',
+    source_url: 'https://modal.com/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Modal costs depend on custom app resources and runtime duration.',
+  },
+  {
+    provider: 'runpod',
+    label: 'RunPod',
+    mode: 'operator_local',
+    source_url: 'https://www.runpod.io/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'RunPod costs depend on GPU type, endpoint mode, duration, and deployment settings.',
+  },
+  {
+    provider: 'predibase',
+    label: 'Predibase',
+    mode: 'operator_local',
+    source_url: 'https://predibase.com/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Predibase serving prices depend on deployment, adapter, and compute tier.',
+  },
+  {
+    provider: 'lamini',
+    label: 'Lamini',
+    mode: 'operator_local',
+    source_url: 'https://www.lamini.ai/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Lamini pricing depends on hosted/private deployment and fine-tuning plan.',
+  },
+  {
+    provider: 'ai21',
+    label: 'AI21 Labs',
+    mode: 'docs_review',
+    source_url: 'https://www.ai21.com/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'AI21/Jamba pricing should be reviewed by model family and plan.',
+  },
+  {
+    provider: 'fal',
+    label: 'fal.ai',
+    mode: 'operator_local',
+    source_url: 'https://fal.ai/pricing',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'fal.ai image/video pricing depends on model, queue/runtime, and generation parameters.',
+  },
+  {
+    provider: 'stability-ai',
+    label: 'Stability AI',
+    mode: 'docs_review',
+    source_url: 'https://platform.stability.ai/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Stability AI uses credits and endpoint-specific units.',
+  },
+  {
+    provider: 'black-forest-labs',
+    label: 'Black Forest Labs',
+    mode: 'docs_review',
+    source_url: 'https://docs.bfl.ai/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'FLUX prices vary by model and generation parameters.',
+  },
+  {
+    provider: 'ideogram',
+    label: 'Ideogram',
+    mode: 'docs_review',
+    source_url: 'https://ideogram.ai/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Ideogram costs depend on API plan, endpoint, and image parameters.',
+  },
+  {
+    provider: 'luma',
+    label: 'Luma AI',
+    mode: 'docs_review',
+    source_url: 'https://lumalabs.ai/api/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Luma costs vary by model, duration, and generation settings.',
+  },
+  {
+    provider: 'runway',
+    label: 'Runway',
+    mode: 'docs_review',
+    source_url: 'https://runwayml.com/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Runway API uses plan/credit and generation-specific units.',
+  },
+  {
+    provider: 'pika',
+    label: 'Pika',
+    mode: 'docs_review',
+    source_url: 'https://pika.art/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Pika pricing and API access depend on plan and model availability.',
+  },
+  {
+    provider: 'elevenlabs',
+    label: 'ElevenLabs',
+    mode: 'docs_review',
+    source_url: 'https://elevenlabs.io/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'ElevenLabs pricing uses character/minute and plan-specific units.',
+  },
+  {
+    provider: 'deepgram',
+    label: 'Deepgram',
+    mode: 'docs_review',
+    source_url: 'https://deepgram.com/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Deepgram prices vary by STT/TTS model and audio duration.',
+  },
+  {
+    provider: 'assemblyai',
+    label: 'AssemblyAI',
+    mode: 'docs_review',
+    source_url: 'https://www.assemblyai.com/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'AssemblyAI pricing depends on audio duration and enabled features.',
+  },
+  {
+    provider: 'cartesia',
+    label: 'Cartesia',
+    mode: 'docs_review',
+    source_url: 'https://cartesia.ai/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Cartesia pricing is voice/model and character/audio-duration dependent.',
+  },
+  {
+    provider: 'speechmatics',
+    label: 'Speechmatics',
+    mode: 'docs_review',
+    source_url: 'https://www.speechmatics.com/pricing',
+    automatic: false,
+    pricing: 'docs_only',
+    notes: 'Speechmatics pricing depends on transcription mode, language features, and audio duration.',
+  },
+  {
+    provider: 'lm-studio',
+    label: 'LM Studio',
+    mode: 'operator_local',
+    source_url: 'http://localhost:1234/v1/models',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Local LM Studio availability and cost depend on the operator machine.',
+  },
+  {
+    provider: 'llama-cpp',
+    label: 'llama.cpp server',
+    mode: 'operator_local',
+    source_url: 'http://localhost:8080/v1/models',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Local llama.cpp availability and cost depend on the operator machine.',
+  },
+  {
+    provider: 'huggingface-tgi',
+    label: 'Text Generation Inference / TGI',
+    mode: 'operator_local',
+    source_url: 'http://localhost:8080/v1/models',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Self-hosted TGI costs depend on the operator deployment.',
+  },
+  {
+    provider: 'sglang',
+    label: 'SGLang',
+    mode: 'operator_local',
+    source_url: 'http://localhost:30000/v1/models',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Self-hosted SGLang costs depend on the operator deployment.',
+  },
+  {
+    provider: 'xinference',
+    label: 'Xinference',
+    mode: 'operator_local',
+    source_url: 'http://localhost:9997/v1/models',
+    automatic: false,
+    pricing: 'operator_required',
+    notes: 'Self-hosted Xinference costs depend on the operator deployment and selected local models.',
+  },
+  {
     provider: 'openai-compatible',
     label: 'OpenAI-compatible custom',
     mode: 'operator_local',
@@ -429,15 +672,18 @@ async function refreshOpenRouterCatalog(input: {
     model_prefixes: inferOpenRouterModelPrefixes(models),
     capabilities: ['openai_compatible', 'multi_provider', 'public_catalog'],
     pricing: {
+      source_type: 'aggregator_api',
       source: 'openrouter-public-api',
       source_url: source.source_url,
       last_updated: lastUpdated,
       last_sync: generatedAt,
       retrieved_at: generatedAt,
+      last_verified_at: generatedAt,
       manual_review_required: false,
       stale_after_days: 7,
       pricing_confidence: 'high',
       currency: 'USD',
+      billing_unit: 'usd_per_1m_tokens',
       notes: 'Provider-level metadata generated from the OpenRouter public models API.',
     },
     models,
@@ -523,30 +769,54 @@ function openRouterPricingToCatalogPricing(
   const complete = tokenComplete || modalityPriced;
   const pricing: CatalogPricing = {
     currency: 'USD',
+    billing_unit: 'usd_per_1m_tokens',
     unit: 'usd_per_1m_tokens',
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       image: 'usd_per_1m_image_tokens',
       audio: 'usd_per_1m_audio_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      image_per_generation: 'usd_per_1m_image_tokens',
+      audio_per_minute: 'usd_per_1m_audio_tokens',
+      embedding_per_1m_tokens: 'usd_per_1m_embedding_tokens',
     },
+    source_type: 'aggregator_api',
     source: 'openrouter-public-api',
     source_url: OPENROUTER_MODELS_URL,
     last_updated: lastUpdated,
     last_sync: retrievedAt,
     retrieved_at: retrievedAt,
+    last_verified_at: retrievedAt,
     manual_review_required: !complete,
+    review_reason: complete ? undefined : 'OpenRouter did not expose all modality price units for this model.',
     stale_after_days: 7,
     pricing_confidence: complete ? 'high' : 'unknown',
     notes: tokenPriced
       ? 'OpenRouter prompt/completion pricing converted from USD/token to USD/1M tokens. Non-token modality prices are included only when OpenRouter exposes explicit image/audio price fields.'
       : 'OpenRouter returned non-text modality metadata. SiftGate only marks prices high-confidence when explicit modality pricing is available.',
   };
-  if (tokenPriced && input !== null) pricing.input = roundPrice(input * ONE_MILLION);
-  if (tokenPriced && output !== null) pricing.output = roundPrice(output * ONE_MILLION);
-  if (image !== null) pricing.image = roundPrice(image * ONE_MILLION);
-  if (audio !== null) pricing.audio = roundPrice(audio * ONE_MILLION);
-  if (modalities.includes('embedding') && input !== null) pricing.embedding = roundPrice(input * ONE_MILLION);
+  if (tokenPriced && input !== null) {
+    pricing.input = roundPrice(input * ONE_MILLION);
+    pricing.input_per_1m_tokens = pricing.input;
+  }
+  if (tokenPriced && output !== null) {
+    pricing.output = roundPrice(output * ONE_MILLION);
+    pricing.output_per_1m_tokens = pricing.output;
+  }
+  if (image !== null) {
+    pricing.image = roundPrice(image * ONE_MILLION);
+    pricing.image_per_generation = pricing.image;
+  }
+  if (audio !== null) {
+    pricing.audio = roundPrice(audio * ONE_MILLION);
+    pricing.audio_per_minute = pricing.audio;
+  }
+  if (modalities.includes('embedding') && input !== null) {
+    pricing.embedding = roundPrice(input * ONE_MILLION);
+    pricing.embedding_per_1m_tokens = pricing.embedding;
+  }
   return pricing;
 }
 

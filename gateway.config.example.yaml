@@ -135,7 +135,7 @@ auth:
 #
 # CLI:
 #   npm run catalog -- list
-#   npm run catalog -- show openai
+#   npm run catalog -- show openai --pricing
 #   npm run catalog -- sources
 #   npm run catalog -- refresh openrouter --out ./catalog.override.yaml
 #   npm run catalog -- import --file ./catalog.override.yaml
@@ -158,6 +158,26 @@ auth:
 #     adapters:
 #       openrouter:
 #         enabled: false
+#
+# catalog.override.yaml pricing entries support v1.4 source governance fields:
+# pricing:
+#   currency: USD
+#   billing_unit: usd_per_1m_tokens
+#   input_per_1m_tokens: 2.50
+#   output_per_1m_tokens: 10.00
+#   cache_read_per_1m_tokens: 0.25
+#   cache_write_per_1m_tokens: 2.50
+#   image_per_generation: 0.04
+#   audio_per_minute: 0.006
+#   video_per_generation: 1.20
+#   source_type: operator_override
+#   source: internal-rate-card
+#   source_url: https://example.com/internal-rate-card
+#   last_verified_at: "2026-05-05"
+#   last_updated: "2026-05-05"
+#   manual_review_required: false
+#   stale_after_days: 30
+#   pricing_confidence: high
 
 # ============================================================
 # MCP Gateway Preview — optional local MCP server proxy
@@ -281,6 +301,9 @@ auth:
 # v1.2 adds prompt-cache-aware routing metadata. Declare prompt_cache/read_cache/
 # write_cache when an upstream provider can reuse prompt/context tokens, and add
 # cache_read_input/cache_creation_input prices when they differ from normal input.
+# v1.4 adds compatibility_profile metadata. Leave it empty for catalog-known
+# providers, or set it explicitly for custom gateways/local servers so routing,
+# validation, safe probes, and Route Explanation agree on protocol behavior.
 #
 # Good node IDs/names describe the upstream channel, not a single model:
 #   id: openai-main       name: "OpenAI Main Account"
@@ -313,6 +336,11 @@ nodes:
   - id: openai
     name: "OpenAI"
     protocol: chat_completions
+    # Optional. If omitted, SiftGate resolves profiles from the Provider Catalog
+    # or infers them from protocol/endpoints/model buckets. Examples:
+    #   compatibility_profile: openai_compatible
+    #   compatibility_profile: [openai_compatible, embedding_compatible, media_generation_sync]
+    compatibility_profile: [openai_compatible, openai_responses_compatible, embedding_compatible, media_generation_sync, speech_transcription, speech_tts]
     base_url: "https://api.openai.com"
     endpoint: "/v1/chat/completions"
     embeddings_endpoint: "/v1/embeddings"
@@ -775,6 +803,8 @@ budget:
 # Used to calculate per-request costs and enforce budget limits.
 # Explicit entries here override Provider Catalog fallback pricing.
 # Add entries for every production model ID listed in your nodes above.
+# v1.4 also accepts source-governance metadata and aliases such as
+# input_per_1m_tokens/output_per_1m_tokens. Legacy input/output remains valid.
 models_pricing:
   gpt-4o: { input: 2.50, output: 10.00 }
   gpt-4o-mini: { input: 0.15, output: 0.60 }

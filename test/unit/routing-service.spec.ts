@@ -36,6 +36,9 @@ function makeRoutingService(overrides: {
       { id: 'n2', tags: ['backend', 'reasoning'] },
     ],
   });
+  config.getNode = jest.fn().mockImplementation((id: string) =>
+    config.nodes.find((node: any) => node.id === id),
+  );
   config.resolveEmbeddingModel = overrides.resolveEmbeddingModel || jest.fn().mockImplementation((model: string) => {
     for (const node of config.nodes) {
       if (node.embedding_models?.includes(model)) {
@@ -186,6 +189,47 @@ describe('RoutingService', () => {
     expect(() =>
       svc.resolve('simple' as Tier, 0.1, undefined, null, ['text', 'audio']),
     ).toThrow('No route targets for tier "simple" support required modalities');
+  });
+
+  it('should filter targets by compatibility profile source format', () => {
+    const svc = makeRoutingService({
+      nodes: [
+        {
+          id: 'n1',
+          protocol: 'chat_completions',
+          base_url: 'https://api.openai.com',
+          tags: ['text'],
+          compatibility_profile: ['openai_compatible'],
+        },
+        {
+          id: 'n2',
+          protocol: 'chat_completions',
+          base_url: 'https://images.example',
+          tags: ['image'],
+          compatibility_profile: ['media_generation_sync'],
+        },
+      ],
+    });
+
+    const decision = svc.resolve('simple' as Tier, 0.1, undefined, null, undefined, {
+      source_format: 'image_generation',
+      requested_modality: 'image',
+    });
+
+    expect(decision.primary.node).toBe('n2');
+    expect(decision.trace?.filters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node: 'n1',
+          stage: 'compatibility_profile',
+        }),
+      ]),
+    );
+    expect(decision.trace?.candidate_targets.find((candidate) => candidate.node === 'n1')).toMatchObject({
+      compatibility_evidence: expect.objectContaining({
+        filtered_by_profile_reason: 'compatibility_profile_unsupported_source_format:image_generation',
+      }),
+    });
   });
 
   // ── Domain hint (explicit config) ────────────────────────
@@ -795,6 +839,8 @@ describe('RoutingService — rerank', () => {
       requested_modality: 'rerank',
       filtered_by_capability: false,
       pricing_source: 'config',
+      pricing_used_from: 'gateway_config',
+      estimated_cost_basis: 'input_output_per_1m_tokens',
       catalog_source: 'config',
     });
   });

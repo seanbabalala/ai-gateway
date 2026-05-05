@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 1.4.0 - 2026-05-05
+
+### Added
+
+- Expanded the built-in Provider Catalog for v1.4 to 50+ providers, adding Hugging Face, Cloudflare Workers AI, IBM watsonx.ai, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini, AI21 Labs, fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika, ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics, LM Studio, llama.cpp server, TGI, SGLang, and Xinference.
+- Added v1.4 provider governance metadata across the built-in catalog, including aliases, family/category, provider type, homepage/docs/pricing URLs, logo identity, input/output types, model buckets, batch modality metadata, compatibility profile, and review-required pricing source metadata.
+- Added Dashboard/provider-logo identity coverage for the new providers so OpenAI-compatible or compatible-style providers do not fall back to the OpenAI logo.
+- Added v1.4 Provider Catalog pricing source governance for the OSS Data Plane, with unified token/cache/media/rerank/realtime/batch pricing fields, source type, source URL, verification timestamps, confidence, stale windows, and review reasons.
+- Added pricing evidence to Route Decision Trace and Dashboard Route Explanation, including source, confidence, stale status, resolver layer, missing price units, and estimated cost basis without exposing prompts, responses, raw headers, provider keys, or secrets.
+- Added `siftgate catalog show <provider> --pricing` output for pricing governance details and extended catalog validation/export coverage for source-governed prices.
+- Added Provider Catalog Dashboard UX 2.0 for the v1.4 provider ecosystem work: catalog responses now expose Dashboard-ready provider family, provider type, compatibility profile, aliases, logo id, links, model buckets, limits, and pricing-unit metadata without introducing a second catalog.
+- Added a grouped Provider Catalog explorer with summary cards, family/type/modality/compatibility/price-source filters, stale/review quick filters, collapsed provider groups, detail panels, sync status, override markers, and 7-language operator copy.
+- Added Add Node Wizard provider family filters, alias/model search, provider type badges, catalog identity logos, and a bounded scroll area so 50+ providers remain usable while advanced endpoint/header/pricing/health fields stay editable.
+- Added v1.4 Provider Compatibility Profiles for the OSS Data Plane, with a local registry covering OpenAI-compatible, Responses-compatible, Anthropic Messages, Gemini, Vertex, Bedrock, Azure OpenAI, Hugging Face, OpenRouter, Cohere, Mistral, Ollama, vLLM, TGI, LM Studio, media generation, speech, rerank, and embedding protocol styles.
+- Added `nodes[].compatibility_profile` and Provider Catalog `compatibility_profiles`, with validation for unknown profiles, provider/profile mismatch, source-format mismatch, endpoint mismatch, and modality/model-bucket mismatch.
+- Added compatibility-profile routing evidence so Route Decision Trace and Dashboard Route Explanation can show selected/filtered profiles, endpoint/protocol strategy, passthrough fields, downgraded fields, unsupported fields, and profile filter reasons without storing prompts, responses, raw headers, provider keys, media bytes, or video bytes.
+- Added compatibility-profile-aware safe probes for the Provider Compatibility Matrix, including batch endpoint/auth probing alongside chat, responses, messages, embeddings, rerank, images, audio, video, and realtime.
+- Added Dashboard Provider Catalog, Nodes, Add Node Wizard, Route Explanation, and Logs localization for compatibility profile metadata across all seven OSS Dashboard languages.
+- Added `docs/PROVIDER_COMPATIBILITY.md` and updated API, architecture, dashboard, provider catalog, config example, and CLI documentation for compatibility profiles.
+
+### Changed
+
+- Unified legacy provider catalog diagnostics with the merged built-in Provider Catalog so Dashboard APIs, Add Node Wizard presets, catalog CLI, and config validation all read the same provider/model data.
+- Config validation now reports catalog auth-type mismatches for known providers and marks unknown providers as custom catalog entries without blocking single-node startup.
+- Cost and balanced routing, Benchmark reports, config validation, Dashboard catalog APIs, catalog overrides, sync cache, and built-in catalog fallback now use the same pricing resolver priority: explicit node/model pricing, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in catalog.
+- Dashboard and docs use “Price source status”, “Review required”, and “Stale” wording for operator-facing pricing copy; internal `pricing_hygiene` fields remain for API compatibility.
+- Dashboard Logs and Route Explanation candidate tables now render provider identity icons from node/model hints so compatible providers remain visually distinct from OpenAI fallbacks.
+
 ## 1.3.2 - 2026-05-05
 
 ### Added

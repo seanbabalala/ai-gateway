@@ -6,11 +6,20 @@ import { buildNodeModelDiagnostics } from './config-diagnostics';
 import {
   assessCatalogPricing,
   catalogModelToModelPricing,
+  findCatalogProviderForNode,
   findCatalogModel,
+  findCatalogModelForNode,
   flattenCatalogModels,
   loadMergedCatalog,
 } from '../catalog/catalog.service';
 import type { CatalogIssue, ProviderCatalog } from '../catalog/catalog.types';
+import {
+  compatibilityProfileSupportsModality,
+  compatibilityProfileSupportsSourceFormat,
+  getCompatibilityProfile,
+  isCompatibilityProfileId,
+  resolveNodeCompatibilityProfiles,
+} from '../catalog/compatibility-profiles';
 import {
   VALID_CAPABILITY_ENDPOINTS,
   VALID_CAPABILITY_IO_TYPES,
@@ -960,6 +969,7 @@ function validateNodes(
     validateNodeAliases(node, basePath, issues);
     validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
+    validateNodeCompatibilityProfileShape(node, basePath, issues);
     if (!options.skipLegacyCatalogDiagnostics) {
       addCatalogDiagnostics(
         node,
@@ -968,6 +978,42 @@ function validateNodes(
           ? (modelsPricing as Record<string, unknown>)
           : undefined,
         issues,
+      );
+    }
+  });
+}
+
+function validateNodeCompatibilityProfileShape(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const value = node.compatibility_profile;
+  if (value === undefined) return;
+  const entries = Array.isArray(value) ? value : [value];
+  entries.forEach((entry, index) => {
+    const issuePath = Array.isArray(value)
+      ? `${basePath}.compatibility_profile[${index}]`
+      : `${basePath}.compatibility_profile`;
+    if (!isNonEmptyString(entry)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_compatibility_profile',
+          'nodes[].compatibility_profile must be a non-empty string or array of strings.',
+          issuePath,
+        ),
+      );
+      return;
+    }
+    if (!isCompatibilityProfileId(entry)) {
+      issues.push(
+        issue(
+          'error',
+          'unknown_compatibility_profile',
+          `Compatibility profile "${entry}" is not built in.`,
+          issuePath,
+        ),
       );
     }
   });
@@ -4253,7 +4299,25 @@ function validatePricingEntry(
       );
     }
   }
-  for (const key of ['cache_creation_input', 'cache_read_input']) {
+  for (const key of [
+    'cache_creation_input',
+    'cache_read_input',
+    'input_per_1m_tokens',
+    'output_per_1m_tokens',
+    'cache_read_per_1m_tokens',
+    'cache_write_per_1m_tokens',
+    'embedding_per_1m_tokens',
+    'rerank_per_1k_requests',
+    'rerank_per_1k_docs',
+    'image_per_generation',
+    'image_per_edit',
+    'audio_per_minute',
+    'audio_per_1m_chars',
+    'video_per_second',
+    'video_per_generation',
+    'realtime_per_minute',
+    'batch_discount',
+  ]) {
     if (entry[key] !== undefined && (!isFiniteNumber(entry[key]) || entry[key] < 0)) {
       issues.push(
         issue(
@@ -4668,13 +4732,26 @@ function validateConfigAgainstCatalog(
     flattenCatalogModels(catalog).map((model) => model.id),
   );
   const costOptimization = isRecord(config.routing) &&
-    config.routing.optimization === 'cost';
+    (config.routing.optimization === 'cost' || config.routing.optimization === 'balanced');
 
   config.nodes.forEach((nodeValue, nodeIndex) => {
     if (!isRecord(nodeValue)) return;
     const node = nodeValue as Record<string, unknown>;
     const basePath = `nodes[${nodeIndex}]`;
     const provider = catalogProviderForNode(catalog, node);
+    if (!provider) {
+      issues.push(
+        issue(
+          'info',
+          'catalog_unknown_provider',
+          `Node "${String(node.id || '')}" does not match a built-in provider catalog entry. SiftGate will treat it as a custom provider; add catalog.override.yaml metadata for model, endpoint, and pricing validation.`,
+          `${basePath}.base_url`,
+        ),
+      );
+    } else {
+      validateCatalogAuthTypeMatch(node, provider, basePath, issues);
+    }
+    validateNodeCompatibilityAgainstCatalog(node, provider, catalog, basePath, issues);
 
     validateCatalogEndpointMatch(
       node,
@@ -4813,6 +4890,149 @@ function validateConfigAgainstCatalog(
   });
 }
 
+function validateCatalogAuthTypeMatch(
+  node: Record<string, unknown>,
+  provider: ProviderCatalog['providers'][number],
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isNonEmptyString(node.auth_type)) return;
+  const expected = provider.auth_type;
+  if (!isNonEmptyString(expected) || expected === 'none') return;
+  if (node.auth_type !== expected) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_auth_type_mismatch',
+        `Node "${String(node.id || '')}" auth_type "${node.auth_type}" differs from catalog provider "${provider.id}" auth_type "${expected}".`,
+        `${basePath}.auth_type`,
+      ),
+    );
+  }
+}
+
+function validateNodeCompatibilityAgainstCatalog(
+  node: Record<string, unknown>,
+  provider: ProviderCatalog['providers'][number] | undefined,
+  catalog: ProviderCatalog,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const profileEntries = Array.isArray(node.compatibility_profile)
+    ? stringArray(node.compatibility_profile)
+    : isNonEmptyString(node.compatibility_profile)
+      ? [node.compatibility_profile]
+      : [];
+  const profiles = resolveNodeCompatibilityProfiles(node as Partial<GatewayConfig['nodes'][number]>, catalog);
+  if (profileEntries.length > 0 && provider?.compatibility_profiles?.length) {
+    for (const profileId of profileEntries) {
+      if (!provider.compatibility_profiles.includes(profileId)) {
+        issues.push(
+          issue(
+            'warning',
+            'compatibility_profile_provider_mismatch',
+            `Node "${String(node.id || '')}" overrides compatibility_profile="${profileId}", which is not listed for catalog provider "${provider.id}".`,
+            `${basePath}.compatibility_profile`,
+          ),
+        );
+      }
+    }
+  }
+
+  const protocol = isNonEmptyString(node.protocol) ? node.protocol : null;
+  if (
+    protocol &&
+    !profiles.some((profile) => compatibilityProfileSupportsSourceFormat(profile, protocol))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'compatibility_profile_source_format_mismatch',
+        `Node "${String(node.id || '')}" protocol "${protocol}" is not supported by its compatibility_profile.`,
+        `${basePath}.protocol`,
+      ),
+    );
+  }
+
+  for (const [key, endpointPath] of [
+    ['embeddings', 'embeddings_endpoint'],
+    ['rerank', 'rerank_endpoint'],
+    ['image_generation', 'images_generations_endpoint'],
+    ['image_edit', 'images_edits_endpoint'],
+    ['image_variation', 'images_variations_endpoint'],
+    ['audio_transcription', 'audio_transcriptions_endpoint'],
+    ['audio_translation', 'audio_translations_endpoint'],
+    ['audio_speech', 'audio_speech_endpoint'],
+    ['video_generation', 'video_endpoint'],
+    ['batch', 'batch_endpoint'],
+    ['realtime', 'realtime_endpoint'],
+  ] as const) {
+    if (
+      node[endpointPath] !== undefined &&
+      !profiles.some((profile) => compatibilityProfileSupportsSourceFormat(profile, key))
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'compatibility_profile_endpoint_mismatch',
+          `Node "${String(node.id || '')}" configures ${endpointPath}, but its compatibility_profile does not support ${key}.`,
+          `${basePath}.${endpointPath}`,
+        ),
+      );
+    }
+  }
+
+  for (const [bucket, modality] of [
+    ['models', 'text'],
+    ['embedding_models', 'embedding'],
+    ['rerank_models', 'rerank'],
+    ['image_models', 'image'],
+    ['audio_models', 'audio'],
+    ['video_models', 'video'],
+    ['realtime_models', 'realtime'],
+  ] as const) {
+    if (
+      stringArray(node[bucket]).length > 0 &&
+      !profiles.some((profile) => compatibilityProfileSupportsModality(profile, modality))
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'compatibility_profile_modality_mismatch',
+          `Node "${String(node.id || '')}" configures ${bucket}, but its compatibility_profile does not support ${modality}.`,
+          `${basePath}.${bucket}`,
+        ),
+      );
+    }
+  }
+
+  if (
+    provider &&
+    provider.compatibility_profiles?.some((profileId) => !getCompatibilityProfile(profileId))
+  ) {
+    issues.push(
+      issue(
+        'info',
+        'catalog_compatibility_profile_operator_managed',
+        `Catalog provider "${provider.id}" includes operator-managed compatibility profiles; verify routing behavior with Dashboard tests.`,
+        `${basePath}.compatibility_profile`,
+      ),
+    );
+  }
+
+  const matchedProvider = findCatalogProviderForNode(catalog, node);
+  if (!matchedProvider && profileEntries.length === 0) {
+    issues.push(
+      issue(
+        'info',
+        'compatibility_profile_inferred',
+        `Node "${String(node.id || '')}" does not match a catalog provider; SiftGate inferred compatibility from protocol and endpoints.`,
+        basePath,
+      ),
+    );
+  }
+}
+
 function catalogProviderForNode(
   catalog: ProviderCatalog,
   node: Record<string, unknown>,
@@ -4879,7 +5099,10 @@ function validateCatalogModelsForBucket(
       return;
     }
 
-    const catalogModel = findCatalogModel(catalog, modelId);
+    const catalogModel = findCatalogModelForNode(catalog, modelId, {
+      id: isNonEmptyString(node.id) ? node.id : undefined,
+      base_url: isNonEmptyString(node.base_url) ? node.base_url : undefined,
+    }) || findCatalogModel(catalog, modelId);
     if (!catalogModel) return;
     if (
       !expectedModalities.some((modality) =>
@@ -4943,8 +5166,28 @@ function validateCatalogPricingForConfiguredModel(
     issues.push(
       issue(
         'warning',
-        'catalog_pricing_placeholder',
-        `Catalog pricing for "${catalogModel.id}" is reference/manual-review metadata; add explicit pricing for production cost routing.`,
+        'catalog_pricing_review_required',
+        `Catalog pricing for "${catalogModel.id}" needs review; add explicit pricing for production cost routing.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.source_missing) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_source_missing',
+        `Catalog pricing for "${catalogModel.id}" is missing price source metadata.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.source_url_missing) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_source_url_missing',
+        `Catalog pricing for "${catalogModel.id}" is missing a reviewable source_url.`,
         modelPath,
       ),
     );
@@ -4969,12 +5212,45 @@ function validateCatalogPricingForConfiguredModel(
       ),
     );
   }
+  const cacheReadPrice =
+    catalogModel.pricing?.cache_read_per_1m_tokens ?? catalogModel.pricing?.cache_read_input;
+  const cacheWritePrice =
+    catalogModel.pricing?.cache_write_per_1m_tokens ?? catalogModel.pricing?.cache_creation_input;
+  if (
+    costOptimization &&
+    (catalogModel.prompt_cache || catalogModel.read_cache || catalogModel.write_cache) &&
+    (!isFiniteNumber(cacheReadPrice) || (catalogModel.write_cache && !isFiniteNumber(cacheWritePrice)))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'cache_routing_pricing_missing',
+        `Cache-aware cost routing for "${catalogModel.id}" needs cache_read/cache_write pricing when prompt cache capability is configured.`,
+        modelPath,
+      ),
+    );
+  }
+  for (const modality of ['image', 'audio', 'video'] as const) {
+    if (
+      expectedModalities.includes(modality) &&
+      hygiene.missing_price_dimensions.includes(modality)
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'media_pricing_unit_missing',
+          `Catalog pricing for "${catalogModel.id}" is missing ${modality} price units for the configured media endpoint.`,
+          modelPath,
+        ),
+      );
+    }
+  }
   if (costOptimization && !catalogModelToModelPricing(catalogModel)) {
     issues.push(
       issue(
         'warning',
         'cost_routing_pricing_missing',
-        `routing.optimization=cost needs input/output token pricing for "${catalogModel.id}" or an explicit models_pricing override.`,
+        `routing.optimization=cost/balanced needs input/output token pricing for "${catalogModel.id}" or an explicit models_pricing override.`,
         modelPath,
       ),
     );

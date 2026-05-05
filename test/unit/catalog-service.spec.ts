@@ -8,6 +8,7 @@ import {
   loadMergedCatalog,
   validateCatalogOverrideFile,
 } from '../../src/catalog/catalog.service';
+import { getCompatibilityProfile } from '../../src/catalog/compatibility-profiles';
 
 const fixture = (name: string) =>
   path.resolve(__dirname, '../fixtures/catalog', name);
@@ -193,19 +194,29 @@ describe('catalog service', () => {
       output: 10,
       currency: 'USD',
       catalog_source: 'builtin',
+      pricing_used_from: 'builtin_catalog',
+      source_type: 'docs_review',
     });
 
     const hygiene = assessCatalogPricing(model?.pricing, model?.modalities || [], new Date('2026-05-04T00:00:00.000Z'));
     expect(hygiene.status).toBe('placeholder');
     expect(hygiene.stale).toBe(false);
     expect(hygiene.pricing_confidence).toBe('low');
+    expect(hygiene.source_type).toBe('docs_review');
+    expect(hygiene.source_url_missing).toBe(false);
+    expect(model?.pricing).toMatchObject({
+      input_per_1m_tokens: 2.5,
+      output_per_1m_tokens: 10,
+      source_type: 'docs_review',
+      last_verified_at: '2026-05-05',
+    });
   });
 
-  it('ships 30 plus built-in providers with reviewable pricing source URLs', () => {
+  it('ships 50 plus built-in providers with reviewable pricing source URLs and v1.4 metadata', () => {
     const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
     const providerIds = result.catalog.providers.map((provider) => provider.id);
 
-    expect(providerIds.length).toBeGreaterThanOrEqual(30);
+    expect(providerIds.length).toBeGreaterThanOrEqual(50);
     expect(providerIds).toEqual(
       expect.arrayContaining([
         'aws-bedrock',
@@ -222,6 +233,33 @@ describe('catalog service', () => {
         'nvidia-nim',
         'cerebras',
         'sambanova',
+        'huggingface',
+        'cloudflare-workers-ai',
+        'ibm-watsonx',
+        'baseten',
+        'lepton',
+        'modal',
+        'runpod',
+        'predibase',
+        'lamini',
+        'ai21',
+        'fal',
+        'stability-ai',
+        'black-forest-labs',
+        'ideogram',
+        'luma',
+        'runway',
+        'pika',
+        'elevenlabs',
+        'deepgram',
+        'assemblyai',
+        'cartesia',
+        'speechmatics',
+        'lm-studio',
+        'llama-cpp',
+        'huggingface-tgi',
+        'sglang',
+        'xinference',
       ]),
     );
 
@@ -237,6 +275,69 @@ describe('catalog service', () => {
     });
     expect(qwen?.models.map((model) => model.id)).toEqual(
       expect.arrayContaining(['qwen-plus', 'text-embedding-v4', 'wan2.5-t2v-preview']),
+    );
+
+    const huggingFace = result.catalog.providers.find((provider) => provider.id === 'huggingface');
+    expect(huggingFace).toMatchObject({
+      aliases: expect.arrayContaining(['hf']),
+      family: 'aggregator',
+      provider_type: 'aggregator',
+      homepage_url: 'https://huggingface.co',
+      docs_url: expect.stringContaining('huggingface.co/docs'),
+      pricing_url: expect.stringContaining('huggingface.co/pricing'),
+      logo_id: 'huggingface',
+      compatibility_profile: 'openai_compatible',
+      model_buckets: expect.objectContaining({
+        models: expect.arrayContaining(['meta-llama/Llama-3.3-70B-Instruct']),
+        embedding_models: expect.arrayContaining(['sentence-transformers/all-MiniLM-L6-v2']),
+      }),
+      pricing: expect.objectContaining({
+        source: 'provider-reference',
+        source_url: expect.stringContaining('huggingface.co'),
+        manual_review_required: true,
+        pricing_confidence: 'low',
+      }),
+    });
+  });
+
+  it('normalizes v1.4 provider governance fields across the built-in catalog', () => {
+    const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
+
+    for (const provider of result.catalog.providers.filter((entry) => entry.source === 'builtin')) {
+      expect(provider.aliases?.length).toBeGreaterThan(0);
+      expect(provider.family).toBeTruthy();
+      expect(provider.category).toBeTruthy();
+      expect(provider.provider_type).toMatch(/direct|aggregator|cloud|self_hosted|media|speech|local/);
+      expect(provider.homepage_url).toMatch(/^https?:\/\//);
+      expect(provider.docs_url).toBeTruthy();
+      expect(provider.pricing_url).toBeTruthy();
+      expect(provider.logo_id).toBeTruthy();
+      expect(provider.input_types?.length).toBeGreaterThan(0);
+      expect(provider.output_types?.length).toBeGreaterThan(0);
+      expect(provider.model_buckets).toBeTruthy();
+      expect(provider.compatibility_profile).toBeTruthy();
+      expect(provider.pricing).toMatchObject({
+        source: expect.any(String),
+        source_url: expect.any(String),
+        last_updated: expect.any(String),
+        manual_review_required: expect.any(Boolean),
+        pricing_confidence: expect.any(String),
+      });
+    }
+  });
+
+  it('ships catalog providers with valid compatibility profile references', () => {
+    const result = loadMergedCatalog({ cwd: path.dirname(fixture('catalog.override.yaml')), env: {} });
+
+    for (const provider of result.catalog.providers) {
+      expect(provider.compatibility_profiles?.length).toBeGreaterThan(0);
+      for (const profile of provider.compatibility_profiles || []) {
+        expect(getCompatibilityProfile(profile)).toBeDefined();
+      }
+    }
+
+    expect(result.catalog.providers.find((provider) => provider.id === 'openai')?.compatibility_profiles).toEqual(
+      expect.arrayContaining(['openai_compatible', 'openai_responses_compatible']),
     );
   });
 
@@ -258,6 +359,7 @@ describe('catalog service', () => {
                 pricing: {
                   ...imageModel!.pricing!,
                   last_updated: '2025-01-01',
+                  last_verified_at: '2025-01-01',
                   stale_after_days: 10,
                   units: { input: 'usd_per_1m_tokens', output: 'usd_per_1m_tokens' },
                 },

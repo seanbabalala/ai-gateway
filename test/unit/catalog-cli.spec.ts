@@ -41,6 +41,11 @@ describe('siftgate catalog CLI', () => {
     expect(stdout.join('\n')).toContain('- openai');
     expect(stdout.join('\n')).toContain('- aws-bedrock');
     expect(stdout.join('\n')).toContain('- alibaba-qwen');
+    expect(stdout.join('\n')).toContain('- huggingface');
+    expect(stdout.join('\n')).toContain('- cloudflare-workers-ai');
+    expect(stdout.join('\n')).toContain('- deepgram');
+    expect(stdout.join('\n')).toContain('- xinference');
+    expect(stdout.join('\n')).toContain('profiles=openai_compatible');
   });
 
   it('shows a provider from the merged catalog', async () => {
@@ -52,20 +57,35 @@ describe('siftgate catalog CLI', () => {
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('Provider: openai');
+    expect(stdout.join('\n')).toContain('Compatibility profiles: openai_compatible');
     expect(stdout.join('\n')).toContain('gpt-4o');
   });
 
-  it('shows v1.0 catalog provider pricing source metadata', async () => {
+  it('shows v1.4 catalog provider pricing source metadata', async () => {
     const cwd = await makeTempDir();
     const { io, stdout, stderr } = makeIo(cwd);
 
-    const exitCode = await runCli(['catalog', 'show', 'alibaba-qwen'], io);
+    const exitCode = await runCli(['catalog', 'show', 'huggingface'], io);
 
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
-    expect(stdout.join('\n')).toContain('Provider: alibaba-qwen');
-    expect(stdout.join('\n')).toContain('qwen-plus');
+    expect(stdout.join('\n')).toContain('Provider: huggingface');
+    expect(stdout.join('\n')).toContain('meta-llama/Llama-3.3-70B-Instruct');
     expect(stdout.join('\n')).toContain('provider-reference');
+  });
+
+  it('shows v1.4 pricing governance details when requested', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const exitCode = await runCli(['catalog', 'show', 'openai', '--pricing'], io);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toHaveLength(0);
+    expect(stdout.join('\n')).toContain('Price source status');
+    expect(stdout.join('\n')).toContain('source_type=docs_review');
+    expect(stdout.join('\n')).toContain('used_from=builtin_catalog');
+    expect(stdout.join('\n')).toContain('units=input:');
   });
 
   it('exports the merged catalog to a YAML file', async () => {
@@ -106,6 +126,9 @@ describe('siftgate catalog CLI', () => {
       stale_after_days: 90,
       pricing_confidence: 'low',
       source: 'builtin-reference',
+      source_type: 'docs_review',
+      input_per_1m_tokens: expect.any(Number),
+      output_per_1m_tokens: expect.any(Number),
     });
   });
 
@@ -118,6 +141,8 @@ describe('siftgate catalog CLI', () => {
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('openrouter');
+    expect(stdout.join('\n')).toContain('huggingface');
+    expect(stdout.join('\n')).toContain('deepgram');
     expect(stdout.join('\n')).toContain('automatic=yes');
   });
 

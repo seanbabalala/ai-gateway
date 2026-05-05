@@ -76,9 +76,12 @@ import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import {
   RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionCacheEvidence,
+  RouteDecisionCompatibilityEvidence,
   RouteDecisionTrace,
   routeTargetKey,
 } from '../routing/route-decision-trace';
+import { pricingEvidenceFromModelPricing } from '../catalog/pricing-governance';
+import { compatibilityEvidence } from '../catalog/compatibility-profiles';
 
 export interface PipelineResult {
   body: Record<string, unknown> | Buffer | string;
@@ -3371,6 +3374,7 @@ export class PipelineService {
     const tokenEstimate = estimateCanonicalRequestTokens(canonical);
     const requiresStructuredOutput = this.requestRequiresStructuredOutput(canonical);
     const reasoningFields = this.resolveReasoningSelectionFields(canonical);
+    const requestRouteHints = this.routeSelectionHintsForTrace(canonical);
 
     const routeDecision = this.telemetry.withSpanSync(
       'gateway.routing',
@@ -3388,6 +3392,7 @@ export class PipelineService {
           scoringResult.domainHint,
           scoringResult.modalityHints,
           {
+            ...requestRouteHints,
             estimated_input_tokens: tokenEstimate.input_tokens,
             estimated_output_tokens: tokenEstimate.output_tokens,
             estimated_context_tokens: tokenEstimate.context_tokens,
@@ -3399,7 +3404,7 @@ export class PipelineService {
             reasoning_strategy: reasoningFields.reasoning_strategy,
             required_capabilities: reasoningFields.requires_reasoning
               ? Array.from(new Set([...(scoringResult.modalityHints || ['text']).map(String), 'reasoning']))
-              : undefined,
+              : requestRouteHints.required_capabilities,
           },
         );
         span.setAttributes({
@@ -3582,6 +3587,12 @@ export class PipelineService {
           target,
           traceSelectionHints,
         );
+        const compatibility = this.buildPipelineCompatibilityEvidence(
+          target,
+          traceSelectionHints,
+          routeTargetKey(target) === selectedKey,
+          true,
+        );
         return {
           node: target.node,
           model: target.model,
@@ -3633,6 +3644,7 @@ export class PipelineService {
           },
           capability_evidence: capabilityEvidence,
           cache_evidence: cacheEvidence,
+          compatibility_evidence: compatibility,
         };
       }),
       filters: [],
@@ -3716,6 +3728,7 @@ export class PipelineService {
         : (modalities.length > 0 ? modalities : ['text']),
       endpoint_strategy: canonical.metadata.source_format,
       source_format: canonical.metadata.source_format,
+      stream: Boolean((canonical as CanonicalRequest).stream),
       requires_reasoning: reasoningFields.requires_reasoning,
       reasoning_effort: reasoningFields.reasoning_effort,
       reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
@@ -3755,6 +3768,7 @@ export class PipelineService {
         output_types: ['image'],
         file_count: fileCount,
         byte_size: byteSize,
+        multipart: canonical.is_multipart,
         required_capabilities: ['image'],
         endpoint_strategy: 'image_generation',
         source_format: canonical.source_format,
@@ -3767,6 +3781,7 @@ export class PipelineService {
         output_types: ['image'],
         file_count: fileCount,
         byte_size: byteSize,
+        multipart: canonical.is_multipart,
         required_capabilities: ['image'],
         endpoint_strategy: 'image_edit',
         source_format: canonical.source_format,
@@ -3779,6 +3794,7 @@ export class PipelineService {
         output_types: ['image'],
         file_count: fileCount,
         byte_size: byteSize,
+        multipart: canonical.is_multipart,
         required_capabilities: ['image'],
         endpoint_strategy: 'image_variation',
         source_format: canonical.source_format,
@@ -3791,6 +3807,7 @@ export class PipelineService {
         output_types: ['text'],
         file_count: fileCount,
         byte_size: byteSize,
+        multipart: canonical.is_multipart,
         required_capabilities: ['audio'],
         endpoint_strategy: 'audio_transcription',
         source_format: canonical.source_format,
@@ -3803,6 +3820,7 @@ export class PipelineService {
         output_types: ['text'],
         file_count: fileCount,
         byte_size: byteSize,
+        multipart: canonical.is_multipart,
         required_capabilities: ['audio'],
         endpoint_strategy: 'audio_translation',
         source_format: canonical.source_format,
@@ -3815,6 +3833,7 @@ export class PipelineService {
         output_types: ['video'],
         file_count: fileCount,
         byte_size: byteSize,
+        multipart: canonical.is_multipart,
         required_capabilities: ['video'],
         endpoint_strategy: 'video_generation',
         source_format: canonical.source_format,
@@ -3826,6 +3845,7 @@ export class PipelineService {
       output_types: ['audio'],
       file_count: fileCount,
       byte_size: byteSize,
+      multipart: canonical.is_multipart,
       required_capabilities: ['audio'],
       endpoint_strategy: 'audio_speech',
       source_format: canonical.source_format,
@@ -4038,6 +4058,24 @@ export class PipelineService {
     };
   }
 
+  private buildPipelineCompatibilityEvidence(
+    target: RouteTarget,
+    hints: RouteSelectionHints,
+    selected: boolean,
+    eligible: boolean,
+  ): RouteDecisionCompatibilityEvidence {
+    return compatibilityEvidence({
+      node: this.config.getNode(target.node),
+      catalog: this.config.getMergedCatalog(),
+      sourceFormat: hints.source_format,
+      requestedModality: hints.requested_modality,
+      stream: hints.stream,
+      multipart: hints.multipart,
+      selected,
+      eligible,
+    });
+  }
+
   private buildPipelineCandidateCapabilityEvidence(
     target: RouteTarget,
     hints: RouteSelectionHints,
@@ -4080,6 +4118,9 @@ export class PipelineService {
       hints.source_format,
       capabilities.endpoints,
     );
+    const pricingEvidence = pricingEvidenceFromModelPricing(
+      capabilities.pricing || this.config.getModelPricing(target.model, target.node),
+    );
 
     return {
       requested_modality: hints.requested_modality ?? null,
@@ -4102,9 +4143,12 @@ export class PipelineService {
         Number.isFinite(byteSize) &&
         Number.isFinite(maxFileSize) &&
         byteSize > maxFileSize,
-      pricing_source: capabilities.pricing
-        ? ((capabilities.pricing as ModelPricing & { source?: string }).source || 'config')
-        : 'missing',
+      pricing_source: pricingEvidence.pricing_source,
+      pricing_confidence: pricingEvidence.pricing_confidence,
+      pricing_stale: pricingEvidence.pricing_stale,
+      pricing_used_from: pricingEvidence.pricing_used_from,
+      missing_price_units: pricingEvidence.missing_price_units,
+      estimated_cost_basis: pricingEvidence.estimated_cost_basis,
       catalog_source:
         (capabilities as { catalog_source?: string; source?: string }).catalog_source ||
         (capabilities as { source?: string }).source ||

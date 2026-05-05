@@ -18,8 +18,7 @@ describe('ProviderCatalogService', () => {
       expect.arrayContaining([
         'openai',
         'anthropic',
-        'google-gemini',
-        'google-vertex',
+        'google',
         'azure-openai',
         'openrouter',
         'groq',
@@ -47,10 +46,37 @@ describe('ProviderCatalogService', () => {
         'nvidia-nim',
         'cerebras',
         'sambanova',
+        'huggingface',
+        'cloudflare-workers-ai',
+        'ibm-watsonx',
+        'baseten',
+        'lepton',
+        'modal',
+        'runpod',
+        'predibase',
+        'lamini',
+        'ai21',
+        'fal',
+        'stability-ai',
+        'black-forest-labs',
+        'ideogram',
+        'luma',
+        'runway',
+        'pika',
+        'elevenlabs',
+        'deepgram',
+        'assemblyai',
+        'cartesia',
+        'speechmatics',
+        'lm-studio',
+        'llama-cpp',
+        'huggingface-tgi',
+        'sglang',
+        'xinference',
         'openai-compatible',
       ]),
     );
-    expect(providers.length).toBeGreaterThanOrEqual(30);
+    expect(providers.length).toBeGreaterThanOrEqual(50);
   });
 
   it('distinguishes protocol modalities including video and rerank', () => {
@@ -61,7 +87,7 @@ describe('ProviderCatalogService', () => {
     expect(videoModels).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          provider_id: 'google-gemini',
+          provider_id: 'luma',
           endpoints: expect.arrayContaining(['video_generations']),
         }),
       ]),
@@ -135,7 +161,7 @@ describe('ProviderCatalogService', () => {
       }),
     });
     expect(bedrock).toMatchObject({
-      auth_type: 'custom',
+      auth_type: 'none',
       capabilities: expect.arrayContaining(['sigv4_required']),
     });
 
@@ -151,5 +177,32 @@ describe('ProviderCatalogService', () => {
 
     expect(codes(issues)).not.toContain('catalog_unknown_model');
     expect(codes(issues)).toContain('catalog_pricing_manual_review');
+  });
+
+  it('projects v1.4 provider metadata from the merged built-in catalog', () => {
+    const service = new ProviderCatalogService();
+    const huggingFace = service.getProvider('huggingface');
+    const deepgram = service.getProvider('deepgram');
+
+    expect(huggingFace).toMatchObject({
+      aliases: expect.arrayContaining(['hf']),
+      family: 'aggregator',
+      provider_type: 'aggregator',
+      logo_id: 'huggingface',
+      compatibility_profile: 'openai_compatible',
+      model_buckets: expect.objectContaining({
+        models: expect.arrayContaining(['meta-llama/Llama-3.3-70B-Instruct']),
+      }),
+      pricing: expect.objectContaining({
+        source: 'provider_docs',
+        source_url: expect.stringContaining('huggingface.co'),
+        manual_review_required: true,
+      }),
+    });
+    expect(deepgram).toMatchObject({
+      provider_type: 'speech',
+      modalities: expect.arrayContaining(['audio']),
+      pricing_url: expect.stringContaining('deepgram.com/pricing'),
+    });
   });
 });

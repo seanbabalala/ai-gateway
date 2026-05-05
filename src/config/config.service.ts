@@ -605,6 +605,11 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.config.catalog;
   }
 
+  /** Return the merged Provider Catalog cached for this config version. */
+  getMergedCatalog(): ProviderCatalog | undefined {
+    return this.getMergedCatalogForPricing();
+  }
+
   /** Get the dashboard password hash (if set) */
   get dashboardPasswordHash(): string | undefined {
     return this.config.dashboard?.password;
@@ -995,10 +1000,24 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   }) | undefined {
     if (nodeId) {
       const nodePricing = this.getNode(nodeId)?.model_capabilities?.[model]?.pricing;
-      if (nodePricing) return nodePricing;
+      if (nodePricing) {
+        return {
+          ...nodePricing,
+          source: nodePricing.source || 'config:model_capabilities',
+          pricing_used_from: 'node_model_config',
+          currency: nodePricing.currency || 'USD',
+        };
+      }
     }
     const configuredPricing = this.config.models_pricing[model];
-    if (configuredPricing) return configuredPricing;
+    if (configuredPricing) {
+      return {
+        ...configuredPricing,
+        source: configuredPricing.source || 'config:models_pricing',
+        pricing_used_from: 'gateway_config',
+        currency: configuredPricing.currency || 'USD',
+      };
+    }
     return this.getCatalogPricingFallback(model, nodeId);
   }
 

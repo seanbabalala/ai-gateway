@@ -9,6 +9,20 @@ import {
   VALID_MODALITIES,
 } from '../config/modality';
 import { BUILTIN_PROVIDER_CATALOG } from './built-in-catalog';
+import {
+  LEGACY_PRICING_DIMENSIONS,
+  PRICING_SOURCE_TYPES,
+  UNIFIED_PRICING_DIMENSIONS,
+  catalogModelToGovernedModelPricing,
+  catalogPricingIsStale,
+  getCatalogPricingValue,
+  normalizeCatalogPricing,
+} from './pricing-governance';
+import {
+  findCatalogProviderForNode as findCompatibilityCatalogProviderForNode,
+  inferCatalogCompatibilityProfiles,
+  isCompatibilityProfileId,
+} from './compatibility-profiles';
 import type {
   CatalogIssue,
   CatalogLoadOptions,
@@ -45,15 +59,8 @@ const VALID_ENDPOINT_SET = new Set<string>([
 const SECRET_KEY_PATTERN = /(^|[_-])((api|provider)?[_-]?key|secret|password|authorization|bearer|access[_-]?token|refresh[_-]?token|auth[_-]?token|token)([_-]|$)/i;
 const SECRET_VALUE_PATTERN = /\b(sk-[A-Za-z0-9._~+/-]{12,}|sk_[A-Za-z0-9._~+/-]{12,}|xox[A-Za-z0-9._~+/-]{12,}|Bearer\s+[A-Za-z0-9._~+/-]{12,})\b/i;
 const PRICING_DIMENSIONS: CatalogPricingDimension[] = [
-  'input',
-  'output',
-  'image',
-  'audio',
-  'video',
-  'rerank',
-  'embedding',
-  'cache_read_input',
-  'cache_creation_input',
+  ...LEGACY_PRICING_DIMENSIONS,
+  ...UNIFIED_PRICING_DIMENSIONS,
 ];
 const PRICING_CONFIDENCES = new Set(['high', 'medium', 'low', 'unknown']);
 const PLACEHOLDER_SOURCE_PATTERN = /(placeholder|operator_required|manual[_-]?placeholder|unknown|replace)/i;
@@ -83,10 +90,25 @@ function normalizeComparableUrl(value: string): string {
 function cloneProvider(provider: CatalogProvider): CatalogProvider {
   return {
     ...provider,
+    aliases: provider.aliases ? [...provider.aliases] : undefined,
+    input_types: provider.input_types ? [...provider.input_types] : undefined,
+    output_types: provider.output_types ? [...provider.output_types] : undefined,
+    model_buckets: provider.model_buckets
+      ? Object.fromEntries(
+          Object.entries(provider.model_buckets).map(([key, values]) => [
+            key,
+            Array.isArray(values) ? [...values] : values,
+          ]),
+        ) as CatalogProvider['model_buckets']
+      : undefined,
+    modalities: provider.modalities ? [...provider.modalities] : undefined,
     endpoints: { ...provider.endpoints },
+    compatibility_profiles: provider.compatibility_profiles
+      ? [...provider.compatibility_profiles]
+      : inferCatalogCompatibilityProfiles(provider),
     model_prefixes: provider.model_prefixes ? [...provider.model_prefixes] : undefined,
     capabilities: provider.capabilities ? [...provider.capabilities] : undefined,
-    pricing: provider.pricing ? { ...provider.pricing } : undefined,
+    pricing: provider.pricing ? normalizeCatalogPricing({ ...provider.pricing }) : undefined,
     synced: provider.synced,
     models: provider.models.map((model) => ({
       ...model,
@@ -101,7 +123,7 @@ function cloneProvider(provider: CatalogProvider): CatalogProvider {
               : model.limits.dimensions,
           }
         : undefined,
-      pricing: model.pricing ? { ...model.pricing } : undefined,
+      pricing: model.pricing ? normalizeCatalogPricing({ ...model.pricing }) : undefined,
       synced: model.synced,
     })),
   };
@@ -429,6 +451,11 @@ function validateOverrideProvider(
   }
 
   validateEndpointMap(provider.endpoints, `${basePath}.endpoints`, issues);
+  validateCompatibilityProfiles(
+    provider.compatibility_profiles,
+    `${basePath}.compatibility_profiles`,
+    issues,
+  );
   validateStringArray(provider.model_prefixes, `${basePath}.model_prefixes`, issues);
   validateStringArray(provider.capabilities, `${basePath}.capabilities`, issues);
   validateCacheFlags(provider, basePath, issues);
@@ -654,6 +681,48 @@ function validateStringArray(
   });
 }
 
+function validateCompatibilityProfiles(
+  value: unknown,
+  basePath: string,
+  issues: CatalogIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_compatibility_profiles_invalid',
+        'compatibility_profiles must be an array of profile ids.',
+        basePath,
+      ),
+    );
+    return;
+  }
+  value.forEach((item, index) => {
+    if (!isNonEmptyString(item)) {
+      issues.push(
+        issue(
+          'error',
+          'catalog_compatibility_profile_invalid',
+          'compatibility profile entries must be non-empty strings.',
+          `${basePath}[${index}]`,
+        ),
+      );
+      return;
+    }
+    if (!isCompatibilityProfileId(item)) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_compatibility_profile_unknown',
+          `Compatibility profile "${item}" is not built in. It will be treated as operator-managed metadata.`,
+          `${basePath}[${index}]`,
+        ),
+      );
+    }
+  });
+}
+
 function validatePricing(
   pricing: unknown,
   basePath: string,
@@ -691,13 +760,23 @@ function validatePricing(
       ),
     );
   }
+  if (pricing.billing_unit !== undefined && !isNonEmptyString(pricing.billing_unit)) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_billing_unit_missing',
+        'pricing.billing_unit should be a non-empty string when set.',
+        `${basePath}.billing_unit`,
+      ),
+    );
+  }
   if (pricing.units !== undefined) {
     if (!isRecord(pricing.units)) {
       issues.push(
         issue(
           'error',
           'catalog_pricing_units_invalid',
-          'pricing.units must be an object keyed by input/output/image/audio/video/rerank/embedding/cache_read_input/cache_creation_input.',
+          'pricing.units must be an object keyed by supported pricing dimensions.',
           `${basePath}.units`,
         ),
       );
@@ -736,6 +815,20 @@ function validatePricing(
       ),
     );
   }
+  if (
+    pricing.source_type !== undefined &&
+    (!isNonEmptyString(pricing.source_type) ||
+      !PRICING_SOURCE_TYPES.includes(pricing.source_type as (typeof PRICING_SOURCE_TYPES)[number]))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_pricing_source_type_invalid',
+        'pricing.source_type must be official_docs, provider_api, aggregator_api, operator_override, docs_review, or unknown.',
+        `${basePath}.source_type`,
+      ),
+    );
+  }
   if (!isNonEmptyString(pricing.source)) {
     issues.push(
       issue(
@@ -746,7 +839,16 @@ function validatePricing(
       ),
     );
   }
-  if (pricing.source_url !== undefined) {
+  if (pricing.source_url === undefined) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_source_url_missing',
+        'pricing.source_url should point to the docs, API, or local review source for this price.',
+        `${basePath}.source_url`,
+      ),
+    );
+  } else {
     if (!isNonEmptyString(pricing.source_url)) {
       issues.push(
         issue(
@@ -793,6 +895,19 @@ function validatePricing(
     );
   }
   if (
+    pricing.last_verified_at !== undefined &&
+    (!isNonEmptyString(pricing.last_verified_at) || Number.isNaN(Date.parse(pricing.last_verified_at)))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_last_verified_at_invalid',
+        'pricing.last_verified_at should be an ISO date/time when set.',
+        `${basePath}.last_verified_at`,
+      ),
+    );
+  }
+  if (
     pricing.last_sync !== undefined &&
     (!isNonEmptyString(pricing.last_sync) || Number.isNaN(Date.parse(pricing.last_sync)))
   ) {
@@ -821,6 +936,16 @@ function validatePricing(
         'catalog_pricing_invalid',
         'pricing.manual_review_required must be a boolean when set.',
         `${basePath}.manual_review_required`,
+      ),
+    );
+  }
+  if (pricing.review_reason !== undefined && !isNonEmptyString(pricing.review_reason)) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_review_reason_missing',
+        'pricing.review_reason should be a non-empty string when set.',
+        `${basePath}.review_reason`,
       ),
     );
   }
@@ -956,12 +1081,39 @@ function mergeProvider(
     target.synced = true;
   }
   if (override.name !== undefined) target.name = override.name;
+  if (override.aliases) target.aliases = [...override.aliases];
+  if (override.family !== undefined) target.family = override.family;
+  if (override.category !== undefined) target.category = override.category;
+  if (override.provider_type !== undefined) target.provider_type = override.provider_type;
+  if (override.homepage_url !== undefined) target.homepage_url = override.homepage_url;
+  if (override.docs_url !== undefined) target.docs_url = override.docs_url;
+  if (override.pricing_url !== undefined) target.pricing_url = override.pricing_url;
+  if (override.logo_id !== undefined) target.logo_id = override.logo_id;
+  if (override.input_types) target.input_types = [...override.input_types];
+  if (override.output_types) target.output_types = [...override.output_types];
+  if (override.model_buckets) {
+    target.model_buckets = Object.fromEntries(
+      Object.entries(override.model_buckets).map(([key, values]) => [
+        key,
+        Array.isArray(values) ? [...values] : values,
+      ]),
+    ) as CatalogProvider['model_buckets'];
+  }
+  if (override.compatibility_profile !== undefined) {
+    target.compatibility_profile = Array.isArray(override.compatibility_profile)
+      ? [...override.compatibility_profile]
+      : override.compatibility_profile;
+  }
+  if (override.modalities) target.modalities = [...override.modalities];
   if (override.base_url !== undefined) target.base_url = override.base_url;
   if (override.auth_type !== undefined) target.auth_type = override.auth_type;
   if (override.endpoints) target.endpoints = { ...target.endpoints, ...override.endpoints };
+  if (override.compatibility_profiles) {
+    target.compatibility_profiles = [...override.compatibility_profiles];
+  }
   if (override.model_prefixes) target.model_prefixes = [...override.model_prefixes];
   if (override.capabilities) target.capabilities = [...override.capabilities];
-  if (override.pricing) target.pricing = { ...override.pricing };
+  if (override.pricing) target.pricing = normalizeCatalogPricing({ ...override.pricing });
   if (override.prompt_cache !== undefined) target.prompt_cache = override.prompt_cache;
   if (override.read_cache !== undefined) target.read_cache = override.read_cache;
   if (override.write_cache !== undefined) target.write_cache = override.write_cache;
@@ -987,12 +1139,37 @@ function providerFromOverride(
   return {
     id,
     name: override.name || id,
+    aliases: override.aliases ? [...override.aliases] : undefined,
+    family: override.family,
+    category: override.category,
+    provider_type: override.provider_type,
+    homepage_url: override.homepage_url,
+    docs_url: override.docs_url,
+    pricing_url: override.pricing_url,
+    logo_id: override.logo_id,
+    input_types: override.input_types ? [...override.input_types] : undefined,
+    output_types: override.output_types ? [...override.output_types] : undefined,
+    model_buckets: override.model_buckets
+      ? Object.fromEntries(
+          Object.entries(override.model_buckets).map(([key, values]) => [
+            key,
+            Array.isArray(values) ? [...values] : values,
+          ]),
+        ) as CatalogProvider['model_buckets']
+      : undefined,
+    compatibility_profile: Array.isArray(override.compatibility_profile)
+      ? [...override.compatibility_profile]
+      : override.compatibility_profile,
+    modalities: override.modalities ? [...override.modalities] : undefined,
     base_url: override.base_url || 'https://provider.example',
     auth_type: override.auth_type || 'bearer',
     endpoints: { ...(override.endpoints || {}) },
+    compatibility_profiles: override.compatibility_profiles
+      ? [...override.compatibility_profiles]
+      : ['openai_compatible'],
     model_prefixes: override.model_prefixes ? [...override.model_prefixes] : [],
     capabilities: override.capabilities ? [...override.capabilities] : [],
-    pricing: override.pricing ? { ...override.pricing } : undefined,
+    pricing: override.pricing ? normalizeCatalogPricing({ ...override.pricing }) : undefined,
     prompt_cache: override.prompt_cache,
     read_cache: override.read_cache,
     write_cache: override.write_cache,
@@ -1021,7 +1198,7 @@ function mergeModel(
   if (override.endpoints) target.endpoints = { ...target.endpoints, ...override.endpoints };
   if (override.capabilities) target.capabilities = [...override.capabilities];
   if (override.limits) target.limits = { ...override.limits };
-  if (override.pricing) target.pricing = { ...override.pricing };
+  if (override.pricing) target.pricing = normalizeCatalogPricing({ ...override.pricing });
   if (override.prompt_cache !== undefined) target.prompt_cache = override.prompt_cache;
   if (override.read_cache !== undefined) target.read_cache = override.read_cache;
   if (override.write_cache !== undefined) target.write_cache = override.write_cache;
@@ -1040,7 +1217,7 @@ function modelFromOverride(
     endpoints: { ...(override.endpoints || {}) },
     capabilities: override.capabilities ? [...override.capabilities] : [],
     limits: override.limits ? { ...override.limits } : undefined,
-    pricing: override.pricing ? { ...override.pricing } : undefined,
+    pricing: override.pricing ? normalizeCatalogPricing({ ...override.pricing }) : undefined,
     prompt_cache: override.prompt_cache,
     read_cache: override.read_cache,
     write_cache: override.write_cache,
@@ -1088,6 +1265,13 @@ export function findCatalogModelForNode(
   return matches.find((model) => providerIds.has(model.provider)) || matches[0];
 }
 
+export function findCatalogProviderForNode(
+  catalog: ProviderCatalog | undefined,
+  node?: { id?: string; base_url?: string },
+): CatalogProvider | undefined {
+  return findCompatibilityCatalogProviderForNode(catalog, node);
+}
+
 export function catalogModelToModelPricing(
   model: CatalogModel | undefined,
 ): (ModelPricing & {
@@ -1097,25 +1281,7 @@ export function catalogModelToModelPricing(
   manual_review_required?: boolean;
   pricing_confidence?: string;
 }) | undefined {
-  const pricing = model?.pricing;
-  if (!pricing || !isFiniteNonNegativeNumber(pricing.input) || !isFiniteNonNegativeNumber(pricing.output)) {
-    return undefined;
-  }
-  return {
-    input: pricing.input,
-    output: pricing.output,
-    cache_creation_input: isFiniteNonNegativeNumber(pricing.cache_creation_input)
-      ? pricing.cache_creation_input
-      : undefined,
-    cache_read_input: isFiniteNonNegativeNumber(pricing.cache_read_input)
-      ? pricing.cache_read_input
-      : undefined,
-    source: `catalog:${model.provider}:${pricing.source}`,
-    currency: pricing.currency || 'USD',
-    catalog_source: model.overridden ? 'override' : model.source,
-    manual_review_required: pricing.manual_review_required,
-    pricing_confidence: pricing.pricing_confidence || 'unknown',
-  };
+  return catalogModelToGovernedModelPricing(model);
 }
 
 export function assessCatalogPricing(
@@ -1123,44 +1289,62 @@ export function assessCatalogPricing(
   modalities: readonly string[] = [],
   now: Date = new Date(),
 ): CatalogPricingHygiene {
-  if (!pricing) {
+  const normalizedPricing = normalizeCatalogPricing(pricing);
+  if (!normalizedPricing) {
     return {
       status: 'missing',
       currency: null,
+      source_type: null,
       source: null,
+      source_url: null,
       manual_review_required: false,
+      review_reason: null,
       pricing_confidence: null,
       last_updated: null,
+      last_verified_at: null,
+      retrieved_at: null,
       age_days: null,
       stale_after_days: null,
       stale: false,
       placeholder: false,
+      review_required: false,
+      source_missing: true,
+      source_url_missing: true,
       missing_price_dimensions: requiredPricingDimensions(modalities),
       unit_mismatches: [],
-      warnings: ['catalog_pricing_missing'],
+      warnings: ['catalog_pricing_missing', 'catalog_pricing_source_missing', 'catalog_pricing_source_url_missing'],
     };
   }
+  pricing = normalizedPricing;
 
   const required = requiredPricingDimensions(modalities);
   const missing = required.filter((dimension) => !hasPricingDimension(pricing, dimension));
   const unitMismatches = required.filter((dimension) => !hasCompatibleUnit(pricing, dimension));
   const lastUpdated = isNonEmptyString(pricing.last_updated) ? pricing.last_updated : null;
-  const parsedLastUpdated = lastUpdated ? Date.parse(lastUpdated) : Number.NaN;
-  const ageDays = Number.isNaN(parsedLastUpdated)
+  const lastVerifiedAt = isNonEmptyString(pricing.last_verified_at) ? pricing.last_verified_at : null;
+  const retrievedAt = isNonEmptyString(pricing.retrieved_at) ? pricing.retrieved_at : null;
+  const freshnessBasis = lastVerifiedAt || retrievedAt || lastUpdated;
+  const parsedFreshnessBasis = freshnessBasis ? Date.parse(freshnessBasis) : Number.NaN;
+  const ageDays = Number.isNaN(parsedFreshnessBasis)
     ? null
-    : Math.max(0, Math.floor((now.getTime() - parsedLastUpdated) / 86_400_000));
+    : Math.max(0, Math.floor((now.getTime() - parsedFreshnessBasis) / 86_400_000));
   const staleAfterDays = pricing.stale_after_days ?? DEFAULT_STALE_AFTER_DAYS;
-  const stale = ageDays !== null && ageDays > staleAfterDays;
-  const placeholder =
+  const stale = catalogPricingIsStale(pricing, now, DEFAULT_STALE_AFTER_DAYS);
+  const sourceMissing = !isNonEmptyString(pricing.source);
+  const sourceUrlMissing = !isNonEmptyString(pricing.source_url);
+  const reviewRequired =
     pricing.manual_review_required === true ||
     pricing.pricing_confidence === 'low' ||
     pricing.pricing_confidence === 'unknown' ||
     PLACEHOLDER_SOURCE_PATTERN.test(pricing.source || '');
+  const placeholder = reviewRequired;
   const warnings = [
     ...missing.map((dimension) => `catalog_pricing_missing:${dimension}`),
     ...unitMismatches.map((dimension) => `catalog_pricing_unit_mismatch:${dimension}`),
     ...(stale ? ['catalog_pricing_stale'] : []),
-    ...(placeholder ? ['catalog_pricing_placeholder'] : []),
+    ...(reviewRequired ? ['catalog_pricing_review_required'] : []),
+    ...(sourceMissing ? ['catalog_pricing_source_missing'] : []),
+    ...(sourceUrlMissing ? ['catalog_pricing_source_url_missing'] : []),
   ];
 
   return {
@@ -1168,18 +1352,26 @@ export function assessCatalogPricing(
       ? 'missing'
       : stale
         ? 'stale'
-        : placeholder
+        : reviewRequired
           ? 'placeholder'
           : 'fresh',
     currency: pricing.currency || null,
+    source_type: pricing.source_type || null,
     source: pricing.source || null,
+    source_url: pricing.source_url || null,
     manual_review_required: pricing.manual_review_required === true,
+    review_reason: pricing.review_reason || null,
     pricing_confidence: pricing.pricing_confidence || null,
     last_updated: lastUpdated,
+    last_verified_at: lastVerifiedAt,
+    retrieved_at: retrievedAt,
     age_days: ageDays,
     stale_after_days: staleAfterDays,
     stale,
     placeholder,
+    review_required: reviewRequired,
+    source_missing: sourceMissing,
+    source_url_missing: sourceUrlMissing,
     missing_price_dimensions: missing,
     unit_mismatches: unitMismatches,
     warnings,
@@ -1225,12 +1417,32 @@ export function collectCatalogPricingHygieneIssues(
           ),
         );
       }
-      if (hygiene.placeholder) {
+      if (hygiene.review_required || hygiene.placeholder) {
         issues.push(
           issue(
             'info',
-            'catalog_pricing_placeholder',
-            `Catalog pricing for "${model.id}" is reference/manual-review metadata.`,
+            'catalog_pricing_review_required',
+            `Catalog pricing for "${model.id}" needs operator review before production cost routing.`,
+            modelPath,
+          ),
+        );
+      }
+      if (hygiene.source_missing) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_pricing_source_missing',
+            `Catalog pricing for "${model.id}" is missing a price source label.`,
+            modelPath,
+          ),
+        );
+      }
+      if (hygiene.source_url_missing) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_pricing_source_url_missing',
+            `Catalog pricing for "${model.id}" is missing a reviewable source URL.`,
             modelPath,
           ),
         );
@@ -1264,7 +1476,7 @@ function hasPricingDimension(
   pricing: CatalogPricing,
   dimension: CatalogPricingDimension,
 ): boolean {
-  if (isFiniteNonNegativeNumber(pricing[dimension])) return true;
+  if (isFiniteNonNegativeNumber(getCatalogPricingValue(pricing, dimension))) return true;
   if (dimension === 'embedding' && isFiniteNonNegativeNumber(pricing.input)) return true;
   if (dimension === 'rerank' && isFiniteNonNegativeNumber(pricing.input)) return true;
   if (dimension === 'audio' && isFiniteNonNegativeNumber(pricing.input)) return true;
@@ -1277,18 +1489,32 @@ function hasCompatibleUnit(
   pricing: CatalogPricing,
   dimension: CatalogPricingDimension,
 ): boolean {
-  const unit = (pricing.units?.[dimension] || pricing.unit || '').toLowerCase();
+  const unit = (pricing.units?.[dimension] || pricing.billing_unit || pricing.unit || '').toLowerCase();
   if (!unit) return false;
-  if (dimension === 'input' || dimension === 'output' || dimension === 'embedding') {
+  if (
+    dimension === 'input' ||
+    dimension === 'output' ||
+    dimension === 'embedding' ||
+    dimension === 'input_per_1m_tokens' ||
+    dimension === 'output_per_1m_tokens' ||
+    dimension === 'embedding_per_1m_tokens'
+  ) {
     return unit.includes('token') || unit.includes('embedding');
   }
-  if (dimension === 'image') return unit.includes('image');
-  if (dimension === 'audio') return unit.includes('audio') || unit.includes('minute') || unit.includes('second');
-  if (dimension === 'video') return unit.includes('video') || unit.includes('minute') || unit.includes('second');
-  if (dimension === 'rerank') return unit.includes('rerank') || unit.includes('request');
-  if (dimension === 'cache_read_input' || dimension === 'cache_creation_input') {
+  if (dimension === 'image' || dimension === 'image_per_generation' || dimension === 'image_per_edit') return unit.includes('image');
+  if (dimension === 'audio' || dimension === 'audio_per_minute' || dimension === 'audio_per_1m_chars') return unit.includes('audio') || unit.includes('minute') || unit.includes('char') || unit.includes('second');
+  if (dimension === 'video' || dimension === 'video_per_second' || dimension === 'video_per_generation') return unit.includes('video') || unit.includes('minute') || unit.includes('second') || unit.includes('generation');
+  if (dimension === 'rerank' || dimension === 'rerank_per_1k_requests' || dimension === 'rerank_per_1k_docs') return unit.includes('rerank') || unit.includes('request') || unit.includes('doc');
+  if (
+    dimension === 'cache_read_input' ||
+    dimension === 'cache_creation_input' ||
+    dimension === 'cache_read_per_1m_tokens' ||
+    dimension === 'cache_write_per_1m_tokens'
+  ) {
     return unit.includes('token') || unit.includes('cache');
   }
+  if (dimension === 'realtime_per_minute') return unit.includes('realtime') || unit.includes('minute');
+  if (dimension === 'batch_discount') return unit.includes('discount') || unit.includes('percent') || unit.includes('batch');
   return true;
 }
 

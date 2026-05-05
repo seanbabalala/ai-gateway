@@ -215,6 +215,11 @@ export interface RouteDecisionCandidate {
     filtered_by_capability: boolean
     filtered_by_file_size: boolean
     pricing_source: string | null
+    pricing_confidence?: string | null
+    pricing_stale?: boolean | null
+    pricing_used_from?: string
+    missing_price_units?: string[]
+    estimated_cost_basis?: string | null
     catalog_source: string | null
   }
   cache_evidence?: {
@@ -236,6 +241,19 @@ export interface RouteDecisionCandidate {
     cache_score: number | null
     reason: string
   }
+  compatibility_evidence?: RouteDecisionCompatibilityEvidence
+}
+
+export interface RouteDecisionCompatibilityEvidence {
+  provider_id: string | null
+  compatibility_profile: string[]
+  endpoint_strategy: string | null
+  protocol_strategy: string | null
+  passthrough_fields: string[]
+  downgraded_fields: string[]
+  unsupported_fields: string[]
+  selected_reason: string
+  filtered_by_profile_reason: string | null
 }
 
 export interface RouteDecisionFilter {
@@ -379,6 +397,7 @@ export interface RouteDecisionSummary {
     reason: string | null
     fallback_chain: RouteDecisionTarget[]
     filters: RouteDecisionFilter[]
+    compatibility?: RouteDecisionCompatibilityEvidence | null
     privacy: RouteDecisionTrace['privacy']
   }
   trace?: RouteDecisionTrace | null
@@ -553,6 +572,7 @@ export type ProviderCompatibilityCapability =
   | 'audio'
   | 'video'
   | 'realtime'
+  | 'batch'
 
 export type ProviderCompatibilityStatus = 'pass' | 'warning' | 'fail' | 'skipped'
 
@@ -567,6 +587,8 @@ export interface ProviderCompatibilityMatrixItem {
   status_code: number | null
   test_mode: string | null
   requires_confirmation: boolean
+  compatibility_profiles?: string[]
+  profile_supported?: boolean
 }
 
 export interface NodeInfo {
@@ -599,6 +621,8 @@ export interface NodeInfo {
   batch_status_endpoint?: string | null
   batch_cancel_endpoint?: string | null
   batch_result_endpoint?: string | null
+  compatibility_profile?: string[]
+  resolved_compatibility_profiles?: string[]
   realtime_endpoint?: string | null
   realtime_models?: string[]
   capabilities: string[]
@@ -1106,6 +1130,9 @@ export interface BenchmarkCatalogEvidence {
   provider: string | null
   modalities: string[]
   pricing_source: string | null
+  pricing_confidence?: string | null
+  pricing_stale?: boolean | null
+  pricing_used_from?: string | null
   catalog_source: string | null
 }
 
@@ -1497,6 +1524,7 @@ export interface CreateNodeRequest {
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>
   auth_type?: 'bearer' | 'x-api-key'
   health_check?: HealthCheckRequest
+  compatibility_profile?: string[]
 }
 
 export interface UpdateNodeRequest {
@@ -1543,6 +1571,7 @@ export interface UpdateNodeRequest {
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>
   auth_type?: 'bearer' | 'x-api-key'
   health_check?: HealthCheckRequest
+  compatibility_profile?: string[]
 }
 
 export interface HealthCheckRequest {
@@ -1585,6 +1614,8 @@ export type CatalogModality =
   | 'embedding'
   | 'rerank'
   | 'realtime'
+  | 'batch'
+  | 'mcp'
 
 export type CatalogEndpoint =
   | 'chat_completions'
@@ -1597,8 +1628,12 @@ export type CatalogEndpoint =
   | 'audio_speech'
   | 'video_generations'
   | 'video_status'
+  | 'video_content'
+  | 'video_cancel'
   | 'rerank'
   | 'realtime'
+  | 'batch'
+  | 'mcp'
 
 export type CatalogAuthType =
   | 'bearer'
@@ -1616,31 +1651,60 @@ export interface CatalogPricing {
   video?: number | null
   rerank?: number | null
   embedding?: number | null
+  cache_read_input?: number | null
+  cache_creation_input?: number | null
+  billing_unit?: string
+  input_per_1m_tokens?: number | null
+  output_per_1m_tokens?: number | null
+  cache_read_per_1m_tokens?: number | null
+  cache_write_per_1m_tokens?: number | null
+  embedding_per_1m_tokens?: number | null
+  rerank_per_1k_requests?: number | null
+  rerank_per_1k_docs?: number | null
+  image_per_generation?: number | null
+  image_per_edit?: number | null
+  audio_per_minute?: number | null
+  audio_per_1m_chars?: number | null
+  video_per_second?: number | null
+  video_per_generation?: number | null
+  realtime_per_minute?: number | null
+  batch_discount?: number | null
   unit?: string
-  units?: Partial<Record<'input' | 'output' | 'image' | 'audio' | 'video' | 'rerank' | 'embedding', string>>
+  units?: Partial<Record<string, string>>
   currency?: string
+  source_type?: 'official_docs' | 'provider_api' | 'aggregator_api' | 'operator_override' | 'docs_review' | 'unknown'
   source: string
   source_url?: string
   last_updated: string
   last_sync?: string
   retrieved_at?: string
+  last_verified_at?: string
   manual_review_required: boolean
+  review_reason?: string
   stale_after_days?: number
   pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
   notes?: string
 }
 
 export interface CatalogPricingHygiene {
-  status: 'fresh' | 'stale' | 'placeholder' | 'missing' | 'invalid'
+  status: 'fresh' | 'stale' | 'placeholder' | 'review_required' | 'missing' | 'invalid'
   currency: string | null
+  source_type?: 'official_docs' | 'provider_api' | 'aggregator_api' | 'operator_override' | 'docs_review' | 'unknown' | null
   source: string | null
+  source_url?: string | null
   manual_review_required: boolean
+  review_reason?: string | null
   pricing_confidence: 'high' | 'medium' | 'low' | 'unknown' | null
   last_updated: string | null
+  last_verified_at?: string | null
+  retrieved_at?: string | null
   age_days: number | null
   stale_after_days: number | null
   stale: boolean
   placeholder: boolean
+  review_required?: boolean
+  source_missing?: boolean
+  source_url_missing?: boolean
   missing_price_dimensions: string[]
   unit_mismatches: string[]
   warnings: string[]
@@ -1676,21 +1740,82 @@ export interface CatalogModel {
   notes?: string
 }
 
+export type CatalogProviderFamily =
+  | 'foundation'
+  | 'aggregators'
+  | 'cloud'
+  | 'china'
+  | 'self_hosted'
+  | 'image_video'
+  | 'speech_audio'
+  | 'embedding_rerank'
+
+export type CatalogProviderType =
+  | 'direct'
+  | 'aggregator'
+  | 'cloud'
+  | 'self_hosted'
+  | 'media'
+  | 'speech'
+  | 'local'
+  | 'custom'
+  | 'compatible'
+
+export type CatalogCompatibilityProfile =
+  | 'native'
+  | 'openai-compatible'
+  | 'anthropic-compatible'
+  | 'google-compatible'
+  | 'local'
+  | 'custom'
+
+export interface CatalogProviderModelBuckets {
+  models: string[]
+  embedding_models: string[]
+  rerank_models: string[]
+  image_models: string[]
+  audio_models: string[]
+  video_models: string[]
+  realtime_models: string[]
+  batch_models?: string[]
+}
+
 export interface CatalogProvider {
   id: string
+  provider_id?: string
   name: string
+  display_name?: string
   description?: string
   base_url: string
   base_url_matchers: string[]
   protocols: Array<'chat_completions' | 'responses' | 'messages'>
   default_protocol: 'chat_completions' | 'responses' | 'messages'
   endpoints: Partial<Record<CatalogEndpoint, string>>
+  compatibility_profiles?: string[]
   auth_type: CatalogAuthType
   key_placeholder?: string
   modalities: CatalogModality[]
+  input_types?: string[]
+  output_types?: string[]
   capabilities: string[]
   pricing: CatalogPricing
   pricing_hygiene?: CatalogPricingHygiene
+  aliases?: string[]
+  family?: CatalogProviderFamily
+  category?: CatalogProviderFamily | string
+  provider_type?: CatalogProviderType
+  compatibility_profile?: CatalogCompatibilityProfile | string
+  logo_id?: string
+  homepage_url?: string | null
+  docs_url?: string | null
+  pricing_url?: string | null
+  model_buckets?: CatalogProviderModelBuckets
+  limits?: {
+    model_count?: number
+    max_context_tokens?: number | null
+    max_file_size?: number | null
+  }
+  pricing_units?: Record<string, string>
   model_prefixes?: string[]
   tags?: string[]
   allows_unknown_models?: boolean
@@ -1699,6 +1824,25 @@ export interface CatalogProvider {
   overridden?: boolean
   synced?: boolean
   models: CatalogModel[]
+}
+
+export interface ProviderCompatibilityProfile {
+  profile_id: string
+  display_name: string
+  protocol_family: string
+  request_style: string
+  response_style: string
+  auth_strategy: string
+  endpoint_strategy: string
+  streaming_strategy: string
+  multipart_strategy: string
+  async_job_strategy: string
+  supported_source_formats: string[]
+  supported_modalities: string[]
+  passthrough_fields: string[]
+  downgraded_fields: string[]
+  unsupported_fields: string[]
+  known_limitations: string[]
 }
 
 export interface CatalogSyncStatus {
@@ -1751,6 +1895,7 @@ export interface CatalogProvidersResponse {
   sync_cache_file?: string
   sync_cache_found?: boolean
   issues?: Array<{ severity: string; code: string; message: string; path?: string }>
+  compatibility_profiles?: ProviderCompatibilityProfile[]
   providers: CatalogProvider[]
 }
 

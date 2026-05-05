@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { NodeIcon } from '@/components/shared/NodeIcon'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Card, CardStatic } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -77,7 +78,19 @@ function UpstreamCell({ log }: { log: CallLog }) {
       </div>
     )
   }
-  return <span className="font-medium text-[var(--foreground)]">{log.node_id}</span>
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--background-secondary)]">
+        <NodeIcon
+          nodeId={log.node_id}
+          providerName={log.node_id}
+          modelIds={[log.model].filter(Boolean)}
+          className="h-4 w-4"
+        />
+      </span>
+      <span className="truncate font-medium text-[var(--foreground)]">{log.node_id}</span>
+    </div>
+  )
 }
 
 function LogDetailRow({ log }: { log: CallLog }) {

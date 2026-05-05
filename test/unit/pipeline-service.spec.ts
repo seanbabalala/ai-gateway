@@ -865,6 +865,7 @@ describe('PipelineService — rerank', () => {
     expect(routeTrace.candidate_targets[0].capability_evidence).toMatchObject({
       requested_modality: 'rerank',
       pricing_source: 'config',
+      pricing_used_from: 'gateway_config',
     });
   });
 

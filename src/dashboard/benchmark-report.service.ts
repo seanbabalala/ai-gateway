@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { CallLog, RouteDecisionLog } from '../database/entities';
 import { CatalogService } from '../catalog/catalog.service';
+import { ConfigService } from '../config/config.service';
+import { catalogPricingIsStale } from '../catalog/pricing-governance';
 
 export type BenchmarkPeriod = '1h' | '24h' | '7d' | '30d' | '90d';
 export type BenchmarkCheckStatus = 'pass' | 'warn' | 'fail';
@@ -87,6 +89,9 @@ export interface BenchmarkCatalogEvidence {
   provider: string | null;
   modalities: string[];
   pricing_source: string | null;
+  pricing_confidence?: string | null;
+  pricing_stale?: boolean | null;
+  pricing_used_from?: string | null;
   catalog_source: string | null;
 }
 
@@ -207,6 +212,8 @@ export class BenchmarkReportService {
     private readonly routeDecisionRepo?: Repository<RouteDecisionLog>,
     @Optional()
     private readonly catalog?: CatalogService,
+    @Optional()
+    private readonly config?: ConfigService,
   ) {}
 
   async getReport(input: BenchmarkReportInput = {}): Promise<BenchmarkReport> {
@@ -367,7 +374,10 @@ export class BenchmarkReportService {
     const success = rows.filter((row) => Number(row.status_code || 0) < 400).length;
     const failed = calls - success;
     const latencies = rows.map((row) => Math.max(0, Number(row.latency_ms || 0)));
-    const totalCost = rows.reduce((sum, row) => sum + Number(row.cost_usd || 0), 0);
+    const totalCost = rows.reduce(
+      (sum, row) => sum + this.costWithPricingResolver(row),
+      0,
+    );
     const inputTokens = rows.reduce((sum, row) => sum + Number(row.input_tokens || 0), 0);
     const outputTokens = rows.reduce((sum, row) => sum + Number(row.output_tokens || 0), 0);
     const totalTokens = inputTokens + outputTokens;
@@ -476,17 +486,39 @@ export class BenchmarkReportService {
             new Set(groupRows.map((row) => row.source_format || 'unknown')),
           ).sort(),
           status: this.groupStatus(metrics),
-          catalog: catalogIndex.get(model) ?? {
-            known_model: false,
-            provider: null,
-            modalities: [],
-            pricing_source: null,
-            catalog_source: null,
-          },
+        catalog: catalogIndex.get(model) ?? {
+          known_model: false,
+          provider: null,
+          modalities: [],
+          pricing_source: null,
+          pricing_confidence: null,
+          pricing_stale: null,
+          pricing_used_from: null,
+          catalog_source: null,
+        },
         };
       })
       .sort((a, b) => b.calls - a.calls || a.latency_ms.p95_ms - b.latency_ms.p95_ms)
       .slice(0, 50);
+  }
+
+  private costWithPricingResolver(row: CallLog): number {
+    const recorded = Number(row.cost_usd || 0);
+    if (recorded > 0 || !this.config) return recorded;
+    const pricing = this.config.getModelPricing(row.model, row.node_id);
+    if (!pricing) return recorded;
+    const input = Number(row.input_tokens || 0);
+    const output = Number(row.output_tokens || 0);
+    const cacheRead = Number(row.cache_read_input_tokens || 0);
+    const cacheWrite = Number(row.cache_creation_input_tokens || 0);
+    const regularInput = Math.max(0, input - cacheRead - cacheWrite);
+    return this.round(
+      (regularInput / 1_000_000) * pricing.input +
+        (cacheRead / 1_000_000) * (pricing.cache_read_input ?? pricing.input) +
+        (cacheWrite / 1_000_000) * (pricing.cache_creation_input ?? pricing.input) +
+        (output / 1_000_000) * pricing.output,
+      6,
+    );
   }
 
   private groupBySourceFormat(
@@ -611,6 +643,15 @@ export class BenchmarkReportService {
           provider: model.provider,
           modalities: model.modalities as string[],
           pricing_source: model.pricing?.source ?? null,
+          pricing_confidence: model.pricing?.pricing_confidence ?? null,
+          pricing_stale: catalogPricingIsStale(model.pricing),
+          pricing_used_from: model.overridden
+            ? 'catalog_override'
+            : model.synced
+              ? 'catalog_sync_cache'
+              : model.source === 'builtin'
+                ? 'builtin_catalog'
+                : model.source,
           catalog_source: model.source ?? null,
         });
       }

@@ -934,7 +934,7 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toEqual(
       expect.arrayContaining([
         'duplicate_model_id',
-        'catalog_pricing_placeholder',
+        'catalog_pricing_review_required',
         'literal_provider_api_key',
         'literal_control_plane_token',
         'insecure_control_plane_url',
@@ -1082,7 +1082,104 @@ describe('config validator', () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
-    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+    expect(codes(result.warnings)).toContain('catalog_pricing_review_required');
+  });
+
+  it('recognizes v1.4 provider catalog models and warns on auth type mismatch', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'huggingface',
+            name: 'Hugging Face',
+            protocol: 'chat_completions',
+            base_url: 'https://router.huggingface.co',
+            endpoint: '/v1/chat/completions',
+            auth_type: 'x-api-key',
+            api_key: '${HF_TOKEN:-test}',
+            models: ['meta-llama/Llama-3.3-70B-Instruct'],
+            embedding_models: ['sentence-transformers/all-MiniLM-L6-v2'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'huggingface', model: 'meta-llama/Llama-3.3-70B-Instruct' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
+    expect(codes(result.warnings)).toContain('catalog_auth_type_mismatch');
+    expect(codes(result.warnings)).toContain('catalog_pricing_review_required');
+    expect(codes(result.warnings)).not.toContain('catalog_pricing_placeholder');
+  });
+
+  it('marks custom nodes as unknown provider catalog entries without blocking startup', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'internal-lab',
+            name: 'Internal Lab',
+            protocol: 'chat_completions',
+            base_url: 'https://models.internal.example',
+            endpoint: '/v1/chat/completions',
+            api_key: '${INTERNAL_MODEL_KEY:-test}',
+            models: ['internal-chat'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'internal-lab', model: 'internal-chat' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'internal-chat': { input: 1, output: 2 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.info)).toContain('catalog_unknown_provider');
   });
 
   it('warns about catalog pricing hygiene without duplicating missing pricing when catalog fallback exists', () => {
@@ -1129,9 +1226,89 @@ describe('config validator', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+    expect(codes(result.warnings)).toContain('catalog_pricing_review_required');
     expect(codes(result.warnings)).not.toContain('missing_model_pricing');
     expect(codes(result.warnings)).not.toContain('cost_routing_pricing_missing');
+  });
+
+  it('warns when catalog pricing governance source metadata is incomplete', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const catalog = {
+      ...catalogLoad.catalog,
+      providers: catalogLoad.catalog.providers.map((provider) =>
+        provider.id === 'openai'
+          ? {
+              ...provider,
+              models: provider.models.map((model) =>
+                model.id === 'gpt-4o'
+                  ? {
+                      ...model,
+                      pricing: {
+                        input: 2.5,
+                        output: 10,
+                        source: '',
+                        last_updated: '2025-01-01',
+                        manual_review_required: true,
+                        stale_after_days: 30,
+                        pricing_confidence: 'low' as const,
+                      },
+                    }
+                  : model,
+              ),
+            }
+          : provider,
+      ),
+    };
+
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          optimization: 'balanced',
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {}, catalog, catalogIssues: [] },
+    );
+
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'catalog_pricing_review_required',
+        'catalog_pricing_source_missing',
+        'catalog_pricing_source_url_missing',
+        'catalog_pricing_stale',
+      ]),
+    );
   });
 
   it('warns when configured endpoints differ from the catalog provider preset', () => {
@@ -1178,6 +1355,82 @@ describe('config validator', () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.warnings)).toContain('catalog_endpoint_mismatch');
+  });
+
+  it('validates explicit compatibility profile overrides', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'responses',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/responses',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+            compatibility_profile: ['aws_bedrock_converse'],
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 2.5, output: 10 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'compatibility_profile_provider_mismatch',
+        'compatibility_profile_source_format_mismatch',
+      ]),
+    );
+  });
+
+  it('rejects unknown compatibility profile ids', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+            compatibility_profile: ['not_a_profile'],
+          },
+        ],
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('unknown_compatibility_profile');
   });
 
   it('surfaces catalog override secret diagnostics through config validation', () => {

@@ -22,8 +22,71 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | ✅ Released |
 
 ---
+
+## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
+
+**v1.4.0 发布状态**：已发布。v1.4 基于 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
+
+### P0：Provider Catalog 50+
+
+- **状态**：✅ v1.4.0 已发布
+- **目标**：将内置 Provider Catalog 扩展到 50+ providers，并优先补齐 Hugging Face、Cloudflare Workers AI、IBM watsonx.ai、Baseten、Lepton AI、Modal、RunPod、Predibase、Lamini、AI21 Labs、fal.ai、Stability AI、Black Forest Labs、Ideogram、Luma AI、Runway、Pika、ElevenLabs、Deepgram、AssemblyAI、Cartesia、Speechmatics、LM Studio、llama.cpp server、TGI、SGLang、Xinference 等高知名度 provider。
+- **实现方案**：
+  - 不新增第二套 catalog；继续复用 v0.8 引入并在 v0.9-v1.3 强化的 built-in + sync cache + `catalog.override.yaml` merge 结构
+  - 每个内置 provider 统一声明 aliases、family/category、provider_type、homepage/docs/pricing URL、logo_id、auth_type、base_url、endpoints、modalities、input/output types、model buckets、capabilities、limits、pricing metadata、compatibility_profile
+  - Catalog 区分 text、vision、image、audio、video、embedding、rerank、realtime、batch；MCP/tool 只作为 metadata 标记，不引入企业 marketplace
+  - Model buckets 覆盖 `models`、`embedding_models`、`rerank_models`、`image_models`、`audio_models`、`video_models`、`realtime_models`、`batch_models`
+  - 价格不再使用“占位”作为 operator-facing 表达；公开信息不稳定时标记 `manual_review_required` / `docs_review_required` / `pricing_confidence: low`
+  - Provider logo identity 覆盖新增 provider，兼容 provider 不再误显示 OpenAI logo
+  - 旧 `ProviderCatalogService` 诊断层投影到同一份 merged built-in catalog，避免两套 provider 列表漂移
+  - Config validation 增加已知 provider 的 auth_type mismatch warning，并对未知 provider 给出不阻断启动的 catalog metadata 提示
+
+### P0：Provider Catalog Pricing Source Governance
+
+- **状态**：✅ v1.4.0 已发布
+- **目标**：统一所有 provider/model 的 pricing schema、来源、新鲜度和路由成本回退，让成本路由与 Dashboard 解释使用同一套证据
+- **实现方案**：
+  - 保留 legacy `input/output/cache_read_input/cache_creation_input`，新增 `input_per_1m_tokens`、`output_per_1m_tokens`、cache、embedding、rerank、image、audio、video、realtime、batch 等统一字段
+  - 新增 `source_type`、`source_url`、`retrieved_at`、`last_verified_at`、`stale_after_days`、`pricing_confidence`、`manual_review_required` 和 `review_reason`
+  - 明确 resolver 优先级：node/model explicit pricing → `models_pricing` → `catalog.override.yaml` → sync cache → built-in catalog
+  - Route Decision Trace 增加 pricing evidence：source、confidence、stale、used-from、missing units、estimated cost basis
+  - Benchmark Report 与 RoutingService 共用 ConfigService pricing fallback，避免不同页面各算各的
+  - Dashboard Provider Catalog、Route Explanation、CLI 与 config validation 使用“价格来源状态 / 需要复核 / 可能过期”文案
+
+### P0：Provider Catalog Dashboard UX 2.0
+
+- **状态**：✅ v1.4.0 已发布
+- **实现方案**：
+  - Dashboard Catalog API 为 provider 行补充 `family`、`provider_type`、`compatibility_profile`、`aliases`、`logo_id`、links、`model_buckets`、limits 与 `pricing_units`
+  - Provider Catalog 页面改为 provider explorer：顶部 summary cards、family/type/modality/compatibility/price-source filters、stale/review quick filters、分组折叠列表与详情面板
+  - Provider family 覆盖 Foundation Models、Aggregators、Cloud Platforms、China Providers、Self-hosted / Local、Image / Video、Speech / Audio、Embedding / Rerank
+  - Add Node Wizard 继续通过 Catalog API 读取 provider preset，新增 family filter 与 alias/model 搜索，支持 Kimi/Moonshot、Qwen/Tongyi、Doubao/Volcengine 等别名
+  - Add Node Wizard provider 列表使用受控滚动区域，50+ providers 时不撑爆表单，并保留 endpoint、headers、model aliases、prefixes、pricing、health check、custom provider 等高级字段
+  - Nodes、Logs 与 Route Explanation 继续使用 provider identity，避免兼容 provider 错显示为 OpenAI
+  - Dashboard 文案保持 en、zh、zh-TW、ja、ko、th、es 七语言同步
+
+### P0：Provider Compatibility Profiles
+
+- **状态**：✅ v1.4.0 已发布
+- **目标**：把 50+ providers 的协议兼容、端点策略、能力映射和限制统一建模，并接入 routing、validation、Dashboard explanation
+- **实现方案**：
+  - 新增本地 `compatibility_profile` registry，覆盖 OpenAI-compatible、Responses、Anthropic Messages、Gemini、Vertex、Bedrock、Azure OpenAI、Hugging Face、OpenRouter、Cohere、Mistral、Ollama、vLLM、TGI、LM Studio、media、speech、rerank、embedding 等 profile
+  - Provider Catalog providers 引用 `compatibility_profiles`；node config 可显式覆盖 `nodes[].compatibility_profile`
+  - Config validation 检查 profile 是否存在、provider/profile 是否匹配、endpoint/source_format/modality 是否支持
+  - RoutingService 根据 profile 过滤 source format、modality、stream、multipart、video async job 和 batch endpoint 不匹配的候选，并记录 filter/downgrade evidence
+  - Route Decision Trace 增加 compatibility evidence：provider id、profile、endpoint/protocol strategy、passthrough/downgraded/unsupported fields、selected reason、filtered reason
+  - Provider Compatibility Matrix 根据 profile 选择 safe probe，Dashboard Nodes、Provider Catalog、Logs、Route Explanation 展示只读 profile 证据
+  - 不实现真实 provider SDK，不自动联网检测 provider；prompt/response/raw headers/provider keys/media bytes/video bytes 不落库
+
+### v1.4 后续优化候选
+
+- **Semantic Cache Redis backend**：Semantic Cache 仍为 preview，下一步优先补可选 Redis/vector-like 后端，同时保持 memory 默认和 metadata-only 隐私边界。
+- **Prompt Registry / Template**：作为相对 Helicone 的功能性短板进入后续版本评估；优先做本地 registry、版本、审计和调用关联，不引入企业 Cloud 依赖。
+- **Provider Catalog 单源化**：当前 `src/catalog/built-in-catalog.ts` 与 `src/catalog/provider-catalog.data.ts` 仍存在历史双投影维护成本。长期目标是收敛为一个 catalog source，再生成 Dashboard/API/legacy diagnostics 视图。
+- **Provider contribution docs**：v1.4.0 新增 `docs/ADDING_PROVIDERS.md`，规范新增 provider 时的字段、pricing source、compatibility profile、logo identity 和测试清单。
 
 ## v1.3 — Production Ready（生产就绪）
 

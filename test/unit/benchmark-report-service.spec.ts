@@ -24,7 +24,7 @@ function makeLog(overrides: Record<string, any> = {}) {
   };
 }
 
-function makeService(rows: any[], traceCount = 0) {
+function makeService(rows: any[], traceCount = 0, config?: any) {
   const callQb = {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
@@ -54,7 +54,7 @@ function makeService(rows: any[], traceCount = 0) {
     ]),
   };
   return {
-    service: new BenchmarkReportService(callRepo as any, routeDecisionRepo as any, catalog as any),
+    service: new BenchmarkReportService(callRepo as any, routeDecisionRepo as any, catalog as any, config),
     callQb,
     traceQb,
   };
@@ -132,6 +132,10 @@ describe('BenchmarkReportService', () => {
     expect(report.summary.cost_summary.total_usd).toBeGreaterThan(0);
     expect(report.summary.token_summary.total_tokens).toBeGreaterThan(0);
     expect(report.by_node_model[0]).toHaveProperty('catalog');
+    expect(report.by_node_model[0].catalog).toMatchObject({
+      pricing_source: 'provider_docs',
+      pricing_used_from: 'builtin_catalog',
+    });
     expect(report.by_source_format.map((item) => item.source_format)).toEqual(
       expect.arrayContaining([
         'chat_completions',
@@ -191,5 +195,32 @@ describe('BenchmarkReportService', () => {
     expect(callQb.andWhere).toHaveBeenCalledWith('log.source_format = :sourceFormat', {
       sourceFormat: 'responses',
     });
+  });
+
+  it('uses the shared pricing resolver when benchmark logs lack recorded cost', async () => {
+    const rows = [
+      makeLog({
+        request_id: 'req-priced',
+        cost_usd: 0,
+        input_tokens: 1_000_000,
+        output_tokens: 500_000,
+        cache_read_input_tokens: 200_000,
+      }),
+    ];
+    const config = {
+      getModelPricing: jest.fn().mockReturnValue({
+        input: 2,
+        output: 4,
+        cache_read_input: 0.5,
+        source: 'catalog:openai:builtin-reference',
+        pricing_used_from: 'builtin_catalog',
+      }),
+    };
+    const { service } = makeService(rows, 0, config);
+
+    const report = await service.getReport({ period: '24h' });
+
+    expect(config.getModelPricing).toHaveBeenCalledWith('gpt-4o', 'openai');
+    expect(report.summary.cost_summary.total_usd).toBe(3.7);
   });
 });

@@ -53,6 +53,11 @@ export interface RouteDecisionCandidateCapabilityEvidence {
   filtered_by_capability: boolean;
   filtered_by_file_size: boolean;
   pricing_source: string | null;
+  pricing_confidence?: string | null;
+  pricing_stale?: boolean | null;
+  pricing_used_from?: string;
+  missing_price_units?: string[];
+  estimated_cost_basis?: string | null;
   catalog_source: string | null;
 }
 
@@ -74,6 +79,18 @@ export interface RouteDecisionCacheEvidence {
   estimated_cache_savings_usd: number | null;
   cache_score: number | null;
   reason: string;
+}
+
+export interface RouteDecisionCompatibilityEvidence {
+  provider_id: string | null;
+  compatibility_profile: string[];
+  endpoint_strategy: string | null;
+  protocol_strategy: string | null;
+  passthrough_fields: string[];
+  downgraded_fields: string[];
+  unsupported_fields: string[];
+  selected_reason: string;
+  filtered_by_profile_reason: string | null;
 }
 
 export interface RouteDecisionTraceCandidate {
@@ -105,6 +122,7 @@ export interface RouteDecisionTraceCandidate {
   };
   capability_evidence?: RouteDecisionCandidateCapabilityEvidence;
   cache_evidence?: RouteDecisionCacheEvidence;
+  compatibility_evidence?: RouteDecisionCompatibilityEvidence;
 }
 
 export interface RouteDecisionTraceFilter {

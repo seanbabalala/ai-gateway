@@ -2,7 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.3.2 Production Ready**.
+Current release: **v1.4.0 Provider Ecosystem + Catalog Governance**.
+
+Current development focus after v1.4: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
 
 ## Why SiftGate
 
@@ -12,6 +14,7 @@ Current release: **v1.3.2 Production Ready**.
 - Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
 - Catalog-backed setup: Add Node Wizard and config validation use the Provider Catalog instead of hardcoded provider lists.
+- Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority.
 
 ## Quick Start
 
@@ -46,14 +49,14 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
-## v1.3 Highlights
+## v1.4 Highlights
 
 | Area | What changed |
 | --- | --- |
-| Virtual Key + Team | Local teams for grouping Gateway API keys with team-level budgets, rate limits, namespace policy, and endpoint/model/modality restrictions. |
-| Semantic Cache Preview | Disabled-by-default semantic similarity metadata cache. It stores embedding/hash/metadata by default; replayable responses require explicit opt-in. |
-| Evaluation Framework | Local metadata-only primary-vs-candidate experiment reports with LLM-as-judge calls routed through SiftGate. |
-| Community Assets | Quickstart, production, security, SDK, playground, MCP, batch, caching, eval docs, issue templates, PR template, contribution guide, and docs checks. |
+| Provider Catalog 50+ | Built-in providers now cover foundation models, aggregators, cloud platforms, China providers, self-hosted/local runtimes, media, speech/audio, embedding, and rerank providers. |
+| Pricing Source Governance | Routing, benchmarks, config validation, CLI, and Dashboard views share one pricing resolver with source, freshness, confidence, and review-required evidence. |
+| Catalog Dashboard UX | Provider Catalog is now a filterable explorer with family/type/modality/compatibility/price-source filters, grouped rows, detail panels, and catalog-backed Add Node search. |
+| Compatibility Profiles | Providers and nodes can expose protocol/endpoint/streaming/multipart/async-job strategies, with routing and Route Explanation evidence for supported, downgraded, and unsupported fields. |
 
 ## Core Features
 
@@ -61,12 +64,18 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | --- | --- |
 | Protocols | `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/rerank`, image/audio endpoints, async video preview, realtime preview, MCP preview, Batch proxy. |
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
-| Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, cache evidence, cost/latency/context tradeoffs. |
+| Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog, Add Node Wizard, provider compatibility matrix, catalog override CLI, OpenRouter pricing sync preview. |
+| Provider Ops | Provider Catalog with 50+ built-in providers, Add Node Wizard, provider compatibility profiles and matrix, pricing source governance, catalog override CLI, OpenRouter pricing sync preview. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
+
+## After v1.4 Priorities
+
+- Add an optional Redis semantic-cache backend while keeping memory/SQLite defaults safe.
+- Explore a local Prompt Registry / Template layer as a future governance feature.
+- Reduce Provider Catalog maintenance cost by moving toward one catalog source with generated compatibility/API projections.
 
 ## Configuration
 
@@ -100,6 +109,8 @@ npm run validate:config
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
 | Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |
+| Adding Providers | [docs/ADDING_PROVIDERS.md](docs/ADDING_PROVIDERS.md) |
+| Provider Compatibility | [docs/PROVIDER_COMPATIBILITY.md](docs/PROVIDER_COMPATIBILITY.md) |
 | SDKs | [docs/SDKS.md](docs/SDKS.md) |
 | Playground | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) |
 | MCP Gateway | [docs/MCP_GATEWAY.md](docs/MCP_GATEWAY.md) |

@@ -258,7 +258,7 @@ async function runCatalogCommand(args: string[], cli: CliIO): Promise<number> {
     cli.stdout(
       parsedArgs.json
         ? JSON.stringify(provider, null, 2)
-        : formatCatalogProvider(provider, loaded.overridePath),
+        : formatCatalogProvider(provider, loaded.overridePath, parsedArgs.pricing),
     );
     return catalogIssuesHaveErrors(loaded.issues) ? 1 : 0;
   }
@@ -1194,6 +1194,7 @@ function formatCatalogProviderList(
         `name="${provider.name}"`,
         `models=${provider.models.length}`,
         `auth=${provider.auth_type}`,
+        `profiles=${(provider.compatibility_profiles || []).join(",") || "inferred"}`,
         provider.overridden ? "overridden=true" : "overridden=false",
       ].join(" "),
     ),
@@ -1203,6 +1204,7 @@ function formatCatalogProviderList(
 function formatCatalogProvider(
   provider: CatalogProvider,
   overridePath: string,
+  includePricing = false,
 ): string {
   const endpointSummary = Object.entries(provider.endpoints)
     .map(([key, value]) => `${key}=${value}`)
@@ -1216,9 +1218,11 @@ function formatCatalogProvider(
     `Auth: ${provider.auth_type}`,
     `Overridden: ${provider.overridden ? "yes" : "no"}`,
     `Endpoints: ${endpointSummary || "none"}`,
+    `Compatibility profiles: ${(provider.compatibility_profiles || []).join(", ") || "inferred"}`,
     `Capabilities: ${(provider.capabilities || []).join(", ") || "none"}`,
+    `Price source status: ${provider.pricing?.manual_review_required ? "Review required" : "Ready"}`,
     `Pricing source: ${provider.pricing?.source || "model-level"}`,
-    `Pricing review: ${provider.pricing?.manual_review_required ? "required" : "model-level"}`,
+    `Pricing source type: ${provider.pricing?.source_type || "model-level"}`,
     "",
     "Models:",
     ...provider.models.map((model) =>
@@ -1227,10 +1231,15 @@ function formatCatalogProvider(
         `modalities=${model.modalities.join(",")}`,
         `capabilities=${model.capabilities.join(",") || "none"}`,
         `pricing=${model.pricing?.source || "missing"}`,
+        `source_type=${model.pricing?.source_type || "unknown"}`,
+        `used_from=${model.overridden ? "catalog_override" : model.synced ? "catalog_sync_cache" : "builtin_catalog"}`,
         `confidence=${model.pricing?.pricing_confidence || "unknown"}`,
         `updated=${model.pricing?.last_updated || "unknown"}`,
+        includePricing
+          ? `units=input:${model.pricing?.input_per_1m_tokens ?? model.pricing?.input ?? "missing"},output:${model.pricing?.output_per_1m_tokens ?? model.pricing?.output ?? "missing"},cache_read:${model.pricing?.cache_read_per_1m_tokens ?? model.pricing?.cache_read_input ?? "missing"}`
+          : "",
         model.overridden ? "overridden=true" : "overridden=false",
-      ].join(" "),
+      ].filter(Boolean).join(" "),
     ),
   ].join("\n");
 }
@@ -1455,7 +1464,7 @@ function formatUsage(): string {
     "Usage:",
     "  siftgate validate [--config gateway.config.yaml] [--json]",
     "  siftgate catalog list [--override catalog.override.yaml] [--json]",
-    "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog show <provider> [--pricing] [--override catalog.override.yaml] [--json]",
     "  siftgate catalog sources [--json]",
     "  siftgate catalog refresh [openrouter|--provider openrouter] [--out catalog.override.yaml] [--force] [--json]",
     "  siftgate catalog sync [openrouter|--provider openrouter] [--write-to cache|override] [--out catalog.override.yaml] [--force] [--json]",
@@ -1482,7 +1491,7 @@ function formatCatalogUsage(): string {
   return [
     "Usage:",
     "  siftgate catalog list [--override catalog.override.yaml] [--json]",
-    "  siftgate catalog show <provider> [--override catalog.override.yaml] [--json]",
+    "  siftgate catalog show <provider> [--pricing] [--override catalog.override.yaml] [--json]",
     "  siftgate catalog sources [--json]",
     "  siftgate catalog refresh [openrouter|--provider openrouter] [--out catalog.override.yaml] [--force] [--json]",
     "  siftgate catalog sync [openrouter|--provider openrouter] [--write-to cache|override] [--out catalog.override.yaml] [--force] [--json]",
@@ -1496,7 +1505,7 @@ function formatCatalogUsage(): string {
     "      --write-to <mode>  Catalog sync target: cache (default) or override",
     "  -f, --file <path>      Override file to validate or import",
     "  -o, --out <path>       Write exported merged catalog or refreshed override to a file",
-    "      --pricing          Include pricing freshness/unit checks during validation",
+    "      --pricing          Include pricing governance details for show, or freshness/unit checks for validate",
     "      --include-pricing  Accept explicit pricing export (pricing is included by default)",
     "      --force            Replace an existing override during import/refresh/sync",
     "      --json             Print machine-readable JSON",

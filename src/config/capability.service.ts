@@ -342,20 +342,23 @@ export class CapabilityService {
       ? endpoints
       : undefined;
 
-    const pricing =
-      modelCapability?.pricing ?? this.config.getModelPricing(model, nodeId);
+    const pricing = this.config.getModelPricing(model, nodeId);
+    const hasCacheReadPricing =
+      pricing?.cache_read_input !== undefined || pricing?.cache_read_per_1m_tokens !== undefined;
+    const hasCacheWritePricing =
+      pricing?.cache_creation_input !== undefined || pricing?.cache_write_per_1m_tokens !== undefined;
     const promptCache =
       modelCapability?.prompt_cache ??
       node?.prompt_cache ??
-      Boolean(pricing?.cache_read_input !== undefined || pricing?.cache_creation_input !== undefined);
+      Boolean(hasCacheReadPricing || hasCacheWritePricing);
     const readCache =
       modelCapability?.read_cache ??
       node?.read_cache ??
-      Boolean(pricing?.cache_read_input !== undefined);
+      Boolean(hasCacheReadPricing);
     const writeCache =
       modelCapability?.write_cache ??
       node?.write_cache ??
-      Boolean(pricing?.cache_creation_input !== undefined);
+      Boolean(hasCacheWritePricing);
 
     return {
       modalities: this.resolveModelModalities(nodeId, model),

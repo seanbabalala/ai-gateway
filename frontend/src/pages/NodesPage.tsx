@@ -223,7 +223,7 @@ function compatibilityTone(item: ProviderCompatibilityMatrixItem): {
 }
 
 function configuredCompatibility(matrix: ProviderCompatibilityMatrixItem[] | undefined) {
-  return (matrix || []).filter((item) => item.configured)
+  return (matrix || []).filter((item) => item.configured || item.profile_supported === false)
 }
 
 export function NodesPage() {
@@ -457,6 +457,20 @@ export function NodesPage() {
                         <div className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">
                           {node.id} / {node.protocol}
                         </div>
+                        {(node.resolved_compatibility_profiles || node.compatibility_profile || []).length > 0 && (
+                          <div className="mt-1 flex max-w-full flex-wrap gap-1">
+                            {(node.resolved_compatibility_profiles || node.compatibility_profile || []).slice(0, 2).map((profile) => (
+                              <Badge key={profile} variant="blue" className="max-w-[150px] truncate font-mono text-[8px]">
+                                {profile}
+                              </Badge>
+                            ))}
+                            {(node.resolved_compatibility_profiles || node.compatibility_profile || []).length > 2 && (
+                              <Badge variant="zinc" className="text-[8px]">
+                                +{(node.resolved_compatibility_profiles || node.compatibility_profile || []).length - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {nodeDiagnostics.length > 0 && (
@@ -709,6 +723,7 @@ export function NodesPage() {
                                 </div>
                                 <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] font-semibold text-current/70">
                                   <span>{item.tested ? t('compatibility.tested') : t('compatibility.notTested')}</span>
+                                  {item.profile_supported === false && <span>{t('compatibility.profileUnsupported')}</span>}
                                   {item.status_code !== null && <span>HTTP {item.status_code}</span>}
                                   {item.latency_ms !== null && <span>{item.latency_ms}ms</span>}
                                   <span>{formatCompatibilityTime(item.last_checked_at, t)}</span>
@@ -716,6 +731,11 @@ export function NodesPage() {
                                 {item.failure_reason && (
                                   <div className="mt-1 truncate text-[9px] font-semibold text-current/80">
                                     {item.failure_reason}
+                                  </div>
+                                )}
+                                {(item.compatibility_profiles || []).length > 0 && (
+                                  <div className="mt-1 truncate font-mono text-[8px] text-current/70">
+                                    {(item.compatibility_profiles || []).slice(0, 2).join(', ')}
                                   </div>
                                 )}
                               </div>
