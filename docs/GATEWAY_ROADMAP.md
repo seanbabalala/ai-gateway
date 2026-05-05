@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-05
+> 最后更新：2026-05-06
 
 ---
 
@@ -59,6 +59,17 @@
   - Responses/Chat serializer 在返回 cache usage 时同时照顾当前官方字段和旧兼容字段
   - 继续保持成功响应 shape 不做 breaking change，只在 usage / pricing evidence 层增强 cache awareness
   - 为 schema extraction、stream final usage、provider fallback 和 cache-aware pricing 增加 regression tests
+
+### P1：Cache Savings Dashboard + 成本拆分可视化
+
+- **状态**：🟡 v1.6.0 开发中
+- **目标**：让 operator 直接看到“因为 provider cache，真实少花了多少钱”，并且把 provider-side cache 与本地 `cache` / `semantic_cache` 命中清楚区分。
+- **实现方案**：
+  - `call_logs` 写入 `cost_without_cache_usd`，把“实际 cost”与“如果没有 provider cache 的 baseline cost”一起保留下来
+  - Dashboard 新增 `GET /api/dashboard/cache-savings` 聚合接口，支持按 node、model、namespace、team、api key 分组，并返回 daily trend
+  - Overview KPI 展示当期 savings、savings percentage 与 provider cache hit rate；Analytics 展示 savings trend、hit rate trend、provider/model 排行和 normal/cache read/cache write/output 成本拆分
+  - Logs 为 provider cache 命中增加 badge / tooltip，并在详情中展示 without-cache cost 与 saved cost；Budget 页面补充 actual vs without-cache 的说明
+  - 统计中排除本地 `cache`、`semantic_cache` 与 hook-only 行，避免把本地网关缓存命中误算成 provider-side savings
 
 ## v1.5 — Contract Hardening + Runtime Safety（公开契约加固与运行时安全）
 

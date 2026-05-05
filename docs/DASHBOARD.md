@@ -8,7 +8,9 @@ v1.2 adds an MCP Gateway preview page for local MCP server proxying. It shows se
 
 | Page | Purpose |
 | --- | --- |
-| Overview | Live calls, cost, latency, budget, provider health, guardrails finding summary, and recent activity |
+| Overview | Live calls, cost, cache savings, latency, budget, provider health, guardrails finding summary, and recent activity |
+| Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
+| Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | MCP Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
 | Nodes | Upstream node health, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
@@ -16,7 +18,7 @@ v1.2 adds an MCP Gateway preview page for local MCP server proxying. It shows se
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
 | Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, compatibility evidence, and reasoning support |
 | Sessions | Metadata-only request timelines grouped by `session_id` / legacy `session_key`, with model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
-| Logs | Request metadata, source format, route result, cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, and export-safe call details |
+| Logs | Request metadata, source format, route result, local/provider cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, per-request cache-savings evidence, and export-safe call details |
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
 | Shadow | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
@@ -32,6 +34,14 @@ v1.4 adds summary cards, provider-family groups, collapsed provider lists, and f
 The detail panel shows homepage/docs/pricing links, auth type, base URL, endpoint map, model buckets, capability flags, limits, pricing units, override state, and sync status. It remains metadata-only and never exposes provider API keys, raw headers, prompts, responses, media bytes, or generated video bytes.
 
 The Add Node Wizard uses the same catalog response for provider presets. The provider step supports family filters and alias search such as Kimi/Moonshot, Qwen/Tongyi, and Doubao/Volcengine while keeping advanced endpoint, headers, model aliases, prefixes, pricing, compatibility profile, health check, and custom-provider fields available before save.
+
+## Cache Savings Analytics
+
+The Dashboard Overview now uses the provider-cache savings summary to show how much spend was avoided during the active window because the upstream provider returned cache-read tokens instead of billing everything as normal input. The KPI keeps local prompt-cache and semantic-cache short-circuit hits separate from provider-side cache savings.
+
+The Analytics page reads `GET /api/dashboard/cache-savings` to render daily savings trends, provider-cache hit-rate trends, provider/model savings rankings, and a stacked cost mix for normal input, cache read, cache write, and output cost. These views are derived from privacy-safe call-log metadata only.
+
+Logs rows add a Provider Cache badge when a provider-routed request reports `cache_read_input_tokens > 0`. The tooltip and detail panel compare `cost_usd` with `cost_without_cache_usd`, so operators can inspect per-request savings without exposing prompts, responses, raw headers, or provider keys. The Budget page reuses the same data to explain that actual spend already includes provider-cache discounts.
 
 ## API Key Safety
 

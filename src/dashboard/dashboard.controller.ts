@@ -70,6 +70,7 @@ import type { ProviderCompatibilityCapability } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { ConfigAuditService } from './config-audit.service';
 import { BenchmarkReportService } from './benchmark-report.service';
+import { CacheSavingsService, CacheSavingsGroupBy } from './cache-savings.service';
 import { BatchJobStoreService } from '../batch/batch-job-store.service';
 import {
   CreateGatewayApiKeyDto,
@@ -513,6 +514,7 @@ export class DashboardController {
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly teams: TeamService,
     private readonly shadowTraffic: ShadowTrafficService,
+    private readonly cacheSavings: CacheSavingsService,
     private readonly providerCompatibility: ProviderCompatibilityService,
     private readonly configAudit: ConfigAuditService,
     private readonly catalog: CatalogService,
@@ -1252,6 +1254,41 @@ export class DashboardController {
     };
   }
 
+  @Get('cache-savings')
+  @ApiOperation({
+    summary:
+      'Get provider-cache savings summary, grouped rankings, and daily trend analytics',
+  })
+  @ApiQuery({ name: 'period', required: false, enum: ['1d', '7d', '30d'] })
+  @ApiQuery({
+    name: 'group_by',
+    required: false,
+    enum: ['node', 'model', 'namespace', 'team', 'api_key'],
+  })
+  @ApiQuery({ name: 'api_key', required: false })
+  @ApiQuery({ name: 'api_key_id', required: false })
+  @ApiQuery({ name: 'namespace', required: false })
+  @ApiQuery({ name: 'team_id', required: false })
+  @ApiOkResponse({
+    description:
+      'Provider-cache savings totals, grouped breakdowns, and daily trend data derived from privacy-safe call-log metadata.',
+  })
+  async getCacheSavings(
+    @Query('period') period: string = '7d',
+    @Query('group_by') groupBy: CacheSavingsGroupBy = 'node',
+    @Query('api_key') apiKey?: string,
+    @Query('api_key_id') apiKeyId?: string,
+    @Query('namespace') namespaceId?: string,
+    @Query('team_id') teamId?: string,
+  ) {
+    return this.cacheSavings.getSummary(period, groupBy, {
+      api_key: apiKey,
+      api_key_id: apiKeyId,
+      namespace: namespaceId,
+      team_id: teamId,
+    });
+  }
+
   // ══════════════════════════════════════════════════════
   // Experiment Analytics (A/B Split)
   // ══════════════════════════════════════════════════════
@@ -1775,6 +1812,7 @@ export class DashboardController {
     const headers = [
       'timestamp', 'request_id', 'tier', 'score', 'node_id', 'model',
       'source_format', 'input_tokens', 'output_tokens', 'cost_usd',
+      'cost_without_cache_usd',
       'latency_ms', 'status_code', 'is_fallback', 'session_key',
       'fallback_reason', 'structured_output_requested',
       'structured_output_type', 'structured_output_strategy',
@@ -1785,7 +1823,8 @@ export class DashboardController {
       'media_type', 'media_operation', 'media_multipart',
       'media_file_count', 'media_byte_size', 'media_requested_format',
       'media_response_format', 'media_provider_response_type',
-      'api_key_id', 'api_key_name', 'retry_count', 'error', 'namespace_id',
+      'api_key_id', 'api_key_name', 'team_id', 'retry_count', 'error', 'namespace_id',
+      'cache_creation_input_tokens', 'cache_read_input_tokens',
     ];
     const csvRows = [headers.join(',')];
 

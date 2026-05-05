@@ -5,12 +5,19 @@
 ### Added
 
 - Added a provider usage-schema registry on compatibility profiles so SiftGate can declare official response paths for usage, cache-read, and cache-write token fields instead of hardcoding every provider family inside the transport layer.
+- Added provider-cache savings analytics for the OSS Dashboard, including `GET /api/dashboard/cache-savings`, grouped savings/hit-rate summaries, daily trends, and a new `cost_without_cache_usd` call-log field for actual-vs-no-cache comparisons.
+- Added Dashboard cache-savings visualizations across Overview, Analytics, Logs, and Budget so operators can see provider-cache savings, hit rate, cost mix, and per-request cache evidence without exposing prompts, responses, raw headers, or provider keys.
 
 ### Changed
 
 - Non-streaming provider normalization and the chat/responses/messages stream parsers now resolve usage fields from compatibility-profile schemas first, while preserving the previous hardcoded extraction path as a backward-compatible fallback for nodes without a known profile.
 - Responses streaming serialization now writes both `usage.prompt_tokens_details.cached_tokens` and legacy `usage.input_token_details.cached_tokens` so modern OpenAI-style cache accounting and older SDK expectations stay aligned.
 - Refreshed built-in cache-aware pricing references from official docs for Gemini 3.1 preview models and DeepSeek v4 compatibility mappings, and re-verified the current OpenAI and Anthropic cache pricing metadata.
+- Call logs now persist cache-aware and no-cache cost views together, while the SQLite/PostgreSQL schema patch and SQLite-to-PostgreSQL migrator both recognize the new `cost_without_cache_usd` column.
+
+### Fixed
+
+- The `cost_without_cache_usd` schema patch now skips empty databases that do not have `call_logs` yet, avoiding a startup-time `ALTER TABLE` failure on incomplete SQLite/PostgreSQL setups.
 
 ## 1.5.0 - 2026-05-05
 

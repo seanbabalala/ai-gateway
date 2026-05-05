@@ -13,6 +13,27 @@ export function isSemanticCacheLog(log: Pick<CallLog, 'node_id' | 'semantic_cach
   return log.node_id === SEMANTIC_CACHE_NODE || log.semantic_cache_hit === true
 }
 
+export function isProviderCacheLog(
+  log: Pick<
+    CallLog,
+    'node_id' | 'cache_read_input_tokens' | 'semantic_cache_hit' | 'tier'
+  >,
+): boolean {
+  return (
+    !isPromptCacheLog(log) &&
+    !isSemanticCacheLog(log) &&
+    Number(log.cache_read_input_tokens || 0) > 0
+  )
+}
+
+export function providerCacheSavingsUsd(
+  log: Pick<CallLog, 'cost_usd' | 'cost_without_cache_usd'>,
+): number {
+  const withoutCache = Number(log.cost_without_cache_usd || 0)
+  const actual = Number(log.cost_usd || 0)
+  return Math.max(0, withoutCache - actual)
+}
+
 export function visibleTierDistribution(items: TierDistribution[]): TierDistribution[] {
   return items.filter((item) => item.tier !== PROMPT_CACHE_TIER)
 }

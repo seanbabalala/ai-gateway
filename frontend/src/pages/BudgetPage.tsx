@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RotateCcw, Wallet } from 'lucide-react'
+import { ChevronDown, ChevronUp, RotateCcw, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card, CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table'
 import { useBudget, useBudgetKeys, type BudgetScope } from '@/hooks/use-budget'
 import { useApiKeys } from '@/hooks/use-api-keys'
+import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useConfig } from '@/hooks/use-config'
 import { useResetBudget } from '@/hooks/use-mutations'
 import { useThemeColors } from '@/lib/theme'
@@ -223,6 +224,7 @@ function BudgetRulesSection({
 export function BudgetPage() {
   const { t } = useTranslation('budget')
   const [selectedKey, setSelectedKey] = useState('')
+  const [showCacheDetail, setShowCacheDetail] = useState(false)
   const { data: budgetKeysData } = useBudgetKeys()
   const { data: apiKeysData } = useApiKeys()
   const selectedScope = useMemo<BudgetScope | undefined>(() => {
@@ -232,6 +234,15 @@ export function BudgetPage() {
     return { name: selectedKey }
   }, [selectedKey])
   const { data: budgetData, isLoading: budgetLoading, isError, error, refetch } = useBudget(selectedScope)
+  const { data: cacheSavings } = useCacheSavings(
+    '1d',
+    'node',
+    selectedScope?.id
+      ? { id: selectedScope.id }
+      : selectedScope?.name
+        ? { name: selectedScope.name }
+        : undefined,
+  )
   const { data: config, isLoading: configLoading } = useConfig()
   const resetBudget = useResetBudget()
   const colors = useThemeColors()
@@ -383,6 +394,28 @@ export function BudgetPage() {
           ) : (
             <div className="text-sm text-[var(--foreground-dim)]">{t('gauges.noCostRule')}</div>
           )}
+          <div className="w-full max-w-sm rounded-xl border border-emerald-500/12 bg-emerald-500/5 px-4 py-3">
+            <div className="text-[11px] font-medium text-[var(--foreground-dim)]">
+              {t('cache.note')}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCacheDetail((value) => !value)}
+              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:text-emerald-600 dark:text-emerald-300 dark:hover:text-emerald-200"
+            >
+              {showCacheDetail ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showCacheDetail ? t('cache.hideDetail') : t('cache.showDetail')}
+            </button>
+            {showCacheDetail && (
+              <div className="mt-2 space-y-1 font-mono text-[11px] text-[var(--foreground-muted)]">
+                <div>{t('cache.withoutCache', { value: formatCost(cacheSavings?.summary.hypothetical_no_cache_cost_usd || 0) })}</div>
+                <div>{t('cache.withCache', { value: formatCost(cacheSavings?.summary.actual_cost_usd || 0) })}</div>
+                <div className="text-emerald-700 dark:text-emerald-300">
+                  {t('cache.saved', { value: formatCost(cacheSavings?.summary.savings_usd || 0) })}
+                </div>
+              </div>
+            )}
+          </div>
         </Card>
       </div>
 

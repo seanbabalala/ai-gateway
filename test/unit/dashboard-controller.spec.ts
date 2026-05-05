@@ -6,7 +6,9 @@
  */
 
 import { HttpException } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { DashboardController } from '../../src/dashboard/dashboard.controller';
+import { DashboardGuard } from '../../src/auth/dashboard.guard';
 import { CircuitState } from '../../src/routing/circuit-breaker.service';
 import { mockConfigService } from '../helpers';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
@@ -326,6 +328,41 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     ...mockRepo(qb),
     find: jest.fn().mockResolvedValue([]),
   };
+  const cacheSavings = {
+    getSummary: jest.fn().mockResolvedValue({
+      period: '7d',
+      period_days: 7,
+      group_by: 'node',
+      filters: {
+        api_key_id: null,
+        api_key_name: null,
+        namespace_id: null,
+        team_id: null,
+      },
+      summary: {
+        total_requests: 0,
+        provider_routed_requests: 0,
+        requests_with_provider_cache_hit: 0,
+        cache_hit_rate: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_cache_read_tokens: 0,
+        total_cache_creation_tokens: 0,
+        total_normal_input_tokens: 0,
+        actual_cost_usd: 0,
+        hypothetical_no_cache_cost_usd: 0,
+        savings_usd: 0,
+        savings_percentage: 0,
+        normal_input_cost_usd: 0,
+        cache_read_cost_usd: 0,
+        cache_creation_cost_usd: 0,
+        output_cost_usd: 0,
+      },
+      groups: [],
+      daily_trend: [],
+    }),
+    ...overrides.cacheSavings,
+  };
   const providerCompatibility = {
     matrixForNodes: jest.fn().mockResolvedValue({}),
     compatibilityDiagnostics: jest.fn().mockReturnValue([]),
@@ -379,6 +416,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     gatewayApiKeys as any,
     teams as any,
     shadowTraffic as any,
+    cacheSavings as any,
     providerCompatibility as any,
     configAudit as any,
     catalog as any,
@@ -394,7 +432,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     overrides.mcp as any,
   );
 
-  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, teams, shadowTraffic, providerCompatibility, configAudit, batchJobs, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
+  return { controller, config, routingService, circuitBreaker, concurrencyLimiter, activeHealth, budgetService, cacheService, gatewayApiKeys, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, batchJobs, callLogRepo, routeDecisionRepo, shadowTrafficRepo, qb, capabilityService, routingRecommendations, catalog };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -463,6 +501,93 @@ describe('DashboardController — getCostAnalytics', () => {
     const result = await controller.getCostAnalytics('30d', 'model');
 
     expect(result.period).toBe(30);
+  });
+});
+
+describe('DashboardController — cache savings analytics', () => {
+  it('keeps DashboardGuard auth on the cache-savings endpoint', () => {
+    const guards =
+      Reflect.getMetadata(GUARDS_METADATA, DashboardController) || [];
+
+    expect(guards).toEqual(expect.arrayContaining([DashboardGuard]));
+  });
+
+  it('returns provider-cache savings summary and forwards filters to the service', async () => {
+    const cacheSavings = {
+      getSummary: jest.fn().mockResolvedValue({
+        period: '30d',
+        period_days: 30,
+        group_by: 'team',
+        filters: {
+          api_key_id: 'key_1',
+          api_key_name: null,
+          namespace_id: 'team-a',
+          team_id: 'ops',
+        },
+        summary: {
+          total_requests: 12,
+          provider_routed_requests: 10,
+          requests_with_provider_cache_hit: 6,
+          cache_hit_rate: 60,
+          total_input_tokens: 120000,
+          total_output_tokens: 18000,
+          total_cache_read_tokens: 42000,
+          total_cache_creation_tokens: 3000,
+          total_normal_input_tokens: 75000,
+          actual_cost_usd: 1.23,
+          hypothetical_no_cache_cost_usd: 1.52,
+          savings_usd: 0.29,
+          savings_percentage: 19.08,
+          normal_input_cost_usd: 0.68,
+          cache_read_cost_usd: 0.11,
+          cache_creation_cost_usd: 0.04,
+          output_cost_usd: 0.4,
+        },
+        groups: [
+          {
+            group_value: 'ops',
+            group_label: 'ops',
+            total_requests: 12,
+            provider_routed_requests: 10,
+            requests_with_provider_cache_hit: 6,
+            cache_hit_rate: 60,
+            total_input_tokens: 120000,
+            total_output_tokens: 18000,
+            total_cache_read_tokens: 42000,
+            total_cache_creation_tokens: 3000,
+            total_normal_input_tokens: 75000,
+            actual_cost_usd: 1.23,
+            hypothetical_no_cache_cost_usd: 1.52,
+            savings_usd: 0.29,
+            savings_percentage: 19.08,
+            normal_input_cost_usd: 0.68,
+            cache_read_cost_usd: 0.11,
+            cache_creation_cost_usd: 0.04,
+            output_cost_usd: 0.4,
+          },
+        ],
+        daily_trend: [],
+      }),
+    };
+    const { controller } = makeDashboard({ cacheSavings });
+
+    const result = await controller.getCacheSavings(
+      '30d',
+      'team',
+      undefined,
+      'key_1',
+      'team-a',
+      'ops',
+    );
+
+    expect(cacheSavings.getSummary).toHaveBeenCalledWith('30d', 'team', {
+      api_key: undefined,
+      api_key_id: 'key_1',
+      namespace: 'team-a',
+      team_id: 'ops',
+    });
+    expect(result.summary.savings_usd).toBe(0.29);
+    expect(result.groups[0].group_value).toBe('ops');
   });
 });
 

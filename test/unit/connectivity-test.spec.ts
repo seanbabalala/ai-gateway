@@ -58,6 +58,40 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
     }),
     recent: jest.fn().mockResolvedValue([]),
   } as any;
+  const cacheSavings = {
+    getSummary: jest.fn().mockResolvedValue({
+      period: '7d',
+      period_days: 7,
+      group_by: 'node',
+      filters: {
+        api_key_id: null,
+        api_key_name: null,
+        namespace_id: null,
+        team_id: null,
+      },
+      summary: {
+        total_requests: 0,
+        provider_routed_requests: 0,
+        requests_with_provider_cache_hit: 0,
+        cache_hit_rate: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_cache_read_tokens: 0,
+        total_cache_creation_tokens: 0,
+        total_normal_input_tokens: 0,
+        actual_cost_usd: 0,
+        hypothetical_no_cache_cost_usd: 0,
+        savings_usd: 0,
+        savings_percentage: 0,
+        normal_input_cost_usd: 0,
+        cache_read_cost_usd: 0,
+        cache_creation_cost_usd: 0,
+        output_cost_usd: 0,
+      },
+      groups: [],
+      daily_trend: [],
+    }),
+  } as any;
   const providerCompatibility = {
     runNodeMatrix: jest.fn(),
     matrixForNodes: jest.fn().mockResolvedValue({}),
@@ -108,7 +142,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, teams, shadowTraffic, providerCompatibility, configAudit, catalog, batchJobs, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, catalog, batchJobs, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

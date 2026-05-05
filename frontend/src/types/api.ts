@@ -113,6 +113,7 @@ export interface CallLog {
   input_tokens: number
   output_tokens: number
   cost_usd: number
+  cost_without_cache_usd?: number | null
   latency_ms: number
   status_code: number
   is_fallback: boolean
@@ -1055,6 +1056,50 @@ export interface CostAnalyticsResponse {
   byModel: CostAnalyticsGroupItem[]
   byNode: CostAnalyticsGroupItem[]
   byTier: CostAnalyticsGroupItem[]
+}
+
+export interface CacheSavingsMetrics {
+  total_requests: number
+  provider_routed_requests: number
+  requests_with_provider_cache_hit: number
+  cache_hit_rate: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cache_read_tokens: number
+  total_cache_creation_tokens: number
+  total_normal_input_tokens: number
+  actual_cost_usd: number
+  hypothetical_no_cache_cost_usd: number
+  savings_usd: number
+  savings_percentage: number
+  normal_input_cost_usd: number
+  cache_read_cost_usd: number
+  cache_creation_cost_usd: number
+  output_cost_usd: number
+}
+
+export interface CacheSavingsGroupRow extends CacheSavingsMetrics {
+  group_value: string
+  group_label: string
+}
+
+export interface CacheSavingsTrendRow extends CacheSavingsMetrics {
+  date: string
+}
+
+export interface CacheSavingsResponse {
+  period: string
+  period_days: number
+  group_by: 'node' | 'model' | 'namespace' | 'team' | 'api_key'
+  filters: {
+    api_key_id: string | null
+    api_key_name: string | null
+    namespace_id: string | null
+    team_id: string | null
+  }
+  summary: CacheSavingsMetrics
+  groups: CacheSavingsGroupRow[]
+  daily_trend: CacheSavingsTrendRow[]
 }
 
 // ── Benchmark Report ──

@@ -2699,7 +2699,14 @@ describe('PipelineService — cache-aware cost calculation', () => {
       (300 / 1_000_000) * 3.75 +
       (200 / 1_000_000) * 0.30 +
       (200 / 1_000_000) * 15.0;
+    const expectedNoCacheCost =
+      (1000 / 1_000_000) * 3.0 +
+      (200 / 1_000_000) * 15.0;
     expect(savedLog.cost_usd).toBeCloseTo(expectedCost, 10);
+    expect(savedLog.cost_without_cache_usd).toBeCloseTo(
+      expectedNoCacheCost,
+      10,
+    );
   });
 
   it('should persist cache tokens in call log', async () => {
@@ -2764,6 +2771,11 @@ describe('PipelineService — cache-aware cost calculation', () => {
     // Without cache pricing, falls back to normal input rate
     // Normal: (1000 - 500) / 1M * 5 + 500/1M * 5 + 100/1M * 15 = 1000/1M * 5 + 100/1M * 15
     const expectedCost = (1000 / 1_000_000) * 5.0 + (100 / 1_000_000) * 15.0;
+    const expectedNoCacheCost = expectedCost;
     expect(savedLog.cost_usd).toBeCloseTo(expectedCost, 10);
+    expect(savedLog.cost_without_cache_usd).toBeCloseTo(
+      expectedNoCacheCost,
+      10,
+    );
   });
 });

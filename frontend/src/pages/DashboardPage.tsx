@@ -29,6 +29,7 @@ import {
   Server,
   BellRing,
   ShieldCheck,
+  TrendingDown,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -48,12 +49,14 @@ import { useNamespaces } from '@/hooks/use-namespaces'
 import { useConfig } from '@/hooks/use-config'
 import { useAlerts } from '@/hooks/use-alerts'
 import { useGuardrails } from '@/hooks/use-guardrails'
+import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
   formatTokens,
   formatCost,
   formatLatency,
+  formatPercent,
   formatTimestamp,
   TIER_CHART_COLORS,
   getNodeColor,
@@ -144,6 +147,10 @@ export function DashboardPage() {
   const { data: configData } = useConfig()
   const { data: alertsData } = useAlerts()
   const { data: guardrailsData } = useGuardrails()
+  const { data: cacheSavings } = useCacheSavings('1d', 'node', {
+    id: apiKeyFilter || undefined,
+    namespaceId: namespaceFilter || undefined,
+  })
   const colors = useThemeColors()
 
   const apiKeyOptions = [
@@ -166,8 +173,8 @@ export function DashboardPage() {
     return (
       <div className="space-y-8">
         <PageHeader title={t('dashboard.title')} description={t('dashboard.description')} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className="glass-card-static rounded-2xl p-6">
@@ -463,7 +470,7 @@ export function DashboardPage() {
       </Card>
 
       {/* Metric Cards */}
-      <div className="stagger-children grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="stagger-children grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           label={t('metrics.totalCalls')}
           value={formatNumber(total.calls)}
@@ -487,6 +494,53 @@ export function DashboardPage() {
           icon={DollarSign}
           trend={stats.last24h.costUsd > 0 ? { value: costTrend, label: t('metrics.last24h') } : undefined}
         />
+        <Card className="animate-fade-up relative overflow-hidden p-5">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.16),transparent_55%)]" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                {t('metrics.cacheSavings')}
+              </div>
+              <div
+                className={
+                  (cacheSavings?.summary.savings_usd || 0) >= 0
+                    ? 'text-[29px] font-extrabold leading-none tracking-tight text-emerald-700 dark:text-emerald-300'
+                    : 'text-[29px] font-extrabold leading-none tracking-tight text-amber-700 dark:text-amber-300'
+                }
+              >
+                {formatCost(cacheSavings?.summary.savings_usd || 0)}
+              </div>
+              <div className="space-y-1">
+                <div className="text-[11px] font-medium text-[var(--foreground-dim)]">
+                  {t('metrics.cacheSavingsPercent', {
+                    value: formatPercent(cacheSavings?.summary.savings_percentage || 0),
+                  })}
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+                  {t('metrics.cacheSavingsHitRate', {
+                    value: formatPercent(cacheSavings?.summary.cache_hit_rate || 0),
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+              <TrendingDown className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="relative mt-5 flex h-6 items-end gap-1">
+            {[22, 36, 48, 64, 42, 72, 58, 78, 62].map((height, index) => (
+              <div
+                key={`cache-savings-${index}`}
+                className="w-full rounded-full"
+                style={{
+                  height: index >= 5 ? `${height}%` : '3px',
+                  background:
+                    index >= 5 ? 'rgba(34,197,94,0.72)' : 'rgba(34,197,94,0.18)',
+                }}
+              />
+            ))}
+          </div>
+        </Card>
         <MetricCard
           label={t('metrics.avgLatency')}
           value={formatLatency(total.avgLatencyMs)}

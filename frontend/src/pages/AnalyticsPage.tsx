@@ -14,7 +14,16 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
-import { DollarSign, TrendingUp, Coins, Zap, BarChart3 as BarChart3Icon, PieChart as PieChartIcon } from 'lucide-react'
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Coins,
+  Zap,
+  Database,
+  BarChart3 as BarChart3Icon,
+  PieChart as PieChartIcon,
+} from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -32,12 +41,14 @@ import {
 } from '@/components/ui/table'
 import { useCostAnalytics } from '@/hooks/use-analytics'
 import { useApiKeys } from '@/hooks/use-api-keys'
+import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatCost,
   formatNumber,
   formatTokens,
   formatLatency,
+  formatPercent,
   getNodeColor,
   TIER_CHART_COLORS,
 } from '@/lib/utils'
@@ -46,6 +57,12 @@ const MODEL_COLORS = [
   '#064B3A', '#4867E8', '#D9872F', '#7446C6', '#CC3C7E',
   '#189AA8', '#B86B2B', '#8B6AD6', '#287F8C', '#4E756A',
 ]
+const CACHE_STACK_COLORS = {
+  normal: '#0F766E',
+  read: '#10B981',
+  write: '#F59E0B',
+  output: '#475569',
+}
 
 export function AnalyticsPage() {
   const { t } = useTranslation('analytics')
@@ -56,6 +73,14 @@ export function AnalyticsPage() {
     apiKeyFilter ? { id: apiKeyFilter } : undefined,
   )
   const { data: apiKeysData } = useApiKeys()
+  const {
+    data: providerCacheByNode,
+    isLoading: cacheNodeLoading,
+  } = useCacheSavings(period, 'node', apiKeyFilter ? { id: apiKeyFilter } : undefined)
+  const {
+    data: providerCacheByModel,
+    isLoading: cacheModelLoading,
+  } = useCacheSavings(period, 'model', apiKeyFilter ? { id: apiKeyFilter } : undefined)
   const colors = useThemeColors()
   const periodOptions = [
     { value: '7d', label: t('filters.days', { count: 7 }) },
@@ -95,6 +120,11 @@ export function AnalyticsPage() {
     padding: '8px 12px',
     boxShadow: '0 22px 52px rgba(5,46,36,0.16)',
   }
+  const cachePanelReady =
+    providerCacheByNode &&
+    providerCacheByModel &&
+    providerCacheByNode.summary.provider_routed_requests > 0
+  const cachePeriodDays = providerCacheByNode?.period_days || data.period
 
   return (
     <div className="space-y-6">
@@ -370,8 +400,322 @@ export function AnalyticsPage() {
         </CardContent>
       </Card>
 
+      <Card className="animate-fade-up overflow-hidden" style={{ animationDelay: '320ms' }}>
+        <CardHeader>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>{t('cache.title')}</CardTitle>
+              <div className="mt-1 text-sm text-[var(--foreground-dim)]">
+                {t('cache.description', { count: cachePeriodDays })}
+              </div>
+            </div>
+            <div className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+              {t('cache.badge')}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {cacheNodeLoading || cacheModelLoading ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <SkeletonCard key={`cache-metric-${index}`} />
+                ))}
+              </div>
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <SkeletonChart height={260} />
+                <SkeletonChart height={260} />
+              </div>
+            </div>
+          ) : !cachePanelReady ? (
+            <EmptyState
+              icon={Database}
+              title={t('cache.emptyTitle')}
+              description={t('cache.emptyDescription')}
+              className="py-8"
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <MetricCard
+                  label={t('cache.metrics.saved')}
+                  value={formatCost(providerCacheByNode.summary.savings_usd)}
+                  subtitle={t('cache.metrics.savedPercent', {
+                    value: formatPercent(providerCacheByNode.summary.savings_percentage),
+                  })}
+                  icon={TrendingDown}
+                />
+                <MetricCard
+                  label={t('cache.metrics.hitRate')}
+                  value={formatPercent(providerCacheByNode.summary.cache_hit_rate)}
+                  subtitle={t('cache.metrics.hitRequests', {
+                    hits: formatNumber(providerCacheByNode.summary.requests_with_provider_cache_hit),
+                    total: formatNumber(providerCacheByNode.summary.provider_routed_requests),
+                  })}
+                  icon={Zap}
+                />
+                <MetricCard
+                  label={t('cache.metrics.withoutCache')}
+                  value={formatCost(providerCacheByNode.summary.hypothetical_no_cache_cost_usd)}
+                  subtitle={t('cache.metrics.withCache', {
+                    value: formatCost(providerCacheByNode.summary.actual_cost_usd),
+                  })}
+                  icon={DollarSign}
+                />
+                <MetricCard
+                  label={t('cache.metrics.cacheReadTokens')}
+                  value={formatTokens(providerCacheByNode.summary.total_cache_read_tokens)}
+                  subtitle={t('cache.metrics.cacheWriteTokens', {
+                    value: formatTokens(providerCacheByNode.summary.total_cache_creation_tokens),
+                  })}
+                  icon={Coins}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <Card className="border border-emerald-500/12 bg-[linear-gradient(180deg,rgba(16,185,129,0.06),transparent)]">
+                  <CardHeader>
+                    <CardTitle>{t('cache.trend.title')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <AreaChart data={providerCacheByNode.daily_trend}>
+                        <defs>
+                          <linearGradient id="cacheSavingsGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={CACHE_STACK_COLORS.read} stopOpacity={0.22} />
+                            <stop offset="95%" stopColor={CACHE_STACK_COLORS.read} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={{ stroke: colors.chartAxisLine }}
+                          tickLine={false}
+                          tickFormatter={(value: string) => {
+                            const dateValue = new Date(value)
+                            return `${dateValue.getMonth() + 1}/${dateValue.getDate()}`
+                          }}
+                        />
+                        <YAxis
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={false}
+                          tickLine={false}
+                          width={56}
+                          tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+                        />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          itemStyle={{ color: colors.chartTooltipText }}
+                          formatter={(value: number, name: string) => {
+                            if (name === 'savings_usd') return [formatCost(value), t('cache.labels.saved')]
+                            if (name === 'actual_cost_usd') return [formatCost(value), t('cache.labels.withCache')]
+                            return [value, name]
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="savings_usd"
+                          stroke={CACHE_STACK_COLORS.read}
+                          strokeWidth={2.5}
+                          fill="url(#cacheSavingsGradient)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('cache.hitRateTrend.title')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <AreaChart data={providerCacheByNode.daily_trend}>
+                        <defs>
+                          <linearGradient id="cacheHitGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={CACHE_STACK_COLORS.normal} stopOpacity={0.22} />
+                            <stop offset="95%" stopColor={CACHE_STACK_COLORS.normal} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={{ stroke: colors.chartAxisLine }}
+                          tickLine={false}
+                          tickFormatter={(value: string) => {
+                            const dateValue = new Date(value)
+                            return `${dateValue.getMonth() + 1}/${dateValue.getDate()}`
+                          }}
+                        />
+                        <YAxis
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={false}
+                          tickLine={false}
+                          width={48}
+                          tickFormatter={(value: number) => `${value.toFixed(0)}%`}
+                        />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          itemStyle={{ color: colors.chartTooltipText }}
+                          formatter={(value: number) => [formatPercent(value), t('cache.labels.hitRate')]}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="cache_hit_rate"
+                          stroke={CACHE_STACK_COLORS.normal}
+                          strokeWidth={2.5}
+                          fill="url(#cacheHitGradient)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('cache.byProvider.title')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart
+                        data={providerCacheByNode.groups.slice(0, 6)}
+                        layout="vertical"
+                        margin={{ left: 10, right: 10 }}
+                      >
+                        <CartesianGrid horizontal={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
+                        <XAxis
+                          type="number"
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="group_label"
+                          width={96}
+                          tick={{ fill: colors.chartAxisTick, fontSize: 11, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          itemStyle={{ color: colors.chartTooltipText }}
+                          formatter={(value: number, name: string) => {
+                            if (name === 'savings_usd') return [formatCost(value), t('cache.labels.saved')]
+                            return [value, name]
+                          }}
+                        />
+                        <Bar dataKey="savings_usd" radius={[0, 8, 8, 0]}>
+                          {providerCacheByNode.groups.slice(0, 6).map((entry) => (
+                            <Cell key={entry.group_value} fill={getNodeColor(entry.group_value)} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('cache.byModel.title')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart
+                        data={providerCacheByModel.groups.slice(0, 6)}
+                        layout="vertical"
+                        margin={{ left: 10, right: 10 }}
+                      >
+                        <CartesianGrid horizontal={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
+                        <XAxis
+                          type="number"
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="group_label"
+                          width={120}
+                          tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          itemStyle={{ color: colors.chartTooltipText }}
+                          formatter={(value: number, name: string) => {
+                            if (name === 'savings_usd') return [formatCost(value), t('cache.labels.saved')]
+                            return [value, name]
+                          }}
+                        />
+                        <Bar dataKey="savings_usd" radius={[0, 8, 8, 0]}>
+                          {providerCacheByModel.groups.slice(0, 6).map((entry, index) => (
+                            <Cell
+                              key={entry.group_value}
+                              fill={MODEL_COLORS[index % MODEL_COLORS.length]}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('cache.costMix.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={providerCacheByNode.groups.slice(0, 6)}>
+                      <CartesianGrid vertical={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
+                      <XAxis
+                        dataKey="group_label"
+                        tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                        axisLine={{ stroke: colors.chartAxisLine }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={52}
+                        tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: colors.chartTooltipText }}
+                        formatter={(value: number, name: string) => {
+                          if (name === 'normal_input_cost_usd') return [formatCost(value), t('cache.costMix.normal')]
+                          if (name === 'cache_read_cost_usd') return [formatCost(value), t('cache.costMix.read')]
+                          if (name === 'cache_creation_cost_usd') return [formatCost(value), t('cache.costMix.write')]
+                          if (name === 'output_cost_usd') return [formatCost(value), t('cache.costMix.output')]
+                          return [value, name]
+                        }}
+                      />
+                      <Bar dataKey="normal_input_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.normal} radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="cache_read_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.read} />
+                      <Bar dataKey="cache_creation_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.write} />
+                      <Bar dataKey="output_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.output} radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Detailed Breakdown Table */}
-      <Card className="animate-fade-up" style={{ animationDelay: '340ms' }}>
+      <Card className="animate-fade-up" style={{ animationDelay: '380ms' }}>
         <CardHeader>
           <CardTitle>{t('breakdown.title')}</CardTitle>
         </CardHeader>

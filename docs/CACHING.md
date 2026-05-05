@@ -2,6 +2,8 @@
 
 SiftGate has two local caching layers with different safety models.
 
+v1.6 also deepens **provider-side cache accounting**. This is separate from the local prompt cache and semantic cache: when an upstream provider returns cache-read or cache-write token counters, SiftGate records them for routing, logs, Dashboard analytics, and cost attribution without treating the request as a local cache hit.
+
 ## Prompt Cache
 
 `cache` stores deterministic prompt responses keyed by canonical request semantics. It is disabled by default.
@@ -52,6 +54,24 @@ Route Decision Trace can show:
 - local prompt-cache hit or miss
 - provider cache capability and read/write price evidence
 - semantic cache match/hit, score, threshold, and metadata-only state
+
+## Provider Cache Accounting
+
+When an upstream provider returns cache token usage, SiftGate records:
+
+- `cache_read_input_tokens`
+- `cache_creation_input_tokens`
+- `cost_usd`
+- `cost_without_cache_usd`
+
+This lets the OSS Dashboard show the real savings from provider cache discounts:
+
+- Overview: one-window cache savings KPI
+- Analytics: savings trend, hit-rate trend, provider/model rankings, and cost mix
+- Logs: provider cache badge plus per-request saved-cost tooltip/detail
+- Budget: actual spend vs no-cache baseline
+
+Local prompt-cache and semantic-cache hits remain separate. Provider-cache savings intentionally exclude rows whose `node_id` is the local `cache` or `semantic_cache` path so the numbers reflect upstream-provider discounts only.
 
 ## Related Docs
 
