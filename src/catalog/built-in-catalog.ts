@@ -46,6 +46,7 @@ function promptCachingPricing(
   cacheReadInput: number,
   cacheCreationInput: number,
   notes?: string,
+  overrides: Partial<CatalogPricing> = {},
 ): CatalogPricing {
   return pricing(input, output, notes, {
     cache_read_input: cacheReadInput,
@@ -62,6 +63,29 @@ function promptCachingPricing(
       cache_read_per_1m_tokens: 'usd_per_1m_cache_read_input_tokens',
       cache_write_per_1m_tokens: 'usd_per_1m_cache_write_input_tokens',
     },
+    ...overrides,
+  });
+}
+
+function cacheReadPricing(
+  input: number,
+  output: number,
+  cacheReadInput: number,
+  notes?: string,
+  overrides: Partial<CatalogPricing> = {},
+): CatalogPricing {
+  return pricing(input, output, notes, {
+    cache_read_input: cacheReadInput,
+    cache_read_per_1m_tokens: cacheReadInput,
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      cache_read_input: 'usd_per_1m_cache_read_input_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      cache_read_per_1m_tokens: 'usd_per_1m_cache_read_input_tokens',
+    },
+    ...overrides,
   });
 }
 
@@ -283,8 +307,20 @@ function inferProviderModelBuckets(models: CatalogProvider['models']): NonNullab
 
 function inferCompatibilityProfile(providerConfig: BuiltinCatalogProviderInput): string | string[] {
   if (providerConfig.id === 'aws-bedrock') return 'aws_bedrock_converse';
-  if (providerConfig.id === 'google') return ['google_gemini_compatible', 'google_vertex_compatible'];
+  if (providerConfig.id === 'google') {
+    return [
+      'google_gemini_openai_compatible',
+      'google_gemini_compatible',
+      'google_vertex_compatible',
+    ];
+  }
   if (providerConfig.id === 'anthropic') return 'anthropic_messages_compatible';
+  if (providerConfig.id === 'deepseek') return 'deepseek_compatible';
+  if (providerConfig.id === 'ollama') return 'local_ollama';
+  if (providerConfig.id === 'vllm') return 'local_vllm';
+  if (providerConfig.id === 'huggingface-tgi') return 'local_tgi';
+  if (providerConfig.id === 'lm-studio') return 'local_lmstudio';
+  if (providerConfig.id === 'sglang') return 'local_sglang';
   if (providerConfig.capabilities?.includes('local')) return 'openai_compatible_local';
   if (providerConfig.capabilities?.includes('async_predictions')) return 'media_generation_async';
   if (providerConfig.capabilities?.includes('speech')) return 'speech_compatible';
@@ -319,7 +355,16 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         endpoints: { chat_completions: '/v1/chat/completions', responses: '/v1/responses', batch: '/v1/batches' },
         capabilities: ['structured_output', 'streaming', 'tools', 'prompt_cache', 'read_cache'],
         limits: { max_context_tokens: 128000 },
-        pricing: promptCachingPricing(2.5, 10, 1.25, 2.5),
+        pricing: promptCachingPricing(
+          2.5,
+          10,
+          1.25,
+          2.5,
+          'Official OpenAI pricing keeps cached input at 50% of standard input for gpt-4o.',
+          {
+            source_url: 'https://developers.openai.com/api/docs/pricing',
+          },
+        ),
         prompt_cache: true,
         read_cache: true,
         source: 'builtin',
@@ -332,7 +377,16 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         endpoints: { chat_completions: '/v1/chat/completions', responses: '/v1/responses', batch: '/v1/batches' },
         capabilities: ['structured_output', 'streaming', 'tools', 'prompt_cache', 'read_cache'],
         limits: { max_context_tokens: 128000 },
-        pricing: promptCachingPricing(0.15, 0.6, 0.075, 0.15),
+        pricing: promptCachingPricing(
+          0.15,
+          0.6,
+          0.075,
+          0.15,
+          'Official OpenAI pricing keeps cached input at 50% of standard input for gpt-4o-mini.',
+          {
+            source_url: 'https://developers.openai.com/api/docs/pricing',
+          },
+        ),
         prompt_cache: true,
         read_cache: true,
         source: 'builtin',
@@ -390,7 +444,16 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         endpoints: { messages: '/v1/messages' },
         capabilities: ['streaming', 'tools', 'vision', 'prompt_cache', 'read_cache', 'write_cache'],
         limits: { max_context_tokens: 200000 },
-        pricing: promptCachingPricing(3, 15, 0.3, 3.75),
+        pricing: promptCachingPricing(
+          3,
+          15,
+          0.3,
+          3.75,
+          'Anthropic pricing page lists Claude Sonnet 4 at the same rates as the current Sonnet 4.6 family; the legacy Sonnet 4 model id is retained here for compatibility.',
+          {
+            source_url: 'https://docs.claude.com/en/about-claude/pricing',
+          },
+        ),
         prompt_cache: true,
         read_cache: true,
         write_cache: true,
@@ -398,13 +461,22 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         overridden: false,
       },
       {
-        id: 'claude-haiku-4-20250514',
+        id: 'claude-haiku-4-5-20251001',
         provider: 'anthropic',
         modalities: ['text', 'vision'],
         endpoints: { messages: '/v1/messages' },
         capabilities: ['streaming', 'tools', 'vision', 'prompt_cache', 'read_cache', 'write_cache'],
         limits: { max_context_tokens: 200000 },
-        pricing: promptCachingPricing(0.8, 4, 0.08, 1),
+        pricing: promptCachingPricing(
+          1,
+          5,
+          0.1,
+          1.25,
+          'Anthropic pricing page lists Claude Haiku 4.5 at these rates, including 5 minute cache reads and writes.',
+          {
+            source_url: 'https://docs.claude.com/en/about-claude/pricing',
+          },
+        ),
         prompt_cache: true,
         read_cache: true,
         write_cache: true,
@@ -420,7 +492,8 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     auth_type: 'bearer',
     endpoints: { chat_completions: '/v1beta/openai/chat/completions', embeddings: '/v1beta/openai/embeddings' },
     model_prefixes: ['gemini'],
-    capabilities: ['vision', 'long_context'],
+    capabilities: ['vision', 'long_context', 'read_cache'],
+    read_cache: true,
     models: [
       {
         id: 'gemini-2.5-pro',
@@ -430,6 +503,46 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         capabilities: ['vision', 'long_context'],
         limits: { max_context_tokens: 1000000 },
         pricing: pricing(1.25, 10),
+        source: 'builtin',
+        overridden: false,
+      },
+      {
+        id: 'gemini-3.1-pro-preview',
+        provider: 'google',
+        modalities: ['text', 'vision', 'audio', 'video'],
+        endpoints: { chat_completions: '/v1beta/openai/chat/completions' },
+        capabilities: ['vision', 'long_context', 'read_cache'],
+        limits: { max_context_tokens: 1000000 },
+        pricing: cacheReadPricing(
+          2,
+          12,
+          0.2,
+          'Google Gemini 3.1 Pro preview context caching adds a separate cache-read price and a storage charge outside SiftGate token accounting.',
+          {
+            source_url: 'https://ai.google.dev/gemini-api/docs/pricing',
+          },
+        ),
+        read_cache: true,
+        source: 'builtin',
+        overridden: false,
+      },
+      {
+        id: 'gemini-3.1-flash-lite-preview',
+        provider: 'google',
+        modalities: ['text', 'vision', 'audio', 'video'],
+        endpoints: { chat_completions: '/v1beta/openai/chat/completions' },
+        capabilities: ['vision', 'long_context', 'read_cache'],
+        limits: { max_context_tokens: 1000000 },
+        pricing: cacheReadPricing(
+          0.25,
+          1.5,
+          0.025,
+          'Google Gemini 3.1 Flash-Lite preview publishes a separate cache-read price and token-hour storage charge.',
+          {
+            source_url: 'https://ai.google.dev/gemini-api/docs/pricing',
+          },
+        ),
+        read_cache: true,
         source: 'builtin',
         overridden: false,
       },
@@ -546,15 +659,25 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     auth_type: 'bearer',
     endpoints: { chat_completions: '/v1/chat/completions' },
     model_prefixes: ['deepseek'],
-    capabilities: ['openai_compatible', 'reasoning'],
+    capabilities: ['openai_compatible', 'reasoning', 'read_cache'],
+    read_cache: true,
     models: [
       {
         id: 'deepseek-chat',
         provider: 'deepseek',
         modalities: ['text'],
         endpoints: { chat_completions: '/v1/chat/completions' },
-        capabilities: ['streaming'],
-        pricing: pricing(0.27, 1.1),
+        capabilities: ['streaming', 'read_cache'],
+        pricing: cacheReadPricing(
+          0.14,
+          0.28,
+          0.0028,
+          'DeepSeek maps deepseek-chat compatibility traffic to the non-thinking mode of deepseek-v4-flash and publishes a dedicated cache-hit token price.',
+          {
+            source_url: 'https://api-docs.deepseek.com/quick_start/pricing',
+          },
+        ),
+        read_cache: true,
         source: 'builtin',
         overridden: false,
       },
@@ -563,8 +686,17 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         provider: 'deepseek',
         modalities: ['text'],
         endpoints: { chat_completions: '/v1/chat/completions' },
-        capabilities: ['reasoning'],
-        pricing: pricing(0.55, 2.19),
+        capabilities: ['reasoning', 'read_cache'],
+        pricing: cacheReadPricing(
+          0.14,
+          0.28,
+          0.0028,
+          'DeepSeek maps deepseek-reasoner compatibility traffic to the thinking mode of deepseek-v4-flash; the official pricing page applies the same cache-hit and token rates.',
+          {
+            source_url: 'https://api-docs.deepseek.com/quick_start/pricing',
+          },
+        ),
+        read_cache: true,
         source: 'builtin',
         overridden: false,
       },

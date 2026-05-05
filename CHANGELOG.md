@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- Added a provider usage-schema registry on compatibility profiles so SiftGate can declare official response paths for usage, cache-read, and cache-write token fields instead of hardcoding every provider family inside the transport layer.
+
+### Changed
+
+- Non-streaming provider normalization and the chat/responses/messages stream parsers now resolve usage fields from compatibility-profile schemas first, while preserving the previous hardcoded extraction path as a backward-compatible fallback for nodes without a known profile.
+- Responses streaming serialization now writes both `usage.prompt_tokens_details.cached_tokens` and legacy `usage.input_token_details.cached_tokens` so modern OpenAI-style cache accounting and older SDK expectations stay aligned.
+- Refreshed built-in cache-aware pricing references from official docs for Gemini 3.1 preview models and DeepSeek v4 compatibility mappings, and re-verified the current OpenAI and Anthropic cache pricing metadata.
 
 ## 1.5.0 - 2026-05-05
 

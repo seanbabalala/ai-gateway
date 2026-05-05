@@ -2,6 +2,7 @@ import { ChatCompletionsStreamParser } from '../../src/providers/stream/chat-com
 import { MessagesStreamParser } from '../../src/providers/stream/messages.stream';
 import { ResponsesStreamParser } from '../../src/providers/stream/responses.stream';
 import { CanonicalStreamEvent } from '../../src/canonical/canonical.types';
+import { getCompatibilityProfile } from '../../src/catalog/compatibility-profiles';
 
 /** Collect all events from feeding chunks to a parser */
 function collect(parser: { parse(chunk: string): Generator<CanonicalStreamEvent> }, ...chunks: string[]): CanonicalStreamEvent[] {
@@ -419,6 +420,25 @@ describe('Stream Parsers — cache token extraction', () => {
     }
   });
 
+  it('ChatCompletionsStreamParser should use the DeepSeek schema for prompt cache hit/miss counters', () => {
+    const parser = new ChatCompletionsStreamParser(
+      getCompatibilityProfile('deepseek_compatible')?.usage_schema
+        ?.chat_completions,
+    );
+    const events = collect(
+      parser,
+      'data: {"id":"chatcmpl-1","model":"deepseek-chat","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"chatcmpl-1","choices":[],"usage":{"completion_tokens":5,"prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":20,"total_tokens":105}}\n\n',
+    );
+    const stop = events.find((event) => event.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.input_tokens).toBe(100);
+      expect(stop.usage.output_tokens).toBe(5);
+      expect(stop.usage.cache_read_input_tokens).toBe(80);
+    }
+  });
+
   it('ResponsesStreamParser should extract cached_tokens from response.completed', () => {
     const parser = new ResponsesStreamParser();
     const events = collect(parser,
@@ -432,6 +452,43 @@ describe('Stream Parsers — cache token extraction', () => {
     if (stop?.type === 'stop') {
       expect(stop.usage.input_tokens).toBe(800);
       expect(stop.usage.cache_read_input_tokens).toBe(400);
+    }
+  });
+
+  it('ResponsesStreamParser should accept prompt_tokens_details.cached_tokens in the final chunk', () => {
+    const parser = new ResponsesStreamParser(
+      getCompatibilityProfile('openai_responses_compatible')?.usage_schema
+        ?.responses,
+    );
+    const events = collect(
+      parser,
+      'event: response.completed\ndata: {"id":"resp_1","status":"completed","usage":{"input_tokens":800,"output_tokens":100,"prompt_tokens_details":{"cached_tokens":320}}}\n\n',
+    );
+    const stop = events.find((event) => event.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.cache_read_input_tokens).toBe(320);
+    }
+  });
+
+  it('MessagesStreamParser should normalize Anthropic-compatible cache creation tokens into canonical input usage', () => {
+    const parser = new MessagesStreamParser(
+      getCompatibilityProfile('anthropic_messages_compatible')?.usage_schema
+        ?.messages,
+    );
+    const events = collect(
+      parser,
+      'event: message_start\n' +
+      'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4","usage":{"input_tokens":21,"cache_creation_input_tokens":188086,"cache_read_input_tokens":0}}}\n\n' +
+      'event: message_delta\n' +
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":393}}\n\n',
+    );
+    const stop = events.find((event) => event.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.input_tokens).toBe(188107);
+      expect(stop.usage.cache_creation_input_tokens).toBe(188086);
+      expect(stop.usage.output_tokens).toBe(393);
     }
   });
 });

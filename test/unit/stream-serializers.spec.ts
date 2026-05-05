@@ -289,7 +289,7 @@ describe('Stream Serializers — cache token passthrough', () => {
     expect(data.usage.prompt_tokens_details).toBeUndefined();
   });
 
-  it('Responses serializer should include input_token_details in response.completed', () => {
+  it('Responses serializer should include both modern and legacy cached token fields in response.completed', () => {
     const ser = new ResponsesStreamSerializer();
     ser.serialize(startEvent);
     const result = ser.serialize({
@@ -303,6 +303,7 @@ describe('Stream Serializers — cache token passthrough', () => {
     const completedIdx = allLines.findIndex((l) => l.includes('response.completed'));
     const dataLine = allLines[completedIdx + 1];
     const data = JSON.parse(dataLine.replace('data: ', ''));
+    expect(data.usage.prompt_tokens_details).toEqual({ cached_tokens: 400 });
     expect(data.usage.input_token_details).toEqual({ cached_tokens: 400 });
   });
 

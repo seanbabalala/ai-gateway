@@ -4,7 +4,7 @@ SiftGate is a self-hosted AI traffic gateway for running multiple AI providers b
 
 Current release: **v1.5.0 Contract Hardening and Runtime Safety**.
 
-Current development focus after v1.5.0: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
+Current development focus after v1.5.0: deepen provider cache awareness with a usage-schema registry, cache-aware streaming/non-streaming usage extraction, and fresher official cache-pricing references without weakening the local-first MIT Data Plane boundary.
 
 ## Why SiftGate
 
@@ -79,6 +79,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## After v1.5 Priorities
 
+- Deepen provider cache awareness so usage and cost accounting stay correct across OpenAI-compatible, Responses-compatible, Anthropic-compatible, Gemini, DeepSeek, Cohere, and local runtime surfaces.
 - Add an optional Redis semantic-cache backend while keeping memory/SQLite defaults safe.
 - Explore a local Prompt Registry / Template layer as a future governance feature.
 - Reduce Provider Catalog maintenance cost by moving toward one catalog source with generated compatibility/API projections.

@@ -238,7 +238,14 @@ export class ResponsesStreamSerializer {
             total_tokens:
               event.usage.input_tokens + event.usage.output_tokens,
             ...(event.usage.cache_read_input_tokens
-              ? { input_token_details: { cached_tokens: event.usage.cache_read_input_tokens } }
+              ? {
+                  prompt_tokens_details: {
+                    cached_tokens: event.usage.cache_read_input_tokens,
+                  },
+                  input_token_details: {
+                    cached_tokens: event.usage.cache_read_input_tokens,
+                  },
+                }
               : {}),
           },
         });
