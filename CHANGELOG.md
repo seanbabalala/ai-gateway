@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.3.1 - 2026-05-05
+
+### Fixed
+
+- Fixed Dashboard Sidebar overflow when the navigation list grows beyond the viewport. The logo and health/language footer now stay visible while the middle navigation region scrolls independently.
+- Stabilized the local e2e quality gate by running e2e suites serially, avoiding shared temporary config races between Dashboard reload and realtime WebSocket tests.
+
 ## 1.3.0 - 2026-05-05
 
 ### Added
