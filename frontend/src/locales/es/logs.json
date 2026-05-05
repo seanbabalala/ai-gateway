@@ -277,5 +277,18 @@
   "cache.routingEffect": "Efecto en routing",
   "cache.localBypass": "la caché local evitó upstream",
   "cache.providerEvidence": "evidencia de caché del provider registrada",
-  "cache.noEvidence": "sin evidencia de caché"
+  "cache.noEvidence": "sin evidencia de caché",
+  "cache.semanticHit": "Hit de caché semántica",
+  "cache.semanticCache": "Reproducción de caché semántica",
+  "cache.semanticScore": "score semántico",
+  "cache.semanticBypass": "la caché semántica evitó upstream",
+  "routeExplanation.cache.semantic": "Caché semántica",
+  "routeExplanation.cache.semanticHit": "hit semántico",
+  "routeExplanation.cache.semanticMetadataMatch": "match de metadata",
+  "routeExplanation.cache.semanticMiss": "miss semántico",
+  "routeExplanation.cache.semanticScore": "score {{value}}",
+  "routeExplanation.cache.semanticThreshold": "umbral {{value}}",
+  "routeExplanation.cache.semanticMetadataOnly": "solo metadata",
+  "routeExplanation.cache.notesMap.semantic_cache_hit": "la caché semántica respondió",
+  "routeExplanation.cache.notesMap.semantic_cache_metadata_match": "metadata de caché semántica coincide"
 }

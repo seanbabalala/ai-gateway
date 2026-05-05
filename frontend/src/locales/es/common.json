@@ -62,5 +62,6 @@
   "nav.benchmarks": "Rendimiento",
   "nav.sessions": "Sesiones",
   "nav.mcp": "MCP Gateway",
-  "nav.batches": "Lotes"
+  "nav.batches": "Lotes",
+  "nav.evals": "Informes Eval"
 }

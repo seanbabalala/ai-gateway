@@ -59,6 +59,12 @@ export interface GatewayConfig {
   /** Optional async shadow traffic mirror — disabled by default */
   shadow?: ShadowTrafficConfig;
 
+  /** Optional local evaluation framework metadata and sample-storage controls. */
+  evaluation?: EvaluationConfig;
+
+  /** Optional semantic caching preview. Disabled by default and metadata-only unless explicitly configured. */
+  semantic_cache?: SemanticCacheConfig;
+
   /** Optional local config audit log and rollback history. */
   config_audit?: ConfigAuditConfig;
 
@@ -927,6 +933,42 @@ export interface CacheConfig {
 export interface StreamCacheConfig {
   /** Cache and replay completed stream responses as SSE (default: false). */
   enabled?: boolean;
+}
+
+// ===== Semantic Cache Preview =====
+export interface SemanticCacheConfig {
+  /** Master switch (default: false). */
+  enabled?: boolean;
+  /** First preview supports local memory by default; redis/vector are reserved optional backends. */
+  backend?: 'memory' | 'redis' | 'vector';
+  /** Cosine similarity threshold for a metadata match. Default 0.92. */
+  similarity_threshold?: number;
+  /** Entry TTL in seconds. Default 3600. */
+  ttl_seconds?: number;
+  /** Max local entries before LRU eviction. Default 500. */
+  max_entries?: number;
+  /** Hashing-vector dimensions. Default 256. */
+  vector_dimensions?: number;
+  /** Explicitly store replayable responses. Default false for privacy. */
+  store_responses?: boolean;
+  /** Maximum serialized response bytes when store_responses=true. Default 65536. */
+  max_response_bytes?: number;
+}
+
+// ===== Evaluation Framework =====
+export interface EvaluationConfig {
+  /** Enable local experiment execution helpers. Dashboard reports remain read-only. */
+  enabled?: boolean;
+  /** Store redacted sample prompt/response previews. Default false. */
+  store_samples?: boolean;
+  /** Maximum characters retained per redacted preview when store_samples=true. */
+  max_sample_chars?: number;
+  /** Default judge model used by local runners when omitted. */
+  judge_model?: string;
+  /** Default judge prompt rubric. Stored as a hash in run metadata. */
+  judge_rubric?: string;
+  /** Retain evaluation metadata for this many days. Default follows DB retention. */
+  retention_days?: number;
 }
 
 // ===== Model Pricing =====

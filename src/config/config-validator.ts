@@ -234,10 +234,12 @@ export function validateConfigObject(
   validateRouting(config.routing, config.nodes, issues);
   validateBudget(config.budget, issues);
   validateCache(config.cache, issues);
+  validateSemanticCache(config.semantic_cache, issues);
   validateEmbeddingBatching(config.embedding_batching, issues);
   validateRealtime(config.realtime, config.nodes, issues);
   validateMcpGateway(config.mcp, config.namespaces, issues);
   validateShadow(config.shadow, config.nodes, issues);
+  validateEvaluation(config.evaluation, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
@@ -2419,6 +2421,225 @@ function validateCache(
         ),
       );
     }
+  }
+}
+
+function validateSemanticCache(
+  semanticCache: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (semanticCache === undefined) return;
+  if (!isRecord(semanticCache)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache must be an object.',
+        'semantic_cache',
+      ),
+    );
+    return;
+  }
+
+  if (
+    semanticCache.enabled !== undefined &&
+    !isBoolean(semanticCache.enabled)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.enabled must be a boolean.',
+        'semantic_cache.enabled',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.backend !== undefined &&
+    semanticCache.backend !== 'memory' &&
+    semanticCache.backend !== 'redis' &&
+    semanticCache.backend !== 'vector'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.backend must be memory, redis, or vector.',
+        'semantic_cache.backend',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.backend !== undefined &&
+    semanticCache.backend !== 'memory'
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'semantic_cache_backend_preview',
+        'semantic_cache backend support beyond memory is preview-only; memory remains the default local backend.',
+        'semantic_cache.backend',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.similarity_threshold !== undefined &&
+    (!isFiniteNumber(semanticCache.similarity_threshold) ||
+      semanticCache.similarity_threshold <= 0 ||
+      semanticCache.similarity_threshold > 1)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.similarity_threshold must be a number greater than 0 and at most 1.',
+        'semantic_cache.similarity_threshold',
+      ),
+    );
+  }
+
+  validateOptionalPositiveNumber(
+    semanticCache.ttl_seconds,
+    'semantic_cache.ttl_seconds',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    semanticCache.max_entries,
+    'semantic_cache.max_entries',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    semanticCache.vector_dimensions,
+    'semantic_cache.vector_dimensions',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    semanticCache.max_response_bytes,
+    'semantic_cache.max_response_bytes',
+    'invalid_semantic_cache_config',
+    issues,
+  );
+
+  if (
+    semanticCache.store_responses !== undefined &&
+    !isBoolean(semanticCache.store_responses)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.store_responses must be a boolean.',
+        'semantic_cache.store_responses',
+      ),
+    );
+  }
+
+  if (semanticCache.store_responses === true) {
+    issues.push(
+      issue(
+        'warning',
+        'semantic_cache_response_storage_enabled',
+        'semantic_cache.store_responses=true can retain replayable response bodies locally; keep it disabled unless explicitly needed and documented.',
+        'semantic_cache.store_responses',
+      ),
+    );
+  }
+}
+
+function validateEvaluation(
+  evaluation: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (evaluation === undefined) return;
+  if (!isRecord(evaluation)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_evaluation_config',
+        'evaluation must be an object.',
+        'evaluation',
+      ),
+    );
+    return;
+  }
+
+  if (evaluation.enabled !== undefined && !isBoolean(evaluation.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_evaluation_config',
+        'evaluation.enabled must be a boolean.',
+        'evaluation.enabled',
+      ),
+    );
+  }
+  if (
+    evaluation.store_samples !== undefined &&
+    !isBoolean(evaluation.store_samples)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_evaluation_config',
+        'evaluation.store_samples must be a boolean.',
+        'evaluation.store_samples',
+      ),
+    );
+  }
+
+  validateOptionalPositiveNumber(
+    evaluation.max_sample_chars,
+    'evaluation.max_sample_chars',
+    'invalid_evaluation_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    evaluation.retention_days,
+    'evaluation.retention_days',
+    'invalid_evaluation_config',
+    issues,
+  );
+
+  if (
+    evaluation.judge_model !== undefined &&
+    isNonEmptyString(evaluation.judge_model) &&
+    Array.isArray(nodes)
+  ) {
+    const knownModels = new Set<string>();
+    for (const node of nodes) {
+      if (!isRecord(node)) continue;
+      for (const model of Array.isArray(node.models) ? node.models : []) {
+        if (isNonEmptyString(model)) knownModels.add(model);
+      }
+    }
+    if (!knownModels.has(evaluation.judge_model)) {
+      issues.push(
+        issue(
+          'warning',
+          'unknown_evaluation_judge_model',
+          `evaluation.judge_model "${evaluation.judge_model}" is not in nodes[].models; eval runners may fall back to auto routing.`,
+          'evaluation.judge_model',
+        ),
+      );
+    }
+  }
+
+  if (evaluation.store_samples === true) {
+    issues.push(
+      issue(
+        'warning',
+        'evaluation_sample_storage_enabled',
+        'evaluation.store_samples=true can retain redacted prompt/response previews locally; keep it disabled unless explicitly needed.',
+        'evaluation.store_samples',
+      ),
+    );
   }
 }
 

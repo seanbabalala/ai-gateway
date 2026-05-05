@@ -17,6 +17,7 @@ import {
 @Index(['api_key_name'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
+@Index(['team_id'])
 @Index(['fallback_reason'])
 export class CallLog {
   @PrimaryGeneratedColumn()
@@ -145,6 +146,9 @@ export class CallLog {
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  team_id!: string | null;
+
   @Column({ type: 'integer', default: 0 })
   retry_count!: number;
 
@@ -153,6 +157,12 @@ export class CallLog {
 
   @Column({ type: 'integer', default: 0 })
   cache_read_input_tokens!: number;
+
+  @Column({ type: 'boolean', default: false })
+  semantic_cache_hit!: boolean;
+
+  @Column({ type: 'real', nullable: true })
+  semantic_cache_score!: number | null;
 
   @Column({ type: 'varchar', nullable: true })
   experiment_group!: string | null;

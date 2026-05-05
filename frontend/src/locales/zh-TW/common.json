@@ -62,5 +62,6 @@
   "nav.benchmarks": "基準",
   "nav.sessions": "工作階段",
   "nav.mcp": "MCP 閘道",
-  "nav.batches": "批次任務"
+  "nav.batches": "批次任務",
+  "nav.evals": "評測報告"
 }

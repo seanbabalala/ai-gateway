@@ -3,7 +3,7 @@
 // ===================================================================
 // Checks budget before each request and records usage after.
 // Auto-resets daily counters at period boundary.
-// Supports per-key budgets alongside global limits.
+// Supports global, namespace, local team, and per-key budgets.
 // ===================================================================
 
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
@@ -18,10 +18,11 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 export interface BudgetStatus {
   id: number;
   type: string;
-  scope: 'global' | 'api_key' | 'namespace';
+  scope: 'global' | 'api_key' | 'namespace' | 'team';
   apiKeyName: string | null;
   apiKeyId: string | null;
   namespaceId: string | null;
+  teamId: string | null;
   limit: number;
   current: number;
   percentage: number;
@@ -32,7 +33,7 @@ export interface BudgetStatus {
 }
 
 export class BudgetExceededError extends Error {
-  public readonly scope: 'global' | 'api_key' | 'namespace';
+  public readonly scope: 'global' | 'api_key' | 'namespace' | 'team';
   public readonly resetAt: Date | null;
 
   constructor(
@@ -42,10 +43,13 @@ export class BudgetExceededError extends Error {
     public readonly apiKeyName?: string | null,
     public readonly apiKeyId?: string | null,
     public readonly namespaceId?: string | null,
+    public readonly teamId?: string | null,
     periodStart?: Date | null,
   ) {
     const scope = namespaceId
       ? `namespace "${namespaceId}"`
+      : teamId
+      ? `team "${teamId}"`
       : apiKeyName
       ? `key "${apiKeyName}"`
       : apiKeyId
@@ -53,7 +57,7 @@ export class BudgetExceededError extends Error {
       : 'global';
     super(`Budget exceeded (${scope}): ${budgetType} (${current.toFixed(2)} / ${limit.toFixed(2)})`);
     this.name = 'BudgetExceededError';
-    this.scope = namespaceId ? 'namespace' : apiKeyName || apiKeyId ? 'api_key' : 'global';
+    this.scope = namespaceId ? 'namespace' : teamId ? 'team' : apiKeyName || apiKeyId ? 'api_key' : 'global';
     this.resetAt = periodStart ? BudgetExceededError.nextDailyReset(periodStart) : null;
   }
 
@@ -63,6 +67,7 @@ export class BudgetExceededError extends Error {
       api_key_id: this.apiKeyId || null,
       api_key_name: this.apiKeyName || null,
       namespace_id: this.namespaceId || null,
+      team_id: this.teamId || null,
       budget_type: this.budgetType,
       current: Number(this.current.toFixed(6)),
       limit: Number(this.limit.toFixed(6)),
@@ -84,7 +89,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private configReloadSub?: Subscription;
   private budgetMetricSnapshot: Array<{
     ratio: number;
-    attrs: { scope: 'global' | 'api_key' | 'namespace'; budget_type: string };
+    attrs: { scope: 'global' | 'api_key' | 'namespace' | 'team'; budget_type: string };
   }> = [];
 
   constructor(
@@ -111,7 +116,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    */
   private async ensureDefaultRules(): Promise<void> {
     const allGlobal = await this.budgetRepo.find({
-      where: { api_key_name: IsNull(), api_key_id: IsNull(), namespace_id: IsNull() },
+      where: { api_key_name: IsNull(), api_key_id: IsNull(), namespace_id: IsNull(), team_id: IsNull() },
     });
     const budget = this.config.budget;
     const now = this.startOfDay(new Date());
@@ -138,6 +143,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           api_key_name: null,
           api_key_id: null,
           namespace_id: null,
+          team_id: null,
         }));
       }
     }
@@ -163,7 +169,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       const keyBudget = keyEntry.budget;
 
       const existingRules = await this.budgetRepo.find({
-        where: { api_key_name: keyName, api_key_id: IsNull(), namespace_id: IsNull() },
+        where: { api_key_name: keyName, api_key_id: IsNull(), namespace_id: IsNull(), team_id: IsNull() },
       });
 
       // Upsert daily_token rule for this key
@@ -185,6 +191,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
             api_key_name: keyName,
             api_key_id: null,
             namespace_id: null,
+            team_id: null,
           }));
         }
       }
@@ -208,6 +215,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
             api_key_name: keyName,
             api_key_id: null,
             namespace_id: null,
+            team_id: null,
           }));
         }
       }
@@ -283,6 +291,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       api_key_name: null,
       api_key_id: null,
       namespace_id: namespaceId,
+      team_id: null,
     }));
   }
 
@@ -303,6 +312,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       .where('rule.api_key_name IS NOT NULL')
       .andWhere('rule.api_key_id IS NULL')
       .andWhere('rule.namespace_id IS NULL')
+      .andWhere('rule.team_id IS NULL')
       .andWhere('rule.is_active = :active', { active: true })
       .getMany();
 
@@ -347,23 +357,29 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * When apiKeyName is provided, checks both global AND per-key limits.
    * Throws BudgetExceededError if any active budget is exceeded.
    */
-  async check(apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null): Promise<void> {
+  async check(apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null, teamId?: string | null): Promise<void> {
     // Check global rules
     const globalRules = await this.loadActiveRules(null);
     await this.resetExpiredPeriods(globalRules);
-    this.evaluateRules(globalRules, null, null, null);
+    this.evaluateRules(globalRules, null, null, null, null);
 
     if (namespaceId) {
-      const namespaceRules = await this.loadActiveRules(null, null, namespaceId);
+      const namespaceRules = await this.loadActiveRules(null, null, namespaceId, null);
       await this.resetExpiredPeriods(namespaceRules);
-      this.evaluateRules(namespaceRules, null, null, namespaceId);
+      this.evaluateRules(namespaceRules, null, null, namespaceId, null);
+    }
+
+    if (teamId) {
+      const teamRules = await this.loadActiveRules(null, null, null, teamId);
+      await this.resetExpiredPeriods(teamRules);
+      this.evaluateRules(teamRules, null, null, null, teamId);
     }
 
     // Check per-key rules if applicable
     if (apiKeyName || apiKeyId) {
       const keyRules = await this.loadActiveRules(apiKeyName || null, apiKeyId);
       await this.resetExpiredPeriods(keyRules);
-      this.evaluateRules(keyRules, apiKeyName || null, apiKeyId || null, null);
+      this.evaluateRules(keyRules, apiKeyName || null, apiKeyId || null, null, null);
     }
   }
 
@@ -371,12 +387,15 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Record token and cost usage after a successful call.
    * Updates both global rules and per-key rules if apiKeyName is provided.
    */
-  async record(tokens: number, costUsd: number, apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null): Promise<void> {
+  async record(tokens: number, costUsd: number, apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null, teamId?: string | null): Promise<void> {
     const safeTokens = this.sanitizeCounterValue(tokens);
     const safeCostUsd = this.sanitizeCounterValue(costUsd);
     await this.recordAgainst(null, safeTokens, safeCostUsd);
     if (namespaceId) {
-      await this.recordAgainst(null, safeTokens, safeCostUsd, null, namespaceId);
+      await this.recordAgainst(null, safeTokens, safeCostUsd, null, namespaceId, null);
+    }
+    if (teamId) {
+      await this.recordAgainst(null, safeTokens, safeCostUsd, null, null, teamId);
     }
     if (apiKeyName || apiKeyId) {
       await this.recordAgainst(apiKeyName || null, safeTokens, safeCostUsd, apiKeyId);
@@ -388,10 +407,12 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Get current budget status for rules.
    * No apiKeyName = global rules only; with apiKeyName = that key's rules.
    */
-  async getStatus(apiKeyName?: string | null, apiKeyId?: string | null, namespaceId?: string | null): Promise<BudgetStatus[]> {
+  async getStatus(apiKeyName?: string | null, apiKeyId?: string | null, namespaceId?: string | null, teamId?: string | null): Promise<BudgetStatus[]> {
     const targetKeyName = apiKeyName === undefined ? null : apiKeyName;
     const rules = namespaceId
-      ? await this.loadActiveRules(null, null, namespaceId)
+      ? await this.loadActiveRules(null, null, namespaceId, null)
+      : teamId
+      ? await this.loadActiveRules(null, null, null, teamId)
       : apiKeyId
       ? await this.loadActiveRules(null, apiKeyId)
       : targetKeyName === null
@@ -403,10 +424,11 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     const statuses: BudgetStatus[] = rules.map((r) => ({
       id: r.id,
       type: r.type,
-      scope: r.namespace_id ? 'namespace' : r.api_key_id || r.api_key_name ? 'api_key' : 'global',
+      scope: r.namespace_id ? 'namespace' : r.team_id ? 'team' : r.api_key_id || r.api_key_name ? 'api_key' : 'global',
       apiKeyName: r.api_key_name,
       apiKeyId: r.api_key_id,
       namespaceId: r.namespace_id,
+      teamId: r.team_id,
       limit: r.limit_value,
       current: r.current_value,
       percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
@@ -443,6 +465,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       .select('DISTINCT rule.api_key_name', 'api_key_name')
       .where('rule.api_key_name IS NOT NULL')
       .andWhere('rule.namespace_id IS NULL')
+      .andWhere('rule.team_id IS NULL')
       .andWhere('rule.is_active = :active', { active: true })
       .getRawMany();
 
@@ -454,11 +477,23 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Load active rules for a given scope (null = global, string = per-key).
    */
-  private async loadActiveRules(apiKeyName: string | null, apiKeyId?: string | null, namespaceId?: string | null): Promise<BudgetRule[]> {
+  private async loadActiveRules(apiKeyName: string | null, apiKeyId?: string | null, namespaceId?: string | null, teamId?: string | null): Promise<BudgetRule[]> {
     if (namespaceId) {
       return this.budgetRepo.find({
         where: {
           namespace_id: namespaceId,
+          team_id: IsNull(),
+          is_active: true,
+        },
+      });
+    }
+    if (teamId) {
+      return this.budgetRepo.find({
+        where: {
+          team_id: teamId,
+          api_key_name: IsNull(),
+          api_key_id: IsNull(),
+          namespace_id: IsNull(),
           is_active: true,
         },
       });
@@ -467,6 +502,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       return this.budgetRepo.find({
         where: {
           api_key_id: apiKeyId,
+          team_id: IsNull(),
           is_active: true,
         },
       });
@@ -476,6 +512,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         api_key_name: apiKeyName === null ? IsNull() : apiKeyName,
         api_key_id: IsNull(),
         namespace_id: IsNull(),
+        team_id: IsNull(),
         is_active: true,
       },
     });
@@ -489,10 +526,11 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     apiKeyName: string | null,
     apiKeyId: string | null,
     namespaceId: string | null,
+    teamId: string | null,
   ): void {
     for (const rule of rules) {
       if (rule.current_value >= rule.limit_value) {
-        this.alertBudgetExceeded(rule, apiKeyName, apiKeyId || undefined, namespaceId);
+        this.alertBudgetExceeded(rule, apiKeyName, apiKeyId || undefined, namespaceId, teamId);
         throw new BudgetExceededError(
           rule.type,
           rule.current_value,
@@ -500,6 +538,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           apiKeyName || rule.api_key_name,
           apiKeyId || rule.api_key_id,
           namespaceId || rule.namespace_id,
+          teamId || rule.team_id,
           rule.period_start,
         );
       }
@@ -515,8 +554,9 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     costUsd: number,
     apiKeyId?: string | null,
     namespaceId?: string | null,
+    teamId?: string | null,
   ): Promise<void> {
-    const rules = await this.loadActiveRules(apiKeyName, apiKeyId, namespaceId);
+    const rules = await this.loadActiveRules(apiKeyName, apiKeyId, namespaceId, teamId);
     await this.resetExpiredPeriods(rules);
 
     for (const rule of rules) {
@@ -537,13 +577,15 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       if (previousPct < rule.alert_threshold && pct >= rule.alert_threshold) {
         const scope = namespaceId
           ? `namespace "${namespaceId}"`
+          : teamId
+          ? `team "${teamId}"`
           : apiKeyName || apiKeyId
           ? `key "${apiKeyName || apiKeyId}"`
           : 'global';
         this.logger.warn(
           `Budget alert (${scope}): ${rule.type} at ${(pct * 100).toFixed(1)}% (${rule.current_value.toFixed(2)} / ${rule.limit_value})`,
         );
-        this.alertBudgetThreshold(rule, pct, apiKeyName, apiKeyId || undefined, namespaceId || undefined);
+        this.alertBudgetThreshold(rule, pct, apiKeyName, apiKeyId || undefined, namespaceId || undefined, teamId || undefined);
       }
 
       await this.budgetRepo.save(rule);
@@ -601,10 +643,11 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       const statuses: BudgetStatus[] = rules.map((r) => ({
         id: r.id,
         type: r.type,
-        scope: r.namespace_id ? 'namespace' as const : r.api_key_id || r.api_key_name ? 'api_key' as const : 'global' as const,
+        scope: r.namespace_id ? 'namespace' as const : r.team_id ? 'team' as const : r.api_key_id || r.api_key_name ? 'api_key' as const : 'global' as const,
         apiKeyName: r.api_key_name,
         apiKeyId: r.api_key_id,
         namespaceId: r.namespace_id,
+        teamId: r.team_id,
         limit: r.limit_value,
         current: r.current_value,
         percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
@@ -622,7 +665,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private updateBudgetMetricSnapshot(statuses: BudgetStatus[]): void {
     const aggregates = new Map<string, {
       ratio: number;
-      attrs: { scope: 'global' | 'api_key' | 'namespace'; budget_type: string };
+      attrs: { scope: 'global' | 'api_key' | 'namespace' | 'team'; budget_type: string };
     }>();
     for (const status of statuses) {
       const key = `${status.scope}:${status.type}`;
@@ -646,13 +689,14 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     apiKeyName?: string | null,
     apiKeyId?: string,
     namespaceId?: string,
+    teamId?: string,
   ): void {
     this.alerts?.emit({
       type: 'budget_threshold',
       severity: 'warning',
       message: `Budget threshold reached for ${rule.type}: ${(percentage * 100).toFixed(1)}%.`,
       dedupeKey: this.budgetDedupeKey(rule, 'threshold'),
-      details: this.budgetAlertDetails(rule, apiKeyName, apiKeyId, namespaceId, percentage),
+      details: this.budgetAlertDetails(rule, apiKeyName, apiKeyId, namespaceId, teamId, percentage),
     });
   }
 
@@ -661,6 +705,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     apiKeyName: string | null,
     apiKeyId?: string,
     namespaceId?: string | null,
+    teamId?: string | null,
   ): void {
     const percentage = rule.limit_value > 0
       ? rule.current_value / rule.limit_value
@@ -675,6 +720,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         apiKeyName || rule.api_key_name,
         apiKeyId || rule.api_key_id || undefined,
         namespaceId || rule.namespace_id || undefined,
+        teamId || rule.team_id || undefined,
         percentage,
       ),
     });
@@ -685,13 +731,15 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     apiKeyName?: string | null,
     apiKeyId?: string,
     namespaceId?: string,
+    teamId?: string,
     percentage?: number,
   ): Record<string, unknown> {
     return {
-      scope: namespaceId || rule.namespace_id ? 'namespace' : apiKeyName || apiKeyId ? 'api_key' : 'global',
+      scope: namespaceId || rule.namespace_id ? 'namespace' : teamId || rule.team_id ? 'team' : apiKeyName || apiKeyId ? 'api_key' : 'global',
       api_key_name: apiKeyName || null,
       api_key_id: apiKeyId || null,
       namespace_id: namespaceId || rule.namespace_id || null,
+      team_id: teamId || rule.team_id || null,
       budget_type: rule.type,
       current: Number(rule.current_value.toFixed(6)),
       limit: Number(rule.limit_value.toFixed(6)),
@@ -703,7 +751,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
   private budgetDedupeKey(rule: BudgetRule, suffix: string): string {
     return [
-      rule.namespace_id || rule.api_key_id || rule.api_key_name || 'global',
+      rule.namespace_id || rule.team_id || rule.api_key_id || rule.api_key_name || 'global',
       rule.type,
       suffix,
       this.startOfDay(new Date(rule.period_start)).toISOString(),

@@ -21,8 +21,63 @@
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
+| v1.3 | Production Ready | 已发布 — Virtual Key/Team、Semantic Cache、Evaluation Framework、文档与社区建设 | ✅ Released |
 
 ---
+
+## v1.3 — Production Ready（生产就绪）
+
+**v1.3.0 发布状态**：v1.3 基于已发布 v1.2.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把前面版本的路由、目录、多模态、运维和平台能力收束成更完整的本地生产体验。
+
+### P0：Virtual Key + Team 本地管理
+
+- **状态**：✅ v1.3.0 已发布
+- **目标**：让开源版本地 Dashboard 可以管理多组客户端 key，并用本地 team 统一套用权限、预算、限流和审计策略
+- **实现方案**：
+  - 新增本地 `local_teams` 表，SQLite 默认可用，PostgreSQL 兼容
+  - Gateway API key 支持 `team_id`，并继续支持 namespace、allowed endpoints/models/nodes/modalities、daily token/cost budget 和 RPM limit
+  - 有效权限按 key、team、namespace 交叉取交集；rate limit 使用 key/team/namespace 中最严格值
+  - BudgetService 检查 global、namespace、team、key 四层预算，call logs 写入 `team_id` 以支持 team usage summary
+  - Dashboard API 新增 `GET/POST/PUT/DELETE /api/dashboard/teams`
+  - Dashboard API Keys 页面增加本地 Team 创建、编辑、禁用、删除、使用摘要和 key 绑定
+  - API key create/rotate 仍只显示完整 secret 一次；list/update/delete 只显示 masked prefix；team API 不返回 secret
+  - Team/key mutation 写入本地 config audit event，摘要不保存 provider key、Gateway API key、raw auth headers 或 secret
+  - Dashboard 文案继续补齐 en、zh、zh-TW、ja、ko、th、es 七语言
+  - 不做企业 SSO、SCIM、workspace、RBAC、org billing 或 Cloud 依赖
+
+### P0：Semantic Caching Preview
+
+- **状态**：✅ v1.3.0 已发布
+- **目标**：在默认关闭的前提下，用 embedding 相似度判断可复用响应，减少重复语义请求成本，并在 Logs 与 Route Explanation 中展示 metadata-only 命中证据
+- **实现方案**：
+  - `semantic_cache.enabled` 默认 `false`
+  - memory 后端默认可用；Redis/vector backend 后续可选
+  - 支持 `similarity_threshold`、`ttl_seconds`、namespace/API key/model/endpoint 隔离
+  - 默认只保存 embedding/hash/metadata，不保存敏感 prompt/response；如未来启用样本存储必须显式配置和脱敏
+  - Route Explanation 与 call logs 标记 `semantic_cache_hit`、相似度分数、阈值和 metadata-only 状态
+
+### P0：Evaluation Framework Preview
+
+- **状态**：✅ v1.3.0 已发布
+- **目标**：支持本地 eval dataset metadata、judge config、experiment run metadata，并通过普通 SiftGate routing 执行 LLM-as-judge，不引入企业服务
+- **实现方案**：
+  - 新增 `eval_datasets`、`eval_experiment_runs`、`eval_sample_results` 本地表，SQLite 默认可用，PostgreSQL 兼容
+  - 新增 Dashboard API `GET /api/dashboard/evals/reports`、`GET /api/dashboard/evals/reports/:id` 和本地 automation 入口 `POST /api/dashboard/evals/runs`
+  - primary、candidate、judge 调用都走 `PipelineService.process`，复用现有 routing、fallback、budget、telemetry、call log 和 route trace
+  - 报告展示 success、latency、cost、fallback、judge score、winner 和 sample-level request ids
+  - Dashboard 新增只读 Eval Reports 页面，不提供自动修改 routing 的入口
+  - 默认不保存 prompt、response、raw headers、provider keys、media bytes 或 video bytes；如启用 sample preview，必须配置和请求双重显式 opt-in，并进行脱敏/截断
+  - 文档新增 `docs/EVALUATION_FRAMEWORK.md`，Dashboard 文案同步 en、zh、zh-TW、ja、ko、th、es
+
+### P0：文档与社区资产
+
+- **状态**：✅ v1.3.0 已发布
+- **目标**：让开源仓库具备清晰的产品入口、贡献路径、安全策略、问题模板和发布前文档安全检查
+- **实现方案**：
+  - README 重构为开源 Data Plane 产品入口，不包含私有仓库依赖或企业版实现内容
+  - 新增 Quickstart、SDKs、Playground、Batch、Caching、Security 等 docs 入口，并整理 Production、Kubernetes、Provider Catalog、MCP、Eval 文档地图
+  - 新增 `CONTRIBUTING.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`、issue templates 和 PR template
+  - 新增 `npm run docs:check`，检查必需文档、Markdown 相对链接、常见 secret、`gateway.config.yaml` 入库风险和私有仓库引用
 
 ## v1.2 — Platform Capabilities（平台能力）
 

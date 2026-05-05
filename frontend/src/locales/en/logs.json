@@ -277,5 +277,18 @@
   "cache.routingEffect": "Routing effect",
   "cache.localBypass": "local cache bypassed upstream",
   "cache.providerEvidence": "provider cache evidence recorded",
-  "cache.noEvidence": "no cache evidence"
+  "cache.noEvidence": "no cache evidence",
+  "cache.semanticHit": "Semantic cache hit",
+  "cache.semanticCache": "Semantic cache replay",
+  "cache.semanticScore": "semantic score",
+  "cache.semanticBypass": "semantic cache bypassed upstream",
+  "routeExplanation.cache.semantic": "Semantic cache",
+  "routeExplanation.cache.semanticHit": "semantic hit",
+  "routeExplanation.cache.semanticMetadataMatch": "metadata match",
+  "routeExplanation.cache.semanticMiss": "semantic miss",
+  "routeExplanation.cache.semanticScore": "score {{value}}",
+  "routeExplanation.cache.semanticThreshold": "threshold {{value}}",
+  "routeExplanation.cache.semanticMetadataOnly": "metadata only",
+  "routeExplanation.cache.notesMap.semantic_cache_hit": "semantic cache answered",
+  "routeExplanation.cache.notesMap.semantic_cache_metadata_match": "semantic cache metadata matched"
 }

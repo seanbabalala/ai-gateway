@@ -62,6 +62,11 @@ export class CreateGatewayApiKeyDto {
   @IsString()
   namespace_id?: string | null;
 
+  @ApiPropertyOptional({ example: 'team_01h...', nullable: true, description: 'Optional local OSS team binding.' })
+  @IsOptional()
+  @IsString()
+  team_id?: string | null;
+
   @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
   @IsOptional()
   @IsNumber()
@@ -139,6 +144,11 @@ export class UpdateGatewayApiKeyDto {
   @IsOptional()
   @IsString()
   namespace_id?: string | null;
+
+  @ApiPropertyOptional({ example: 'team_01h...', nullable: true, description: 'Optional local OSS team binding.' })
+  @IsOptional()
+  @IsString()
+  team_id?: string | null;
 
   @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
   @IsOptional()

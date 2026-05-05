@@ -277,5 +277,18 @@
   "cache.routingEffect": "ルーティング効果",
   "cache.localBypass": "ローカルキャッシュで upstream を回避",
   "cache.providerEvidence": "Provider キャッシュ根拠を記録",
-  "cache.noEvidence": "キャッシュ根拠なし"
+  "cache.noEvidence": "キャッシュ根拠なし",
+  "cache.semanticHit": "Semantic cache hit",
+  "cache.semanticCache": "Semantic cache replay",
+  "cache.semanticScore": "semantic score",
+  "cache.semanticBypass": "Semantic cache で upstream を回避",
+  "routeExplanation.cache.semantic": "Semantic cache",
+  "routeExplanation.cache.semanticHit": "semantic hit",
+  "routeExplanation.cache.semanticMetadataMatch": "metadata match",
+  "routeExplanation.cache.semanticMiss": "semantic miss",
+  "routeExplanation.cache.semanticScore": "score {{value}}",
+  "routeExplanation.cache.semanticThreshold": "threshold {{value}}",
+  "routeExplanation.cache.semanticMetadataOnly": "metadata only",
+  "routeExplanation.cache.notesMap.semantic_cache_hit": "Semantic cache が応答",
+  "routeExplanation.cache.notesMap.semantic_cache_metadata_match": "Semantic cache metadata が一致"
 }

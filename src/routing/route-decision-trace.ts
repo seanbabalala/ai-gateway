@@ -146,12 +146,26 @@ export interface RouteDecisionTrace {
     local_prompt_cache_eligible?: boolean;
     local_prompt_cache_hit?: boolean;
     local_prompt_cache_lookup?: 'hit' | 'miss' | 'disabled' | 'skipped' | null;
+    semantic_cache_enabled?: boolean;
+    semantic_cache_match?: boolean;
+    semantic_cache_hit?: boolean;
+    semantic_cache_score?: number | null;
+    semantic_cache_threshold?: number | null;
+    semantic_cache_metadata_only?: boolean;
+    semantic_cache_reason?: string | null;
   };
   modality_evidence?: RouteDecisionModalityEvidence;
   cache_evidence?: {
     local_prompt_cache_eligible: boolean;
     local_prompt_cache_hit: boolean;
     local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null;
+    semantic_cache_enabled?: boolean;
+    semantic_cache_match?: boolean;
+    semantic_cache_hit?: boolean;
+    semantic_cache_score?: number | null;
+    semantic_cache_threshold?: number | null;
+    semantic_cache_metadata_only?: boolean;
+    semantic_cache_reason?: string | null;
     cache_aware_routing: boolean;
     provider_cache_preference: boolean;
     notes: string[];

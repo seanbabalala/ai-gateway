@@ -726,6 +726,12 @@ export class GatewayApiKeySummaryDto {
   namespace_name!: string | null;
 
   @ApiProperty({ example: null, nullable: true })
+  team_id!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  team_name!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
   daily_token_limit!: number | null;
 
   @ApiProperty({ example: null, nullable: true })
@@ -753,7 +759,7 @@ export class GatewayApiKeyMutationResponseDto extends ActionResponseDto {
 
 export class GatewayApiKeyCreatedResponseDto extends GatewayApiKeyMutationResponseDto {
   @ApiProperty({
-    example: 'gw_sk_live_example_redacted',
+    example: 'gw_sk_redacted',
     description: 'Plain Gateway API key returned once. Example is redacted.',
   })
   key!: string;

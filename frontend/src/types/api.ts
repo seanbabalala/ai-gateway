@@ -120,6 +120,8 @@ export interface CallLog {
   retry_count?: number
   cache_creation_input_tokens?: number
   cache_read_input_tokens?: number
+  semantic_cache_hit?: boolean
+  semantic_cache_score?: number | null
   experiment_group?: string | null
   structured_output_requested?: boolean
   structured_output_type?: string | null
@@ -305,6 +307,13 @@ export interface RouteDecisionTrace {
     local_prompt_cache_eligible: boolean
     local_prompt_cache_hit: boolean
     local_prompt_cache_lookup: 'hit' | 'miss' | 'disabled' | 'skipped' | null
+    semantic_cache_enabled?: boolean
+    semantic_cache_match?: boolean
+    semantic_cache_hit?: boolean
+    semantic_cache_score?: number | null
+    semantic_cache_threshold?: number | null
+    semantic_cache_metadata_only?: boolean
+    semantic_cache_reason?: string | null
     cache_aware_routing: boolean
     provider_cache_preference: boolean
     notes: string[]
@@ -1226,6 +1235,121 @@ export interface BatchDashboardResponse {
   }
 }
 
+// ── Evaluation Reports ──
+
+export type EvalRunStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type EvalWinner = 'primary' | 'candidate' | 'tie' | null
+
+export interface EvalTargetReport {
+  node_id: string | null
+  model: string
+  success_rate: number
+  avg_latency_ms: number
+  total_cost_usd: number
+  fallback_rate: number
+}
+
+export interface EvalRunSummary {
+  id: string
+  dataset_id: string | null
+  dataset_name: string
+  status: EvalRunStatus
+  sample_count: number
+  primary: EvalTargetReport
+  candidate: EvalTargetReport
+  judge: {
+    node_id: string | null
+    model: string | null
+    avg_score: number | null
+  }
+  winner: EvalWinner
+  summary: {
+    success_delta?: number
+    latency_delta_ms?: number
+    cost_delta_usd?: number
+    fallback_delta?: number
+    judge_sample_coverage?: number
+    [key: string]: unknown
+  }
+  privacy: EvalPrivacy
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EvalPrivacy {
+  prompt_response_stored: boolean
+  sample_previews_stored: boolean
+  raw_headers_stored: false
+  provider_keys_exposed: false
+  metadata_only: boolean
+  requires_explicit_sample_storage: true
+}
+
+export interface EvalReportsResponse {
+  generated_at: string
+  metadata_only: true
+  filters: {
+    period: string
+    status: string | null
+    dataset_id: string | null
+  }
+  totals: {
+    runs: number
+    completed: number
+    failed: number
+    samples: number
+    avg_judge_score: number | null
+  }
+  items: EvalRunSummary[]
+  privacy: EvalPrivacy
+}
+
+export interface EvalSampleSummary {
+  id: number
+  sample_id: string | null
+  sample_hash: string
+  request_ids: {
+    primary: string | null
+    candidate: string | null
+    judge: string | null
+  }
+  primary: {
+    status_code: number | null
+    success: boolean
+    latency_ms: number
+    cost_usd: number
+    fallback: boolean
+  }
+  candidate: {
+    status_code: number | null
+    success: boolean
+    latency_ms: number
+    cost_usd: number
+    fallback: boolean
+  }
+  judge: {
+    score: number | null
+    label: string | null
+    reason_summary: string | null
+  }
+  error_type: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface EvalReportDetailResponse {
+  generated_at: string
+  metadata_only: true
+  run: EvalRunSummary & {
+    judge_config: Record<string, unknown>
+  }
+  samples: EvalSampleSummary[]
+  privacy: EvalPrivacy
+}
+
 // ── Dashboard Playground ──
 
 export type PlaygroundEndpoint =
@@ -1816,6 +1940,65 @@ export interface ApiKeysResponse {
   items: GatewayApiKey[]
 }
 
+export interface LocalTeam {
+  id: string
+  name: string
+  description: string | null
+  status: 'active' | 'disabled'
+  namespace_id: string | null
+  namespace_name: string | null
+  allowed_nodes: string[]
+  allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
+  daily_token_limit: number | null
+  daily_cost_limit: number | null
+  rate_limit_per_minute: number | null
+  created_at: string
+  updated_at: string
+  last_used_at: string | null
+  today: {
+    calls: number
+    errors: number
+    error_rate: number
+    cost_usd: number
+    input_tokens: number
+    output_tokens: number
+  }
+}
+
+export interface TeamsResponse {
+  teams: LocalTeam[]
+  mode: 'local_only'
+  enterprise_features: {
+    workspace: boolean
+    sso: boolean
+    scim: boolean
+    org_billing: boolean
+  }
+}
+
+export interface CreateTeamRequest {
+  name: string
+  description?: string | null
+  namespace_id?: string | null
+  allowed_nodes: string[]
+  allowed_models: string[]
+  allowed_endpoints: string[]
+  allowed_modalities: string[]
+  daily_token_limit?: number | null
+  daily_cost_limit?: number | null
+  rate_limit_per_minute?: number | null
+}
+
+export type UpdateTeamRequest = Partial<CreateTeamRequest> & {
+  status?: 'active' | 'disabled'
+}
+
+export interface TeamMutationResponse extends ActionResponse {
+  item: LocalTeam
+}
+
 // ── Gateway API Keys ──
 
 export interface GatewayApiKey {
@@ -1832,6 +2015,8 @@ export interface GatewayApiKey {
   allowed_modalities: string[]
   namespace_id: string | null
   namespace_name: string | null
+  team_id: string | null
+  team_name: string | null
   daily_token_limit: number | null
   daily_cost_limit: number | null
   rate_limit_per_minute: number | null
@@ -1859,6 +2044,7 @@ export interface CreateGatewayApiKeyRequest {
   allowed_endpoints: string[]
   allowed_modalities: string[]
   namespace_id?: string | null
+  team_id?: string | null
   daily_token_limit?: number | null
   daily_cost_limit?: number | null
   rate_limit_per_minute?: number | null

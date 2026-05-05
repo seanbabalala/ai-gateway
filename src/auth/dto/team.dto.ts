@@ -1,0 +1,142 @@
+import {
+  IsArray,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { LocalTeamStatus } from '../../database/entities/local-team.entity';
+
+export class CreateTeamDto {
+  @ApiProperty({ example: 'platform-team', maxLength: 80 })
+  @IsString()
+  @MaxLength(80)
+  name!: string;
+
+  @ApiPropertyOptional({ example: 'Shared limits for the platform team', nullable: true })
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @ApiPropertyOptional({ example: 'production', nullable: true, description: 'Optional local OSS namespace binding.' })
+  @IsOptional()
+  @IsString()
+  namespace_id?: string | null;
+
+  @ApiPropertyOptional({ type: [String], example: ['openai', 'anthropic'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_nodes?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o', 'claude-sonnet-4-20250514'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_models?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses', 'embeddings'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_endpoints?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text', 'image'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_modalities?: string[];
+
+  @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  daily_token_limit?: number | null;
+
+  @ApiPropertyOptional({ example: 50, nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  daily_cost_limit?: number | null;
+
+  @ApiPropertyOptional({ example: 120, nullable: true, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  rate_limit_per_minute?: number | null;
+}
+
+export class UpdateTeamDto {
+  @ApiPropertyOptional({ example: 'platform-team', maxLength: 80 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Shared limits for the platform team', nullable: true })
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @ApiPropertyOptional({ enum: ['active', 'disabled'], example: 'active' })
+  @IsOptional()
+  @IsIn(['active', 'disabled'])
+  status?: LocalTeamStatus;
+
+  @ApiPropertyOptional({ example: 'production', nullable: true, description: 'Optional local OSS namespace binding.' })
+  @IsOptional()
+  @IsString()
+  namespace_id?: string | null;
+
+  @ApiPropertyOptional({ type: [String], example: ['openai', 'anthropic'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_nodes?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['gpt-4o'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_models?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['chat_completions', 'responses'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_endpoints?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['text'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowed_modalities?: string[];
+
+  @ApiPropertyOptional({ example: 1000000, nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  daily_token_limit?: number | null;
+
+  @ApiPropertyOptional({ example: 50, nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  daily_cost_limit?: number | null;
+
+  @ApiPropertyOptional({ example: 120, nullable: true, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  rate_limit_per_minute?: number | null;
+}

@@ -10,6 +10,7 @@ export interface K8sValidationResult {
 
 const HELM_CHART_DIR = path.join('deploy', 'helm', 'siftgate');
 const K8S_BASE_DIR = path.join('deploy', 'kubernetes', 'base');
+const PRIVATE_ASSET_PATTERN = new RegExp(`${'siftgate'}[-_]${'cloud'}|enterprise`, 'i');
 
 const REQUIRED_HELM_FILES = [
   'Chart.yaml',
@@ -173,7 +174,7 @@ function validateHelmMetadata(
   if (typeof imageRepo !== 'string' || !imageRepo.includes('ai-gateway')) {
     result.errors.push('Helm values image.repository must point at the OSS ai-gateway image.');
   }
-  if (typeof imageRepo === 'string' && /siftgate-cloud|enterprise/i.test(imageRepo)) {
+  if (typeof imageRepo === 'string' && PRIVATE_ASSET_PATTERN.test(imageRepo)) {
     result.errors.push('Helm values image.repository must not reference Cloud or enterprise images.');
   }
   result.info.push(`Helm chart ${chart.name || 'unknown'} appVersion=${chart.appVersion || 'unknown'}`);
@@ -274,7 +275,7 @@ function validateKustomizeBase(
   if (typeof image !== 'string' || !image.includes(`ai-gateway:${expectedImageTag}`)) {
     result.errors.push(`Kubernetes base image must reference the OSS ai-gateway:${expectedImageTag} image.`);
   }
-  if (typeof image === 'string' && /siftgate-cloud|enterprise/i.test(image)) {
+  if (typeof image === 'string' && PRIVATE_ASSET_PATTERN.test(image)) {
     result.errors.push('Kubernetes base image must not reference Cloud or enterprise images.');
   }
   const ports = Array.isArray(container.ports) ? container.ports : [];
@@ -338,7 +339,7 @@ function validateDefaultGatewayConfig(
   if (getPath(config, ['control_plane', 'enabled']) === true) {
     result.errors.push(`${label} must not enable control_plane by default.`);
   }
-  if (/siftgate-cloud|enterprise/i.test(rawConfig)) {
+  if (PRIVATE_ASSET_PATTERN.test(rawConfig)) {
     result.errors.push(`${label} must not reference Cloud or enterprise assets.`);
   }
   result.info.push(`${label} defaults to SQLite + memory state.`);

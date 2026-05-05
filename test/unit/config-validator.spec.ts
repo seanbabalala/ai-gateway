@@ -175,6 +175,43 @@ describe('config validator', () => {
     );
   });
 
+  it('validates local evaluation framework privacy settings', () => {
+    const invalid = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        evaluation: {
+          enabled: 'yes',
+          store_samples: 'sometimes',
+          max_sample_chars: 0,
+          retention_days: -1,
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(invalid.ok).toBe(false);
+    expect(codes(invalid.errors)).toContain('invalid_evaluation_config');
+
+    const warning = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        evaluation: {
+          enabled: true,
+          store_samples: true,
+          max_sample_chars: 200,
+          judge_model: 'missing-judge-model',
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(warning.ok).toBe(true);
+    expect(codes(warning.warnings)).toEqual(
+      expect.arrayContaining([
+        'evaluation_sample_storage_enabled',
+        'unknown_evaluation_judge_model',
+      ]),
+    );
+  });
+
   it('accepts MCP Gateway preview registry config', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {

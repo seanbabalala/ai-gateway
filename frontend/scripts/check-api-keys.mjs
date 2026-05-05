@@ -25,6 +25,12 @@ const requiredLocaleKeys = [
   'modalities.image',
   'modalities.audio',
   'modalities.video',
+  'form.team',
+  'form.noTeam',
+  'summary.activeTeams',
+  'teams.table.title',
+  'teams.actions.createTeam',
+  'teams.form.createTitle',
 ]
 
 for (const snippet of [
@@ -38,6 +44,10 @@ for (const snippet of [
   'plainKey',
   'navigator.clipboard.writeText(plainKey)',
   'nodeModelBuckets',
+  'useTeams',
+  'team_id',
+  'TeamFormDialog',
+  'teams.actions.disableTeam',
 ]) {
   assert(source.includes(snippet), `ApiKeysPage is missing ${snippet}`)
 }
@@ -62,7 +72,7 @@ for (const locale of locales) {
   }
 }
 
-console.log('API key Dashboard checks passed: endpoint/modality controls, masked table values, one-time copy dialog, and 7-language locale keys.')
+console.log('API key Dashboard checks passed: team management, endpoint/modality controls, masked table values, one-time copy dialog, and 7-language locale keys.')
 
 function readPath(value, path) {
   if (Object.prototype.hasOwnProperty.call(value, path)) {

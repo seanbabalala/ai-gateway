@@ -1,19 +1,18 @@
 # Production Deployment
 
-This guide covers the open-source SiftGate Data Plane only. SiftGate Cloud is
-an optional control plane; a self-hosted gateway remains fully usable with
-local config, local provider credentials, SQLite for development, PostgreSQL
-for production, and optional Redis-backed shared state.
+This guide covers the open-source SiftGate Data Plane only. A self-hosted
+gateway remains fully usable with local config, local provider credentials,
+SQLite for small deployments, PostgreSQL for durable production metadata, and
+optional Redis-backed shared state.
 
-v1.0.0 keeps that deployment shape while adding the Extension Ecosystem layer
-on top of the v0.9.3 Operations + Trust foundation: Provider Catalog coverage
-for 30+ providers, reasoning/thinking intent across protocols, metadata-only
-guardrails webhook findings with more local rules, and a fuller OSS Dashboard
-API Key management surface. Structured output, rerank, images, audio, video,
-Batch API metadata, secret resolution, audit metadata, benchmark summaries, provider catalog
-metadata, and API key policy stay in the open-source Data Plane. Keep the
-guardrails webhook sink disabled until the receiver, queue limits, retry
-policy, and downstream retention policy have been reviewed.
+v1.3.0 keeps that deployment shape while adding the Production Ready layer:
+local Virtual Key + Team management, Semantic Cache preview, Evaluation
+Framework preview, and community documentation assets. Structured output,
+rerank, images, audio, video, Batch API metadata, secret resolution, audit
+metadata, benchmark summaries, provider catalog metadata, and API key policy
+stay in the open-source Data Plane. Keep the guardrails webhook sink disabled
+until the receiver, queue limits, retry policy, and downstream retention policy
+have been reviewed.
 Realtime, video, and Batch result download proxying should only be enabled for
 production after upstream provider behavior, connection limits, job/file
 retention, and load balancer paths have been tested in your environment.
@@ -24,6 +23,10 @@ requests to a supported public catalog. In v1.2 only OpenRouter has an
 automatic adapter; the recommended target is the local sync cache so reviewed
 `catalog.override.yaml`, node `model_capabilities[].pricing`, and
 `models_pricing` stay authoritative.
+
+Run `npm run docs:check` before releases to catch broken documentation links,
+common secret patterns, private repository references, and accidentally present
+`gateway.config.yaml` files.
 
 ## Baseline Topology
 
@@ -40,6 +43,9 @@ automatic adapter; the recommended target is the local sync cache so reviewed
 - Manage client credentials from the OSS Dashboard API Keys page. It supports local namespace binding, endpoint/modality/node/model restrictions, per-key budgets, per-key rate limits, disable/delete/rotate, masked display, one-time copy on create/rotate, and audit events without requiring Cloud workspace/RBAC.
 - Use Redis only for features that need shared state or multi-instance
   coordination.
+- Keep `semantic_cache.store_responses=false` and `evaluation.store_samples=false`
+  unless local policy explicitly allows replayable responses or redacted sample
+  previews.
 - Keep `/health` on the load balancer health check path.
 
 ## Kubernetes / Helm
@@ -72,8 +78,8 @@ database:
 ```
 
 For production, use PostgreSQL so call logs, Dashboard-managed Gateway API
-keys, budgets, and node status can be backed up and operated independently from
-one container filesystem:
+keys, local teams, budgets, and node status can be backed up and operated
+independently from one container filesystem:
 
 ```yaml
 database:
@@ -180,6 +186,36 @@ environment or secret references, avoid secrets in MCP URLs, and prefer
 namespace allow-lists for team-scoped tool servers. The preview audit buffer is
 metadata-only and in-memory; it is useful for recent operational visibility but
 is not a durable compliance event store.
+
+## Evaluation Framework
+
+The v1.3 Evaluation Framework preview stores local experiment metadata in the
+runtime database. SQLite works for local single-node use; PostgreSQL is
+recommended if eval history needs backup, restore testing, or multi-instance
+operational visibility.
+
+```yaml
+evaluation:
+  enabled: true
+  store_samples: false
+  max_sample_chars: 500
+  retention_days: 30
+  judge_model: gpt-4o-mini
+```
+
+Production guidance:
+
+- Keep `store_samples` disabled for production datasets unless legal/privacy
+  review explicitly approves local redacted previews.
+- Judge calls are ordinary SiftGate requests and can spend real budget. Scope
+  the judge key/model with normal Gateway API key, namespace, budget, and rate
+  limit controls.
+- Fixed rubrics and representative samples make judge scores comparable across
+  runs; treat the score as operational evidence, not a final truth label.
+- Include `eval_datasets`, `eval_experiment_runs`, and `eval_sample_results` in
+  database backups if historical reports are needed after incidents.
+- Dashboard Eval Reports are read-only. Automation that calls
+  `POST /api/dashboard/evals/runs` should run from a trusted local environment.
 
 ## Config Audit And Rollback
 
@@ -324,6 +360,7 @@ Redis Pub/Sub does not carry provider keys, prompts, responses, raw headers, or 
 ## Security Notes
 
 - Provider API keys should stay in environment variables or a local secret manager referenced from `gateway.config.yaml`.
-- Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`. Operators should scope them with endpoint/modalities, allowed nodes/models, namespace, daily budgets, and rate limits instead of sharing one global client key.
+- Dashboard-generated Gateway API keys are the only keys clients should use against `/v1/*`. Operators should scope them with local teams, endpoint/modalities, allowed nodes/models, namespace, daily budgets, and rate limits instead of sharing one global client key.
+- Local teams are OSS-only shared policy groups. They help manage multiple keys locally, but they are not enterprise SSO, SCIM, workspaces, RBAC, or org billing.
 - Gateway API key list/update/delete responses only expose masked prefixes. Create and rotate responses show the full key once; config audit events store redacted summaries and do not persist that one-time secret.
 - The open-source Data Plane does not require SiftGate Cloud. If `control_plane` is enabled, it is an outbound optional integration and AI traffic still flows from the gateway to the configured providers.

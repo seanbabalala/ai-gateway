@@ -352,10 +352,11 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
 | `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
 | `GET` | `/api/dashboard/benchmarks/report` | Read-only local benchmark report from call-log metadata |
-| `GET` | `/api/dashboard/budget` | Global and per-key budget status |
+| `GET` | `/api/dashboard/budget` | Global, namespace, team, and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
 | `GET` | `/api/dashboard/namespaces` | Local namespace policies and budget summaries |
+| `GET` | `/api/dashboard/teams` | Local team policies, usage summaries, and OSS-only enterprise markers |
 | `GET` | `/api/dashboard/shadow` | Read-only shadow traffic status and sanitized recent results |
 | `GET` | `/api/dashboard/shadow/report` | Read-only primary vs shadow comparison report with success, latency, cost, token, fallback, confidence, and risk fields |
 | `GET` | `/api/dashboard/shadow/results/:id/comparison` | Single shadow result comparison paired with the primary call log by request id |
@@ -492,7 +493,39 @@ The report includes total requests, success/error/fallback/cache rates, p50/p75/
 
 This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
 
-Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, and estimated savings.
+Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, estimated savings, and v1.3 semantic cache match state.
+
+### Semantic Cache Preview
+
+`semantic_cache` is a disabled-by-default local preview. It uses a local hashed-vector embedding to compare request text and records only similarity metadata unless replayable response storage is explicitly enabled.
+
+```yaml
+semantic_cache:
+  enabled: false
+  backend: memory
+  similarity_threshold: 0.92
+  ttl_seconds: 3600
+  max_entries: 500
+  store_responses: false
+```
+
+When `store_responses: false`, a semantic match is evidence only and the gateway still calls upstream. When `store_responses: true`, a high-confidence match can return a cached response and call logs include `semantic_cache_hit=true` with `node_id=semantic_cache`. The cache is isolated by source format, requested model, API key, namespace, and local team metadata.
+
+### Evaluation Reports
+
+The v1.3 Evaluation Framework preview stores local experiment metadata for primary-vs-candidate comparisons. LLM-as-judge calls are ordinary SiftGate requests through the normal routing pipeline; no hosted enterprise service is required.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/dashboard/evals/reports` | List metadata-only evaluation reports |
+| `GET` | `/api/dashboard/evals/reports/:id` | Get one report with sample-level request ids and judge scores |
+| `POST` | `/api/dashboard/evals/runs` | Run a local primary-vs-candidate experiment through SiftGate routing |
+
+`GET /api/dashboard/evals/reports` supports `period`, `status`, `dataset_id`, and `limit`. Responses include totals, primary and candidate success/latency/cost/fallback metrics, average judge score, winner, and privacy flags.
+
+`GET /api/dashboard/evals/reports/:id` adds per-sample metadata: sample hash, optional sample id, primary/candidate/judge request ids, status codes, latency, cost, fallback flags, judge score, judge label, sanitized reason summary, sanitized error type, and sanitized metadata.
+
+`POST /api/dashboard/evals/runs` is intended for local automation. The Dashboard page remains read-only. A run body contains dataset metadata, primary target, candidate target, optional judge config, samples, and optional `store_samples`. Prompt/response sample previews are persisted only when both `evaluation.store_samples: true` and request `store_samples: true` are set; previews are redacted and truncated. By default, evaluation tables do not store prompt text, response text, raw headers, provider keys, media bytes, video bytes, or rubric text.
 
 ### Dashboard Playground
 
@@ -530,10 +563,16 @@ Supported capabilities are `chat`, `responses`, `messages`, `embeddings`, `reran
 | `PUT` | `/api/dashboard/api-keys/:id` | Update key name, status, namespace binding, permissions, budgets, or rate limits |
 | `POST` | `/api/dashboard/api-keys/:id/rotate` | Rotate the Gateway API key secret and return the new plain key once |
 | `DELETE` | `/api/dashboard/api-keys/:id` | Delete a Gateway API key |
+| `GET` | `/api/dashboard/teams` | List local teams with permissions, usage, budgets, and rate limits |
+| `POST` | `/api/dashboard/teams` | Create a local team policy |
+| `PUT` | `/api/dashboard/teams/:id` | Update team name, status, namespace binding, permissions, budgets, or rate limits |
+| `DELETE` | `/api/dashboard/teams/:id` | Delete a local team policy and disable team budget rules |
 
-Create and update payloads support `allowed_nodes`, `allowed_models`, `allowed_endpoints`, `allowed_modalities`, `namespace_id`, `daily_token_limit`, `daily_cost_limit`, and `rate_limit_per_minute`. Empty permission arrays mean "all configured" for that dimension; namespace node/model restrictions still intersect with the key's own node/model restrictions.
+Create and update payloads support `allowed_nodes`, `allowed_models`, `allowed_endpoints`, `allowed_modalities`, `namespace_id`, `team_id`, `daily_token_limit`, `daily_cost_limit`, and `rate_limit_per_minute`. Empty permission arrays mean "all configured" for that dimension; team and namespace restrictions still intersect with the key's own restrictions.
 
 List responses include `status`, `last_used_at`, `key_prefix`, and a `today` summary with calls, cost, tokens, errors, and `error_rate`. OpenAPI examples redact plain Gateway API key values. Runtime create and rotate responses still return the plain key once so the operator can copy it into client configuration; after that, Dashboard APIs only return the masked prefix. Mutating API key operations write local config audit events with redacted summaries and never store the one-time secret.
+
+Local teams are OSS-only shared policy groups. They persist locally in SQLite/PostgreSQL, can be disabled, and can define namespace binding, allowed endpoints/modalities/nodes/models, daily token/cost budgets, and RPM limits. Bound keys fail closed when their team is disabled. SiftGate checks global, namespace, team, and key budgets and records `team_id` in call logs for usage summaries. Team APIs never return secrets and do not implement SSO, SCIM, enterprise workspaces, or org billing.
 
 ## Secret Handling In The Spec
 

@@ -194,6 +194,8 @@ export interface CanonicalRequestMetadata {
   api_key_id?: string;
   namespace_id?: string | null;
   namespace_name?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
   api_key_permissions?: {
     allow_auto: boolean;
     allow_direct: boolean;

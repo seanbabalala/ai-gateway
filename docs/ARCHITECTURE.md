@@ -99,10 +99,13 @@ Gateway API keys can carry:
 - per-key budgets
 - per-key rate limits
 - optional local namespace binding
+- optional local team binding
 
-Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Namespace node/model restrictions are intersected with API-key node/model restrictions before routing. Endpoint and modality restrictions are key-local checks enforced before a request reaches routing or provider forwarding.
+Local teams are open-source data-plane policy groups stored in SQLite/PostgreSQL. They can define namespace binding, allowed nodes/models/endpoints/modalities, daily token/cost budgets, and rate limits for multiple Dashboard-generated Gateway API keys. A disabled team makes bound keys fail closed. Teams intentionally do not implement enterprise SSO, SCIM, organization billing, Cloud workspaces, or workspace RBAC.
 
-Dashboard API key list responses expose only `key_prefix`, status, usage summary, and permission metadata. The full key is returned once on create or rotate, then discarded. API key mutations write local config audit events with redacted before/after summaries, including `secret: redacted` instead of the generated key.
+Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Key, team, and namespace restrictions are intersected before routing. The effective rate limit is the strictest configured key/team/namespace limit. Budget checks run across global, namespace, team, and key scopes before a request reaches an upstream provider.
+
+Dashboard API key list responses expose only `key_prefix`, status, team/namespace labels, usage summary, and permission metadata. The full key is returned once on create or rotate, then discarded. API key and team mutations write local config audit events with redacted before/after summaries, including `secret: redacted` for keys and no secret-bearing fields for teams.
 
 ### Routing
 
@@ -128,6 +131,8 @@ The router then applies tier config, domain preferences, modality compatibility,
 
 v1.2 prompt-cache-aware routing keeps the existing local prompt-cache short-circuit intact. A local cache hit returns before upstream routing. For cache misses, `cost` and `balanced` optimization can consider provider prompt-cache/read-cache/write-cache capability, configured `cache_read_input` / `cache_creation_input` prices, and observed provider cache-read hit rate. Route traces expose only metadata evidence and never include prompt text, responses, raw headers, provider keys, or media/video bytes.
 
+v1.3 adds Semantic Cache preview as a separate disabled-by-default layer. It computes a local hashed-vector embedding from canonical request text, stores embedding/hash/metadata by default, and records semantic match evidence in call logs and Route Decision Trace. Replayable response storage is off unless `semantic_cache.store_responses=true`; when off, semantic matches are advisory evidence and traffic still goes upstream.
+
 ### Reliability
 
 The data plane protects request flow with:
@@ -151,6 +156,7 @@ The gateway records call logs with:
 - trace id from direct trace headers or W3C `traceparent`
 - Gateway API key id and name
 - namespace id
+- team id
 - source protocol
 - selected tier
 - upstream node and model
@@ -199,6 +205,18 @@ The preview does not implement an enterprise MCP marketplace, remote workspace r
 ## Batch API Proxy
 
 The v1.2 Batch API proxy follows the same metadata-only async pattern without running through the synchronous generation pipeline. `POST /v1/batches` resolves a provider node, enforces Gateway API key endpoint/node/model permissions, namespace scope, rate limits, and budget checks, then forwards the OpenAI-compatible create body to the upstream batch endpoint. It writes a `batch_jobs` row with request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, and sanitized error text. It stores metadata keys only, not metadata values. Status, cancel, output, and error-file routes look up `batch_jobs`, enforce the creating key/namespace boundary, and proxy provider file content without persisting input JSONL, output JSONL, raw headers, provider keys, or file bytes.
+
+## Evaluation Framework
+
+The v1.3 Evaluation Framework is a local metadata layer around the existing request pipeline. It does not create a second inference path. Primary, candidate, and judge calls are built as canonical text requests and sent through `PipelineService.process`, so normal routing, fallback, budgets, call logs, telemetry, plugins, and route decisions still apply.
+
+Persistent state is split across three tables:
+
+- `eval_datasets` stores dataset identity, source, sample count, sanitized metadata, and whether sample previews were explicitly enabled.
+- `eval_experiment_runs` stores primary/candidate/judge target metadata, aggregate success, latency, cost, fallback, judge score, winner, status, timestamps, sanitized summary, and privacy flags.
+- `eval_sample_results` stores sample hashes, request ids, status codes, latency, cost, fallback flags, judge score/label, sanitized reason summary, sanitized error type, and sanitized metadata.
+
+By default, these tables do not store prompt text, response text, raw headers, provider keys, media bytes, video bytes, or judge rubric text. `evaluation.store_samples` is a local opt-in for redacted previews; a run must also set `store_samples: true`, which prevents a broad config flag from silently capturing samples from automation that did not request it.
 
 ## Provider Catalog And Pricing Sync
 

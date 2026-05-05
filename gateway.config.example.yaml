@@ -46,7 +46,11 @@ auth:
   # Client Gateway API keys are generated and managed in the Dashboard.
   # Dashboard-managed keys support namespace binding, allowed_nodes,
   # allowed_models, allowed_endpoints, allowed_modalities, per-key budgets,
-  # per-key rate limits, masked display, one-time copy, rotation, and audit.
+  # per-key rate limits, local team binding, masked display, one-time copy,
+  # rotation, and audit.
+  # Local teams are also managed in the Dashboard and persisted to SQLite or
+  # PostgreSQL. They add OSS-local shared policy only: no SSO, SCIM, enterprise
+  # workspace, org billing, Cloud dependency, or private package is required.
   # Provider API keys still live under nodes[].api_key below.
   api_keys: []
 
@@ -69,8 +73,9 @@ auth:
 # auth.api_keys[].namespace_id for YAML-defined keys.
 #
 # Namespace allowed_nodes/allowed_models intersect with API-key restrictions.
-# Namespace budgets and rate limits are enforced in addition to global and
-# key-level limits. If omitted, all keys keep the existing global behavior.
+# Namespace budgets and rate limits are enforced in addition to global, local
+# team, and key-level limits. If omitted, all keys keep the existing global
+# behavior.
 # ============================================================
 # namespaces:
 #   - id: team-a
@@ -816,6 +821,24 @@ models_pricing:
 #     enabled: false           # Opt-in stream cache + SSE replay (default: false)
 
 # ============================================================
+# Semantic Cache Preview — optional embedding-similarity cache
+# ============================================================
+# Disabled by default. The first OSS preview uses a local memory hashed-vector
+# embedding for similarity metadata. It stores only embedding/hash/metadata by
+# default; replayable response bodies require explicit store_responses: true.
+# Keep namespace/API key/model isolation enabled through the gateway metadata.
+# ============================================================
+# semantic_cache:
+#   enabled: false             # Master switch (default: false)
+#   backend: memory            # memory now; redis/vector reserved for later previews
+#   similarity_threshold: 0.92 # Cosine threshold for a metadata match
+#   ttl_seconds: 3600          # Entry TTL
+#   max_entries: 500           # Local LRU cap
+#   vector_dimensions: 256     # Hashed-vector dimensions
+#   store_responses: false     # Privacy-safe default: no replay bodies
+#   max_response_bytes: 65536  # Cap when store_responses=true
+
+# ============================================================
 # Embedding Batching — optional /v1/embeddings request coalescing
 # ============================================================
 # Disabled by default. When enabled, small same-target embedding
@@ -927,6 +950,20 @@ models_pricing:
 #       enabled: false
 #       url: ${REDIS_URL:-redis://127.0.0.1:6379}
 #       store_responses: false
+
+# ============================================================
+# Evaluation Framework — local primary/candidate experiment reports
+# ============================================================
+# Disabled-by-default preview controls for local LLM-as-judge reports.
+# Prompt/response previews are not stored unless both this config and the
+# individual run request explicitly opt in. Previews are redacted/truncated.
+# ============================================================
+# evaluation:
+#   enabled: false
+#   store_samples: false
+#   max_sample_chars: 500
+#   retention_days: 30
+#   judge_model: gpt-4o-mini
 
 # ============================================================
 # Telemetry — OpenTelemetry and Prometheus metrics
