@@ -59,6 +59,9 @@ export interface GatewayConfig {
   /** Optional async shadow traffic mirror — disabled by default */
   shadow?: ShadowTrafficConfig;
 
+  /** Optional local evaluation framework metadata and sample-storage controls. */
+  evaluation?: EvaluationConfig;
+
   /** Optional local config audit log and rollback history. */
   config_audit?: ConfigAuditConfig;
 
@@ -927,6 +930,22 @@ export interface CacheConfig {
 export interface StreamCacheConfig {
   /** Cache and replay completed stream responses as SSE (default: false). */
   enabled?: boolean;
+}
+
+// ===== Evaluation Framework =====
+export interface EvaluationConfig {
+  /** Enable local experiment execution helpers. Dashboard reports remain read-only. */
+  enabled?: boolean;
+  /** Store redacted sample prompt/response previews. Default false. */
+  store_samples?: boolean;
+  /** Maximum characters retained per redacted preview when store_samples=true. */
+  max_sample_chars?: number;
+  /** Default judge model used by local runners when omitted. */
+  judge_model?: string;
+  /** Default judge prompt rubric. Stored as a hash in run metadata. */
+  judge_rubric?: string;
+  /** Retain evaluation metadata for this many days. Default follows DB retention. */
+  retention_days?: number;
 }
 
 // ===== Model Pricing =====

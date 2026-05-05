@@ -19,6 +19,7 @@ import {
   SquareTerminal,
   Network,
   FileStack,
+  Scale,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -42,6 +43,7 @@ const navGroups = [
       { to: '/mcp', icon: Network, labelKey: 'nav.mcp' },
       { to: '/benchmarks', icon: Gauge, labelKey: 'nav.benchmarks' },
       { to: '/batches', icon: FileStack, labelKey: 'nav.batches' },
+      { to: '/evals', icon: Scale, labelKey: 'nav.evals' },
     ],
   },
   {

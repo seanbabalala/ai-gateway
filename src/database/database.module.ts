@@ -12,6 +12,9 @@ import {
   RouteDecisionLog,
   ShadowTrafficResult,
   BatchJob,
+  EvalDataset,
+  EvalExperimentRun,
+  EvalSampleResult,
   VideoJob,
 } from './entities';
 
@@ -32,6 +35,9 @@ import {
             RouteDecisionLog,
             ProviderCompatibilityResult,
             BatchJob,
+            EvalDataset,
+            EvalExperimentRun,
+            EvalSampleResult,
             VideoJob,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
@@ -65,6 +71,9 @@ import {
       RouteDecisionLog,
       ProviderCompatibilityResult,
       BatchJob,
+      EvalDataset,
+      EvalExperimentRun,
+      EvalSampleResult,
       VideoJob,
     ]),
   ],

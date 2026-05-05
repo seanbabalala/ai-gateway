@@ -20,6 +20,9 @@ const TABLES: DbMigrationTableName[] = [
   "config_audit_events",
   "provider_compatibility_results",
   "batch_jobs",
+  "eval_datasets",
+  "eval_experiment_runs",
+  "eval_sample_results",
   "video_jobs",
 ];
 
@@ -277,6 +280,76 @@ function createSqliteFixture(dir: string): string {
       expires_at text,
       created_at datetime,
       updated_at datetime
+    );
+
+    CREATE TABLE eval_datasets (
+      id varchar PRIMARY KEY,
+      name varchar,
+      description text,
+      source varchar,
+      sample_count integer,
+      metadata_json text,
+      sample_storage_enabled integer,
+      created_at datetime,
+      updated_at datetime
+    );
+
+    CREATE TABLE eval_experiment_runs (
+      id varchar PRIMARY KEY,
+      dataset_id varchar,
+      dataset_name varchar,
+      judge_node_id varchar,
+      judge_model varchar,
+      primary_node_id varchar,
+      primary_model varchar,
+      candidate_node_id varchar,
+      candidate_model varchar,
+      status varchar,
+      sample_count integer,
+      primary_success_rate real,
+      candidate_success_rate real,
+      primary_avg_latency_ms real,
+      candidate_avg_latency_ms real,
+      primary_total_cost_usd real,
+      candidate_total_cost_usd real,
+      primary_fallback_rate real,
+      candidate_fallback_rate real,
+      avg_judge_score real,
+      winner varchar,
+      summary_json text,
+      judge_config_json text,
+      privacy_json text,
+      error text,
+      started_at datetime,
+      completed_at datetime,
+      created_at datetime,
+      updated_at datetime
+    );
+
+    CREATE TABLE eval_sample_results (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      run_id varchar,
+      sample_id varchar,
+      sample_hash varchar,
+      primary_request_id varchar,
+      candidate_request_id varchar,
+      judge_request_id varchar,
+      primary_status_code integer,
+      candidate_status_code integer,
+      primary_success integer,
+      candidate_success integer,
+      primary_latency_ms integer,
+      candidate_latency_ms integer,
+      primary_cost_usd real,
+      candidate_cost_usd real,
+      primary_fallback integer,
+      candidate_fallback integer,
+      judge_score real,
+      judge_label varchar,
+      judge_reason_summary text,
+      error_type varchar,
+      metadata_json text,
+      created_at datetime
     );
 
     CREATE TABLE video_jobs (
@@ -578,6 +651,109 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO eval_datasets (
+      id, name, description, source, sample_count, metadata_json,
+      sample_storage_enabled, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "eval-dataset-1",
+    "Routing evals",
+    "metadata only",
+    "local",
+    2,
+    JSON.stringify({ suite: "routing" }),
+    0,
+    "2026-05-01T00:02:40.000Z",
+    "2026-05-01T00:02:40.000Z",
+  );
+
+  db.prepare(
+    `
+    INSERT INTO eval_experiment_runs (
+      id, dataset_id, dataset_name, judge_node_id, judge_model,
+      primary_node_id, primary_model, candidate_node_id, candidate_model,
+      status, sample_count, primary_success_rate, candidate_success_rate,
+      primary_avg_latency_ms, candidate_avg_latency_ms, primary_total_cost_usd,
+      candidate_total_cost_usd, primary_fallback_rate, candidate_fallback_rate,
+      avg_judge_score, winner, summary_json, judge_config_json, privacy_json,
+      error, started_at, completed_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "eval-run-1",
+    "eval-dataset-1",
+    "Routing evals",
+    "openai",
+    "gpt-4o-mini",
+    "openai",
+    "gpt-4o-mini",
+    "groq",
+    "llama-3.3-70b",
+    "completed",
+    2,
+    50,
+    100,
+    120,
+    80,
+    0.01,
+    0.004,
+    50,
+    0,
+    0.82,
+    "candidate",
+    JSON.stringify({ cost_delta_usd: -0.006 }),
+    JSON.stringify({ rubric_hash: "hash" }),
+    JSON.stringify({ metadata_only: true }),
+    null,
+    "2026-05-01T00:02:41.000Z",
+    "2026-05-01T00:02:42.000Z",
+    "2026-05-01T00:02:41.000Z",
+    "2026-05-01T00:02:42.000Z",
+  );
+
+  db.prepare(
+    `
+    INSERT INTO eval_sample_results (
+      run_id, sample_id, sample_hash, primary_request_id,
+      candidate_request_id, judge_request_id, primary_status_code,
+      candidate_status_code, primary_success, candidate_success,
+      primary_latency_ms, candidate_latency_ms, primary_cost_usd,
+      candidate_cost_usd, primary_fallback, candidate_fallback,
+      judge_score, judge_label, judge_reason_summary, error_type,
+      metadata_json, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "eval-run-1",
+    "case-1",
+    "sample-hash-1",
+    "req-primary-1",
+    "req-candidate-1",
+    "req-judge-1",
+    200,
+    200,
+    1,
+    1,
+    100,
+    80,
+    0.005,
+    0.002,
+    0,
+    0,
+    0.82,
+    "candidate",
+    "better metadata",
+    null,
+    JSON.stringify({ sample_previews_stored: false }),
+    "2026-05-01T00:02:43.000Z",
+  );
+
+  db.prepare(
+    `
     INSERT INTO video_jobs (
       request_id, provider_job_id, node_id, model, api_key_id, api_key_name,
       namespace_id, namespace_name, status, error, expires_at, created_at, updated_at
@@ -623,7 +799,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(11);
+    expect(result.totals.source_rows).toBe(14);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -702,6 +878,26 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(batchJob?.status).toBe("in_progress");
     expect(batchJob?.created_at).toBeInstanceOf(Date);
 
+    const evalDataset = target.rows.get("eval_datasets")?.[0];
+    expect(evalDataset?.id).toBe("eval-dataset-1");
+    expect(evalDataset?.sample_count).toBe(2);
+    expect(evalDataset?.sample_storage_enabled).toBe(false);
+    expect(evalDataset?.created_at).toBeInstanceOf(Date);
+
+    const evalRun = target.rows.get("eval_experiment_runs")?.[0];
+    expect(evalRun?.id).toBe("eval-run-1");
+    expect(evalRun?.sample_count).toBe(2);
+    expect(evalRun?.candidate_success_rate).toBe(100);
+    expect(evalRun?.avg_judge_score).toBe(0.82);
+    expect(evalRun?.started_at).toBe("2026-05-01T00:02:41.000Z");
+
+    const evalSample = target.rows.get("eval_sample_results")?.[0];
+    expect(evalSample?.sample_id).toBe("case-1");
+    expect(evalSample?.primary_success).toBe(true);
+    expect(evalSample?.candidate_success).toBe(true);
+    expect(evalSample?.judge_score).toBe(0.82);
+    expect(evalSample?.created_at).toBeInstanceOf(Date);
+
     const videoJob = target.rows.get("video_jobs")?.[0];
     expect(videoJob?.request_id).toBe("req-video-1");
     expect(videoJob?.api_key_id).toBe("key-1");
@@ -739,7 +935,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(11);
+    expect(result.validation.mismatches).toHaveLength(14);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

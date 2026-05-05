@@ -17,6 +17,7 @@ const RouteExplanationPage = lazy(() => import('@/pages/RouteExplanationPage').t
 const ConfigAuditPage = lazy(() => import('@/pages/ConfigAuditPage').then((m) => ({ default: m.ConfigAuditPage })))
 const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ default: m.BenchmarkPage })))
 const BatchesPage = lazy(() => import('@/pages/BatchesPage').then((m) => ({ default: m.BatchesPage })))
+const EvalReportsPage = lazy(() => import('@/pages/EvalReportsPage').then((m) => ({ default: m.EvalReportsPage })))
 const ProviderCatalogPage = lazy(() => import('@/pages/ProviderCatalogPage').then((m) => ({ default: m.ProviderCatalogPage })))
 const PlaygroundPage = lazy(() => import('@/pages/PlaygroundPage').then((m) => ({ default: m.PlaygroundPage })))
 const SessionsPage = lazy(() => import('@/pages/SessionsPage').then((m) => ({ default: m.SessionsPage })))
@@ -69,6 +70,8 @@ export function App() {
         <Route path="/config-audit" element={page(<ConfigAuditPage />)} />
         <Route path="/benchmarks" element={page(<BenchmarkPage />)} />
         <Route path="/batches" element={page(<BatchesPage />)} />
+        <Route path="/evals" element={page(<EvalReportsPage />)} />
+        <Route path="/evals/:runId" element={page(<EvalReportsPage />)} />
       </Route>
     </Routes>
   )

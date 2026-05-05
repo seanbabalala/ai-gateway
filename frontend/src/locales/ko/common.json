@@ -62,5 +62,6 @@
   "nav.benchmarks": "벤치마크",
   "nav.sessions": "세션",
   "nav.mcp": "MCP Gateway",
-  "nav.batches": "배치"
+  "nav.batches": "배치",
+  "nav.evals": "평가 리포트"
 }

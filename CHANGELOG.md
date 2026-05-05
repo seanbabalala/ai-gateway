@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Added the v1.3 local Evaluation Framework preview for the OSS Data Plane, with metadata-only dataset, experiment run, and per-sample result storage on SQLite/PostgreSQL.
+- Added LLM-as-judge primary-vs-candidate comparison through the normal SiftGate routing pipeline, reporting success, latency, cost, fallback, judge score, and winner without introducing hosted enterprise services.
+- Added Dashboard APIs `GET /api/dashboard/evals/reports`, `GET /api/dashboard/evals/reports/:id`, and local automation endpoint `POST /api/dashboard/evals/runs`.
+- Added a read-only Dashboard Eval Reports page with 7-language localization and static frontend checks.
+- Added config validation and example settings for `evaluation.store_samples`; prompt/response previews remain disabled by default and require explicit opt-in plus redaction.
+- Added SQLite-to-PostgreSQL migration coverage for `eval_datasets`, `eval_experiment_runs`, and `eval_sample_results`.
+
 ## 1.2.0 - 2026-05-05
 
 ### Added
