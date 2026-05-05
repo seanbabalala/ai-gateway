@@ -347,6 +347,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     capabilities: ['structured_output', 'streaming', 'tools', 'prompt_cache', 'read_cache'],
     prompt_cache: true,
     read_cache: true,
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'OpenAI prompt caching is automatic; current GPT-5-family pricing is more aggressive than older gpt-4o entries, so model pricing should override the family default discount ratio.',
+    },
     models: [
       {
         id: 'gpt-4o',
@@ -367,6 +376,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         ),
         prompt_cache: true,
         read_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 600,
+          cache_min_tokens: 1024,
+          cache_read_discount: 0.5,
+          notes:
+            'gpt-4o uses automatic prompt caching and the published cached-input price is 50% of standard input.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -389,6 +407,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         ),
         prompt_cache: true,
         read_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 600,
+          cache_min_tokens: 1024,
+          cache_read_discount: 0.5,
+          notes:
+            'gpt-4o-mini uses automatic prompt caching and the published cached-input price is 50% of standard input.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -436,6 +463,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     prompt_cache: true,
     read_cache: true,
     write_cache: true,
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 300,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'Anthropic automatic prompt caching defaults to 5 minutes and model-specific entries can raise the minimum token floor.',
+    },
     models: [
       {
         id: 'claude-sonnet-4-20250514',
@@ -457,6 +493,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         prompt_cache: true,
         read_cache: true,
         write_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 300,
+          cache_min_tokens: 1024,
+          cache_read_discount: 0.1,
+          notes:
+            'Claude Sonnet prompt caching starts at 1,024 tokens with 5 minute TTL by default.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -480,6 +525,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         prompt_cache: true,
         read_cache: true,
         write_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 300,
+          cache_min_tokens: 4096,
+          cache_read_discount: 0.1,
+          notes:
+            'Claude Haiku 4.5 uses the higher 4,096 token minimum for prompt caching.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -494,6 +548,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     model_prefixes: ['gemini'],
     capabilities: ['vision', 'long_context', 'read_cache'],
     read_cache: true,
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 3600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0,
+      notes:
+        'Gemini 2.5+ enables implicit caching automatically; Google explicitly documents a 1 hour default TTL for explicit caches and uses that as the published TTL baseline here.',
+    },
     models: [
       {
         id: 'gemini-2.5-pro',
@@ -503,6 +566,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         capabilities: ['vision', 'long_context'],
         limits: { max_context_tokens: 1000000 },
         pricing: pricing(1.25, 10),
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 3600,
+          cache_min_tokens: 4096,
+          cache_read_discount: 0,
+          notes:
+            'Gemini Pro-class implicit caching docs publish the 4,096 token floor on Gemini 2.5 Pro; latest 3.x previews inherit the family cache behavior but may not expose separate guaranteed cache pricing.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -523,6 +595,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
           },
         ),
         read_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 3600,
+          cache_min_tokens: 4096,
+          cache_read_discount: 0.1,
+          notes:
+            'Gemini Pro-family entries keep the published 4,096 token implicit-cache floor while discount ratios can also be derived from model pricing when present.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -543,6 +624,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
           },
         ),
         read_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 3600,
+          cache_min_tokens: 1024,
+          cache_read_discount: 0.1,
+          notes:
+            'Gemini Flash-family entries keep the published 1,024 token implicit-cache floor.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -661,6 +751,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     model_prefixes: ['deepseek'],
     capabilities: ['openai_compatible', 'reasoning', 'read_cache'],
     read_cache: true,
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 10800,
+      cache_min_tokens: 0,
+      cache_read_discount: 0.02,
+      notes:
+        'DeepSeek context caching is automatic and uses a best-effort on-disk cache that is usually cleared after a few hours to a few days.',
+    },
     models: [
       {
         id: 'deepseek-chat',
@@ -678,6 +777,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
           },
         ),
         read_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 10800,
+          cache_min_tokens: 0,
+          cache_read_discount: 0.02,
+          notes:
+            'DeepSeek v4 flash compatibility traffic uses the published cache-hit price that is 2% of the cache-miss input price.',
+        },
         source: 'builtin',
         overridden: false,
       },
@@ -697,6 +805,15 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
           },
         ),
         read_cache: true,
+        cache_metadata: {
+          supports_cache: true,
+          cache_type: 'automatic',
+          cache_ttl_seconds: 10800,
+          cache_min_tokens: 0,
+          cache_read_discount: 0.02,
+          notes:
+            'DeepSeek reasoning compatibility traffic shares the same cache-hit pricing ratio as deepseek-v4-flash.',
+        },
         source: 'builtin',
         overridden: false,
       },

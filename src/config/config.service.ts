@@ -34,6 +34,7 @@ import {
   AuthConfig,
   DashboardConfig,
   FallbackPolicyConfig,
+  CacheAffinityRoutingConfig,
   StateBackendConfig,
   RealtimeConfig,
   McpGatewayConfig,
@@ -702,6 +703,16 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   get budget(): BudgetConfig {
     return this.config.budget;
+  }
+
+  get cacheAffinity(): Required<CacheAffinityRoutingConfig> {
+    const affinity = this.config.routing.cache_affinity;
+    return {
+      enabled: affinity?.enabled ?? true,
+      min_consecutive_hits: affinity?.min_consecutive_hits ?? 2,
+      bonus_weight: affinity?.bonus_weight ?? 0.35,
+      ttl_safety_margin: affinity?.ttl_safety_margin ?? 0.8,
+    };
   }
 
   /** Get cache config with defaults */

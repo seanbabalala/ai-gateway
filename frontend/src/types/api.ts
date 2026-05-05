@@ -230,6 +230,10 @@ export interface RouteDecisionCandidate {
     provider_prompt_cache: boolean
     provider_read_cache: boolean
     provider_write_cache: boolean
+    supports_cache?: boolean
+    cache_type?: string | null
+    cache_min_tokens?: number | null
+    cache_read_discount?: number | null
     observed_cache_hit_rate: number | null
     observed_cache_read_tokens: number
     observed_cache_creation_tokens: number
@@ -240,6 +244,12 @@ export interface RouteDecisionCandidate {
     estimated_cache_adjusted_cost_usd: number | null
     estimated_cache_savings_usd: number | null
     cache_score: number | null
+    cache_affinity_active?: boolean
+    cache_affinity_reason?: string | null
+    cache_affinity_bonus?: number | null
+    provider_cache_ttl_seconds?: number | null
+    time_since_last_cache_hit_seconds?: number | null
+    estimated_cache_hit_probability?: number | null
     reason: string
   }
   compatibility_evidence?: RouteDecisionCompatibilityEvidence

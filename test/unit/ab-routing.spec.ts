@@ -14,6 +14,19 @@ import { RoutingService } from '../../src/routing/routing.service';
 import { mockConfigService } from '../helpers';
 import { Tier } from '../../src/canonical/canonical.types';
 
+function inactiveAffinityResult() {
+  return {
+    active: false,
+    bonus: 0,
+    reason: 'no_session_history',
+    provider_cache_ttl_seconds: null,
+    time_since_last_cache_hit_seconds: null,
+    estimated_cache_hit_probability: null,
+    consecutive_count: 0,
+    cache_type: null,
+  };
+}
+
 function makeRoutingServiceWithSplit(overrides: {
   split?: any[];
   tiers?: Record<string, any>;
@@ -21,6 +34,7 @@ function makeRoutingServiceWithSplit(overrides: {
   circuitBreaker?: any;
   momentum?: any;
   capabilityService?: any;
+  cacheAffinityService?: any;
 } = {}) {
   const defaultSplit = overrides.split || [
     { node: 'claude', model: 'claude-opus-4-6-v1', weight: 70, name: 'control' },
@@ -65,7 +79,21 @@ function makeRoutingServiceWithSplit(overrides: {
     resolveModelModalities: jest.fn().mockReturnValue(['text', 'vision']),
   };
 
-  return { service: new RoutingService(config, capabilityService, circuitBreaker, momentum), circuitBreaker };
+  const cacheAffinityService = overrides.cacheAffinityService || {
+    getCacheAffinity: jest.fn().mockReturnValue(inactiveAffinityResult()),
+    recordRouteResult: jest.fn(),
+  };
+
+  return {
+    service: new RoutingService(
+      config,
+      capabilityService,
+      circuitBreaker,
+      momentum,
+      cacheAffinityService,
+    ),
+    circuitBreaker,
+  };
 }
 
 describe('RoutingService — A/B Split', () => {

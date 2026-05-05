@@ -5357,6 +5357,14 @@ export class PipelineService {
           params.model,
           params.usage,
         );
+        this.routingService.recordSessionRouteResult?.(
+          params.canonical.metadata.session_id ||
+            params.canonical.metadata.session_key ||
+            undefined,
+          params.nodeId,
+          params.model,
+          params.usage,
+        );
       }
       const saved = await this.callLogRepo.save(log);
 

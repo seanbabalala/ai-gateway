@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.5.0 Contract Hardening and Runtime Safety**.
+Current release: **v1.6.0 Provider Cache Intelligence**.
 
-Current development focus after v1.5.0: deepen provider cache awareness with a usage-schema registry, cache-aware streaming/non-streaming usage extraction, fresher official cache-pricing references, and clearer Dashboard visibility into actual-vs-no-cache savings without weakening the local-first MIT Data Plane boundary.
+Current development focus after v1.6.0: keep the MIT Data Plane local-first while tightening cache-aware routing evidence, optional cache backends, and operator-facing cost clarity without drifting into cloud-only features or enterprise dependencies.
 
 ## Why SiftGate
 
@@ -49,6 +49,13 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
+## v1.6 Highlights
+
+- Usage schema registry: compatibility profiles now declare official usage/cache field paths so non-streaming and streaming extraction can normalize provider cache tokens across OpenAI-compatible, Responses-compatible, Anthropic Messages, Gemini, DeepSeek, Cohere, and local runtime surfaces.
+- Provider cache-aware cost accounting: built-in pricing and canonical usage handling now preserve normal input, cache read, and cache creation token distinctions so actual cost and no-cache baseline cost stay comparable.
+- Cache Savings Dashboard: overview KPIs, Analytics, Logs, and Budget views now show provider-cache hit rate, savings, cost split, and no-cache baselines without exposing prompts, responses, raw headers, or provider keys.
+- Cache Session Affinity routing: when a session has recent confirmed provider cache hits on the same node/model, routing can bias toward that target within a safe TTL window and explain the decision in Route Explanation.
+
 ## v1.5 Highlights
 
 - Required env fail-fast: legacy `${VAR}` references are now enforced during startup and config reload. `${VAR:-default}` still works for local defaults and CI-safe placeholders, while `${env:VAR}` and external secret backends stay runtime-resolved.
@@ -77,12 +84,12 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
 
-## After v1.5 Priorities
+## After v1.6 Priorities
 
-- Deepen provider cache awareness so usage and cost accounting stay correct across OpenAI-compatible, Responses-compatible, Anthropic-compatible, Gemini, DeepSeek, Cohere, and local runtime surfaces, then surface the real savings across Dashboard KPIs, Analytics, Logs, and Budget views.
 - Add an optional Redis semantic-cache backend while keeping memory/SQLite defaults safe.
 - Explore a local Prompt Registry / Template layer as a future governance feature.
 - Reduce Provider Catalog maintenance cost by moving toward one catalog source with generated compatibility/API projections.
+- Keep tightening operator-facing cache governance so pricing references, hit-rate evidence, and route explanations stay aligned as provider cache contracts evolve.
 
 ## Configuration
 

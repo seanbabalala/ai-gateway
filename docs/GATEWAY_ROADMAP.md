@@ -24,17 +24,17 @@
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
 | v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.1 Public Contract Consistency Patch（基于 v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles） | ✅ Released |
 | v1.5 | Contract Hardening + Runtime Safety | 已发布 — required env fail-fast、统一 public error mapping、request-id / reload 安全收敛 | ✅ Released |
-| v1.6 | Cache Awareness + Usage Schema Registry | 开发中 — provider-side cache token 感知、usage schema registry、cache-aware pricing 校准 | 🟡 In Progress |
+| v1.6 | Provider Cache Intelligence | 已发布 — v1.6.0 Usage Schema Registry、Cache Savings Dashboard、Cache Session Affinity 路由增强 | ✅ Released |
 
 ---
 
-## v1.6 — Cache Awareness + Usage Schema Registry（Provider 侧缓存感知与 Usage 契约注册表）
+## v1.6 — Provider Cache Intelligence（Provider 侧缓存智能与 Session Affinity 路由）
 
-**v1.6.0 发布状态**：开发中。v1.6 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本阶段不追求继续横向堆 provider 数量，而是把 provider-side cache token 的识别、成本计算和公开 usage 契约做得更稳定：无论请求从 Chat Completions / Responses / Anthropic Messages 哪个入口进来，只要上游返回了 cache token 计数，SiftGate 都应尽量通过 profile/schema 正确抽取并用于 routing、Dashboard、日志和计费。
+**v1.6.0 发布状态**：已发布。v1.6 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本阶段没有继续横向堆 provider 数量，而是把 provider-side cache token 的识别、成本计算、Dashboard 可视化与 session 级路由偏好做扎实：无论请求从 Chat Completions / Responses / Anthropic Messages 哪个入口进来，只要上游返回 cache token 计数，SiftGate 都会尽量通过 profile/schema 正确抽取，并将其用于计费、日志、Dashboard 与 cache-aware routing。
 
 ### P0：Usage Schema Registry
 
-- **状态**：🟡 v1.6.0 开发中
+- **状态**：✅ v1.6.0 已发布
 - **目标**：把各 provider family 的 usage / cache 字段路径从分散的 if/else 硬编码提升为 compatibility profile 可声明的 usage schema，降低后续维护 Google Gemini、DeepSeek、Cohere、MiniMax 以及更多 OpenAI-compatible provider 的成本。
 - **实现方案**：
   - 在 compatibility profile registry 中为 OpenAI-compatible、Responses-compatible、Anthropic-compatible、Gemini、DeepSeek、Cohere 和本地 runtime family 声明 `usage_schema`
@@ -44,7 +44,7 @@
 
 ### P0：Provider Cache-Aware Pricing 校准
 
-- **状态**：🟡 v1.6.0 开发中
+- **状态**：✅ v1.6.0 已发布
 - **目标**：对能够返回 provider-side cache token 的模型补齐更真实的 cache-aware pricing，让 routing、call log 成本、Benchmark、Route Explanation 不再把 cache hit token 按普通输入 token 计费。
 - **实现方案**：
   - 以 provider 官方文档为准更新 Gemini 3.1 preview、DeepSeek 当前稳定兼容模型的 cache-aware price metadata
@@ -53,7 +53,7 @@
 
 ### P1：跨协议 Cache Contract 一致性
 
-- **状态**：🟡 v1.6.0 开发中
+- **状态**：✅ v1.6.0 已发布
 - **目标**：让 OpenAI-style 与 Anthropic-style 的流式/非流式出站 usage 字段都能对齐到同一套 canonical cache accounting 规则，减少 SDK、Dashboard、日志与 route trace 之间的偏差。
 - **实现方案**：
   - Responses/Chat serializer 在返回 cache usage 时同时照顾当前官方字段和旧兼容字段
@@ -62,7 +62,7 @@
 
 ### P1：Cache Savings Dashboard + 成本拆分可视化
 
-- **状态**：🟡 v1.6.0 开发中
+- **状态**：✅ v1.6.0 已发布
 - **目标**：让 operator 直接看到“因为 provider cache，真实少花了多少钱”，并且把 provider-side cache 与本地 `cache` / `semantic_cache` 命中清楚区分。
 - **实现方案**：
   - `call_logs` 写入 `cost_without_cache_usd`，把“实际 cost”与“如果没有 provider cache 的 baseline cost”一起保留下来
@@ -70,6 +70,17 @@
   - Overview KPI 展示当期 savings、savings percentage 与 provider cache hit rate；Analytics 展示 savings trend、hit rate trend、provider/model 排行和 normal/cache read/cache write/output 成本拆分
   - Logs 为 provider cache 命中增加 badge / tooltip，并在详情中展示 without-cache cost 与 saved cost；Budget 页面补充 actual vs without-cache 的说明
   - 统计中排除本地 `cache`、`semantic_cache` 与 hook-only 行，避免把本地网关缓存命中误算成 provider-side savings
+
+### P1：Cache Session Affinity 路由增强
+
+- **状态**：✅ v1.6.0 已发布
+- **目标**：当同一 session 已在某个 provider / node:model 上建立并命中过 provider-side cache 时，routing 应在安全 TTL 窗口内强烈偏好继续选择同一路径，以最大化 cache hit 与真实成本收益，同时保持 circuit breaker、fallback 和单机默认模式不变。
+- **实现方案**：
+  - 新增 `routing.cache_affinity` 配置，支持 `enabled`、`min_consecutive_hits`、`bonus_weight`、`ttl_safety_margin`
+  - 维护 per-session 路由历史：`session_key -> last_node_model / consecutive_count / last_cache_read_tokens / last_request_at`
+  - 当最近连续命中同一 node:model、provider 支持 cache、最近一次确认为 cache read hit、且时间仍落在 provider TTL 安全窗口内时，给该候选增加 affinity bonus
+  - Route Decision Trace 与 Dashboard Route Explanation 显示 affinity 是否生效、原因、bonus、provider TTL、距离上次 cache hit 的时间，以及估算命中概率
+  - 默认内存可用；如启用 Redis state backend，可共享 affinity 状态但不要求多实例部署
 
 ## v1.5 — Contract Hardening + Runtime Safety（公开契约加固与运行时安全）
 

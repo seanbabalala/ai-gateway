@@ -2,7 +2,11 @@ import type { SourceFormat } from '../canonical/canonical.types';
 import type { NodeConfig } from '../config/gateway.config';
 import type { Modality } from '../config/modality';
 import { expandModalityAliases } from '../config/modality';
-import type { CatalogProvider, ProviderCatalog } from './catalog.types';
+import type {
+  CatalogCacheMetadata,
+  CatalogProvider,
+  ProviderCatalog,
+} from './catalog.types';
 import type {
   UsageSchema,
   UsageSchemaPath,
@@ -96,6 +100,7 @@ export interface ProviderCompatibilityProfile {
   unsupported_fields: string[];
   known_limitations: string[];
   usage_schema?: Partial<Record<SourceFormat | 'gemini_generate_content', UsageSchema>>;
+  cache_metadata?: CatalogCacheMetadata;
 }
 
 export interface CompatibilityEvidenceInput {
@@ -180,6 +185,12 @@ function usageSchemaMap(
   );
 }
 
+function cacheMetadata(
+  value: CatalogCacheMetadata | undefined,
+): CatalogCacheMetadata | undefined {
+  return value ? { ...value } : undefined;
+}
+
 export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
   profile({
     profile_id: 'openai_compatible',
@@ -200,6 +211,20 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Provider-specific OpenAI-compatible gateways may ignore unsupported beta fields.',
     ],
+    cache_metadata: {
+      // OpenAI prompt caching is automatic, starts at 1024 prompt tokens, and
+      // in-memory cached prefixes generally stay warm for 5-10 minutes of
+      // inactivity up to 1 hour. Use 600 seconds as a conservative routing TTL
+      // ceiling; older gpt-4o-style models can override the discount ratio from
+      // model pricing.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'Derived from current OpenAI prompt-caching docs; model pricing can override the cached-input discount ratio.',
+    },
     usage_schema: usageSchemaMap({
       chat_completions: {
         // OpenAI Chat objects expose cache hits on
@@ -239,6 +264,15 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Responses-compatible providers often vary on tools, reasoning, and structured output details.',
     ],
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'OpenAI Responses-compatible providers inherit the same automatic prompt-caching baseline unless model pricing overrides the discount ratio.',
+    },
     usage_schema: usageSchemaMap({
       responses: {
         // OpenAI prompt caching docs now document Response-object cache hits at
@@ -273,6 +307,18 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'OpenAI structured-output requests must be translated or handled by fallback policy.',
     ],
+    cache_metadata: {
+      // Anthropic automatic caching uses top-level cache_control with a default
+      // 5 minute TTL. Sonnet caches from 1024 tokens, while Opus and Haiku 4.5
+      // need 4096 tokens; catalog model metadata can override the floor.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 300,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'Anthropic model metadata can raise the minimum token floor for Opus/Haiku families while keeping the same 5 minute default TTL.',
+    },
     usage_schema: usageSchemaMap({
       messages: {
         // Anthropic prompt caching docs expose usage.input_tokens,
@@ -311,6 +357,19 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'The Gemini OpenAI compatibility surface follows OpenAI-style usage objects, while native Gemini keeps usageMetadata.',
     ],
+    cache_metadata: {
+      // Gemini 2.5+ enables implicit caching automatically. Google only
+      // documents a 1 hour default TTL for explicit caches, so SiftGate uses
+      // that published TTL as the affinity ceiling for Gemini-family cache
+      // routing while waiting for a provider-published implicit TTL.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 3600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0,
+      notes:
+        'Implicit caching is automatic on Gemini 2.5+; explicit caching TTL defaults to 1 hour and is used here as the published upper bound.',
+    },
     usage_schema: usageSchemaMap({
       chat_completions: {
         // Google Gemini OpenAI compatibility uses the OpenAI Chat Completions
@@ -341,6 +400,15 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Gemini request/response shapes are translated; unsupported OpenAI fields stay in trace evidence.',
     ],
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 3600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0,
+      notes:
+        'Gemini native routing can benefit from implicit caching; when operators use explicit caches, Google documents a 1 hour default TTL.',
+    },
     usage_schema: usageSchemaMap({
       gemini_generate_content: {
         // Google GenerateContentResponse uses usageMetadata.promptTokenCount,
@@ -477,6 +545,15 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Cohere rerank and embedding endpoints use provider-specific request shapes.',
     ],
+    cache_metadata: {
+      supports_cache: false,
+      cache_type: 'none',
+      cache_ttl_seconds: 0,
+      cache_min_tokens: 0,
+      cache_read_discount: 0,
+      notes:
+        'Cohere usage schemas can surface cached token counters, but SiftGate does not currently assume provider-managed prompt-cache reuse semantics for routing.',
+    },
     usage_schema: usageSchemaMap({
       chat_completions: {
         // Cohere v2 chat responses nest token counters under usage. The
@@ -514,6 +591,18 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'DeepSeek exposes dedicated cache hit/miss counters under usage instead of OpenAI prompt_tokens_details.',
     ],
+    cache_metadata: {
+      // DeepSeek disk caching is automatic and docs only say unused caches are
+      // cleared after a few hours to a few days. Use 3 hours as a conservative
+      // lower-bound affinity window, then tighten it with ttl_safety_margin.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 10800,
+      cache_min_tokens: 0,
+      cache_read_discount: 0.02,
+      notes:
+        'DeepSeek does not publish a hard minimum token floor and only describes cache retention as lasting from a few hours to a few days.',
+    },
     usage_schema: usageSchemaMap({
       chat_completions: {
         // DeepSeek context caching docs add usage.prompt_cache_hit_tokens and
@@ -880,6 +969,7 @@ export function listCompatibilityProfiles(): ProviderCompatibilityProfile[] {
     unsupported_fields: [...profile.unsupported_fields],
     known_limitations: [...profile.known_limitations],
     usage_schema: usageSchemaMap(profile.usage_schema),
+    cache_metadata: cacheMetadata(profile.cache_metadata),
   }));
 }
 
@@ -960,10 +1050,23 @@ export function findCatalogProviderForNode(
   const baseUrl = typeof node.base_url === 'string'
     ? normalizeComparableUrl(node.base_url)
     : '';
+  const host = hostFromUrl(node.base_url);
   return catalog.providers.find((provider) => {
     if (provider.id === nodeId) return true;
-    return baseUrl.length > 0 && normalizeComparableUrl(provider.base_url) === baseUrl;
+    if (baseUrl.length > 0 && normalizeComparableUrl(provider.base_url) === baseUrl) {
+      return true;
+    }
+    return host.length > 0 && hostFromUrl(provider.base_url) === host;
   });
+}
+
+function hostFromUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return '';
+  }
 }
 
 export function resolveNodeCompatibilityProfiles(

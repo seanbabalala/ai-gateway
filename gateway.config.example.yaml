@@ -13,6 +13,10 @@
 #   If you are upgrading from v1.4.x, populate every required env before
 #   rollout or switch intentional placeholders to ${VAR:-default}.
 #
+# v1.6.0 note:
+#   provider-side cache accounting and cache-affinity routing can now use
+#   recent session history to prefer a still-warm upstream cache when enabled.
+#
 # v0.9 also supports runtime secret references:
 #   ${env:VAR}
 #   ${vault:path/to/secret#field}
@@ -599,6 +603,8 @@ nodes:
 # Supported strategies: weighted, round_robin, least_latency, random.
 # If split is configured on a tier, split remains experiment mode and
 # overrides targets until split is removed.
+# v1.6 adds optional cache_affinity controls so repeated session traffic can
+# bias toward a provider/model with recent confirmed provider cache hits.
 # ============================================================
 routing:
   # Optional v0.3 automatic routing optimization.
@@ -688,6 +694,16 @@ routing:
     frontend: [openai]
     backend: [anthropic, openai]
     math: [anthropic]
+
+  # Session-level provider cache affinity (optional, v1.6)
+  # When enabled, repeated requests in the same session can prefer the same
+  # node:model after a confirmed provider-side cache hit, as long as the
+  # provider cache TTL is still within a safe window.
+  # cache_affinity:
+  #   enabled: true
+  #   min_consecutive_hits: 2  # Require N consecutive routes to the same node:model
+  #   bonus_weight: 0.35       # Higher values bias routing more strongly
+  #   ttl_safety_margin: 0.8   # Only trust 80% of the published provider cache TTL
 
 # ============================================================
 # Budget — Daily usage limits

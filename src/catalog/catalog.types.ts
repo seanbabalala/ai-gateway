@@ -46,6 +46,17 @@ export type CatalogPricingUsedFrom =
   | 'builtin_catalog'
   | 'missing';
 
+export type ProviderCacheType = 'automatic' | 'explicit' | 'none';
+
+export interface CatalogCacheMetadata {
+  supports_cache: boolean;
+  cache_type: ProviderCacheType;
+  cache_ttl_seconds: number;
+  cache_min_tokens: number;
+  cache_read_discount: number;
+  notes?: string;
+}
+
 export interface CatalogPricing {
   /** Legacy token pricing retained for existing configs. Prefer input_per_1m_tokens/output_per_1m_tokens. */
   input?: number;
@@ -134,6 +145,7 @@ export interface CatalogModel {
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
+  cache_metadata?: CatalogCacheMetadata;
   source: CatalogSource;
   overridden: boolean;
   synced?: boolean;
@@ -174,6 +186,7 @@ export interface CatalogProvider {
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
+  cache_metadata?: CatalogCacheMetadata;
   models: CatalogModel[];
   source: CatalogSource;
   overridden: boolean;
@@ -198,6 +211,7 @@ export interface CatalogOverrideModel {
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
+  cache_metadata?: CatalogCacheMetadata;
 }
 
 export interface CatalogOverrideProvider {
@@ -226,6 +240,7 @@ export interface CatalogOverrideProvider {
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
+  cache_metadata?: CatalogCacheMetadata;
   models?: CatalogOverrideModel[];
 }
 

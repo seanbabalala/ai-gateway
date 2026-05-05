@@ -177,6 +177,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
       mode: 'auto',
     }),
     recordTargetResult: jest.fn(),
+    recordSessionRouteResult: jest.fn(),
     ...overrides.routingService,
   };
 
@@ -2738,6 +2739,39 @@ describe('PipelineService — cache-aware cost calculation', () => {
       'openai',
       'gpt-4o',
       expect.objectContaining({ cache_read_input_tokens: 200 }),
+    );
+  });
+
+  it('should record session cache-affinity state after a successful provider response', async () => {
+    const recordSessionRouteResult = jest.fn();
+    const { pipeline } = makePipeline({
+      routingService: { recordSessionRouteResult },
+      providerClient: {
+        forward: jest.fn().mockResolvedValue(
+          makeCanonicalResponse({
+            model: 'gpt-4o',
+            usage: {
+              input_tokens: 500,
+              output_tokens: 100,
+              cache_read_input_tokens: 150,
+            },
+          }),
+        ),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', {
+      originalModel: 'gpt-4o',
+      sessionKey: 'session-123',
+    });
+    await pipeline.process(request);
+
+    expect(recordSessionRouteResult).toHaveBeenCalledWith(
+      'session-123',
+      'openai',
+      'gpt-4o',
+      expect.objectContaining({ cache_read_input_tokens: 150 }),
     );
   });
 
