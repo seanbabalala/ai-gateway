@@ -401,7 +401,7 @@ The Dashboard API is metadata-only. It returns server id/name, sanitized upstrea
 
 ### Provider Catalog API
 
-`GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + sync cache + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. Pricing fields include `source`, optional `source_url`, `last_updated`, optional `last_sync`, optional `retrieved_at`, `manual_review_required`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
+`GET /api/dashboard/catalog/providers` and `GET /api/dashboard/catalog/models` return merged built-in + sync cache + local override catalog data. v1.0 built-ins cover 30+ providers, including Bedrock, Qwen, Wenxin, Doubao, Zhipu, Moonshot/Kimi, MiniMax, Hunyuan, Perplexity, NVIDIA NIM, Cerebras, and SambaNova. v1.4 pricing fields include `currency`, `billing_unit`, token/cache/media/rerank/realtime/batch price units, `source_type`, `source`, `source_url`, `retrieved_at`, `last_verified_at`, `last_updated`, optional `last_sync`, `manual_review_required`, `review_reason`, `stale_after_days`, and `pricing_confidence`. Responses also include `refresh_sources`, which tells the Dashboard whether a provider can be refreshed automatically, needs docs review, or requires local operator pricing.
 
 v1.2 adds `sync_status` to these responses. It reports whether scheduled sync is enabled, whether it is actually scheduled, the `write_to` target, cache/override paths, enabled adapters, provider `last_sync`, source URL, confidence, stale state, and recent sync issues. Scheduled sync is disabled by default and only OpenRouter has an automatic adapter in v1.2.
 
@@ -435,6 +435,11 @@ For multimodal and capability-specific requests, traces may include:
 - `candidate_targets[].capability_evidence.supported_modalities`
 - `candidate_targets[].capability_evidence.endpoint_status`
 - `candidate_targets[].capability_evidence.pricing_source`
+- `candidate_targets[].capability_evidence.pricing_confidence`
+- `candidate_targets[].capability_evidence.pricing_stale`
+- `candidate_targets[].capability_evidence.pricing_used_from`
+- `candidate_targets[].capability_evidence.missing_price_units`
+- `candidate_targets[].capability_evidence.estimated_cost_basis`
 - `candidate_targets[].capability_evidence.catalog_source`
 
 These fields are counts, sizes, capability labels, and route metadata only. The trace does not store prompt text, response text, uploaded file bytes, raw headers, or provider API keys.

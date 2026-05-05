@@ -934,7 +934,7 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toEqual(
       expect.arrayContaining([
         'duplicate_model_id',
-        'catalog_pricing_placeholder',
+        'catalog_pricing_review_required',
         'literal_provider_api_key',
         'literal_control_plane_token',
         'insecure_control_plane_url',
@@ -1082,7 +1082,7 @@ describe('config validator', () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.warnings)).not.toContain('catalog_unknown_model');
-    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+    expect(codes(result.warnings)).toContain('catalog_pricing_review_required');
   });
 
   it('recognizes v1.4 provider catalog models and warns on auth type mismatch', () => {
@@ -1225,9 +1225,89 @@ describe('config validator', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(codes(result.warnings)).toContain('catalog_pricing_placeholder');
+    expect(codes(result.warnings)).toContain('catalog_pricing_review_required');
     expect(codes(result.warnings)).not.toContain('missing_model_pricing');
     expect(codes(result.warnings)).not.toContain('cost_routing_pricing_missing');
+  });
+
+  it('warns when catalog pricing governance source metadata is incomplete', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const catalog = {
+      ...catalogLoad.catalog,
+      providers: catalogLoad.catalog.providers.map((provider) =>
+        provider.id === 'openai'
+          ? {
+              ...provider,
+              models: provider.models.map((model) =>
+                model.id === 'gpt-4o'
+                  ? {
+                      ...model,
+                      pricing: {
+                        input: 2.5,
+                        output: 10,
+                        source: '',
+                        last_updated: '2025-01-01',
+                        manual_review_required: true,
+                        stale_after_days: 30,
+                        pricing_confidence: 'low' as const,
+                      },
+                    }
+                  : model,
+              ),
+            }
+          : provider,
+      ),
+    };
+
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          optimization: 'balanced',
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: {},
+      },
+      { env: {}, catalog, catalogIssues: [] },
+    );
+
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'catalog_pricing_review_required',
+        'catalog_pricing_source_missing',
+        'catalog_pricing_source_url_missing',
+        'catalog_pricing_stale',
+      ]),
+    );
   });
 
   it('warns when configured endpoints differ from the catalog provider preset', () => {

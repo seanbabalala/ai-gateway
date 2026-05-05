@@ -504,6 +504,20 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                           t('routeExplanation.values.unknown'),
                       })}
                     </Badge>
+                    <Badge variant={candidate.capability_evidence.pricing_stale ? 'amber' : 'zinc'}>
+                      {t('routeExplanation.table.pricingStatus', {
+                        status: candidate.capability_evidence.pricing_stale
+                          ? t('routeExplanation.values.stale')
+                          : candidate.capability_evidence.pricing_confidence ||
+                            t('routeExplanation.values.unknown'),
+                      })}
+                    </Badge>
+                    <Badge variant="zinc">
+                      {t('routeExplanation.table.pricingUsedFrom', {
+                        source: candidate.capability_evidence.pricing_used_from ||
+                          t('routeExplanation.values.unknown'),
+                      })}
+                    </Badge>
                     <Badge variant="zinc">
                       {t('routeExplanation.table.catalogSource', {
                         source: candidate.capability_evidence.catalog_source ||
@@ -511,6 +525,16 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                       })}
                     </Badge>
                   </div>
+                  {candidate.capability_evidence.missing_price_units &&
+                    candidate.capability_evidence.missing_price_units.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {candidate.capability_evidence.missing_price_units.map((unit) => (
+                        <Badge key={unit} variant="amber">
+                          {t('routeExplanation.table.missingPriceUnit', { unit })}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                   <div className="text-[11px] leading-5 text-[var(--foreground-dim)]">
                     {formatEvidenceList(
                       candidate.capability_evidence.supported_modalities,

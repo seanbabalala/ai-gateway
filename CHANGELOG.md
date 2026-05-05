@@ -7,11 +7,16 @@
 - Expanded the built-in Provider Catalog for v1.4 to 50+ providers, adding Hugging Face, Cloudflare Workers AI, IBM watsonx.ai, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini, AI21 Labs, fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika, ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics, LM Studio, llama.cpp server, TGI, SGLang, and Xinference.
 - Added v1.4 provider governance metadata across the built-in catalog, including aliases, family/category, provider type, homepage/docs/pricing URLs, logo identity, input/output types, model buckets, batch modality metadata, compatibility profile, and review-required pricing source metadata.
 - Added Dashboard/provider-logo identity coverage for the new providers so OpenAI-compatible or compatible-style providers do not fall back to the OpenAI logo.
+- Added v1.4 Provider Catalog pricing source governance for the OSS Data Plane, with unified token/cache/media/rerank/realtime/batch pricing fields, source type, source URL, verification timestamps, confidence, stale windows, and review reasons.
+- Added pricing evidence to Route Decision Trace and Dashboard Route Explanation, including source, confidence, stale status, resolver layer, missing price units, and estimated cost basis without exposing prompts, responses, raw headers, provider keys, or secrets.
+- Added `siftgate catalog show <provider> --pricing` output for pricing governance details and extended catalog validation/export coverage for source-governed prices.
 
 ### Changed
 
 - Unified legacy provider catalog diagnostics with the merged built-in Provider Catalog so Dashboard APIs, Add Node Wizard presets, catalog CLI, and config validation all read the same provider/model data.
 - Config validation now reports catalog auth-type mismatches for known providers and marks unknown providers as custom catalog entries without blocking single-node startup.
+- Cost and balanced routing, Benchmark reports, config validation, Dashboard catalog APIs, catalog overrides, sync cache, and built-in catalog fallback now use the same pricing resolver priority: explicit node/model pricing, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in catalog.
+- Dashboard and docs use “Price source status”, “Review required”, and “Stale” wording for operator-facing pricing copy; internal `pricing_hygiene` fields remain for API compatibility.
 
 ## 1.3.2 - 2026-05-05
 

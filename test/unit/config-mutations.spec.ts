@@ -270,13 +270,25 @@ describe('ConfigService — model pricing', () => {
   it('should set pricing for a new model', () => {
     const { svc } = loadConfigService();
     svc.setModelPricing('claude-3-opus', { input: 15, output: 75 });
-    expect(svc.getModelPricing('claude-3-opus')).toEqual({ input: 15, output: 75 });
+    expect(svc.getModelPricing('claude-3-opus')).toMatchObject({
+      input: 15,
+      output: 75,
+      currency: 'USD',
+      source: 'config:models_pricing',
+      pricing_used_from: 'gateway_config',
+    });
   });
 
   it('should update existing pricing', () => {
     const { svc } = loadConfigService();
     svc.setModelPricing('gpt-4o', { input: 2.5, output: 10 });
-    expect(svc.getModelPricing('gpt-4o')).toEqual({ input: 2.5, output: 10 });
+    expect(svc.getModelPricing('gpt-4o')).toMatchObject({
+      input: 2.5,
+      output: 10,
+      currency: 'USD',
+      source: 'config:models_pricing',
+      pricing_used_from: 'gateway_config',
+    });
   });
 
   it('should delete pricing', () => {

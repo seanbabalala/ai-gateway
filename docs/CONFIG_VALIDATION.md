@@ -64,11 +64,17 @@ hardening visible without blocking local development.
 - `routing.domain_preferences` references to known node ids.
 - `routing.fallback_policy` shape, including explicit timeout race thresholds
   and cost-downgrade limits when those policies are enabled.
-- Pricing entries with numeric `input` and `output` values.
+- Pricing entries with numeric `input` and `output` values. v1.4 also accepts
+  governance aliases such as `input_per_1m_tokens`,
+  `output_per_1m_tokens`, `cache_read_per_1m_tokens`,
+  `cache_write_per_1m_tokens`, `image_per_generation`,
+  `audio_per_minute`, `video_per_generation`, and `batch_discount`.
 - Provider Catalog price source status for configured models: missing prices,
-  placeholder/manual-review entries, stale `last_updated` values, modality unit
-  mismatches, and `routing.optimization=cost` candidates without usable
-  input/output token prices.
+  review-required entries, stale `last_verified_at` / `retrieved_at` /
+  `last_updated` values, missing source/source URL metadata, modality unit
+  mismatches, cache-aware routing without cache read/write prices, media
+  endpoints without matching media price units, and `routing.optimization=cost`
+  or `balanced` candidates without usable input/output token prices.
 - Provider Catalog sync configuration: `catalog.sync` is disabled by default,
   `write_to` must be `cache` or `override`, paths must be non-empty, and
   scheduled sync warns unless at least one supported adapter is explicitly

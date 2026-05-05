@@ -249,6 +249,20 @@ function makeDashboard(overrides: Record<string, any> = {}) {
                 modalities: ['text', 'vision'],
                 endpoints: { chat_completions: '/v1/chat/completions' },
                 capabilities: ['streaming'],
+                pricing: {
+                  input: 2.5,
+                  output: 10,
+                  input_per_1m_tokens: 2.5,
+                  output_per_1m_tokens: 10,
+                  source: 'builtin-reference',
+                  source_type: 'docs_review',
+                  source_url: 'https://example.com/openai-pricing',
+                  last_updated: '2026-05-05',
+                  last_verified_at: '2026-05-05',
+                  manual_review_required: true,
+                  pricing_confidence: 'low',
+                  stale_after_days: 90,
+                },
                 source: 'builtin',
                 overridden: false,
               },
@@ -1015,6 +1029,8 @@ describe('DashboardController — catalog', () => {
       overridden: false,
       pricing_hygiene: expect.objectContaining({
         status: expect.any(String),
+        source_type: expect.any(String),
+        source_url_missing: false,
       }),
     });
   });
@@ -1030,6 +1046,11 @@ describe('DashboardController — catalog', () => {
         provider: 'openai',
         pricing_hygiene: expect.objectContaining({
           status: expect.any(String),
+          source_type: expect.any(String),
+        }),
+        pricing: expect.objectContaining({
+          source_type: expect.any(String),
+          input_per_1m_tokens: expect.any(Number),
         }),
       }),
     ]);

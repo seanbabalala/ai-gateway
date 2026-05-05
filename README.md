@@ -14,6 +14,7 @@ Current development focus: **v1.4 Provider Ecosystem + Catalog Governance**, exp
 - Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
 - Catalog-backed setup: Add Node Wizard and config validation use the Provider Catalog instead of hardcoded provider lists.
+- Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority.
 
 ## Quick Start
 
@@ -65,7 +66,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
 | Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog with 50+ built-in providers in v1.4 development, Add Node Wizard, provider compatibility matrix, catalog override CLI, OpenRouter pricing sync preview. |
+| Provider Ops | Provider Catalog with 50+ built-in providers, Add Node Wizard, provider compatibility matrix, pricing source governance, catalog override CLI, OpenRouter pricing sync preview. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |

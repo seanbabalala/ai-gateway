@@ -672,15 +672,18 @@ async function refreshOpenRouterCatalog(input: {
     model_prefixes: inferOpenRouterModelPrefixes(models),
     capabilities: ['openai_compatible', 'multi_provider', 'public_catalog'],
     pricing: {
+      source_type: 'aggregator_api',
       source: 'openrouter-public-api',
       source_url: source.source_url,
       last_updated: lastUpdated,
       last_sync: generatedAt,
       retrieved_at: generatedAt,
+      last_verified_at: generatedAt,
       manual_review_required: false,
       stale_after_days: 7,
       pricing_confidence: 'high',
       currency: 'USD',
+      billing_unit: 'usd_per_1m_tokens',
       notes: 'Provider-level metadata generated from the OpenRouter public models API.',
     },
     models,
@@ -766,30 +769,54 @@ function openRouterPricingToCatalogPricing(
   const complete = tokenComplete || modalityPriced;
   const pricing: CatalogPricing = {
     currency: 'USD',
+    billing_unit: 'usd_per_1m_tokens',
     unit: 'usd_per_1m_tokens',
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       image: 'usd_per_1m_image_tokens',
       audio: 'usd_per_1m_audio_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      image_per_generation: 'usd_per_1m_image_tokens',
+      audio_per_minute: 'usd_per_1m_audio_tokens',
+      embedding_per_1m_tokens: 'usd_per_1m_embedding_tokens',
     },
+    source_type: 'aggregator_api',
     source: 'openrouter-public-api',
     source_url: OPENROUTER_MODELS_URL,
     last_updated: lastUpdated,
     last_sync: retrievedAt,
     retrieved_at: retrievedAt,
+    last_verified_at: retrievedAt,
     manual_review_required: !complete,
+    review_reason: complete ? undefined : 'OpenRouter did not expose all modality price units for this model.',
     stale_after_days: 7,
     pricing_confidence: complete ? 'high' : 'unknown',
     notes: tokenPriced
       ? 'OpenRouter prompt/completion pricing converted from USD/token to USD/1M tokens. Non-token modality prices are included only when OpenRouter exposes explicit image/audio price fields.'
       : 'OpenRouter returned non-text modality metadata. SiftGate only marks prices high-confidence when explicit modality pricing is available.',
   };
-  if (tokenPriced && input !== null) pricing.input = roundPrice(input * ONE_MILLION);
-  if (tokenPriced && output !== null) pricing.output = roundPrice(output * ONE_MILLION);
-  if (image !== null) pricing.image = roundPrice(image * ONE_MILLION);
-  if (audio !== null) pricing.audio = roundPrice(audio * ONE_MILLION);
-  if (modalities.includes('embedding') && input !== null) pricing.embedding = roundPrice(input * ONE_MILLION);
+  if (tokenPriced && input !== null) {
+    pricing.input = roundPrice(input * ONE_MILLION);
+    pricing.input_per_1m_tokens = pricing.input;
+  }
+  if (tokenPriced && output !== null) {
+    pricing.output = roundPrice(output * ONE_MILLION);
+    pricing.output_per_1m_tokens = pricing.output;
+  }
+  if (image !== null) {
+    pricing.image = roundPrice(image * ONE_MILLION);
+    pricing.image_per_generation = pricing.image;
+  }
+  if (audio !== null) {
+    pricing.audio = roundPrice(audio * ONE_MILLION);
+    pricing.audio_per_minute = pricing.audio;
+  }
+  if (modalities.includes('embedding') && input !== null) {
+    pricing.embedding = roundPrice(input * ONE_MILLION);
+    pricing.embedding_per_1m_tokens = pricing.embedding;
+  }
   return pricing;
 }
 

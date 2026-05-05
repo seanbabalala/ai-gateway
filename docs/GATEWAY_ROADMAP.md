@@ -22,13 +22,13 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
-| v1.4 | Provider Ecosystem + Catalog Governance | 进行中 — Provider Catalog 50+、统一 provider metadata、Catalog governance 测试 | 🚧 In Progress |
+| v1.4 | Provider Ecosystem + Catalog Governance | 进行中 — Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | 🚧 In Progress |
 
 ---
 
 ## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
 
-**v1.4.0 开发状态**：v1.4 基于已发布 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由和 CLI 共用一份 catalog。
+**v1.4.0 开发状态**：v1.4 基于已发布 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
 
 ### P0：Provider Catalog 50+
 
@@ -43,6 +43,18 @@
   - Provider logo identity 覆盖新增 provider，兼容 provider 不再误显示 OpenAI logo
   - 旧 `ProviderCatalogService` 诊断层投影到同一份 merged built-in catalog，避免两套 provider 列表漂移
   - Config validation 增加已知 provider 的 auth_type mismatch warning，并对未知 provider 给出不阻断启动的 catalog metadata 提示
+
+### P0：Provider Catalog Pricing Source Governance
+
+- **状态**：🚧 本分支实现中
+- **目标**：统一所有 provider/model 的 pricing schema、来源、新鲜度和路由成本回退，让成本路由与 Dashboard 解释使用同一套证据
+- **实现方案**：
+  - 保留 legacy `input/output/cache_read_input/cache_creation_input`，新增 `input_per_1m_tokens`、`output_per_1m_tokens`、cache、embedding、rerank、image、audio、video、realtime、batch 等统一字段
+  - 新增 `source_type`、`source_url`、`retrieved_at`、`last_verified_at`、`stale_after_days`、`pricing_confidence`、`manual_review_required` 和 `review_reason`
+  - 明确 resolver 优先级：node/model explicit pricing → `models_pricing` → `catalog.override.yaml` → sync cache → built-in catalog
+  - Route Decision Trace 增加 pricing evidence：source、confidence、stale、used-from、missing units、estimated cost basis
+  - Benchmark Report 与 RoutingService 共用 ConfigService pricing fallback，避免不同页面各算各的
+  - Dashboard Provider Catalog、Route Explanation、CLI 与 config validation 使用“价格来源状态 / 需要复核 / 可能过期”文案
 
 ## v1.3 — Production Ready（生产就绪）
 

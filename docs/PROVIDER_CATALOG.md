@@ -1,6 +1,6 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers and adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profile. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers, adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profile, and unifies pricing source governance so Dashboard, routing, benchmark reports, config validation, CLI export, sync cache, and local overrides all read the same pricing schema. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
 
 The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
@@ -81,7 +81,7 @@ Run against source with npm:
 
 ```bash
 npm run catalog -- list
-npm run catalog -- show openai
+npm run catalog -- show openai --pricing
 npm run catalog -- sources
 npm run catalog -- refresh openrouter --out ./catalog.override.yaml
 npm run catalog -- sync openrouter
@@ -111,6 +111,7 @@ Useful options:
 - `--force` allows `catalog import` to replace an existing override file.
 - `--write-to cache|override` selects where `catalog sync` writes. The default is `cache`, which writes SiftGate-managed metadata to `.siftgate/catalog-sync-cache.yaml`.
 - `--pricing` adds pricing freshness/unit checks to `catalog validate`.
+- `catalog show <provider> --pricing` includes pricing source type, source priority, and key price units for each model.
 - `--include-pricing` is accepted by `catalog export`; pricing is included by default and the flag makes CI intent explicit.
 - `catalog sources` lists refresh modes. `public_api` means SiftGate can refresh without a provider key; `docs_review` means an operator should review provider docs; `operator_local` means pricing depends on local deployment/account choices.
 - `catalog refresh openrouter` calls OpenRouter's public model catalog, converts prompt/completion USD-per-token pricing to USD per 1M tokens, and writes a local override file. It refuses to replace an existing file unless `--force` is supplied.
@@ -130,7 +131,52 @@ SiftGate v0.9.2 exposes refresh-source metadata through the Dashboard catalog AP
 | Azure OpenAI, AWS Bedrock | `operator_local` | No | Pricing depends on region, deployment, SKU, AWS inference profile, or account-specific rate card. |
 | Ollama, vLLM, LM Studio, llama.cpp server, TGI, SGLang, Xinference, 01.AI/Yi, Replicate, custom OpenAI-compatible | `operator_local` | No | Model list and cost depend on the local host, cluster, marketplace model, account, or proxy. |
 
-For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.4 provider additions include `source_url`, `last_updated`, and `pricing_confidence` so operators can see where the reference came from without mistaking it for live billing data.
+For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.4 entries include `source_type`, `source_url`, `retrieved_at`, `last_verified_at`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `review_reason` so operators can see where the reference came from without mistaking it for live billing data.
+
+## Pricing Source Governance
+
+SiftGate resolves prices in this order:
+
+1. Explicit `nodes[].model_capabilities.<model>.pricing`
+2. Explicit top-level `models_pricing`
+3. `catalog.override.yaml`
+4. Local catalog sync cache such as `.siftgate/catalog-sync-cache.yaml`
+5. Built-in Provider Catalog
+
+User configuration always wins. Built-in catalog data and sync cache never overwrite explicit node/model or `models_pricing` values.
+
+The unified pricing schema supports token, cache, media, rerank, realtime, and batch fields:
+
+```yaml
+pricing:
+  currency: USD
+  billing_unit: usd_per_1m_tokens
+  input_per_1m_tokens: 2.50
+  output_per_1m_tokens: 10.00
+  cache_read_per_1m_tokens: 0.25
+  cache_write_per_1m_tokens: 2.50
+  embedding_per_1m_tokens: 0.02
+  rerank_per_1k_requests: 0.80
+  image_per_generation: 0.04
+  image_per_edit: 0.06
+  audio_per_minute: 0.006
+  audio_per_1m_chars: 15.00
+  video_per_second: 0.12
+  video_per_generation: 1.20
+  realtime_per_minute: 0.30
+  batch_discount: 0.50
+  source_type: operator_override
+  source: internal-rate-card
+  source_url: https://example.com/internal-rate-card
+  retrieved_at: "2026-05-05T00:00:00.000Z"
+  last_verified_at: "2026-05-05"
+  last_updated: "2026-05-05"
+  stale_after_days: 30
+  pricing_confidence: high
+  manual_review_required: false
+```
+
+Legacy fields such as `input`, `output`, `cache_read_input`, and `cache_creation_input` remain supported. SiftGate normalizes them into the v1.4 fields before routing, Dashboard display, benchmark cost fallback, and validation.
 
 ## Scheduled Pricing Sync
 
@@ -219,7 +265,7 @@ Older internal code and API fields still use `pricing_hygiene` for backward comp
 Dashboard statuses map to these meanings:
 
 - `Fresh`: price is present, recent, and not marked for manual review.
-- `Needs review`: built-in/reference price or incomplete live metadata; use a local override for production billing decisions.
+- `Review required`: built-in/reference price or incomplete live metadata; use a local override for production billing decisions.
 - `Stale`: `last_updated + stale_after_days` has expired.
 - `Missing`: SiftGate has no usable price for the requested model/modality.
 - `Invalid`: metadata is malformed or unit fields do not match the modality.
@@ -235,10 +281,12 @@ Dashboard statuses map to these meanings:
 - a node does not match any built-in provider, which is reported as a custom catalog entry without blocking startup
 - pricing is marked `manual_review_required`
 - pricing is missing for the configured modality
-- pricing is review-required metadata
-- pricing is stale according to `last_updated` + `stale_after_days`
+- pricing needs review or is marked `manual_review_required`
+- pricing source/source URL is missing
+- pricing is stale according to `last_verified_at` / `retrieved_at` / `last_updated` plus `stale_after_days`
 - pricing units do not match the model bucket, such as image models without image pricing units
-- `routing.optimization=cost` is enabled but a candidate lacks usable input/output token prices
+- `routing.optimization=cost` or `balanced` is enabled but a candidate lacks usable input/output token prices
+- cache-aware routing is enabled for a model but cache read/write price units are missing
 
 Catalog override parsing itself can fail validation when the file is malformed or contains suspicious secret fields.
 

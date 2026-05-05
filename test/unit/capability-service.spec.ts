@@ -271,7 +271,6 @@ describe('CapabilityService', () => {
   describe('resolveModelRoutingCapabilities', () => {
     it('should merge node defaults with model-specific v0.6 capability metadata', () => {
       const config = mockConfigService();
-      config.getModelPricing.mockReturnValue({ input: 1, output: 2 });
       config.getNode.mockReturnValue({
         id: 'n1',
         models: ['gpt-4o'],
@@ -291,6 +290,10 @@ describe('CapabilityService', () => {
             pricing: { input: 2.5, output: 10 },
           },
         },
+      });
+      config.getModelPricing.mockImplementation((model: string, nodeId?: string) => {
+        const node = config.getNode(nodeId);
+        return node?.model_capabilities?.[model]?.pricing ?? { input: 1, output: 2 };
       });
       const svc = new CapabilityService(config);
       expect(svc.resolveModelRoutingCapabilities('n1', 'gpt-4o')).toEqual(

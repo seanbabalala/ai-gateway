@@ -12,17 +12,26 @@ function pricing(
   return {
     input,
     output,
+    input_per_1m_tokens: input,
+    output_per_1m_tokens: output,
     currency: 'USD',
+    billing_unit: 'usd_per_1m_tokens',
     unit: 'usd_per_1m_tokens',
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
       ...overrides.units,
     },
+    source_type: 'docs_review',
     source: 'builtin-reference',
     source_url: 'https://github.com/seanbabalala/ai-gateway/blob/main/docs/PROVIDER_CATALOG.md',
+    retrieved_at: LAST_UPDATED,
+    last_verified_at: LAST_UPDATED,
     last_updated: LAST_UPDATED,
     manual_review_required: true,
+    review_reason: 'Built-in reference prices require operator review before production cost routing.',
     stale_after_days: STALE_AFTER_DAYS,
     pricing_confidence: 'low',
     ...(notes ? { notes } : {}),
@@ -40,11 +49,17 @@ function promptCachingPricing(
   return pricing(input, output, notes, {
     cache_read_input: cacheReadInput,
     cache_creation_input: cacheCreationInput,
+    cache_read_per_1m_tokens: cacheReadInput,
+    cache_write_per_1m_tokens: cacheCreationInput,
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       cache_read_input: 'usd_per_1m_cache_read_input_tokens',
       cache_creation_input: 'usd_per_1m_cache_write_input_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      cache_read_per_1m_tokens: 'usd_per_1m_cache_read_input_tokens',
+      cache_write_per_1m_tokens: 'usd_per_1m_cache_write_input_tokens',
     },
   });
 }
@@ -56,12 +71,19 @@ function referencePricing(
 ): CatalogPricing {
   return {
     currency: overrides.currency || 'USD',
+    billing_unit: overrides.billing_unit || overrides.unit || 'review_required',
     unit: overrides.unit || 'review_required',
     units: overrides.units,
+    source_type: overrides.source_type || 'docs_review',
     source: overrides.source || 'provider-reference',
     source_url: sourceUrl,
+    retrieved_at: overrides.retrieved_at || overrides.last_updated || LAST_UPDATED,
+    last_verified_at: overrides.last_verified_at || overrides.last_updated || LAST_UPDATED,
     last_updated: overrides.last_updated || LAST_UPDATED,
     manual_review_required: true,
+    review_reason:
+      overrides.review_reason ||
+      'Provider price depends on account, region, or SKU; verify official docs before production routing.',
     stale_after_days: overrides.stale_after_days || STALE_AFTER_DAYS,
     pricing_confidence: overrides.pricing_confidence || 'low',
     notes,
@@ -72,10 +94,14 @@ function referencePricing(
 function embeddingPricing(input: number, notes?: string): CatalogPricing {
   return pricing(input, 0, notes, {
     embedding: input,
+    embedding_per_1m_tokens: input,
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       embedding: 'usd_per_1m_embedding_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      embedding_per_1m_tokens: 'usd_per_1m_embedding_tokens',
     },
   });
 }
@@ -83,10 +109,14 @@ function embeddingPricing(input: number, notes?: string): CatalogPricing {
 function imagePricing(input: number, notes?: string): CatalogPricing {
   return pricing(input, 0, notes, {
     image: input,
+    image_per_generation: input,
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       image: 'usd_per_image_or_token_equivalent',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      image_per_generation: 'usd_per_image_generation_or_token_equivalent',
     },
   });
 }
@@ -94,10 +124,14 @@ function imagePricing(input: number, notes?: string): CatalogPricing {
 function audioPricing(input: number, output = 0, notes?: string): CatalogPricing {
   return pricing(input, output, notes, {
     audio: input,
+    audio_per_minute: input,
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       audio: 'usd_per_audio_minute_or_token_equivalent',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      audio_per_minute: 'usd_per_audio_minute_or_token_equivalent',
     },
   });
 }
@@ -105,10 +139,14 @@ function audioPricing(input: number, output = 0, notes?: string): CatalogPricing
 function rerankPricing(input: number, notes?: string): CatalogPricing {
   return pricing(input, 0, notes, {
     rerank: input,
+    rerank_per_1k_requests: input,
     units: {
       input: 'usd_per_1m_input_tokens',
       output: 'usd_per_1m_output_tokens',
       rerank: 'usd_per_1k_rerank_requests_or_token_equivalent',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+      rerank_per_1k_requests: 'usd_per_1k_rerank_requests_or_token_equivalent',
     },
   });
 }
