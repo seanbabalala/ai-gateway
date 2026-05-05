@@ -10,6 +10,9 @@
 - Added v1.4 Provider Catalog pricing source governance for the OSS Data Plane, with unified token/cache/media/rerank/realtime/batch pricing fields, source type, source URL, verification timestamps, confidence, stale windows, and review reasons.
 - Added pricing evidence to Route Decision Trace and Dashboard Route Explanation, including source, confidence, stale status, resolver layer, missing price units, and estimated cost basis without exposing prompts, responses, raw headers, provider keys, or secrets.
 - Added `siftgate catalog show <provider> --pricing` output for pricing governance details and extended catalog validation/export coverage for source-governed prices.
+- Added Provider Catalog Dashboard UX 2.0 for the v1.4 provider ecosystem work: catalog responses now expose Dashboard-ready provider family, provider type, compatibility profile, aliases, logo id, links, model buckets, limits, and pricing-unit metadata without introducing a second catalog.
+- Added a grouped Provider Catalog explorer with summary cards, family/type/modality/compatibility/price-source filters, stale/review quick filters, collapsed provider groups, detail panels, sync status, override markers, and 7-language operator copy.
+- Added Add Node Wizard provider family filters, alias/model search, provider type badges, catalog identity logos, and a bounded scroll area so 50+ providers remain usable while advanced endpoint/header/pricing/health fields stay editable.
 
 ### Changed
 
@@ -17,6 +20,7 @@
 - Config validation now reports catalog auth-type mismatches for known providers and marks unknown providers as custom catalog entries without blocking single-node startup.
 - Cost and balanced routing, Benchmark reports, config validation, Dashboard catalog APIs, catalog overrides, sync cache, and built-in catalog fallback now use the same pricing resolver priority: explicit node/model pricing, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in catalog.
 - Dashboard and docs use “Price source status”, “Review required”, and “Stale” wording for operator-facing pricing copy; internal `pricing_hygiene` fields remain for API compatibility.
+- Dashboard Logs and Route Explanation candidate tables now render provider identity icons from node/model hints so compatible providers remain visually distinct from OpenAI fallbacks.
 
 ## 1.3.2 - 2026-05-05
 

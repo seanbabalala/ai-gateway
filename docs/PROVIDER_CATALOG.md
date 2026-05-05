@@ -34,7 +34,20 @@ Responses include merged built-in + override metadata:
 
 Provider and model rows include `overridden` markers when local override data replaced or added fields.
 
-Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, and modality coverage without changing routing or node config.
+Dashboard provider rows also include operator-facing fields derived from the merged catalog:
+
+| Field | Purpose |
+| --- | --- |
+| `family` / `category` | Groups providers into Foundation Models, Aggregators, Cloud Platforms, China Providers, Self-hosted / Local, Image / Video, Speech / Audio, and Embedding / Rerank. |
+| `provider_type` | Distinguishes direct, aggregator, cloud, self-hosted, media, speech, local, compatible, and custom providers. |
+| `compatibility_profile` | Shows whether the provider is native, OpenAI-compatible, Anthropic-compatible, Google-compatible, local, or custom. |
+| `aliases` | Search hints such as `kimi`, `moonshot`, `qwen`, `tongyi`, `doubao`, or `volcengine`; these are for Dashboard search, not routing aliases. |
+| `logo_id` | Provider identity hint used by Dashboard rows, Nodes, Logs, and Route Explanation. |
+| `homepage_url`, `docs_url`, `pricing_url` | Safe public links for operator review. |
+| `model_buckets` | Catalog-derived `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`, and `batch_models`. |
+| `limits` / `pricing_units` | Summaries for detail panels and validation UI. |
+
+Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, modality coverage, provider family/type filters, compatibility filters, stale/review quick filters, and provider detail panels without changing routing or node config.
 
 ## v1.4 Provider Families And Types
 
@@ -73,7 +86,9 @@ The OSS Data Plane wizard saves only local `gateway.config.yaml` node fields:
 4. Confirm `base_url`, native protocol endpoint, per-capability endpoints, auth type, custom headers, aliases, prefixes, model pricing overrides, routing capability tags, health probe, and concurrency/queue controls.
 5. Run a safe connectivity or compatibility check, then save the node.
 
-Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, and review-required pricing source metadata from the merged catalog. Operators can still edit every generated field before saving.
+Provider selection fills `base_url`, `auth_type`, endpoint paths, suggested models, `model_prefixes`, capability tags, compatibility profile, logo identity, and review-required pricing source metadata from the merged catalog. Operators can still edit every generated field before saving.
+
+For large catalogs, the provider step uses family filters and alias search instead of a hardcoded provider grid. This keeps 50+ providers usable while preserving custom provider setup and advanced local configuration fields.
 
 ## CLI
 

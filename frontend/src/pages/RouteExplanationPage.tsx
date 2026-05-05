@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { NodeIcon } from '@/components/shared/NodeIcon'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -436,13 +437,25 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
         {candidates.map((candidate) => (
           <TableRow key={`${candidate.node}:${candidate.model}:${candidate.position}`}>
             <TableCell>
-              <div className="font-mono text-[12px] font-semibold text-[var(--foreground)]">
-                {candidate.node}
-              </div>
-              <div className="mt-0.5 max-w-[220px] truncate font-mono text-[11px] text-[var(--foreground-dim)]">
-                <Tooltip content={candidate.model}>
-                  <span>{candidate.model}</span>
-                </Tooltip>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--background-secondary)]">
+                  <NodeIcon
+                    nodeId={candidate.node}
+                    providerName={candidate.node}
+                    modelIds={[candidate.model].filter(Boolean)}
+                    className="h-4 w-4"
+                  />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate font-mono text-[12px] font-semibold text-[var(--foreground)]">
+                    {candidate.node}
+                  </div>
+                  <div className="mt-0.5 max-w-[220px] truncate font-mono text-[11px] text-[var(--foreground-dim)]">
+                    <Tooltip content={candidate.model}>
+                      <span>{candidate.model}</span>
+                    </Tooltip>
+                  </div>
+                </div>
               </div>
               {candidate.weight !== null && (
                 <div className="mt-1 text-[10px] font-medium text-[var(--foreground-dim)]">
