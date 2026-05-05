@@ -275,6 +275,25 @@ body {
   background: #c7f4dc;
 }
 
+.sidebar-nav-scroll {
+  scrollbar-color: rgba(226, 244, 236, 0.24) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(226, 244, 236, 0.22);
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(226, 244, 236, 0.34);
+}
+
 @keyframes pulse-dot {
   0%, 100% {
     opacity: 1;

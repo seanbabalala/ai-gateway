@@ -75,13 +75,13 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
   const sidebarContent = (
     <aside
       className={cn(
-        'relative z-10 flex h-screen shrink-0 flex-col overflow-visible border-r border-[var(--sidebar-border)] transition-all duration-300',
+        'relative z-10 flex h-screen shrink-0 flex-col overflow-hidden border-r border-[var(--sidebar-border)] transition-all duration-300',
         collapsed ? 'w-[72px]' : 'w-[240px]',
       )}
       style={{ background: 'var(--sidebar-bg)' }}
     >
       {/* Logo */}
-      <div className={cn('relative z-10 flex items-center gap-3 py-6', collapsed ? 'justify-center px-3' : 'px-6')}>
+      <div className={cn('relative z-10 flex shrink-0 items-center gap-3 py-6', collapsed ? 'justify-center px-3' : 'px-6')}>
         <div
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[#c7f4dc]"
         >
@@ -109,10 +109,10 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
       </div>
 
       {/* Divider */}
-      <div className="mx-5 h-px bg-[var(--sidebar-border)]" />
+      <div className="mx-5 h-px shrink-0 bg-[var(--sidebar-border)]" />
 
       {/* Navigation */}
-      <nav className={cn('relative z-10 flex-1 space-y-6 py-5', collapsed ? 'px-2' : 'px-4')}>
+      <nav className={cn('sidebar-nav-scroll relative z-10 min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain py-5', collapsed ? 'px-2' : 'px-4')}>
         {navGroups.map((group) => (
           <div key={group.labelKey}>
             {!collapsed && (
@@ -168,12 +168,12 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
       </nav>
 
       {/* Divider */}
-      <div className="mx-5 h-px bg-[var(--sidebar-border)]" />
+      <div className="mx-5 h-px shrink-0 bg-[var(--sidebar-border)]" />
 
       {/* Health status footer */}
       <div
         className={cn(
-          'relative z-20 py-4',
+          'relative z-20 shrink-0 py-4',
           collapsed ? 'flex flex-col items-center gap-3 px-2' : 'space-y-3 px-5',
         )}
       >
