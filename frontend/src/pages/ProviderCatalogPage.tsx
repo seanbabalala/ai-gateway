@@ -38,6 +38,7 @@ const MODALITY_FILTERS = [
   'embedding',
   'rerank',
   'realtime',
+  'batch',
 ] as const
 
 type PricingStatus = CatalogPricingHygiene['status'] | 'review'

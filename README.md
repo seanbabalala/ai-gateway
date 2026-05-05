@@ -4,6 +4,8 @@ SiftGate is a self-hosted AI traffic gateway for running multiple AI providers b
 
 Current release: **v1.3.2 Production Ready**.
 
+Current development focus: **v1.4 Provider Ecosystem + Catalog Governance**, expanding the built-in Provider Catalog beyond 50 providers while keeping all pricing metadata review-required unless it comes from an explicit local override or supported sync source.
+
 ## Why SiftGate
 
 - One gateway for Chat Completions, Responses, Anthropic Messages, Embeddings, Rerank, Images, Audio, Video preview, Realtime preview, MCP preview, and Batch proxy.
@@ -63,7 +65,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
 | Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog, Add Node Wizard, provider compatibility matrix, catalog override CLI, OpenRouter pricing sync preview. |
+| Provider Ops | Provider Catalog with 50+ built-in providers in v1.4 development, Add Node Wizard, provider compatibility matrix, catalog override CLI, OpenRouter pricing sync preview. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |

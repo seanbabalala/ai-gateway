@@ -10,6 +10,7 @@ import { DashboardController } from '../../src/dashboard/dashboard.controller';
 import { CircuitState } from '../../src/routing/circuit-breaker.service';
 import { mockConfigService } from '../helpers';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
+import { loadMergedCatalog } from '../../src/catalog/catalog.service';
 
 // ── Mock Query Builder Factory ──────────────────────────
 
@@ -1032,6 +1033,35 @@ describe('DashboardController — catalog', () => {
         }),
       }),
     ]);
+  });
+
+  it('returns v1.4 50 plus provider catalog entries from the merged catalog API shape', () => {
+    const loaded = loadMergedCatalog({
+      cwd: process.cwd(),
+      overridePath: '/tmp/siftgate-missing-catalog.override.yaml',
+      env: {},
+    });
+    const { controller } = makeDashboard({
+      catalog: {
+        load: jest.fn().mockReturnValue(loaded),
+      },
+    });
+
+    const result = controller.getCatalogProviders();
+    const providerIds = result.providers.map((provider: any) => provider.id);
+    const huggingFace = result.providers.find((provider: any) => provider.id === 'huggingface');
+
+    expect(providerIds.length).toBeGreaterThanOrEqual(50);
+    expect(providerIds).toEqual(
+      expect.arrayContaining(['huggingface', 'cloudflare-workers-ai', 'deepgram', 'xinference']),
+    );
+    expect(huggingFace).toMatchObject({
+      provider_type: 'aggregator',
+      logo_id: 'huggingface',
+      model_buckets: expect.objectContaining({
+        models: expect.arrayContaining(['meta-llama/Llama-3.3-70B-Instruct']),
+      }),
+    });
   });
 });
 

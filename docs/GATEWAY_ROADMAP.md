@@ -22,8 +22,27 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 进行中 — Provider Catalog 50+、统一 provider metadata、Catalog governance 测试 | 🚧 In Progress |
 
 ---
+
+## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
+
+**v1.4.0 开发状态**：v1.4 基于已发布 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段重点是把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由和 CLI 共用一份 catalog。
+
+### P0：Provider Catalog 50+
+
+- **状态**：🚧 Prompt 83 feature branch 进行中
+- **目标**：将内置 Provider Catalog 扩展到 50+ providers，并优先补齐 Hugging Face、Cloudflare Workers AI、IBM watsonx.ai、Baseten、Lepton AI、Modal、RunPod、Predibase、Lamini、AI21 Labs、fal.ai、Stability AI、Black Forest Labs、Ideogram、Luma AI、Runway、Pika、ElevenLabs、Deepgram、AssemblyAI、Cartesia、Speechmatics、LM Studio、llama.cpp server、TGI、SGLang、Xinference 等高知名度 provider。
+- **实现方案**：
+  - 不新增第二套 catalog；继续复用 v0.8 引入并在 v0.9-v1.3 强化的 built-in + sync cache + `catalog.override.yaml` merge 结构
+  - 每个内置 provider 统一声明 aliases、family/category、provider_type、homepage/docs/pricing URL、logo_id、auth_type、base_url、endpoints、modalities、input/output types、model buckets、capabilities、limits、pricing metadata、compatibility_profile
+  - Catalog 区分 text、vision、image、audio、video、embedding、rerank、realtime、batch；MCP/tool 只作为 metadata 标记，不引入企业 marketplace
+  - Model buckets 覆盖 `models`、`embedding_models`、`rerank_models`、`image_models`、`audio_models`、`video_models`、`realtime_models`、`batch_models`
+  - 价格不再使用“占位”作为 operator-facing 表达；公开信息不稳定时标记 `manual_review_required` / `docs_review_required` / `pricing_confidence: low`
+  - Provider logo identity 覆盖新增 provider，兼容 provider 不再误显示 OpenAI logo
+  - 旧 `ProviderCatalogService` 诊断层投影到同一份 merged built-in catalog，避免两套 provider 列表漂移
+  - Config validation 增加已知 provider 的 auth_type mismatch warning，并对未知 provider 给出不阻断启动的 catalog metadata 提示
 
 ## v1.3 — Production Ready（生产就绪）
 

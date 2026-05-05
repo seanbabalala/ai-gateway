@@ -14,7 +14,8 @@ export type Modality =
   | 'video'
   | 'embedding'
   | 'rerank'
-  | 'realtime';
+  | 'realtime'
+  | 'batch';
 
 export type CapabilityEndpoint =
   | 'chat_completions'
@@ -53,6 +54,7 @@ export const VALID_MODALITIES: readonly Modality[] = [
   'embedding',
   'rerank',
   'realtime',
+  'batch',
 ];
 
 export const VALID_CAPABILITY_ENDPOINTS: readonly CapabilityEndpoint[] = [

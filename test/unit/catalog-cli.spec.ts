@@ -41,6 +41,10 @@ describe('siftgate catalog CLI', () => {
     expect(stdout.join('\n')).toContain('- openai');
     expect(stdout.join('\n')).toContain('- aws-bedrock');
     expect(stdout.join('\n')).toContain('- alibaba-qwen');
+    expect(stdout.join('\n')).toContain('- huggingface');
+    expect(stdout.join('\n')).toContain('- cloudflare-workers-ai');
+    expect(stdout.join('\n')).toContain('- deepgram');
+    expect(stdout.join('\n')).toContain('- xinference');
   });
 
   it('shows a provider from the merged catalog', async () => {
@@ -55,16 +59,16 @@ describe('siftgate catalog CLI', () => {
     expect(stdout.join('\n')).toContain('gpt-4o');
   });
 
-  it('shows v1.0 catalog provider pricing source metadata', async () => {
+  it('shows v1.4 catalog provider pricing source metadata', async () => {
     const cwd = await makeTempDir();
     const { io, stdout, stderr } = makeIo(cwd);
 
-    const exitCode = await runCli(['catalog', 'show', 'alibaba-qwen'], io);
+    const exitCode = await runCli(['catalog', 'show', 'huggingface'], io);
 
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
-    expect(stdout.join('\n')).toContain('Provider: alibaba-qwen');
-    expect(stdout.join('\n')).toContain('qwen-plus');
+    expect(stdout.join('\n')).toContain('Provider: huggingface');
+    expect(stdout.join('\n')).toContain('meta-llama/Llama-3.3-70B-Instruct');
     expect(stdout.join('\n')).toContain('provider-reference');
   });
 
@@ -118,6 +122,8 @@ describe('siftgate catalog CLI', () => {
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('openrouter');
+    expect(stdout.join('\n')).toContain('huggingface');
+    expect(stdout.join('\n')).toContain('deepgram');
     expect(stdout.join('\n')).toContain('automatic=yes');
   });
 

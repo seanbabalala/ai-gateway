@@ -8,7 +8,8 @@ export type CatalogModality =
   | 'video'
   | 'embedding'
   | 'rerank'
-  | 'realtime';
+  | 'realtime'
+  | 'batch';
 
 export type CatalogEndpoint =
   | 'chat_completions'
@@ -22,7 +23,8 @@ export type CatalogEndpoint =
   | 'video_generations'
   | 'video_status'
   | 'rerank'
-  | 'realtime';
+  | 'realtime'
+  | 'batch';
 
 export type CatalogAuthType =
   | AuthType
@@ -89,6 +91,27 @@ export interface CatalogProvider {
   id: string;
   name: string;
   description?: string;
+  aliases?: string[];
+  family?: string;
+  category?: string;
+  provider_type?: 'direct' | 'aggregator' | 'cloud' | 'self_hosted' | 'media' | 'speech' | 'local';
+  homepage_url?: string;
+  docs_url?: string;
+  pricing_url?: string;
+  logo_id?: string;
+  input_types?: string[];
+  output_types?: string[];
+  model_buckets?: {
+    models?: string[];
+    embedding_models?: string[];
+    rerank_models?: string[];
+    image_models?: string[];
+    audio_models?: string[];
+    video_models?: string[];
+    realtime_models?: string[];
+    batch_models?: string[];
+  };
+  compatibility_profile?: string | string[];
   base_url: string;
   base_url_matchers: string[];
   protocols: NodeProtocol[];
@@ -99,11 +122,8 @@ export interface CatalogProvider {
   modalities: CatalogModality[];
   capabilities: string[];
   limits?: CatalogLimits;
-  pricing: {
-    source: CatalogPricingSource;
-    last_updated: string;
-    manual_review_required: boolean;
-  };
+  pricing: Partial<CatalogPricing> &
+    Pick<CatalogPricing, 'source' | 'last_updated' | 'manual_review_required'>;
   model_prefixes?: string[];
   tags?: string[];
   allows_unknown_models?: boolean;

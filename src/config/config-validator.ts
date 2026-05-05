@@ -4675,6 +4675,18 @@ function validateConfigAgainstCatalog(
     const node = nodeValue as Record<string, unknown>;
     const basePath = `nodes[${nodeIndex}]`;
     const provider = catalogProviderForNode(catalog, node);
+    if (!provider) {
+      issues.push(
+        issue(
+          'info',
+          'catalog_unknown_provider',
+          `Node "${String(node.id || '')}" does not match a built-in provider catalog entry. SiftGate will treat it as a custom provider; add catalog.override.yaml metadata for model, endpoint, and pricing validation.`,
+          `${basePath}.base_url`,
+        ),
+      );
+    } else {
+      validateCatalogAuthTypeMatch(node, provider, basePath, issues);
+    }
 
     validateCatalogEndpointMatch(
       node,
@@ -4811,6 +4823,27 @@ function validateConfigAgainstCatalog(
       issues,
     );
   });
+}
+
+function validateCatalogAuthTypeMatch(
+  node: Record<string, unknown>,
+  provider: ProviderCatalog['providers'][number],
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isNonEmptyString(node.auth_type)) return;
+  const expected = provider.auth_type;
+  if (!isNonEmptyString(expected) || expected === 'none') return;
+  if (node.auth_type !== expected) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_auth_type_mismatch',
+        `Node "${String(node.id || '')}" auth_type "${node.auth_type}" differs from catalog provider "${provider.id}" auth_type "${expected}".`,
+        `${basePath}.auth_type`,
+      ),
+    );
+  }
 }
 
 function catalogProviderForNode(

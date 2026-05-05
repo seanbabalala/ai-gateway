@@ -1,6 +1,6 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers, including AWS Bedrock, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, 01.AI/Yi, Replicate, Perplexity, NVIDIA NIM, Cerebras, and SambaNova Cloud. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers and adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profile. The catalog is used by Dashboard Add Node, catalog APIs, config validation, cost-aware routing, and provider compatibility checks.
 
 The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
@@ -8,7 +8,7 @@ The important product rule is honesty: built-in provider/model/pricing data is a
 
 - Keep provider/model knowledge out of Dashboard form components.
 - Give config validation enough context to warn about likely model, pricing, endpoint, and modality mistakes.
-- Provide one shared vocabulary for text, vision, image, audio, video, embedding, rerank, and realtime routing work.
+- Provide one shared vocabulary for text, vision, image, audio, video, embedding, rerank, realtime, and batch routing work.
 - Provide one shared prompt-cache vocabulary for provider `prompt_cache`, `read_cache`, `write_cache`, and cache read/write token prices.
 - Preserve single-node memory/SQLite defaults. Redis, Postgres, and Cloud are not required.
 
@@ -36,6 +36,31 @@ Provider and model rows include `overridden` markers when local override data re
 
 Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, and modality coverage without changing routing or node config.
 
+## v1.4 Provider Families And Types
+
+v1.4 adds catalog governance fields so provider data stays useful across Dashboard forms, CLI validation, routing evidence, and documentation:
+
+- `family` / `category`: human-readable grouping such as `foundation_model`, `china_provider`, `cloud_platform`, `aggregator`, `media`, `speech_audio`, `self_hosted`, or `custom`.
+- `provider_type`: machine-readable type: `direct`, `aggregator`, `cloud`, `self_hosted`, `media`, `speech`, or `local`.
+- `aliases`: search hints for Dashboard Add Node and CLI lookup, including common brand names, product names, and localized provider names.
+- `logo_id`: Dashboard identity key. Compatible providers use their own identity or a branded local badge, not the OpenAI logo.
+- `homepage_url`, `docs_url`, `pricing_url`: operator review links. They are references, not live billing data.
+- `input_types` / `output_types`: normalized routing evidence such as `text`, `image`, `audio`, `video`, `file`, `events`, `embedding`, and `ranked_documents`.
+- `model_buckets`: suggested model lists for `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`, and `batch_models`.
+- `compatibility_profile`: a compact hint such as `openai_compatible`, `anthropic_messages_compatible`, `aws_bedrock_converse`, `media_generation_async`, `speech_compatible`, or `openai_compatible_local`.
+
+The built-in catalog now covers 50+ providers across these groups:
+
+| Family | Examples |
+| --- | --- |
+| Direct foundation model APIs | OpenAI, Anthropic, Google Gemini / Vertex, Mistral, DeepSeek, xAI, Cohere, AI21 Labs |
+| China providers | Alibaba Qwen / DashScope, Baidu Qianfan / Wenxin, Volcengine Ark / Doubao, Zhipu GLM, Moonshot / Kimi, MiniMax, Tencent Hunyuan, 01.AI / Yi |
+| Aggregators and marketplaces | OpenRouter, Hugging Face Inference Providers, Replicate, Together AI, Fireworks AI, NVIDIA NIM |
+| Cloud and managed platforms | AWS Bedrock, Azure OpenAI, Cloudflare Workers AI, IBM watsonx.ai |
+| Media generation providers | fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika |
+| Speech/audio providers | ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics, Voyage AI, Jina AI |
+| Local and self-hosted runtimes | Ollama, vLLM, LM Studio, llama.cpp server, Text Generation Inference / TGI, SGLang, Xinference, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini |
+
 ## Dashboard Add Node Wizard
 
 v0.8 uses the catalog as the source of truth for the Dashboard Add Node flow. The wizard no longer keeps a separate provider/model list inside the React form.
@@ -44,7 +69,7 @@ The OSS Data Plane wizard saves only local `gateway.config.yaml` node fields:
 
 1. Choose a provider, OpenAI-compatible proxy, or custom upstream.
 2. Select endpoint capabilities: Chat, Responses, Messages, Embeddings, Rerank, Images, Audio, Video, and Realtime.
-3. Pick or edit model buckets: `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, and `realtime_models`.
+3. Pick or edit model buckets: `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`, and catalog `batch_models` metadata.
 4. Confirm `base_url`, native protocol endpoint, per-capability endpoints, auth type, custom headers, aliases, prefixes, model pricing overrides, routing capability tags, health probe, and concurrency/queue controls.
 5. Run a safe connectivity or compatibility check, then save the node.
 
@@ -101,11 +126,11 @@ SiftGate v0.9.2 exposes refresh-source metadata through the Dashboard catalog AP
 | --- | --- | --- | --- |
 | OpenRouter | `public_api` | Yes | OpenRouter exposes a public `/api/v1/models` catalog with model metadata and prompt/completion pricing. |
 | OpenAI, Anthropic, Google Gemini / Vertex | `docs_review` | No | Public pricing is documented, but model availability and product surfaces change often; SiftGate keeps built-in entries as review-required references. |
-| Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, Perplexity, NVIDIA NIM, Cerebras, SambaNova | `docs_review` | No | Pricing is public enough to review, but SiftGate does not scrape provider sites; use reviewed overrides for production cost routing. |
+| Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, Perplexity, NVIDIA NIM, Cerebras, SambaNova, Hugging Face, Cloudflare Workers AI, IBM watsonx.ai, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini, AI21 Labs, fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika, ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics | `docs_review` | No | Pricing is public enough to review or documented by plan/model, but SiftGate does not scrape provider sites; use reviewed overrides for production cost routing. |
 | Azure OpenAI, AWS Bedrock | `operator_local` | No | Pricing depends on region, deployment, SKU, AWS inference profile, or account-specific rate card. |
-| Ollama, vLLM, 01.AI/Yi, Replicate, custom OpenAI-compatible | `operator_local` | No | Model list and cost depend on the local host, cluster, marketplace model, account, or proxy. |
+| Ollama, vLLM, LM Studio, llama.cpp server, TGI, SGLang, Xinference, 01.AI/Yi, Replicate, custom OpenAI-compatible | `operator_local` | No | Model list and cost depend on the local host, cluster, marketplace model, account, or proxy. |
 
-For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.0 provider additions include `source_url`, `last_updated`, and `pricing_confidence` so operators can see where the reference came from without mistaking it for live billing data.
+For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.4 provider additions include `source_url`, `last_updated`, and `pricing_confidence` so operators can see where the reference came from without mistaking it for live billing data.
 
 ## Scheduled Pricing Sync
 
@@ -188,7 +213,7 @@ Older internal code and API fields still use `pricing_hygiene` for backward comp
 - Is a price present?
 - Where did it come from?
 - How old is it?
-- Is it a placeholder/reference, a live public API value, or a local override?
+- Is it a review-required reference, a live public API value, or a local override?
 - Is it safe enough for `routing.optimization=cost`?
 
 Dashboard statuses map to these meanings:
@@ -206,9 +231,11 @@ Dashboard statuses map to these meanings:
 - a configured model is not in the merged catalog
 - a model is listed under a bucket that does not match its catalog modality
 - a node endpoint differs from a known provider preset
+- a node `auth_type` differs from a known provider preset
+- a node does not match any built-in provider, which is reported as a custom catalog entry without blocking startup
 - pricing is marked `manual_review_required`
 - pricing is missing for the configured modality
-- pricing is placeholder/manual-review metadata
+- pricing is review-required metadata
 - pricing is stale according to `last_updated` + `stale_after_days`
 - pricing units do not match the model bucket, such as image models without image pricing units
 - `routing.optimization=cost` is enabled but a candidate lacks usable input/output token prices
