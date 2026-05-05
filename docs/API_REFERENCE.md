@@ -495,6 +495,22 @@ This endpoint is read-only and never applies routing changes. It does not store 
 
 Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, and estimated savings.
 
+### Evaluation Reports
+
+The v1.3 Evaluation Framework preview stores local experiment metadata for primary-vs-candidate comparisons. LLM-as-judge calls are ordinary SiftGate requests through the normal routing pipeline; no hosted enterprise service is required.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/dashboard/evals/reports` | List metadata-only evaluation reports |
+| `GET` | `/api/dashboard/evals/reports/:id` | Get one report with sample-level request ids and judge scores |
+| `POST` | `/api/dashboard/evals/runs` | Run a local primary-vs-candidate experiment through SiftGate routing |
+
+`GET /api/dashboard/evals/reports` supports `period`, `status`, `dataset_id`, and `limit`. Responses include totals, primary and candidate success/latency/cost/fallback metrics, average judge score, winner, and privacy flags.
+
+`GET /api/dashboard/evals/reports/:id` adds per-sample metadata: sample hash, optional sample id, primary/candidate/judge request ids, status codes, latency, cost, fallback flags, judge score, judge label, sanitized reason summary, sanitized error type, and sanitized metadata.
+
+`POST /api/dashboard/evals/runs` is intended for local automation. The Dashboard page remains read-only. A run body contains dataset metadata, primary target, candidate target, optional judge config, samples, and optional `store_samples`. Prompt/response sample previews are persisted only when both `evaluation.store_samples: true` and request `store_samples: true` are set; previews are redacted and truncated. By default, evaluation tables do not store prompt text, response text, raw headers, provider keys, media bytes, video bytes, or rubric text.
+
 ### Dashboard Playground
 
 `POST /api/dashboard/playground/run` is a Dashboard-session protected operator tool for safe interactive probes. It supports:

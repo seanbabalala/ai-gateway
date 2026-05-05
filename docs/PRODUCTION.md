@@ -181,6 +181,36 @@ namespace allow-lists for team-scoped tool servers. The preview audit buffer is
 metadata-only and in-memory; it is useful for recent operational visibility but
 is not a durable compliance event store.
 
+## Evaluation Framework
+
+The v1.3 Evaluation Framework preview stores local experiment metadata in the
+runtime database. SQLite works for local single-node use; PostgreSQL is
+recommended if eval history needs backup, restore testing, or multi-instance
+operational visibility.
+
+```yaml
+evaluation:
+  enabled: true
+  store_samples: false
+  max_sample_chars: 500
+  retention_days: 30
+  judge_model: gpt-4o-mini
+```
+
+Production guidance:
+
+- Keep `store_samples` disabled for production datasets unless legal/privacy
+  review explicitly approves local redacted previews.
+- Judge calls are ordinary SiftGate requests and can spend real budget. Scope
+  the judge key/model with normal Gateway API key, namespace, budget, and rate
+  limit controls.
+- Fixed rubrics and representative samples make judge scores comparable across
+  runs; treat the score as operational evidence, not a final truth label.
+- Include `eval_datasets`, `eval_experiment_runs`, and `eval_sample_results` in
+  database backups if historical reports are needed after incidents.
+- Dashboard Eval Reports are read-only. Automation that calls
+  `POST /api/dashboard/evals/runs` should run from a trusted local environment.
+
 ## Config Audit And Rollback
 
 The v0.9 OSS Data Plane keeps local config audit history in the same database

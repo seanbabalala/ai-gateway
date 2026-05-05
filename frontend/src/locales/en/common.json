@@ -62,5 +62,6 @@
   "nav.benchmarks": "Benchmarks",
   "nav.sessions": "Sessions",
   "nav.mcp": "MCP Gateway",
-  "nav.batches": "Batches"
+  "nav.batches": "Batches",
+  "nav.evals": "Eval Reports"
 }

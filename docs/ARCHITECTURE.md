@@ -204,6 +204,18 @@ The preview does not implement an enterprise MCP marketplace, remote workspace r
 
 The v1.2 Batch API proxy follows the same metadata-only async pattern without running through the synchronous generation pipeline. `POST /v1/batches` resolves a provider node, enforces Gateway API key endpoint/node/model permissions, namespace scope, rate limits, and budget checks, then forwards the OpenAI-compatible create body to the upstream batch endpoint. It writes a `batch_jobs` row with request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, and sanitized error text. It stores metadata keys only, not metadata values. Status, cancel, output, and error-file routes look up `batch_jobs`, enforce the creating key/namespace boundary, and proxy provider file content without persisting input JSONL, output JSONL, raw headers, provider keys, or file bytes.
 
+## Evaluation Framework
+
+The v1.3 Evaluation Framework is a local metadata layer around the existing request pipeline. It does not create a second inference path. Primary, candidate, and judge calls are built as canonical text requests and sent through `PipelineService.process`, so normal routing, fallback, budgets, call logs, telemetry, plugins, and route decisions still apply.
+
+Persistent state is split across three tables:
+
+- `eval_datasets` stores dataset identity, source, sample count, sanitized metadata, and whether sample previews were explicitly enabled.
+- `eval_experiment_runs` stores primary/candidate/judge target metadata, aggregate success, latency, cost, fallback, judge score, winner, status, timestamps, sanitized summary, and privacy flags.
+- `eval_sample_results` stores sample hashes, request ids, status codes, latency, cost, fallback flags, judge score/label, sanitized reason summary, sanitized error type, and sanitized metadata.
+
+By default, these tables do not store prompt text, response text, raw headers, provider keys, media bytes, video bytes, or judge rubric text. `evaluation.store_samples` is a local opt-in for redacted previews; a run must also set `store_samples: true`, which prevents a broad config flag from silently capturing samples from automation that did not request it.
+
 ## Provider Catalog And Pricing Sync
 
 The Provider Catalog is local metadata, not a hosted dependency. SiftGate loads built-in provider/model references, then an optional SiftGate-managed sync cache, then the operator-managed `catalog.override.yaml`. That merge order lets automatic OpenRouter model/pricing sync improve defaults while keeping explicit local overrides authoritative.

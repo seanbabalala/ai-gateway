@@ -934,6 +934,20 @@ models_pricing:
 #       store_responses: false
 
 # ============================================================
+# Evaluation Framework — local primary/candidate experiment reports
+# ============================================================
+# Disabled-by-default preview controls for local LLM-as-judge reports.
+# Prompt/response previews are not stored unless both this config and the
+# individual run request explicitly opt in. Previews are redacted/truncated.
+# ============================================================
+# evaluation:
+#   enabled: false
+#   store_samples: false
+#   max_sample_chars: 500
+#   retention_days: 30
+#   judge_model: gpt-4o-mini
+
+# ============================================================
 # Telemetry — OpenTelemetry and Prometheus metrics
 # ============================================================
 # Disabled by default. When enabled, SiftGate starts the existing

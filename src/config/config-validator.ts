@@ -238,6 +238,7 @@ export function validateConfigObject(
   validateRealtime(config.realtime, config.nodes, issues);
   validateMcpGateway(config.mcp, config.namespaces, issues);
   validateShadow(config.shadow, config.nodes, issues);
+  validateEvaluation(config.evaluation, config.nodes, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
@@ -2419,6 +2420,97 @@ function validateCache(
         ),
       );
     }
+  }
+}
+
+function validateEvaluation(
+  evaluation: unknown,
+  nodes: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (evaluation === undefined) return;
+  if (!isRecord(evaluation)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_evaluation_config',
+        'evaluation must be an object.',
+        'evaluation',
+      ),
+    );
+    return;
+  }
+
+  if (evaluation.enabled !== undefined && !isBoolean(evaluation.enabled)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_evaluation_config',
+        'evaluation.enabled must be a boolean.',
+        'evaluation.enabled',
+      ),
+    );
+  }
+  if (
+    evaluation.store_samples !== undefined &&
+    !isBoolean(evaluation.store_samples)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_evaluation_config',
+        'evaluation.store_samples must be a boolean.',
+        'evaluation.store_samples',
+      ),
+    );
+  }
+
+  validateOptionalPositiveNumber(
+    evaluation.max_sample_chars,
+    'evaluation.max_sample_chars',
+    'invalid_evaluation_config',
+    issues,
+  );
+  validateOptionalPositiveNumber(
+    evaluation.retention_days,
+    'evaluation.retention_days',
+    'invalid_evaluation_config',
+    issues,
+  );
+
+  if (
+    evaluation.judge_model !== undefined &&
+    isNonEmptyString(evaluation.judge_model) &&
+    Array.isArray(nodes)
+  ) {
+    const knownModels = new Set<string>();
+    for (const node of nodes) {
+      if (!isRecord(node)) continue;
+      for (const model of Array.isArray(node.models) ? node.models : []) {
+        if (isNonEmptyString(model)) knownModels.add(model);
+      }
+    }
+    if (!knownModels.has(evaluation.judge_model)) {
+      issues.push(
+        issue(
+          'warning',
+          'unknown_evaluation_judge_model',
+          `evaluation.judge_model "${evaluation.judge_model}" is not in nodes[].models; eval runners may fall back to auto routing.`,
+          'evaluation.judge_model',
+        ),
+      );
+    }
+  }
+
+  if (evaluation.store_samples === true) {
+    issues.push(
+      issue(
+        'warning',
+        'evaluation_sample_storage_enabled',
+        'evaluation.store_samples=true can retain redacted prompt/response previews locally; keep it disabled unless explicitly needed.',
+        'evaluation.store_samples',
+      ),
+    );
   }
 }
 

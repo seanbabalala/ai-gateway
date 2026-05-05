@@ -62,5 +62,6 @@
   "nav.benchmarks": "基准",
   "nav.sessions": "会话",
   "nav.mcp": "MCP 网关",
-  "nav.batches": "批处理"
+  "nav.batches": "批处理",
+  "nav.evals": "评测报告"
 }

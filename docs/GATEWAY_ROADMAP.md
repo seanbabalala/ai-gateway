@@ -21,17 +21,17 @@
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
-| v1.3 | Production Ready | 进行中 — Virtual Key + Team 本地管理、Semantic Caching、评估框架、文档与社区 | 🚧 In Progress |
+| v1.3 | Production Ready | 发布中 — Virtual Key/Team、Semantic Cache、Evaluation Framework、文档与社区建设 | 🚢 Release |
 
 ---
 
 ## v1.3 — Production Ready（生产就绪）
 
-**v1.3 开发状态**：v1.3 基于已发布 v1.2.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段第一项是把 Gateway API key 管理升级为本地 Virtual Key + Team 治理能力，不引入企业 SSO、SCIM、workspace、RBAC、Cloud 或私有依赖。
+**v1.3 开发状态**：v1.3 基于已发布 v1.2.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把前面版本的路由、目录、多模态、运维和平台能力收束成更完整的本地生产体验。
 
 ### P0：Virtual Key + Team 本地管理
 
-- **状态**：🚧 v1.3 开发中
+- **状态**：✅ v1.3.0 发布中
 - **目标**：让开源版本地 Dashboard 可以管理多组客户端 key，并用本地 team 统一套用权限、预算、限流和审计策略
 - **实现方案**：
   - 新增本地 `local_teams` 表，SQLite 默认可用，PostgreSQL 兼容
@@ -45,17 +45,29 @@
   - Dashboard 文案继续补齐 en、zh、zh-TW、ja、ko、th、es 七语言
   - 不做企业 SSO、SCIM、workspace、RBAC、org billing 或 Cloud 依赖
 
-### P1：Semantic Caching
+### P0：Semantic Caching Preview
 
-- **状态**：规划中
-- **目标**：在本地向量相似度缓存基础上减少重复语义请求成本，并在 Route Explanation 中展示命中证据
+- **状态**：🚧 v1.3.0 发布补齐
+- **目标**：在默认关闭的前提下，用 embedding 相似度判断可复用响应，减少重复语义请求成本，并在 Logs 与 Route Explanation 中展示 metadata-only 命中证据
+- **实现方案**：
+  - `semantic_cache.enabled` 默认 `false`
+  - memory 后端默认可用；Redis/vector backend 后续可选
+  - 支持 `similarity_threshold`、`ttl_seconds`、namespace/API key/model/endpoint 隔离
+  - 默认只保存 embedding/hash/metadata，不保存敏感 prompt/response；如未来启用样本存储必须显式配置和脱敏
+  - Route Explanation 与 call logs 标记 `semantic_cache_hit`
 
-### P1：Evaluation Framework
+### P0：Evaluation Framework Preview
 
-- **状态**：规划中
-- **目标**：提供本地 LLM-as-judge / 实验报告能力，辅助 routing、fallback、shadow traffic 和 guardrails 决策
-
----
+- **状态**：✅ v1.3.0 发布中
+- **目标**：支持本地 eval dataset metadata、judge config、experiment run metadata，并通过普通 SiftGate routing 执行 LLM-as-judge，不引入企业服务
+- **实现方案**：
+  - 新增 `eval_datasets`、`eval_experiment_runs`、`eval_sample_results` 本地表，SQLite 默认可用，PostgreSQL 兼容
+  - 新增 Dashboard API `GET /api/dashboard/evals/reports`、`GET /api/dashboard/evals/reports/:id` 和本地 automation 入口 `POST /api/dashboard/evals/runs`
+  - primary、candidate、judge 调用都走 `PipelineService.process`，复用现有 routing、fallback、budget、telemetry、call log 和 route trace
+  - 报告展示 success、latency、cost、fallback、judge score、winner 和 sample-level request ids
+  - Dashboard 新增只读 Eval Reports 页面，不提供自动修改 routing 的入口
+  - 默认不保存 prompt、response、raw headers、provider keys、media bytes 或 video bytes；如启用 sample preview，必须配置和请求双重显式 opt-in，并进行脱敏/截断
+  - 文档新增 `docs/EVALUATION_FRAMEWORK.md`，Dashboard 文案同步 en、zh、zh-TW、ja、ko、th、es
 
 ## v1.2 — Platform Capabilities（平台能力）
 

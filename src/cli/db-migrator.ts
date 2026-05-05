@@ -11,6 +11,9 @@ import {
   LocalTeam,
   NodeStatus,
   BatchJob,
+  EvalDataset,
+  EvalExperimentRun,
+  EvalSampleResult,
   ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
@@ -29,6 +32,9 @@ export type DbMigrationTableName =
   | "config_audit_events"
   | "provider_compatibility_results"
   | "batch_jobs"
+  | "eval_datasets"
+  | "eval_experiment_runs"
+  | "eval_sample_results"
   | "video_jobs";
 
 interface MigrationTableDefinition {
@@ -55,6 +61,13 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   {
     table: "batch_jobs",
     entity: BatchJob,
+    generatedSequenceColumn: "id",
+  },
+  { table: "eval_datasets", entity: EvalDataset },
+  { table: "eval_experiment_runs", entity: EvalExperimentRun },
+  {
+    table: "eval_sample_results",
+    entity: EvalSampleResult,
     generatedSequenceColumn: "id",
   },
   {
@@ -205,6 +218,9 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         ConfigAuditEvent,
         ProviderCompatibilityResult,
         BatchJob,
+        EvalDataset,
+        EvalExperimentRun,
+        EvalSampleResult,
         VideoJob,
       ],
       synchronize: false,
@@ -656,6 +672,52 @@ function normalizeRow(
     });
   }
 
+  if (table === "eval_datasets") {
+    return normalizeFields(row, {
+      sample_count: toNumber,
+      sample_storage_enabled: toBoolean,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "eval_experiment_runs") {
+    return normalizeFields(row, {
+      sample_count: toNumber,
+      primary_success_rate: toNumber,
+      candidate_success_rate: toNumber,
+      primary_avg_latency_ms: toNumber,
+      candidate_avg_latency_ms: toNumber,
+      primary_total_cost_usd: toNumber,
+      candidate_total_cost_usd: toNumber,
+      primary_fallback_rate: toNumber,
+      candidate_fallback_rate: toNumber,
+      avg_judge_score: toNullableNumber,
+      started_at: toNullableIsoString,
+      completed_at: toNullableIsoString,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "eval_sample_results") {
+    return normalizeFields(row, {
+      id: toNumber,
+      primary_status_code: toNullableNumber,
+      candidate_status_code: toNullableNumber,
+      primary_success: toBoolean,
+      candidate_success: toBoolean,
+      primary_latency_ms: toNumber,
+      candidate_latency_ms: toNumber,
+      primary_cost_usd: toNumber,
+      candidate_cost_usd: toNumber,
+      primary_fallback: toBoolean,
+      candidate_fallback: toBoolean,
+      judge_score: toNullableNumber,
+      created_at: toDateOrNow,
+    });
+  }
+
   if (table === "video_jobs") {
     return normalizeFields(row, {
       id: toNumber,
@@ -728,6 +790,11 @@ function toNullableDate(value: unknown): Date | null {
   if (value instanceof Date) return value;
   const parsed = new Date(String(value));
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toNullableIsoString(value: unknown): string | null {
+  const parsed = toNullableDate(value);
+  return parsed ? parsed.toISOString() : null;
 }
 
 function toJsonArrayOrNull(value: unknown): string[] | null {

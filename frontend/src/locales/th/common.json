@@ -62,5 +62,6 @@
   "nav.benchmarks": "เบนช์มาร์ก",
   "nav.sessions": "เซสชัน",
   "nav.mcp": "MCP Gateway",
-  "nav.batches": "แบตช์"
+  "nav.batches": "แบตช์",
+  "nav.evals": "รายงาน Eval"
 }

@@ -62,5 +62,6 @@
   "nav.benchmarks": "ベンチマーク",
   "nav.sessions": "セッション",
   "nav.mcp": "MCP Gateway",
-  "nav.batches": "バッチ"
+  "nav.batches": "バッチ",
+  "nav.evals": "評価レポート"
 }

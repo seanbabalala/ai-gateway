@@ -1226,6 +1226,121 @@ export interface BatchDashboardResponse {
   }
 }
 
+// ── Evaluation Reports ──
+
+export type EvalRunStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type EvalWinner = 'primary' | 'candidate' | 'tie' | null
+
+export interface EvalTargetReport {
+  node_id: string | null
+  model: string
+  success_rate: number
+  avg_latency_ms: number
+  total_cost_usd: number
+  fallback_rate: number
+}
+
+export interface EvalRunSummary {
+  id: string
+  dataset_id: string | null
+  dataset_name: string
+  status: EvalRunStatus
+  sample_count: number
+  primary: EvalTargetReport
+  candidate: EvalTargetReport
+  judge: {
+    node_id: string | null
+    model: string | null
+    avg_score: number | null
+  }
+  winner: EvalWinner
+  summary: {
+    success_delta?: number
+    latency_delta_ms?: number
+    cost_delta_usd?: number
+    fallback_delta?: number
+    judge_sample_coverage?: number
+    [key: string]: unknown
+  }
+  privacy: EvalPrivacy
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EvalPrivacy {
+  prompt_response_stored: boolean
+  sample_previews_stored: boolean
+  raw_headers_stored: false
+  provider_keys_exposed: false
+  metadata_only: boolean
+  requires_explicit_sample_storage: true
+}
+
+export interface EvalReportsResponse {
+  generated_at: string
+  metadata_only: true
+  filters: {
+    period: string
+    status: string | null
+    dataset_id: string | null
+  }
+  totals: {
+    runs: number
+    completed: number
+    failed: number
+    samples: number
+    avg_judge_score: number | null
+  }
+  items: EvalRunSummary[]
+  privacy: EvalPrivacy
+}
+
+export interface EvalSampleSummary {
+  id: number
+  sample_id: string | null
+  sample_hash: string
+  request_ids: {
+    primary: string | null
+    candidate: string | null
+    judge: string | null
+  }
+  primary: {
+    status_code: number | null
+    success: boolean
+    latency_ms: number
+    cost_usd: number
+    fallback: boolean
+  }
+  candidate: {
+    status_code: number | null
+    success: boolean
+    latency_ms: number
+    cost_usd: number
+    fallback: boolean
+  }
+  judge: {
+    score: number | null
+    label: string | null
+    reason_summary: string | null
+  }
+  error_type: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface EvalReportDetailResponse {
+  generated_at: string
+  metadata_only: true
+  run: EvalRunSummary & {
+    judge_config: Record<string, unknown>
+  }
+  samples: EvalSampleSummary[]
+  privacy: EvalPrivacy
+}
+
 // ── Dashboard Playground ──
 
 export type PlaygroundEndpoint =

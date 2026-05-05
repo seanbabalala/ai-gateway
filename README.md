@@ -18,6 +18,7 @@
   <a href="docs/KUBERNETES.md">Kubernetes</a> &bull;
   <a href="#connected-gateway">Connected Gateway</a> &bull;
   <a href="docs/API_REFERENCE.md">API Reference</a> &bull;
+  <a href="docs/EVALUATION_FRAMEWORK.md">Evaluations</a> &bull;
   <a href="docs/AGENT_INTEGRATIONS.md">Agents</a> &bull;
   <a href="docs/GATEWAY_ROADMAP.md">Roadmap</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
@@ -33,6 +34,8 @@ Current open-source release: **v1.2.0**. v1.2 is the SiftGate platform capabilit
 Unreleased v1.3 work adds local Virtual Key + Team management on top of v1.2: operators can create local teams, bind Gateway API keys to teams, and enforce team-level namespace, budget, rate-limit, endpoint, modality, node, and model policy without adding enterprise SSO, SCIM, workspace, or Cloud dependencies.
 
 The release builds on v1.1.0 Developer Experience and keeps the default deployment single-node memory/SQLite. Redis, PostgreSQL, Kubernetes, and Cloud-style control surfaces remain optional, and the MIT open-source Data Plane does not depend on `siftgate-cloud`, enterprise dashboard code, private packages, or hosted services.
+
+Unreleased v1.3 work adds production-readiness previews such as the local Evaluation Framework: metadata-only primary-vs-candidate experiment reports with LLM-as-judge calls routed through the same SiftGate pipeline. Prompt and response samples are not persisted unless explicitly enabled and redacted.
 
 SiftGate is a **self-hosted AI traffic data plane** that sits between your applications and multiple AI providers (OpenAI, Anthropic, Google, local models, and compatible proxies). It accepts requests in major chat, responses, messages, embeddings, rerank, images, and audio formats and intelligently routes them to the best provider based on request complexity, cost, dimensions, and availability.
 
@@ -130,6 +133,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **Read-only routing recommendations** — review local sliding-window success, p50/p95 latency, cost, fallback rate, confidence, savings, and risk notes
 - **Route decision traces** — inspect per-request candidate targets, capability/file-size filters, endpoint strategy, pricing/catalog source, circuit state, fallback chain, and final selection through Dashboard APIs and the Route Explanation page
 - **Benchmark reports** — inspect local performance evidence with latency percentiles, throughput estimates, status/source breakdowns, cost/token summaries, and methodology notes
+- **Eval Reports** — compare primary vs candidate routes with success, latency, cost, fallback, and LLM-as-judge score while keeping prompt/response samples out of local storage by default
 - **Batch Jobs** — read-only Batch API status, file ids, request counts, API key/namespace scope, and sanitized errors without storing batch input or output contents
 - **Budget tracking** — ring gauges showing daily usage vs limits
 - **Namespace filtering** — filter Dashboard stats, logs, cost, and budget views by local namespace
@@ -164,6 +168,7 @@ The open-source gateway must remain useful on its own. SiftGate Cloud is an opti
 - **TypeScript SDK scaffold** — use `@siftgate/client` for typed gateway calls, or keep the OpenAI SDK with a `baseURL` pointed at SiftGate
 - **Python SDK scaffold** — install `packages/python` locally for a lightweight `siftgate` client with Gateway API key auth, routing hints, multimodal helpers, video jobs, and typed errors
 - **Agent framework examples** — run LangChain, CrewAI, OpenAI Agents SDK, and OpenAI SDK `base_url` examples through SiftGate with routing hints, session headers, trace labels, namespace-aware keys, and structured output
+- **Evaluation Framework preview** — run local primary-vs-candidate experiments, judge them through ordinary SiftGate routing, and inspect metadata-only reports in the Dashboard; see [Evaluation Framework](docs/EVALUATION_FRAMEWORK.md)
 - **Shadow traffic** — asynchronously mirror sampled successful requests to a test node, then compare primary vs shadow outcomes without storing sensitive content by default
 
 ### Provider Catalog
@@ -1502,6 +1507,9 @@ When a budget is exceeded, the proxy returns `429` with `type: "budget_exceeded"
 | `GET`  | `/api/dashboard/route-decisions/:requestId` | Full privacy-safe route decision trace for one request                                           |
 | `GET`  | `/api/dashboard/analytics/cost`          | Cost analytics; supports `api_key_id`, legacy `api_key`, and `namespace` filters                   |
 | `GET`  | `/api/dashboard/benchmarks/report`       | Read-only benchmark report with latency, throughput, cost, token, status, node:model, and source-format breakdowns |
+| `GET`  | `/api/dashboard/evals/reports`           | Read-only metadata-only evaluation reports comparing primary vs candidate routes                    |
+| `GET`  | `/api/dashboard/evals/reports/:id`       | One evaluation report with sample-level request ids, metrics, judge scores, and privacy state       |
+| `POST` | `/api/dashboard/evals/runs`              | Local automation endpoint to run primary-vs-candidate experiments through normal SiftGate routing   |
 | `GET`  | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics                       |
 | `GET`  | `/api/dashboard/alerts`                  | Local webhook alert channels and recent delivery status                                            |
 | `GET`  | `/api/dashboard/namespaces`              | Local OSS namespace policies and budget summaries                                                  |
@@ -1541,6 +1549,7 @@ The built-in dashboard is available at the gateway's root URL (default: `http://
 - **Route Explanation** — Read-only per-request explanation for why SiftGate selected a node/model, with deep links from log details
 - **Shadow** — Read-only sampled mirror results plus comparison reports for success, latency, cost, confidence, and risk
 - **Benchmarks** — Read-only local benchmark report from call-log metadata, including cache-aware impact summaries; it never applies routing changes
+- **Eval Reports** — Read-only local experiment reports comparing primary and candidate routes with judge score, latency, cost, fallback, and privacy state
 - **Nodes** — Provider health status, models, tags, and circuit breaker controls
 - **Routing** — Visual tier configuration, scoring thresholds, domain preferences, and read-only adaptive recommendations
 - **Budget** — Ring gauges for daily usage, model pricing table, and budget rules
