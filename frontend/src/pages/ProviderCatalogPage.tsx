@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Search,
   Server,
+  ShieldCheck,
   Tag,
   WalletCards,
 } from 'lucide-react'
@@ -318,6 +319,7 @@ export function ProviderCatalogPage() {
   const noPricingCount = providers.filter((provider) => providerPricingStatus(provider) === 'missing').length
   const overriddenCount = providers.filter((provider) => provider.overridden || provider.tags?.includes('override')).length +
     allModels.filter((model) => model.overridden).length
+  const compatibilityProfileCount = catalog.data?.compatibility_profiles?.length || 0
 
   const groupedProviders = useMemo(
     () =>
@@ -377,10 +379,11 @@ export function ProviderCatalogPage() {
 
       {catalog.data && (
         <>
-          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
             <CatalogMetric label={t('catalogPage.metrics.providers')} value={providers.length} icon={Boxes} />
             <CatalogMetric label={t('catalogPage.metrics.models')} value={allModels.length} icon={Tag} />
             <CatalogMetric label={t('catalogPage.metrics.families')} value={new Set(providers.map(providerFamily)).size} icon={Layers3} />
+            <CatalogMetric label={t('catalogPage.metrics.compatibilityProfiles')} value={compatibilityProfileCount} icon={ShieldCheck} tone="emerald" />
             <CatalogMetric label={t('catalogPage.metrics.overrides')} value={overriddenCount} icon={Tag} tone={overriddenCount > 0 ? 'emerald' : 'zinc'} />
             <CatalogMetric label={t('catalogPage.metrics.review')} value={reviewCount} icon={WalletCards} tone={reviewCount > 0 ? 'amber' : 'emerald'} />
             <CatalogMetric label={t('catalogPage.metrics.stale')} value={staleCount + noPricingCount} icon={WalletCards} tone={staleCount + noPricingCount > 0 ? 'amber' : 'emerald'} />

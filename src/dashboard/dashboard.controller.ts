@@ -60,6 +60,10 @@ import { PluginRegistryService } from '../plugins/plugin-registry.service';
 import { assessCatalogPricing, CatalogService } from '../catalog/catalog.service';
 import { getCatalogRefreshSources } from '../catalog/catalog-refresh';
 import { buildCatalogSyncStatus } from '../catalog/catalog-sync';
+import {
+  listCompatibilityProfiles,
+  resolveNodeCompatibilityProfileIds,
+} from '../catalog/compatibility-profiles';
 import type { CatalogModel, CatalogProvider } from '../catalog/catalog.types';
 import type { Modality } from '../config/modality';
 import type { ProviderCompatibilityCapability } from '../database/entities';
@@ -254,6 +258,7 @@ function toDashboardCatalogProvider(provider: CatalogProvider) {
     provider_id: provider.id,
     display_name: provider.name,
     description: `${provider.name} provider preset`,
+    compatibility_profiles: provider.compatibility_profiles || [],
     base_url_matchers: baseUrlMatchers(provider.base_url),
     protocols: protocols.length > 0 ? protocols : ['chat_completions'],
     default_protocol: protocols[0] || 'chat_completions',
@@ -823,6 +828,9 @@ export class DashboardController {
         reason: finalSelection.reason,
         fallback_chain: trace?.fallback_chain || [],
         filters: trace?.filters || [],
+        compatibility:
+          trace?.candidate_targets.find((candidate) => candidate.selected)
+            ?.compatibility_evidence || null,
         privacy: trace?.privacy || {
           prompt: false,
           response: false,
@@ -2558,6 +2566,7 @@ export class DashboardController {
       refresh_sources: getCatalogRefreshSources(),
       sync_status: syncStatus,
       providers: loaded.catalog.providers.map(toDashboardCatalogProvider),
+      compatibility_profiles: listCompatibilityProfiles(),
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
       sync_cache_file: loaded.syncCachePath,
@@ -2800,6 +2809,15 @@ export class DashboardController {
         batch_status_endpoint: node.batch_status_endpoint || null,
         batch_cancel_endpoint: node.batch_cancel_endpoint || null,
         batch_result_endpoint: node.batch_result_endpoint || null,
+        compatibility_profile: Array.isArray(node.compatibility_profile)
+          ? node.compatibility_profile
+          : node.compatibility_profile
+            ? [node.compatibility_profile]
+            : [],
+        resolved_compatibility_profiles: resolveNodeCompatibilityProfileIds(
+          node,
+          this.config.getMergedCatalog(),
+        ),
         capabilities: this.capabilityService.getNodeCapabilities(node.id),
         modalities: this.capabilityService.resolveNodeModalities(node.id),
         model_capabilities: modelCapabilities,
@@ -3104,6 +3122,7 @@ export class DashboardController {
             audio_models: dto.audio_models,
             video_models: dto.video_models,
             realtime_models: dto.realtime_models,
+            compatibility_profile: dto.compatibility_profile,
           },
         },
         () =>
@@ -3136,6 +3155,7 @@ export class DashboardController {
             batch_status_endpoint: dto.batch_status_endpoint,
             batch_cancel_endpoint: dto.batch_cancel_endpoint,
             batch_result_endpoint: dto.batch_result_endpoint,
+            compatibility_profile: dto.compatibility_profile,
             video_models: dto.video_models,
             realtime_models: dto.realtime_models,
             realtime_endpoint: dto.realtime_endpoint,

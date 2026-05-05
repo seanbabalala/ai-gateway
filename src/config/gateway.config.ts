@@ -682,6 +682,8 @@ export interface NodeConfig {
   write_cache?: boolean;
   /** Optional per-model capability and pricing metadata. Keys are model IDs. */
   model_capabilities?: Record<string, ModelCapabilityConfig>;
+  /** Optional explicit compatibility profile override. Defaults are inferred from Provider Catalog/provider identity. */
+  compatibility_profile?: string | string[];
 
   /**
    * Structured capability tags — describe what this node is good at.

@@ -1,4 +1,5 @@
 import type { CatalogProvider, CatalogPricing } from './catalog.types';
+import { inferCatalogCompatibilityProfiles } from './compatibility-profiles';
 
 const LAST_UPDATED = '2026-05-05';
 const STALE_AFTER_DAYS = 90;
@@ -187,6 +188,9 @@ function provider(providerConfig: BuiltinCatalogProviderInput): CatalogProvider 
     model_buckets: providerConfig.model_buckets || inferProviderModelBuckets(models),
     compatibility_profile: providerConfig.compatibility_profile || inferCompatibilityProfile(providerConfig),
     pricing: providerPricing ? { ...providerPricing } : undefined,
+    compatibility_profiles:
+      providerConfig.compatibility_profiles ||
+      inferCatalogCompatibilityProfiles(providerConfig as CatalogProvider),
     source: 'builtin',
     overridden: false,
     models,

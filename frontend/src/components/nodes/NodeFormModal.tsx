@@ -209,6 +209,7 @@ interface ProviderPreset {
   aliases: string[]
   capabilities: string[]
   tags: string[]
+  compatibility_profiles: string[]
   keyPlaceholder: string
   pricingRows: PricingRow[]
 }
@@ -262,6 +263,7 @@ interface FormState {
   model_prefixes: string[]
   capabilities: string[]
   tags: string[]
+  compatibility_profile: string[]
   aliases: KeyValueRow[]
   headers: KeyValueRow[]
   pricing: PricingRow[]
@@ -319,6 +321,7 @@ const EMPTY_FORM: FormState = {
   model_prefixes: [],
   capabilities: [],
   tags: [],
+  compatibility_profile: [],
   aliases: [],
   headers: [],
   pricing: [],
@@ -458,6 +461,7 @@ function providerToPreset(provider: CatalogProvider): ProviderPreset {
     aliases: provider.aliases || [],
     capabilities: unique(provider.capabilities.filter((capability) => capability !== 'custom')),
     tags: provider.tags || [],
+    compatibility_profiles: provider.compatibility_profiles || [],
     keyPlaceholder: provider.key_placeholder || 'provider key...',
     pricingRows,
   }
@@ -561,6 +565,7 @@ export function NodeFormModal({
   const [testResult, setTestResult] = useState<TestNodeResponse | null>(null)
   const [prefixInput, setPrefixInput] = useState('')
   const [tagInput, setTagInput] = useState('')
+  const [profileInput, setProfileInput] = useState('')
   const testNode = useTestNode()
   const testExisting = useTestExistingNode()
   const providerCatalog = useProviderCatalogProviders(open && !isEdit)
@@ -590,6 +595,7 @@ export function NodeFormModal({
     setTestResult(null)
     setPrefixInput('')
     setTagInput('')
+    setProfileInput('')
     setProviderFilter('all')
     setProviderFamilyFilter('all')
     setProviderSearch('')
@@ -634,7 +640,16 @@ export function NodeFormModal({
         model_prefixes: editNode.model_prefixes || [],
         capabilities: editNode.capabilities || [],
         tags: editNode.tags || [],
+        compatibility_profile: editNode.compatibility_profile?.length
+          ? editNode.compatibility_profile
+          : editNode.resolved_compatibility_profiles || [],
         aliases: rowsFromRecord(editNode.aliases),
+        headers: [],
+        auth_type: '',
+        max_concurrency: '',
+        queue_timeout_ms: '',
+        queue_policy: 'wait',
+        health_check: { ...EMPTY_HEALTH_CHECK },
         selectedCapabilities,
         pricing: pricingRowsFromCapabilities(editNode.model_capabilities),
       })
@@ -660,7 +675,8 @@ export function NodeFormModal({
         preset.model_prefixes.some((prefix) => prefix.toLowerCase().includes(query)) ||
         preset.tags.some((tag) => tag.toLowerCase().includes(query)) ||
         preset.capabilities.some((capability) => capability.toLowerCase().includes(query)) ||
-        modelHints.some((model) => model.toLowerCase().includes(query))
+        modelHints.some((model) => model.toLowerCase().includes(query)) ||
+        preset.compatibility_profiles.some((profile) => profile.toLowerCase().includes(query))
       )
     })
   }, [providerPresets, providerFilter, providerFamilyFilter, providerSearch])
@@ -711,6 +727,7 @@ export function NodeFormModal({
       model_prefixes: [...preset.model_prefixes],
       capabilities: [...preset.capabilities],
       tags: [...preset.tags],
+      compatibility_profile: [...preset.compatibility_profiles],
       auth_type: preset.auth_type || '',
       selectedCapabilities,
       pricing: preset.pricingRows.slice(0, 16),
@@ -792,6 +809,16 @@ export function NodeFormModal({
     setTagInput('')
   }
   const removeTag = (tag: string) => setField('tags', form.tags.filter((item) => item !== tag))
+
+  const addCompatibilityProfile = () => {
+    const profile = profileInput.trim()
+    if (profile && !form.compatibility_profile.includes(profile)) {
+      setField('compatibility_profile', [...form.compatibility_profile, profile])
+    }
+    setProfileInput('')
+  }
+  const removeCompatibilityProfile = (profile: string) =>
+    setField('compatibility_profile', form.compatibility_profile.filter((item) => item !== profile))
 
   const addAlias = () => setField('aliases', [...form.aliases, { key: '', value: '' }])
   const removeAlias = (index: number) => setField('aliases', form.aliases.filter((_, idx) => idx !== index))
@@ -950,6 +977,7 @@ export function NodeFormModal({
       model_capabilities: modelCapabilities,
       auth_type: form.auth_type ? (form.auth_type as 'bearer' | 'x-api-key') : undefined,
       health_check: healthCheck,
+      compatibility_profile: form.compatibility_profile.length > 0 ? form.compatibility_profile : undefined,
     }
 
     if (form.api_key.trim()) basePayload.api_key = form.api_key.trim()
@@ -1128,8 +1156,12 @@ export function NodeFormModal({
                 </div>
                 <div className="mt-2 space-y-1.5 text-[11px] font-semibold text-[var(--foreground-muted)]">
                   <SummaryLine label={t('form.summary.provider')} value={presetInfo?.name || form.name || t('form.custom')} />
-                  <SummaryLine label={t('form.summary.capabilities')} value={String(form.selectedCapabilities.length)} />
-                  <SummaryLine label={t('form.summary.models')} value={String(allActiveModels.length)} />
+                        <SummaryLine label={t('form.summary.capabilities')} value={String(form.selectedCapabilities.length)} />
+                        <SummaryLine
+                          label={t('form.summary.compatibilityProfiles')}
+                          value={String(form.compatibility_profile.length || presetInfo?.compatibility_profiles.length || 0)}
+                        />
+                        <SummaryLine label={t('form.summary.models')} value={String(allActiveModels.length)} />
                 </div>
               </div>
             </aside>
@@ -1271,6 +1303,22 @@ export function NodeFormModal({
                         <FieldGroup label={t('form.labels.endpoint')} error={errors.endpoint}>
                           <Input value={form.endpoint} onChange={(event) => setField('endpoint', event.target.value)} />
                         </FieldGroup>
+                      </div>
+                      <div className="mt-4">
+                        <FieldGroup label={t('form.labels.compatibilityProfiles')}>
+                          <TokenEditor
+                            values={form.compatibility_profile}
+                            input={profileInput}
+                            placeholder={t('form.placeholders.compatibilityProfile')}
+                            addLabel={t('form.actions.add')}
+                            onInput={setProfileInput}
+                            onAdd={addCompatibilityProfile}
+                            onRemove={removeCompatibilityProfile}
+                          />
+                        </FieldGroup>
+                        <p className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+                          {t('form.help.compatibilityProfiles')}
+                        </p>
                       </div>
                     </Panel>
                   </div>
@@ -1506,6 +1554,10 @@ export function NodeFormModal({
                         <SummaryLine label={t('form.summary.baseUrl')} value={form.base_url || '-'} />
                         <SummaryLine label={t('form.summary.models')} value={String(allActiveModels.length)} />
                         <SummaryLine label={t('form.summary.capabilities')} value={form.selectedCapabilities.map((cap) => t(`form.capabilityChoices.${cap}`)).join(', ')} />
+                        <SummaryLine
+                          label={t('form.summary.compatibilityProfiles')}
+                          value={form.compatibility_profile.join(', ') || t('form.summary.inferred')}
+                        />
                       </div>
                     </Panel>
                   </div>
@@ -1692,6 +1744,18 @@ function ProviderStep({
                 <Badge variant="zinc" className="text-[9px]">+{preset.suggestedCapabilities.length - 5}</Badge>
               )}
             </div>
+            {preset.compatibility_profiles.length > 0 && (
+              <div className="flex max-w-full flex-wrap gap-1">
+                {preset.compatibility_profiles.slice(0, 2).map((profile) => (
+                  <Badge key={profile} variant="blue" className="max-w-full truncate font-mono text-[8px]">
+                    {profile}
+                  </Badge>
+                ))}
+                {preset.compatibility_profiles.length > 2 && (
+                  <Badge variant="zinc" className="text-[8px]">+{preset.compatibility_profiles.length - 2}</Badge>
+                )}
+              </div>
+            )}
             {existingIds.includes(preset.id) && (
               <span className="text-[10px] font-semibold text-[var(--foreground-dim)]">
                 {t('form.addAnother')}

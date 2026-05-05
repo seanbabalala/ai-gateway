@@ -64,9 +64,9 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | --- | --- |
 | Protocols | `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/rerank`, image/audio endpoints, async video preview, realtime preview, MCP preview, Batch proxy. |
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
-| Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, cache evidence, cost/latency/context tradeoffs. |
+| Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog with 50+ built-in providers, Add Node Wizard, provider compatibility matrix, pricing source governance, catalog override CLI, OpenRouter pricing sync preview. |
+| Provider Ops | Provider Catalog with 50+ built-in providers, Add Node Wizard, provider compatibility profiles and matrix, pricing source governance, catalog override CLI, OpenRouter pricing sync preview. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
@@ -107,6 +107,7 @@ npm run validate:config
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
 | Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |
+| Provider Compatibility | [docs/PROVIDER_COMPATIBILITY.md](docs/PROVIDER_COMPATIBILITY.md) |
 | SDKs | [docs/SDKS.md](docs/SDKS.md) |
 | Playground | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) |
 | MCP Gateway | [docs/MCP_GATEWAY.md](docs/MCP_GATEWAY.md) |

@@ -16,7 +16,8 @@ export type ProviderCompatibilityCapability =
   | 'images'
   | 'audio'
   | 'video'
-  | 'realtime';
+  | 'realtime'
+  | 'batch';
 
 export type ProviderCompatibilityStatus =
   | 'pass'

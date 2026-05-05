@@ -18,6 +18,11 @@ import {
   getCatalogPricingValue,
   normalizeCatalogPricing,
 } from './pricing-governance';
+import {
+  findCatalogProviderForNode as findCompatibilityCatalogProviderForNode,
+  inferCatalogCompatibilityProfiles,
+  isCompatibilityProfileId,
+} from './compatibility-profiles';
 import type {
   CatalogIssue,
   CatalogLoadOptions,
@@ -98,6 +103,9 @@ function cloneProvider(provider: CatalogProvider): CatalogProvider {
       : undefined,
     modalities: provider.modalities ? [...provider.modalities] : undefined,
     endpoints: { ...provider.endpoints },
+    compatibility_profiles: provider.compatibility_profiles
+      ? [...provider.compatibility_profiles]
+      : inferCatalogCompatibilityProfiles(provider),
     model_prefixes: provider.model_prefixes ? [...provider.model_prefixes] : undefined,
     capabilities: provider.capabilities ? [...provider.capabilities] : undefined,
     pricing: provider.pricing ? normalizeCatalogPricing({ ...provider.pricing }) : undefined,
@@ -443,6 +451,11 @@ function validateOverrideProvider(
   }
 
   validateEndpointMap(provider.endpoints, `${basePath}.endpoints`, issues);
+  validateCompatibilityProfiles(
+    provider.compatibility_profiles,
+    `${basePath}.compatibility_profiles`,
+    issues,
+  );
   validateStringArray(provider.model_prefixes, `${basePath}.model_prefixes`, issues);
   validateStringArray(provider.capabilities, `${basePath}.capabilities`, issues);
   validateCacheFlags(provider, basePath, issues);
@@ -661,6 +674,48 @@ function validateStringArray(
           'error',
           'catalog_string_array_invalid',
           'Array entries must be non-empty strings.',
+          `${basePath}[${index}]`,
+        ),
+      );
+    }
+  });
+}
+
+function validateCompatibilityProfiles(
+  value: unknown,
+  basePath: string,
+  issues: CatalogIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_compatibility_profiles_invalid',
+        'compatibility_profiles must be an array of profile ids.',
+        basePath,
+      ),
+    );
+    return;
+  }
+  value.forEach((item, index) => {
+    if (!isNonEmptyString(item)) {
+      issues.push(
+        issue(
+          'error',
+          'catalog_compatibility_profile_invalid',
+          'compatibility profile entries must be non-empty strings.',
+          `${basePath}[${index}]`,
+        ),
+      );
+      return;
+    }
+    if (!isCompatibilityProfileId(item)) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_compatibility_profile_unknown',
+          `Compatibility profile "${item}" is not built in. It will be treated as operator-managed metadata.`,
           `${basePath}[${index}]`,
         ),
       );
@@ -1053,6 +1108,9 @@ function mergeProvider(
   if (override.base_url !== undefined) target.base_url = override.base_url;
   if (override.auth_type !== undefined) target.auth_type = override.auth_type;
   if (override.endpoints) target.endpoints = { ...target.endpoints, ...override.endpoints };
+  if (override.compatibility_profiles) {
+    target.compatibility_profiles = [...override.compatibility_profiles];
+  }
   if (override.model_prefixes) target.model_prefixes = [...override.model_prefixes];
   if (override.capabilities) target.capabilities = [...override.capabilities];
   if (override.pricing) target.pricing = normalizeCatalogPricing({ ...override.pricing });
@@ -1106,6 +1164,9 @@ function providerFromOverride(
     base_url: override.base_url || 'https://provider.example',
     auth_type: override.auth_type || 'bearer',
     endpoints: { ...(override.endpoints || {}) },
+    compatibility_profiles: override.compatibility_profiles
+      ? [...override.compatibility_profiles]
+      : ['openai_compatible'],
     model_prefixes: override.model_prefixes ? [...override.model_prefixes] : [],
     capabilities: override.capabilities ? [...override.capabilities] : [],
     pricing: override.pricing ? normalizeCatalogPricing({ ...override.pricing }) : undefined,
@@ -1202,6 +1263,13 @@ export function findCatalogModelForNode(
     [providerById?.id, providerByUrl?.id, nodeId].filter(isNonEmptyString),
   );
   return matches.find((model) => providerIds.has(model.provider)) || matches[0];
+}
+
+export function findCatalogProviderForNode(
+  catalog: ProviderCatalog | undefined,
+  node?: { id?: string; base_url?: string },
+): CatalogProvider | undefined {
+  return findCompatibilityCatalogProviderForNode(catalog, node);
 }
 
 export function catalogModelToModelPricing(

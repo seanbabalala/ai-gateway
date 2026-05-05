@@ -42,6 +42,7 @@ Client Request
   -> Budget Check
   -> Prompt Cache Lookup
   -> Scoring
+  -> Compatibility Profile Filter
   -> Router
   -> Provider Client
   -> Denormalizer
@@ -127,7 +128,9 @@ For automatic routing, the scoring engine evaluates request complexity across 14
 - complex
 - reasoning
 
-The router then applies tier config, domain preferences, modality compatibility, reasoning-support preference, cache-aware cost evidence, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
+The router then applies tier config, domain preferences, modality compatibility, Provider Compatibility Profile support, reasoning-support preference, cache-aware cost evidence, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
+
+v1.4 Provider Compatibility Profiles add a local metadata filter between coarse capability checks and provider forwarding. A profile describes protocol family, request/response style, endpoint strategy, streaming behavior, multipart behavior, async-job behavior, supported source formats, supported modalities, passthrough fields, downgraded fields, unsupported fields, and known limitations. Routing rejects or records downgrade evidence when a candidate cannot safely handle the requested source format, modality, streaming mode, multipart media body, video async job, or batch endpoint. Profiles are inferred from the Provider Catalog or explicit `nodes[].compatibility_profile`, and no provider network call is made during routing.
 
 v1.2 prompt-cache-aware routing keeps the existing local prompt-cache short-circuit intact. A local cache hit returns before upstream routing. For cache misses, `cost` and `balanced` optimization can consider provider prompt-cache/read-cache/write-cache capability, configured `cache_read_input` / `cache_creation_input` prices, and observed provider cache-read hit rate. Route traces expose only metadata evidence and never include prompt text, responses, raw headers, provider keys, or media/video bytes.
 
@@ -192,9 +195,11 @@ Benchmark reports are read-only. They never mutate routing config and never
 store or expose prompts, responses, raw headers, provider keys, media bytes, or
 video bytes.
 
-For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, structured-output and reasoning constraints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
+For explainable routing, the pipeline also writes a separate `route_decisions` row keyed by `request_id`. This trace records the routing evidence that led to the final `node:model`: source format, tier, score, domain and modality hints, structured-output, reasoning, and compatibility constraints, candidate targets, filter reasons, cost/latency/context scores, circuit state, fallback chain, cost downgrade, final selection, and outcome.
 
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
+
+v1.4 adds `compatibility_evidence` to candidate targets. It records provider id, compatibility profile ids, endpoint/protocol strategy, passthrough fields, downgraded fields, unsupported fields, selected reason, and profile filter reason. It is designed for Dashboard Route Explanation and Logs detail, not for content capture; prompts, responses, raw headers, provider keys, media bytes, and video bytes remain excluded.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
@@ -227,6 +232,8 @@ The Provider Catalog is local metadata, not a hosted dependency. SiftGate loads 
 The v1.2 pricing sync scheduler is disabled by default and runs only when a supported adapter is explicitly enabled under `catalog.sync.adapters`. In v1.2 the only automatic adapter is OpenRouter's public model catalog API. Other providers remain docs-review or operator-local because prices often depend on region, deployment, account, or private model names.
 
 Runtime cost routing still prefers explicit node/model pricing from `model_capabilities[].pricing` or `models_pricing`. Catalog sync does not store provider API keys and does not modify routing decisions by itself; it only updates metadata used by validation, Dashboard source status, and pricing fallback when no explicit user price exists.
+
+Provider Compatibility Profiles live beside catalog pricing metadata. Built-in providers reference one or more profiles, local overrides can set `compatibility_profiles`, and node config can set `compatibility_profile` when an upstream proxy or local server behaves differently from its catalog provider. Config validation checks profile existence, provider/profile match, endpoint/source-format support, and modality/model-bucket support. The compatibility registry remains static local metadata; user-triggered compatibility tests use it only to choose safe probes.
 
 ## Config Audit And Rollback
 

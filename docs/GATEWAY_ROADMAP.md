@@ -68,6 +68,19 @@
   - Nodes、Logs 与 Route Explanation 继续使用 provider identity，避免兼容 provider 错显示为 OpenAI
   - Dashboard 文案保持 en、zh、zh-TW、ja、ko、th、es 七语言同步
 
+### P0：Provider Compatibility Profiles
+
+- **状态**：🚧 Prompt 86 feature branch 进行中
+- **目标**：把 50+ providers 的协议兼容、端点策略、能力映射和限制统一建模，并接入 routing、validation、Dashboard explanation
+- **实现方案**：
+  - 新增本地 `compatibility_profile` registry，覆盖 OpenAI-compatible、Responses、Anthropic Messages、Gemini、Vertex、Bedrock、Azure OpenAI、Hugging Face、OpenRouter、Cohere、Mistral、Ollama、vLLM、TGI、LM Studio、media、speech、rerank、embedding 等 profile
+  - Provider Catalog providers 引用 `compatibility_profiles`；node config 可显式覆盖 `nodes[].compatibility_profile`
+  - Config validation 检查 profile 是否存在、provider/profile 是否匹配、endpoint/source_format/modality 是否支持
+  - RoutingService 根据 profile 过滤 source format、modality、stream、multipart、video async job 和 batch endpoint 不匹配的候选，并记录 filter/downgrade evidence
+  - Route Decision Trace 增加 compatibility evidence：provider id、profile、endpoint/protocol strategy、passthrough/downgraded/unsupported fields、selected reason、filtered reason
+  - Provider Compatibility Matrix 根据 profile 选择 safe probe，Dashboard Nodes、Provider Catalog、Logs、Route Explanation 展示只读 profile 证据
+  - 不实现真实 provider SDK，不自动联网检测 provider；prompt/response/raw headers/provider keys/media bytes/video bytes 不落库
+
 ## v1.3 — Production Ready（生产就绪）
 
 **v1.3.2 发布状态**：v1.3 基于已发布 v1.2.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把前面版本的路由、目录、多模态、运维和平台能力收束成更完整的本地生产体验；v1.3.1 补充 Dashboard Sidebar 可滚动修复，避免导航项增多后底部不可达；v1.3.2 增加 Sidebar 动态滚动提示，让首屏用户能发现下方还有更多导航。

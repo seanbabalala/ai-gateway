@@ -65,6 +65,28 @@ describe('ProviderCompatibilityService', () => {
     expect(JSON.stringify(matrix)).not.toContain('sk-test');
   });
 
+  it('marks capabilities unsupported by the node compatibility profile', async () => {
+    const repo = makeRepo();
+    const service = new ProviderCompatibilityService(repo as any);
+
+    const matrix = await service.matrixForNode(node({
+      compatibility_profile: ['openai_compatible'],
+      image_models: ['gpt-image-1'],
+      batch_endpoint: '/v1/batches',
+    }));
+
+    expect(matrix.find((item) => item.capability === 'images')).toMatchObject({
+      configured: false,
+      profile_supported: false,
+      compatibility_profiles: ['openai_compatible'],
+    });
+    expect(matrix.find((item) => item.capability === 'batch')).toMatchObject({
+      configured: true,
+      profile_supported: true,
+      compatibility_profiles: ['openai_compatible'],
+    });
+  });
+
   it('runs safe low-token requests for text capabilities', async () => {
     const repo = makeRepo();
     const service = new ProviderCompatibilityService(repo as any);

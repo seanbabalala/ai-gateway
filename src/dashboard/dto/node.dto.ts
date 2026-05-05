@@ -218,7 +218,17 @@ export class CreateNodeDto {
   @Type(() => Number)
   timeout_ms!: number;
 
-  @ApiPropertyOptional({ type: [String], example: ['coding', 'reasoning'] })
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['openai_compatible', 'embedding_compatible'],
+    description: 'Optional compatibility profile override. Defaults are inferred from the Provider Catalog.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  compatibility_profile?: string[];
+
+  @ApiPropertyOptional({ example: 50, minimum: 1 })
   @IsOptional()
   @IsNumber()
   @Min(1)
@@ -343,14 +353,14 @@ export class TestNodeDto {
 
   @ApiPropertyOptional({
     type: [String],
-    enum: ['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime'],
+    enum: ['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime', 'batch'],
     description: 'Optional provider capabilities to test. Omit to test the primary protocol capability for unsaved nodes.',
   })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  @IsIn(['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime'], { each: true })
-  capabilities?: Array<'chat' | 'responses' | 'messages' | 'embeddings' | 'rerank' | 'images' | 'audio' | 'video' | 'realtime'>;
+  @IsIn(['chat', 'responses', 'messages', 'embeddings', 'rerank', 'images', 'audio', 'video', 'realtime', 'batch'], { each: true })
+  capabilities?: Array<'chat' | 'responses' | 'messages' | 'embeddings' | 'rerank' | 'images' | 'audio' | 'video' | 'realtime' | 'batch'>;
 
   @ApiPropertyOptional({
     example: false,
@@ -535,7 +545,17 @@ export class UpdateNodeDto {
   @Type(() => Number)
   timeout_ms?: number;
 
-  @ApiPropertyOptional({ type: [String], example: ['coding', 'reasoning'] })
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['openai_compatible', 'embedding_compatible'],
+    description: 'Optional compatibility profile override. Defaults are inferred from the Provider Catalog.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  compatibility_profile?: string[];
+
+  @ApiPropertyOptional({ example: 50, minimum: 1 })
   @IsOptional()
   @IsNumber()
   @Min(1)

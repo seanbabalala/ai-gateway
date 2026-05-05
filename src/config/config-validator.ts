@@ -6,12 +6,20 @@ import { buildNodeModelDiagnostics } from './config-diagnostics';
 import {
   assessCatalogPricing,
   catalogModelToModelPricing,
+  findCatalogProviderForNode,
   findCatalogModel,
   findCatalogModelForNode,
   flattenCatalogModels,
   loadMergedCatalog,
 } from '../catalog/catalog.service';
 import type { CatalogIssue, ProviderCatalog } from '../catalog/catalog.types';
+import {
+  compatibilityProfileSupportsModality,
+  compatibilityProfileSupportsSourceFormat,
+  getCompatibilityProfile,
+  isCompatibilityProfileId,
+  resolveNodeCompatibilityProfiles,
+} from '../catalog/compatibility-profiles';
 import {
   VALID_CAPABILITY_ENDPOINTS,
   VALID_CAPABILITY_IO_TYPES,
@@ -961,6 +969,7 @@ function validateNodes(
     validateNodeAliases(node, basePath, issues);
     validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
+    validateNodeCompatibilityProfileShape(node, basePath, issues);
     if (!options.skipLegacyCatalogDiagnostics) {
       addCatalogDiagnostics(
         node,
@@ -969,6 +978,42 @@ function validateNodes(
           ? (modelsPricing as Record<string, unknown>)
           : undefined,
         issues,
+      );
+    }
+  });
+}
+
+function validateNodeCompatibilityProfileShape(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const value = node.compatibility_profile;
+  if (value === undefined) return;
+  const entries = Array.isArray(value) ? value : [value];
+  entries.forEach((entry, index) => {
+    const issuePath = Array.isArray(value)
+      ? `${basePath}.compatibility_profile[${index}]`
+      : `${basePath}.compatibility_profile`;
+    if (!isNonEmptyString(entry)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_compatibility_profile',
+          'nodes[].compatibility_profile must be a non-empty string or array of strings.',
+          issuePath,
+        ),
+      );
+      return;
+    }
+    if (!isCompatibilityProfileId(entry)) {
+      issues.push(
+        issue(
+          'error',
+          'unknown_compatibility_profile',
+          `Compatibility profile "${entry}" is not built in.`,
+          issuePath,
+        ),
       );
     }
   });
@@ -4706,6 +4751,7 @@ function validateConfigAgainstCatalog(
     } else {
       validateCatalogAuthTypeMatch(node, provider, basePath, issues);
     }
+    validateNodeCompatibilityAgainstCatalog(node, provider, catalog, basePath, issues);
 
     validateCatalogEndpointMatch(
       node,
@@ -4860,6 +4906,128 @@ function validateCatalogAuthTypeMatch(
         'catalog_auth_type_mismatch',
         `Node "${String(node.id || '')}" auth_type "${node.auth_type}" differs from catalog provider "${provider.id}" auth_type "${expected}".`,
         `${basePath}.auth_type`,
+      ),
+    );
+  }
+}
+
+function validateNodeCompatibilityAgainstCatalog(
+  node: Record<string, unknown>,
+  provider: ProviderCatalog['providers'][number] | undefined,
+  catalog: ProviderCatalog,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const profileEntries = Array.isArray(node.compatibility_profile)
+    ? stringArray(node.compatibility_profile)
+    : isNonEmptyString(node.compatibility_profile)
+      ? [node.compatibility_profile]
+      : [];
+  const profiles = resolveNodeCompatibilityProfiles(node as Partial<GatewayConfig['nodes'][number]>, catalog);
+  if (profileEntries.length > 0 && provider?.compatibility_profiles?.length) {
+    for (const profileId of profileEntries) {
+      if (!provider.compatibility_profiles.includes(profileId)) {
+        issues.push(
+          issue(
+            'warning',
+            'compatibility_profile_provider_mismatch',
+            `Node "${String(node.id || '')}" overrides compatibility_profile="${profileId}", which is not listed for catalog provider "${provider.id}".`,
+            `${basePath}.compatibility_profile`,
+          ),
+        );
+      }
+    }
+  }
+
+  const protocol = isNonEmptyString(node.protocol) ? node.protocol : null;
+  if (
+    protocol &&
+    !profiles.some((profile) => compatibilityProfileSupportsSourceFormat(profile, protocol))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'compatibility_profile_source_format_mismatch',
+        `Node "${String(node.id || '')}" protocol "${protocol}" is not supported by its compatibility_profile.`,
+        `${basePath}.protocol`,
+      ),
+    );
+  }
+
+  for (const [key, endpointPath] of [
+    ['embeddings', 'embeddings_endpoint'],
+    ['rerank', 'rerank_endpoint'],
+    ['image_generation', 'images_generations_endpoint'],
+    ['image_edit', 'images_edits_endpoint'],
+    ['image_variation', 'images_variations_endpoint'],
+    ['audio_transcription', 'audio_transcriptions_endpoint'],
+    ['audio_translation', 'audio_translations_endpoint'],
+    ['audio_speech', 'audio_speech_endpoint'],
+    ['video_generation', 'video_endpoint'],
+    ['batch', 'batch_endpoint'],
+    ['realtime', 'realtime_endpoint'],
+  ] as const) {
+    if (
+      node[endpointPath] !== undefined &&
+      !profiles.some((profile) => compatibilityProfileSupportsSourceFormat(profile, key))
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'compatibility_profile_endpoint_mismatch',
+          `Node "${String(node.id || '')}" configures ${endpointPath}, but its compatibility_profile does not support ${key}.`,
+          `${basePath}.${endpointPath}`,
+        ),
+      );
+    }
+  }
+
+  for (const [bucket, modality] of [
+    ['models', 'text'],
+    ['embedding_models', 'embedding'],
+    ['rerank_models', 'rerank'],
+    ['image_models', 'image'],
+    ['audio_models', 'audio'],
+    ['video_models', 'video'],
+    ['realtime_models', 'realtime'],
+  ] as const) {
+    if (
+      stringArray(node[bucket]).length > 0 &&
+      !profiles.some((profile) => compatibilityProfileSupportsModality(profile, modality))
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'compatibility_profile_modality_mismatch',
+          `Node "${String(node.id || '')}" configures ${bucket}, but its compatibility_profile does not support ${modality}.`,
+          `${basePath}.${bucket}`,
+        ),
+      );
+    }
+  }
+
+  if (
+    provider &&
+    provider.compatibility_profiles?.some((profileId) => !getCompatibilityProfile(profileId))
+  ) {
+    issues.push(
+      issue(
+        'info',
+        'catalog_compatibility_profile_operator_managed',
+        `Catalog provider "${provider.id}" includes operator-managed compatibility profiles; verify routing behavior with Dashboard tests.`,
+        `${basePath}.compatibility_profile`,
+      ),
+    );
+  }
+
+  const matchedProvider = findCatalogProviderForNode(catalog, node);
+  if (!matchedProvider && profileEntries.length === 0) {
+    issues.push(
+      issue(
+        'info',
+        'compatibility_profile_inferred',
+        `Node "${String(node.id || '')}" does not match a catalog provider; SiftGate inferred compatibility from protocol and endpoints.`,
+        basePath,
       ),
     );
   }

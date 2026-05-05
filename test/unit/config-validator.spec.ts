@@ -1356,6 +1356,82 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('catalog_endpoint_mismatch');
   });
 
+  it('validates explicit compatibility profile overrides', () => {
+    const catalogLoad = loadMergedCatalog({
+      cwd: os.tmpdir(),
+      overridePath: path.join(os.tmpdir(), 'missing-catalog.override.yaml'),
+      env: {},
+    });
+    const result = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'responses',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/responses',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+            compatibility_profile: ['anthropic_messages_compatible'],
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 2.5, output: 10 } },
+      },
+      { env: {}, catalog: catalogLoad.catalog, catalogIssues: catalogLoad.issues },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'compatibility_profile_provider_mismatch',
+        'compatibility_profile_source_format_mismatch',
+      ]),
+    );
+  });
+
+  it('rejects unknown compatibility profile ids', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+            compatibility_profile: ['not_a_profile'],
+          },
+        ],
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('unknown_compatibility_profile');
+  });
+
   it('surfaces catalog override secret diagnostics through config validation', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-config-catalog-'));
     const configPath = path.join(cwd, 'gateway.config.yaml');

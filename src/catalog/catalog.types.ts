@@ -167,6 +167,7 @@ export interface CatalogProvider {
   auth_type: AuthType | 'none';
   endpoints: Partial<Record<CapabilityEndpoint | string, string>>;
   modalities?: Modality[];
+  compatibility_profiles?: string[];
   model_prefixes?: string[];
   capabilities?: string[];
   pricing?: CatalogPricing;
@@ -218,6 +219,7 @@ export interface CatalogOverrideProvider {
   base_url?: string;
   auth_type?: AuthType | 'none';
   endpoints?: Partial<Record<CapabilityEndpoint | string, string>>;
+  compatibility_profiles?: string[];
   model_prefixes?: string[];
   capabilities?: string[];
   pricing?: CatalogPricing;
