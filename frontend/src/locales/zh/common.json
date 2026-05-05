@@ -39,6 +39,7 @@
   "nav.routing": "路由",
   "nav.shadow": "影子流量",
   "sidebar.productSubtitle": "AI 网关",
+  "sidebar.scrollHint": "向下滑动查看更多",
   "sidebar.telemetryActive": "遥测已启用",
   "sidebar.telemetryOff": "遥测已关闭",
   "status.allSystemsOnline": "所有系统在线",

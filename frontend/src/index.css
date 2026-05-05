@@ -294,6 +294,21 @@ body {
   background: rgba(226, 244, 236, 0.34);
 }
 
+.sidebar-scroll-hint {
+  animation: sidebar-scroll-hint-float 1.65s ease-in-out infinite;
+}
+
+@keyframes sidebar-scroll-hint-float {
+  0%, 100% {
+    opacity: 0.82;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(3px);
+  }
+}
+
 @keyframes pulse-dot {
   0%, 100% {
     opacity: 1;

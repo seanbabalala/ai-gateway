@@ -39,6 +39,7 @@
   "nav.routing": "การกำหนดเส้นทาง",
   "nav.shadow": "Shadow",
   "sidebar.productSubtitle": "AI Gateway",
+  "sidebar.scrollHint": "เลื่อนลงเพื่อดูเพิ่มเติม",
   "sidebar.telemetryActive": "Telemetry เปิดอยู่",
   "sidebar.telemetryOff": "Telemetry ปิดอยู่",
   "status.allSystemsOnline": "ทุกระบบออนไลน์ครับ",

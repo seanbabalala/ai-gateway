@@ -21,13 +21,13 @@
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
-| v1.3 | Production Ready | 已发布 — v1.3.1 生产就绪 + Dashboard Sidebar 可滚动修补 | ✅ Released |
+| v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
 
 ---
 
 ## v1.3 — Production Ready（生产就绪）
 
-**v1.3.1 发布状态**：v1.3 基于已发布 v1.2.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把前面版本的路由、目录、多模态、运维和平台能力收束成更完整的本地生产体验；v1.3.1 补充 Dashboard Sidebar 可滚动修复，避免导航项增多后底部不可达。
+**v1.3.2 发布状态**：v1.3 基于已发布 v1.2.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把前面版本的路由、目录、多模态、运维和平台能力收束成更完整的本地生产体验；v1.3.1 补充 Dashboard Sidebar 可滚动修复，避免导航项增多后底部不可达；v1.3.2 增加 Sidebar 动态滚动提示，让首屏用户能发现下方还有更多导航。
 
 ### P0：Virtual Key + Team 本地管理
 

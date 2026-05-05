@@ -39,6 +39,7 @@
   "nav.routing": "Routing",
   "nav.shadow": "Shadow",
   "sidebar.productSubtitle": "AI Gateway",
+  "sidebar.scrollHint": "Scroll for more",
   "sidebar.telemetryActive": "Telemetry active",
   "sidebar.telemetryOff": "Telemetry off",
   "status.allSystemsOnline": "All systems online",

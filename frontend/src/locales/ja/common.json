@@ -39,6 +39,7 @@
   "nav.routing": "ルーティング",
   "nav.shadow": "シャドウ",
   "sidebar.productSubtitle": "AI ゲートウェイ",
+  "sidebar.scrollHint": "下にスクロール",
   "sidebar.telemetryActive": "テレメトリ有効",
   "sidebar.telemetryOff": "テレメトリ無効",
   "status.allSystemsOnline": "すべてのシステムがオンラインです",

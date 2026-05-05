@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -20,6 +21,7 @@ import {
   Network,
   FileStack,
   Scale,
+  ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -71,6 +73,46 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
   const location = useLocation()
   const { data: health } = useHealth()
   const { data: telemetry } = useTelemetryStatus()
+  const navRef = useRef<HTMLElement | null>(null)
+  const [showScrollHint, setShowScrollHint] = useState(false)
+
+  const updateScrollHint = useCallback(() => {
+    const nav = navRef.current
+    if (!nav) {
+      setShowScrollHint(false)
+      return
+    }
+
+    const overflowBuffer = 8
+    const canScroll = nav.scrollHeight > nav.clientHeight + overflowBuffer
+    const hasMoreBelow = nav.scrollTop + nav.clientHeight < nav.scrollHeight - overflowBuffer
+    setShowScrollHint(canScroll && hasMoreBelow)
+  }, [])
+
+  useEffect(() => {
+    updateScrollHint()
+
+    const nav = navRef.current
+    if (!nav) {
+      return undefined
+    }
+
+    nav.addEventListener('scroll', updateScrollHint, { passive: true })
+    window.addEventListener('resize', updateScrollHint)
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => updateScrollHint())
+
+    resizeObserver?.observe(nav)
+
+    return () => {
+      nav.removeEventListener('scroll', updateScrollHint)
+      window.removeEventListener('resize', updateScrollHint)
+      resizeObserver?.disconnect()
+    }
+  }, [collapsed, isMobile, mobileOpen, updateScrollHint])
 
   const sidebarContent = (
     <aside
@@ -112,60 +154,86 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
       <div className="mx-5 h-px shrink-0 bg-[var(--sidebar-border)]" />
 
       {/* Navigation */}
-      <nav className={cn('sidebar-nav-scroll relative z-10 min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain py-5', collapsed ? 'px-2' : 'px-4')}>
-        {navGroups.map((group) => (
-          <div key={group.labelKey}>
-            {!collapsed && (
-              <div className="mb-2.5 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--sidebar-group-label)]">
-                {t(group.labelKey)}
-              </div>
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const label = t(item.labelKey)
-                const isActive =
-                  item.to === '/'
-                    ? location.pathname === '/'
-                    : location.pathname.startsWith(item.to)
+      <div className="relative z-10 min-h-0 flex-1">
+        <nav
+          ref={navRef}
+          className={cn('sidebar-nav-scroll h-full min-h-0 space-y-6 overflow-y-auto overscroll-contain py-5', collapsed ? 'px-2' : 'px-4')}
+        >
+          {navGroups.map((group) => (
+            <div key={group.labelKey}>
+              {!collapsed && (
+                <div className="mb-2.5 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--sidebar-group-label)]">
+                  {t(group.labelKey)}
+                </div>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const label = t(item.labelKey)
+                  const isActive =
+                    item.to === '/'
+                      ? location.pathname === '/'
+                      : location.pathname.startsWith(item.to)
 
-                const link = (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => isMobile && onCloseMobile?.()}
-                    className={cn(
-                      'group flex items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
-                      collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
-                      isActive
-                        ? 'sidebar-active bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]'
-                        : 'text-[var(--sidebar-nav-text)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-nav-text-hover)]'
-                    )}
-                  >
-                    <item.icon
+                  const link = (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => isMobile && onCloseMobile?.()}
                       className={cn(
-                        'h-[18px] w-[18px] shrink-0 transition-colors',
+                        'group flex items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
+                        collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
                         isActive
-                          ? 'text-[var(--accent)]'
-                          : 'text-[var(--sidebar-nav-icon)] group-hover:text-[var(--sidebar-nav-icon-hover)]'
+                          ? 'sidebar-active bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]'
+                          : 'text-[var(--sidebar-nav-text)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-nav-text-hover)]'
                       )}
-                    />
-                    {!collapsed && label}
-                  </NavLink>
-                )
-
-                if (collapsed) {
-                  return (
-                    <Tooltip key={item.to} content={label} side="right">
-                      {link}
-                    </Tooltip>
+                    >
+                      <item.icon
+                        className={cn(
+                          'h-[18px] w-[18px] shrink-0 transition-colors',
+                          isActive
+                            ? 'text-[var(--accent)]'
+                            : 'text-[var(--sidebar-nav-icon)] group-hover:text-[var(--sidebar-nav-icon-hover)]'
+                        )}
+                      />
+                      {!collapsed && label}
+                    </NavLink>
                   )
-                }
-                return link
-              })}
+
+                  if (collapsed) {
+                    return (
+                      <Tooltip key={item.to} content={label} side="right">
+                        {link}
+                      </Tooltip>
+                    )
+                  }
+                  return link
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+        {showScrollHint && (
+          <div
+            aria-hidden="true"
+            className={cn(
+              'sidebar-scroll-hint pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center',
+              collapsed ? 'px-0' : 'px-4',
+            )}
+          >
+            <div
+              className={cn(
+                'flex items-center justify-center border border-white/[0.12] bg-[#123c31]/[0.92] text-[#d7ffe9] shadow-[0_8px_22px_rgba(0,0,0,0.20)] backdrop-blur-sm',
+                collapsed
+                  ? 'h-8 w-8 rounded-full'
+                  : 'gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold',
+              )}
+            >
+              {!collapsed && <span>{t('sidebar.scrollHint')}</span>}
+              <ChevronDown className="h-3.5 w-3.5" />
             </div>
           </div>
-        ))}
-      </nav>
+        )}
+      </div>
 
       {/* Divider */}
       <div className="mx-5 h-px shrink-0 bg-[var(--sidebar-border)]" />

@@ -39,6 +39,7 @@
   "nav.routing": "Enrutamiento",
   "nav.shadow": "Sombra",
   "sidebar.productSubtitle": "AI Gateway",
+  "sidebar.scrollHint": "Desplaza para ver más",
   "sidebar.telemetryActive": "Telemetría activa",
   "sidebar.telemetryOff": "Telemetría apagada",
   "status.allSystemsOnline": "Todos los sistemas online",

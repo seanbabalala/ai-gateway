@@ -39,6 +39,7 @@
   "nav.routing": "라우팅",
   "nav.shadow": "섀도우",
   "sidebar.productSubtitle": "AI 게이트웨이",
+  "sidebar.scrollHint": "아래로 스크롤",
   "sidebar.telemetryActive": "텔레메트리 활성",
   "sidebar.telemetryOff": "텔레메트리 꺼짐",
   "status.allSystemsOnline": "모든 시스템이 온라인입니다",

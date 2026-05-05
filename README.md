@@ -2,7 +2,7 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.3.1 Production Ready**.
+Current release: **v1.3.2 Production Ready**.
 
 ## Why SiftGate
 

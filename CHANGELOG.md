@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.3.2 - 2026-05-05
+
+### Added
+
+- Added a localized, animated Dashboard Sidebar scroll hint that appears only while additional navigation items remain below the visible scroll area.
+
 ## 1.3.1 - 2026-05-05
 
 ### Fixed
