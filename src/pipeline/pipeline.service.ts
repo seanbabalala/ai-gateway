@@ -79,6 +79,7 @@ import {
   RouteDecisionTrace,
   routeTargetKey,
 } from '../routing/route-decision-trace';
+import { pricingEvidenceFromModelPricing } from '../catalog/pricing-governance';
 
 export interface PipelineResult {
   body: Record<string, unknown> | Buffer | string;
@@ -4080,6 +4081,9 @@ export class PipelineService {
       hints.source_format,
       capabilities.endpoints,
     );
+    const pricingEvidence = pricingEvidenceFromModelPricing(
+      capabilities.pricing || this.config.getModelPricing(target.model, target.node),
+    );
 
     return {
       requested_modality: hints.requested_modality ?? null,
@@ -4102,9 +4106,12 @@ export class PipelineService {
         Number.isFinite(byteSize) &&
         Number.isFinite(maxFileSize) &&
         byteSize > maxFileSize,
-      pricing_source: capabilities.pricing
-        ? ((capabilities.pricing as ModelPricing & { source?: string }).source || 'config')
-        : 'missing',
+      pricing_source: pricingEvidence.pricing_source,
+      pricing_confidence: pricingEvidence.pricing_confidence,
+      pricing_stale: pricingEvidence.pricing_stale,
+      pricing_used_from: pricingEvidence.pricing_used_from,
+      missing_price_units: pricingEvidence.missing_price_units,
+      estimated_cost_basis: pricingEvidence.estimated_cost_basis,
       catalog_source:
         (capabilities as { catalog_source?: string; source?: string }).catalog_source ||
         (capabilities as { source?: string }).source ||

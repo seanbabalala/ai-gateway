@@ -215,6 +215,11 @@ export interface RouteDecisionCandidate {
     filtered_by_capability: boolean
     filtered_by_file_size: boolean
     pricing_source: string | null
+    pricing_confidence?: string | null
+    pricing_stale?: boolean | null
+    pricing_used_from?: string
+    missing_price_units?: string[]
+    estimated_cost_basis?: string | null
     catalog_source: string | null
   }
   cache_evidence?: {
@@ -1106,6 +1111,9 @@ export interface BenchmarkCatalogEvidence {
   provider: string | null
   modalities: string[]
   pricing_source: string | null
+  pricing_confidence?: string | null
+  pricing_stale?: boolean | null
+  pricing_used_from?: string | null
   catalog_source: string | null
 }
 
@@ -1616,31 +1624,60 @@ export interface CatalogPricing {
   video?: number | null
   rerank?: number | null
   embedding?: number | null
+  cache_read_input?: number | null
+  cache_creation_input?: number | null
+  billing_unit?: string
+  input_per_1m_tokens?: number | null
+  output_per_1m_tokens?: number | null
+  cache_read_per_1m_tokens?: number | null
+  cache_write_per_1m_tokens?: number | null
+  embedding_per_1m_tokens?: number | null
+  rerank_per_1k_requests?: number | null
+  rerank_per_1k_docs?: number | null
+  image_per_generation?: number | null
+  image_per_edit?: number | null
+  audio_per_minute?: number | null
+  audio_per_1m_chars?: number | null
+  video_per_second?: number | null
+  video_per_generation?: number | null
+  realtime_per_minute?: number | null
+  batch_discount?: number | null
   unit?: string
-  units?: Partial<Record<'input' | 'output' | 'image' | 'audio' | 'video' | 'rerank' | 'embedding', string>>
+  units?: Partial<Record<string, string>>
   currency?: string
+  source_type?: 'official_docs' | 'provider_api' | 'aggregator_api' | 'operator_override' | 'docs_review' | 'unknown'
   source: string
   source_url?: string
   last_updated: string
   last_sync?: string
   retrieved_at?: string
+  last_verified_at?: string
   manual_review_required: boolean
+  review_reason?: string
   stale_after_days?: number
   pricing_confidence?: 'high' | 'medium' | 'low' | 'unknown'
   notes?: string
 }
 
 export interface CatalogPricingHygiene {
-  status: 'fresh' | 'stale' | 'placeholder' | 'missing' | 'invalid'
+  status: 'fresh' | 'stale' | 'placeholder' | 'review_required' | 'missing' | 'invalid'
   currency: string | null
+  source_type?: 'official_docs' | 'provider_api' | 'aggregator_api' | 'operator_override' | 'docs_review' | 'unknown' | null
   source: string | null
+  source_url?: string | null
   manual_review_required: boolean
+  review_reason?: string | null
   pricing_confidence: 'high' | 'medium' | 'low' | 'unknown' | null
   last_updated: string | null
+  last_verified_at?: string | null
+  retrieved_at?: string | null
   age_days: number | null
   stale_after_days: number | null
   stale: boolean
   placeholder: boolean
+  review_required?: boolean
+  source_missing?: boolean
+  source_url_missing?: boolean
   missing_price_dimensions: string[]
   unit_mismatches: string[]
   warnings: string[]

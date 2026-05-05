@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- Added v1.4 Provider Catalog pricing source governance for the OSS Data Plane, with unified token/cache/media/rerank/realtime/batch pricing fields, source type, source URL, verification timestamps, confidence, stale windows, and review reasons.
+- Added pricing evidence to Route Decision Trace and Dashboard Route Explanation, including source, confidence, stale status, resolver layer, missing price units, and estimated cost basis without exposing prompts, responses, raw headers, provider keys, or secrets.
+- Added `siftgate catalog show <provider> --pricing` output for pricing governance details and extended catalog validation/export coverage for source-governed prices.
+
+### Changed
+
+- Cost and balanced routing, Benchmark reports, config validation, Dashboard catalog APIs, catalog overrides, sync cache, and built-in catalog fallback now use the same pricing resolver priority: explicit node/model pricing, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in catalog.
+- Dashboard and docs use “Price source status”, “Review required”, and “Stale” wording for operator-facing pricing copy; internal `pricing_hygiene` fields remain for API compatibility.
+
 ## 1.3.2 - 2026-05-05
 
 ### Added

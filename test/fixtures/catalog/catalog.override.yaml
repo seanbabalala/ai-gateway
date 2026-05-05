@@ -16,6 +16,7 @@ providers:
           output: 0.75
           unit: usd_per_1m_tokens
           source: internal-rate-card
+          source_url: https://example.com/internal-rate-card
           last_updated: "2026-05-03"
           manual_review_required: false
   local-lab:
@@ -35,5 +36,6 @@ providers:
           output: 0
           unit: usd_per_1m_tokens
           source: local
+          source_url: http://localhost/pricing
           last_updated: "2026-05-03"
           manual_review_required: false

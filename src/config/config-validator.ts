@@ -7,6 +7,7 @@ import {
   assessCatalogPricing,
   catalogModelToModelPricing,
   findCatalogModel,
+  findCatalogModelForNode,
   flattenCatalogModels,
   loadMergedCatalog,
 } from '../catalog/catalog.service';
@@ -4253,7 +4254,25 @@ function validatePricingEntry(
       );
     }
   }
-  for (const key of ['cache_creation_input', 'cache_read_input']) {
+  for (const key of [
+    'cache_creation_input',
+    'cache_read_input',
+    'input_per_1m_tokens',
+    'output_per_1m_tokens',
+    'cache_read_per_1m_tokens',
+    'cache_write_per_1m_tokens',
+    'embedding_per_1m_tokens',
+    'rerank_per_1k_requests',
+    'rerank_per_1k_docs',
+    'image_per_generation',
+    'image_per_edit',
+    'audio_per_minute',
+    'audio_per_1m_chars',
+    'video_per_second',
+    'video_per_generation',
+    'realtime_per_minute',
+    'batch_discount',
+  ]) {
     if (entry[key] !== undefined && (!isFiniteNumber(entry[key]) || entry[key] < 0)) {
       issues.push(
         issue(
@@ -4668,7 +4687,7 @@ function validateConfigAgainstCatalog(
     flattenCatalogModels(catalog).map((model) => model.id),
   );
   const costOptimization = isRecord(config.routing) &&
-    config.routing.optimization === 'cost';
+    (config.routing.optimization === 'cost' || config.routing.optimization === 'balanced');
 
   config.nodes.forEach((nodeValue, nodeIndex) => {
     if (!isRecord(nodeValue)) return;
@@ -4879,7 +4898,10 @@ function validateCatalogModelsForBucket(
       return;
     }
 
-    const catalogModel = findCatalogModel(catalog, modelId);
+    const catalogModel = findCatalogModelForNode(catalog, modelId, {
+      id: isNonEmptyString(node.id) ? node.id : undefined,
+      base_url: isNonEmptyString(node.base_url) ? node.base_url : undefined,
+    }) || findCatalogModel(catalog, modelId);
     if (!catalogModel) return;
     if (
       !expectedModalities.some((modality) =>
@@ -4943,8 +4965,28 @@ function validateCatalogPricingForConfiguredModel(
     issues.push(
       issue(
         'warning',
-        'catalog_pricing_placeholder',
-        `Catalog pricing for "${catalogModel.id}" is reference/manual-review metadata; add explicit pricing for production cost routing.`,
+        'catalog_pricing_review_required',
+        `Catalog pricing for "${catalogModel.id}" needs review; add explicit pricing for production cost routing.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.source_missing) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_source_missing',
+        `Catalog pricing for "${catalogModel.id}" is missing price source metadata.`,
+        modelPath,
+      ),
+    );
+  }
+  if (hygiene.source_url_missing) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_pricing_source_url_missing',
+        `Catalog pricing for "${catalogModel.id}" is missing a reviewable source_url.`,
         modelPath,
       ),
     );
@@ -4969,12 +5011,45 @@ function validateCatalogPricingForConfiguredModel(
       ),
     );
   }
+  const cacheReadPrice =
+    catalogModel.pricing?.cache_read_per_1m_tokens ?? catalogModel.pricing?.cache_read_input;
+  const cacheWritePrice =
+    catalogModel.pricing?.cache_write_per_1m_tokens ?? catalogModel.pricing?.cache_creation_input;
+  if (
+    costOptimization &&
+    (catalogModel.prompt_cache || catalogModel.read_cache || catalogModel.write_cache) &&
+    (!isFiniteNumber(cacheReadPrice) || (catalogModel.write_cache && !isFiniteNumber(cacheWritePrice)))
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'cache_routing_pricing_missing',
+        `Cache-aware cost routing for "${catalogModel.id}" needs cache_read/cache_write pricing when prompt cache capability is configured.`,
+        modelPath,
+      ),
+    );
+  }
+  for (const modality of ['image', 'audio', 'video'] as const) {
+    if (
+      expectedModalities.includes(modality) &&
+      hygiene.missing_price_dimensions.includes(modality)
+    ) {
+      issues.push(
+        issue(
+          'warning',
+          'media_pricing_unit_missing',
+          `Catalog pricing for "${catalogModel.id}" is missing ${modality} price units for the configured media endpoint.`,
+          modelPath,
+        ),
+      );
+    }
+  }
   if (costOptimization && !catalogModelToModelPricing(catalogModel)) {
     issues.push(
       issue(
         'warning',
         'cost_routing_pricing_missing',
-        `routing.optimization=cost needs input/output token pricing for "${catalogModel.id}" or an explicit models_pricing override.`,
+        `routing.optimization=cost/balanced needs input/output token pricing for "${catalogModel.id}" or an explicit models_pricing override.`,
         modelPath,
       ),
     );

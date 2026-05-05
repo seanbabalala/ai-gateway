@@ -193,12 +193,22 @@ describe('catalog service', () => {
       output: 10,
       currency: 'USD',
       catalog_source: 'builtin',
+      pricing_used_from: 'builtin_catalog',
+      source_type: 'docs_review',
     });
 
     const hygiene = assessCatalogPricing(model?.pricing, model?.modalities || [], new Date('2026-05-04T00:00:00.000Z'));
     expect(hygiene.status).toBe('placeholder');
     expect(hygiene.stale).toBe(false);
     expect(hygiene.pricing_confidence).toBe('low');
+    expect(hygiene.source_type).toBe('docs_review');
+    expect(hygiene.source_url_missing).toBe(false);
+    expect(model?.pricing).toMatchObject({
+      input_per_1m_tokens: 2.5,
+      output_per_1m_tokens: 10,
+      source_type: 'docs_review',
+      last_verified_at: '2026-05-05',
+    });
   });
 
   it('ships 30 plus built-in providers with reviewable pricing source URLs', () => {
@@ -258,6 +268,7 @@ describe('catalog service', () => {
                 pricing: {
                   ...imageModel!.pricing!,
                   last_updated: '2025-01-01',
+                  last_verified_at: '2025-01-01',
                   stale_after_days: 10,
                   units: { input: 'usd_per_1m_tokens', output: 'usd_per_1m_tokens' },
                 },

@@ -96,7 +96,15 @@ Anthropic Messages-style endpoints return the same details under:
 
 If a model has no node/model pricing override and no `models_pricing` entry, SiftGate can fall back to the merged Provider Catalog price when that catalog entry has usable input/output token pricing. Explicit user configuration always wins over catalog metadata.
 
-Built-in catalog prices are local reference snapshots and usually marked `manual_review_required`; they are good enough to keep cost-aware routing and budget estimates from going blind, but operators should override them with verified local rates for production billing decisions. v0.9.2 can refresh OpenRouter prices into `catalog.override.yaml`; other providers still need docs review or local rate cards.
+v1.4 uses one pricing resolver for routing, benchmark reports, catalog APIs, and config validation. The resolver priority is:
+
+1. `nodes[].model_capabilities.<model>.pricing`
+2. `models_pricing`
+3. `catalog.override.yaml`
+4. local catalog sync cache
+5. built-in Provider Catalog
+
+Built-in catalog prices are local reference snapshots and usually marked `manual_review_required`; they are good enough to keep cost-aware routing and budget estimates from going blind, but operators should override them with verified local rates for production billing decisions. OpenRouter can sync prices into the local catalog cache or an override file; other providers still need docs review or local rate cards.
 
 If no explicit price and no usable catalog fallback exists, routing is still allowed and tokens are still logged. Cost is recorded as `0`, and diagnostics surface the missing pricing or catalog price source issue.
 

@@ -795,6 +795,8 @@ describe('RoutingService — rerank', () => {
       requested_modality: 'rerank',
       filtered_by_capability: false,
       pricing_source: 'config',
+      pricing_used_from: 'gateway_config',
+      estimated_cost_basis: 'input_output_per_1m_tokens',
       catalog_source: 'config',
     });
   });

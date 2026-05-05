@@ -53,6 +53,11 @@ export interface RouteDecisionCandidateCapabilityEvidence {
   filtered_by_capability: boolean;
   filtered_by_file_size: boolean;
   pricing_source: string | null;
+  pricing_confidence?: string | null;
+  pricing_stale?: boolean | null;
+  pricing_used_from?: string;
+  missing_price_units?: string[];
+  estimated_cost_basis?: string | null;
   catalog_source: string | null;
 }
 

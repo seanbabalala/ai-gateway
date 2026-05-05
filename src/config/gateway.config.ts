@@ -977,6 +977,37 @@ export interface ModelPricing {
   output: number; // cost per 1M output tokens (USD)
   cache_creation_input?: number; // cost per 1M cache-write tokens (e.g. Anthropic: 1.25x input)
   cache_read_input?: number;     // cost per 1M cache-read tokens (e.g. Anthropic: 0.1x input; OpenAI: 0.5x)
+  billing_unit?: string;
+  input_per_1m_tokens?: number;
+  output_per_1m_tokens?: number;
+  cache_read_per_1m_tokens?: number;
+  cache_write_per_1m_tokens?: number;
+  embedding_per_1m_tokens?: number;
+  rerank_per_1k_requests?: number;
+  rerank_per_1k_docs?: number;
+  image_per_generation?: number;
+  image_per_edit?: number;
+  audio_per_minute?: number;
+  audio_per_1m_chars?: number;
+  video_per_second?: number;
+  video_per_generation?: number;
+  realtime_per_minute?: number;
+  batch_discount?: number;
+  source?: string;
+  source_type?: string;
+  source_url?: string;
+  currency?: string;
+  catalog_source?: string;
+  pricing_used_from?: string;
+  manual_review_required?: boolean;
+  review_reason?: string;
+  pricing_confidence?: string;
+  pricing_stale?: boolean;
+  last_updated?: string;
+  last_verified_at?: string;
+  retrieved_at?: string;
+  stale_after_days?: number;
+  missing_price_units?: string[];
 }
 
 // ===== Embedding Batching =====

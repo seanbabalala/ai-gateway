@@ -40,6 +40,7 @@ import {
   RouteDecisionTraceFilter,
   routeTargetKey,
 } from './route-decision-trace';
+import { pricingEvidenceFromModelPricing } from '../catalog/pricing-governance';
 
 export interface RouteDecision {
   primary: RouteTarget;
@@ -1789,6 +1790,7 @@ export class RoutingService {
       selectionHints.source_format,
       capabilities,
     );
+    const pricingEvidence = pricingEvidenceFromModelPricing(capabilities.pricing);
 
     return {
       requested_modality: requestedModality,
@@ -1806,7 +1808,12 @@ export class RoutingService {
       max_file_size: maxFileSize,
       filtered_by_capability: missingCapabilities.length > 0,
       filtered_by_file_size: filteredByFileSize,
-      pricing_source: this.resolvePricingSource(capabilities),
+      pricing_source: pricingEvidence.pricing_source || this.resolvePricingSource(capabilities),
+      pricing_confidence: pricingEvidence.pricing_confidence,
+      pricing_stale: pricingEvidence.pricing_stale,
+      pricing_used_from: pricingEvidence.pricing_used_from,
+      missing_price_units: pricingEvidence.missing_price_units,
+      estimated_cost_basis: pricingEvidence.estimated_cost_basis,
       catalog_source: this.resolveCatalogSource(capabilities),
     };
   }

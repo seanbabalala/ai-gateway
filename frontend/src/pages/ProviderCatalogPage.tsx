@@ -61,9 +61,17 @@ function formatPrice(value: number | null | undefined) {
   return value === 0 ? '$0' : `$${value.toLocaleString(undefined, { maximumFractionDigits: 4 })}`
 }
 
+function inputPrice(model: CatalogModel) {
+  return model.pricing?.input_per_1m_tokens ?? model.pricing?.input
+}
+
+function outputPrice(model: CatalogModel) {
+  return model.pricing?.output_per_1m_tokens ?? model.pricing?.output
+}
+
 function pricingUnit(model: CatalogModel) {
   const units = model.pricing?.units
-  return friendlyUnit(units?.input || model.pricing?.unit || '-')
+  return friendlyUnit(units?.input_per_1m_tokens || units?.input || model.pricing?.billing_unit || model.pricing?.unit || '-')
 }
 
 function friendlyUnit(unit: string) {
@@ -460,7 +468,7 @@ function ProviderPricingTable({
                   </TableCell>
                   <TableCell className="align-top">
                     <div className="font-mono text-[11px] text-[var(--foreground)]">
-                      {formatPrice(model.pricing?.input)} / {formatPrice(model.pricing?.output)}
+                      {formatPrice(inputPrice(model))} / {formatPrice(outputPrice(model))}
                     </div>
                     <div className="mt-1 max-w-[220px] text-[10px] leading-4 text-[var(--foreground-dim)]">{pricingUnit(model)}</div>
                   </TableCell>
@@ -503,7 +511,12 @@ function ProviderPricingTable({
                         })}
                       </div>
                       <div className="text-[10px] leading-4 text-[var(--foreground-dim)]">
-                        {model.pricing?.last_updated || '-'}
+                        {t('catalogPage.sourceType', {
+                          type: t(`catalogPage.sourceTypes.${model.pricing?.source_type || 'unknown'}`),
+                        })}
+                      </div>
+                      <div className="text-[10px] leading-4 text-[var(--foreground-dim)]">
+                        {model.pricing?.last_verified_at || model.pricing?.retrieved_at || model.pricing?.last_updated || '-'}
                       </div>
                     </div>
                   </TableCell>

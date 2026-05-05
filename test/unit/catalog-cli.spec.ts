@@ -68,6 +68,20 @@ describe('siftgate catalog CLI', () => {
     expect(stdout.join('\n')).toContain('provider-reference');
   });
 
+  it('shows v1.4 pricing governance details when requested', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const exitCode = await runCli(['catalog', 'show', 'openai', '--pricing'], io);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toHaveLength(0);
+    expect(stdout.join('\n')).toContain('Price source status');
+    expect(stdout.join('\n')).toContain('source_type=docs_review');
+    expect(stdout.join('\n')).toContain('used_from=builtin_catalog');
+    expect(stdout.join('\n')).toContain('units=input:');
+  });
+
   it('exports the merged catalog to a YAML file', async () => {
     const cwd = await makeTempDir();
     const { io, stdout, stderr } = makeIo(cwd);
@@ -106,6 +120,9 @@ describe('siftgate catalog CLI', () => {
       stale_after_days: 90,
       pricing_confidence: 'low',
       source: 'builtin-reference',
+      source_type: 'docs_review',
+      input_per_1m_tokens: expect.any(Number),
+      output_per_1m_tokens: expect.any(Number),
     });
   });
 
