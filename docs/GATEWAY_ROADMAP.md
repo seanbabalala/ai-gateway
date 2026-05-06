@@ -25,8 +25,65 @@
 | v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.1 Public Contract Consistency Patch（基于 v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles） | ✅ Released |
 | v1.5 | Contract Hardening + Runtime Safety | 已发布 — required env fail-fast、统一 public error mapping、request-id / reload 安全收敛 | ✅ Released |
 | v1.6 | Provider Cache Intelligence | 已发布 — v1.6.0 Usage Schema Registry、Cache Savings Dashboard、Cache Session Affinity 路由增强 | ✅ Released |
+| v1.7 | Catalog Enrichment + Fresh Model Defaults | 已发布 — v1.7.0 ZeroEval catalog enrichment、Fresh defaults、默认价格预填、模型元数据扩展 | ✅ Released |
 
 ---
+
+## v1.7 — Catalog Enrichment + Fresh Model Defaults（目录增强与最新模型默认值）
+
+**v1.7.0 发布状态**：已发布。v1.7 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本次 minor release 的核心目标不是继续横向堆 provider，而是把“模型元数据的新鲜度”和“Add Node 默认推荐”做对：Provider Catalog 继续作为唯一目录入口，外部数据只作为 enrichment 写入本地 sync cache，帮助 Dashboard 默认展示更新、更合理、带参考价格的模型，同时不破坏显式 operator 配置优先级。
+
+### P0：ZeroEval Catalog Enrichment
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：复用现有 catalog refresh/sync/merge 结构，把 ZeroEval 作为第三方 enrichment source 接到本地 sync cache 层，而不是引入第二套 catalog 或运行时强依赖。
+- **实现方案**：
+  - 新增 `zeroeval` refresh/sync adapter，接入现有 `catalog refresh` / `catalog sync` / sync status / refresh sources / CLI sources 体系
+  - 使用 ZeroEval 的 public API 读取 `model_id`、`context`、`release_date`、`announcement_date`、`multimodal`、`input_price`、`output_price`、`throughput`、`organization` 等字段
+  - 仅 enrich 已存在于 merged Provider Catalog 的 provider/model，不因为第三方组织名自动生成新的 provider preset
+  - 无法稳定映射 `organization_id` 到现有 provider id 时保守跳过，并保留 issue/note
+
+### P0：Catalog Model Metadata 扩展
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：让 merged catalog、Dashboard catalog APIs、Provider Catalog detail 和后续 Add Node 默认逻辑可以复用一套 richer model metadata，而不是把 enrichment 只留在 sync adapter 内部。
+- **实现方案**：
+  - model schema 新增 enrichment 容器，拆分为 lifecycle、specs、benchmarks、source metadata 和可扩展 metadata
+  - `limits.max_context_tokens` 继续承接上下文字段；throughput、multimodal、params、training_tokens、license、is_moe 等进入 specs 或 metadata 扩展位
+  - Dashboard providers/models API 保持旧字段兼容，同时额外暴露 enrichment metadata 和轻量 summary
+
+### P0：Fresh Model Defaults
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：解决 Add Node 默认仍然展示旧模型、字母排序前几个 dated variants、默认价格编辑区空白的问题。
+- **实现方案**：
+  - 后端 provider catalog 响应新增 `recommended_model_buckets`、`latest_model_hints`、`recommended_models`
+  - 推荐规则放在后端：优先较新的稳定模型、优先有价格、优先来自 override/sync-cache enrichment、过滤 preview/snapshot/dated old variants 出默认 bucket，但完整 models 列表仍保留
+  - Add Node Wizard 默认 buckets 与默认 pricing rows 改为消费 recommended metadata；用户依然可以搜索全部模型、手工改模型、继续新增 pricing rows
+
+### P1：Operator-Facing Trust Copy
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：在不把页面做成 benchmark leaderboard 的前提下，让 operator 理解 enrichment 的价值，并且不会误以为第三方价格就是 billing authority。
+- **实现方案**：
+  - Provider Catalog detail 展示 release date、max context、throughput 和少量高价值 benchmark snippets
+  - Add Node UI 增加“最新推荐模型”和“价格来自 catalog enrichment / review required”文案
+  - 所有 copy 保持价格治理口径一致：显式 node pricing 永远优先；external enrichment 只是 default reference
+
+### 非目标
+
+- **状态**：✅ 已明确
+- **不做内容**：
+  - 不新增第二套 provider catalog 或前端硬编码 provider/model 列表
+  - 不把 ZeroEval 作为运行时联网依赖或“自动实时官方价格”来源
+  - 不因为外部 enrichment 自动创建新的 provider preset、auth 信息或 base URL
+  - 不改变既有 pricing precedence，也不覆盖用户显式配置
+
+### v1.7 后续方向
+
+- 继续引入更多“可安全审阅”的 enrichment source，但必须保持 sync-cache/override-first、runtime-optional 的边界
+- 做更完整的 operator review workflow，例如 catalog diff、pricing review queue、override authoring 辅助
+- 持续收敛 Provider Catalog 单源化，减少 built-in catalog、projection 和 Dashboard DTO 之间的维护成本
 
 ## v1.6 — Provider Cache Intelligence（Provider 侧缓存智能与 Session Affinity 路由）
 

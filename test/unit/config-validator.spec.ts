@@ -1510,6 +1510,23 @@ describe('config validator', () => {
       { env: {} },
     );
     expect(codes(ok.warnings)).not.toContain('catalog_sync_no_enabled_adapter');
+
+    const zeroEvalOk = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        catalog: {
+          sync: {
+            enabled: true,
+            write_to: 'cache',
+            cache_file: './.siftgate/catalog-sync-cache.yaml',
+            adapters: {
+              zeroeval: { enabled: true },
+            },
+          },
+        },
+      }),
+      { env: {} },
+    );
+    expect(codes(zeroEvalOk.warnings)).not.toContain('catalog_sync_no_enabled_adapter');
   });
 
   it('reuses shared node/model diagnostics for pricing and ambiguous names', () => {

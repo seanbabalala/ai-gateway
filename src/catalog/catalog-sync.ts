@@ -95,7 +95,7 @@ export interface CatalogSyncOptions {
   fetchImpl?: typeof fetch;
 }
 
-const SUPPORTED_SYNC_ADAPTERS = new Set(['openrouter']);
+const SUPPORTED_SYNC_ADAPTERS = new Set(['openrouter', 'zeroeval']);
 const DEFAULT_SYNC_INTERVAL_MINUTES = 1440;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -192,7 +192,7 @@ export async function syncCatalogProvider(
         issue(
           'error',
           'catalog_sync_unsupported_provider',
-          'Automatic model pricing sync currently supports OpenRouter only. Other providers remain docs_review/manual override.',
+          'Automatic catalog sync currently supports OpenRouter public catalog sync and ZeroEval model enrichment. Other providers remain docs_review/manual override.',
           provider,
         ),
       ],
@@ -230,7 +230,6 @@ export async function syncCatalogProvider(
   }
 
   if (hasErrors(refreshResult.issues)) {
-    const syncedProvider = normalizeProvidersRecord(refreshResult.override)[provider];
     return {
       provider,
       status: 'failed',
@@ -241,15 +240,14 @@ export async function syncCatalogProvider(
       model_count: refreshResult.model_count,
       priced_model_count: refreshResult.priced_model_count,
       source_url: refreshResult.source.source_url,
-      confidence: providerConfidence(syncedProvider),
+      confidence: overrideConfidence(refreshResult.override),
       issues: refreshResult.issues,
     };
   }
 
-  const syncedProvider = normalizeProvidersRecord(refreshResult.override)[provider];
   const nextOverride =
     writeTo === 'cache'
-      ? mergeProviderIntoExistingOverride(output, provider, refreshResult.override)
+      ? mergeIncomingOverride(output, refreshResult.override)
       : refreshResult.override;
 
   if (writeTo === 'override' && fs.existsSync(output) && !options.force) {
@@ -263,7 +261,7 @@ export async function syncCatalogProvider(
       model_count: refreshResult.model_count,
       priced_model_count: refreshResult.priced_model_count,
       source_url: refreshResult.source.source_url,
-      confidence: providerConfidence(syncedProvider),
+      confidence: overrideConfidence(refreshResult.override),
       issues: [
         issue(
           'error',
@@ -288,7 +286,7 @@ export async function syncCatalogProvider(
     model_count: refreshResult.model_count,
     priced_model_count: refreshResult.priced_model_count,
     source_url: refreshResult.source.source_url,
-    confidence: providerConfidence(syncedProvider),
+    confidence: overrideConfidence(refreshResult.override),
     issues: refreshResult.issues,
   };
 }
@@ -357,9 +355,9 @@ export function buildCatalogSyncStatus(input: {
     enabled_adapters: enabledAdapters,
     providers: sources.map((source) => {
       const provider = input.catalog.providers.find((entry) => entry.id === source.provider);
-      const pricing = statusPricing(provider);
-      const lastSync = pricingLastSync(pricing);
-      const staleAfterDays = pricing?.stale_after_days ?? (source.automatic ? 7 : null);
+      const adapterInfo = adapterStatusInfo(source.provider, input.catalog);
+      const lastSync = adapterInfo.last_sync;
+      const staleAfterDays = adapterInfo.stale_after_days ?? (source.automatic ? 7 : null);
       const ageDays = lastSync ? Math.max(0, Math.floor((now.getTime() - Date.parse(lastSync)) / 86_400_000)) : null;
       const stale = ageDays !== null && staleAfterDays !== null && ageDays > staleAfterDays;
       const enabled = enabledAdapters.includes(source.provider);
@@ -386,8 +384,8 @@ export function buildCatalogSyncStatus(input: {
         automatic: source.automatic,
         status,
         last_sync: lastSync,
-        source_url: pricing?.source_url || source.source_url,
-        confidence: pricing?.pricing_confidence || null,
+        source_url: adapterInfo.source_url || source.source_url,
+        confidence: adapterInfo.confidence,
         stale,
         stale_after_days: staleAfterDays,
         age_days: ageDays,
@@ -400,16 +398,21 @@ export function buildCatalogSyncStatus(input: {
   };
 }
 
-function mergeProviderIntoExistingOverride(
+function mergeIncomingOverride(
   outputPath: string,
-  provider: string,
   incoming: CatalogOverrideFile,
 ): CatalogOverrideFile {
   const existing = readExistingOverride(outputPath);
   const providers = normalizeProvidersRecord(existing);
   const incomingProviders = normalizeProvidersRecord(incoming);
-  const incomingProvider = incomingProviders[provider];
-  if (incomingProvider) providers[provider] = incomingProvider;
+  for (const [providerId, provider] of Object.entries(incomingProviders)) {
+    const current = providers[providerId];
+    if (!current) {
+      providers[providerId] = provider;
+      continue;
+    }
+    providers[providerId] = mergeOverrideProviders(current, provider);
+  }
   return { version: 1, providers };
 }
 
@@ -437,6 +440,27 @@ function normalizeProvidersRecord(
   return { ...override.providers };
 }
 
+function mergeOverrideProviders(
+  current: CatalogOverrideProvider,
+  incoming: CatalogOverrideProvider,
+): CatalogOverrideProvider {
+  const merged: CatalogOverrideProvider = {
+    ...current,
+    ...incoming,
+  };
+  const currentModels = current.models || [];
+  const incomingModels = incoming.models || [];
+  if (currentModels.length > 0 || incomingModels.length > 0) {
+    const models = new Map(currentModels.map((model) => [model.id, model]));
+    for (const model of incomingModels) {
+      const existing = models.get(model.id);
+      models.set(model.id, existing ? { ...existing, ...model } : model);
+    }
+    merged.models = [...models.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+  return merged;
+}
+
 function formatCatalogOverride(override: CatalogOverrideFile): string {
   return yaml.dump(override, {
     noRefs: true,
@@ -445,7 +469,16 @@ function formatCatalogOverride(override: CatalogOverrideFile): string {
   });
 }
 
-function providerConfidence(provider: CatalogOverrideProvider | undefined): string | null {
+function overrideConfidence(override: CatalogOverrideFile | null | undefined): string | null {
+  const providers = Object.values(normalizeProvidersRecord(override));
+  for (const provider of providers) {
+    const confidence = providerConfidence(provider);
+    if (confidence) return confidence;
+  }
+  return null;
+}
+
+function providerConfidence(provider: CatalogOverrideProvider | CatalogProvider | undefined): string | null {
   return provider?.pricing?.pricing_confidence ||
     provider?.models?.find((model) => model.pricing?.pricing_confidence)?.pricing?.pricing_confidence ||
     null;
@@ -461,6 +494,64 @@ function statusPricing(provider: CatalogProvider | undefined): CatalogPricing | 
 
 function pricingLastSync(pricing: CatalogPricing | undefined): string | null {
   return pricing?.last_sync || pricing?.retrieved_at || null;
+}
+
+function adapterStatusInfo(
+  sourceProvider: string,
+  catalog: ProviderCatalog,
+): {
+  last_sync: string | null;
+  source_url: string | null;
+  confidence: string | null;
+  stale_after_days: number | null;
+} {
+  if (sourceProvider !== 'zeroeval') {
+    const provider = catalog.providers.find((entry) => entry.id === sourceProvider);
+    const pricing = statusPricing(provider);
+    return {
+      last_sync: pricingLastSync(pricing),
+      source_url: pricing?.source_url || null,
+      confidence: pricing?.pricing_confidence || null,
+      stale_after_days: pricing?.stale_after_days ?? null,
+    };
+  }
+
+  const models = catalog.providers.flatMap((provider) =>
+    provider.models.filter(
+      (model) =>
+        model.pricing?.source === 'zeroeval' || model.enrichment?.source === 'zeroeval',
+    ),
+  );
+  const latestSync = latestIsoTimestamp(
+    models
+      .map((model) =>
+        model.pricing?.last_sync || model.pricing?.retrieved_at || model.enrichment?.synced_at || null,
+      )
+      .filter((value): value is string => Boolean(value)),
+  );
+  const pricingModel = models.find((model) => model.pricing?.source === 'zeroeval');
+  const enrichedModel = models.find((model) => model.enrichment?.source === 'zeroeval');
+  return {
+    last_sync: latestSync,
+    source_url:
+      pricingModel?.pricing?.source_url || enrichedModel?.enrichment?.source_url || null,
+    confidence: pricingModel?.pricing?.pricing_confidence || null,
+    stale_after_days: pricingModel?.pricing?.stale_after_days ?? null,
+  };
+}
+
+function latestIsoTimestamp(values: string[]): string | null {
+  if (values.length === 0) return null;
+  let latestValue: string | null = null;
+  let latestTime = -Infinity;
+  for (const value of values) {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed) && parsed > latestTime) {
+      latestTime = parsed;
+      latestValue = value;
+    }
+  }
+  return latestValue;
 }
 
 @Injectable()

@@ -14,7 +14,7 @@ v1.2 adds an MCP Gateway preview page for local MCP server proxying. It shows se
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | MCP Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
 | Nodes | Upstream node health, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
-| Provider Catalog | Built-in + sync-cache + local override provider/model catalog, compatibility profiles, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
+| Provider Catalog | Built-in + sync-cache + local override provider/model catalog, compatibility profiles, model enrichment metadata, recommended model defaults, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
 | Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, compatibility evidence, and reasoning support |
 | Sessions | Metadata-only request timelines grouped by `session_id` / legacy `session_key`, with model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
@@ -31,9 +31,19 @@ The Provider Catalog page is a read-only operations explorer for large provider 
 
 v1.4 adds summary cards, provider-family groups, collapsed provider lists, and filters for family, modality, provider type, price source status, compatibility profile, review-required state, stale pricing, and provider/model aliases. Provider rows show logo identity, modalities, primary endpoints, compatibility profile, price source status, last-updated metadata, manual-review state, model count, override state, and sync state when present.
 
-The detail panel shows homepage/docs/pricing links, auth type, base URL, endpoint map, model buckets, capability flags, limits, pricing units, override state, and sync status. It remains metadata-only and never exposes provider API keys, raw headers, prompts, responses, media bytes, or generated video bytes.
+In v1.7, Provider Catalog detail also surfaces enrichment value in a constrained way: fresh default model groups, release date, max context, throughput, and a few high-value benchmark snippets when available. It stays focused on setup and governance rather than becoming a benchmark leaderboard.
+
+The detail panel shows homepage/docs/pricing links, auth type, base URL, endpoint map, model buckets, capability flags, limits, pricing units, override state, sync status, and enrichment summaries. It remains metadata-only and never exposes provider API keys, raw headers, prompts, responses, media bytes, or generated video bytes.
 
 The Add Node Wizard uses the same catalog response for provider presets. The provider step supports family filters and alias search such as Kimi/Moonshot, Qwen/Tongyi, and Doubao/Volcengine while keeping advanced endpoint, headers, model aliases, prefixes, pricing, compatibility profile, health check, and custom-provider fields available before save.
+
+v1.7 changes the defaulting behavior behind that same flow:
+
+- the wizard still has the full model list for search and manual edits
+- the default buckets now come from backend `recommended_model_buckets`
+- provider cards and model steps can show "latest recommended" style guidance
+- default pricing rows are seeded from recommended models first
+- trust copy clarifies that catalog enrichment pricing is a review-required default reference and explicit operator pricing still wins
 
 ## Cache Savings Analytics
 

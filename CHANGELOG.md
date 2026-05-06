@@ -6,6 +6,23 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.7.0 - 2026-05-06
+
+### Added
+
+- Released the v1.7.0 Catalog Enrichment + Fresh Model Defaults minor for the MIT OSS Data Plane, focusing on fresher catalog-backed model metadata, better default model recommendations, and pricing-prefill ergonomics instead of horizontal provider-count expansion or cloud-only features.
+- Added a ZeroEval-backed catalog enrichment adapter to the existing refresh/sync pipeline so SiftGate can ingest third-party reference metadata for already-known provider/model pairs, write it into the managed local sync cache, and expose the source in CLI sync status and Dashboard catalog APIs without making ZeroEval a runtime dependency.
+- Added v1.7 model enrichment metadata to the merged catalog schema and Dashboard catalog APIs, including lifecycle fields, specs, benchmark containers, source metadata, and operator-visible enrichment summaries for future provider/model governance surfaces.
+- Added backend-generated `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` to provider catalog responses so Dashboard Add Node defaults can prefer newer stable models with usable pricing metadata while preserving the full model list for search and manual edits.
+- Added Provider Catalog and Add Node operator-facing enrichment UI for release date, max context, throughput, selected benchmark snippets, and trust-copy that explains catalog pricing is a review-required default reference rather than a billing authority.
+
+### Changed
+
+- Dashboard Add Node now defaults model buckets and pricing rows from the new recommended-model metadata instead of naively taking the first alphabetically sorted catalog models, which prevents common stale-snapshot defaults when merged catalog data is fresher than built-in ordering.
+- Merged catalog pricing prefill now accepts ZeroEval reference input/output pricing for supported provider/model mappings and normalizes it into existing token price fields, while keeping the established pricing precedence unchanged: explicit `nodes[].model_capabilities.<model>.pricing`, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in catalog.
+- Catalog sync status, refresh-source reporting, config validation, tests, and CLI help now recognize ZeroEval alongside OpenRouter while keeping OpenRouter's existing adapter behavior unchanged.
+- Release metadata is aligned to v1.7.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes manifest, and release-version sync coverage.
+
 ## 1.6.0 - 2026-05-06
 
 ### Added

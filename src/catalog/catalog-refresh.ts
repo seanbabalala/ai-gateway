@@ -6,8 +6,11 @@ import type {
   CatalogPricing,
 } from './catalog.types';
 import type { Modality } from '../config/modality';
+import { BUILTIN_PROVIDER_CATALOG } from './built-in-catalog';
 
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
+export const ZEROEVAL_MODELS_URL =
+  'https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false';
 const ONE_MILLION = 1_000_000;
 
 export interface CatalogRefreshSource {
@@ -57,6 +60,57 @@ interface OpenRouterModel {
   supported_parameters?: string[];
 }
 
+interface ZeroEvalModel {
+  model_id?: string;
+  name?: string;
+  organization?: string;
+  organization_id?: string;
+  context?: number | null;
+  release_date?: string | null;
+  announcement_date?: string | null;
+  multimodal?: boolean | null;
+  input_price?: number | null;
+  output_price?: number | null;
+  throughput?: number | null;
+  canonical_model_id?: string | null;
+  params?: number | null;
+  training_tokens?: number | null;
+  license?: string | null;
+  knowledge_cutoff?: string | null;
+  is_moe?: boolean | null;
+  [key: string]: unknown;
+}
+
+const ZEROEVAL_PROVIDER_ID_MAP: Record<string, string> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  google: 'google',
+  mistral: 'mistral',
+  cohere: 'cohere',
+  deepseek: 'deepseek',
+  qwen: 'alibaba-qwen',
+  moonshot: 'moonshot',
+  minimax: 'minimax',
+  zhipu: 'zhipu',
+  baidu: 'baidu-qianfan',
+  qianfan: 'baidu-qianfan',
+  volcengine: 'volcengine-ark',
+  doubao: 'volcengine-ark',
+  xai: 'xai',
+  perplexity: 'perplexity',
+  cerebras: 'cerebras',
+  sambanova: 'sambanova',
+  groq: 'groq',
+  ai21: 'ai21',
+};
+
+const BUILTIN_PROVIDER_MODELS = new Map(
+  BUILTIN_PROVIDER_CATALOG.map((provider) => [
+    provider.id,
+    new Set(provider.models.map((model) => model.id)),
+  ]),
+);
+
 export const CATALOG_REFRESH_SOURCES: CatalogRefreshSource[] = [
   {
     provider: 'openrouter',
@@ -66,6 +120,16 @@ export const CATALOG_REFRESH_SOURCES: CatalogRefreshSource[] = [
     automatic: true,
     pricing: 'live',
     notes: 'OpenRouter exposes a public model catalog with per-token prompt/completion pricing.',
+  },
+  {
+    provider: 'zeroeval',
+    label: 'ZeroEval model enrichment',
+    mode: 'public_api',
+    source_url: ZEROEVAL_MODELS_URL,
+    automatic: true,
+    pricing: 'live',
+    notes:
+      'ZeroEval exposes a public multi-provider model leaderboard with reference pricing and technical metadata. SiftGate uses it as third-party enrichment, not billing authority.',
   },
   {
     provider: 'openai',
@@ -592,7 +656,7 @@ export async function refreshCatalogProvider(input: {
   fetchImpl?: typeof fetch;
 }): Promise<CatalogRefreshResult> {
   const provider = input.provider.trim().toLowerCase();
-  if (provider !== 'openrouter') {
+  if (provider !== 'openrouter' && provider !== 'zeroeval') {
     const source = CATALOG_REFRESH_SOURCES.find((entry) => entry.provider === provider);
     return {
       provider,
@@ -614,11 +678,18 @@ export async function refreshCatalogProvider(input: {
           severity: 'error',
           code: 'catalog_refresh_unsupported_provider',
           message:
-            'Automatic catalog refresh currently supports OpenRouter public model metadata. Other providers require docs review, API-key discovery, or local operator overrides.',
+            'Automatic catalog refresh currently supports OpenRouter public catalog sync and ZeroEval model enrichment. Other providers require docs review, API-key discovery, or local operator overrides.',
           path: provider,
         },
       ],
     };
+  }
+
+  if (provider === 'zeroeval') {
+    return refreshZeroEvalCatalog({
+      now: input.now || new Date(),
+      fetchImpl: input.fetchImpl || globalThis.fetch,
+    });
   }
 
   return refreshOpenRouterCatalog({
@@ -705,6 +776,118 @@ async function refreshOpenRouterCatalog(input: {
   };
 }
 
+async function refreshZeroEvalCatalog(input: {
+  now: Date;
+  fetchImpl: typeof fetch;
+}): Promise<CatalogRefreshResult> {
+  const source = CATALOG_REFRESH_SOURCES.find((entry) => entry.provider === 'zeroeval')!;
+  const generatedAt = input.now.toISOString();
+  const lastUpdated = generatedAt.slice(0, 10);
+  const issues: CatalogIssue[] = [];
+
+  if (typeof input.fetchImpl !== 'function') {
+    throw new Error('fetch is not available in this Node.js runtime.');
+  }
+
+  const response = await input.fetchImpl(source.source_url, {
+    headers: { accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`ZeroEval catalog request failed: HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as ZeroEvalModel[];
+  const providers = new Map<string, CatalogOverrideProvider>();
+  let modelCount = 0;
+  let pricedModelCount = 0;
+  const unmappedOrganizations = new Set<string>();
+  const unknownModelsByProvider = new Map<string, number>();
+
+  for (const entry of Array.isArray(payload) ? payload : []) {
+    const mappedProviderId = mapZeroEvalOrganization(entry.organization_id);
+    if (!mappedProviderId) {
+      if (typeof entry.organization_id === 'string' && entry.organization_id.trim()) {
+        unmappedOrganizations.add(entry.organization_id.trim());
+      }
+      continue;
+    }
+
+    if (!isKnownBuiltInModel(mappedProviderId, entry.model_id)) {
+      unknownModelsByProvider.set(
+        mappedProviderId,
+        (unknownModelsByProvider.get(mappedProviderId) || 0) + 1,
+      );
+      continue;
+    }
+
+    const model = zeroEvalModelToCatalogModel(entry, lastUpdated, generatedAt);
+    if (!model) continue;
+
+    let provider = providers.get(mappedProviderId);
+    if (!provider) {
+      provider = { id: mappedProviderId, models: [] };
+      providers.set(mappedProviderId, provider);
+    }
+    provider.models ??= [];
+    provider.models.push(model);
+    modelCount += 1;
+    if (hasAnyPrice(model.pricing)) pricedModelCount += 1;
+  }
+
+  if (providers.size === 0) {
+    issues.push({
+      severity: 'warning',
+      code: 'catalog_refresh_empty',
+      message:
+        'ZeroEval returned no entries that matched the built-in Provider Catalog. The sync payload was generated but contains no model enrichments.',
+      path: 'zeroeval',
+    });
+  }
+
+  if (unmappedOrganizations.size > 0) {
+    issues.push({
+      severity: 'info',
+      code: 'catalog_refresh_zeroeval_unmapped_organizations',
+      message: `Skipped ZeroEval organizations without a built-in provider mapping: ${[
+        ...unmappedOrganizations,
+      ]
+        .sort()
+        .join(', ')}.`,
+      path: 'zeroeval',
+    });
+  }
+
+  for (const [providerId, count] of [...unknownModelsByProvider.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    issues.push({
+      severity: 'info',
+      code: 'catalog_refresh_zeroeval_unknown_models',
+      message: `Skipped ${count} ZeroEval model entr${count === 1 ? 'y' : 'ies'} for "${providerId}" because the model id is not present in the built-in catalog.`,
+      path: `zeroeval.${providerId}`,
+    });
+  }
+
+  for (const provider of providers.values()) {
+    provider.models?.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  return {
+    provider: 'zeroeval',
+    generated_at: generatedAt,
+    source,
+    model_count: modelCount,
+    priced_model_count: pricedModelCount,
+    override: {
+      version: 1,
+      providers: Object.fromEntries(
+        [...providers.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    },
+    issues,
+  };
+}
+
 function openRouterModelToCatalogModel(
   model: OpenRouterModel,
   lastUpdated: string,
@@ -729,6 +912,79 @@ function openRouterModelToCatalogModel(
         undefined,
     },
     pricing,
+  };
+}
+
+function zeroEvalModelToCatalogModel(
+  model: ZeroEvalModel,
+  lastUpdated: string,
+  retrievedAt: string,
+): CatalogOverrideModel | null {
+  if (!isNonEmptyString(model.model_id)) return null;
+
+  const benchmarkEntries = Object.entries(model).filter(
+    ([key, value]) =>
+      key.endsWith('_score') &&
+      typeof value === 'number' &&
+      Number.isFinite(value),
+  );
+  const benchmarks =
+    benchmarkEntries.length > 0
+      ? (Object.fromEntries(benchmarkEntries) as Record<string, number>)
+      : undefined;
+
+  return {
+    id: model.model_id,
+    display_name: isNonEmptyString(model.name) ? model.name : model.model_id,
+    limits:
+      typeof model.context === 'number' && Number.isFinite(model.context) && model.context > 0
+        ? { max_context_tokens: model.context }
+        : undefined,
+    pricing: zeroEvalPricingToCatalogPricing(model, lastUpdated, retrievedAt),
+    enrichment: {
+      source: 'zeroeval',
+      enriched_from: 'zeroeval',
+      source_url: ZEROEVAL_MODELS_URL,
+      synced_at: retrievedAt,
+      enriched_at: retrievedAt,
+      organization: isNonEmptyString(model.organization) ? model.organization : undefined,
+      organization_id: isNonEmptyString(model.organization_id)
+        ? model.organization_id
+        : undefined,
+      canonical_model_id:
+        isNonEmptyString(model.canonical_model_id) ? model.canonical_model_id : undefined,
+      release_date: normalizeDateLike(model.release_date),
+      announcement_date: normalizeDateLike(model.announcement_date),
+      multimodal: typeof model.multimodal === 'boolean' ? model.multimodal : undefined,
+      throughput:
+        typeof model.throughput === 'number' && Number.isFinite(model.throughput)
+          ? model.throughput
+          : undefined,
+      lifecycle: {
+        release_date: normalizeDateLike(model.release_date),
+        announcement_date: normalizeDateLike(model.announcement_date),
+        knowledge_cutoff: normalizeDateLike(model.knowledge_cutoff),
+      },
+      specs: {
+        params:
+          typeof model.params === 'number' && Number.isFinite(model.params)
+            ? model.params
+            : undefined,
+        training_tokens:
+          typeof model.training_tokens === 'number' && Number.isFinite(model.training_tokens)
+            ? model.training_tokens
+            : undefined,
+        throughput:
+          typeof model.throughput === 'number' && Number.isFinite(model.throughput)
+            ? model.throughput
+            : undefined,
+        multimodal:
+          typeof model.multimodal === 'boolean' ? model.multimodal : undefined,
+        license: isNonEmptyString(model.license) ? model.license : undefined,
+        is_moe: typeof model.is_moe === 'boolean' ? model.is_moe : undefined,
+      },
+      benchmarks,
+    },
   };
 }
 
@@ -820,6 +1076,57 @@ function openRouterPricingToCatalogPricing(
   return pricing;
 }
 
+function zeroEvalPricingToCatalogPricing(
+  model: ZeroEvalModel,
+  lastUpdated: string,
+  retrievedAt: string,
+): CatalogPricing | undefined {
+  const input =
+    typeof model.input_price === 'number' && Number.isFinite(model.input_price) && model.input_price >= 0
+      ? roundPrice(model.input_price)
+      : null;
+  const output =
+    typeof model.output_price === 'number' && Number.isFinite(model.output_price) && model.output_price >= 0
+      ? roundPrice(model.output_price)
+      : null;
+  if (input === null && output === null) return undefined;
+
+  const pricing: CatalogPricing = {
+    currency: 'USD',
+    billing_unit: 'usd_per_1m_tokens',
+    unit: 'usd_per_1m_tokens',
+    units: {
+      input: 'usd_per_1m_input_tokens',
+      output: 'usd_per_1m_output_tokens',
+      input_per_1m_tokens: 'usd_per_1m_input_tokens',
+      output_per_1m_tokens: 'usd_per_1m_output_tokens',
+    },
+    source_type: 'aggregator_api',
+    source: 'zeroeval',
+    source_url: ZEROEVAL_MODELS_URL,
+    last_updated: lastUpdated,
+    last_sync: retrievedAt,
+    retrieved_at: retrievedAt,
+    last_verified_at: retrievedAt,
+    manual_review_required: true,
+    review_reason:
+      'ZeroEval pricing is third-party enrichment metadata and should be reviewed before production billing decisions.',
+    stale_after_days: 7,
+    pricing_confidence: 'medium',
+    notes:
+      'ZeroEval input/output pricing is treated as a reference value in USD per 1M tokens and never overrides explicit local pricing.',
+  };
+  if (input !== null) {
+    pricing.input = input;
+    pricing.input_per_1m_tokens = input;
+  }
+  if (output !== null) {
+    pricing.output = output;
+    pricing.output_per_1m_tokens = output;
+  }
+  return pricing;
+}
+
 function parseUsdPerToken(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -828,6 +1135,24 @@ function parseUsdPerToken(value: string | number | null | undefined): number | n
 
 function roundPrice(value: number): number {
   return Number(value.toFixed(8));
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeDateLike(value: unknown): string | undefined {
+  return isNonEmptyString(value) ? value : undefined;
+}
+
+function mapZeroEvalOrganization(value: unknown): string | undefined {
+  if (!isNonEmptyString(value)) return undefined;
+  return ZEROEVAL_PROVIDER_ID_MAP[value.trim().toLowerCase()];
+}
+
+function isKnownBuiltInModel(providerId: string, modelId: unknown): boolean {
+  if (!isNonEmptyString(modelId)) return false;
+  return BUILTIN_PROVIDER_MODELS.get(providerId)?.has(modelId) === true;
 }
 
 function inferOpenRouterCapabilities(

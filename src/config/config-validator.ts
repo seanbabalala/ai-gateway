@@ -4738,6 +4738,7 @@ function validateCatalogConfig(
     );
   }
   const adapters = isRecord(sync.adapters) ? sync.adapters : {};
+  const automaticCatalogSyncAdapters = new Set(['openrouter', 'zeroeval']);
   let enabledSupportedAdapters = 0;
   for (const [provider, adapter] of Object.entries(adapters)) {
     if (!isRecord(adapter)) {
@@ -4761,7 +4762,7 @@ function validateCatalogConfig(
         ),
       );
     }
-    if (adapter.enabled === true && provider === 'openrouter') {
+    if (adapter.enabled === true && automaticCatalogSyncAdapters.has(provider)) {
       enabledSupportedAdapters += 1;
     } else if (adapter.enabled === true) {
       issues.push(

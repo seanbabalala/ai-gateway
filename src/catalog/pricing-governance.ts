@@ -57,6 +57,12 @@ function firstNumber(...values: unknown[]): number | undefined {
   return values.find(isFiniteNonNegativeNumber);
 }
 
+function normalizeDateTimeLike(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  return undefined;
+}
+
 export function inferPricingSourceType(pricing: CatalogPricing | undefined): CatalogPricingSourceType {
   if (!pricing) return 'unknown';
   if (pricing.source_type && PRICING_SOURCE_TYPES.includes(pricing.source_type)) {
@@ -84,6 +90,10 @@ export function pricingUsedFrom(model: CatalogModel | undefined): CatalogPricing
 export function normalizeCatalogPricing(pricing: CatalogPricing | undefined): CatalogPricing | undefined {
   if (!pricing) return undefined;
   const normalized: CatalogPricing = { ...pricing };
+  normalized.last_updated = normalizeDateTimeLike(normalized.last_updated) || String(normalized.last_updated || '');
+  normalized.retrieved_at = normalizeDateTimeLike(normalized.retrieved_at);
+  normalized.last_verified_at = normalizeDateTimeLike(normalized.last_verified_at);
+  normalized.last_sync = normalizeDateTimeLike(normalized.last_sync);
   normalized.currency = normalized.currency || 'USD';
   normalized.billing_unit = normalized.billing_unit || normalized.unit || 'usd_per_1m_tokens';
   normalized.source_type = inferPricingSourceType(normalized);

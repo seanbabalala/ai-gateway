@@ -133,6 +133,36 @@ export interface CatalogLimits {
   dimensions?: number | number[];
 }
 
+export interface CatalogModelEnrichment {
+  source: string;
+  source_url?: string;
+  synced_at?: string;
+  enriched_from?: string;
+  enriched_at?: string;
+  organization?: string;
+  organization_id?: string;
+  canonical_model_id?: string;
+  release_date?: string;
+  announcement_date?: string;
+  multimodal?: boolean;
+  throughput?: number;
+  lifecycle?: {
+    release_date?: string;
+    announcement_date?: string;
+    knowledge_cutoff?: string;
+  };
+  specs?: {
+    params?: number;
+    training_tokens?: number;
+    throughput?: number;
+    multimodal?: boolean;
+    license?: string;
+    is_moe?: boolean;
+  };
+  benchmarks?: Record<string, number>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CatalogModel {
   id: string;
   provider: string;
@@ -142,6 +172,7 @@ export interface CatalogModel {
   capabilities: string[];
   limits?: CatalogLimits;
   pricing?: CatalogPricing;
+  enrichment?: CatalogModelEnrichment;
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
@@ -208,6 +239,7 @@ export interface CatalogOverrideModel {
   capabilities?: string[];
   limits?: CatalogLimits;
   pricing?: CatalogPricing;
+  enrichment?: CatalogModelEnrichment;
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
