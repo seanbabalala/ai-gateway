@@ -1844,6 +1844,73 @@ export interface CatalogModel {
   supports_realtime?: boolean;
   supports_rerank?: boolean;
   manual_review_required?: boolean;
+  canonical_id?: string;
+  projection_source?:
+    | "canonical_projection"
+    | "catalog_override"
+    | "sync_cache"
+    | "builtin";
+  lifecycle?: {
+    release_date?: string;
+    announcement_date?: string;
+    knowledge_cutoff?: string;
+  };
+  specs?: {
+    params?: number;
+    training_tokens?: number;
+    throughput?: number;
+    multimodal?: boolean;
+    license?: string;
+    is_moe?: boolean;
+  };
+  benchmarks?: Record<string, number>;
+  match_strategy?:
+    | "exact_source_model_id"
+    | "exact_canonical_slug"
+    | "explicit_alias"
+    | "strict_signature"
+    | "strict_signature_release_date"
+    | "ambiguous_candidate"
+    | "unmatched";
+  match_confidence?: "high" | "medium" | "low";
+  pricing_sources?: {
+    effective?: {
+      source: string;
+      source_type: string | null;
+      source_url: string | null;
+      pricing_confidence: string | null;
+      manual_review_required: boolean;
+      last_updated: string | null;
+      retrieved_at: string | null;
+      last_verified_at: string | null;
+      has_pricing: boolean;
+    };
+    primary_reference?: {
+      source: string;
+      source_type: string | null;
+      source_url: string | null;
+      pricing_confidence: string | null;
+      manual_review_required: boolean;
+      last_updated: string | null;
+      retrieved_at: string | null;
+      last_verified_at: string | null;
+      has_pricing: boolean;
+    };
+    secondary_reference?: {
+      source: string;
+      source_type: string | null;
+      source_url: string | null;
+      pricing_confidence: string | null;
+      manual_review_required: boolean;
+      last_updated: string | null;
+      retrieved_at: string | null;
+      last_verified_at: string | null;
+      has_pricing: boolean;
+    };
+    effective_source: string | null;
+    primary_reference_source: string | null;
+    secondary_reference_source: string | null;
+  };
   source?: "builtin" | "sync_cache" | "override";
   overridden?: boolean;
   synced?: boolean;
@@ -1853,6 +1920,17 @@ export interface CatalogModel {
     synced_at?: string;
     enriched_from?: string;
     enriched_at?: string;
+    match_strategy?:
+      | "exact_source_model_id"
+      | "exact_canonical_slug"
+      | "explicit_alias"
+      | "strict_signature"
+      | "strict_signature_release_date"
+      | "ambiguous_candidate"
+      | "unmatched";
+    match_confidence?: "high" | "medium" | "low";
+    matched_from?: string[];
+    match_notes?: string[];
     organization?: string;
     organization_id?: string;
     canonical_model_id?: string;
@@ -1874,6 +1952,7 @@ export interface CatalogModel {
       is_moe?: boolean;
     };
     benchmarks?: Record<string, number>;
+    secondary_pricing_reference?: CatalogPricing;
     metadata?: Record<string, unknown>;
   };
   notes?: string;
@@ -1899,6 +1978,13 @@ export type CatalogProviderType =
   | "local"
   | "custom"
   | "compatible";
+
+export type CatalogProviderStatus =
+  | "active"
+  | "transport_only"
+  | "deprecated"
+  | "legacy_alias"
+  | "custom";
 
 export type CatalogCompatibilityProfile =
   | "native"
@@ -1940,6 +2026,12 @@ export interface CatalogProvider {
   name: string;
   display_name?: string;
   description?: string;
+  status?: CatalogProviderStatus;
+  provider_status?: CatalogProviderStatus;
+  default_visible?: boolean;
+  replacement_provider_id?: string;
+  replacement_note?: string;
+  status_reason?: string;
   base_url: string;
   base_url_matchers: string[];
   protocols: Array<"chat_completions" | "responses" | "messages">;
@@ -1973,6 +2065,23 @@ export interface CatalogProvider {
     model_count?: number;
     max_context_tokens?: number | null;
     max_file_size?: number | null;
+  };
+  canonical_model_coverage?: {
+    total_models: number;
+    canonicalized_models: number;
+    projected_models: number;
+    enriched_models: number;
+    benchmarked_models: number;
+    low_confidence_models: number;
+    coverage_ratio: number;
+  };
+  pricing_coverage?: {
+    total_models: number;
+    priced_models: number;
+    recommended_models: number;
+    recommended_priced_models: number;
+    manual_review_required_priced_models: number;
+    coverage_ratio: number;
   };
   pricing_units?: Record<string, string>;
   model_prefixes?: string[];

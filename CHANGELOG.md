@@ -6,6 +6,24 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.8.0 - 2026-05-06
+
+### Added
+
+- Released the v1.8.0 Canonical Catalog Normalization + Node UX Cleanup minor for the MIT OSS Data Plane, focusing on unifying provider/model source-of-truth boundaries, reducing stale catalog defaults, and making the Dashboard operator path clearer without introducing cloud-only dependencies.
+- Added an internal OpenRouter-first canonical model registry materialization layer on top of the existing catalog refresh/sync pipeline, so SiftGate can keep one primary canonical model dataset for ids, aliases, architecture, supported parameters, context, top-provider metadata, and reference pricing without turning that registry into a second operator-facing catalog.
+- Added a stricter ZeroEval canonical enrichment overlay with explicit match strategy, match confidence, matched-from evidence, and diagnostics for unmatched or low-confidence rows, allowing lifecycle, throughput, benchmark, multimodal/spec, and secondary pricing metadata to attach to canonical models instead of only a few built-in exact provider/model matches.
+- Added provider-projection metadata and Dashboard API fields for `provider_status`, `default_visible`, `replacement_provider_id`, `canonical_model_coverage`, `pricing_coverage`, `recommended_model_buckets`, `recommended_models`, `latest_model_hints`, `enrichment_summary`, `canonical_id`, `projection_source`, `lifecycle`, `specs`, `benchmarks`, `pricing_sources`, and `match_confidence`.
+- Added shared catalog signal UI across Nodes, Add Node, and Provider Catalog so operators now see consistent status badges, canonical/pricing coverage, recommended model previews, and trust-copy about OpenRouter and ZeroEval reference pricing.
+
+### Changed
+
+- OpenRouter sync no longer acts only like an `openrouter` provider refresh. It now drives the internal canonical model primary dataset, while the merged provider catalog remains the single public operator-facing surface.
+- ZeroEval enrichment now layers onto canonical models first, then flows through provider projections. OpenRouter reference pricing remains primary, ZeroEval pricing remains secondary and review-required, and the established pricing precedence is unchanged: explicit `nodes[].model_capabilities.<model>.pricing`, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in/fallback catalog references.
+- Built-in static provider model lists were demoted from primary truth to transport seed/fallback/reference data when canonical projections exist. Historical stale provider/model rows are now classified as `active`, `transport_only`, `deprecated`, `legacy_alias`, or `custom` instead of continuing to look equally authoritative in the default UI path.
+- Dashboard Nodes now separates configured upstreams from catalog onboarding; Add Node now defaults to active providers and canonical recommended buckets instead of stale alphabetical model guesses; Provider Catalog now explains catalog truth, coverage, and trust signals without presenting multiple competing provider/model truths.
+- Release metadata is aligned to v1.8.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes manifest, OpenAPI document metadata, and release-version sync coverage.
+
 ## 1.7.0 - 2026-05-06
 
 ### Added

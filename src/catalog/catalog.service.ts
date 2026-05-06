@@ -23,8 +23,22 @@ import {
   inferCatalogCompatibilityProfiles,
   isCompatibilityProfileId,
 } from './compatibility-profiles';
+import {
+  augmentProviderAliases,
+  buildCanonicalProjectionProviders,
+  findCatalogProviderByIdOrAlias,
+  providerReplacementId,
+  providerStatusReason,
+  resolveProviderStatus,
+} from './provider-projection';
 import type {
+  CatalogCanonicalArchitecture,
+  CatalogCanonicalModel,
+  CatalogCanonicalRegistry,
+  CatalogCanonicalSourceMetadata,
+  CatalogCanonicalTopProvider,
   CatalogIssue,
+  CatalogInternalMaterialization,
   CatalogLoadOptions,
   CatalogLoadResult,
   CatalogModel,
@@ -35,6 +49,7 @@ import type {
   CatalogPricingDimension,
   CatalogPricingHygiene,
   CatalogProvider,
+  CatalogProviderStatus,
   CatalogSource,
   ProviderCatalog,
 } from './catalog.types';
@@ -63,6 +78,13 @@ const PRICING_DIMENSIONS: CatalogPricingDimension[] = [
   ...UNIFIED_PRICING_DIMENSIONS,
 ];
 const PRICING_CONFIDENCES = new Set(['high', 'medium', 'low', 'unknown']);
+const PROVIDER_STATUSES = new Set<CatalogProviderStatus>([
+  'active',
+  'transport_only',
+  'deprecated',
+  'legacy_alias',
+  'custom',
+]);
 const PLACEHOLDER_SOURCE_PATTERN = /(placeholder|operator_required|manual[_-]?placeholder|unknown|replace)/i;
 const DEFAULT_STALE_AFTER_DAYS = 90;
 
@@ -108,6 +130,12 @@ function normalizeDateOnlyLikeValue(value: unknown): string | undefined {
   const parsed = Date.parse(normalized);
   if (Number.isNaN(parsed)) return normalized;
   return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function normalizeNonEmptyStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries = [...new Set(value.filter(isNonEmptyString).map((entry) => entry.trim()))];
+  return entries.length > 0 ? entries : undefined;
 }
 
 function normalizeModelEnrichment(
@@ -175,6 +203,12 @@ function normalizeModelEnrichment(
   const canonicalModelId =
     (isNonEmptyString(enrichment.canonical_model_id) && enrichment.canonical_model_id) ||
     (isNonEmptyString(metadata?.canonical_model_id) ? (metadata?.canonical_model_id as string) : undefined);
+  const matchedFrom =
+    normalizeNonEmptyStringArray(enrichment.matched_from) ||
+    normalizeNonEmptyStringArray(metadata?.matched_from);
+  const matchNotes =
+    normalizeNonEmptyStringArray(enrichment.match_notes) ||
+    normalizeNonEmptyStringArray(metadata?.match_notes);
   return {
     ...enrichment,
     synced_at: normalizeDateLikeValue(enrichment.synced_at),
@@ -182,13 +216,328 @@ function normalizeModelEnrichment(
     enriched_at:
       normalizeDateLikeValue(enrichment.enriched_at) ||
       normalizeDateLikeValue(enrichment.synced_at),
+    match_strategy:
+      enrichment.match_strategy === 'exact_source_model_id' ||
+      enrichment.match_strategy === 'exact_canonical_slug' ||
+      enrichment.match_strategy === 'explicit_alias' ||
+      enrichment.match_strategy === 'strict_signature' ||
+      enrichment.match_strategy === 'strict_signature_release_date' ||
+      enrichment.match_strategy === 'ambiguous_candidate' ||
+      enrichment.match_strategy === 'unmatched'
+        ? enrichment.match_strategy
+        : undefined,
+    match_confidence:
+      enrichment.match_confidence === 'high' ||
+      enrichment.match_confidence === 'medium' ||
+      enrichment.match_confidence === 'low'
+        ? enrichment.match_confidence
+        : undefined,
+    matched_from: matchedFrom,
+    match_notes: matchNotes,
     canonical_model_id: canonicalModelId,
     release_date: normalizeDateOnlyLikeValue(enrichment.release_date),
     announcement_date: normalizeDateOnlyLikeValue(enrichment.announcement_date),
     lifecycle: Object.values(lifecycle).some(Boolean) ? lifecycle : undefined,
     specs: Object.values(specs).some((value) => value !== undefined) ? specs : undefined,
     benchmarks,
+    secondary_pricing_reference: isRecord(enrichment.secondary_pricing_reference)
+      ? normalizeCatalogPricing({
+          ...enrichment.secondary_pricing_reference,
+        } as unknown as CatalogPricing)
+      : undefined,
     metadata: cloneEnrichmentMetadata(enrichment.metadata),
+  };
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function normalizeCanonicalArchitectureValue(
+  value: unknown,
+): CatalogCanonicalArchitecture | undefined {
+  if (!isRecord(value)) return undefined;
+  const architecture: CatalogCanonicalArchitecture = {
+    modality: isNonEmptyString(value.modality) ? value.modality : undefined,
+    tokenizer: isNonEmptyString(value.tokenizer) ? value.tokenizer : undefined,
+    instruct_type:
+      value.instruct_type === null
+        ? null
+        : isNonEmptyString(value.instruct_type)
+          ? value.instruct_type
+          : undefined,
+    input_modalities: Array.isArray(value.input_modalities)
+      ? value.input_modalities.filter(isNonEmptyString)
+      : undefined,
+    output_modalities: Array.isArray(value.output_modalities)
+      ? value.output_modalities.filter(isNonEmptyString)
+      : undefined,
+  };
+  return Object.values(architecture).some((entry) => entry !== undefined)
+    ? architecture
+    : undefined;
+}
+
+function normalizeCanonicalTopProviderValue(
+  value: unknown,
+): CatalogCanonicalTopProvider | undefined {
+  if (!isRecord(value)) return undefined;
+  const topProvider: CatalogCanonicalTopProvider = {
+    context_length: isFiniteNonNegativeNumber(value.context_length)
+      ? value.context_length
+      : undefined,
+    max_completion_tokens: isFiniteNonNegativeNumber(value.max_completion_tokens)
+      ? value.max_completion_tokens
+      : undefined,
+    is_moderated:
+      typeof value.is_moderated === 'boolean' ? value.is_moderated : undefined,
+  };
+  return Object.values(topProvider).some((entry) => entry !== undefined)
+    ? topProvider
+    : undefined;
+}
+
+function normalizeCanonicalSourceMetadataValue(
+  value: unknown,
+): CatalogCanonicalSourceMetadata | undefined {
+  if (!isRecord(value) || !isNonEmptyString(value.source)) return undefined;
+  return {
+    source: value.source,
+    source_url: isNonEmptyString(value.source_url) ? value.source_url : undefined,
+    synced_at: normalizeDateLikeValue(value.synced_at),
+    dataset_role:
+      value.dataset_role === 'canonical_primary' ||
+      value.dataset_role === 'enrichment_overlay' ||
+      value.dataset_role === 'provider_projection'
+        ? value.dataset_role
+        : undefined,
+  };
+}
+
+function normalizeCanonicalModelValue(
+  value: unknown,
+): CatalogCanonicalModel | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    !isNonEmptyString(value.canonical_id) ||
+    !isNonEmptyString(value.source_model_id) ||
+    !isNonEmptyString(value.source_provider_slug)
+  ) {
+    return undefined;
+  }
+  const sourceMetadata = normalizeCanonicalSourceMetadataValue(value.source_metadata);
+  if (!sourceMetadata) return undefined;
+
+  const aliases = Array.isArray(value.aliases)
+    ? [...new Set(value.aliases.filter(isNonEmptyString))]
+    : undefined;
+  const supportedParameters = Array.isArray(value.supported_parameters)
+    ? [...new Set(value.supported_parameters.filter(isNonEmptyString))]
+    : undefined;
+
+  return {
+    canonical_id: value.canonical_id,
+    source_model_id: value.source_model_id,
+    source_provider_slug: value.source_provider_slug,
+    display_name:
+      isNonEmptyString(value.display_name) ? value.display_name : value.source_model_id,
+    aliases: aliases && aliases.length > 0 ? aliases : undefined,
+    canonical_slug: isNonEmptyString(value.canonical_slug) ? value.canonical_slug : undefined,
+    description: isNonEmptyString(value.description) ? value.description : undefined,
+    context_length: isFiniteNonNegativeNumber(value.context_length)
+      ? value.context_length
+      : undefined,
+    architecture: normalizeCanonicalArchitectureValue(value.architecture),
+    input_modalities: Array.isArray(value.input_modalities)
+      ? [...new Set(value.input_modalities.filter(isNonEmptyString))]
+      : undefined,
+    output_modalities: Array.isArray(value.output_modalities)
+      ? [...new Set(value.output_modalities.filter(isNonEmptyString))]
+      : undefined,
+    supported_parameters:
+      supportedParameters && supportedParameters.length > 0
+        ? supportedParameters
+        : undefined,
+    default_parameters: isRecord(value.default_parameters)
+      ? cloneJsonValue(value.default_parameters)
+      : undefined,
+    pricing_reference: isRecord(value.pricing_reference)
+      ? normalizeCatalogPricing({ ...value.pricing_reference } as unknown as CatalogPricing)
+      : undefined,
+    enrichment: normalizeModelEnrichment(
+      isRecord(value.enrichment)
+        ? (value.enrichment as unknown as CatalogModel['enrichment'])
+        : undefined,
+    ),
+    top_provider: normalizeCanonicalTopProviderValue(value.top_provider),
+    expiration_date: normalizeDateLikeValue(value.expiration_date),
+    created: normalizeDateLikeValue(value.created),
+    source_metadata: sourceMetadata,
+    metadata: isRecord(value.metadata) ? cloneJsonValue(value.metadata) : undefined,
+  };
+}
+
+function normalizeCanonicalOverlayDiagnosticValue(
+  value: unknown,
+): NonNullable<
+  NonNullable<
+    NonNullable<CatalogInternalMaterialization['diagnostics']>['zeroeval_overlay']
+  >['unmatched_models']
+>[number] | undefined {
+  if (!isRecord(value) || !isNonEmptyString(value.model_id) || !isNonEmptyString(value.reason)) {
+    return undefined;
+  }
+  return {
+    organization_id: isNonEmptyString(value.organization_id) ? value.organization_id : undefined,
+    model_id: value.model_id,
+    canonical_id: isNonEmptyString(value.canonical_id) ? value.canonical_id : undefined,
+    match_strategy:
+      value.match_strategy === 'exact_source_model_id' ||
+      value.match_strategy === 'exact_canonical_slug' ||
+      value.match_strategy === 'explicit_alias' ||
+      value.match_strategy === 'strict_signature' ||
+      value.match_strategy === 'strict_signature_release_date' ||
+      value.match_strategy === 'ambiguous_candidate' ||
+      value.match_strategy === 'unmatched'
+        ? value.match_strategy
+        : undefined,
+    match_confidence:
+      value.match_confidence === 'high' ||
+      value.match_confidence === 'medium' ||
+      value.match_confidence === 'low'
+        ? value.match_confidence
+        : undefined,
+    reason: value.reason,
+    matched_from: normalizeNonEmptyStringArray(value.matched_from),
+    match_notes: normalizeNonEmptyStringArray(value.match_notes),
+  };
+}
+
+function normalizeZeroEvalOverlayDiagnosticsValue(
+  value: unknown,
+): NonNullable<CatalogInternalMaterialization['diagnostics']>['zeroeval_overlay'] | undefined {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.source) ||
+    !isNonEmptyString(value.source_url) ||
+    !normalizeDateLikeValue(value.synced_at)
+  ) {
+    return undefined;
+  }
+  const unmatchedModels = Array.isArray(value.unmatched_models)
+    ? value.unmatched_models
+        .map((entry) => normalizeCanonicalOverlayDiagnosticValue(entry))
+        .filter(
+          (entry): entry is NonNullable<
+            NonNullable<
+              NonNullable<CatalogInternalMaterialization['diagnostics']>['zeroeval_overlay']
+            >['unmatched_models']
+          >[number] => entry !== undefined,
+        )
+    : undefined;
+  const lowConfidenceMatches = Array.isArray(value.low_confidence_matches)
+    ? value.low_confidence_matches
+        .map((entry) => normalizeCanonicalOverlayDiagnosticValue(entry))
+        .filter(
+          (entry): entry is NonNullable<
+            NonNullable<
+              NonNullable<CatalogInternalMaterialization['diagnostics']>['zeroeval_overlay']
+            >['low_confidence_matches']
+          >[number] => entry !== undefined,
+        )
+    : undefined;
+  const ambiguousMatches = Array.isArray(value.ambiguous_matches)
+    ? value.ambiguous_matches
+        .map((entry) => normalizeCanonicalOverlayDiagnosticValue(entry))
+        .filter(
+          (entry): entry is NonNullable<
+            NonNullable<
+              NonNullable<CatalogInternalMaterialization['diagnostics']>['zeroeval_overlay']
+            >['ambiguous_matches']
+          >[number] => entry !== undefined,
+        )
+    : undefined;
+
+  return {
+    source: value.source,
+    source_url: value.source_url,
+    synced_at: normalizeDateLikeValue(value.synced_at)!,
+    canonical_model_count: isFiniteNonNegativeNumber(value.canonical_model_count)
+      ? value.canonical_model_count
+      : 0,
+    zeroeval_model_count: isFiniteNonNegativeNumber(value.zeroeval_model_count)
+      ? value.zeroeval_model_count
+      : 0,
+    matched_model_count: isFiniteNonNegativeNumber(value.matched_model_count)
+      ? value.matched_model_count
+      : 0,
+    projected_model_count: isFiniteNonNegativeNumber(value.projected_model_count)
+      ? value.projected_model_count
+      : 0,
+    high_confidence_match_count: isFiniteNonNegativeNumber(value.high_confidence_match_count)
+      ? value.high_confidence_match_count
+      : 0,
+    medium_confidence_match_count: isFiniteNonNegativeNumber(value.medium_confidence_match_count)
+      ? value.medium_confidence_match_count
+      : 0,
+    low_confidence_match_count: isFiniteNonNegativeNumber(value.low_confidence_match_count)
+      ? value.low_confidence_match_count
+      : 0,
+    unmatched_model_count: isFiniteNonNegativeNumber(value.unmatched_model_count)
+      ? value.unmatched_model_count
+      : 0,
+    ambiguous_match_count: isFiniteNonNegativeNumber(value.ambiguous_match_count)
+      ? value.ambiguous_match_count
+      : 0,
+    unmatched_models: unmatchedModels && unmatchedModels.length > 0 ? unmatchedModels : undefined,
+    low_confidence_matches:
+      lowConfidenceMatches && lowConfidenceMatches.length > 0
+        ? lowConfidenceMatches
+        : undefined,
+    ambiguous_matches: ambiguousMatches && ambiguousMatches.length > 0 ? ambiguousMatches : undefined,
+  };
+}
+
+function normalizeCanonicalRegistryValue(
+  value: unknown,
+): CatalogCanonicalRegistry | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    !isNonEmptyString(value.primary_source) ||
+    !isNonEmptyString(value.source_url) ||
+    !normalizeDateLikeValue(value.generated_at)
+  ) {
+    return undefined;
+  }
+
+  const models = Array.isArray(value.models)
+    ? value.models
+        .map((model) => normalizeCanonicalModelValue(model))
+        .filter((model): model is CatalogCanonicalModel => model !== undefined)
+        .sort((a, b) => a.canonical_id.localeCompare(b.canonical_id))
+    : [];
+
+  return {
+    version: 1,
+    primary_source: value.primary_source,
+    source_url: value.source_url,
+    generated_at: normalizeDateLikeValue(value.generated_at)!,
+    model_count: models.length,
+    models,
+  };
+}
+
+function normalizeCatalogInternalMaterializationValue(
+  value: unknown,
+): CatalogInternalMaterialization {
+  if (!isRecord(value)) return {};
+  const canonicalRegistry = normalizeCanonicalRegistryValue(value.canonical_registry);
+  const zeroEvalOverlay = normalizeZeroEvalOverlayDiagnosticsValue(
+    isRecord(value.diagnostics) ? value.diagnostics.zeroeval_overlay : undefined,
+  );
+  return {
+    canonical_registry: canonicalRegistry,
+    diagnostics: zeroEvalOverlay ? { zeroeval_overlay: zeroEvalOverlay } : undefined,
   };
 }
 
@@ -210,6 +559,9 @@ function cloneProvider(provider: CatalogProvider): CatalogProvider {
   return {
     ...provider,
     aliases: provider.aliases ? [...provider.aliases] : undefined,
+    status: provider.status,
+    replacement_provider_id: provider.replacement_provider_id,
+    status_reason: provider.status_reason,
     input_types: provider.input_types ? [...provider.input_types] : undefined,
     output_types: provider.output_types ? [...provider.output_types] : undefined,
     model_buckets: provider.model_buckets
@@ -361,12 +713,17 @@ export function loadMergedCatalog(
     }
   }
 
+  const internal = mergeCatalogInternalMaterializations([
+    { override: syncCache },
+    { override },
+  ]);
   const catalog = mergeCatalog(
     [
       { override: syncCache, source: 'sync_cache' },
       { override, source: 'override' },
     ],
     overridePath,
+    internal,
   );
   return {
     catalog,
@@ -375,6 +732,7 @@ export function loadMergedCatalog(
     syncCachePath,
     syncCacheFound,
     issues,
+    internal,
   };
 }
 
@@ -466,11 +824,17 @@ export function validateCatalogOverrideObject(
   providers.forEach((provider, index) =>
     validateOverrideProvider(provider, `providers[${index}]`, issues),
   );
+  const internal = validateCatalogInternalMaterialization(
+    value._siftgate_internal,
+    '_siftgate_internal',
+    issues,
+  );
 
   return {
     override: {
       version: 1,
       providers,
+      _siftgate_internal: internal,
     },
     issues,
   };
@@ -537,6 +901,48 @@ function validateOverrideProvider(
         'catalog_provider_id_invalid',
         'Provider override id must be a non-empty string.',
         `${basePath}.id`,
+      ),
+    );
+  }
+
+  if (
+    provider.status !== undefined &&
+    (!isNonEmptyString(provider.status) || !PROVIDER_STATUSES.has(provider.status))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_provider_status_invalid',
+        'Provider status must be active, transport_only, deprecated, legacy_alias, or custom.',
+        `${basePath}.status`,
+      ),
+    );
+  }
+
+  if (
+    provider.replacement_provider_id !== undefined &&
+    !isNonEmptyString(provider.replacement_provider_id)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_provider_replacement_invalid',
+        'replacement_provider_id must be a non-empty string when set.',
+        `${basePath}.replacement_provider_id`,
+      ),
+    );
+  }
+
+  if (
+    provider.status_reason !== undefined &&
+    !isNonEmptyString(provider.status_reason)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'catalog_provider_status_reason_invalid',
+        'status_reason must be a non-empty string when set.',
+        `${basePath}.status_reason`,
       ),
     );
   }
@@ -695,6 +1101,91 @@ function validateOverrideModel(
         );
       }
       if (
+        model.enrichment.enriched_at !== undefined &&
+        normalizeDateLikeValue(model.enrichment.enriched_at) === undefined
+      ) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_model_enrichment_enriched_at_invalid',
+            'Model enrichment enriched_at should be an ISO date/time when set.',
+            `${basePath}.enrichment.enriched_at`,
+          ),
+        );
+      }
+      if (
+        model.enrichment.match_strategy !== undefined &&
+        ![
+          'exact_source_model_id',
+          'exact_canonical_slug',
+          'explicit_alias',
+          'strict_signature',
+          'strict_signature_release_date',
+          'ambiguous_candidate',
+          'unmatched',
+        ].includes(model.enrichment.match_strategy)
+      ) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_model_enrichment_match_strategy_invalid',
+            'Model enrichment match_strategy is not a recognized catalog matching strategy.',
+            `${basePath}.enrichment.match_strategy`,
+          ),
+        );
+      }
+      if (
+        model.enrichment.match_confidence !== undefined &&
+        !['high', 'medium', 'low'].includes(model.enrichment.match_confidence)
+      ) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_model_enrichment_match_confidence_invalid',
+            'Model enrichment match_confidence must be high, medium, or low when set.',
+            `${basePath}.enrichment.match_confidence`,
+          ),
+        );
+      }
+      if (
+        model.enrichment.matched_from !== undefined &&
+        !Array.isArray(model.enrichment.matched_from)
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'catalog_model_enrichment_matched_from_invalid',
+            'Model enrichment matched_from must be an array of strings when set.',
+            `${basePath}.enrichment.matched_from`,
+          ),
+        );
+      } else {
+        validateStringArray(
+          model.enrichment.matched_from,
+          `${basePath}.enrichment.matched_from`,
+          issues,
+        );
+      }
+      if (
+        model.enrichment.match_notes !== undefined &&
+        !Array.isArray(model.enrichment.match_notes)
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'catalog_model_enrichment_match_notes_invalid',
+            'Model enrichment match_notes must be an array of strings when set.',
+            `${basePath}.enrichment.match_notes`,
+          ),
+        );
+      } else {
+        validateStringArray(
+          model.enrichment.match_notes,
+          `${basePath}.enrichment.match_notes`,
+          issues,
+        );
+      }
+      if (
         model.enrichment.metadata !== undefined &&
         !isRecord(model.enrichment.metadata)
       ) {
@@ -768,8 +1259,112 @@ function validateOverrideModel(
           }
         }
       }
+      if (model.enrichment.secondary_pricing_reference !== undefined) {
+        validatePricing(
+          model.enrichment.secondary_pricing_reference,
+          `${basePath}.enrichment.secondary_pricing_reference`,
+          issues,
+        );
+      }
     }
   }
+}
+
+function validateCatalogInternalMaterialization(
+  value: unknown,
+  basePath: string,
+  issues: CatalogIssue[],
+): CatalogInternalMaterialization | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_internal_materialization_invalid',
+        'Catalog internal materialization should be an object when present.',
+        basePath,
+      ),
+    );
+    return undefined;
+  }
+
+  let canonicalRegistry: CatalogInternalMaterialization['canonical_registry'];
+  if (value.canonical_registry !== undefined) {
+    if (!isRecord(value.canonical_registry)) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_canonical_registry_invalid',
+          'Catalog internal canonical_registry should be an object when present.',
+          `${basePath}.canonical_registry`,
+        ),
+      );
+    } else {
+      canonicalRegistry = normalizeCanonicalRegistryValue(value.canonical_registry);
+      if (!canonicalRegistry) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_canonical_registry_invalid',
+            'Catalog internal canonical_registry is malformed and will be ignored.',
+            `${basePath}.canonical_registry`,
+          ),
+        );
+      } else {
+        validateCatalogUrl(
+          canonicalRegistry.source_url,
+          `${basePath}.canonical_registry.source_url`,
+          issues,
+          'Catalog canonical_registry.source_url',
+        );
+        if (Array.isArray(value.canonical_registry.models)) {
+          const rawCount = value.canonical_registry.models.length;
+          if (rawCount !== canonicalRegistry.models.length) {
+            issues.push(
+              issue(
+                'warning',
+                'catalog_canonical_registry_model_skipped',
+                `Skipped ${rawCount - canonicalRegistry.models.length} malformed canonical model entr${rawCount - canonicalRegistry.models.length === 1 ? 'y' : 'ies'} while loading internal canonical_registry.`,
+                `${basePath}.canonical_registry.models`,
+              ),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  let zeroEvalOverlay: NonNullable<CatalogInternalMaterialization['diagnostics']>['zeroeval_overlay'];
+  if (isRecord(value.diagnostics) && value.diagnostics.zeroeval_overlay !== undefined) {
+    zeroEvalOverlay = normalizeZeroEvalOverlayDiagnosticsValue(
+      value.diagnostics.zeroeval_overlay,
+    );
+    if (!zeroEvalOverlay) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_zeroeval_overlay_diagnostics_invalid',
+          'Catalog internal zeroeval_overlay diagnostics are malformed and will be ignored.',
+          `${basePath}.diagnostics.zeroeval_overlay`,
+        ),
+      );
+    }
+  } else if (value.diagnostics !== undefined && !isRecord(value.diagnostics)) {
+    issues.push(
+      issue(
+        'warning',
+        'catalog_internal_diagnostics_invalid',
+        'Catalog internal diagnostics should be an object when present.',
+        `${basePath}.diagnostics`,
+      ),
+    );
+  }
+
+  if (!canonicalRegistry && !zeroEvalOverlay) return undefined;
+  return {
+    canonical_registry: canonicalRegistry,
+    diagnostics: zeroEvalOverlay ? { zeroeval_overlay: zeroEvalOverlay } : undefined,
+  };
 }
 
 function validateCacheFlags(
@@ -1285,9 +1880,25 @@ export function mergeCatalog(
     | null
     | Array<{ override: CatalogOverrideFile | null; source: CatalogSource }> = null,
   overrideFile?: string,
+  internal: CatalogInternalMaterialization = {},
 ): ProviderCatalog {
-  const providers = BUILTIN_PROVIDER_CATALOG.map(cloneProvider);
+  const canonicalRegistryPresent = Boolean(internal.canonical_registry?.models.length);
+  const providers = BUILTIN_PROVIDER_CATALOG.map((provider) =>
+    prepareBuiltinProviderForMerge(provider, canonicalRegistryPresent),
+  );
   const byId = new Map(providers.map((provider) => [provider.id, provider]));
+
+  if (internal.canonical_registry?.models.length) {
+    const projectedProviders = buildCanonicalProjectionProviders({
+      canonicalRegistry: internal.canonical_registry,
+      providers: BUILTIN_PROVIDER_CATALOG.map(cloneProvider),
+    });
+    for (const projectedProvider of Object.values(projectedProviders)) {
+      const existing = byId.get(projectedProvider.id || '');
+      if (!existing || !projectedProvider.id) continue;
+      mergeProvider(existing, projectedProvider, 'sync_cache');
+    }
+  }
 
   const layers = Array.isArray(overrides)
     ? overrides
@@ -1307,6 +1918,10 @@ export function mergeCatalog(
     }
   }
 
+  for (const provider of providers) {
+    finalizeMergedProvider(provider, canonicalRegistryPresent);
+  }
+
   providers.sort((a, b) => a.id.localeCompare(b.id));
   for (const provider of providers) {
     provider.models.sort((a, b) => a.id.localeCompare(b.id));
@@ -1320,6 +1935,58 @@ export function mergeCatalog(
   };
 }
 
+function prepareBuiltinProviderForMerge(
+  provider: CatalogProvider,
+  canonicalRegistryPresent: boolean,
+): CatalogProvider {
+  const next = cloneProvider(provider);
+  next.aliases = augmentProviderAliases(next);
+  next.replacement_provider_id = providerReplacementId(next.id);
+  next.status = resolveProviderStatus({
+    provider: next,
+    canonicalRegistryPresent,
+  });
+  next.status_reason = providerStatusReason(next.id, next.status);
+  if (canonicalRegistryPresent) {
+    next.models = [];
+    next.model_buckets = undefined;
+  }
+  return next;
+}
+
+function finalizeMergedProvider(
+  provider: CatalogProvider,
+  canonicalRegistryPresent: boolean,
+): void {
+  provider.aliases = augmentProviderAliases(provider);
+  provider.status = resolveProviderStatus({
+    provider,
+    canonicalRegistryPresent,
+    preferExistingStatus: false,
+  });
+  provider.replacement_provider_id =
+    provider.replacement_provider_id || providerReplacementId(provider.id);
+  provider.status_reason =
+    provider.status_reason || providerStatusReason(provider.id, provider.status);
+
+  const hasProjectedOrOperatorModels =
+    provider.models.length > 0 &&
+    provider.models.some(
+      (model) => model.source !== 'builtin' || model.overridden || model.synced,
+    );
+  const providerPricingSource = provider.pricing?.source || '';
+  if (
+    canonicalRegistryPresent &&
+    provider.status === 'active' &&
+    hasProjectedOrOperatorModels &&
+    (providerPricingSource === 'builtin-reference' ||
+      providerPricingSource === 'provider-reference' ||
+      providerPricingSource === 'builtin-static-placeholder')
+  ) {
+    provider.pricing = undefined;
+  }
+}
+
 function normalizeOverrideProvidersForMerge(
   override: CatalogOverrideFile | null,
 ): CatalogOverrideProvider[] {
@@ -1329,6 +1996,26 @@ function normalizeOverrideProvidersForMerge(
     id,
     ...provider,
   }));
+}
+
+function mergeCatalogInternalMaterializations(
+  layers: Array<{ override: CatalogOverrideFile | null }>,
+): CatalogInternalMaterialization {
+  const merged: CatalogInternalMaterialization = {};
+  for (const layer of layers) {
+    if (layer.override?._siftgate_internal?.canonical_registry) {
+      merged.canonical_registry = cloneJsonValue(
+        layer.override._siftgate_internal.canonical_registry,
+      );
+    }
+    if (layer.override?._siftgate_internal?.diagnostics?.zeroeval_overlay) {
+      merged.diagnostics ??= {};
+      merged.diagnostics.zeroeval_overlay = cloneJsonValue(
+        layer.override._siftgate_internal.diagnostics.zeroeval_overlay,
+      );
+    }
+  }
+  return merged;
 }
 
 function mergeProvider(
@@ -1343,6 +2030,11 @@ function mergeProvider(
   }
   if (override.name !== undefined) target.name = override.name;
   if (override.aliases) target.aliases = [...override.aliases];
+  if (override.status !== undefined) target.status = override.status;
+  if (override.replacement_provider_id !== undefined) {
+    target.replacement_provider_id = override.replacement_provider_id;
+  }
+  if (override.status_reason !== undefined) target.status_reason = override.status_reason;
   if (override.family !== undefined) target.family = override.family;
   if (override.category !== undefined) target.category = override.category;
   if (override.provider_type !== undefined) target.provider_type = override.provider_type;
@@ -1390,6 +2082,18 @@ function mergeProvider(
       modelsById.set(model.id, model);
     }
   }
+
+  if (
+    source === 'override' &&
+    override.status === undefined &&
+    target.status === 'transport_only' &&
+    (override.models?.length || 0) > 0
+  ) {
+    target.status = 'active';
+    target.status_reason =
+      target.status_reason ||
+      'Local catalog overrides supplied explicit models for this preset, so SiftGate now treats it as an active operator-facing provider row.';
+  }
 }
 
 function providerFromOverride(
@@ -1401,6 +2105,11 @@ function providerFromOverride(
     id,
     name: override.name || id,
     aliases: override.aliases ? [...override.aliases] : undefined,
+    status:
+      override.status ||
+      (id === 'openai-compatible' ? 'custom' : undefined),
+    replacement_provider_id: override.replacement_provider_id,
+    status_reason: override.status_reason,
     family: override.family,
     category: override.category,
     provider_type: override.provider_type,
@@ -1527,7 +2236,7 @@ export function findCatalogModelForNode(
     ? normalizeComparableUrl(node.base_url)
     : '';
   const providerById = nodeId
-    ? catalog.providers.find((provider) => provider.id === nodeId)
+    ? findCatalogProviderByIdOrAlias(catalog.providers, nodeId)
     : undefined;
   const providerByUrl = baseUrl
     ? catalog.providers.find(
@@ -1815,6 +2524,10 @@ export class CatalogService {
 
   providers(): CatalogProvider[] {
     return this.load().catalog.providers;
+  }
+
+  canonicalRegistry(): CatalogCanonicalRegistry | undefined {
+    return this.load().internal.canonical_registry;
   }
 
   models(filters: { provider?: string; modality?: string } = {}): CatalogModel[] {

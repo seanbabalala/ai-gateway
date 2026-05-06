@@ -1,8 +1,8 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers, adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profiles, and unifies pricing source governance so Dashboard, routing, benchmark reports, config validation, CLI export, sync cache, local overrides, route explanation, and provider compatibility checks all read the same catalog/pricing/compatibility evidence. v1.7 keeps that same architecture and adds third-party model enrichment plus fresh default model recommendations without introducing a second catalog or moving provider/model lists into frontend code.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers, adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profiles, and unifies pricing source governance so Dashboard, routing, benchmark reports, config validation, CLI export, sync cache, local overrides, route explanation, and provider compatibility checks all read the same catalog/pricing/compatibility evidence. v1.8 keeps the public merged catalog as that same single operator-facing surface, but normalizes the internals around an OpenRouter-first canonical model registry, a ZeroEval enrichment overlay, and provider projections so SiftGate no longer behaves like three parallel provider/model truths stitched together.
 
-The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, and v1.7 can enrich known provider/model entries with ZeroEval metadata, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
+The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, and v1.8 can overlay ZeroEval metadata onto canonical models, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
 ## Goals
 
@@ -15,7 +15,7 @@ The important product rule is honesty: built-in provider/model/pricing data is a
 
 ## Adding Providers
 
-Use [docs/ADDING_PROVIDERS.md](ADDING_PROVIDERS.md) when adding or reviewing provider metadata. v1.4 still carries both `src/catalog/built-in-catalog.ts` and the legacy `src/catalog/provider-catalog.data.ts` projection, so provider additions may need both paths until the catalog is fully single-sourced. Do not hardcode provider/model lists in Dashboard components, and do not store provider API keys or resolved secrets in catalog override files.
+Use [docs/ADDING_PROVIDERS.md](ADDING_PROVIDERS.md) when adding or reviewing provider metadata. In v1.8, do not treat built-in static provider model lists as the primary truth when canonical projection exists. Provider transport metadata, canonical model materialization, and provider projection now have different responsibilities. Do not hardcode provider/model lists in Dashboard components, and do not store provider API keys or resolved secrets in catalog override files.
 
 ## Dashboard APIs
 
@@ -52,23 +52,41 @@ Dashboard provider rows also include operator-facing fields derived from the mer
 | `model_buckets` | Catalog-derived `models`, `embedding_models`, `rerank_models`, `image_models`, `audio_models`, `video_models`, `realtime_models`, and `batch_models`. |
 | `limits` / `pricing_units` | Summaries for detail panels and validation UI. |
 | `recommended_model_buckets` / `latest_model_hints` / `recommended_models` | Backend-computed fresh defaults for Add Node, based on merged catalog metadata rather than frontend heuristics. |
+| `provider_status` / `default_visible` / `replacement_provider_id` | Explains whether a provider is active, transport-only, deprecated, legacy alias, or custom, and whether it belongs on the default onboarding path. |
+| `canonical_model_coverage` / `pricing_coverage` | Read-only coverage summaries showing how much of the provider model view came from canonical projection and how much has usable price reference metadata. |
 | `enrichment_summary` | Lightweight provider-level summary of how many models were enriched, which sources were used, whether benchmark snippets exist, and the freshest enrichment timestamp. |
 
-Dashboard also includes a read-only Provider Catalog page. It shows price source status, source URL, manual-review state, confidence, override state, refresh-source availability, modality coverage, provider family/type filters, compatibility filters, stale/review quick filters, and provider detail panels without changing routing or node config.
+Dashboard also includes a read-only Provider Catalog page. In v1.8 it shows provider status, default visibility, canonical/pricing coverage, price source status, source URL, manual-review state, confidence, refresh-source availability, modality coverage, provider family/type filters, compatibility filters, stale/review quick filters, and provider detail panels without changing routing or node config.
 
-## v1.7 Model Enrichment
+## v1.8 Canonical Catalog Normalization
 
-v1.7 adds a model-enrichment layer to the existing merged catalog. This layer is not a second catalog and is not a runtime dependency. It is optional metadata written into the local sync cache and then merged through the normal priority order.
+v1.8 keeps one public merged provider catalog, but it clarifies the internal layers:
 
-Current v1.7 enrichment source:
+| Layer | Role | Public product surface? |
+| --- | --- | --- |
+| Provider transport registry | Base URL, auth type, endpoints, compatibility, logo, provider family/type, status, and other connection metadata maintained by SiftGate | Indirectly yes, through provider rows |
+| Canonical model registry | OpenRouter-first internal model dataset for canonical ids, aliases, architecture, supported parameters, context, reference pricing, and source metadata | No, implementation detail |
+| ZeroEval enrichment overlay | Attaches lifecycle, throughput, benchmarks, multimodal/spec metadata, and secondary pricing reference onto canonical models | No, implementation detail |
+| Provider projection | Projects canonical/enriched models back onto provider-facing rows for Dashboard/CLI/API consumption | Yes, this is the merged provider catalog surface |
+
+This separation is how SiftGate avoids “our built-ins”, “OpenRouter”, and “ZeroEval” turning into three parallel operator-facing truths.
+
+## v1.8 Canonical Registry And ZeroEval Overlay
+
+v1.8 makes OpenRouter the primary canonical model source and treats ZeroEval as an optional overlay. Neither source becomes a direct-provider billing authority, and neither one becomes a runtime dependency. Both write into the existing local sync cache / internal materialization path and then flow through the normal merge priority order.
+
+Current v1.8 external catalog sources:
 
 | Source | Mode | Purpose | Runtime dependency |
 | --- | --- | --- | --- |
-| ZeroEval | `public_api` sync/refresh adapter | Reference model metadata and reviewed-reference pricing enrichment for known provider/model pairs | No |
+| OpenRouter | `public_api` sync/refresh adapter | Canonical primary model registry plus reference pricing | No |
+| ZeroEval | `public_api` sync/refresh adapter | Lifecycle / benchmark / specs overlay and reviewed-reference secondary pricing for canonical models | No |
 
-ZeroEval is used conservatively:
+ZeroEval is no longer limited to a few built-in exact matches, but it is still governed strictly:
 
-- It enriches only provider/model entries that already exist in the merged catalog.
+- It matches against canonical models first using exact ids, canonical slugs, explicit alias rules, and strict family/version/date checks.
+- It records `match_strategy`, `match_confidence`, `matched_from`, and match notes for each successful overlay.
+- Low-confidence or ambiguous matches can appear in diagnostics, but they do not enter default recommendations and do not prefill pricing by default.
 - It does not create new provider presets, base URLs, auth types, or endpoint maps.
 - It does not override explicit node pricing, `models_pricing`, or `catalog.override.yaml`.
 - It marks pricing as third-party reference metadata with `source_type: aggregator_api`, `source: zeroeval`, `manual_review_required: true`, and medium confidence.
@@ -78,7 +96,19 @@ Model enrichment can include:
 - `lifecycle`: `release_date`, `announcement_date`, `knowledge_cutoff`
 - `specs`: max context stays in `limits.max_context_tokens`; other specs can include `throughput`, `multimodal`, `params`, `training_tokens`, `license`, and `is_moe`
 - `benchmarks`: selected `Record<string, number>` benchmark fields
-- source metadata such as `source`, `source_url`, `enriched_from`, `enriched_at`, `synced_at`, and `canonical_model_id`
+- source metadata such as `source`, `source_url`, `enriched_from`, `enriched_at`, `synced_at`, `canonical_model_id`, `match_strategy`, and `match_confidence`
+
+## Provider Status Cleanup
+
+v1.8 makes provider lifecycle explicit so Dashboard and Add Node stop presenting stale or compatibility-only presets as equally authoritative:
+
+| Status | Meaning | Default visibility |
+| --- | --- | --- |
+| `active` | Normal onboarding path; canonical/provider projection is strong enough for default operator presentation | Shown |
+| `transport_only` | Keep connection preset compatibility, but suppress stale static built-in model truth from the default onboarding path | Hidden unless `show_legacy` |
+| `deprecated` | Kept for config compatibility, but a replacement provider is preferred | Hidden unless `show_legacy` |
+| `legacy_alias` | Backward-compatibility alias only; not a standalone provider row for normal operator flow | Hidden unless `show_legacy` |
+| `custom` | Operator-defined or generic compatible transport preset | Shown only where operator is explicitly creating/editing custom entries |
 
 ## v1.4 Provider Families And Types
 
@@ -125,13 +155,14 @@ For large catalogs, the provider step uses family filters and alias search inste
 
 v1.4 also fills suggested `compatibility_profile` values. Leave the field blank for catalog-known providers unless you need to narrow a custom gateway or local server. Explicit node values always win over catalog inference, and validation will warn when the selected profile does not match the provider, source format, endpoint family, or model bucket.
 
-v1.7 changes how default model suggestions are chosen:
+v1.8 changes how default model suggestions are chosen:
 
 - The full catalog `model_buckets` remain intact for search, manual editing, and advanced model selection.
-- Add Node defaults no longer assume the first few provider models are the right ones.
-- The backend now emits `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` so the wizard can default to fresher stable models with usable price metadata.
+- Add Node defaults no longer assume the first few static provider models are the right ones.
+- The backend emits `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` from canonical projection so the wizard can default to fresher stable models with usable price metadata.
 - Preview, snapshot, and obviously stale dated variants are kept in the full model list but are not preferred as default buckets when fresher stable equivalents exist.
 - Default pricing rows are now seeded from the recommended models first, which makes the pricing editor useful immediately without flooding it with every model in the catalog.
+- Provider cards default to `active` providers only. `transport_only`, `deprecated`, and `legacy_alias` entries can still be inspected through explicit legacy toggles when the operator needs compatibility or migration context.
 
 ## CLI
 
@@ -177,9 +208,9 @@ Useful options:
 - `--include-pricing` is accepted by `catalog export`; pricing is included by default and the flag makes CI intent explicit.
 - `catalog list` and `catalog show <provider>` include provider compatibility profiles so CI or operators can confirm which protocol profile the Dashboard will use.
 - `catalog sources` lists refresh modes. `public_api` means SiftGate can refresh without a provider key; `docs_review` means an operator should review provider docs; `operator_local` means pricing depends on local deployment/account choices.
-- `catalog refresh openrouter` calls OpenRouter's public model catalog, converts prompt/completion USD-per-token pricing to USD per 1M tokens, and writes a local override file. It refuses to replace an existing file unless `--force` is supplied.
-- `catalog refresh zeroeval` writes a reviewable override payload for matched provider/model enrichments from ZeroEval. It does not invent new provider presets and skips unmapped organizations conservatively.
-- `catalog sync openrouter` uses the OpenRouter adapter and writes to the managed local sync cache by default. `catalog sync zeroeval` does the same for model-enrichment metadata. The merged catalog loads built-ins first, then sync cache, then operator `catalog.override.yaml`, so explicit local overrides remain authoritative.
+- `catalog refresh openrouter` calls OpenRouter's public model catalog, materializes the internal canonical model registry, derives compatible provider projections, converts prompt/completion USD-per-token pricing to USD per 1M tokens, and writes a local override file. It refuses to replace an existing file unless `--force` is supplied.
+- `catalog refresh zeroeval` writes a reviewable overlay payload for matched canonical models from ZeroEval. It does not invent new provider presets and records unmatched or low-confidence rows in diagnostics instead of guessing.
+- `catalog sync openrouter` uses the OpenRouter adapter and writes the canonical registry plus provider projections to the managed local sync cache by default. `catalog sync zeroeval` adds canonical overlays and projected enrichments. The merged catalog loads built-ins first, then sync cache, then operator `catalog.override.yaml`, so explicit local overrides remain authoritative.
 
 `catalog validate` exits non-zero on errors and is safe for CI. Warnings are printed without failing the command.
 
@@ -189,14 +220,14 @@ SiftGate v0.9.2 exposes refresh-source metadata through the Dashboard catalog AP
 
 | Provider | Mode | Automatic | Why |
 | --- | --- | --- | --- |
-| OpenRouter | `public_api` | Yes | OpenRouter exposes a public `/api/v1/models` catalog with model metadata and prompt/completion pricing. |
-| ZeroEval | `public_api` | Yes | ZeroEval exposes a public multi-provider model leaderboard with reference pricing and technical metadata; SiftGate uses it only as third-party enrichment for known provider/model pairs. |
+| OpenRouter | `public_api` | Yes | OpenRouter exposes a public `/api/v1/models` catalog with model metadata and prompt/completion pricing; in v1.8 it is the canonical primary dataset, not a direct-provider billing authority. |
+| ZeroEval | `public_api` | Yes | ZeroEval exposes a public multi-provider model leaderboard with reference pricing and technical metadata; SiftGate uses it only as a canonical enrichment overlay and secondary pricing reference. |
 | OpenAI, Anthropic, Google Gemini / Vertex | `docs_review` | No | Public pricing is documented, but model availability and product surfaces change often; SiftGate keeps built-in entries as review-required references. |
 | Groq, Mistral, DeepSeek, xAI, Cohere, Voyage, Jina, Together, Fireworks, Alibaba Qwen/Tongyi, Baidu Qianfan/Wenxin, Volcengine Ark/Doubao, Zhipu GLM, Moonshot/Kimi, MiniMax, Tencent Hunyuan, Perplexity, NVIDIA NIM, Cerebras, SambaNova, Hugging Face, Cloudflare Workers AI, IBM watsonx.ai, Baseten, Lepton AI, Modal, RunPod, Predibase, Lamini, AI21 Labs, fal.ai, Stability AI, Black Forest Labs, Ideogram, Luma AI, Runway, Pika, ElevenLabs, Deepgram, AssemblyAI, Cartesia, Speechmatics | `docs_review` | No | Pricing is public enough to review or documented by plan/model, but SiftGate does not scrape provider sites; use reviewed overrides for production cost routing. |
 | Azure OpenAI, AWS Bedrock | `operator_local` | No | Pricing depends on region, deployment, SKU, AWS inference profile, or account-specific rate card. |
 | Ollama, vLLM, LM Studio, llama.cpp server, TGI, SGLang, Xinference, 01.AI/Yi, Replicate, custom OpenAI-compatible | `operator_local` | No | Model list and cost depend on the local host, cluster, marketplace model, account, or proxy. |
 
-For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.4 entries include `source_type`, `source_url`, `retrieved_at`, `last_verified_at`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `review_reason` so operators can see where the reference came from without mistaking it for live billing data. v1.7 ZeroEval enrichment follows the same rule: it is useful for defaults and catalog detail, but it is still review-required third-party pricing metadata.
+For production cost routing, prefer explicit node pricing or a reviewed `catalog.override.yaml`. Built-in prices intentionally remain `manual_review_required: true` even when the number is a reasonable reference. v1.4 entries include `source_type`, `source_url`, `retrieved_at`, `last_verified_at`, `last_updated`, `stale_after_days`, `pricing_confidence`, and `review_reason` so operators can see where the reference came from without mistaking it for live billing data. In v1.8, OpenRouter reference pricing and ZeroEval secondary pricing both follow that same rule: they are useful for defaults, coverage, and catalog detail, but neither one is a direct-provider billing authority.
 
 ## Pricing Source Governance
 
@@ -210,7 +241,7 @@ SiftGate resolves prices in this order:
 
 User configuration always wins. Built-in catalog data and sync cache never overwrite explicit node/model or `models_pricing` values.
 
-External enrichment inherits the same governance boundary. ZeroEval can improve defaults and provide a better fallback reference, but it still sits below explicit operator config and should not be treated as a source of truth for invoices or account-specific rates.
+External enrichment inherits the same governance boundary. OpenRouter canonical pricing is still only a reference layer, and ZeroEval can improve defaults and provide a better secondary fallback reference, but both still sit below explicit operator config and should not be treated as a source of truth for invoices or account-specific rates.
 
 The unified pricing schema supports token, cache, media, rerank, realtime, and batch fields:
 

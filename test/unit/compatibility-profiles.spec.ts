@@ -1,6 +1,7 @@
 import {
   compatibilityEvidence,
   compatibilityFilteredReason,
+  findCatalogProviderForNode,
   getCompatibilityProfile,
   listCompatibilityProfiles,
   resolveNodeCompatibilityProfileIds,
@@ -53,6 +54,27 @@ describe('provider compatibility profiles', () => {
         expect(getCompatibilityProfile(profileId)).toBeDefined();
       }
     }
+  });
+
+  it('keeps legacy provider aliases compatible for node/provider matching', () => {
+    const catalog = loadMergedCatalog({ env: {} }).catalog;
+
+    expect(
+      findCatalogProviderForNode(catalog, {
+        id: 'fal-ai',
+        base_url: 'https://queue.fal.run',
+      }),
+    ).toMatchObject({
+      id: 'fal',
+    });
+    expect(
+      findCatalogProviderForNode(catalog, {
+        id: 'google-vertex',
+        base_url: 'https://generativelanguage.googleapis.com',
+      }),
+    ).toMatchObject({
+      id: 'google',
+    });
   });
 
   it('resolves explicit node overrides before catalog inference', () => {

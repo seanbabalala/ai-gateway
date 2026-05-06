@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.7.0 Catalog Enrichment + Fresh Model Defaults**.
+Current release: **v1.8.0 Canonical Catalog Normalization + Node UX Cleanup**.
 
-Current development focus after v1.7.0: keep the MIT Data Plane local-first while making provider/model metadata fresher, pricing references more operator-reviewable, and Dashboard node setup less likely to default to stale models without turning external enrichment into a runtime dependency or billing authority.
+Current development focus after v1.8.0: keep the MIT Data Plane local-first while reducing operator review friction around canonical model coverage, reviewed pricing imports, provider availability overlays, and future catalog freshness work without turning external enrichment into a runtime dependency or billing authority.
 
 ## Why SiftGate
 
@@ -13,7 +13,7 @@ Current development focus after v1.7.0: keep the MIT Data Plane local-first whil
 - Local governance: Gateway API keys, namespaces, local teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed nodes, and allowed models.
 - Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
-- Catalog-backed setup: Add Node Wizard and config validation use the Provider Catalog instead of hardcoded provider lists, and v1.7 adds fresh default model recommendations from merged catalog metadata.
+- Catalog-backed setup: Nodes, Add Node Wizard, Provider Catalog, and config validation use one merged provider catalog surface backed by canonical model projections instead of hardcoded provider/model lists.
 - Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority over sync cache and built-in references.
 
 ## Quick Start
@@ -49,12 +49,19 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
+## v1.8 Highlights
+
+- OpenRouter-first canonical model registry: SiftGate now materializes an internal canonical model dataset from OpenRouter's public models API, then uses that registry as the primary source for fresher model ids, context windows, supported parameters, architecture metadata, and reference pricing.
+- ZeroEval enrichment overlay: ZeroEval no longer depends on fragile built-in provider/model exact matches. It overlays lifecycle, throughput, benchmarks, multimodal/spec metadata, and review-required secondary pricing onto canonical models through a stricter matching system with confidence tracking and diagnostics.
+- Provider projection and legacy cleanup: the public merged provider catalog still stays one operator-facing surface, but provider model rows are now projected from canonical truth instead of letting stale built-in static model lists keep acting like primary truth. Legacy, deprecated, and transport-only presets stay compatible without misleading the default path.
+- Unified node UX: Nodes, Add Node, and Provider Catalog now show the same provider status, coverage, trust, and recommended-model signals. Add Node defaults come from canonical recommended buckets, default pricing rows prefill from those recommendations, and non-active providers are hidden unless the operator explicitly shows legacy presets.
+
 ## v1.7 Highlights
 
-- ZeroEval-backed catalog enrichment: the local catalog sync framework can now ingest reference model metadata from ZeroEval and merge lifecycle, context, throughput, multimodal, and reviewed-reference pricing fields into the existing catalog pipeline without creating a second catalog.
-- Fresh model defaults for Add Node: Dashboard provider rows now expose `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` so new nodes default to newer, stable, priced models instead of alphabetically early snapshots or stale dated variants.
-- Default pricing prefill via merged catalog: Add Node pricing editors now prefill from recommended models and merged catalog pricing metadata, while explicit node pricing, `models_pricing`, `catalog.override.yaml`, and sync-cache precedence remain unchanged.
-- Catalog enrichment metadata: merged catalog and Dashboard APIs now preserve model lifecycle, specs, source metadata, and selected benchmark snippets so Provider Catalog detail and future model governance surfaces can reuse one shared source of truth.
+- ZeroEval-backed catalog enrichment introduced review-required third-party model metadata and default pricing references through the existing catalog sync cache instead of creating a second catalog.
+- Fresh model defaults for Add Node introduced backend-generated `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` so default provider/model suggestions stopped depending on naive alphabetical ordering.
+- Default pricing prefill via merged catalog seeded Add Node pricing editors from merged catalog pricing metadata while keeping explicit node pricing, `models_pricing`, `catalog.override.yaml`, and sync-cache precedence unchanged.
+- Catalog enrichment metadata added lifecycle, specs, source metadata, and selected benchmark snippets to merged catalog and Dashboard API model rows.
 
 ## v1.6 Highlights
 
@@ -86,16 +93,16 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
 | Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog with 50+ built-in providers, Add Node Wizard, provider compatibility profiles and matrix, pricing source governance, catalog override CLI, OpenRouter pricing sync preview. |
+| Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, pricing source governance, and catalog override/sync CLI. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
 
-## After v1.7 Priorities
+## After v1.8 Priorities
 
-- Deepen catalog freshness without adding runtime coupling: more safe enrichment adapters are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
-- Reduce Provider Catalog maintenance cost by continuing toward one catalog source with generated compatibility/API projections and less duplicate provider/model curation.
-- Add richer operator workflows around reviewed pricing imports, override authoring, and diff visibility so reference enrichment is easier to adopt safely in production.
+- Deepen canonical coverage without adding runtime coupling: more safe freshness adapters or provider-availability overlays are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
+- Add richer operator workflows around reviewed pricing imports, override authoring, diff visibility, and low-confidence-match diagnostics so reference enrichment is easier to adopt safely in production.
+- Continue reducing Provider Catalog maintenance cost by keeping transport metadata, canonical model materialization, and provider projections cleanly separated while avoiding any return to parallel operator-facing truths.
 - Continue optional Redis semantic-cache backend and future Prompt Registry / Template work without regressing single-node memory/SQLite defaults.
 
 ## Configuration

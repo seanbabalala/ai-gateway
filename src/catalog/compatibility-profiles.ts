@@ -7,6 +7,7 @@ import type {
   CatalogProvider,
   ProviderCatalog,
 } from './catalog.types';
+import { findCatalogProviderByIdOrAlias } from './provider-projection';
 import type {
   UsageSchema,
   UsageSchemaPath,
@@ -1054,8 +1055,11 @@ export function findCatalogProviderForNode(
     ? normalizeComparableUrl(node.base_url)
     : '';
   const host = hostFromUrl(node.base_url);
+  const providerById = nodeId
+    ? findCatalogProviderByIdOrAlias(catalog.providers, nodeId)
+    : undefined;
+  if (providerById) return providerById;
   return catalog.providers.find((provider) => {
-    if (provider.id === nodeId) return true;
     if (baseUrl.length > 0 && normalizeComparableUrl(provider.base_url) === baseUrl) {
       return true;
     }

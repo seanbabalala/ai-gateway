@@ -15,6 +15,17 @@ import {
   WalletCards,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
+import {
+  CatalogCoveragePills,
+  CatalogTrustPills,
+  ProviderStatusBadge,
+  RecommendedModelChips,
+  modelReleaseDate,
+  modelThroughput,
+  providerStatusValue,
+  recommendedModelsForProvider,
+  topBenchmarkSnippets,
+} from "@/components/shared/CatalogSignals";
 import { NodeIcon } from "@/components/shared/NodeIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -315,75 +326,6 @@ function formatCompactNumber(value?: number | null) {
   }).format(value);
 }
 
-function formatBenchmarkScore(value?: number | null) {
-  if (value === null || value === undefined) return null;
-  if (value <= 1) return `${Math.round(value * 100)}%`;
-  return `${value}`;
-}
-
-function modelReleaseDate(model: CatalogModel) {
-  return (
-    model.enrichment?.lifecycle?.release_date ||
-    model.enrichment?.release_date ||
-    model.enrichment?.lifecycle?.announcement_date ||
-    model.enrichment?.announcement_date ||
-    null
-  );
-}
-
-function modelThroughput(model: CatalogModel) {
-  return (
-    model.enrichment?.specs?.throughput || model.enrichment?.throughput || null
-  );
-}
-
-function topBenchmarkSnippets(model: CatalogModel) {
-  const benchmarks = model.enrichment?.benchmarks || {};
-  const definitions = [
-    ["gpqa_score", "GPQA"],
-    ["swe_bench_verified_score", "SWE-bench"],
-    ["mmmu_score", "MMMU"],
-    ["browsecomp_score", "BrowseComp"],
-  ] as const;
-  return definitions.flatMap(([key, label]) => {
-    const value = formatBenchmarkScore(benchmarks[key]);
-    return value ? [{ key, label, value }] : [];
-  });
-}
-
-function recommendedModelsForProvider(provider: CatalogProvider) {
-  const modelById = new Map(provider.models.map((model) => [model.id, model]));
-  const bucketByModel = new Map<string, string[]>();
-  for (const entry of provider.recommended_models || []) {
-    const buckets = bucketByModel.get(entry.model_id) || [];
-    if (!buckets.includes(entry.bucket)) buckets.push(entry.bucket);
-    bucketByModel.set(entry.model_id, buckets);
-  }
-  const orderedIds = (provider.recommended_models || []).map(
-    (entry) => entry.model_id,
-  );
-  const fallbackIds = Object.values(
-    provider.recommended_model_buckets || {},
-  ).flat();
-  return Array.from(new Set([...orderedIds, ...fallbackIds]))
-    .map((id) => {
-      const model = modelById.get(id);
-      if (!model) return null;
-      return {
-        model,
-        buckets: bucketByModel.get(id) || [],
-      };
-    })
-    .filter(
-      (
-        item,
-      ): item is {
-        model: CatalogModel;
-        buckets: string[];
-      } => item !== null,
-    );
-}
-
 function useFilteredCatalog(providers: CatalogProvider[]) {
   const [query, setQuery] = useState("");
   const [modality, setModality] =
@@ -441,7 +383,8 @@ function useFilteredCatalog(providers: CatalogProvider[]) {
 
 export function ProviderCatalogPage() {
   const { t } = useTranslation("nodes");
-  const catalog = useProviderCatalogProviders();
+  const [showLegacyProviders, setShowLegacyProviders] = useState(false);
+  const catalog = useProviderCatalogProviders({ showLegacy: showLegacyProviders });
   const providers = catalog.data?.providers || [];
   const allModels = providers.flatMap((provider) => provider.models);
   const explorer = useFilteredCatalog(providers);
@@ -513,6 +456,17 @@ export function ProviderCatalogPage() {
         description={t("catalogPage.description")}
         icon={Boxes}
       >
+        <Button
+          variant={showLegacyProviders ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setShowLegacyProviders((current) => !current)}
+        >
+          {t(
+            showLegacyProviders
+              ? "catalogPage.filters.hideLegacy"
+              : "catalogPage.filters.showLegacy",
+          )}
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -631,6 +585,13 @@ export function ProviderCatalogPage() {
                       count: visibleProviders.length,
                       total: providers.length,
                     })}
+                  </Badge>
+                  <Badge variant={showLegacyProviders ? "amber" : "zinc"}>
+                    {t(
+                      showLegacyProviders
+                        ? "catalogPage.filters.legacyShown"
+                        : "catalogPage.filters.activeOnly",
+                    )}
                   </Badge>
                 </div>
               </div>
@@ -908,12 +869,14 @@ function ProviderRow({
   const status = providerPricingStatus(provider);
   const endpoints = primaryEndpoints(provider).slice(0, 4);
   const modelCount = provider.models.length;
+  const recommendedPreview = recommendedModelsForProvider(provider).slice(0, 3);
+  const providerStatus = providerStatusValue(provider);
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        "grid w-full gap-3 px-4 py-3 text-left transition-all lg:grid-cols-[minmax(220px,1.25fr)_minmax(160px,0.9fr)_minmax(150px,0.75fr)_minmax(170px,0.8fr)] lg:items-center",
+        "grid w-full gap-3 px-4 py-3 text-left transition-all lg:grid-cols-[minmax(220px,1.15fr)_minmax(180px,0.9fr)_minmax(210px,1fr)_minmax(220px,1fr)] lg:items-center",
         selected ? "bg-[var(--accent-muted)]" : "hover:bg-[var(--inset-bg)]",
       )}
     >
@@ -953,18 +916,11 @@ function ProviderRow({
             defaultValue: providerCompatibility(provider),
           })}
         </Badge>
+        {providerStatus !== "active" && <ProviderStatusBadge provider={provider} dense />}
       </div>
-      <div className="flex min-w-0 flex-wrap gap-1">
-        {provider.modalities.slice(0, 4).map((item) => (
-          <Badge key={item} variant="zinc" className="text-[9px]">
-            {t(`catalogPage.modalities.${item}`, { defaultValue: item })}
-          </Badge>
-        ))}
-        {provider.modalities.length > 4 && (
-          <Badge variant="zinc" className="text-[9px]">
-            +{provider.modalities.length - 4}
-          </Badge>
-        )}
+      <div className="min-w-0 space-y-1.5">
+        <CatalogCoveragePills provider={provider} dense />
+        <CatalogTrustPills provider={provider} dense />
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex flex-wrap gap-1">
@@ -986,12 +942,18 @@ function ProviderRow({
         </div>
         <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-[10px] text-[var(--foreground-dim)]">
           <span>{t("catalogPage.row.models", { count: modelCount })}</span>
+          {recommendedPreview.length > 0 && (
+            <span>{t("catalogSignals.recommendedPreview")}</span>
+          )}
           <span className="truncate">
             {endpoints.length > 0
               ? endpoints.join(", ")
               : t("catalogPage.row.noEndpoint")}
           </span>
         </div>
+        {recommendedPreview.length > 0 && (
+          <RecommendedModelChips provider={provider} limit={3} dense />
+        )}
       </div>
     </button>
   );
@@ -1040,6 +1002,7 @@ function ProviderDetailPanel({
   );
   const capabilities = provider.capabilities || [];
   const recommendedModels = recommendedModelsForProvider(provider);
+  const providerStatus = providerStatusValue(provider);
 
   return (
     <aside className="h-fit rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] xl:sticky xl:top-4">
@@ -1069,6 +1032,7 @@ function ProviderDetailPanel({
           <Badge variant={statusVariant(status)}>
             {t(`catalogPage.status.${status}`)}
           </Badge>
+          <ProviderStatusBadge provider={provider} />
           <Badge variant="zinc">
             {t(`catalogPage.family.${providerFamily(provider)}`)}
           </Badge>
@@ -1084,9 +1048,64 @@ function ProviderDetailPanel({
             <Badge variant="purple">{t("catalogPage.badges.override")}</Badge>
           )}
         </div>
+        <CatalogCoveragePills provider={provider} className="mt-3" />
+        <CatalogTrustPills provider={provider} className="mt-2" />
+        {provider.status_reason && (
+          <div className="mt-2 text-[11px] leading-5 text-[var(--foreground-dim)]">
+            {provider.status_reason}
+          </div>
+        )}
+        {provider.replacement_provider_id && (
+          <div className="mt-1 text-[11px] font-semibold text-[var(--foreground-dim)]">
+            {t("catalogPage.detail.replacement", {
+              provider: provider.replacement_provider_id,
+            })}
+          </div>
+        )}
       </div>
 
       <div className="space-y-4 px-4 py-4">
+        <DetailSection title={t("catalogPage.detail.catalogTruth")}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <KeyValue
+              label={t("catalogPage.detail.providerStatus")}
+              value={t(`catalogPage.providerStatus.${providerStatus}`, {
+                defaultValue: providerStatus,
+              })}
+            />
+            <KeyValue
+              label={t("catalogPage.detail.defaultVisibility")}
+              value={t(
+                provider.default_visible
+                  ? "catalogPage.detail.defaultVisible"
+                  : "catalogPage.detail.legacyHidden",
+              )}
+            />
+            <KeyValue
+              label={t("catalogPage.detail.canonicalCoverage")}
+              value={t("catalogSignals.canonicalCoverage", {
+                mapped:
+                  provider.canonical_model_coverage?.canonicalized_models ?? 0,
+                total:
+                  provider.canonical_model_coverage?.total_models ??
+                  provider.models.length,
+              })}
+            />
+            <KeyValue
+              label={t("catalogPage.detail.pricingCoverage")}
+              value={t("catalogSignals.pricingCoverage", {
+                priced: provider.pricing_coverage?.priced_models ?? 0,
+                total:
+                  provider.pricing_coverage?.total_models ??
+                  provider.models.length,
+              })}
+            />
+          </div>
+          <p className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+            {t("catalogPage.detail.catalogTruthCopy")}
+          </p>
+        </DetailSection>
+
         <DetailSection title={t("catalogPage.detail.links")}>
           <div className="flex flex-wrap gap-2">
             <CatalogLink
@@ -1218,6 +1237,11 @@ function ProviderDetailPanel({
                         {model.pricing?.manual_review_required && (
                           <Badge variant="amber" className="text-[9px]">
                             {t("catalogPage.badges.review")}
+                          </Badge>
+                        )}
+                        {model.match_confidence === "low" && (
+                          <Badge variant="amber" className="text-[9px]">
+                            {t("catalogSignals.lowConfidence", { count: 1 })}
                           </Badge>
                         )}
                       </div>

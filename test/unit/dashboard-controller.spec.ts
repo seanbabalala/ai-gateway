@@ -1273,6 +1273,8 @@ describe("DashboardController — catalog", () => {
     expect(result.providers[0]).toMatchObject({
       id: "openai",
       provider_id: "openai",
+      provider_status: "active",
+      default_visible: true,
       family: "foundation",
       provider_type: "direct",
       compatibility_profile: "openai-compatible",
@@ -1298,6 +1300,15 @@ describe("DashboardController — catalog", () => {
         source_type: expect.any(String),
         source_url_missing: false,
       }),
+      canonical_model_coverage: expect.objectContaining({
+        total_models: expect.any(Number),
+        coverage_ratio: expect.any(Number),
+      }),
+      pricing_coverage: expect.objectContaining({
+        total_models: expect.any(Number),
+        priced_models: expect.any(Number),
+        recommended_models: expect.any(Number),
+      }),
     });
   });
 
@@ -1322,7 +1333,7 @@ describe("DashboardController — catalog", () => {
     ]);
   });
 
-  it("returns v1.4 50 plus provider catalog entries from the merged catalog API shape", () => {
+  it("returns v1.8 provider catalog entries from the merged catalog API shape, including legacy rows behind show_legacy", () => {
     const loaded = loadMergedCatalog({
       cwd: process.cwd(),
       overridePath: "/tmp/siftgate-missing-catalog.override.yaml",
@@ -1334,7 +1345,7 @@ describe("DashboardController — catalog", () => {
       },
     });
 
-    const result = controller.getCatalogProviders();
+    const result = controller.getCatalogProviders("true");
     const providerIds = result.providers.map((provider: any) => provider.id);
     const huggingFace = result.providers.find(
       (provider: any) => provider.id === "huggingface",
@@ -1352,9 +1363,64 @@ describe("DashboardController — catalog", () => {
     expect(huggingFace).toMatchObject({
       provider_type: "aggregator",
       logo_id: "huggingface",
-      model_buckets: expect.objectContaining({
-        models: expect.arrayContaining(["meta-llama/Llama-3.3-70B-Instruct"]),
-      }),
+      status: "transport_only",
+      provider_status: "transport_only",
+      default_visible: false,
+      model_buckets: {
+        models: [],
+        embedding_models: [],
+        rerank_models: [],
+        image_models: [],
+        audio_models: [],
+        video_models: [],
+        realtime_models: [],
+        batch_models: [],
+      },
+    });
+  });
+
+  it("shows active providers by default and reveals transport-only rows only with show_legacy", () => {
+    const loaded = loadMergedCatalog({
+      cwd: process.cwd(),
+      overridePath: "/tmp/siftgate-missing-catalog.override.yaml",
+      env: {},
+    });
+    const { controller } = makeDashboard({
+      catalog: {
+        load: jest.fn().mockReturnValue(loaded),
+      },
+    });
+
+    const activeOnly = controller.getCatalogProviders();
+    const withLegacy = controller.getCatalogProviders("true");
+
+    expect(activeOnly.providers.map((provider: any) => provider.id)).toEqual(
+      expect.arrayContaining(["openai", "anthropic", "openrouter"]),
+    );
+    expect(activeOnly.providers.map((provider: any) => provider.id)).not.toEqual(
+      expect.arrayContaining([
+        "deepgram",
+        "huggingface",
+        "xinference",
+        "openai-compatible",
+      ]),
+    );
+    expect(withLegacy.providers.map((provider: any) => provider.id)).toEqual(
+      expect.arrayContaining([
+        "deepgram",
+        "huggingface",
+        "xinference",
+        "openai-compatible",
+      ]),
+    );
+
+    const huggingFace = withLegacy.providers.find(
+      (provider: any) => provider.id === "huggingface",
+    );
+    expect(huggingFace).toMatchObject({
+      status: "transport_only",
+      provider_status: "transport_only",
+      default_visible: false,
     });
   });
 
@@ -1449,6 +1515,18 @@ describe("DashboardController — catalog", () => {
     const gpt4o = models.models.find((model: any) => model.id === "gpt-4o");
 
     expect(openai).toMatchObject({
+      provider_status: "active",
+      default_visible: true,
+      canonical_model_coverage: expect.objectContaining({
+        total_models: expect.any(Number),
+        canonicalized_models: expect.any(Number),
+        enriched_models: expect.any(Number),
+      }),
+      pricing_coverage: expect.objectContaining({
+        total_models: expect.any(Number),
+        priced_models: expect.any(Number),
+        recommended_priced_models: expect.any(Number),
+      }),
       enrichment_summary: {
         enriched_model_count: expect.any(Number),
         benchmarked_model_count: expect.any(Number),
@@ -1468,6 +1546,32 @@ describe("DashboardController — catalog", () => {
       }),
     });
     expect(gpt4o).toMatchObject({
+      canonical_id: "chatgpt-4o-latest",
+      projection_source: "sync_cache",
+      lifecycle: {
+        release_date: "2024-05-13",
+        announcement_date: "2024-05-13",
+      },
+      specs: {
+        throughput: 132,
+        multimodal: true,
+        params: 200000000000,
+      },
+      benchmarks: {
+        gpqa_score: 0.84,
+      },
+      match_confidence: undefined,
+      pricing_sources: {
+        effective: expect.objectContaining({
+          source: "zeroeval",
+          has_pricing: true,
+        }),
+        effective_source: "zeroeval",
+        primary_reference: undefined,
+        primary_reference_source: null,
+        secondary_reference: undefined,
+        secondary_reference_source: null,
+      },
       enrichment: {
         source: "zeroeval",
         enriched_from: "zeroeval",
@@ -1497,6 +1601,190 @@ describe("DashboardController — catalog", () => {
         }),
       ]),
     );
+  });
+
+  it("surfaces canonical projection and pricing source layering through dashboard catalog APIs", () => {
+    const catalogLoad = {
+      catalog: {
+        providers: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            base_url: "https://api.openai.com",
+            auth_type: "bearer",
+            endpoints: { chat_completions: "/v1/chat/completions" },
+            models: [
+              {
+                id: "gpt-4.1",
+                provider: "openai",
+                modalities: ["text"],
+                endpoints: { chat_completions: "/v1/chat/completions" },
+                capabilities: ["streaming"],
+                pricing: {
+                  input: 1.9,
+                  output: 7.5,
+                  input_per_1m_tokens: 1.9,
+                  output_per_1m_tokens: 7.5,
+                  source: "catalog-override",
+                  source_type: "operator_override",
+                  last_updated: "2026-05-06",
+                  manual_review_required: false,
+                },
+                enrichment: {
+                  source: "zeroeval",
+                  enriched_from: "zeroeval",
+                  match_strategy: "exact_canonical_slug",
+                  match_confidence: "high",
+                  lifecycle: {
+                    release_date: "2026-04-14",
+                  },
+                  benchmarks: {
+                    gpqa_score: 0.91,
+                  },
+                  secondary_pricing_reference: {
+                    input: 2.1,
+                    output: 8.1,
+                    input_per_1m_tokens: 2.1,
+                    output_per_1m_tokens: 8.1,
+                    source: "zeroeval",
+                    source_type: "aggregator_api",
+                    source_url:
+                      "https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false",
+                    last_updated: "2026-05-06",
+                    manual_review_required: true,
+                    pricing_confidence: "medium",
+                  },
+                },
+                source: "override",
+                overridden: true,
+                synced: true,
+              },
+            ],
+            source: "sync_cache",
+            overridden: false,
+          },
+        ],
+      },
+      overridePath: "catalog.override.yaml",
+      overrideFound: false,
+      syncCachePath: ".siftgate/catalog-sync-cache.yaml",
+      syncCacheFound: true,
+      internal: {
+        canonical_registry: {
+          version: 1,
+          primary_source: "openrouter",
+          source_url: "https://openrouter.ai/api/v1/models?output_modalities=all",
+          generated_at: "2026-05-06T00:00:00.000Z",
+          model_count: 1,
+          models: [
+            {
+              canonical_id: "openai/gpt-4.1",
+              source_model_id: "openai/gpt-4.1",
+              source_provider_slug: "openai",
+              display_name: "GPT-4.1",
+              canonical_slug: "gpt-4.1",
+              context_length: 1048576,
+              pricing_reference: {
+                input: 2,
+                output: 8,
+                input_per_1m_tokens: 2,
+                output_per_1m_tokens: 8,
+                source: "openrouter-public-api",
+                source_type: "aggregator_api",
+                source_url:
+                  "https://openrouter.ai/api/v1/models?output_modalities=all",
+                last_updated: "2026-05-06",
+                manual_review_required: true,
+                pricing_confidence: "medium",
+              },
+              enrichment: {
+                source: "zeroeval",
+                enriched_from: "zeroeval",
+                lifecycle: {
+                  release_date: "2026-04-14",
+                },
+                benchmarks: {
+                  gpqa_score: 0.91,
+                },
+              },
+              source_metadata: {
+                source: "openrouter",
+                source_url:
+                  "https://openrouter.ai/api/v1/models?output_modalities=all",
+                synced_at: "2026-05-06T00:00:00.000Z",
+                dataset_role: "canonical_primary",
+              },
+            },
+          ],
+        },
+      },
+      issues: [],
+    };
+    const { controller } = makeDashboard({
+      catalog: {
+        load: jest.fn().mockReturnValue(catalogLoad),
+      },
+    });
+
+    const providers = controller.getCatalogProviders();
+    const models = controller.getCatalogModels("openai");
+    const openai = providers.providers.find(
+      (provider: any) => provider.id === "openai",
+    );
+    const gpt41 = models.models.find((model: any) => model.id === "gpt-4.1");
+
+    expect(openai).toMatchObject({
+      provider_status: "active",
+      default_visible: true,
+      canonical_model_coverage: {
+        total_models: 1,
+        canonicalized_models: 1,
+        projected_models: 1,
+        enriched_models: 1,
+        benchmarked_models: 1,
+        low_confidence_models: 0,
+        coverage_ratio: 1,
+      },
+      pricing_coverage: {
+        total_models: 1,
+        priced_models: 1,
+        recommended_models: 1,
+        recommended_priced_models: 1,
+        manual_review_required_priced_models: 0,
+        coverage_ratio: 1,
+      },
+    });
+    expect(gpt41).toMatchObject({
+      canonical_id: "openai/gpt-4.1",
+      projection_source: "canonical_projection",
+      lifecycle: {
+        release_date: "2026-04-14",
+      },
+      benchmarks: {
+        gpqa_score: 0.91,
+      },
+      match_confidence: "high",
+      pricing_sources: {
+        effective: expect.objectContaining({
+          source: "catalog-override",
+          source_type: "operator_override",
+          has_pricing: true,
+        }),
+        primary_reference: expect.objectContaining({
+          source: "openrouter-public-api",
+          source_type: "aggregator_api",
+          has_pricing: true,
+        }),
+        secondary_reference: expect.objectContaining({
+          source: "zeroeval",
+          source_type: "aggregator_api",
+          has_pricing: true,
+        }),
+        effective_source: "catalog-override",
+        primary_reference_source: "openrouter-public-api",
+        secondary_reference_source: "zeroeval",
+      },
+    });
   });
 
   it("prefers enriched latest stable models over alphabetical old variants for fresh defaults", () => {
@@ -1641,6 +1929,126 @@ describe("DashboardController — catalog", () => {
       release_date: "2025-02-24",
       source: "recommended",
     });
+  });
+
+  it("keeps low-confidence zeroeval matches out of recommended default buckets", () => {
+    const catalogLoad = {
+      catalog: {
+        providers: [
+          {
+            id: "anthropic",
+            name: "Anthropic",
+            base_url: "https://api.anthropic.com",
+            auth_type: "x-api-key",
+            endpoints: { messages: "/v1/messages" },
+            models: [
+              {
+                id: "claude-3-7-sonnet-20250219",
+                provider: "anthropic",
+                modalities: ["text"],
+                endpoints: { messages: "/v1/messages" },
+                capabilities: ["streaming"],
+                pricing: {
+                  input: 3,
+                  output: 15,
+                  input_per_1m_tokens: 3,
+                  output_per_1m_tokens: 15,
+                  source: "openrouter-public-api",
+                  last_updated: "2026-05-06",
+                  manual_review_required: true,
+                },
+                enrichment: {
+                  source: "zeroeval",
+                  enriched_from: "zeroeval",
+                  match_strategy: "strict_signature_release_date",
+                  match_confidence: "high",
+                  release_date: "2025-02-24",
+                  canonical_model_id: "anthropic/claude-3-7-sonnet-20250219",
+                },
+                source: "sync_cache",
+                overridden: false,
+              },
+              {
+                id: "claude-sonnet-4-6-candidate",
+                provider: "anthropic",
+                modalities: ["text"],
+                endpoints: { messages: "/v1/messages" },
+                capabilities: ["streaming"],
+                pricing: {
+                  input: 3,
+                  output: 15,
+                  input_per_1m_tokens: 3,
+                  output_per_1m_tokens: 15,
+                  source: "zeroeval",
+                  last_updated: "2026-05-06",
+                  manual_review_required: true,
+                },
+                enrichment: {
+                  source: "zeroeval",
+                  enriched_from: "zeroeval",
+                  match_strategy: "ambiguous_candidate",
+                  match_confidence: "low",
+                  release_date: "2026-02-17",
+                  canonical_model_id: "anthropic/claude-4.6-sonnet",
+                },
+                source: "sync_cache",
+                overridden: false,
+              },
+            ],
+            source: "sync_cache",
+            overridden: false,
+          },
+        ],
+      },
+      overridePath: "catalog.override.yaml",
+      overrideFound: false,
+      syncCachePath: ".siftgate/catalog-sync-cache.yaml",
+      syncCacheFound: true,
+      internal: {
+        diagnostics: {
+          zeroeval_overlay: {
+            source: "zeroeval",
+            source_url:
+              "https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false",
+            synced_at: "2026-05-06T00:00:00.000Z",
+            canonical_model_count: 2,
+            zeroeval_model_count: 2,
+            matched_model_count: 1,
+            projected_model_count: 1,
+            high_confidence_match_count: 1,
+            medium_confidence_match_count: 0,
+            low_confidence_match_count: 1,
+            unmatched_model_count: 0,
+            ambiguous_match_count: 1,
+          },
+        },
+      },
+      issues: [],
+    };
+    const { controller } = makeDashboard({
+      catalog: {
+        load: jest.fn().mockReturnValue(catalogLoad),
+      },
+    });
+
+    const result = controller.getCatalogProviders();
+    const anthropic = result.providers.find(
+      (provider: any) => provider.id === "anthropic",
+    );
+
+    expect(anthropic?.recommended_model_buckets?.models).toEqual([
+      "claude-3-7-sonnet-20250219",
+    ]);
+    expect(anthropic?.recommended_model_buckets?.models).not.toContain(
+      "claude-sonnet-4-6-candidate",
+    );
+    expect(anthropic?.recommended_models).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({
+          model_id: "claude-sonnet-4-6-candidate",
+        }),
+      ]),
+    );
   });
 });
 
