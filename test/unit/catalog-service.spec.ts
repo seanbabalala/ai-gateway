@@ -223,6 +223,243 @@ describe('catalog service', () => {
     });
   });
 
+  it('preserves internal canonical registry materialization from the managed sync cache', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-canonical-'));
+    const syncCachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+    fs.mkdirSync(path.dirname(syncCachePath), { recursive: true });
+    fs.writeFileSync(
+      syncCachePath,
+      [
+        'version: 1',
+        '_siftgate_internal:',
+        '  canonical_registry:',
+        '    version: 1',
+        '    primary_source: openrouter',
+        '    source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '    generated_at: 2026-05-05T00:00:00.000Z',
+        '    models:',
+        '      - canonical_id: openai/gpt-sync-20260505',
+        '        source_model_id: openai/gpt-sync',
+        '        source_provider_slug: openai',
+        '        display_name: "OpenAI: GPT Sync"',
+        '        aliases: [openai/gpt-sync]',
+        '        canonical_slug: openai/gpt-sync-20260505',
+        '        context_length: 128000',
+        '        input_modalities: [text]',
+        '        output_modalities: [text]',
+        '        supported_parameters: [tools]',
+        '        pricing_reference:',
+        '          input: 1.5',
+        '          output: 2.5',
+        '          source: openrouter-public-api',
+        '          source_type: aggregator_api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          last_updated: 2026-05-05',
+        '          last_sync: 2026-05-05T00:00:00.000Z',
+        '          retrieved_at: 2026-05-05T00:00:00.000Z',
+        '          manual_review_required: true',
+        '          stale_after_days: 7',
+        '          pricing_confidence: medium',
+        '          currency: USD',
+        '        source_metadata:',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          synced_at: 2026-05-05T00:00:00.000Z',
+        '          dataset_role: canonical_primary',
+        'providers:',
+        '  openrouter:',
+        '    models:',
+        '      - id: openai/gpt-sync',
+        '        modalities: [text]',
+        '        endpoints:',
+        '          chat_completions: /v1/chat/completions',
+        '        capabilities: [tools]',
+        '        pricing:',
+        '          input: 1.5',
+        '          output: 2.5',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          last_updated: 2026-05-05',
+        '          last_sync: 2026-05-05T00:00:00.000Z',
+        '          manual_review_required: false',
+        '          stale_after_days: 7',
+        '          pricing_confidence: high',
+        '          currency: USD',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadMergedCatalog({ cwd, env: {} });
+    const openrouter = result.catalog.providers.find((provider) => provider.id === 'openrouter');
+
+    expect(result.issues).toHaveLength(0);
+    expect(result.internal.canonical_registry).toMatchObject({
+      version: 1,
+      primary_source: 'openrouter',
+      source_url: 'https://openrouter.ai/api/v1/models?output_modalities=all',
+      model_count: 1,
+      models: [
+        {
+          canonical_id: 'openai/gpt-sync-20260505',
+          source_model_id: 'openai/gpt-sync',
+          source_provider_slug: 'openai',
+          pricing_reference: expect.objectContaining({
+            source: 'openrouter-public-api',
+            manual_review_required: true,
+            pricing_confidence: 'medium',
+          }),
+        },
+      ],
+    });
+    expect(openrouter?.models.find((model) => model.id === 'openai/gpt-sync')).toMatchObject({
+      pricing: expect.objectContaining({
+        input: 1.5,
+        output: 2.5,
+        source: 'openrouter-public-api',
+      }),
+      synced: true,
+    });
+  });
+
+  it('projects active provider models from the canonical registry and suppresses stale built-in static model truth', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-provider-projection-'));
+    const syncCachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+    fs.mkdirSync(path.dirname(syncCachePath), { recursive: true });
+    fs.writeFileSync(
+      syncCachePath,
+      [
+        'version: 1',
+        '_siftgate_internal:',
+        '  canonical_registry:',
+        '    version: 1',
+        '    primary_source: openrouter',
+        '    source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '    generated_at: 2026-05-06T00:00:00.000Z',
+        '    models:',
+        '      - canonical_id: openai/gpt-5.1-mini-20260506',
+        '        source_model_id: openai/gpt-5.1-mini',
+        '        source_provider_slug: openai',
+        '        display_name: GPT-5.1 Mini',
+        '        aliases: [openai/gpt-5.1-mini]',
+        '        canonical_slug: openai/gpt-5.1-mini',
+        '        context_length: 256000',
+        '        input_modalities: [text]',
+        '        output_modalities: [text]',
+        '        supported_parameters: [tools, response_format]',
+        '        pricing_reference:',
+        '          input: 0.4',
+        '          output: 1.6',
+        '          input_per_1m_tokens: 0.4',
+        '          output_per_1m_tokens: 1.6',
+        '          source: openrouter-public-api',
+        '          source_type: aggregator_api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          last_updated: 2026-05-06',
+        '          last_sync: 2026-05-06T00:00:00.000Z',
+        '          retrieved_at: 2026-05-06T00:00:00.000Z',
+        '          last_verified_at: 2026-05-06T00:00:00.000Z',
+        '          manual_review_required: true',
+        '          stale_after_days: 7',
+        '          pricing_confidence: medium',
+        '          currency: USD',
+        '        source_metadata:',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          synced_at: 2026-05-06T00:00:00.000Z',
+        '          dataset_role: canonical_primary',
+        'providers: {}',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadMergedCatalog({ cwd, env: {} });
+    const openai = result.catalog.providers.find((provider) => provider.id === 'openai');
+    const providerIds = result.catalog.providers.map((provider) => provider.id);
+
+    expect(new Set(providerIds).size).toBe(providerIds.length);
+    expect(openai).toMatchObject({
+      status: 'active',
+      source: 'builtin',
+    });
+    expect(openai?.models.map((model) => model.id)).toEqual(['gpt-5.1-mini']);
+    expect(openai?.models[0]).toMatchObject({
+      source: 'sync_cache',
+      synced: true,
+      limits: expect.objectContaining({
+        max_context_tokens: 256000,
+      }),
+      capabilities: expect.arrayContaining(['tools', 'structured_output']),
+      pricing: expect.objectContaining({
+        source: 'openrouter-public-api',
+        input_per_1m_tokens: 0.4,
+        output_per_1m_tokens: 1.6,
+      }),
+    });
+    expect(openai?.models.map((model) => model.id)).not.toContain('gpt-4o');
+  });
+
+  it('preserves zeroeval overlay diagnostics from the managed sync cache internal materialization', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-zeroeval-diagnostics-'));
+    const syncCachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+    fs.mkdirSync(path.dirname(syncCachePath), { recursive: true });
+    fs.writeFileSync(
+      syncCachePath,
+      [
+        'version: 1',
+        '_siftgate_internal:',
+        '  canonical_registry:',
+        '    version: 1',
+        '    primary_source: openrouter',
+        '    source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '    generated_at: 2026-05-05T00:00:00.000Z',
+        '    models: []',
+        '  diagnostics:',
+        '    zeroeval_overlay:',
+        '      source: zeroeval',
+        '      source_url: https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false',
+        '      synced_at: 2026-05-06T00:00:00.000Z',
+        '      canonical_model_count: 20',
+        '      zeroeval_model_count: 18',
+        '      matched_model_count: 15',
+        '      projected_model_count: 12',
+        '      high_confidence_match_count: 10',
+        '      medium_confidence_match_count: 5',
+        '      low_confidence_match_count: 2',
+        '      unmatched_model_count: 1',
+        '      ambiguous_match_count: 1',
+        '      low_confidence_matches:',
+        '        - organization_id: anthropic',
+        '          model_id: claude-sonnet-4-6',
+        '          canonical_id: anthropic/claude-4.6-sonnet',
+        '          match_strategy: ambiguous_candidate',
+        '          match_confidence: low',
+        '          reason: Multiple canonical candidates matched the same strict signature.',
+        'providers: {}',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadMergedCatalog({ cwd, env: {} });
+
+    expect(result.issues).toHaveLength(0);
+    expect(result.internal.diagnostics?.zeroeval_overlay).toMatchObject({
+      matched_model_count: 15,
+      projected_model_count: 12,
+      low_confidence_match_count: 2,
+      ambiguous_match_count: 1,
+      low_confidence_matches: [
+        expect.objectContaining({
+          model_id: 'claude-sonnet-4-6',
+          match_strategy: 'ambiguous_candidate',
+          match_confidence: 'low',
+        }),
+      ],
+    });
+  });
+
   it('rejects secret-looking fields in override files', () => {
     const result = validateCatalogOverrideFile(fixture('secret.catalog.override.yaml'));
 
@@ -379,6 +616,7 @@ describe('catalog service', () => {
 
     const huggingFace = result.catalog.providers.find((provider) => provider.id === 'huggingface');
     expect(huggingFace).toMatchObject({
+      status: 'transport_only',
       aliases: expect.arrayContaining(['hf']),
       family: 'aggregator',
       provider_type: 'aggregator',
@@ -397,6 +635,10 @@ describe('catalog service', () => {
         manual_review_required: true,
         pricing_confidence: 'low',
       }),
+    });
+
+    expect(result.catalog.providers.find((provider) => provider.id === 'openai-compatible')).toMatchObject({
+      status: 'custom',
     });
   });
 

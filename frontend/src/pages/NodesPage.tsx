@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
+import { Link } from 'react-router-dom'
 import {
   RefreshCw,
   RotateCcw,
@@ -26,6 +27,13 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import {
+  CatalogCoveragePills,
+  CatalogTrustPills,
+  ProviderStatusBadge,
+  RecommendedModelChips,
+  matchCatalogProviderForNode,
+} from '@/components/shared/CatalogSignals'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { CircuitBadge } from '@/components/shared/CircuitBadge'
 import { NodeIcon } from '@/components/shared/NodeIcon'
@@ -40,6 +48,7 @@ import { NodeFormModal } from '@/components/nodes/NodeFormModal'
 import { DeleteNodeDialog } from '@/components/nodes/DeleteNodeDialog'
 import { QuickModelReference } from '@/components/nodes/QuickModelReference'
 import { useNodes } from '@/hooks/use-nodes'
+import { useProviderCatalogProviders } from '@/hooks/use-provider-catalog'
 import {
   useResetCircuit,
   useReloadConfig,
@@ -53,6 +62,7 @@ import { colorWithOpacity } from '@/lib/theme'
 import type {
   ModelCapabilityInfo,
   NodeInfo,
+  CatalogProvider,
   CreateNodeRequest,
   ProviderCompatibilityMatrixItem,
   UpdateNodeRequest,
@@ -226,9 +236,23 @@ function configuredCompatibility(matrix: ProviderCompatibilityMatrixItem[] | und
   return (matrix || []).filter((item) => item.configured || item.profile_supported === false)
 }
 
+function onboardingProviderScore(provider: CatalogProvider): number {
+  const canonicalCoverage = provider.canonical_model_coverage?.coverage_ratio || 0
+  const pricingCoverage = provider.pricing_coverage?.coverage_ratio || 0
+  const recommendedCount =
+    provider.recommended_models?.filter((entry) => entry.source === 'recommended').length || 0
+  return (
+    recommendedCount * 100 +
+    pricingCoverage * 10 +
+    canonicalCoverage * 5 +
+    provider.models.length / 100
+  )
+}
+
 export function NodesPage() {
   const { t } = useTranslation('nodes')
   const { data: nodesData, isLoading, isError, error, refetch } = useNodes()
+  const providerCatalog = useProviderCatalogProviders()
   const resetCircuit = useResetCircuit()
   const reloadConfig = useReloadConfig()
   const createNode = useCreateNode()
@@ -240,14 +264,23 @@ export function NodesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editNode, setEditNode] = useState<NodeInfo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<NodeInfo | null>(null)
+  const [initialPresetId, setInitialPresetId] = useState<string | null>(null)
 
   const handleOpenCreate = () => {
     setEditNode(null)
+    setInitialPresetId(null)
+    setFormOpen(true)
+  }
+
+  const handleOpenCreateFromCatalog = (presetId: string) => {
+    setEditNode(null)
+    setInitialPresetId(presetId)
     setFormOpen(true)
   }
 
   const handleOpenEdit = (node: NodeInfo) => {
     setEditNode(node)
+    setInitialPresetId(null)
     setFormOpen(true)
   }
 
@@ -271,6 +304,11 @@ export function NodesPage() {
     })
   }
 
+  const handleCloseForm = () => {
+    setFormOpen(false)
+    setInitialPresetId(null)
+  }
+
   if (isError) {
     return <ErrorState error={error} onRetry={refetch} />
   }
@@ -291,6 +329,21 @@ export function NodesPage() {
   const healthyCount = nodesData.nodes.filter((node) => node.healthy).length
   const totalModels = nodesData.nodes.reduce((sum, node) => sum + modelIdsForNode(node).length, 0)
   const openCircuitCount = nodesData.nodes.filter((node) => node.circuit.state !== 'CLOSED').length
+  const catalogProviders = providerCatalog.data?.providers || []
+  const nodesWithCatalog = nodesData.nodes.map((node) => ({
+    node,
+    catalogProvider: matchCatalogProviderForNode(node, catalogProviders),
+  }))
+  const configuredCatalogProviderIds = new Set(
+    nodesWithCatalog
+      .map((entry) => entry.catalogProvider?.id)
+      .filter((value): value is string => Boolean(value)),
+  )
+  const onboardingProviders = [...catalogProviders]
+    .filter((provider) => !configuredCatalogProviderIds.has(provider.id))
+    .sort((left, right) => onboardingProviderScore(right) - onboardingProviderScore(left))
+    .slice(0, 6)
+  const matchedCatalogCount = nodesWithCatalog.filter((entry) => entry.catalogProvider).length
 
   return (
     <div className="space-y-6">
@@ -344,11 +397,6 @@ export function NodesPage() {
         </div>
       )}
 
-      {/* Quick Model Reference */}
-      <div className="animate-fade-up">
-        <QuickModelReference nodes={nodesData.nodes} />
-      </div>
-
       <div className="animate-fade-up rounded-lg bg-[#052e24] p-2 shadow-[0_18px_42px_rgba(5,46,36,0.16)] dark:bg-[var(--background-secondary)]">
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md bg-white/10 md:grid-cols-4">
           <div className="bg-[#052e24] px-4 py-3 dark:bg-[var(--background-secondary)]">
@@ -391,6 +439,129 @@ export function NodesPage() {
         </div>
       </div>
 
+      <CardStatic className="animate-fade-up p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('nodes.sections.onboarding.eyebrow')}
+            </div>
+            <h2 className="mt-1 text-[18px] font-extrabold text-[var(--foreground)]">
+              {t('nodes.sections.onboarding.title')}
+            </h2>
+            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[var(--foreground-dim)]">
+              {t('nodes.sections.onboarding.description')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="emerald">
+              {t('nodes.sections.configured.catalogMatched', {
+                count: matchedCatalogCount,
+                total: nodesData.nodes.length,
+              })}
+            </Badge>
+            <Badge variant="zinc">{t('catalogPage.filters.activeOnly')}</Badge>
+            <Link to="/catalog">
+              <Button variant="outline" size="sm">
+                <Boxes className="h-3.5 w-3.5" />
+                {t('nodes.sections.onboarding.openCatalog')}
+              </Button>
+            </Link>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {providerCatalog.isLoading &&
+            Array.from({ length: 3 }).map((_, index) => (
+              <SkeletonCard key={index} className="h-44" />
+            ))}
+          {!providerCatalog.isLoading && onboardingProviders.length === 0 && (
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-4 py-5 text-[12px] font-semibold text-[var(--foreground-dim)] md:col-span-2 xl:col-span-3">
+              {t('nodes.sections.onboarding.empty')}
+            </div>
+          )}
+          {onboardingProviders.map((provider) => (
+            <div
+              key={provider.id}
+              className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
+                    <NodeIcon
+                      providerId={provider.logo_id || provider.id}
+                      providerName={provider.display_name || provider.name}
+                      baseUrl={provider.base_url}
+                      modelIds={provider.models.map((model) => model.id)}
+                      tags={provider.tags}
+                      protocol={provider.default_protocol}
+                      className="h-5 w-5"
+                    />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-extrabold text-[var(--foreground)]">
+                      {provider.display_name || provider.name}
+                    </div>
+                    <div className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">
+                      {provider.id}
+                    </div>
+                  </div>
+                </div>
+                <ProviderStatusBadge provider={provider} dense />
+              </div>
+              <CatalogCoveragePills provider={provider} dense className="mt-3" />
+              <CatalogTrustPills provider={provider} dense className="mt-2" />
+              <div className="mt-3">
+                <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">
+                  {t('catalogSignals.recommendedPreview')}
+                </div>
+                <RecommendedModelChips provider={provider} limit={3} dense />
+              </div>
+              {provider.status_reason && (
+                <p className="mt-3 line-clamp-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+                  {provider.status_reason}
+                </p>
+              )}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold text-[var(--foreground-dim)]">
+                  {t('nodes.sections.onboarding.addHint')}
+                </span>
+                <Button size="sm" onClick={() => handleOpenCreateFromCatalog(provider.id)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  {t('actions.addUpstream')}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[10px] leading-4 text-[var(--foreground-dim)]">
+          {t('nodes.sections.onboarding.legacyNote')}
+        </p>
+      </CardStatic>
+
+      <div className="space-y-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('nodes.sections.configured.eyebrow')}
+            </div>
+            <h2 className="text-[18px] font-extrabold text-[var(--foreground)]">
+              {t('nodes.sections.configured.title')}
+            </h2>
+            <p className="max-w-3xl text-[12px] leading-5 text-[var(--foreground-dim)]">
+              {t('nodes.sections.configured.description')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="emerald">
+              {t('nodes.sections.configured.catalogMatched', {
+                count: matchedCatalogCount,
+                total: nodesData.nodes.length,
+              })}
+            </Badge>
+            <Badge variant="zinc">{t('catalogSignals.explicitPricingWins')}</Badge>
+          </div>
+        </div>
+      </div>
+
       {/* Node Matrix */}
       {nodesData.nodes.length === 0 ? (
         <EmptyState
@@ -414,7 +585,7 @@ export function NodesPage() {
             <span className="text-right">{t('table.actions')}</span>
           </div>
           <div className="space-y-2">
-            {nodesData.nodes.map((node) => {
+            {nodesWithCatalog.map(({ node, catalogProvider }) => {
               const nodeDiagnostics = diagnostics.filter((diagnostic) =>
                 diagnostic.nodes.includes(node.id) || diagnostic.matchingNodes?.includes(node.id),
               )
@@ -470,6 +641,29 @@ export function NodesPage() {
                               </Badge>
                             )}
                           </div>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {catalogProvider ? (
+                            <>
+                              <ProviderStatusBadge provider={catalogProvider} dense />
+                              <CatalogCoveragePills provider={catalogProvider} dense />
+                            </>
+                          ) : (
+                            <Badge variant="zinc" className="text-[9px]">
+                              {t('nodes.sections.configured.operatorDefined')}
+                            </Badge>
+                          )}
+                        </div>
+                        {catalogProvider && (
+                          <>
+                            <CatalogTrustPills provider={catalogProvider} dense className="mt-2" />
+                            <div className="mt-2">
+                              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--foreground-dim)]">
+                                {t('catalogSignals.recommendedPreview')}
+                              </div>
+                              <RecommendedModelChips provider={catalogProvider} limit={3} dense />
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
@@ -752,15 +946,22 @@ export function NodesPage() {
         </CardStatic>
       )}
 
+      {nodesData.nodes.length > 0 && (
+        <div className="animate-fade-up">
+          <QuickModelReference nodes={nodesData.nodes} />
+        </div>
+      )}
+
       {/* Modals */}
       <NodeFormModal
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={handleCloseForm}
         onSubmit={handleFormSubmit}
         isPending={editNode ? updateNode.isPending : createNode.isPending}
         editNode={editNode}
         existingIds={existingIds}
         existingNodes={nodesData.nodes}
+        initialPresetId={initialPresetId}
       />
 
       <DeleteNodeDialog

@@ -295,9 +295,17 @@ function runCatalogSourcesCommand(args: CatalogArgs, cli: CliIO): number {
 
 async function runCatalogRefreshCommand(args: CatalogArgs, cli: CliIO): Promise<number> {
   const provider = args.provider || "openrouter";
+  const loaded = loadMergedCatalog({
+    cwd: cli.cwd,
+    env: cli.env,
+  });
   let result;
   try {
-    result = await refreshCatalogProvider({ provider, now: cli.now() });
+    result = await refreshCatalogProvider({
+      provider,
+      now: cli.now(),
+      canonicalRegistry: loaded.internal.canonical_registry,
+    });
   } catch (error) {
     cli.stderr(error instanceof Error ? error.message : "Catalog refresh failed.");
     return 1;
@@ -374,6 +382,7 @@ async function runCatalogSyncCommand(args: CatalogArgs, cli: CliIO): Promise<num
   const status = buildCatalogSyncStatus({
     config: { override_file: overridePath, sync: { cache_file: syncCachePath } },
     catalog: loadedAfter.catalog,
+    internal: loadedAfter.internal,
     cachePath: loadedAfter.syncCachePath,
     cacheFound: loadedAfter.syncCacheFound,
     overridePath: loadedAfter.overridePath,
@@ -1282,11 +1291,29 @@ function formatCatalogRefreshResult(
     `Source: ${result.source.label} (${result.source.mode})`,
     `URL: ${result.source.source_url || "operator-local"}`,
     `Models: ${result.model_count}`,
+    result.canonical_model_count !== undefined
+      ? `Canonical models: ${result.canonical_model_count}`
+      : undefined,
+    result.matched_model_count !== undefined
+      ? `Matched canonical models: ${result.matched_model_count}`
+      : undefined,
+    result.projected_model_count !== undefined
+      ? `Projected provider models: ${result.projected_model_count}`
+      : undefined,
     `Priced models: ${result.priced_model_count}`,
+    result.low_confidence_match_count !== undefined
+      ? `Low-confidence matches: ${result.low_confidence_match_count}`
+      : undefined,
+    result.unmatched_model_count !== undefined
+      ? `Unmatched ZeroEval models: ${result.unmatched_model_count}`
+      : undefined,
+    result.ambiguous_match_count !== undefined
+      ? `Ambiguous matches: ${result.ambiguous_match_count}`
+      : undefined,
     outputPath ? `Output: ${outputPath}` : "Output: not written",
     `Generated: ${result.generated_at}`,
     ...issueLines,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function formatCatalogSyncResult(
@@ -1311,12 +1338,30 @@ function formatCatalogSyncResult(
     `Output: ${result.written ? result.output : "not written"}`,
     `Source URL: ${result.source_url || providerStatus?.source_url || "manual"}`,
     `Models: ${result.model_count}`,
+    result.canonical_model_count !== undefined
+      ? `Canonical models: ${result.canonical_model_count}`
+      : undefined,
+    result.matched_model_count !== undefined
+      ? `Matched canonical models: ${result.matched_model_count}`
+      : undefined,
+    result.projected_model_count !== undefined
+      ? `Projected provider models: ${result.projected_model_count}`
+      : undefined,
     `Priced models: ${result.priced_model_count}`,
+    result.low_confidence_match_count !== undefined
+      ? `Low-confidence matches: ${result.low_confidence_match_count}`
+      : undefined,
+    result.unmatched_model_count !== undefined
+      ? `Unmatched ZeroEval models: ${result.unmatched_model_count}`
+      : undefined,
+    result.ambiguous_match_count !== undefined
+      ? `Ambiguous matches: ${result.ambiguous_match_count}`
+      : undefined,
     `Last sync: ${providerStatus?.last_sync || result.generated_at}`,
     `Confidence: ${result.confidence || providerStatus?.confidence || "unknown"}`,
     `Scheduler enabled: ${status.scheduled ? "yes" : "no"}`,
     ...issueLines,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function formatCatalogOverrideAsYaml(override: unknown): string {

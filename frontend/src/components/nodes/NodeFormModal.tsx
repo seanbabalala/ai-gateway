@@ -3,6 +3,7 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +41,12 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { NodeIcon } from "@/components/shared/NodeIcon";
+import {
+  CatalogCoveragePills,
+  CatalogTrustPills,
+  ProviderStatusBadge,
+  RecommendedModelChips,
+} from "@/components/shared/CatalogSignals";
 import { CapabilityPicker } from "@/components/shared/CapabilityPicker";
 import { TierRecommendation } from "@/components/shared/TierRecommendation";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -50,6 +57,7 @@ import type {
   CatalogModel,
   CatalogProvider,
   CatalogProviderFamily,
+  CatalogProviderStatus,
   CatalogProviderType,
   CreateNodeRequest,
   ModelCapabilityInfo,
@@ -207,9 +215,13 @@ const PROVIDER_FAMILY_FILTERS: CatalogProviderFamily[] = [
 ];
 
 interface ProviderPreset {
+  catalog: CatalogProvider;
   id: string;
   name: string;
   description?: string;
+  status?: CatalogProviderStatus;
+  replacement_provider_id?: string;
+  status_reason?: string;
   category: ProviderFilter;
   family: CatalogProviderFamily;
   provider_type: CatalogProviderType;
@@ -303,6 +315,7 @@ interface NodeFormModalProps {
   editNode?: NodeInfo | null;
   existingIds: string[];
   existingNodes: NodeInfo[];
+  initialPresetId?: string | null;
 }
 
 const EMPTY_HEALTH_CHECK: HealthCheckForm = {
@@ -630,9 +643,13 @@ function providerToPreset(provider: CatalogProvider): ProviderPreset {
   );
 
   return {
+    catalog: provider,
     id: provider.id,
     name: provider.name,
     description: provider.description,
+    status: provider.status,
+    replacement_provider_id: provider.replacement_provider_id,
+    status_reason: provider.status_reason,
     category: providerCategory(provider),
     family: providerFamily(provider),
     provider_type: providerType(provider),
@@ -776,6 +793,7 @@ export function NodeFormModal({
   editNode,
   existingIds,
   existingNodes,
+  initialPresetId,
 }: NodeFormModalProps) {
   const { t } = useTranslation("nodes");
   const isEdit = !!editNode;
@@ -783,6 +801,7 @@ export function NodeFormModal({
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
   const [providerFamilyFilter, setProviderFamilyFilter] =
     useState<ProviderFamilyFilter>("all");
+  const [showLegacyProviders, setShowLegacyProviders] = useState(false);
   const [providerSearch, setProviderSearch] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -791,9 +810,13 @@ export function NodeFormModal({
   const [prefixInput, setPrefixInput] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [profileInput, setProfileInput] = useState("");
+  const autoPickedInitialPreset = useRef(false);
   const testNode = useTestNode();
   const testExisting = useTestExistingNode();
-  const providerCatalog = useProviderCatalogProviders(open && !isEdit);
+  const providerCatalog = useProviderCatalogProviders({
+    enabled: open && !isEdit,
+    showLegacy: showLegacyProviders,
+  });
   const providerPresets = useMemo(
     () => (providerCatalog.data?.providers || []).map(providerToPreset),
     [providerCatalog.data],
@@ -817,12 +840,14 @@ export function NodeFormModal({
 
   useEffect(() => {
     if (!open) return;
+    autoPickedInitialPreset.current = false;
     setTestResult(null);
     setPrefixInput("");
     setTagInput("");
     setProfileInput("");
     setProviderFilter("all");
     setProviderFamilyFilter("all");
+    setShowLegacyProviders(false);
     setProviderSearch("");
     setErrors({});
 
@@ -901,6 +926,15 @@ export function NodeFormModal({
     setSelectedPreset(null);
     setForm({ ...EMPTY_FORM, health_check: { ...EMPTY_HEALTH_CHECK } });
   }, [open, editNode]);
+
+  useEffect(() => {
+    if (!open || isEdit || !initialPresetId || providerPresets.length === 0) return;
+    if (autoPickedInitialPreset.current) return;
+    const preset = providerPresets.find((entry) => entry.id === initialPresetId);
+    if (!preset) return;
+    autoPickedInitialPreset.current = true;
+    pickPreset(preset);
+  }, [open, isEdit, initialPresetId, providerPresets]);
 
   const filteredPresets = useMemo(() => {
     const query = providerSearch.trim().toLowerCase();
@@ -1637,18 +1671,22 @@ export function NodeFormModal({
 
             <main className="min-h-0 overflow-y-auto px-5 py-4">
               {step === "provider" && (
-                <ProviderStep
-                  presets={filteredPresets}
-                  loading={providerCatalog.isLoading}
-                  selectedFilter={providerFilter}
-                  selectedFamily={providerFamilyFilter}
-                  search={providerSearch}
-                  existingIds={existingIds}
-                  onFilter={setProviderFilter}
-                  onFamily={setProviderFamilyFilter}
-                  onSearch={setProviderSearch}
-                  onPick={pickPreset}
-                  onCustom={pickCustom}
+                  <ProviderStep
+                    presets={filteredPresets}
+                    loading={providerCatalog.isLoading}
+                    selectedFilter={providerFilter}
+                    selectedFamily={providerFamilyFilter}
+                    showLegacy={showLegacyProviders}
+                    search={providerSearch}
+                    existingIds={existingIds}
+                    onFilter={setProviderFilter}
+                    onFamily={setProviderFamilyFilter}
+                    onToggleLegacy={() =>
+                      setShowLegacyProviders((current) => !current)
+                    }
+                    onSearch={setProviderSearch}
+                    onPick={pickPreset}
+                    onCustom={pickCustom}
                   t={t}
                 />
               )}
@@ -1723,10 +1761,21 @@ export function NodeFormModal({
                             {t("form.pricing.catalogReference")}
                           </Badge>
                         )}
+                        <ProviderStatusBadge provider={presetInfo.catalog} dense />
                       </div>
                       <p className="mt-2 text-[11px] leading-5 text-[var(--foreground-dim)]">
                         {t("form.models.latestRecommendedDescription")}
                       </p>
+                      <RecommendedModelChips
+                        provider={presetInfo.catalog}
+                        limit={4}
+                        className="mt-2"
+                      />
+                      <CatalogTrustPills
+                        provider={presetInfo.catalog}
+                        dense
+                        className="mt-2"
+                      />
                     </div>
                   )}
                   {MODEL_BUCKETS.filter((bucket) =>
@@ -2442,10 +2491,12 @@ function ProviderStep({
   loading,
   selectedFilter,
   selectedFamily,
+  showLegacy,
   search,
   existingIds,
   onFilter,
   onFamily,
+  onToggleLegacy,
   onSearch,
   onPick,
   onCustom,
@@ -2455,10 +2506,12 @@ function ProviderStep({
   loading: boolean;
   selectedFilter: ProviderFilter;
   selectedFamily: ProviderFamilyFilter;
+  showLegacy: boolean;
   search: string;
   existingIds: string[];
   onFilter: (filter: ProviderFilter) => void;
   onFamily: (filter: ProviderFamilyFilter) => void;
+  onToggleLegacy: () => void;
   onSearch: (value: string) => void;
   onPick: (preset: ProviderPreset) => void;
   onCustom: () => void;
@@ -2468,6 +2521,16 @@ function ProviderStep({
   return (
     <section className="space-y-4">
       <SectionTitle icon={Server} title={t("form.sections.provider")} />
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="emerald">{t("form.providerCard.activeOnly")}</Badge>
+          <Badge variant="blue">{t("catalogSignals.openrouterReference")}</Badge>
+          <Badge variant="amber">{t("catalogSignals.zeroevalSecondary")}</Badge>
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-[var(--foreground-dim)]">
+          {t("form.providerCard.truthCopy")}
+        </p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--foreground-dim)]" />
@@ -2494,6 +2557,18 @@ function ProviderStep({
             </button>
           ))}
         </div>
+        <Button
+          type="button"
+          variant={showLegacy ? "secondary" : "outline"}
+          size="sm"
+          onClick={onToggleLegacy}
+        >
+          {t(
+            showLegacy
+              ? "form.providerFilters.hideLegacy"
+              : "form.providerFilters.showLegacy",
+          )}
+        </Button>
       </div>
 
       <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-2">
@@ -2548,7 +2623,7 @@ function ProviderStep({
               key={preset.id}
               type="button"
               onClick={() => onPick(preset)}
-              className="group flex min-h-[132px] flex-col items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4 text-left transition-all hover:border-[var(--accent)] hover:bg-[var(--inset-bg)]"
+              className="group flex min-h-[180px] flex-col items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4 text-left transition-all hover:border-[var(--accent)] hover:bg-[var(--inset-bg)]"
             >
               <div className="flex w-full items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
@@ -2605,7 +2680,28 @@ function ProviderStep({
                     {t("form.providerCard.catalogPricing")}
                   </Badge>
                 )}
+                <ProviderStatusBadge provider={preset.catalog} dense />
               </div>
+              <CatalogCoveragePills provider={preset.catalog} dense />
+              <CatalogTrustPills provider={preset.catalog} dense />
+              <div>
+                <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--foreground-dim)]">
+                  {t("catalogSignals.recommendedPreview")}
+                </div>
+                <RecommendedModelChips provider={preset.catalog} limit={3} dense />
+              </div>
+              {preset.status_reason && (
+                <span className="line-clamp-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+                  {preset.status_reason}
+                </span>
+              )}
+              {preset.replacement_provider_id && (
+                <span className="text-[10px] font-semibold text-[var(--foreground-dim)]">
+                  {t("form.providerCard.replacement", {
+                    provider: preset.replacement_provider_id,
+                  })}
+                </span>
+              )}
               {preset.compatibility_profiles.length > 0 && (
                 <div className="flex max-w-full flex-wrap gap-1">
                   {preset.compatibility_profiles.slice(0, 2).map((profile) => (

@@ -47,6 +47,12 @@ export type CatalogPricingUsedFrom =
   | 'missing';
 
 export type ProviderCacheType = 'automatic' | 'explicit' | 'none';
+export type CatalogProviderStatus =
+  | 'active'
+  | 'transport_only'
+  | 'deprecated'
+  | 'legacy_alias'
+  | 'custom';
 
 export interface CatalogCacheMetadata {
   supports_cache: boolean;
@@ -133,12 +139,41 @@ export interface CatalogLimits {
   dimensions?: number | number[];
 }
 
+export type CatalogModelMatchConfidence = 'high' | 'medium' | 'low';
+export type CatalogModelMatchStrategy =
+  | 'exact_source_model_id'
+  | 'exact_canonical_slug'
+  | 'explicit_alias'
+  | 'strict_signature'
+  | 'strict_signature_release_date'
+  | 'ambiguous_candidate'
+  | 'unmatched';
+
+export interface CatalogModelLifecycle {
+  release_date?: string;
+  announcement_date?: string;
+  knowledge_cutoff?: string;
+}
+
+export interface CatalogModelSpecs {
+  params?: number;
+  training_tokens?: number;
+  throughput?: number;
+  multimodal?: boolean;
+  license?: string;
+  is_moe?: boolean;
+}
+
 export interface CatalogModelEnrichment {
   source: string;
   source_url?: string;
   synced_at?: string;
   enriched_from?: string;
   enriched_at?: string;
+  match_strategy?: CatalogModelMatchStrategy;
+  match_confidence?: CatalogModelMatchConfidence;
+  matched_from?: string[];
+  match_notes?: string[];
   organization?: string;
   organization_id?: string;
   canonical_model_id?: string;
@@ -146,21 +181,100 @@ export interface CatalogModelEnrichment {
   announcement_date?: string;
   multimodal?: boolean;
   throughput?: number;
-  lifecycle?: {
-    release_date?: string;
-    announcement_date?: string;
-    knowledge_cutoff?: string;
-  };
-  specs?: {
-    params?: number;
-    training_tokens?: number;
-    throughput?: number;
-    multimodal?: boolean;
-    license?: string;
-    is_moe?: boolean;
-  };
+  lifecycle?: CatalogModelLifecycle;
+  specs?: CatalogModelSpecs;
   benchmarks?: Record<string, number>;
+  secondary_pricing_reference?: CatalogPricing;
   metadata?: Record<string, unknown>;
+}
+
+export interface CatalogCanonicalArchitecture {
+  modality?: string;
+  tokenizer?: string;
+  instruct_type?: string | null;
+  input_modalities?: string[];
+  output_modalities?: string[];
+}
+
+export interface CatalogCanonicalTopProvider {
+  context_length?: number;
+  max_completion_tokens?: number;
+  is_moderated?: boolean;
+}
+
+export interface CatalogCanonicalSourceMetadata {
+  source: string;
+  source_url?: string;
+  synced_at?: string;
+  dataset_role?: 'canonical_primary' | 'enrichment_overlay' | 'provider_projection';
+}
+
+export interface CatalogCanonicalModel {
+  canonical_id: string;
+  source_model_id: string;
+  source_provider_slug: string;
+  display_name: string;
+  aliases?: string[];
+  canonical_slug?: string;
+  description?: string;
+  context_length?: number;
+  architecture?: CatalogCanonicalArchitecture;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  supported_parameters?: string[];
+  default_parameters?: Record<string, unknown>;
+  pricing_reference?: CatalogPricing;
+  enrichment?: CatalogModelEnrichment;
+  top_provider?: CatalogCanonicalTopProvider;
+  expiration_date?: string;
+  created?: string;
+  source_metadata: CatalogCanonicalSourceMetadata;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CatalogCanonicalOverlayDiagnostic {
+  organization_id?: string;
+  model_id: string;
+  canonical_id?: string;
+  match_strategy?: CatalogModelMatchStrategy;
+  match_confidence?: CatalogModelMatchConfidence;
+  reason: string;
+  matched_from?: string[];
+  match_notes?: string[];
+}
+
+export interface CatalogZeroEvalOverlayDiagnostics {
+  source: string;
+  source_url: string;
+  synced_at: string;
+  canonical_model_count: number;
+  zeroeval_model_count: number;
+  matched_model_count: number;
+  projected_model_count: number;
+  high_confidence_match_count: number;
+  medium_confidence_match_count: number;
+  low_confidence_match_count: number;
+  unmatched_model_count: number;
+  ambiguous_match_count: number;
+  unmatched_models?: CatalogCanonicalOverlayDiagnostic[];
+  low_confidence_matches?: CatalogCanonicalOverlayDiagnostic[];
+  ambiguous_matches?: CatalogCanonicalOverlayDiagnostic[];
+}
+
+export interface CatalogCanonicalRegistry {
+  version: 1;
+  primary_source: string;
+  source_url: string;
+  generated_at: string;
+  model_count: number;
+  models: CatalogCanonicalModel[];
+}
+
+export interface CatalogInternalMaterialization {
+  canonical_registry?: CatalogCanonicalRegistry;
+  diagnostics?: {
+    zeroeval_overlay?: CatalogZeroEvalOverlayDiagnostics;
+  };
 }
 
 export interface CatalogModel {
@@ -186,6 +300,9 @@ export interface CatalogProvider {
   id: string;
   name: string;
   aliases?: string[];
+  status?: CatalogProviderStatus;
+  replacement_provider_id?: string;
+  status_reason?: string;
   family?: string;
   category?: string;
   provider_type?: 'direct' | 'aggregator' | 'cloud' | 'self_hosted' | 'media' | 'speech' | 'local';
@@ -250,6 +367,9 @@ export interface CatalogOverrideProvider {
   id?: string;
   name?: string;
   aliases?: string[];
+  status?: CatalogProviderStatus;
+  replacement_provider_id?: string;
+  status_reason?: string;
   family?: string;
   category?: string;
   provider_type?: CatalogProvider['provider_type'];
@@ -279,6 +399,7 @@ export interface CatalogOverrideProvider {
 export interface CatalogOverrideFile {
   version?: 1;
   providers?: Record<string, CatalogOverrideProvider> | CatalogOverrideProvider[];
+  _siftgate_internal?: CatalogInternalMaterialization;
 }
 
 export interface CatalogIssue {
@@ -295,6 +416,7 @@ export interface CatalogLoadResult {
   syncCachePath: string;
   syncCacheFound: boolean;
   issues: CatalogIssue[];
+  internal: CatalogInternalMaterialization;
 }
 
 export interface CatalogLoadOptions {

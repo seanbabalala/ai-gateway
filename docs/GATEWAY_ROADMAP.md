@@ -26,8 +26,62 @@
 | v1.5 | Contract Hardening + Runtime Safety | 已发布 — required env fail-fast、统一 public error mapping、request-id / reload 安全收敛 | ✅ Released |
 | v1.6 | Provider Cache Intelligence | 已发布 — v1.6.0 Usage Schema Registry、Cache Savings Dashboard、Cache Session Affinity 路由增强 | ✅ Released |
 | v1.7 | Catalog Enrichment + Fresh Model Defaults | 已发布 — v1.7.0 ZeroEval catalog enrichment、Fresh defaults、默认价格预填、模型元数据扩展 | ✅ Released |
+| v1.8 | Canonical Catalog Normalization + Node UX Cleanup | 已发布 — v1.8.0 OpenRouter-first canonical registry、ZeroEval overlay、provider projection、legacy cleanup、Nodes/Add Node/Provider Catalog UX 统一 | ✅ Released |
 
 ---
+
+## v1.8 — Canonical Catalog Normalization + Node UX Cleanup（规范目录统一与 Node 体验收口）
+
+**v1.8.0 发布状态**：已发布。v1.8 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本次 minor release 的核心目标不是再继续补丁式堆 provider，而是把 Provider transport/preset 元数据、canonical model truth、ZeroEval enrichment 和 Dashboard operator path 彻底收口成一套清楚的边界：对外仍然只暴露一套 merged provider catalog，不引入第二套 operator-facing catalog，也不再让 built-in、OpenRouter、ZeroEval 三套 truth 在产品上并列出现。
+
+### P0：OpenRouter-first Canonical Model Registry
+
+- **状态**：✅ v1.8.0 已发布
+- **目标**：把 OpenRouter public models API 作为 canonical model primary source，而不是继续让 built-in static provider model lists 主导默认模型 truth。
+- **实现方案**：
+  - 在现有 catalog refresh/sync/merge 结构上新增 internal canonical registry materialization
+  - canonical model 至少承载 `canonical_id`、`source_model_id`、`source_provider_slug`、`display_name`、`aliases`、`canonical_slug`、`context_length`、`architecture`、`supported_parameters`、`pricing_reference`、`top_provider`、`created`、`expiration_date` 和 source metadata
+  - merged provider catalog 继续作为唯一 public surface；canonical registry 只是实现细节，不直接变成第二套产品概念
+
+### P0：ZeroEval Enrichment Overlay
+
+- **状态**：✅ v1.8.0 已发布
+- **目标**：让 ZeroEval enrich canonical models，而不是只在 built-in provider/model 精确命中少量条目时才起作用。
+- **实现方案**：
+  - ZeroEval 通过 exact model id、canonical slug、explicit alias table、strict family/version/date rules 做 canonical matching
+  - 每个匹配都保留 `match_strategy`、`match_confidence`、`matched_from`、`match_notes`
+  - low-confidence 匹配进入 diagnostics/report，但不进入默认推荐、也不默认带价格
+  - OpenRouter pricing reference 仍为 primary；ZeroEval pricing 只是 secondary fallback/comparison source，且保留 review-required 治理口径
+
+### P0：Provider Projection + Legacy Cleanup
+
+- **状态**：✅ v1.8.0 已发布
+- **目标**：从 canonical models 投影出 provider-facing model views，同时清理历史遗留 provider / stale static model lists / legacy aliases，避免 operator 继续看到误导性的 active rows。
+- **实现方案**：
+  - provider transport registry 继续维护 base URL、auth、endpoints、compatibility、logo、family/type 等连接元数据
+  - provider models 改为从 canonical models + provider bindings 投影生成
+  - provider status 明确分为 `active`、`transport_only`、`deprecated`、`legacy_alias`、`custom`
+  - deprecated / transport_only provider 保留兼容价值，但默认不再出现在 Add Node 首屏和 Provider Catalog 主路径
+
+### P1：Nodes / Add Node / Provider Catalog UX Cleanup
+
+- **状态**：✅ v1.8.0 已发布
+- **目标**：让 Nodes、Add Node、Provider Catalog 都贯彻同一套 canonical projection truth，而不是继续各自猜默认模型或混合展示历史 provider truth。
+- **实现方案**：
+  - Nodes 页面拆分 `Configured Upstreams` 与 `Catalog Onboarding`
+  - Add Node 默认只展示 active providers；legacy/deprecated/transport-only 通过显式 toggle 查看
+  - 默认模型来自 canonical `recommended_model_buckets`，默认 pricing rows 只预填 recommended models
+  - Provider Catalog 统一展示 provider status、canonical coverage、pricing coverage、benchmark snippets、lifecycle 与 trust copy
+
+### 非目标
+
+- **状态**：✅ 已明确
+- **不做内容**：
+  - 不新增第二套 operator-facing catalog
+  - 不把 OpenRouter 或 ZeroEval 说成 direct provider 的官方 billing authority
+  - 不引入新的运行时联网强依赖
+  - 不改变既有 pricing precedence，也不覆盖显式 operator 配置
+  - 不改云控制面代码
 
 ## v1.7 — Catalog Enrichment + Fresh Model Defaults（目录增强与最新模型默认值）
 

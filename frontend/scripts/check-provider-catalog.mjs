@@ -108,7 +108,8 @@ for (const expected of [
 }
 
 for (const expected of [
-  "useProviderCatalogProviders(open && !isEdit)",
+  "useProviderCatalogProviders({",
+  "showLegacy",
   "providerToPreset",
   "recommended_model_buckets",
   "defaultBuckets",

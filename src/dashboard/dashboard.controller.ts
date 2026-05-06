@@ -90,7 +90,19 @@ import {
   listCompatibilityProfiles,
   resolveNodeCompatibilityProfileIds,
 } from "../catalog/compatibility-profiles";
-import type { CatalogModel, CatalogProvider } from "../catalog/catalog.types";
+import {
+  shouldExposeProviderByDefault,
+  shouldExposeProviderWithLegacyToggle,
+  buildCanonicalProjectionBindings,
+} from "../catalog/provider-projection";
+import { BUILTIN_PROVIDER_CATALOG } from "../catalog/built-in-catalog";
+import type {
+  CatalogCanonicalModel,
+  CatalogInternalMaterialization,
+  CatalogModel,
+  CatalogPricing,
+  CatalogProvider,
+} from "../catalog/catalog.types";
 import type { Modality } from "../config/modality";
 import type { ProviderCompatibilityCapability } from "../database/entities";
 import { ProviderCompatibilityService } from "./provider-compatibility.service";
@@ -298,13 +310,53 @@ const DASHBOARD_HOMEPAGE_URLS: Record<string, string> = {
   speechmatics: "https://www.speechmatics.com",
 };
 
-function toDashboardCatalogProvider(provider: CatalogProvider) {
+type DashboardCatalogContext = {
+  canonicalById: Map<string, CatalogCanonicalModel>;
+  canonicalByProjectionKey: Map<string, CatalogCanonicalModel>;
+};
+
+function buildDashboardCatalogContext(
+  internal: CatalogInternalMaterialization | undefined,
+): DashboardCatalogContext {
+  const canonicalRegistry = internal?.canonical_registry;
+  const canonicalModels = canonicalRegistry?.models || [];
+  const canonicalById = new Map(
+    canonicalModels.map((model) => [model.canonical_id, model] as const),
+  );
+  const canonicalByProjectionKey = new Map<string, CatalogCanonicalModel>();
+  if (canonicalRegistry?.models.length) {
+    for (const binding of buildCanonicalProjectionBindings({
+      canonicalRegistry,
+      providers: BUILTIN_PROVIDER_CATALOG,
+    })) {
+      const canonical = canonicalById.get(binding.canonical_id);
+      if (!canonical) continue;
+      canonicalByProjectionKey.set(
+        dashboardProjectionKey(binding.provider_id, binding.model_id),
+        canonical,
+      );
+    }
+  }
+  return {
+    canonicalById,
+    canonicalByProjectionKey,
+  };
+}
+
+function dashboardProjectionKey(providerId: string, modelId: string): string {
+  return `${providerId}::${modelId}`;
+}
+
+function toDashboardCatalogProvider(
+  provider: CatalogProvider,
+  context: DashboardCatalogContext,
+) {
   const endpoints = withDashboardEndpointAliases(provider.endpoints);
   const protocols = DASHBOARD_PROTOCOLS.filter(
     (protocol) => endpoints[protocol],
   );
   const models = provider.models.map((model) =>
-    toDashboardCatalogModel(model, provider),
+    toDashboardCatalogModel(model, provider, context),
   );
   const recommendations = dashboardRecommendedModelBuckets(models);
   const modalities = Array.from(
@@ -322,12 +374,22 @@ function toDashboardCatalogProvider(provider: CatalogProvider) {
     providerType,
     modalities,
   );
+  const providerStatus = provider.status || "active";
+  const defaultVisible = includeDashboardProvider(provider, false);
 
   return {
     ...provider,
     provider_id: provider.id,
     display_name: provider.name,
     description: `${provider.name} provider preset`,
+    status: providerStatus,
+    provider_status: providerStatus,
+    default_visible: defaultVisible,
+    replacement_provider_id: provider.replacement_provider_id,
+    replacement_note: provider.replacement_provider_id
+      ? provider.status_reason
+      : undefined,
+    status_reason: provider.status_reason,
     compatibility_profiles: provider.compatibility_profiles || [],
     base_url_matchers: baseUrlMatchers(provider.base_url),
     protocols: protocols.length > 0 ? protocols : ["chat_completions"],
@@ -357,8 +419,14 @@ function toDashboardCatalogProvider(provider: CatalogProvider) {
       pricing.units || (pricing.unit ? { default: pricing.unit } : {}),
     pricing,
     tags: [provider.source, ...(provider.overridden ? ["override"] : [])],
+    canonical_model_coverage: dashboardProviderCanonicalCoverage(models),
+    pricing_coverage: dashboardProviderPricingCoverage(
+      models,
+      recommendations.recommended_models,
+    ),
     enrichment_summary: dashboardProviderEnrichmentSummary(models),
-    allows_unknown_models: provider.id === "openai-compatible",
+    allows_unknown_models:
+      provider.id === "openai-compatible" || provider.status === "custom",
     manual_review_required:
       pricing.manual_review_required ||
       models.some((model) => model.pricing?.manual_review_required),
@@ -367,12 +435,31 @@ function toDashboardCatalogProvider(provider: CatalogProvider) {
   };
 }
 
+function includeDashboardProvider(
+  provider: CatalogProvider,
+  showLegacy: boolean,
+) {
+  if (showLegacy) {
+    return shouldExposeProviderWithLegacyToggle(provider.status);
+  }
+  return shouldExposeProviderByDefault(provider.status);
+}
+
+function parseBooleanQuery(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function toDashboardCatalogModel(
   model: CatalogModel,
   provider?: CatalogProvider,
+  context?: DashboardCatalogContext,
 ) {
   const endpointMap = withDashboardEndpointAliases(model.endpoints);
   const endpoints = Object.keys(endpointMap);
+  const canonical = dashboardCanonicalModel(model, provider, context);
+  const canonicalId = dashboardCanonicalId(model, canonical);
   const pricing = model.pricing ||
     firstModelPricing(provider) || {
       source: "missing",
@@ -386,6 +473,14 @@ function toDashboardCatalogModel(
     endpoints,
     input_types: inferDashboardInputTypes(model.modalities),
     output_types: inferDashboardOutputTypes(model.modalities),
+    canonical_id: canonicalId,
+    projection_source: dashboardModelProjectionSource(model, canonical),
+    lifecycle: dashboardModelLifecycle(model, canonical),
+    specs: dashboardModelSpecs(model, canonical),
+    benchmarks: dashboardModelBenchmarks(model, canonical),
+    match_strategy: model.enrichment?.match_strategy,
+    match_confidence: model.enrichment?.match_confidence,
+    pricing_sources: dashboardModelPricingSources(model, canonical),
     pricing,
     pricing_hygiene: assessCatalogPricing(pricing, model.modalities),
     manual_review_required: pricing.manual_review_required,
@@ -418,7 +513,7 @@ function deriveDashboardProviderType(
 ): DashboardProviderType {
   const id = provider.id.toLowerCase();
   const baseUrl = provider.base_url.toLowerCase();
-  if (id === "openai-compatible") return "custom";
+  if (provider.status === "custom" || id === "openai-compatible") return "custom";
   if (provider.provider_type) return provider.provider_type;
   if (
     DASHBOARD_LOCAL_PROVIDER_IDS.has(id) ||
@@ -687,11 +782,12 @@ function recommendModelsForBucket(
   models: ReturnType<typeof toDashboardCatalogModel>[];
   source: "recommended" | "fallback";
 } {
-  if (models.length === 0) {
+  const eligibleModels = models.filter((model) => !dashboardModelIsLowConfidence(model));
+  if (eligibleModels.length === 0) {
     return { models: [], source: "fallback" };
   }
 
-  const hasEnrichmentSignals = models.some((model) =>
+  const hasEnrichmentSignals = eligibleModels.some((model) =>
     Boolean(
       dashboardModelReleaseDate(model) ||
       model.enrichment?.canonical_model_id ||
@@ -702,13 +798,13 @@ function recommendModelsForBucket(
 
   if (!hasEnrichmentSignals) {
     return {
-      models: models.slice(0, limit),
+      models: eligibleModels.slice(0, limit),
       source: "fallback",
     };
   }
 
   const stableRanked = dedupeRecommendedModelFamilies(
-    models
+    eligibleModels
       .filter((model) => !dashboardModelIsPreview(model))
       .sort(compareRecommendedModels),
   ).slice(0, limit);
@@ -722,7 +818,7 @@ function recommendModelsForBucket(
 
   return {
     models: dedupeRecommendedModelFamilies(
-      [...models].sort(compareRecommendedModels),
+      [...eligibleModels].sort(compareRecommendedModels),
     ).slice(0, limit),
     source: "fallback",
   };
@@ -771,6 +867,7 @@ function compareRecommendedModels(
 function dashboardModelReleaseDate(
   model: ReturnType<typeof toDashboardCatalogModel>,
 ): string | null {
+  if (dashboardModelIsLowConfidence(model)) return null;
   return (
     model.enrichment?.lifecycle?.release_date ||
     model.enrichment?.release_date ||
@@ -792,23 +889,33 @@ function dashboardModelReleaseTimestamp(
 function dashboardModelHasPricing(
   model: ReturnType<typeof toDashboardCatalogModel>,
 ): boolean {
-  const pricing = model.pricing || {};
+  if (
+    dashboardModelIsLowConfidence(model) &&
+    model.pricing?.source === "zeroeval"
+  ) {
+    return false;
+  }
+  return dashboardPricingHasAnyValue(model.pricing);
+}
+
+function dashboardPricingHasAnyValue(pricing: CatalogPricing | undefined): boolean {
+  const reference: Partial<CatalogPricing> = pricing || {};
   return [
-    pricing.input,
-    pricing.output,
-    pricing.input_per_1m_tokens,
-    pricing.output_per_1m_tokens,
-    pricing.embedding,
-    pricing.embedding_per_1m_tokens,
-    pricing.rerank,
-    pricing.rerank_per_1k_requests,
-    pricing.image,
-    pricing.image_per_generation,
-    pricing.audio,
-    pricing.audio_per_minute,
-    pricing.video,
-    pricing.video_per_second,
-    pricing.realtime_per_minute,
+    reference.input,
+    reference.output,
+    reference.input_per_1m_tokens,
+    reference.output_per_1m_tokens,
+    reference.embedding,
+    reference.embedding_per_1m_tokens,
+    reference.rerank,
+    reference.rerank_per_1k_requests,
+    reference.image,
+    reference.image_per_generation,
+    reference.audio,
+    reference.audio_per_minute,
+    reference.video,
+    reference.video_per_second,
+    reference.realtime_per_minute,
   ].some((value) => typeof value === "number" && Number.isFinite(value));
 }
 
@@ -818,6 +925,12 @@ function dashboardModelSourcePriority(
   if (model.source === "override") return 3;
   if (model.source === "sync_cache") return 2;
   return 1;
+}
+
+function dashboardModelIsLowConfidence(
+  model: ReturnType<typeof toDashboardCatalogModel>,
+): boolean {
+  return model.enrichment?.match_confidence === "low";
 }
 
 function dashboardModelIsPreview(
@@ -922,6 +1035,234 @@ function dashboardProviderEnrichmentSummary(
     benchmarked_model_count: benchmarkedModelCount,
     latest_enriched_at: latestEnrichedAt,
     sources,
+  };
+}
+
+function dashboardProviderCanonicalCoverage(
+  models: ReturnType<typeof toDashboardCatalogModel>[],
+): {
+  total_models: number;
+  canonicalized_models: number;
+  projected_models: number;
+  enriched_models: number;
+  benchmarked_models: number;
+  low_confidence_models: number;
+  coverage_ratio: number;
+} {
+  const totalModels = models.length;
+  const canonicalizedModels = models.filter((model) => Boolean(model.canonical_id))
+    .length;
+  const projectedModels = models.filter(
+    (model) => model.projection_source === "canonical_projection",
+  ).length;
+  const enrichedModels = models.filter((model) => Boolean(model.enrichment)).length;
+  const benchmarkedModels = models.filter(
+    (model) => model.benchmarks && Object.keys(model.benchmarks).length > 0,
+  ).length;
+  const lowConfidenceModels = models.filter(
+    (model) => model.match_confidence === "low",
+  ).length;
+  return {
+    total_models: totalModels,
+    canonicalized_models: canonicalizedModels,
+    projected_models: projectedModels,
+    enriched_models: enrichedModels,
+    benchmarked_models: benchmarkedModels,
+    low_confidence_models: lowConfidenceModels,
+    coverage_ratio: totalModels > 0 ? canonicalizedModels / totalModels : 0,
+  };
+}
+
+function dashboardProviderPricingCoverage(
+  models: ReturnType<typeof toDashboardCatalogModel>[],
+  recommendedModels: Array<{
+    bucket: DashboardModelBucket;
+    model_id: string;
+    release_date?: string;
+    has_pricing: boolean;
+    source: "recommended" | "fallback";
+  }>,
+): {
+  total_models: number;
+  priced_models: number;
+  recommended_models: number;
+  recommended_priced_models: number;
+  manual_review_required_priced_models: number;
+  coverage_ratio: number;
+} {
+  const totalModels = models.length;
+  const pricedModels = models.filter((model) => dashboardModelHasPricing(model)).length;
+  const recommendedIds = new Set(recommendedModels.map((entry) => entry.model_id));
+  const recommendedPricedModels = models.filter(
+    (model) => recommendedIds.has(model.id) && dashboardModelHasPricing(model),
+  ).length;
+  const manualReviewRequiredPricedModels = models.filter(
+    (model) =>
+      dashboardModelHasPricing(model) &&
+      Boolean(model.pricing?.manual_review_required),
+  ).length;
+  return {
+    total_models: totalModels,
+    priced_models: pricedModels,
+    recommended_models: recommendedIds.size,
+    recommended_priced_models: recommendedPricedModels,
+    manual_review_required_priced_models: manualReviewRequiredPricedModels,
+    coverage_ratio: totalModels > 0 ? pricedModels / totalModels : 0,
+  };
+}
+
+function dashboardCanonicalModel(
+  model: CatalogModel,
+  provider: CatalogProvider | undefined,
+  context: DashboardCatalogContext | undefined,
+): CatalogCanonicalModel | undefined {
+  if (!context) return undefined;
+  const explicitCanonicalId = model.enrichment?.canonical_model_id;
+  if (explicitCanonicalId) {
+    const explicitCanonical = context.canonicalById.get(explicitCanonicalId);
+    if (explicitCanonical) return explicitCanonical;
+  }
+  const providerId = provider?.id || model.provider;
+  return context.canonicalByProjectionKey.get(
+    dashboardProjectionKey(providerId, model.id),
+  );
+}
+
+function dashboardCanonicalId(
+  model: CatalogModel,
+  canonical: CatalogCanonicalModel | undefined,
+): string | undefined {
+  return model.enrichment?.canonical_model_id || canonical?.canonical_id;
+}
+
+function dashboardModelProjectionSource(
+  model: CatalogModel,
+  canonical: CatalogCanonicalModel | undefined,
+): "canonical_projection" | "catalog_override" | "sync_cache" | "builtin" {
+  if (canonical && model.synced) return "canonical_projection";
+  if (model.overridden) return "catalog_override";
+  if (model.synced) return "sync_cache";
+  return "builtin";
+}
+
+function dashboardModelLifecycle(
+  model: CatalogModel,
+  canonical: CatalogCanonicalModel | undefined,
+):
+  | {
+      release_date?: string;
+      announcement_date?: string;
+      knowledge_cutoff?: string;
+    }
+  | undefined {
+  const lifecycle = {
+    ...(canonical?.enrichment?.lifecycle || {}),
+    ...(model.enrichment?.lifecycle || {}),
+  };
+  lifecycle.release_date ||=
+    model.enrichment?.release_date || canonical?.enrichment?.release_date;
+  lifecycle.announcement_date ||=
+    model.enrichment?.announcement_date || canonical?.enrichment?.announcement_date;
+  return Object.values(lifecycle).some(Boolean) ? lifecycle : undefined;
+}
+
+function dashboardModelSpecs(
+  model: CatalogModel,
+  canonical: CatalogCanonicalModel | undefined,
+):
+  | {
+      params?: number;
+      training_tokens?: number;
+      throughput?: number;
+      multimodal?: boolean;
+      license?: string;
+      is_moe?: boolean;
+    }
+  | undefined {
+  const specs = {
+    ...(canonical?.enrichment?.specs || {}),
+    ...(model.enrichment?.specs || {}),
+  };
+  if (specs.throughput === undefined) {
+    specs.throughput = model.enrichment?.throughput || canonical?.enrichment?.throughput;
+  }
+  if (specs.multimodal === undefined) {
+    specs.multimodal =
+      model.enrichment?.multimodal ?? canonical?.enrichment?.multimodal;
+  }
+  return Object.values(specs).some((value) => value !== undefined)
+    ? specs
+    : undefined;
+}
+
+function dashboardModelBenchmarks(
+  model: CatalogModel,
+  canonical: CatalogCanonicalModel | undefined,
+): Record<string, number> | undefined {
+  return (
+    (model.enrichment?.benchmarks
+      ? { ...model.enrichment.benchmarks }
+      : undefined) ||
+    (canonical?.enrichment?.benchmarks
+      ? { ...canonical.enrichment.benchmarks }
+      : undefined)
+  );
+}
+
+function dashboardPricingSourceSummary(
+  pricing: CatalogPricing | undefined,
+):
+  | {
+      source: string;
+      source_type: string | null;
+      source_url: string | null;
+      pricing_confidence: string | null;
+      manual_review_required: boolean;
+      last_updated: string | null;
+      retrieved_at: string | null;
+      last_verified_at: string | null;
+      has_pricing: boolean;
+    }
+  | undefined {
+  if (!pricing) return undefined;
+  return {
+    source: pricing.source,
+    source_type: pricing.source_type || null,
+    source_url: pricing.source_url || null,
+    pricing_confidence: pricing.pricing_confidence || null,
+    manual_review_required: pricing.manual_review_required,
+    last_updated: pricing.last_updated || null,
+    retrieved_at: pricing.retrieved_at || null,
+    last_verified_at: pricing.last_verified_at || null,
+    has_pricing: dashboardPricingHasAnyValue(pricing),
+  };
+}
+
+function dashboardModelPricingSources(
+  model: CatalogModel,
+  canonical: CatalogCanonicalModel | undefined,
+): {
+  effective: ReturnType<typeof dashboardPricingSourceSummary> | undefined;
+  primary_reference: ReturnType<typeof dashboardPricingSourceSummary> | undefined;
+  secondary_reference: ReturnType<typeof dashboardPricingSourceSummary> | undefined;
+  effective_source: string | null;
+  primary_reference_source: string | null;
+  secondary_reference_source: string | null;
+} {
+  const effective = dashboardPricingSourceSummary(model.pricing);
+  const primaryReference = dashboardPricingSourceSummary(
+    canonical?.pricing_reference,
+  );
+  const secondaryReference = dashboardPricingSourceSummary(
+    model.enrichment?.secondary_pricing_reference,
+  );
+  return {
+    effective,
+    primary_reference: primaryReference,
+    secondary_reference: secondaryReference,
+    effective_source: effective?.source || null,
+    primary_reference_source: primaryReference?.source || null,
+    secondary_reference_source: secondaryReference?.source || null,
   };
 }
 
@@ -3310,14 +3651,18 @@ export class DashboardController {
   @ApiOperation({
     summary: "List merged built-in and local provider catalog entries",
   })
+  @ApiQuery({ name: "show_legacy", required: false })
   @ApiOkResponse({
     description: "Provider catalog entries with overridden markers.",
   })
-  getCatalogProviders() {
+  getCatalogProviders(@Query("show_legacy") showLegacyQuery?: string) {
     const loaded = this.catalog.load();
+    const showLegacy = parseBooleanQuery(showLegacyQuery);
+    const context = buildDashboardCatalogContext(loaded.internal);
     const syncStatus = buildCatalogSyncStatus({
       config: this.config.getFullConfig().catalog,
       catalog: loaded.catalog,
+      internal: loaded.internal,
       cachePath: loaded.syncCachePath,
       cacheFound: loaded.syncCacheFound,
       overridePath: loaded.overridePath,
@@ -3329,7 +3674,9 @@ export class DashboardController {
       auto_update: syncStatus.scheduled,
       refresh_sources: getCatalogRefreshSources(),
       sync_status: syncStatus,
-      providers: loaded.catalog.providers.map(toDashboardCatalogProvider),
+      providers: loaded.catalog.providers
+        .filter((provider) => includeDashboardProvider(provider, showLegacy))
+        .map((provider) => toDashboardCatalogProvider(provider, context)),
       compatibility_profiles: listCompatibilityProfiles(),
       override_file: loaded.overridePath,
       override_found: loaded.overrideFound,
@@ -3346,6 +3693,7 @@ export class DashboardController {
   @ApiQuery({ name: "provider", required: false })
   @ApiQuery({ name: "modality", required: false })
   @ApiQuery({ name: "endpoint", required: false })
+  @ApiQuery({ name: "show_legacy", required: false })
   @ApiOkResponse({
     description: "Flattened model catalog entries with overridden markers.",
   })
@@ -3353,20 +3701,26 @@ export class DashboardController {
     @Query("provider") provider?: string,
     @Query("modality") modality?: string,
     @Query("endpoint") endpoint?: string,
+    @Query("show_legacy") showLegacyQuery?: string,
   ) {
     const loaded = this.catalog.load();
+    const showLegacy = parseBooleanQuery(showLegacyQuery);
+    const context = buildDashboardCatalogContext(loaded.internal);
     const syncStatus = buildCatalogSyncStatus({
       config: this.config.getFullConfig().catalog,
       catalog: loaded.catalog,
+      internal: loaded.internal,
       cachePath: loaded.syncCachePath,
       cacheFound: loaded.syncCacheFound,
       overridePath: loaded.overridePath,
       overrideFound: loaded.overrideFound,
       issues: loaded.issues,
     });
-    let models = loaded.catalog.providers.flatMap((entry) =>
-      entry.models.map((model) => toDashboardCatalogModel(model, entry)),
-    );
+    let models = loaded.catalog.providers
+      .filter((entry) => includeDashboardProvider(entry, showLegacy))
+      .flatMap((entry) =>
+        entry.models.map((model) => toDashboardCatalogModel(model, entry, context)),
+      );
     if (provider)
       models = models.filter((model) => model.provider === provider);
     if (modality) {
