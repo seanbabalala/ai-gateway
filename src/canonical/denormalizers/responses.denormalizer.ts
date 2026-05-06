@@ -232,6 +232,19 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
         output_tokens: canonical.usage.output_tokens,
         total_tokens:
           canonical.usage.input_tokens + canonical.usage.output_tokens,
+        ...(canonical.usage.cache_read_input_tokens
+          ? {
+              input_tokens_details: {
+                cached_tokens: canonical.usage.cache_read_input_tokens,
+              },
+              prompt_tokens_details: {
+                cached_tokens: canonical.usage.cache_read_input_tokens,
+              },
+              input_token_details: {
+                cached_tokens: canonical.usage.cache_read_input_tokens,
+              },
+            }
+          : {}),
       },
     };
   }

@@ -455,6 +455,22 @@ describe('Stream Parsers — cache token extraction', () => {
     }
   });
 
+  it('ResponsesStreamParser should extract input_tokens_details.cached_tokens in the final chunk', () => {
+    const parser = new ResponsesStreamParser(
+      getCompatibilityProfile('openai_responses_compatible')?.usage_schema
+        ?.responses,
+    );
+    const events = collect(
+      parser,
+      'event: response.completed\ndata: {"id":"resp_1","status":"completed","usage":{"input_tokens":800,"output_tokens":100,"input_tokens_details":{"cached_tokens":512}}}\n\n',
+    );
+    const stop = events.find((event) => event.type === 'stop');
+    expect(stop).toBeDefined();
+    if (stop?.type === 'stop') {
+      expect(stop.usage.cache_read_input_tokens).toBe(512);
+    }
+  });
+
   it('ResponsesStreamParser should accept prompt_tokens_details.cached_tokens in the final chunk', () => {
     const parser = new ResponsesStreamParser(
       getCompatibilityProfile('openai_responses_compatible')?.usage_schema

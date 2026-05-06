@@ -148,6 +148,10 @@ export class ResponsesStreamParser {
 
   private resolveUsage(data: Record<string, unknown>) {
     const usage = (data.usage || {}) as Record<string, unknown>;
+    const inputTokensDetails = (usage.input_tokens_details || {}) as Record<
+      string,
+      unknown
+    >;
     const inputDetails = (usage.input_token_details || {}) as Record<
       string,
       unknown
@@ -160,7 +164,8 @@ export class ResponsesStreamParser {
       input_tokens: (usage.input_tokens as number) || 0,
       output_tokens: (usage.output_tokens as number) || 0,
       cache_read_input_tokens:
-        ((promptDetails.cached_tokens as number) ||
+        ((inputTokensDetails.cached_tokens as number) ||
+          (promptDetails.cached_tokens as number) ||
           (inputDetails.cached_tokens as number) ||
           0),
     };

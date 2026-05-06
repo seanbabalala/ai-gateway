@@ -1205,10 +1205,14 @@ export class ProviderClientService {
       output_tokens:
         ((body.usage as Record<string, unknown>)?.output_tokens as number) || 0,
       cache_read_input_tokens:
-        ((((body.usage as Record<string, unknown>)?.prompt_tokens_details as Record<
+        ((((body.usage as Record<string, unknown>)?.input_tokens_details as Record<
           string,
           unknown
         >)?.cached_tokens as number) ||
+          (((body.usage as Record<string, unknown>)?.prompt_tokens_details as Record<
+            string,
+            unknown
+          >)?.cached_tokens as number) ||
           ((((body.usage as Record<string, unknown>)?.input_token_details as Record<
             string,
             unknown

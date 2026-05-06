@@ -275,13 +275,16 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     },
     usage_schema: usageSchemaMap({
       responses: {
-        // OpenAI prompt caching docs now document Response-object cache hits at
-        // usage.prompt_tokens_details.cached_tokens. Keep the older
-        // usage.input_token_details.cached_tokens as a compatibility fallback.
+        // OpenAI-compatible Responses providers now surface cache hits at
+        // usage.input_tokens_details.cached_tokens. Keep the older
+        // usage.prompt_tokens_details.cached_tokens and
+        // usage.input_token_details.cached_tokens paths as compatibility
+        // fallbacks for older implementations.
         input_tokens: 'usage.input_tokens',
         output_tokens: 'usage.output_tokens',
         total_tokens: 'usage.total_tokens',
         cache_read_input_tokens: [
+          'usage.input_tokens_details.cached_tokens',
           'usage.prompt_tokens_details.cached_tokens',
           'usage.input_token_details.cached_tokens',
         ],

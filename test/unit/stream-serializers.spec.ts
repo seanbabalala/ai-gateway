@@ -303,6 +303,7 @@ describe('Stream Serializers — cache token passthrough', () => {
     const completedIdx = allLines.findIndex((l) => l.includes('response.completed'));
     const dataLine = allLines[completedIdx + 1];
     const data = JSON.parse(dataLine.replace('data: ', ''));
+    expect(data.usage.input_tokens_details).toEqual({ cached_tokens: 400 });
     expect(data.usage.prompt_tokens_details).toEqual({ cached_tokens: 400 });
     expect(data.usage.input_token_details).toEqual({ cached_tokens: 400 });
   });

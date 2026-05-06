@@ -423,6 +423,28 @@ describe('ResponsesDenormalizer', () => {
       expect(output[1].name).toBe('get_weather');
       expect(output[1].call_id).toBe('call_1');
     });
+
+    it('should include modern and legacy cached token fields in response usage', () => {
+      const canonical = makeCanonicalResponse({
+        usage: {
+          input_tokens: 800,
+          output_tokens: 100,
+          cache_read_input_tokens: 512,
+        },
+      });
+
+      const result = denorm.denormalizeResponse(canonical);
+      expect(result.usage).toEqual(
+        expect.objectContaining({
+          input_tokens: 800,
+          output_tokens: 100,
+          total_tokens: 900,
+          input_tokens_details: { cached_tokens: 512 },
+          prompt_tokens_details: { cached_tokens: 512 },
+          input_token_details: { cached_tokens: 512 },
+        }),
+      );
+    });
   });
 });
 

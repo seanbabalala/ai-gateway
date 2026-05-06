@@ -505,6 +505,20 @@ describe('ProviderClientService', () => {
       expect(result.usage.cache_read_input_tokens).toBe(400);
     });
 
+    it('should extract cached_tokens from OpenAI Responses input_tokens_details', () => {
+      const svc = makeService();
+      const body = {
+        id: 'resp_cache_modern', model: 'gpt-5.4', status: 'completed',
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'Answer' }] }],
+        usage: {
+          input_tokens: 800, output_tokens: 100,
+          input_tokens_details: { cached_tokens: 640 },
+        },
+      };
+      const result = svc.normalizeResponse(body, 'responses', routingMeta, 'tokenflux', 'gpt-5.4', 100);
+      expect(result.usage.cache_read_input_tokens).toBe(640);
+    });
+
     it('should default cache tokens to 0 when not present', () => {
       const svc = makeService();
       const body = {

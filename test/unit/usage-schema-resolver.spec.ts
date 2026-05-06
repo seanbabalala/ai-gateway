@@ -45,10 +45,22 @@ describe('usage schema registry', () => {
     });
   });
 
-  it('extracts OpenAI Responses cache fields with prompt_tokens_details and legacy fallback paths', () => {
+  it('extracts OpenAI Responses cache fields with modern and legacy fallback paths', () => {
     const schema =
       getCompatibilityProfile('openai_responses_compatible')?.usage_schema
         ?.responses;
+
+    const modernCanonical = extractUsageBySchema(
+      {
+        usage: {
+          input_tokens: 44,
+          output_tokens: 8,
+          input_tokens_details: { cached_tokens: 33 },
+        },
+      },
+      schema!,
+    );
+    expect(modernCanonical.cache_read_input_tokens).toBe(33);
 
     const modern = extractUsageBySchema(
       {

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
+
 ## 1.6.0 - 2026-05-06
 
 ### Added
