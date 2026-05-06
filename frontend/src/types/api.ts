@@ -1820,6 +1820,12 @@ export interface CatalogPricingHygiene {
   warnings: string[];
 }
 
+export type CatalogPricingTrust =
+  | "aligned_estimate"
+  | "reference_estimate"
+  | "review_required"
+  | "missing";
+
 export interface CatalogModel {
   id: string;
   name?: string;
@@ -1838,6 +1844,7 @@ export interface CatalogModel {
     dimensions?: number[];
   };
   pricing: CatalogPricing;
+  pricing_trust?: CatalogPricingTrust;
   pricing_hygiene?: CatalogPricingHygiene;
   structured_output?: boolean;
   supports_streaming?: boolean;
@@ -2081,7 +2088,21 @@ export interface CatalogProvider {
     recommended_models: number;
     recommended_priced_models: number;
     manual_review_required_priced_models: number;
+    estimate_ready_models?: number;
+    aligned_estimate_models?: number;
+    reference_estimate_models?: number;
+    review_required_models?: number;
+    missing_models?: number;
     coverage_ratio: number;
+  };
+  pricing_trust_summary?: {
+    status: CatalogPricingTrust;
+    total_models: number;
+    estimate_ready_models: number;
+    aligned_estimate_models: number;
+    reference_estimate_models: number;
+    review_required_models: number;
+    missing_models: number;
   };
   pricing_units?: Record<string, string>;
   model_prefixes?: string[];

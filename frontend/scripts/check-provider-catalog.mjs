@@ -56,6 +56,11 @@ if (
 
 for (const expected of [
   "pricing_hygiene",
+  "pricing_trust",
+  "pricing_trust_summary",
+  "aligned_estimate_models",
+  "catalogPage.pricingTrust.aligned_estimate",
+  "catalogSignals.alignedEstimate",
   "pricing_confidence",
   "stale_after_days",
   "source_url",

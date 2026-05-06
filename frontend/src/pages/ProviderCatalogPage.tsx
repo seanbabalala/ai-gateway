@@ -18,11 +18,13 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   CatalogCoveragePills,
   CatalogTrustPills,
+  PricingTrustBadge,
   ProviderStatusBadge,
   RecommendedModelChips,
   modelReleaseDate,
   modelThroughput,
   providerStatusValue,
+  providerPricingTrustStatus,
   recommendedModelsForProvider,
   topBenchmarkSnippets,
 } from "@/components/shared/CatalogSignals";
@@ -40,6 +42,7 @@ import type {
   CatalogCompatibilityProfile,
   CatalogModel,
   CatalogPricingHygiene,
+  CatalogPricingTrust,
   CatalogProvider,
   CatalogProviderFamily,
   CatalogProvidersResponse,
@@ -104,10 +107,16 @@ const MODEL_BUCKET_LABELS = [
 ] as const;
 
 type PricingStatus = CatalogPricingHygiene["status"] | "review";
-type PricingFilter = "all" | PricingStatus;
+type PricingFilter = "all" | PricingStatus | CatalogPricingTrust;
 type QuickFilter = "none" | "review" | "stale";
 
 function modelPricingStatus(model: CatalogModel): PricingStatus {
+  if (
+    model.pricing_trust === "aligned_estimate" ||
+    model.pricing_trust === "reference_estimate"
+  ) {
+    return "fresh";
+  }
   const hygiene = model.pricing_hygiene;
   if (!hygiene)
     return model.pricing?.manual_review_required ? "review" : "fresh";
@@ -117,6 +126,15 @@ function modelPricingStatus(model: CatalogModel): PricingStatus {
 }
 
 function providerPricingStatus(provider: CatalogProvider): PricingStatus {
+  const trustStatus = providerPricingTrustStatus(provider);
+  if (
+    trustStatus === "aligned_estimate" ||
+    trustStatus === "reference_estimate"
+  ) {
+    return "fresh";
+  }
+  if (trustStatus === "review_required") return "review";
+  if (trustStatus === "missing") return "missing";
   const statuses = [
     provider.pricing_hygiene?.status,
     ...provider.models.map((model) => modelPricingStatus(model)),
@@ -285,14 +303,17 @@ function providerMatches({
   const pricingMatches =
     pricing === "all" ||
     status === pricing ||
-    (pricing === "review" && provider.manual_review_required);
+    providerPricingTrustStatus(provider) === pricing ||
+    (pricing === "review" &&
+      Boolean(provider.pricing_trust_summary?.review_required_models));
   const compatibilityMatches =
     compatibility === "all" ||
     providerCompatibility(provider) === compatibility;
   const quickMatches =
     quickFilter === "none" ||
     (quickFilter === "review" &&
-      (status === "review" || provider.manual_review_required)) ||
+      (status === "review" ||
+        Boolean(provider.pricing_trust_summary?.review_required_models))) ||
     (quickFilter === "stale" && status === "stale");
   return (
     queryMatches &&
@@ -403,12 +424,16 @@ export function ProviderCatalogPage() {
   const staleCount = providers.filter(
     (provider) => providerPricingStatus(provider) === "stale",
   ).length;
-  const reviewCount = providers.filter(
-    (provider) => providerPricingStatus(provider) === "review",
-  ).length;
-  const noPricingCount = providers.filter(
-    (provider) => providerPricingStatus(provider) === "missing",
-  ).length;
+  const reviewCount = providers.reduce(
+    (count, provider) =>
+      count + (provider.pricing_trust_summary?.review_required_models ?? 0),
+    0,
+  );
+  const noPricingCount = providers.reduce(
+    (count, provider) =>
+      count + (provider.pricing_trust_summary?.missing_models ?? 0),
+    0,
+  );
   const overriddenCount =
     providers.filter(
       (provider) => provider.overridden || provider.tags?.includes("override"),
@@ -717,7 +742,14 @@ function CatalogFilters({
           label={t("catalogPage.filters.pricingStatus")}
         >
           {(
-            ["all", "fresh", "review", "stale", "missing"] as PricingFilter[]
+            [
+              "all",
+              "aligned_estimate",
+              "reference_estimate",
+              "review_required",
+              "missing",
+              "stale",
+            ] as PricingFilter[]
           ).map((status) => (
             <FilterButton
               key={status}
@@ -726,7 +758,13 @@ function CatalogFilters({
             >
               {status === "all"
                 ? t("catalogPage.filters.all")
-                : t(`catalogPage.status.${status}`)}
+                : status === "fresh" ||
+                    status === "review" ||
+                    status === "stale" ||
+                    status === "placeholder" ||
+                    status === "invalid"
+                  ? t(`catalogPage.status.${status}`)
+                  : t(`catalogPage.pricingTrust.${status}`)}
             </FilterButton>
           ))}
         </FilterGroup>
@@ -867,6 +905,7 @@ function ProviderRow({
 }) {
   const { t } = useTranslation("nodes");
   const status = providerPricingStatus(provider);
+  const trustStatus = providerPricingTrustStatus(provider);
   const endpoints = primaryEndpoints(provider).slice(0, 4);
   const modelCount = provider.models.length;
   const recommendedPreview = recommendedModelsForProvider(provider).slice(0, 3);
@@ -927,6 +966,7 @@ function ProviderRow({
           <Badge variant={statusVariant(status)} className="whitespace-nowrap">
             {t(`catalogPage.status.${status}`)}
           </Badge>
+          <PricingTrustBadge status={trustStatus} dense />
           <Badge
             variant={sourceVariant(provider.pricing?.source)}
             className="max-w-[150px] truncate whitespace-nowrap"
@@ -980,6 +1020,7 @@ function ProviderDetailPanel({
   }
 
   const status = providerPricingStatus(provider);
+  const trustStatus = providerPricingTrustStatus(provider);
   const sync = syncStatus?.providers.find(
     (entry) => entry.provider === provider.id,
   );
@@ -1032,6 +1073,7 @@ function ProviderDetailPanel({
           <Badge variant={statusVariant(status)}>
             {t(`catalogPage.status.${status}`)}
           </Badge>
+          <PricingTrustBadge status={trustStatus} />
           <ProviderStatusBadge provider={provider} />
           <Badge variant="zinc">
             {t(`catalogPage.family.${providerFamily(provider)}`)}
@@ -1041,7 +1083,7 @@ function ProviderDetailPanel({
           >
             {t(`catalogPage.providerTypes.${providerType(provider)}`)}
           </Badge>
-          {provider.manual_review_required && (
+          {trustStatus === "review_required" && (
             <Badge variant="amber">{t("catalogPage.badges.review")}</Badge>
           )}
           {provider.overridden && (
@@ -1094,6 +1136,10 @@ function ProviderDetailPanel({
             <KeyValue
               label={t("catalogPage.detail.pricingCoverage")}
               value={t("catalogSignals.pricingCoverage", {
+                estimate:
+                  provider.pricing_coverage?.estimate_ready_models ??
+                  provider.pricing_coverage?.priced_models ??
+                  0,
                 priced: provider.pricing_coverage?.priced_models ?? 0,
                 total:
                   provider.pricing_coverage?.total_models ??
@@ -1101,6 +1147,7 @@ function ProviderDetailPanel({
               })}
             />
           </div>
+          <PricingTrustBreakdown provider={provider} />
           <p className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
             {t("catalogPage.detail.catalogTruthCopy")}
           </p>
@@ -1234,10 +1281,11 @@ function ProviderDetailPanel({
                             {t(`catalogPage.buckets.${bucket}`)}
                           </Badge>
                         ))}
-                        {model.pricing?.manual_review_required && (
-                          <Badge variant="amber" className="text-[9px]">
-                            {t("catalogPage.badges.review")}
-                          </Badge>
+                        {model.pricing_trust && (
+                          <PricingTrustBadge
+                            status={model.pricing_trust}
+                            dense
+                          />
                         )}
                         {model.match_confidence === "low" && (
                           <Badge variant="amber" className="text-[9px]">
@@ -1419,6 +1467,43 @@ function DetailSection({
       </div>
       {children}
     </section>
+  );
+}
+
+function PricingTrustBreakdown({ provider }: { provider: CatalogProvider }) {
+  const summary = provider.pricing_trust_summary;
+  if (!summary) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {summary.aligned_estimate_models > 0 && (
+        <PricingTrustBadge
+          status="aligned_estimate"
+          count={summary.aligned_estimate_models}
+          dense
+        />
+      )}
+      {summary.reference_estimate_models > 0 && (
+        <PricingTrustBadge
+          status="reference_estimate"
+          count={summary.reference_estimate_models}
+          dense
+        />
+      )}
+      {summary.review_required_models > 0 && (
+        <PricingTrustBadge
+          status="review_required"
+          count={summary.review_required_models}
+          dense
+        />
+      )}
+      {summary.missing_models > 0 && (
+        <PricingTrustBadge
+          status="missing"
+          count={summary.missing_models}
+          dense
+        />
+      )}
+    </div>
   );
 }
 
