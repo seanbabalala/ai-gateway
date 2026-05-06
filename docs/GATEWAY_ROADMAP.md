@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-05
+> 最后更新：2026-05-06
 
 ---
 
@@ -22,11 +22,163 @@
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
 | v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
-| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles | ✅ Released |
+| v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.1 Public Contract Consistency Patch（基于 v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles） | ✅ Released |
+| v1.5 | Contract Hardening + Runtime Safety | 已发布 — required env fail-fast、统一 public error mapping、request-id / reload 安全收敛 | ✅ Released |
+| v1.6 | Provider Cache Intelligence | 已发布 — v1.6.0 Usage Schema Registry、Cache Savings Dashboard、Cache Session Affinity 路由增强 | ✅ Released |
+| v1.7 | Catalog Enrichment + Fresh Model Defaults | 已发布 — v1.7.0 ZeroEval catalog enrichment、Fresh defaults、默认价格预填、模型元数据扩展 | ✅ Released |
 
 ---
 
+## v1.7 — Catalog Enrichment + Fresh Model Defaults（目录增强与最新模型默认值）
+
+**v1.7.0 发布状态**：已发布。v1.7 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本次 minor release 的核心目标不是继续横向堆 provider，而是把“模型元数据的新鲜度”和“Add Node 默认推荐”做对：Provider Catalog 继续作为唯一目录入口，外部数据只作为 enrichment 写入本地 sync cache，帮助 Dashboard 默认展示更新、更合理、带参考价格的模型，同时不破坏显式 operator 配置优先级。
+
+### P0：ZeroEval Catalog Enrichment
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：复用现有 catalog refresh/sync/merge 结构，把 ZeroEval 作为第三方 enrichment source 接到本地 sync cache 层，而不是引入第二套 catalog 或运行时强依赖。
+- **实现方案**：
+  - 新增 `zeroeval` refresh/sync adapter，接入现有 `catalog refresh` / `catalog sync` / sync status / refresh sources / CLI sources 体系
+  - 使用 ZeroEval 的 public API 读取 `model_id`、`context`、`release_date`、`announcement_date`、`multimodal`、`input_price`、`output_price`、`throughput`、`organization` 等字段
+  - 仅 enrich 已存在于 merged Provider Catalog 的 provider/model，不因为第三方组织名自动生成新的 provider preset
+  - 无法稳定映射 `organization_id` 到现有 provider id 时保守跳过，并保留 issue/note
+
+### P0：Catalog Model Metadata 扩展
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：让 merged catalog、Dashboard catalog APIs、Provider Catalog detail 和后续 Add Node 默认逻辑可以复用一套 richer model metadata，而不是把 enrichment 只留在 sync adapter 内部。
+- **实现方案**：
+  - model schema 新增 enrichment 容器，拆分为 lifecycle、specs、benchmarks、source metadata 和可扩展 metadata
+  - `limits.max_context_tokens` 继续承接上下文字段；throughput、multimodal、params、training_tokens、license、is_moe 等进入 specs 或 metadata 扩展位
+  - Dashboard providers/models API 保持旧字段兼容，同时额外暴露 enrichment metadata 和轻量 summary
+
+### P0：Fresh Model Defaults
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：解决 Add Node 默认仍然展示旧模型、字母排序前几个 dated variants、默认价格编辑区空白的问题。
+- **实现方案**：
+  - 后端 provider catalog 响应新增 `recommended_model_buckets`、`latest_model_hints`、`recommended_models`
+  - 推荐规则放在后端：优先较新的稳定模型、优先有价格、优先来自 override/sync-cache enrichment、过滤 preview/snapshot/dated old variants 出默认 bucket，但完整 models 列表仍保留
+  - Add Node Wizard 默认 buckets 与默认 pricing rows 改为消费 recommended metadata；用户依然可以搜索全部模型、手工改模型、继续新增 pricing rows
+
+### P1：Operator-Facing Trust Copy
+
+- **状态**：✅ v1.7.0 已发布
+- **目标**：在不把页面做成 benchmark leaderboard 的前提下，让 operator 理解 enrichment 的价值，并且不会误以为第三方价格就是 billing authority。
+- **实现方案**：
+  - Provider Catalog detail 展示 release date、max context、throughput 和少量高价值 benchmark snippets
+  - Add Node UI 增加“最新推荐模型”和“价格来自 catalog enrichment / review required”文案
+  - 所有 copy 保持价格治理口径一致：显式 node pricing 永远优先；external enrichment 只是 default reference
+
+### 非目标
+
+- **状态**：✅ 已明确
+- **不做内容**：
+  - 不新增第二套 provider catalog 或前端硬编码 provider/model 列表
+  - 不把 ZeroEval 作为运行时联网依赖或“自动实时官方价格”来源
+  - 不因为外部 enrichment 自动创建新的 provider preset、auth 信息或 base URL
+  - 不改变既有 pricing precedence，也不覆盖用户显式配置
+
+### v1.7 后续方向
+
+- 继续引入更多“可安全审阅”的 enrichment source，但必须保持 sync-cache/override-first、runtime-optional 的边界
+- 做更完整的 operator review workflow，例如 catalog diff、pricing review queue、override authoring 辅助
+- 持续收敛 Provider Catalog 单源化，减少 built-in catalog、projection 和 Dashboard DTO 之间的维护成本
+
+## v1.6 — Provider Cache Intelligence（Provider 侧缓存智能与 Session Affinity 路由）
+
+**v1.6.0 发布状态**：已发布。v1.6 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本阶段没有继续横向堆 provider 数量，而是把 provider-side cache token 的识别、成本计算、Dashboard 可视化与 session 级路由偏好做扎实：无论请求从 Chat Completions / Responses / Anthropic Messages 哪个入口进来，只要上游返回 cache token 计数，SiftGate 都会尽量通过 profile/schema 正确抽取，并将其用于计费、日志、Dashboard 与 cache-aware routing。
+
+### P0：Usage Schema Registry
+
+- **状态**：✅ v1.6.0 已发布
+- **目标**：把各 provider family 的 usage / cache 字段路径从分散的 if/else 硬编码提升为 compatibility profile 可声明的 usage schema，降低后续维护 Google Gemini、DeepSeek、Cohere、MiniMax 以及更多 OpenAI-compatible provider 的成本。
+- **实现方案**：
+  - 在 compatibility profile registry 中为 OpenAI-compatible、Responses-compatible、Anthropic-compatible、Gemini、DeepSeek、Cohere 和本地 runtime family 声明 `usage_schema`
+  - 提供统一的 dot-notation 路径解析器和多路径 fallback 机制，字段缺失时安全回落为 0
+  - 非流式 provider client 与 chat/responses/messages 流式 parser 统一走 schema 解析，只有无 schema 时才退回 legacy parser
+  - Canonical `TokenUsage` 继续承载 `cache_read_input_tokens` 与 `cache_creation_input_tokens`，保证 pipeline cost accounting 和 Dashboard 可复用
+
+### P0：Provider Cache-Aware Pricing 校准
+
+- **状态**：✅ v1.6.0 已发布
+- **目标**：对能够返回 provider-side cache token 的模型补齐更真实的 cache-aware pricing，让 routing、call log 成本、Benchmark、Route Explanation 不再把 cache hit token 按普通输入 token 计费。
+- **实现方案**：
+  - 以 provider 官方文档为准更新 Gemini 3.1 preview、DeepSeek 当前稳定兼容模型的 cache-aware price metadata
+  - 复核 OpenAI 与 Anthropic 的 cache pricing reference，保持 built-in catalog 与当前官方文档一致
+  - 在不引入 breaking change 的前提下，继续保留 `models_pricing`、`catalog.override.yaml` 和显式 node/model pricing 的最高优先级
+
+### P1：跨协议 Cache Contract 一致性
+
+- **状态**：✅ v1.6.0 已发布
+- **目标**：让 OpenAI-style 与 Anthropic-style 的流式/非流式出站 usage 字段都能对齐到同一套 canonical cache accounting 规则，减少 SDK、Dashboard、日志与 route trace 之间的偏差。
+- **实现方案**：
+  - Responses/Chat serializer 在返回 cache usage 时同时照顾当前官方字段和旧兼容字段
+  - 继续保持成功响应 shape 不做 breaking change，只在 usage / pricing evidence 层增强 cache awareness
+  - 为 schema extraction、stream final usage、provider fallback 和 cache-aware pricing 增加 regression tests
+
+### P1：Cache Savings Dashboard + 成本拆分可视化
+
+- **状态**：✅ v1.6.0 已发布
+- **目标**：让 operator 直接看到“因为 provider cache，真实少花了多少钱”，并且把 provider-side cache 与本地 `cache` / `semantic_cache` 命中清楚区分。
+- **实现方案**：
+  - `call_logs` 写入 `cost_without_cache_usd`，把“实际 cost”与“如果没有 provider cache 的 baseline cost”一起保留下来
+  - Dashboard 新增 `GET /api/dashboard/cache-savings` 聚合接口，支持按 node、model、namespace、team、api key 分组，并返回 daily trend
+  - Overview KPI 展示当期 savings、savings percentage 与 provider cache hit rate；Analytics 展示 savings trend、hit rate trend、provider/model 排行和 normal/cache read/cache write/output 成本拆分
+  - Logs 为 provider cache 命中增加 badge / tooltip，并在详情中展示 without-cache cost 与 saved cost；Budget 页面补充 actual vs without-cache 的说明
+  - 统计中排除本地 `cache`、`semantic_cache` 与 hook-only 行，避免把本地网关缓存命中误算成 provider-side savings
+
+### P1：Cache Session Affinity 路由增强
+
+- **状态**：✅ v1.6.0 已发布
+- **目标**：当同一 session 已在某个 provider / node:model 上建立并命中过 provider-side cache 时，routing 应在安全 TTL 窗口内强烈偏好继续选择同一路径，以最大化 cache hit 与真实成本收益，同时保持 circuit breaker、fallback 和单机默认模式不变。
+- **实现方案**：
+  - 新增 `routing.cache_affinity` 配置，支持 `enabled`、`min_consecutive_hits`、`bonus_weight`、`ttl_safety_margin`
+  - 维护 per-session 路由历史：`session_key -> last_node_model / consecutive_count / last_cache_read_tokens / last_request_at`
+  - 当最近连续命中同一 node:model、provider 支持 cache、最近一次确认为 cache read hit、且时间仍落在 provider TTL 安全窗口内时，给该候选增加 affinity bonus
+  - Route Decision Trace 与 Dashboard Route Explanation 显示 affinity 是否生效、原因、bonus、provider TTL、距离上次 cache hit 的时间，以及估算命中概率
+  - 默认内存可用；如启用 Redis state backend，可共享 affinity 状态但不要求多实例部署
+
+## v1.5 — Contract Hardening + Runtime Safety（公开契约加固与运行时安全）
+
+**v1.5.0 发布状态**：已发布。v1.5 继续保持 MIT 开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍然只是可选能力。本次 minor release 的目标不是横向继续堆 provider 或云能力，而是把 1.x 的公开契约和运行时安全做扎实：legacy `${VAR}` 启动期 required env fail-fast、reload/rollback 原子保留旧配置、gateway-generated public error mapping 收敛、request-id 规则在公开错误路径上继续对齐。
+
+### P0：Required Env Fail-Fast
+
+- **状态**：✅ v1.5.0 已发布
+- **目标**：把 legacy `${VAR}` 从“文档上推荐 required”收紧为“运行时真的 required”，避免缺失 env 被静默解析为空串后带来错误路由、假成功启动或 reload 后配置漂移。
+- **实现方案**：
+  - 启动、手动 reload、Dashboard reload、watcher reload、rollback restore 和 `SIGHUP` 都走同一套 `${VAR}` 校验
+  - `${VAR}` 缺失时直接拒绝加载；`${VAR:-default}` 保持显式 fallback 语义
+  - `${env:VAR}`、`${vault:...}`、`${aws-sm:...}`、`${gcp-sm:...}` 保持 runtime secret reference 语义，不提前解析
+  - reload 失败时继续运行旧配置，不发生半替换
+  - README、Quickstart、Production、Secret Management 和 config example 同步补 migration note，提醒 v1.4.x 升级前先补齐环境变量
+
+### P0：Gateway Public Error Mapping
+
+- **状态**：✅ v1.5.0 已发布
+- **目标**：减少各公开 controller 的手写 catch + envelope 分散逻辑，同时保持 OpenAI / Anthropic / Batch / MCP / Video 现有成功响应形状不变。
+- **实现方案**：
+  - 引入统一 public error mapping 层，按请求路径推导 OpenAI-compatible 或 Anthropic-compatible error outer shape
+  - 统一 gateway-generated public error 的 `message`、`type`、`request_id`、status 语义和 request-id 头
+  - Batch / MCP / Video 保持各自已存在的协议兼容输出，不重写为第二套 envelope
+  - pre-controller parser/body-limit 错误也纳入同一层，避免出现 request-id 或 envelope 漂移
+
+### P0：Request-Id / Reload Safety 收口
+
+- **状态**：✅ v1.5.0 已发布
+- **目标**：让 request-id、日志、Dashboard、SDK 和 OpenAPI 文档在“哪一条 request id 是公开契约”上保持一致，并让 reload 失败时的运行态始终可预期。
+- **实现方案**：
+  - 继续公开 `x-siftgate-request-id`，并保持 `x-request-id` 兼容
+  - gateway-generated error body 稳定暴露 `request_id`
+  - SDK 继续优先读取 `x-siftgate-request-id`，再回退 `x-request-id` / `x-correlation-id`
+  - OpenAPI error schema 明确 request id 字段与响应头规则
+  - reload / restore 失败时 Dashboard 和 event bus 都收到明确 failure result，旧配置保持生效
+
+
 ## v1.4 — Provider Ecosystem + Catalog Governance（Provider 生态与目录治理）
+
+**v1.4.1 发布状态**：已发布。作为 v1.4.0 之后的 patch release，v1.4.1 不扩张新功能、不引入 breaking change，也不改变 `${VAR}` 缺失时的当前启动语义；重点是把 MIT 开源 Data Plane 的公开契约和 release 元数据重新拉齐，包括 request-id 响应头、SDK request-id 提取顺序、gateway-generated error 最小契约，以及 OpenAPI / package / Python package 的版本同步。
 
 **v1.4.0 发布状态**：已发布。v1.4 基于 v1.3.2，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 Provider Catalog 从“常见 provider 列表”升级为更系统的本地治理数据源，让 Add Node、配置校验、价格来源状态、logo identity、多模态路由、Route Explanation、Benchmark 和 CLI 共用一份 catalog/pricing/compatibility 证据。
 

@@ -9,6 +9,13 @@ export class ErrorDetailDto {
 
   @ApiPropertyOptional({ example: 'budget_exceeded' })
   code?: string;
+
+  @ApiPropertyOptional({
+    example: 'req_1234567890',
+    description:
+      'Gateway request id. Matches the public x-siftgate-request-id response header and legacy x-request-id header.',
+  })
+  request_id?: string;
 }
 
 export class ErrorEnvelopeDto {

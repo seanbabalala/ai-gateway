@@ -23,7 +23,13 @@ import {
 import type { Request, Response as ExpressResponse } from 'express';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
-import { BudgetExceededError } from '../budget/budget.service';
+import {
+  sendMappedPublicErrorResponse,
+} from '../http/public-error-handling';
+import {
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
 import { BatchCreateRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 import { BatchApiProxyService } from './batch-api-proxy.service';
 import type { BatchProxyResponse } from './batch.types';
@@ -60,7 +66,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch create');
+      this.handleError(req, res, error, 'batch create');
     }
   }
 
@@ -81,7 +87,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch retrieve');
+      this.handleError(req, res, error, 'batch retrieve');
     }
   }
 
@@ -102,7 +108,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch cancel');
+      this.handleError(req, res, error, 'batch cancel');
     }
   }
 
@@ -127,7 +133,7 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch output download');
+      this.handleError(req, res, error, 'batch output download');
     }
   }
 
@@ -151,55 +157,28 @@ export class BatchController {
       });
       this.send(res, response);
     } catch (error) {
-      this.handleError(res, error, 'batch error download');
+      this.handleError(req, res, error, 'batch error download');
     }
   }
 
   private send(res: ExpressResponse, response: BatchProxyResponse): void {
-    res.setHeader('x-siftgate-request-id', response.requestId);
     for (const [key, value] of Object.entries(response.headers || {})) {
       res.setHeader(key, value);
     }
-    res.status(response.statusCode);
-    if (Buffer.isBuffer(response.body)) {
-      res.type(response.contentType || 'application/octet-stream').send(response.body);
-      return;
-    }
-    if (response.contentType && !response.contentType.includes('application/json')) {
-      res.type(response.contentType).send(response.body);
-      return;
-    }
-    res.json(response.body);
+    sendPublicResponse(res, response);
   }
 
-  private handleError(res: ExpressResponse, error: unknown, operation: string): void {
+  private handleError(
+    req: Request,
+    res: ExpressResponse,
+    error: unknown,
+    operation: string,
+  ): void {
     this.logger.warn(`${operation} failed: ${error instanceof Error ? error.message : String(error)}`);
-    if (error instanceof BudgetExceededError) {
-      res.status(429).json({
-        error: {
-          message: error.message,
-          type: 'budget_exceeded',
-          code: error.budgetType,
-          details: error.toDetails(),
-        },
+    if (!res.headersSent) {
+      sendMappedPublicErrorResponse(res, req, error, {
+        fallbackMessage: 'Batch proxy request failed.',
       });
-      return;
     }
-    if (error instanceof HttpException) {
-      const status = error.getStatus();
-      const response = error.getResponse();
-      res.status(status).json(
-        typeof response === 'string'
-          ? { error: { message: response, type: status === 404 ? 'not_found' : 'batch_proxy_error' } }
-          : response,
-      );
-      return;
-    }
-    res.status(500).json({
-      error: {
-        message: 'Batch proxy request failed.',
-        type: 'internal_error',
-      },
-    });
   }
 }

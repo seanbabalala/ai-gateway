@@ -78,6 +78,120 @@ function isFiniteNonNegativeNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+function cloneEnrichmentMetadata(
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function cloneNumberRecord(
+  value: Record<string, number> | undefined,
+): Record<string, number> | undefined {
+  if (!value) return undefined;
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => typeof entry === 'number' && Number.isFinite(entry)),
+  ) as Record<string, number>;
+}
+
+function normalizeDateLikeValue(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim().length > 0) return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+  return undefined;
+}
+
+function normalizeDateOnlyLikeValue(value: unknown): string | undefined {
+  const normalized = normalizeDateLikeValue(value);
+  if (!normalized) return undefined;
+  const parsed = Date.parse(normalized);
+  if (Number.isNaN(parsed)) return normalized;
+  return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function normalizeModelEnrichment(
+  enrichment: CatalogModel['enrichment'] | CatalogOverrideModel['enrichment'] | undefined,
+): CatalogModel['enrichment'] | undefined {
+  if (!enrichment || !isNonEmptyString(enrichment.source)) return undefined;
+  const metadata = cloneEnrichmentMetadata(enrichment.metadata);
+  const metadataBenchmarks = isRecord(metadata?.benchmarks)
+    ? Object.fromEntries(
+        Object.entries(metadata?.benchmarks || {}).filter(
+          ([, value]) => typeof value === 'number' && Number.isFinite(value),
+        ),
+      ) as Record<string, number>
+    : undefined;
+  const lifecycle = {
+    release_date:
+      normalizeDateOnlyLikeValue(enrichment.lifecycle?.release_date) ||
+      normalizeDateOnlyLikeValue(enrichment.release_date),
+    announcement_date:
+      normalizeDateOnlyLikeValue(enrichment.lifecycle?.announcement_date) ||
+      normalizeDateOnlyLikeValue(enrichment.announcement_date),
+    knowledge_cutoff:
+      normalizeDateOnlyLikeValue(enrichment.lifecycle?.knowledge_cutoff) ||
+      normalizeDateOnlyLikeValue(metadata?.knowledge_cutoff),
+  };
+  const specs = {
+    params:
+      isFiniteNonNegativeNumber(enrichment.specs?.params)
+        ? enrichment.specs?.params
+        : isFiniteNonNegativeNumber(metadata?.params)
+          ? (metadata?.params as number)
+          : undefined,
+    training_tokens:
+      isFiniteNonNegativeNumber(enrichment.specs?.training_tokens)
+        ? enrichment.specs?.training_tokens
+        : isFiniteNonNegativeNumber(metadata?.training_tokens)
+          ? (metadata?.training_tokens as number)
+          : undefined,
+    throughput:
+      isFiniteNonNegativeNumber(enrichment.specs?.throughput)
+        ? enrichment.specs?.throughput
+        : isFiniteNonNegativeNumber(enrichment.throughput)
+          ? enrichment.throughput
+          : undefined,
+    multimodal:
+      typeof enrichment.specs?.multimodal === 'boolean'
+        ? enrichment.specs.multimodal
+        : typeof enrichment.multimodal === 'boolean'
+          ? enrichment.multimodal
+          : undefined,
+    license:
+      typeof enrichment.specs?.license === 'string' && enrichment.specs.license.trim()
+        ? enrichment.specs.license
+        : typeof metadata?.license === 'string' && metadata.license.trim()
+          ? (metadata.license as string)
+          : undefined,
+    is_moe:
+      typeof enrichment.specs?.is_moe === 'boolean'
+        ? enrichment.specs.is_moe
+        : typeof metadata?.is_moe === 'boolean'
+          ? (metadata.is_moe as boolean)
+          : undefined,
+  };
+  const benchmarks = cloneNumberRecord(enrichment.benchmarks) || metadataBenchmarks;
+  const canonicalModelId =
+    (isNonEmptyString(enrichment.canonical_model_id) && enrichment.canonical_model_id) ||
+    (isNonEmptyString(metadata?.canonical_model_id) ? (metadata?.canonical_model_id as string) : undefined);
+  return {
+    ...enrichment,
+    synced_at: normalizeDateLikeValue(enrichment.synced_at),
+    enriched_from: enrichment.enriched_from || enrichment.source,
+    enriched_at:
+      normalizeDateLikeValue(enrichment.enriched_at) ||
+      normalizeDateLikeValue(enrichment.synced_at),
+    canonical_model_id: canonicalModelId,
+    release_date: normalizeDateOnlyLikeValue(enrichment.release_date),
+    announcement_date: normalizeDateOnlyLikeValue(enrichment.announcement_date),
+    lifecycle: Object.values(lifecycle).some(Boolean) ? lifecycle : undefined,
+    specs: Object.values(specs).some((value) => value !== undefined) ? specs : undefined,
+    benchmarks,
+    metadata: cloneEnrichmentMetadata(enrichment.metadata),
+  };
+}
+
 function normalizeComparableUrl(value: string): string {
   try {
     const url = new URL(value);
@@ -85,6 +199,11 @@ function normalizeComparableUrl(value: string): string {
   } catch {
     return value.replace(/\/+$/, '');
   }
+}
+
+function isValidDateLikeValue(value: unknown): boolean {
+  const normalized = normalizeDateLikeValue(value);
+  return normalized !== undefined && !Number.isNaN(Date.parse(normalized));
 }
 
 function cloneProvider(provider: CatalogProvider): CatalogProvider {
@@ -124,6 +243,7 @@ function cloneProvider(provider: CatalogProvider): CatalogProvider {
           }
         : undefined,
       pricing: model.pricing ? normalizeCatalogPricing({ ...model.pricing }) : undefined,
+      enrichment: normalizeModelEnrichment(model.enrichment),
       synced: model.synced,
     })),
   };
@@ -520,6 +640,136 @@ function validateOverrideModel(
       ),
     );
   }
+  if (model.enrichment !== undefined) {
+    if (!isRecord(model.enrichment)) {
+      issues.push(
+        issue(
+          'error',
+          'catalog_model_enrichment_invalid',
+          'Model enrichment must be an object.',
+          `${basePath}.enrichment`,
+        ),
+      );
+    } else {
+      if (!isNonEmptyString(model.enrichment.source)) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_model_enrichment_source_missing',
+            'Model enrichment source should be a non-empty string.',
+            `${basePath}.enrichment.source`,
+          ),
+        );
+      }
+      if (
+        model.enrichment.source_url !== undefined &&
+        !isNonEmptyString(model.enrichment.source_url)
+      ) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_model_enrichment_source_url_invalid',
+            'Model enrichment source_url should be a valid http(s) URL when set.',
+            `${basePath}.enrichment.source_url`,
+          ),
+        );
+      } else if (isNonEmptyString(model.enrichment.source_url)) {
+        validateCatalogUrl(
+          model.enrichment.source_url,
+          `${basePath}.enrichment.source_url`,
+          issues,
+          'Model enrichment source_url',
+        );
+      }
+      if (
+        model.enrichment.synced_at !== undefined &&
+        normalizeDateLikeValue(model.enrichment.synced_at) === undefined
+      ) {
+        issues.push(
+          issue(
+            'warning',
+            'catalog_model_enrichment_synced_at_invalid',
+            'Model enrichment synced_at should be an ISO date/time when set.',
+            `${basePath}.enrichment.synced_at`,
+          ),
+        );
+      }
+      if (
+        model.enrichment.metadata !== undefined &&
+        !isRecord(model.enrichment.metadata)
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'catalog_model_enrichment_metadata_invalid',
+            'Model enrichment metadata must be an object when set.',
+            `${basePath}.enrichment.metadata`,
+          ),
+        );
+      }
+      if (model.enrichment.lifecycle !== undefined) {
+        if (!isRecord(model.enrichment.lifecycle)) {
+          issues.push(
+            issue(
+              'error',
+              'catalog_model_enrichment_lifecycle_invalid',
+              'Model enrichment lifecycle must be an object when set.',
+              `${basePath}.enrichment.lifecycle`,
+            ),
+          );
+        } else {
+          for (const key of ['release_date', 'announcement_date', 'knowledge_cutoff'] as const) {
+            const value = model.enrichment.lifecycle[key];
+            if (value !== undefined && !isValidDateLikeValue(value)) {
+              issues.push(
+                issue(
+                  'warning',
+                  'catalog_model_enrichment_lifecycle_date_invalid',
+                  `Model enrichment lifecycle.${key} should be an ISO date when set.`,
+                  `${basePath}.enrichment.lifecycle.${key}`,
+                ),
+              );
+            }
+          }
+        }
+      }
+      if (model.enrichment.specs !== undefined && !isRecord(model.enrichment.specs)) {
+        issues.push(
+          issue(
+            'error',
+            'catalog_model_enrichment_specs_invalid',
+            'Model enrichment specs must be an object when set.',
+            `${basePath}.enrichment.specs`,
+          ),
+        );
+      }
+      if (model.enrichment.benchmarks !== undefined) {
+        if (!isRecord(model.enrichment.benchmarks)) {
+          issues.push(
+            issue(
+              'error',
+              'catalog_model_enrichment_benchmarks_invalid',
+              'Model enrichment benchmarks must be an object when set.',
+              `${basePath}.enrichment.benchmarks`,
+            ),
+          );
+        } else {
+          for (const [key, value] of Object.entries(model.enrichment.benchmarks)) {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              issues.push(
+                issue(
+                  'error',
+                  'catalog_model_enrichment_benchmark_invalid',
+                  'Model enrichment benchmark values must be finite numbers.',
+                  `${basePath}.enrichment.benchmarks.${key}`,
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 function validateCacheFlags(
@@ -863,14 +1113,25 @@ function validatePricing(
     }
   }
   if (!isNonEmptyString(pricing.last_updated)) {
-    issues.push(
-      issue(
-        'warning',
-        'catalog_pricing_last_updated_missing',
-        'pricing.last_updated should be an ISO date.',
-        `${basePath}.last_updated`,
-      ),
-    );
+    if (pricing.last_updated === undefined) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_pricing_last_updated_missing',
+          'pricing.last_updated should be an ISO date.',
+          `${basePath}.last_updated`,
+        ),
+      );
+    } else if (!isValidDateLikeValue(pricing.last_updated)) {
+      issues.push(
+        issue(
+          'warning',
+          'catalog_pricing_last_updated_invalid',
+          'pricing.last_updated should be an ISO date.',
+          `${basePath}.last_updated`,
+        ),
+      );
+    }
   } else if (Number.isNaN(Date.parse(pricing.last_updated))) {
     issues.push(
       issue(
@@ -883,7 +1144,7 @@ function validatePricing(
   }
   if (
     pricing.retrieved_at !== undefined &&
-    (!isNonEmptyString(pricing.retrieved_at) || Number.isNaN(Date.parse(pricing.retrieved_at)))
+    !isValidDateLikeValue(pricing.retrieved_at)
   ) {
     issues.push(
       issue(
@@ -896,7 +1157,7 @@ function validatePricing(
   }
   if (
     pricing.last_verified_at !== undefined &&
-    (!isNonEmptyString(pricing.last_verified_at) || Number.isNaN(Date.parse(pricing.last_verified_at)))
+    !isValidDateLikeValue(pricing.last_verified_at)
   ) {
     issues.push(
       issue(
@@ -909,7 +1170,7 @@ function validatePricing(
   }
   if (
     pricing.last_sync !== undefined &&
-    (!isNonEmptyString(pricing.last_sync) || Number.isNaN(Date.parse(pricing.last_sync)))
+    !isValidDateLikeValue(pricing.last_sync)
   ) {
     issues.push(
       issue(
@@ -1199,6 +1460,19 @@ function mergeModel(
   if (override.capabilities) target.capabilities = [...override.capabilities];
   if (override.limits) target.limits = { ...override.limits };
   if (override.pricing) target.pricing = normalizeCatalogPricing({ ...override.pricing });
+  if (override.enrichment) {
+    const normalizedEnrichment = normalizeModelEnrichment(override.enrichment);
+    if (normalizedEnrichment) {
+      target.enrichment = {
+        ...(target.enrichment || {}),
+        ...normalizedEnrichment,
+        metadata: {
+          ...cloneEnrichmentMetadata(target.enrichment?.metadata),
+          ...cloneEnrichmentMetadata(normalizedEnrichment.metadata),
+        },
+      };
+    }
+  }
   if (override.prompt_cache !== undefined) target.prompt_cache = override.prompt_cache;
   if (override.read_cache !== undefined) target.read_cache = override.read_cache;
   if (override.write_cache !== undefined) target.write_cache = override.write_cache;
@@ -1218,6 +1492,7 @@ function modelFromOverride(
     capabilities: override.capabilities ? [...override.capabilities] : [],
     limits: override.limits ? { ...override.limits } : undefined,
     pricing: override.pricing ? normalizeCatalogPricing({ ...override.pricing }) : undefined,
+    enrichment: normalizeModelEnrichment(override.enrichment),
     prompt_cache: override.prompt_cache,
     read_cache: override.read_cache,
     write_cache: override.write_cache,

@@ -75,6 +75,13 @@ describe('catalog service', () => {
         '          stale_after_days: 7',
         '          pricing_confidence: high',
         '          currency: USD',
+        '        enrichment:',
+        '          source: zeroeval',
+        '          source_url: https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false',
+        '          synced_at: 2026-05-05T00:00:00.000Z',
+        '          release_date: 2026-05-01',
+        '          organization: OpenAI',
+        '          organization_id: openai',
         '',
       ].join('\n'),
       'utf8',
@@ -119,6 +126,99 @@ describe('catalog service', () => {
         input: 9,
         output: 10,
         source: 'operator-reviewed',
+      }),
+      enrichment: expect.objectContaining({
+        source: 'zeroeval',
+        release_date: '2026-05-01',
+        organization_id: 'openai',
+        lifecycle: expect.objectContaining({
+          release_date: '2026-05-01',
+        }),
+      }),
+    });
+  });
+
+  it('accepts model enrichment metadata in sync cache overrides', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-zeroeval-'));
+    const syncCachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+    fs.mkdirSync(path.dirname(syncCachePath), { recursive: true });
+    fs.writeFileSync(
+      syncCachePath,
+      [
+        'version: 1',
+        'providers:',
+        '  openai:',
+        '    models:',
+        '      - id: gpt-4o',
+        '        enrichment:',
+        '          source: zeroeval',
+        '          source_url: https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false',
+        '          synced_at: 2026-05-05T00:00:00.000Z',
+        '          organization: OpenAI',
+        '          organization_id: openai',
+        '          canonical_model_id: chatgpt-4o-latest',
+        '          release_date: 2024-05-13',
+        '          announcement_date: 2024-05-13',
+        '          multimodal: true',
+        '          throughput: 132',
+        '          lifecycle:',
+        '            release_date: 2024-05-13',
+        '            announcement_date: 2024-05-13',
+        '          specs:',
+        '            throughput: 132',
+        '            multimodal: true',
+        '            params: 200000000000',
+        '          benchmarks:',
+        '            gpqa_score: 0.84',
+        '          metadata:',
+        '            params: 200000000000',
+        '        pricing:',
+        '          input: 2.5',
+        '          output: 10',
+        '          source: zeroeval',
+        '          source_url: https://api.zeroeval.com/leaderboard/models/full?justCanonicals=false',
+        '          last_updated: 2026-05-05',
+        '          last_sync: 2026-05-05T00:00:00.000Z',
+        '          manual_review_required: true',
+        '          stale_after_days: 7',
+        '          pricing_confidence: medium',
+        '          currency: USD',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadMergedCatalog({ cwd, env: {} });
+    const model = result.catalog.providers
+      .find((provider) => provider.id === 'openai')
+      ?.models.find((entry) => entry.id === 'gpt-4o');
+
+    expect(result.issues).toHaveLength(0);
+    expect(model).toMatchObject({
+      source: 'sync_cache',
+      synced: true,
+      pricing: expect.objectContaining({
+        source: 'zeroeval',
+        manual_review_required: true,
+        pricing_confidence: 'medium',
+      }),
+      enrichment: expect.objectContaining({
+        source: 'zeroeval',
+        organization: 'OpenAI',
+        canonical_model_id: 'chatgpt-4o-latest',
+        release_date: '2024-05-13',
+        throughput: 132,
+        lifecycle: expect.objectContaining({
+          release_date: '2024-05-13',
+        }),
+        specs: expect.objectContaining({
+          throughput: 132,
+          multimodal: true,
+          params: 200000000000,
+        }),
+        benchmarks: expect.objectContaining({
+          gpqa_score: 0.84,
+        }),
       }),
     });
   });

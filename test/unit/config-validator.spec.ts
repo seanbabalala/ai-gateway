@@ -1510,6 +1510,23 @@ describe('config validator', () => {
       { env: {} },
     );
     expect(codes(ok.warnings)).not.toContain('catalog_sync_no_enabled_adapter');
+
+    const zeroEvalOk = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        catalog: {
+          sync: {
+            enabled: true,
+            write_to: 'cache',
+            cache_file: './.siftgate/catalog-sync-cache.yaml',
+            adapters: {
+              zeroeval: { enabled: true },
+            },
+          },
+        },
+      }),
+      { env: {} },
+    );
+    expect(codes(zeroEvalOk.warnings)).not.toContain('catalog_sync_no_enabled_adapter');
   });
 
   it('reuses shared node/model diagnostics for pricing and ambiguous names', () => {
@@ -2505,6 +2522,58 @@ describe('config validator', () => {
       ]),
     );
     expect(codes(result.warnings)).toContain('shadow_compare_storage_enabled');
+  });
+
+  it('accepts valid routing.cache_affinity settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+          cache_affinity: {
+            enabled: true,
+            min_consecutive_hits: 2,
+            bonus_weight: 0.35,
+            ttl_safety_margin: 0.8,
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_cache_affinity_config');
+  });
+
+  it('rejects invalid routing.cache_affinity settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+          cache_affinity: {
+            enabled: 'yes',
+            min_consecutive_hits: 0,
+            bonus_weight: -0.1,
+            ttl_safety_margin: 1.2,
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('invalid_cache_affinity_config');
   });
 });
 

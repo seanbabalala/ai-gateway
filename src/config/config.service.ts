@@ -34,6 +34,7 @@ import {
   AuthConfig,
   DashboardConfig,
   FallbackPolicyConfig,
+  CacheAffinityRoutingConfig,
   StateBackendConfig,
   RealtimeConfig,
   McpGatewayConfig,
@@ -105,6 +106,19 @@ export interface ConfigReloadResult {
 export interface ConfigReloadOptions {
   source?: ConfigReloadSource;
   throwOnError?: boolean;
+}
+
+export class MissingRequiredEnvVarError extends Error {
+  constructor(
+    public readonly envName: string,
+    public readonly configPath: string,
+  ) {
+    super(
+      `Missing required environment variable "${envName}" referenced at ${configPath}. ` +
+        'Use ${VAR:-default} for a startup default or ${env:VAR} for runtime secret resolution.',
+    );
+    this.name = 'MissingRequiredEnvVarError';
+  }
 }
 
 export class ConfigReloadError extends Error {
@@ -184,10 +198,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Recursively resolve ${ENV_VAR} patterns in string values.
-   * Supports default values: ${ENV_VAR:-default}
+   * Recursively resolve startup-time ${ENV_VAR} references in string values.
+   * `${ENV_VAR}` is now required and fails fast when missing.
+   * `${ENV_VAR:-default}` keeps its default-value semantics.
+   * Typed runtime secret references such as `${env:VAR}` remain untouched.
    */
-  private resolveEnvVars<T>(obj: T): T {
+  private resolveEnvVars<T>(obj: T, location = '$'): T {
     if (typeof obj === 'string') {
       return obj.replace(
         /\$\{([^}]+)\}/g,
@@ -195,26 +211,27 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
           if (isTypedSecretReferenceExpression(expr)) {
             return _match;
           }
-          const [envKey, defaultValue] = expr.split(':-');
-          const value = process.env[envKey.trim()];
+          const separatorIndex = expr.indexOf(':-');
+          const envKey =
+            separatorIndex === -1 ? expr.trim() : expr.slice(0, separatorIndex).trim();
+          const defaultValue =
+            separatorIndex === -1 ? undefined : expr.slice(separatorIndex + 2);
+          const value = process.env[envKey];
           if (value !== undefined) return value;
           if (defaultValue !== undefined) return defaultValue;
-          this.logger.warn(
-            `Environment variable ${envKey.trim()} is not set and has no default`,
-          );
-          return '';
+          throw new MissingRequiredEnvVarError(envKey, location);
         },
       ) as T;
     }
 
     if (Array.isArray(obj)) {
-      return obj.map((item) => this.resolveEnvVars(item)) as T;
+      return obj.map((item, index) => this.resolveEnvVars(item, `${location}[${index}]`)) as T;
     }
 
     if (obj !== null && typeof obj === 'object') {
       const resolved: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
-        resolved[key] = this.resolveEnvVars(value);
+        resolved[key] = this.resolveEnvVars(value, `${location}.${key}`);
       }
       return resolved as T;
     }
@@ -686,6 +703,16 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   get budget(): BudgetConfig {
     return this.config.budget;
+  }
+
+  get cacheAffinity(): Required<CacheAffinityRoutingConfig> {
+    const affinity = this.config.routing.cache_affinity;
+    return {
+      enabled: affinity?.enabled ?? true,
+      min_consecutive_hits: affinity?.min_consecutive_hits ?? 2,
+      bonus_weight: affinity?.bonus_weight ?? 0.35,
+      ttl_safety_margin: affinity?.ttl_safety_margin ?? 0.8,
+    };
   }
 
   /** Get cache config with defaults */

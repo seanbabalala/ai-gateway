@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { ConfigModule } from './config/config.module';
@@ -16,6 +17,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { McpModule } from './mcp/mcp.module';
 import { BatchModule } from './batch/batch.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
+import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.filter';
 
 @Module({
   imports: [
@@ -38,6 +40,12 @@ import { EvaluationModule } from './evaluation/evaluation.module';
     AuthModule,
     IngestModule,
     DashboardModule,
+  ],
+  providers: [
+    {
+      provide: APP_FILTER,
+      useClass: PublicGatewayExceptionFilter,
+    },
   ],
 })
 export class AppModule {}

@@ -53,6 +53,9 @@ export class CallLog {
   @Column({ type: 'real', default: 0 })
   cost_usd!: number;
 
+  @Column({ type: 'real', nullable: true, default: null })
+  cost_without_cache_usd!: number | null;
+
   @Column({ type: 'integer', default: 0 })
   latency_ms!: number;
 

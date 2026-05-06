@@ -1,4 +1,8 @@
-import { CanonicalStreamEvent } from '../../canonical/canonical.types';
+import { CanonicalStreamEvent, TokenUsage } from '../../canonical/canonical.types';
+import {
+  extractUsageBySchema,
+  UsageSchema,
+} from '../usage-schema-resolver';
 
 /**
  * Parses SSE stream from an OpenAI Responses API provider → CanonicalStreamEvent.
@@ -22,6 +26,8 @@ import { CanonicalStreamEvent } from '../../canonical/canonical.types';
 export class ResponsesStreamParser {
   private buffer = '';
   private currentEvent = '';
+
+  constructor(private readonly usageSchema?: UsageSchema) {}
 
   *parse(chunk: string): Generator<CanonicalStreamEvent> {
     this.buffer += chunk;
@@ -100,16 +106,10 @@ export class ResponsesStreamParser {
       }
 
       case 'response.completed': {
-        const usage = (data.usage || {}) as Record<string, unknown>;
-        const inputDetails = (usage.input_token_details || {}) as Record<string, unknown>;
         yield {
           type: 'stop',
           stop_reason: this.mapStatus(data.status as string),
-          usage: {
-            input_tokens: (usage.input_tokens as number) || 0,
-            output_tokens: (usage.output_tokens as number) || 0,
-            cache_read_input_tokens: (inputDetails.cached_tokens as number) || undefined,
-          },
+          usage: this.resolveUsage(data),
         };
         break;
       }
@@ -144,5 +144,48 @@ export class ResponsesStreamParser {
     if (status === 'completed') return 'end_turn';
     if (status === 'incomplete') return 'max_tokens';
     return 'end_turn';
+  }
+
+  private resolveUsage(data: Record<string, unknown>) {
+    const usage = (data.usage || {}) as Record<string, unknown>;
+    const inputTokensDetails = (usage.input_tokens_details || {}) as Record<
+      string,
+      unknown
+    >;
+    const inputDetails = (usage.input_token_details || {}) as Record<
+      string,
+      unknown
+    >;
+    const promptDetails = (usage.prompt_tokens_details || {}) as Record<
+      string,
+      unknown
+    >;
+    const fallbackUsage: TokenUsage = {
+      input_tokens: (usage.input_tokens as number) || 0,
+      output_tokens: (usage.output_tokens as number) || 0,
+      cache_read_input_tokens:
+        ((inputTokensDetails.cached_tokens as number) ||
+          (promptDetails.cached_tokens as number) ||
+          (inputDetails.cached_tokens as number) ||
+          0),
+    };
+
+    if (!this.usageSchema) {
+      return fallbackUsage;
+    }
+
+    const schemaUsage = extractUsageBySchema(data, this.usageSchema);
+    return {
+      input_tokens: schemaUsage.input_tokens || fallbackUsage.input_tokens || 0,
+      output_tokens: schemaUsage.output_tokens || fallbackUsage.output_tokens || 0,
+      cache_creation_input_tokens:
+        schemaUsage.cache_creation_input_tokens ||
+        fallbackUsage.cache_creation_input_tokens ||
+        0,
+      cache_read_input_tokens:
+        schemaUsage.cache_read_input_tokens ||
+        fallbackUsage.cache_read_input_tokens ||
+        0,
+    };
   }
 }

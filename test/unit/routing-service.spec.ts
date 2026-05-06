@@ -2,6 +2,19 @@ import { RoutingService } from '../../src/routing/routing.service';
 import { mockConfigService } from '../helpers';
 import { Tier } from '../../src/canonical/canonical.types';
 
+function inactiveAffinityResult() {
+  return {
+    active: false,
+    bonus: 0,
+    reason: 'no_session_history',
+    provider_cache_ttl_seconds: null,
+    time_since_last_cache_hit_seconds: null,
+    estimated_cache_hit_probability: null,
+    consecutive_count: 0,
+    cache_type: null,
+  };
+}
+
 function makeRoutingService(overrides: {
   tiers?: Record<string, any>;
   domainPreferences?: Record<string, string[]>;
@@ -14,6 +27,7 @@ function makeRoutingService(overrides: {
   circuitBreaker?: any;
   momentum?: any;
   capabilityService?: any;
+  cacheAffinityService?: any;
 } = {}) {
   const config = mockConfigService({
     routing: {
@@ -92,7 +106,18 @@ function makeRoutingService(overrides: {
     }),
   };
 
-  return new RoutingService(config, capabilityService, circuitBreaker, momentum);
+  const cacheAffinityService = overrides.cacheAffinityService || {
+    getCacheAffinity: jest.fn().mockReturnValue(inactiveAffinityResult()),
+    recordRouteResult: jest.fn(),
+  };
+
+  return new RoutingService(
+    config,
+    capabilityService,
+    circuitBreaker,
+    momentum,
+    cacheAffinityService,
+  );
 }
 
 describe('RoutingService', () => {
@@ -629,6 +654,151 @@ describe('RoutingService', () => {
     expect(decision.trace.cache_evidence).toMatchObject({
       local_prompt_cache_lookup: 'miss',
       provider_cache_preference: true,
+    });
+  });
+
+  it('should apply cache affinity bonus during cost optimization when a warm cache session exists', () => {
+    const cacheAffinityService = {
+      getCacheAffinity: jest.fn().mockImplementation((sessionKey: string | undefined, node: string) =>
+        sessionKey === 'session-1' && node === 'n2'
+          ? {
+              active: true,
+              bonus: 0.35,
+              reason: 'cache_affinity_active',
+              provider_cache_ttl_seconds: 600,
+              time_since_last_cache_hit_seconds: 18,
+              estimated_cache_hit_probability: 0.91,
+              consecutive_count: 3,
+              cache_type: 'automatic',
+            }
+          : inactiveAffinityResult(),
+      ),
+      recordRouteResult: jest.fn(),
+    };
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+        structured_output: null,
+        prompt_cache: model === 'warm-cache-model',
+        read_cache: model === 'warm-cache-model',
+        supports_cache: model === 'warm-cache-model',
+        cache_type: model === 'warm-cache-model' ? 'automatic' : 'none',
+        cache_ttl_seconds: model === 'warm-cache-model' ? 600 : null,
+        pricing:
+          model === 'cheapest-model'
+            ? { input: 1.0, output: 0 }
+            : model === 'warm-cache-model'
+              ? { input: 1.2, output: 0, cache_read_input: 0.12 }
+              : { input: 2.0, output: 0 },
+      })),
+    };
+    const svc = makeRoutingService({
+      optimization: 'cost',
+      capabilityService,
+      cacheAffinityService,
+      tiers: {
+        standard: {
+          strategy: 'weighted',
+          targets: [
+            { node: 'n1', model: 'cheapest-model', weight: 1 },
+            { node: 'n2', model: 'warm-cache-model', weight: 1 },
+            { node: 'n3', model: 'expensive-model', weight: 1 },
+          ],
+        },
+      },
+    });
+
+    const decision = svc.resolve('standard' as Tier, 0.4, 'session-1', null, undefined, {
+      estimated_input_tokens: 1_000_000,
+      estimated_output_tokens: 0,
+    });
+
+    expect(decision.primary.model).toBe('warm-cache-model');
+    expect(decision.trace.final_selection.reason).toContain('cache affinity kept the session');
+    expect(
+      decision.trace.candidate_targets.find((candidate) => candidate.model === 'warm-cache-model')
+        ?.cache_evidence,
+    ).toMatchObject({
+      cache_affinity_active: true,
+      cache_affinity_reason: 'cache_affinity_active',
+      cache_affinity_bonus: 0.35,
+      provider_cache_ttl_seconds: 600,
+      time_since_last_cache_hit_seconds: 18,
+      estimated_cache_hit_probability: 0.91,
+    });
+  });
+
+  it('should suppress cache affinity when the candidate circuit is open', () => {
+    const cacheAffinityService = {
+      getCacheAffinity: jest.fn().mockImplementation((sessionKey: string | undefined, node: string) =>
+        sessionKey === 'session-1' && node === 'n2'
+          ? {
+              active: true,
+              bonus: 0.35,
+              reason: 'cache_affinity_active',
+              provider_cache_ttl_seconds: 600,
+              time_since_last_cache_hit_seconds: 12,
+              estimated_cache_hit_probability: 0.88,
+              consecutive_count: 2,
+              cache_type: 'automatic',
+            }
+          : inactiveAffinityResult(),
+      ),
+      recordRouteResult: jest.fn(),
+    };
+    const capabilityService = {
+      resolveModelModalities: jest.fn().mockReturnValue(['text']),
+      resolveModelRoutingCapabilities: jest.fn().mockImplementation((_nodeId: string, model: string) => ({
+        structured_output: null,
+        prompt_cache: model === 'warm-cache-model',
+        read_cache: model === 'warm-cache-model',
+        supports_cache: model === 'warm-cache-model',
+        cache_type: model === 'warm-cache-model' ? 'automatic' : 'none',
+        cache_ttl_seconds: model === 'warm-cache-model' ? 600 : null,
+        pricing:
+          model === 'cheapest-model'
+            ? { input: 1.0, output: 0 }
+            : model === 'warm-cache-model'
+              ? { input: 1.2, output: 0, cache_read_input: 0.12 }
+              : { input: 2.0, output: 0 },
+      })),
+    };
+    const circuitBreaker = {
+      isAvailable: jest.fn().mockReturnValue(true),
+      getCircuitState: jest.fn().mockImplementation((node: string) =>
+        node === 'n2' ? 'OPEN' : 'CLOSED',
+      ),
+    };
+    const svc = makeRoutingService({
+      optimization: 'cost',
+      capabilityService,
+      cacheAffinityService,
+      circuitBreaker,
+      tiers: {
+        standard: {
+          strategy: 'weighted',
+          targets: [
+            { node: 'n1', model: 'cheapest-model', weight: 1 },
+            { node: 'n2', model: 'warm-cache-model', weight: 1 },
+            { node: 'n3', model: 'expensive-model', weight: 1 },
+          ],
+        },
+      },
+    });
+
+    const decision = svc.resolve('standard' as Tier, 0.4, 'session-1', null, undefined, {
+      estimated_input_tokens: 1_000_000,
+      estimated_output_tokens: 0,
+    });
+
+    expect(decision.primary.model).toBe('cheapest-model');
+    expect(
+      decision.trace.candidate_targets.find((candidate) => candidate.model === 'warm-cache-model')
+        ?.cache_evidence,
+    ).toMatchObject({
+      cache_affinity_active: false,
+      cache_affinity_reason: 'circuit_open',
+      cache_affinity_bonus: null,
     });
   });
 

@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SpanKind } from '@opentelemetry/api';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig, NodeProtocol } from '../config/gateway.config';
+import { resolveNodeUsageSchema } from '../catalog/compatibility-profiles';
 import {
   CanonicalRequest,
   CanonicalEmbeddingRequest,
@@ -16,6 +17,7 @@ import {
   CanonicalStreamEvent,
   StopReason,
   Tier,
+  TokenUsage,
 } from '../canonical/canonical.types';
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
@@ -27,6 +29,10 @@ import { MessagesStreamParser } from './stream/messages.stream';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import {
+  extractUsageBySchema,
+  UsageSchema,
+} from './usage-schema-resolver';
 import type { Dispatcher } from 'undici';
 
 type FetchOptionsWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
@@ -115,7 +121,16 @@ export class ProviderClientService {
         this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
 
         const responseBody = await this.readJsonResponse(response, node);
-        const canonical_resp = this.normalizeResponse(responseBody, node.protocol, routingMeta, nodeId, targetModel, latencyMs);
+        const usageSchema = this.resolveUsageSchemaForNode(node);
+        const canonical_resp = this.normalizeResponse(
+          responseBody,
+          node.protocol,
+          routingMeta,
+          nodeId,
+          targetModel,
+          latencyMs,
+          usageSchema,
+        );
 
         // GenAI semantic attributes
         span.setAttributes({
@@ -344,7 +359,10 @@ export class ProviderClientService {
     }
 
     // Parse the SSE stream
-    const parser = this.createStreamParser(node.protocol);
+    const parser = this.createStreamParser(
+      node.protocol,
+      this.resolveUsageSchemaForNode(node),
+    );
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const cancelReader = () => {
@@ -621,14 +639,17 @@ export class ProviderClientService {
   // Stream Parser Factory
   // ══════════════════════════════════════════════════════
 
-  private createStreamParser(protocol: NodeProtocol) {
+  private createStreamParser(
+    protocol: NodeProtocol,
+    usageSchema?: UsageSchema,
+  ) {
     switch (protocol) {
       case 'chat_completions':
-        return new ChatCompletionsStreamParser();
+        return new ChatCompletionsStreamParser(usageSchema);
       case 'responses':
-        return new ResponsesStreamParser();
+        return new ResponsesStreamParser(usageSchema);
       case 'messages':
-        return new MessagesStreamParser();
+        return new MessagesStreamParser(usageSchema);
       default:
         throw new Error(`Unsupported stream protocol: ${protocol}`);
     }
@@ -901,14 +922,36 @@ export class ProviderClientService {
     nodeId: string,
     model: string,
     latencyMs: number,
+    usageSchema?: UsageSchema,
   ): CanonicalResponse {
     switch (protocol) {
       case 'chat_completions':
-        return this.normalizeChatCompletionsResponse(body, routingMeta, nodeId, model, latencyMs);
+        return this.normalizeChatCompletionsResponse(
+          body,
+          routingMeta,
+          nodeId,
+          model,
+          latencyMs,
+          usageSchema,
+        );
       case 'responses':
-        return this.normalizeResponsesResponse(body, routingMeta, nodeId, model, latencyMs);
+        return this.normalizeResponsesResponse(
+          body,
+          routingMeta,
+          nodeId,
+          model,
+          latencyMs,
+          usageSchema,
+        );
       case 'messages':
-        return this.normalizeMessagesResponse(body, routingMeta, nodeId, model, latencyMs);
+        return this.normalizeMessagesResponse(
+          body,
+          routingMeta,
+          nodeId,
+          model,
+          latencyMs,
+          usageSchema,
+        );
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
     }
@@ -1082,12 +1125,14 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    nodeId: string, model: string, latencyMs: number,
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+    usageSchema?: UsageSchema,
   ): CanonicalResponse {
     const choices = body.choices as Record<string, unknown>[];
     const choice = choices?.[0] || {};
     const message = (choice.message || {}) as Record<string, unknown>;
-    const usage = (body.usage || {}) as Record<string, unknown>;
     const content: CanonicalContentBlock[] = [];
 
     if (message.content && typeof message.content === 'string') {
@@ -1103,14 +1148,21 @@ export class ProviderClientService {
       }
     }
 
+    const fallbackUsage: TokenUsage = {
+      input_tokens: ((body.usage as Record<string, unknown>)?.prompt_tokens as number) || 0,
+      output_tokens:
+        ((body.usage as Record<string, unknown>)?.completion_tokens as number) || 0,
+      cache_read_input_tokens:
+        ((((body.usage as Record<string, unknown>)?.prompt_tokens_details as Record<
+          string,
+          unknown
+        >)?.cached_tokens as number) || 0),
+    };
+
     return {
       id: (body.id as string) || `gen_${Date.now()}`, content,
       stop_reason: this.mapChatFinishReason(choice.finish_reason as string),
-      usage: {
-        input_tokens: (usage.prompt_tokens as number) || 0,
-        output_tokens: (usage.completion_tokens as number) || 0,
-        cache_read_input_tokens: ((usage.prompt_tokens_details as Record<string, unknown>)?.cached_tokens as number) || 0,
-      },
+      usage: this.resolveNormalizedUsage(body, usageSchema, fallbackUsage),
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };
@@ -1124,10 +1176,12 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    nodeId: string, model: string, latencyMs: number,
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+    usageSchema?: UsageSchema,
   ): CanonicalResponse {
     const output = (body.output || []) as Record<string, unknown>[];
-    const usage = (body.usage || {}) as Record<string, unknown>;
     const content: CanonicalContentBlock[] = [];
 
     for (const item of output) {
@@ -1146,14 +1200,29 @@ export class ProviderClientService {
       }
     }
 
+    const fallbackUsage: TokenUsage = {
+      input_tokens: ((body.usage as Record<string, unknown>)?.input_tokens as number) || 0,
+      output_tokens:
+        ((body.usage as Record<string, unknown>)?.output_tokens as number) || 0,
+      cache_read_input_tokens:
+        ((((body.usage as Record<string, unknown>)?.input_tokens_details as Record<
+          string,
+          unknown
+        >)?.cached_tokens as number) ||
+          (((body.usage as Record<string, unknown>)?.prompt_tokens_details as Record<
+            string,
+            unknown
+          >)?.cached_tokens as number) ||
+          ((((body.usage as Record<string, unknown>)?.input_token_details as Record<
+            string,
+            unknown
+          >)?.cached_tokens as number) || 0)),
+    };
+
     return {
       id: (body.id as string) || `gen_${Date.now()}`, content,
       stop_reason: this.mapResponsesStatus(body.status as string),
-      usage: {
-        input_tokens: (usage.input_tokens as number) || 0,
-        output_tokens: (usage.output_tokens as number) || 0,
-        cache_read_input_tokens: ((usage.input_token_details as Record<string, unknown>)?.cached_tokens as number) || 0,
-      },
+      usage: this.resolveNormalizedUsage(body, usageSchema, fallbackUsage),
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };
@@ -1167,10 +1236,12 @@ export class ProviderClientService {
       is_fallback: boolean;
       fallback_reason?: string | null;
     },
-    nodeId: string, model: string, latencyMs: number,
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+    usageSchema?: UsageSchema,
   ): CanonicalResponse {
     const rawContent = (body.content || []) as Record<string, unknown>[];
-    const usage = (body.usage || {}) as Record<string, unknown>;
     const content: CanonicalContentBlock[] = [];
 
     for (const block of rawContent) {
@@ -1183,15 +1254,21 @@ export class ProviderClientService {
       }
     }
 
+    const fallbackUsage: TokenUsage = {
+      input_tokens: ((body.usage as Record<string, unknown>)?.input_tokens as number) || 0,
+      output_tokens:
+        ((body.usage as Record<string, unknown>)?.output_tokens as number) || 0,
+      cache_creation_input_tokens:
+        (((body.usage as Record<string, unknown>)?.cache_creation_input_tokens as number) ||
+          0),
+      cache_read_input_tokens:
+        (((body.usage as Record<string, unknown>)?.cache_read_input_tokens as number) || 0),
+    };
+
     return {
       id: (body.id as string) || `gen_${Date.now()}`, content,
       stop_reason: (body.stop_reason as StopReason) || 'end_turn',
-      usage: {
-        input_tokens: (usage.input_tokens as number) || 0,
-        output_tokens: (usage.output_tokens as number) || 0,
-        cache_creation_input_tokens: (usage.cache_creation_input_tokens as number) || 0,
-        cache_read_input_tokens: (usage.cache_read_input_tokens as number) || 0,
-      },
+      usage: this.resolveNormalizedUsage(body, usageSchema, fallbackUsage),
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
     };
@@ -1218,6 +1295,44 @@ export class ProviderClientService {
 
   private safeParseJson(str: string): Record<string, unknown> {
     try { return JSON.parse(str); } catch { return { _raw: str }; }
+  }
+
+  private resolveUsageSchemaForNode(node: NodeConfig): UsageSchema | undefined {
+    return resolveNodeUsageSchema(
+      node,
+      node.protocol,
+      this.getMergedCatalogSafely(),
+    );
+  }
+
+  private getMergedCatalogSafely() {
+    return typeof this.config.getMergedCatalog === 'function'
+      ? this.config.getMergedCatalog()
+      : undefined;
+  }
+
+  private resolveNormalizedUsage(
+    body: Record<string, unknown>,
+    usageSchema: UsageSchema | undefined,
+    fallbackUsage: TokenUsage,
+  ): TokenUsage {
+    if (!usageSchema) {
+      return fallbackUsage;
+    }
+
+    const schemaUsage = extractUsageBySchema(body, usageSchema);
+    return {
+      input_tokens: schemaUsage.input_tokens || fallbackUsage.input_tokens || 0,
+      output_tokens: schemaUsage.output_tokens || fallbackUsage.output_tokens || 0,
+      cache_creation_input_tokens:
+        schemaUsage.cache_creation_input_tokens ||
+        fallbackUsage.cache_creation_input_tokens ||
+        0,
+      cache_read_input_tokens:
+        schemaUsage.cache_read_input_tokens ||
+        fallbackUsage.cache_read_input_tokens ||
+        0,
+    };
   }
 }
 

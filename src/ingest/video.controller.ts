@@ -13,7 +13,6 @@ import { Repository } from 'typeorm';
 import { Request, Response as ExpressResponse } from 'express';
 import { MediaNormalizer } from '../canonical/normalizers/media.normalizer';
 import { PipelineService, PipelineResult } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
@@ -25,6 +24,11 @@ import { ConfigService } from '../config/config.service';
 import { NodeConfig } from '../config/gateway.config';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import { VideoJob } from '../database/entities';
+import { sendMappedPublicErrorResponse } from '../http/public-error-handling';
+import {
+  sendPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-contract';
 import {
   ErrorEnvelopeDto,
   VideoGenerationRequestDto,
@@ -73,23 +77,9 @@ export class VideoController {
       this.sendPipelineResult(res, result);
     } catch (err) {
       this.logger.error(`[videos/generations] Error: ${(err as Error).message}`);
-      if (err instanceof BudgetExceededError) {
-        res.status(429).json({
-          error: {
-            message: err.message,
-            type: 'budget_exceeded',
-            code: err.budgetType,
-            details: err.toDetails(),
-          },
-        });
-        return;
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, err);
       }
-      res.status(500).json({
-        error: {
-          message: (err as Error).message,
-          type: 'internal_error',
-        },
-      });
     }
   }
 
@@ -99,13 +89,19 @@ export class VideoController {
   async getVideo(@Param('id') id: string, @Req() req: Request, @Res() res: ExpressResponse) {
     const job = await this.findJob(id, req);
     if (!job) {
-      res.status(404).json({ error: { message: `Video job "${id}" not found`, type: 'not_found' } });
+      sendPublicErrorResponse(res, 404, 'openai', `Video job "${id}" not found`, {
+        type: 'not_found',
+      });
       return;
     }
     await this.refreshStatus(job).catch((err) => {
       this.logger.warn(`Video status refresh failed for ${id}: ${(err as Error).message}`);
     });
-    res.json(this.jobResponse(job));
+    sendPublicResponse(res, {
+      statusCode: 200,
+      body: this.jobResponse(job),
+      requestId: job.request_id,
+    });
   }
 
   @Get('videos/:id/content')
@@ -113,20 +109,37 @@ export class VideoController {
   async getVideoContent(@Param('id') id: string, @Req() req: Request, @Res() res: ExpressResponse) {
     const job = await this.findJob(id, req);
     if (!job) {
-      res.status(404).json({ error: { message: `Video job "${id}" not found`, type: 'not_found' } });
+      sendPublicErrorResponse(res, 404, 'openai', `Video job "${id}" not found`, {
+        type: 'not_found',
+      });
       return;
     }
     const node = this.config.getNode(job.node_id);
     if (!node?.video_content_endpoint) {
-      res.status(400).json({
-        error: {
-          message: 'Video content endpoint is not configured for this node.',
+      sendPublicErrorResponse(
+        res,
+        400,
+        'openai',
+        'Video content endpoint is not configured for this node.',
+        {
           type: 'unsupported_operation',
+          requestId: job.request_id,
         },
-      });
+      );
       return;
     }
-    await this.proxyProvider(node, node.video_content_endpoint, job, 'GET', res);
+    try {
+      await this.proxyProvider(node, node.video_content_endpoint, job, 'GET', res);
+    } catch (err) {
+      this.logger.warn(`Video content proxy failed for ${id}: ${(err as Error).message}`);
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, err, {
+          statusCode: 502,
+          type: 'video_proxy_error',
+          requestId: job.request_id,
+        });
+      }
+    }
   }
 
   @Post('videos/:id/cancel')
@@ -134,23 +147,40 @@ export class VideoController {
   async cancelVideo(@Param('id') id: string, @Req() req: Request, @Res() res: ExpressResponse) {
     const job = await this.findJob(id, req);
     if (!job) {
-      res.status(404).json({ error: { message: `Video job "${id}" not found`, type: 'not_found' } });
+      sendPublicErrorResponse(res, 404, 'openai', `Video job "${id}" not found`, {
+        type: 'not_found',
+      });
       return;
     }
     const node = this.config.getNode(job.node_id);
     if (!node?.video_cancel_endpoint) {
-      res.status(400).json({
-        error: {
-          message: 'Video cancel endpoint is not configured for this node.',
+      sendPublicErrorResponse(
+        res,
+        400,
+        'openai',
+        'Video cancel endpoint is not configured for this node.',
+        {
           type: 'unsupported_operation',
+          requestId: job.request_id,
         },
-      });
+      );
       return;
     }
-    await this.proxyProvider(node, node.video_cancel_endpoint, job, 'POST', res, async () => {
-      job.status = 'cancelled';
-      await this.videoJobs.save(job);
-    });
+    try {
+      await this.proxyProvider(node, node.video_cancel_endpoint, job, 'POST', res, async () => {
+        job.status = 'cancelled';
+        await this.videoJobs.save(job);
+      });
+    } catch (err) {
+      this.logger.warn(`Video cancel proxy failed for ${id}: ${(err as Error).message}`);
+      if (!res.headersSent) {
+        sendMappedPublicErrorResponse(res, req, err, {
+          statusCode: 502,
+          type: 'video_proxy_error',
+          requestId: job.request_id,
+        });
+      }
+    }
   }
 
   private async persistJob(
@@ -228,7 +258,12 @@ export class VideoController {
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
     const body = Buffer.from(await response.arrayBuffer());
     if (response.ok && afterSuccess) await afterSuccess();
-    res.status(response.status).type(contentType).send(body);
+    sendPublicResponse(res, {
+      statusCode: response.status,
+      body,
+      contentType,
+      requestId: job.request_id,
+    });
   }
 
   private async fetchProvider(
@@ -321,16 +356,7 @@ export class VideoController {
   }
 
   private sendPipelineResult(res: ExpressResponse, result: PipelineResult): void {
-    res.status(result.statusCode);
-    if (Buffer.isBuffer(result.body)) {
-      res.type(result.contentType || 'application/octet-stream').send(result.body);
-      return;
-    }
-    if (result.contentType && !result.contentType.includes('application/json')) {
-      res.type(result.contentType).send(result.body);
-      return;
-    }
-    res.json(result.body);
+    sendPublicResponse(res, result);
   }
 
   private extractHeaders(req: Request): Record<string, string> {

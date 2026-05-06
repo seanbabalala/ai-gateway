@@ -23,7 +23,9 @@ api_key: "${OPENAI_API_KEY:-dummy-for-ci}"
 
 Use `${env:...}` when you want the value resolved at request time with the
 SecretReferenceResolver cache. Use legacy `${VAR}` when startup-time expansion
-is enough.
+is enough and the environment variable is guaranteed to exist. From v1.5.0
+onward, `${VAR}` is treated as required during startup and reload; only
+`${VAR:-default}` keeps fallback semantics.
 
 ## Where References Work
 

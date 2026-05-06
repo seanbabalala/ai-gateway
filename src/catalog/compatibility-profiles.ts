@@ -2,12 +2,21 @@ import type { SourceFormat } from '../canonical/canonical.types';
 import type { NodeConfig } from '../config/gateway.config';
 import type { Modality } from '../config/modality';
 import { expandModalityAliases } from '../config/modality';
-import type { CatalogProvider, ProviderCatalog } from './catalog.types';
+import type {
+  CatalogCacheMetadata,
+  CatalogProvider,
+  ProviderCatalog,
+} from './catalog.types';
+import type {
+  UsageSchema,
+  UsageSchemaPath,
+} from '../providers/usage-schema-resolver';
 
 export type CompatibilityProfileId =
   | 'openai_compatible'
   | 'openai_responses_compatible'
   | 'anthropic_messages_compatible'
+  | 'google_gemini_openai_compatible'
   | 'google_gemini_compatible'
   | 'google_vertex_compatible'
   | 'aws_bedrock_converse'
@@ -15,11 +24,13 @@ export type CompatibilityProfileId =
   | 'huggingface_inference'
   | 'openrouter_aggregator'
   | 'cohere_compatible'
+  | 'deepseek_compatible'
   | 'mistral_compatible'
   | 'local_ollama'
   | 'local_vllm'
   | 'local_tgi'
   | 'local_lmstudio'
+  | 'local_sglang'
   | 'media_generation_sync'
   | 'media_generation_async'
   | 'speech_transcription'
@@ -88,6 +99,8 @@ export interface ProviderCompatibilityProfile {
   downgraded_fields: string[];
   unsupported_fields: string[];
   known_limitations: string[];
+  usage_schema?: Partial<Record<SourceFormat | 'gemini_generate_content', UsageSchema>>;
+  cache_metadata?: CatalogCacheMetadata;
 }
 
 export interface CompatibilityEvidenceInput {
@@ -136,6 +149,48 @@ function profile(
   return value;
 }
 
+function path(pathValue: UsageSchemaPath): UsageSchemaPath {
+  return Array.isArray(pathValue) ? [...pathValue] : pathValue;
+}
+
+function usageSchema(value: UsageSchema): UsageSchema {
+  return {
+    ...value,
+    ...(value.input_tokens ? { input_tokens: path(value.input_tokens) } : {}),
+    ...(value.input_tokens_parts
+      ? { input_tokens_parts: [...value.input_tokens_parts] }
+      : {}),
+    ...(value.output_tokens ? { output_tokens: path(value.output_tokens) } : {}),
+    ...(value.output_tokens_parts
+      ? { output_tokens_parts: [...value.output_tokens_parts] }
+      : {}),
+    ...(value.total_tokens ? { total_tokens: path(value.total_tokens) } : {}),
+    ...(value.cache_read_input_tokens
+      ? { cache_read_input_tokens: path(value.cache_read_input_tokens) }
+      : {}),
+    ...(value.cache_creation_input_tokens
+      ? { cache_creation_input_tokens: path(value.cache_creation_input_tokens) }
+      : {}),
+  };
+}
+
+function usageSchemaMap(
+  value:
+    | Partial<Record<SourceFormat | 'gemini_generate_content', UsageSchema>>
+    | undefined,
+): Partial<Record<SourceFormat | 'gemini_generate_content', UsageSchema>> | undefined {
+  if (!value) return undefined;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, schema]) => [key, usageSchema(schema)]),
+  );
+}
+
+function cacheMetadata(
+  value: CatalogCacheMetadata | undefined,
+): CatalogCacheMetadata | undefined {
+  return value ? { ...value } : undefined;
+}
+
 export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
   profile({
     profile_id: 'openai_compatible',
@@ -156,6 +211,32 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Provider-specific OpenAI-compatible gateways may ignore unsupported beta fields.',
     ],
+    cache_metadata: {
+      // OpenAI prompt caching is automatic, starts at 1024 prompt tokens, and
+      // in-memory cached prefixes generally stay warm for 5-10 minutes of
+      // inactivity up to 1 hour. Use 600 seconds as a conservative routing TTL
+      // ceiling; older gpt-4o-style models can override the discount ratio from
+      // model pricing.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'Derived from current OpenAI prompt-caching docs; model pricing can override the cached-input discount ratio.',
+    },
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        // OpenAI Chat objects expose cache hits on
+        // usage.prompt_tokens_details.cached_tokens. MiniMax's OpenAI-compatible
+        // chat docs show the same usage.prompt_tokens / completion_tokens /
+        // prompt_tokens_details.cached_tokens shape.
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'openai_responses_compatible',
@@ -183,6 +264,32 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Responses-compatible providers often vary on tools, reasoning, and structured output details.',
     ],
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'OpenAI Responses-compatible providers inherit the same automatic prompt-caching baseline unless model pricing overrides the discount ratio.',
+    },
+    usage_schema: usageSchemaMap({
+      responses: {
+        // OpenAI-compatible Responses providers now surface cache hits at
+        // usage.input_tokens_details.cached_tokens. Keep the older
+        // usage.prompt_tokens_details.cached_tokens and
+        // usage.input_token_details.cached_tokens paths as compatibility
+        // fallbacks for older implementations.
+        input_tokens: 'usage.input_tokens',
+        output_tokens: 'usage.output_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: [
+          'usage.input_tokens_details.cached_tokens',
+          'usage.prompt_tokens_details.cached_tokens',
+          'usage.input_token_details.cached_tokens',
+        ],
+      },
+    }),
   }),
   profile({
     profile_id: 'anthropic_messages_compatible',
@@ -203,6 +310,79 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'OpenAI structured-output requests must be translated or handled by fallback policy.',
     ],
+    cache_metadata: {
+      // Anthropic automatic caching uses top-level cache_control with a default
+      // 5 minute TTL. Sonnet caches from 1024 tokens, while Opus and Haiku 4.5
+      // need 4096 tokens; catalog model metadata can override the floor.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 300,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0.1,
+      notes:
+        'Anthropic model metadata can raise the minimum token floor for Opus/Haiku families while keeping the same 5 minute default TTL.',
+    },
+    usage_schema: usageSchemaMap({
+      messages: {
+        // Anthropic prompt caching docs expose usage.input_tokens,
+        // usage.output_tokens, usage.cache_creation_input_tokens, and
+        // usage.cache_read_input_tokens. MiniMax's Anthropic-compatible cache
+        // docs show the same message usage object. For internal cost accounting
+        // we normalize input_tokens to the total input volume by summing all
+        // three input-side counters.
+        input_tokens_parts: [
+          'usage.input_tokens',
+          'usage.cache_creation_input_tokens',
+          'usage.cache_read_input_tokens',
+        ],
+        output_tokens: 'usage.output_tokens',
+        cache_creation_input_tokens: 'usage.cache_creation_input_tokens',
+        cache_read_input_tokens: 'usage.cache_read_input_tokens',
+      },
+    }),
+  }),
+  profile({
+    profile_id: 'google_gemini_openai_compatible',
+    display_name: 'Google Gemini OpenAI-compatible',
+    protocol_family: 'google',
+    request_style: 'openai_compatible',
+    response_style: 'openai_compatible',
+    auth_strategy: 'bearer_or_query_key',
+    endpoint_strategy: 'openai_compatible',
+    streaming_strategy: 'openai_compatible',
+    multipart_strategy: 'unsupported',
+    async_job_strategy: 'unsupported',
+    supported_source_formats: ['chat_completions', 'embeddings'],
+    supported_modalities: ['text', 'vision', 'embedding'],
+    passthrough_fields: OPENAI_FIELDS,
+    downgraded_fields: ['reasoning', 'thinking_config'],
+    unsupported_fields: ['anthropic_version'],
+    known_limitations: [
+      'The Gemini OpenAI compatibility surface follows OpenAI-style usage objects, while native Gemini keeps usageMetadata.',
+    ],
+    cache_metadata: {
+      // Gemini 2.5+ enables implicit caching automatically. Google only
+      // documents a 1 hour default TTL for explicit caches, so SiftGate uses
+      // that published TTL as the affinity ceiling for Gemini-family cache
+      // routing while waiting for a provider-published implicit TTL.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 3600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0,
+      notes:
+        'Implicit caching is automatic on Gemini 2.5+; explicit caching TTL defaults to 1 hour and is used here as the published upper bound.',
+    },
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        // Google Gemini OpenAI compatibility uses the OpenAI Chat Completions
+        // response shape, so cache hits follow usage.prompt_tokens_details.cached_tokens.
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'google_gemini_compatible',
@@ -223,6 +403,26 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Gemini request/response shapes are translated; unsupported OpenAI fields stay in trace evidence.',
     ],
+    cache_metadata: {
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 3600,
+      cache_min_tokens: 1024,
+      cache_read_discount: 0,
+      notes:
+        'Gemini native routing can benefit from implicit caching; when operators use explicit caches, Google documents a 1 hour default TTL.',
+    },
+    usage_schema: usageSchemaMap({
+      gemini_generate_content: {
+        // Google GenerateContentResponse uses usageMetadata.promptTokenCount,
+        // usageMetadata.cachedContentTokenCount, usageMetadata.candidatesTokenCount,
+        // and usageMetadata.totalTokenCount.
+        input_tokens: 'usageMetadata.promptTokenCount',
+        output_tokens: 'usageMetadata.candidatesTokenCount',
+        total_tokens: 'usageMetadata.totalTokenCount',
+        cache_read_input_tokens: 'usageMetadata.cachedContentTokenCount',
+      },
+    }),
   }),
   profile({
     profile_id: 'google_vertex_compatible',
@@ -348,6 +548,79 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Cohere rerank and embedding endpoints use provider-specific request shapes.',
     ],
+    cache_metadata: {
+      supports_cache: false,
+      cache_type: 'none',
+      cache_ttl_seconds: 0,
+      cache_min_tokens: 0,
+      cache_read_discount: 0,
+      notes:
+        'Cohere usage schemas can surface cached token counters, but SiftGate does not currently assume provider-managed prompt-cache reuse semantics for routing.',
+    },
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        // Cohere v2 chat responses nest token counters under usage. The
+        // official docs show usage.billed_units.input_tokens /
+        // usage.billed_units.output_tokens, usage.tokens.input_tokens /
+        // usage.tokens.output_tokens, and usage.cached_tokens.
+        input_tokens: [
+          'usage.billed_units.input_tokens',
+          'usage.tokens.input_tokens',
+        ],
+        output_tokens: [
+          'usage.billed_units.output_tokens',
+          'usage.tokens.output_tokens',
+        ],
+        cache_read_input_tokens: 'usage.cached_tokens',
+      },
+    }),
+  }),
+  profile({
+    profile_id: 'deepseek_compatible',
+    display_name: 'DeepSeek OpenAI-compatible',
+    protocol_family: 'openai',
+    request_style: 'openai_chat',
+    response_style: 'openai_chat',
+    auth_strategy: 'bearer_or_provider_header',
+    endpoint_strategy: 'openai_compatible',
+    streaming_strategy: 'openai_compatible',
+    multipart_strategy: 'unsupported',
+    async_job_strategy: 'unsupported',
+    supported_source_formats: ['chat_completions'],
+    supported_modalities: ['text'],
+    passthrough_fields: OPENAI_FIELDS,
+    downgraded_fields: ['reasoning', 'thinking_config'],
+    unsupported_fields: ['anthropic_thinking'],
+    known_limitations: [
+      'DeepSeek exposes dedicated cache hit/miss counters under usage instead of OpenAI prompt_tokens_details.',
+    ],
+    cache_metadata: {
+      // DeepSeek disk caching is automatic and docs only say unused caches are
+      // cleared after a few hours to a few days. Use 3 hours as a conservative
+      // lower-bound affinity window, then tighten it with ttl_safety_margin.
+      supports_cache: true,
+      cache_type: 'automatic',
+      cache_ttl_seconds: 10800,
+      cache_min_tokens: 0,
+      cache_read_discount: 0.02,
+      notes:
+        'DeepSeek does not publish a hard minimum token floor and only describes cache retention as lasting from a few hours to a few days.',
+    },
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        // DeepSeek context caching docs add usage.prompt_cache_hit_tokens and
+        // usage.prompt_cache_miss_tokens. Use prompt_tokens when present, and
+        // fall back to the hit+miss split when only the dedicated counters exist.
+        input_tokens: ['usage.prompt_tokens', 'usage.input_tokens'],
+        input_tokens_parts: [
+          'usage.prompt_cache_hit_tokens',
+          'usage.prompt_cache_miss_tokens',
+        ],
+        output_tokens: ['usage.completion_tokens', 'usage.output_tokens'],
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_cache_hit_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'mistral_compatible',
@@ -388,6 +661,14 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Local model capabilities depend on the pulled model and server version.',
     ],
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'local_vllm',
@@ -408,6 +689,14 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'Structured output and tool-call behavior depend on the vLLM engine configuration.',
     ],
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'local_tgi',
@@ -428,6 +717,14 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'TGI exposes generation parameters through provider-native fields.',
     ],
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'local_lmstudio',
@@ -448,6 +745,42 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     known_limitations: [
       'LM Studio compatibility depends on the loaded model and local server mode.',
     ],
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
+  }),
+  profile({
+    profile_id: 'local_sglang',
+    display_name: 'Local SGLang OpenAI-compatible',
+    protocol_family: 'local',
+    request_style: 'local_openai_compatible',
+    response_style: 'openai_compatible',
+    auth_strategy: 'none_or_bearer',
+    endpoint_strategy: 'openai_compatible',
+    streaming_strategy: 'openai_compatible',
+    multipart_strategy: 'unsupported',
+    async_job_strategy: 'unsupported',
+    supported_source_formats: ['chat_completions', 'embeddings'],
+    supported_modalities: ['text', 'embedding'],
+    passthrough_fields: ['metadata', 'stream'],
+    downgraded_fields: ['tools', 'response_format', 'reasoning_effort'],
+    unsupported_fields: ['managed_batch', 'realtime'],
+    known_limitations: [
+      'SGLang usage fields follow its OpenAI-compatible gateway surface when enabled.',
+    ],
+    usage_schema: usageSchemaMap({
+      chat_completions: {
+        input_tokens: 'usage.prompt_tokens',
+        output_tokens: 'usage.completion_tokens',
+        total_tokens: 'usage.total_tokens',
+        cache_read_input_tokens: 'usage.prompt_tokens_details.cached_tokens',
+      },
+    }),
   }),
   profile({
     profile_id: 'media_generation_sync',
@@ -585,13 +918,23 @@ const PROVIDER_PROFILE_OVERRIDES: Record<string, CompatibilityProfileId[]> = {
     'speech_tts',
   ],
   anthropic: ['anthropic_messages_compatible'],
-  google: ['google_gemini_compatible', 'google_vertex_compatible', 'embedding_compatible', 'media_generation_async'],
+  google: [
+    'google_gemini_openai_compatible',
+    'google_gemini_compatible',
+    'google_vertex_compatible',
+    'embedding_compatible',
+    'media_generation_async',
+  ],
   'azure-openai': ['azure_openai_compatible', 'embedding_compatible', 'media_generation_sync'],
   openrouter: ['openrouter_aggregator'],
   cohere: ['cohere_compatible', 'rerank_compatible', 'embedding_compatible'],
+  deepseek: ['deepseek_compatible'],
   mistral: ['mistral_compatible', 'embedding_compatible'],
   ollama: ['local_ollama', 'embedding_compatible'],
   vllm: ['local_vllm', 'embedding_compatible'],
+  'huggingface-tgi': ['local_tgi'],
+  'lm-studio': ['local_lmstudio', 'embedding_compatible'],
+  sglang: ['local_sglang', 'embedding_compatible'],
   'aws-bedrock': ['aws_bedrock_converse', 'embedding_compatible'],
   voyage: ['embedding_compatible'],
   jina: ['embedding_compatible', 'rerank_compatible'],
@@ -628,6 +971,8 @@ export function listCompatibilityProfiles(): ProviderCompatibilityProfile[] {
     downgraded_fields: [...profile.downgraded_fields],
     unsupported_fields: [...profile.unsupported_fields],
     known_limitations: [...profile.known_limitations],
+    usage_schema: usageSchemaMap(profile.usage_schema),
+    cache_metadata: cacheMetadata(profile.cache_metadata),
   }));
 }
 
@@ -708,10 +1053,23 @@ export function findCatalogProviderForNode(
   const baseUrl = typeof node.base_url === 'string'
     ? normalizeComparableUrl(node.base_url)
     : '';
+  const host = hostFromUrl(node.base_url);
   return catalog.providers.find((provider) => {
     if (provider.id === nodeId) return true;
-    return baseUrl.length > 0 && normalizeComparableUrl(provider.base_url) === baseUrl;
+    if (baseUrl.length > 0 && normalizeComparableUrl(provider.base_url) === baseUrl) {
+      return true;
+    }
+    return host.length > 0 && hostFromUrl(provider.base_url) === host;
   });
+}
+
+function hostFromUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return '';
+  }
 }
 
 export function resolveNodeCompatibilityProfiles(
@@ -741,6 +1099,24 @@ export function resolveNodeCompatibilityProfileIds(
   return resolveNodeCompatibilityProfiles(node, catalog).map(
     (profile) => profile.profile_id,
   );
+}
+
+export function resolveNodeUsageSchema(
+  node: Partial<NodeConfig> | undefined | null,
+  protocol: NodeConfig['protocol'],
+  catalog?: ProviderCatalog | null,
+): UsageSchema | undefined {
+  const key = protocolToUsageSchemaKey(protocol);
+  if (!key) return undefined;
+
+  for (const profile of resolveNodeCompatibilityProfiles(node, catalog)) {
+    const schema = profile.usage_schema?.[key];
+    if (schema) {
+      return usageSchema(schema);
+    }
+  }
+
+  return undefined;
 }
 
 export function compatibilityProfileSupportsSourceFormat(
@@ -948,6 +1324,21 @@ function inferNodeCompatibilityProfileIds(
   if (node.audio_speech_endpoint) ids.add('speech_tts');
   if (ids.size === 0) ids.add('openai_compatible');
   return Array.from(ids);
+}
+
+function protocolToUsageSchemaKey(
+  protocol: NodeConfig['protocol'],
+): SourceFormat | 'gemini_generate_content' | null {
+  switch (protocol) {
+    case 'chat_completions':
+      return 'chat_completions';
+    case 'responses':
+      return 'responses';
+    case 'messages':
+      return 'messages';
+    default:
+      return null;
+  }
 }
 
 function normalizeComparableUrl(value: string): string {

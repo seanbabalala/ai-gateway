@@ -104,7 +104,7 @@ v1.4 uses one pricing resolver for routing, benchmark reports, catalog APIs, and
 4. local catalog sync cache
 5. built-in Provider Catalog
 
-Built-in catalog prices are local reference snapshots and usually marked `manual_review_required`; they are good enough to keep cost-aware routing and budget estimates from going blind, but operators should override them with verified local rates for production billing decisions. OpenRouter can sync prices into the local catalog cache or an override file; other providers still need docs review or local rate cards.
+Built-in catalog prices are local reference snapshots and usually marked `manual_review_required`; they are good enough to keep cost-aware routing and budget estimates from going blind, but operators should override them with verified local rates for production billing decisions. OpenRouter can sync prices into the local catalog cache or an override file. In v1.7, ZeroEval can also enrich known provider/model entries with third-party reference pricing metadata in the local sync cache, but that enrichment remains review-required and never outranks explicit operator config. Other providers still need docs review or local rate cards.
 
 If no explicit price and no usable catalog fallback exists, routing is still allowed and tokens are still logged. Cost is recorded as `0`, and diagnostics surface the missing pricing or catalog price source issue.
 

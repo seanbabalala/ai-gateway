@@ -28,16 +28,27 @@ Run `npm run docs:check` before releases to catch broken documentation links,
 common secret patterns, private repository references, and accidentally present
 `gateway.config.yaml` files.
 
+## v1.5.0 Migration Note
+
+If you are upgrading from the v1.4.x line, check every legacy `${VAR}`
+reference in `gateway.config.yaml` before rollout. v1.5.0 tightens startup and
+reload behavior: missing required envs now fail fast and the new config is
+rejected instead of being silently interpolated to an empty string. Keep
+`${VAR:-default}` when you intentionally want a fallback, or switch to
+`${env:VAR}` / Vault / AWS / GCP runtime references when request-time secret
+resolution is the right fit.
+
 ## Baseline Topology
 
 - Run one SiftGate instance for small deployments, or two or more instances
   behind an HTTP load balancer for higher availability.
 - Put `gateway.config.yaml` on every instance through the same deployment
   process.
-- Keep provider credentials out of committed config. Use legacy `${VAR}` env
-  interpolation for simple deployments or v0.9 `${env:VAR}` runtime secret
-  references when you want SecretReferenceResolver caching and consistent
-  Dashboard redaction.
+- Keep provider credentials out of committed config. Legacy `${VAR}` env
+  interpolation is valid for simple deployments but is now required at startup
+  and reload time. Use `${VAR:-default}` for explicit fallbacks or `${env:VAR}`
+  runtime secret references when you want SecretReferenceResolver caching and
+  consistent Dashboard redaction.
 - Use PostgreSQL for durable call logs and generated Gateway API key records
   when SQLite is not enough for production traffic.
 - Manage client credentials from the OSS Dashboard API Keys page. It supports local namespace binding, endpoint/modality/node/model restrictions, per-key budgets, per-key rate limits, disable/delete/rotate, masked display, one-time copy on create/rotate, and audit events without requiring Cloud workspace/RBAC.

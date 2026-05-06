@@ -1,6 +1,7 @@
 import { ProviderClientService, ProviderError } from '../../src/providers/provider-client.service';
 import { Tier, CanonicalMediaRequest, CanonicalRequest } from '../../src/canonical/canonical.types';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
+import { BUILTIN_PROVIDER_CATALOG } from '../../src/catalog/built-in-catalog';
 
 const routingMeta = { tier: 'standard' as Tier, score: 0.1, is_fallback: false };
 
@@ -18,6 +19,23 @@ function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderC
   };
   return new ProviderClientService({
     getNode: jest.fn().mockReturnValue(node),
+  } as any, new TelemetryService());
+}
+
+function makeServiceWithConfig(
+  configOverrides: Record<string, any>,
+  nodeOverrides: Record<string, any> = {},
+): ProviderClientService {
+  const node = {
+    id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
+    base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
+    api_key: 'sk-test', models: ['gpt-4o'], model_aliases: {},
+    timeout_ms: 5000,
+    ...nodeOverrides,
+  };
+  return new ProviderClientService({
+    getNode: jest.fn().mockReturnValue(node),
+    ...configOverrides,
   } as any, new TelemetryService());
 }
 
@@ -487,6 +505,20 @@ describe('ProviderClientService', () => {
       expect(result.usage.cache_read_input_tokens).toBe(400);
     });
 
+    it('should extract cached_tokens from OpenAI Responses input_tokens_details', () => {
+      const svc = makeService();
+      const body = {
+        id: 'resp_cache_modern', model: 'gpt-5.4', status: 'completed',
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'Answer' }] }],
+        usage: {
+          input_tokens: 800, output_tokens: 100,
+          input_tokens_details: { cached_tokens: 640 },
+        },
+      };
+      const result = svc.normalizeResponse(body, 'responses', routingMeta, 'tokenflux', 'gpt-5.4', 100);
+      expect(result.usage.cache_read_input_tokens).toBe(640);
+    });
+
     it('should default cache tokens to 0 when not present', () => {
       const svc = makeService();
       const body = {
@@ -522,6 +554,99 @@ describe('ProviderClientService', () => {
       const result = await svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta);
       expect(result.id).toBe('chatcmpl-test');
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello!' });
+    });
+
+    it('should resolve DeepSeek cache usage through the usage schema registry', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl-deepseek',
+          model: 'deepseek-chat',
+          choices: [{ message: { content: 'Hello from DeepSeek' }, finish_reason: 'stop' }],
+          usage: {
+            completion_tokens: 12,
+            prompt_cache_hit_tokens: 90,
+            prompt_cache_miss_tokens: 30,
+            total_tokens: 132,
+          },
+        }),
+      }) as any;
+
+      const svc = makeServiceWithConfig(
+        {
+          getMergedCatalog: jest.fn().mockReturnValue({
+            version: 1,
+            generated_at: '2026-05-05',
+            providers: BUILTIN_PROVIDER_CATALOG,
+          }),
+        },
+        {
+          id: 'deepseek',
+          name: 'DeepSeek',
+          base_url: 'https://api.deepseek.com',
+          api_key: 'sk-deepseek',
+          models: ['deepseek-chat'],
+        },
+      );
+
+      const result = await svc.forward(
+        makeCanonical(),
+        'deepseek',
+        'deepseek-chat',
+        routingMeta,
+      );
+
+      expect(result.usage).toEqual(
+        expect.objectContaining({
+          input_tokens: 120,
+          output_tokens: 12,
+          cache_read_input_tokens: 90,
+        }),
+      );
+    });
+
+    it('should fall back to the legacy hardcoded parser when no usage schema is available', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl-custom',
+          model: 'custom-model',
+          choices: [{ message: { content: 'Legacy parser still works' }, finish_reason: 'stop' }],
+          usage: {
+            prompt_tokens: 40,
+            completion_tokens: 5,
+            prompt_tokens_details: { cached_tokens: 10 },
+          },
+        }),
+      }) as any;
+
+      const svc = makeServiceWithConfig(
+        {},
+        {
+          id: 'custom-openai',
+          name: 'Custom OpenAI-Compatible',
+          base_url: 'https://custom.example.com',
+          api_key: 'sk-custom',
+          models: ['custom-model'],
+        },
+      );
+
+      const result = await svc.forward(
+        makeCanonical(),
+        'custom-openai',
+        'custom-model',
+        routingMeta,
+      );
+
+      expect(result.usage).toEqual(
+        expect.objectContaining({
+          input_tokens: 40,
+          output_tokens: 5,
+          cache_read_input_tokens: 10,
+        }),
+      );
     });
 
     it('should forward embeddings to the embeddings endpoint', async () => {

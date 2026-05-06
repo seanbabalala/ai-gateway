@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '../config/config.service';
+import { CallLogSchemaPatchService } from './call-log-schema-patch.service';
 import {
   BudgetRule,
   CallLog,
@@ -80,6 +81,7 @@ import {
       VideoJob,
     ]),
   ],
+  providers: [CallLogSchemaPatchService],
   exports: [TypeOrmModule],
 })
 export class DatabaseModule {}

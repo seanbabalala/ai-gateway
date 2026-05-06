@@ -141,6 +141,7 @@ describe('siftgate catalog CLI', () => {
     expect(exitCode).toBe(0);
     expect(stderr).toHaveLength(0);
     expect(stdout.join('\n')).toContain('openrouter');
+    expect(stdout.join('\n')).toContain('zeroeval');
     expect(stdout.join('\n')).toContain('huggingface');
     expect(stdout.join('\n')).toContain('deepgram');
     expect(stdout.join('\n')).toContain('automatic=yes');
@@ -245,6 +246,76 @@ describe('siftgate catalog CLI', () => {
           source: 'openrouter-public-api',
           last_sync: '2026-05-03T00:00:00.000Z',
           pricing_confidence: 'high',
+        }),
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('syncs ZeroEval model enrichment into the local managed cache without creating new provider presets', async () => {
+    const cwd = await makeTempDir();
+    const { io, stdout, stderr } = makeIo(cwd);
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ([
+        {
+          model_id: 'gpt-4o',
+          name: 'GPT-4o',
+          organization: 'OpenAI',
+          organization_id: 'openai',
+          context: 128000,
+          release_date: '2024-05-13',
+          announcement_date: '2024-05-13',
+          multimodal: true,
+          input_price: 2.5,
+          output_price: 10,
+          throughput: 132,
+          gpqa_score: 0.84,
+        },
+        {
+          model_id: 'unknown-model',
+          name: 'Unknown model',
+          organization: 'OpenAI',
+          organization_id: 'openai',
+        },
+        {
+          model_id: 'mystery-model',
+          name: 'Mystery',
+          organization: 'Mystery Labs',
+          organization_id: 'mystery',
+        },
+      ]),
+    } as Response));
+
+    try {
+      const exitCode = await runCli(['catalog', 'sync', 'zeroeval'], io);
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toHaveLength(0);
+      expect(stdout.join('\n')).toContain('Provider: zeroeval');
+      const cachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+      expect(fs.existsSync(cachePath)).toBe(true);
+      const exported = yaml.load(fs.readFileSync(cachePath, 'utf8')) as any;
+      expect(Object.keys(exported.providers)).toEqual(['openai']);
+      expect(exported.providers.openai.models[0]).toMatchObject({
+        id: 'gpt-4o',
+        display_name: 'GPT-4o',
+        limits: { max_context_tokens: 128000 },
+        pricing: expect.objectContaining({
+          input: 2.5,
+          output: 10,
+          source: 'zeroeval',
+          manual_review_required: true,
+          pricing_confidence: 'medium',
+        }),
+        enrichment: expect.objectContaining({
+          source: 'zeroeval',
+          organization_id: 'openai',
+          release_date: '2024-05-13',
+          throughput: 132,
         }),
       });
     } finally {

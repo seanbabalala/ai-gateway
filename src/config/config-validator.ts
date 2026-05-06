@@ -1871,7 +1871,88 @@ function validateRouting(
   }
 
   validateFallbackPolicy(routing.fallback_policy, issues);
+  validateCacheAffinityRouting(routing.cache_affinity, issues);
   validateDomainPreferences(routing.domain_preferences, nodes, issues);
+}
+
+function validateCacheAffinityRouting(
+  cacheAffinity: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (cacheAffinity === undefined) return;
+  const basePath = 'routing.cache_affinity';
+  if (!isRecord(cacheAffinity)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_affinity_config',
+        'routing.cache_affinity must be an object when configured.',
+        basePath,
+      ),
+    );
+    return;
+  }
+
+  if (
+    cacheAffinity.enabled !== undefined &&
+    !isBoolean(cacheAffinity.enabled)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_affinity_config',
+        'routing.cache_affinity.enabled must be a boolean.',
+        `${basePath}.enabled`,
+      ),
+    );
+  }
+
+  if (
+    cacheAffinity.min_consecutive_hits !== undefined &&
+    (!isFiniteNumber(cacheAffinity.min_consecutive_hits) ||
+      !Number.isInteger(cacheAffinity.min_consecutive_hits) ||
+      cacheAffinity.min_consecutive_hits < 1)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_affinity_config',
+        'routing.cache_affinity.min_consecutive_hits must be a positive integer.',
+        `${basePath}.min_consecutive_hits`,
+      ),
+    );
+  }
+
+  if (
+    cacheAffinity.bonus_weight !== undefined &&
+    (!isFiniteNumber(cacheAffinity.bonus_weight) ||
+      cacheAffinity.bonus_weight < 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_affinity_config',
+        'routing.cache_affinity.bonus_weight must be a non-negative number.',
+        `${basePath}.bonus_weight`,
+      ),
+    );
+  }
+
+  if (
+    cacheAffinity.ttl_safety_margin !== undefined &&
+    (!isFiniteNumber(cacheAffinity.ttl_safety_margin) ||
+      cacheAffinity.ttl_safety_margin <= 0 ||
+      cacheAffinity.ttl_safety_margin > 1)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_cache_affinity_config',
+        'routing.cache_affinity.ttl_safety_margin must be greater than 0 and at most 1.',
+        `${basePath}.ttl_safety_margin`,
+      ),
+    );
+  }
 }
 
 function validateFallbackPolicy(
@@ -4657,6 +4738,7 @@ function validateCatalogConfig(
     );
   }
   const adapters = isRecord(sync.adapters) ? sync.adapters : {};
+  const automaticCatalogSyncAdapters = new Set(['openrouter', 'zeroeval']);
   let enabledSupportedAdapters = 0;
   for (const [provider, adapter] of Object.entries(adapters)) {
     if (!isRecord(adapter)) {
@@ -4680,7 +4762,7 @@ function validateCatalogConfig(
         ),
       );
     }
-    if (adapter.enabled === true && provider === 'openrouter') {
+    if (adapter.enabled === true && automaticCatalogSyncAdapters.has(provider)) {
       enabledSupportedAdapters += 1;
     } else if (adapter.enabled === true) {
       issues.push(

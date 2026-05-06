@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.4.0 Provider Ecosystem + Catalog Governance**.
+Current release: **v1.7.0 Catalog Enrichment + Fresh Model Defaults**.
 
-Current development focus after v1.4: keep provider catalog maintenance easy, add stronger semantic-cache backends, and explore prompt/template governance without weakening the local-first MIT Data Plane boundary.
+Current development focus after v1.7.0: keep the MIT Data Plane local-first while making provider/model metadata fresher, pricing references more operator-reviewable, and Dashboard node setup less likely to default to stale models without turning external enrichment into a runtime dependency or billing authority.
 
 ## Why SiftGate
 
@@ -13,8 +13,8 @@ Current development focus after v1.4: keep provider catalog maintenance easy, ad
 - Local governance: Gateway API keys, namespaces, local teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed nodes, and allowed models.
 - Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
-- Catalog-backed setup: Add Node Wizard and config validation use the Provider Catalog instead of hardcoded provider lists.
-- Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority.
+- Catalog-backed setup: Add Node Wizard and config validation use the Provider Catalog instead of hardcoded provider lists, and v1.7 adds fresh default model recommendations from merged catalog metadata.
+- Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority over sync cache and built-in references.
 
 ## Quick Start
 
@@ -49,6 +49,26 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
+## v1.7 Highlights
+
+- ZeroEval-backed catalog enrichment: the local catalog sync framework can now ingest reference model metadata from ZeroEval and merge lifecycle, context, throughput, multimodal, and reviewed-reference pricing fields into the existing catalog pipeline without creating a second catalog.
+- Fresh model defaults for Add Node: Dashboard provider rows now expose `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` so new nodes default to newer, stable, priced models instead of alphabetically early snapshots or stale dated variants.
+- Default pricing prefill via merged catalog: Add Node pricing editors now prefill from recommended models and merged catalog pricing metadata, while explicit node pricing, `models_pricing`, `catalog.override.yaml`, and sync-cache precedence remain unchanged.
+- Catalog enrichment metadata: merged catalog and Dashboard APIs now preserve model lifecycle, specs, source metadata, and selected benchmark snippets so Provider Catalog detail and future model governance surfaces can reuse one shared source of truth.
+
+## v1.6 Highlights
+
+- Usage schema registry: compatibility profiles now declare official usage/cache field paths so non-streaming and streaming extraction can normalize provider cache tokens across OpenAI-compatible, Responses-compatible, Anthropic Messages, Gemini, DeepSeek, Cohere, and local runtime surfaces.
+- Provider cache-aware cost accounting: built-in pricing and canonical usage handling now preserve normal input, cache read, and cache creation token distinctions so actual cost and no-cache baseline cost stay comparable.
+- Cache Savings Dashboard: overview KPIs, Analytics, Logs, and Budget views now show provider-cache hit rate, savings, cost split, and no-cache baselines without exposing prompts, responses, raw headers, or provider keys.
+- Cache Session Affinity routing: when a session has recent confirmed provider cache hits on the same node/model, routing can bias toward that target within a safe TTL window and explain the decision in Route Explanation.
+
+## v1.5 Highlights
+
+- Required env fail-fast: legacy `${VAR}` references are now enforced during startup and config reload. `${VAR:-default}` still works for local defaults and CI-safe placeholders, while `${env:VAR}` and external secret backends stay runtime-resolved.
+- Runtime-safe reloads: dashboard reload, watcher reload, rollback restore, and `SIGHUP` now reject invalid configs atomically and keep the last known-good config in memory.
+- Public error contract hardening: gateway-generated public errors now go through one mapping layer so `message`, `type`, `request_id`, `x-siftgate-request-id`, and protocol-compatible OpenAI / Anthropic / Batch / MCP / Video envelopes stay aligned.
+
 ## v1.4 Highlights
 
 | Area | What changed |
@@ -71,15 +91,18 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
 
-## After v1.4 Priorities
+## After v1.7 Priorities
 
-- Add an optional Redis semantic-cache backend while keeping memory/SQLite defaults safe.
-- Explore a local Prompt Registry / Template layer as a future governance feature.
-- Reduce Provider Catalog maintenance cost by moving toward one catalog source with generated compatibility/API projections.
+- Deepen catalog freshness without adding runtime coupling: more safe enrichment adapters are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
+- Reduce Provider Catalog maintenance cost by continuing toward one catalog source with generated compatibility/API projections and less duplicate provider/model curation.
+- Add richer operator workflows around reviewed pricing imports, override authoring, and diff visibility so reference enrichment is easier to adopt safely in production.
+- Continue optional Redis semantic-cache backend and future Prompt Registry / Template work without regressing single-node memory/SQLite defaults.
 
 ## Configuration
 
 The default path is `gateway.config.yaml`. Start from `gateway.config.example.yaml` and keep real provider keys out of git.
+
+In v1.5, legacy `${VAR}` references are treated as required config inputs: startup and reload fail fast if the variable is missing. Use `${VAR:-default}` when you intentionally want a local default, or `${env:VAR}` / Vault / AWS / GCP references when you want request-time secret resolution.
 
 Common settings:
 
@@ -136,6 +159,7 @@ Useful commands:
 
 ```bash
 npm run catalog -- list
+npm run catalog -- sync zeroeval
 npm run validate:config
 npm run benchmark:upstream
 npm run test:python-sdk

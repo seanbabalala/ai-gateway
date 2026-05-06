@@ -88,6 +88,12 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       cost_downgrade: { enabled: false, max_estimated_cost_usd: undefined },
     },
     budget: { daily_token_limit: 1_000_000, daily_cost_limit: 10, alert_threshold: 0.8 },
+    cacheAffinity: {
+      enabled: true,
+      min_consecutive_hits: 2,
+      bonus_weight: 0.35,
+      ttl_safety_margin: 0.8,
+    },
     alerts: {
       enabled: false,
       channels: [],

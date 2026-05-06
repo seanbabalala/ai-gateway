@@ -2,7 +2,74 @@
 
 ## Unreleased
 
-No unreleased changes yet.
+### Fixed
+
+- Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
+
+## 1.7.0 - 2026-05-06
+
+### Added
+
+- Released the v1.7.0 Catalog Enrichment + Fresh Model Defaults minor for the MIT OSS Data Plane, focusing on fresher catalog-backed model metadata, better default model recommendations, and pricing-prefill ergonomics instead of horizontal provider-count expansion or cloud-only features.
+- Added a ZeroEval-backed catalog enrichment adapter to the existing refresh/sync pipeline so SiftGate can ingest third-party reference metadata for already-known provider/model pairs, write it into the managed local sync cache, and expose the source in CLI sync status and Dashboard catalog APIs without making ZeroEval a runtime dependency.
+- Added v1.7 model enrichment metadata to the merged catalog schema and Dashboard catalog APIs, including lifecycle fields, specs, benchmark containers, source metadata, and operator-visible enrichment summaries for future provider/model governance surfaces.
+- Added backend-generated `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` to provider catalog responses so Dashboard Add Node defaults can prefer newer stable models with usable pricing metadata while preserving the full model list for search and manual edits.
+- Added Provider Catalog and Add Node operator-facing enrichment UI for release date, max context, throughput, selected benchmark snippets, and trust-copy that explains catalog pricing is a review-required default reference rather than a billing authority.
+
+### Changed
+
+- Dashboard Add Node now defaults model buckets and pricing rows from the new recommended-model metadata instead of naively taking the first alphabetically sorted catalog models, which prevents common stale-snapshot defaults when merged catalog data is fresher than built-in ordering.
+- Merged catalog pricing prefill now accepts ZeroEval reference input/output pricing for supported provider/model mappings and normalizes it into existing token price fields, while keeping the established pricing precedence unchanged: explicit `nodes[].model_capabilities.<model>.pricing`, `models_pricing`, `catalog.override.yaml`, sync cache, then built-in catalog.
+- Catalog sync status, refresh-source reporting, config validation, tests, and CLI help now recognize ZeroEval alongside OpenRouter while keeping OpenRouter's existing adapter behavior unchanged.
+- Release metadata is aligned to v1.7.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes manifest, and release-version sync coverage.
+
+## 1.6.0 - 2026-05-06
+
+### Added
+
+- Released the v1.6.0 Provider Cache Intelligence minor for the MIT OSS Data Plane, focusing on provider-cache-aware usage normalization, operator-visible savings, and cache-aware routing bias instead of new provider breadth or cloud-only features.
+- Added a provider usage-schema registry on compatibility profiles so SiftGate can declare official response paths for usage, cache-read, and cache-write token fields instead of hardcoding every provider family inside the transport layer.
+- Added provider-cache savings analytics for the OSS Dashboard, including `GET /api/dashboard/cache-savings`, grouped savings/hit-rate summaries, daily trends, and a new `cost_without_cache_usd` call-log field for actual-vs-no-cache comparisons.
+- Added Dashboard cache-savings visualizations across Overview, Analytics, Logs, and Budget so operators can see provider-cache savings, hit rate, cost mix, and per-request cache evidence without exposing prompts, responses, raw headers, or provider keys.
+- Added cache session affinity routing for provider-cache-capable nodes, including per-session route history, optional Redis-backed state hydration, TTL-aware affinity activation, and Route Decision evidence for affinity reason, bonus, TTL, last hit age, and estimated hit probability.
+
+### Changed
+
+- Non-streaming provider normalization and the chat/responses/messages stream parsers now resolve usage fields from compatibility-profile schemas first, while preserving the previous hardcoded extraction path as a backward-compatible fallback for nodes without a known profile.
+- Responses streaming serialization now writes both `usage.prompt_tokens_details.cached_tokens` and legacy `usage.input_token_details.cached_tokens` so modern OpenAI-style cache accounting and older SDK expectations stay aligned.
+- Refreshed built-in cache-aware pricing references from official docs for Gemini 3.1 preview models and DeepSeek v4 compatibility mappings, and re-verified the current OpenAI and Anthropic cache pricing metadata.
+- Call logs now persist cache-aware and no-cache cost views together, while the SQLite/PostgreSQL schema patch and SQLite-to-PostgreSQL migrator both recognize the new `cost_without_cache_usd` column.
+- Balanced, cost, and least-latency routing can now apply a bounded cache-affinity bonus when the same session recently confirmed provider-side cache hits on a matching node/model, while still respecting circuit-breaker availability and fallback behavior.
+- Route Explanation, localization bundles, and the example gateway config now document cache-affinity routing so Dashboard evidence, config validation, and release docs stay aligned for v1.6.0 operators.
+
+### Fixed
+
+- The `cost_without_cache_usd` schema patch now skips empty databases that do not have `call_logs` yet, avoiding a startup-time `ALTER TABLE` failure on incomplete SQLite/PostgreSQL setups.
+
+## 1.5.0 - 2026-05-05
+
+### Changed
+
+- Released the v1.5.0 Contract Hardening and Runtime Safety minor for the MIT OSS Data Plane, focusing on stable public contracts and safer runtime behavior instead of new provider breadth or cloud features.
+- Tightened legacy `${VAR}` config interpolation so missing required env values now fail fast during startup and reload, while `${VAR:-default}` keeps explicit fallback semantics and `${env:VAR}` / Vault / AWS / GCP references keep runtime resolution behavior.
+- Added one public gateway error mapping layer for OSS ingress so gateway-generated public errors keep consistent `message`, `type`, `request_id`, status semantics, and request-id headers without changing successful OpenAI / Anthropic / Batch / MCP / Video response shapes.
+- Extended request-id consistency across gateway-generated non-streaming and pre-controller error paths, including parser/body-limit failures, while preserving `x-siftgate-request-id` and legacy-compatible `x-request-id`.
+
+### Fixed
+
+- Hot reload, Dashboard reload, rollback restore, file-watcher reload, and `SIGHUP` now reject invalid configs atomically and keep the previously active config in memory instead of replacing it with a partially resolved or broken candidate.
+- Updated OpenAPI error schema and release documentation so request-id and required-env behavior are documented consistently for v1.5.0 operators upgrading from the v1.4.x line.
+
+## 1.4.1 - 2026-05-05
+
+### Fixed
+
+- Released the v1.4.1 public contract consistency patch for the MIT OSS Data Plane without expanding scope into new features or breaking startup semantics.
+- Unified public gateway request-id responses so gateway-generated responses now return `x-siftgate-request-id` while keeping `x-request-id` for backward compatibility, including Batch, MCP, streaming, and provider-compatible ingress paths.
+- Hardened gateway-generated public error envelopes so OpenAI-compatible, Anthropic-compatible, Batch, MCP, and Video gateway errors consistently expose `message`, `type`, and `request_id` while preserving the existing outer protocol shapes.
+- Updated the TypeScript client and Python SDK to prefer `x-siftgate-request-id` and then fall back to `x-request-id` and `x-correlation-id`.
+- Synced the published release version across the root package, the TypeScript client package, the Python package, and OpenAPI/Swagger metadata so `/openapi.json` no longer reports a stale `0.x` version.
+- Added regression coverage for public request-id headers, SDK request-id extraction, OpenAPI version sync, gateway-generated error contracts, and cross-package release version alignment.
 
 ## 1.4.0 - 2026-05-05
 

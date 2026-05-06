@@ -1,4 +1,8 @@
 import { CanonicalStreamEvent } from '../../canonical/canonical.types';
+import {
+  extractUsageBySchema,
+  UsageSchema,
+} from '../usage-schema-resolver';
 
 /**
  * Parses SSE stream from an Anthropic Messages API provider → CanonicalStreamEvent.
@@ -34,6 +38,8 @@ export class MessagesStreamParser {
   private cacheCreationInputTokens = 0;
   private cacheReadInputTokens = 0;
   private inputTokens = 0;
+
+  constructor(private readonly usageSchema?: UsageSchema) {}
 
   *parse(chunk: string): Generator<CanonicalStreamEvent> {
     this.buffer += chunk;
@@ -74,9 +80,11 @@ export class MessagesStreamParser {
       case 'message_start': {
         const message = (data.message || {}) as Record<string, unknown>;
         const startUsage = (message.usage || {}) as Record<string, unknown>;
-        this.inputTokens = (startUsage.input_tokens as number) || 0;
-        this.cacheCreationInputTokens = (startUsage.cache_creation_input_tokens as number) || 0;
-        this.cacheReadInputTokens = (startUsage.cache_read_input_tokens as number) || 0;
+        const resolvedUsage = this.resolveUsage({ usage: startUsage });
+        this.inputTokens = resolvedUsage.input_tokens || 0;
+        this.cacheCreationInputTokens =
+          resolvedUsage.cache_creation_input_tokens || 0;
+        this.cacheReadInputTokens = resolvedUsage.cache_read_input_tokens || 0;
         yield {
           type: 'start',
           id: (message.id as string) || '',
@@ -140,15 +148,17 @@ export class MessagesStreamParser {
       case 'message_delta': {
         const delta = (data.delta || {}) as Record<string, unknown>;
         const usage = (data.usage || {}) as Record<string, unknown>;
+        const resolvedUsage = this.resolveUsage({ usage });
 
         yield {
           type: 'stop',
           stop_reason: (delta.stop_reason as string) || 'end_turn',
           usage: {
-            input_tokens: this.inputTokens || (usage.input_tokens as number) || 0,
-            output_tokens: (usage.output_tokens as number) || 0,
-            cache_creation_input_tokens: this.cacheCreationInputTokens || undefined,
-            cache_read_input_tokens: this.cacheReadInputTokens || undefined,
+            input_tokens:
+              this.inputTokens || resolvedUsage.input_tokens || 0,
+            output_tokens: resolvedUsage.output_tokens || 0,
+            cache_creation_input_tokens: this.cacheCreationInputTokens || 0,
+            cache_read_input_tokens: this.cacheReadInputTokens || 0,
           },
         };
         break;
@@ -177,5 +187,34 @@ export class MessagesStreamParser {
       default:
         break;
     }
+  }
+
+  private resolveUsage(data: Record<string, unknown>) {
+    const usage = (data.usage || {}) as Record<string, unknown>;
+    const fallbackUsage = {
+      input_tokens: (usage.input_tokens as number) || 0,
+      output_tokens: (usage.output_tokens as number) || 0,
+      cache_creation_input_tokens:
+        (usage.cache_creation_input_tokens as number) || 0,
+      cache_read_input_tokens: (usage.cache_read_input_tokens as number) || 0,
+    };
+
+    if (!this.usageSchema) {
+      return fallbackUsage;
+    }
+
+    const schemaUsage = extractUsageBySchema(data, this.usageSchema);
+    return {
+      input_tokens: schemaUsage.input_tokens || fallbackUsage.input_tokens || 0,
+      output_tokens: schemaUsage.output_tokens || fallbackUsage.output_tokens || 0,
+      cache_creation_input_tokens:
+        schemaUsage.cache_creation_input_tokens ||
+        fallbackUsage.cache_creation_input_tokens ||
+        0,
+      cache_read_input_tokens:
+        schemaUsage.cache_read_input_tokens ||
+        fallbackUsage.cache_read_input_tokens ||
+        0,
+    };
   }
 }

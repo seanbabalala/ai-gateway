@@ -21,6 +21,7 @@ import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
 import { ConfigAuditService } from './config-audit.service';
 import { BenchmarkReportService } from './benchmark-report.service';
+import { CacheSavingsService } from './cache-savings.service';
 import { McpModule } from '../mcp/mcp.module';
 import { BatchModule } from '../batch/batch.module';
 
@@ -50,6 +51,7 @@ import { BatchModule } from '../batch/batch.module';
     ProviderCompatibilityService,
     ConfigAuditService,
     BenchmarkReportService,
+    CacheSavingsService,
   ],
   exports: [LogEventBus],
 })

@@ -5225,6 +5225,17 @@ export class PipelineService {
     );
   }
 
+  private calculateCostWithoutCache(
+    usage: TokenUsage,
+    pricing?: ModelPricing,
+  ): number | null {
+    if (!pricing) return null;
+    return (
+      (usage.input_tokens / 1_000_000) * pricing.input +
+      (usage.output_tokens / 1_000_000) * pricing.output
+    );
+  }
+
   // ══════════════════════════════════════════════════════
   // Call Logging
   // ══════════════════════════════════════════════════════
@@ -5247,6 +5258,10 @@ export class PipelineService {
     try {
       const pricing = this.config.getModelPricing(params.model, params.nodeId);
       const costUsd = this.calculateCost(params.usage, pricing);
+      const costWithoutCacheUsd = this.calculateCostWithoutCache(
+        params.usage,
+        pricing,
+      );
       const structuredOutput = this.resolveStructuredOutputLogFields(
         params.canonical,
         params.nodeId,
@@ -5270,6 +5285,7 @@ export class PipelineService {
         input_tokens: params.usage.input_tokens, output_tokens: params.usage.output_tokens,
         cache_creation_input_tokens: params.usage.cache_creation_input_tokens || 0,
         cache_read_input_tokens: params.usage.cache_read_input_tokens || 0,
+        cost_without_cache_usd: costWithoutCacheUsd,
         cost_usd: costUsd, latency_ms: params.latencyMs,
         status_code: params.statusCode, is_fallback: params.isFallback,
         fallback_reason: params.fallbackReason || null,
@@ -5337,6 +5353,14 @@ export class PipelineService {
         params.nodeId !== 'hook'
       ) {
         this.routingService.recordTargetUsage?.(
+          params.nodeId,
+          params.model,
+          params.usage,
+        );
+        this.routingService.recordSessionRouteResult?.(
+          params.canonical.metadata.session_id ||
+            params.canonical.metadata.session_key ||
+            undefined,
           params.nodeId,
           params.model,
           params.usage,

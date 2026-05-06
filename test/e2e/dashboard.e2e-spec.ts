@@ -234,6 +234,35 @@ describe('Dashboard (e2e)', () => {
     }
   });
 
+  it('POST /api/dashboard/config/reload → missing required env is rejected and previous config stays active', async () => {
+    const original = fs.readFileSync(FIXTURE_PATH, 'utf8');
+    const before = await harness.agent.get('/api/dashboard/config');
+    const beforeNodeIds = before.body.nodes.map((node: any) => node.id);
+
+    delete process.env.DASHBOARD_RELOAD_OPENAI_KEY;
+
+    try {
+      fs.writeFileSync(
+        FIXTURE_PATH,
+        original.replace('mock-openai-key', '${DASHBOARD_RELOAD_OPENAI_KEY}'),
+        'utf8',
+      );
+      const res = await harness.agent.post('/api/dashboard/config/reload');
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.rolled_back).toBe(true);
+      expect(res.body.message).toContain('DASHBOARD_RELOAD_OPENAI_KEY');
+
+      const after = await harness.agent.get('/api/dashboard/config');
+      expect(after.body.nodes.map((node: any) => node.id)).toEqual(beforeNodeIds);
+    } finally {
+      fs.writeFileSync(FIXTURE_PATH, original, 'utf8');
+      await harness.agent.post('/api/dashboard/config/reload');
+      delete process.env.DASHBOARD_RELOAD_OPENAI_KEY;
+    }
+  });
+
   // ══════════════════════════════════════════════════════
   // Routing
   // ══════════════════════════════════════════════════════

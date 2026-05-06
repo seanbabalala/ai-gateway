@@ -27,6 +27,14 @@ import {
   inferModelModalities,
   DEFAULT_MODALITIES,
 } from './modality';
+import {
+  findCatalogProviderForNode,
+  resolveNodeCompatibilityProfiles,
+} from '../catalog/compatibility-profiles';
+import type {
+  CatalogCacheMetadata,
+  ProviderCacheType,
+} from '../catalog/catalog.types';
 
 export interface TierRecommendation {
   tier: string;
@@ -55,6 +63,11 @@ export interface ResolvedModelRoutingCapabilities {
   prompt_cache?: boolean;
   read_cache?: boolean;
   write_cache?: boolean;
+  supports_cache?: boolean;
+  cache_type?: ProviderCacheType | null;
+  cache_ttl_seconds?: number | null;
+  cache_min_tokens?: number | null;
+  cache_read_discount?: number | null;
   max_context_tokens?: number;
   structured_output: boolean | null;
   dimensions?: number | number[];
@@ -359,6 +372,14 @@ export class CapabilityService {
       modelCapability?.write_cache ??
       node?.write_cache ??
       Boolean(hasCacheWritePricing);
+    const cacheMetadata = this.resolveCacheMetadata(
+      node,
+      model,
+      pricing,
+      promptCache,
+      readCache,
+      writeCache,
+    );
 
     return {
       modalities: this.resolveModelModalities(nodeId, model),
@@ -377,6 +398,11 @@ export class CapabilityService {
       prompt_cache: promptCache,
       read_cache: readCache,
       write_cache: writeCache,
+      supports_cache: cacheMetadata.supports_cache,
+      cache_type: cacheMetadata.cache_type,
+      cache_ttl_seconds: cacheMetadata.cache_ttl_seconds,
+      cache_min_tokens: cacheMetadata.cache_min_tokens,
+      cache_read_discount: cacheMetadata.cache_read_discount,
       max_context_tokens:
         modelCapability?.max_context_tokens ?? node?.max_context_tokens,
       structured_output:
@@ -429,6 +455,89 @@ export class CapabilityService {
     }
 
     return null;
+  }
+
+  private resolveCacheMetadata(
+    node: NodeConfig | undefined,
+    model: string,
+    pricing: ModelPricing | undefined,
+    promptCache: boolean,
+    readCache: boolean,
+    writeCache: boolean,
+  ): {
+    supports_cache: boolean;
+    cache_type: ProviderCacheType | null;
+    cache_ttl_seconds: number | null;
+    cache_min_tokens: number | null;
+    cache_read_discount: number | null;
+  } {
+    const catalog = this.config.getMergedCatalog();
+    const provider = node ? findCatalogProviderForNode(catalog, node) : undefined;
+    const catalogModel = provider?.models.find((entry) => entry.id === model);
+    const profileCache = node
+      ? resolveNodeCompatibilityProfiles(node, catalog)
+          .map((profile) => profile.cache_metadata)
+          .find((metadata): metadata is CatalogCacheMetadata => Boolean(metadata))
+      : undefined;
+    const merged = {
+      ...(profileCache || {}),
+      ...(provider?.cache_metadata || {}),
+      ...(catalogModel?.cache_metadata || {}),
+    };
+    const derivedDiscount = this.deriveCacheReadDiscount(pricing);
+    const supportsCache =
+      merged.supports_cache ??
+      Boolean(promptCache || readCache || writeCache);
+
+    if (!supportsCache) {
+      return {
+        supports_cache: false,
+        cache_type: 'none',
+        cache_ttl_seconds: null,
+        cache_min_tokens: null,
+        cache_read_discount: null,
+      };
+    }
+
+    return {
+      supports_cache: true,
+      cache_type: merged.cache_type || 'automatic',
+      cache_ttl_seconds:
+        typeof merged.cache_ttl_seconds === 'number'
+          ? merged.cache_ttl_seconds
+          : null,
+      cache_min_tokens:
+        typeof merged.cache_min_tokens === 'number'
+          ? merged.cache_min_tokens
+          : null,
+      cache_read_discount: derivedDiscount ?? merged.cache_read_discount ?? null,
+    };
+  }
+
+  private deriveCacheReadDiscount(
+    pricing: ModelPricing | undefined,
+  ): number | null {
+    if (
+      !pricing ||
+      !Number.isFinite(pricing.input) ||
+      pricing.input <= 0
+    ) {
+      return null;
+    }
+
+    const cacheReadPrice =
+      pricing.cache_read_input ??
+      pricing.cache_read_per_1m_tokens;
+    if (
+      cacheReadPrice === undefined ||
+      !Number.isFinite(cacheReadPrice)
+    ) {
+      return null;
+    }
+
+    return Number(
+      Math.max(0, cacheReadPrice / pricing.input).toFixed(4),
+    );
   }
 
   private getPriceFactor(

@@ -1,4 +1,8 @@
 import { CanonicalStreamEvent, TokenUsage } from '../../canonical/canonical.types';
+import {
+  extractUsageBySchema,
+  UsageSchema,
+} from '../usage-schema-resolver';
 
 /**
  * Parses SSE stream from a chat/completions provider → CanonicalStreamEvent.
@@ -12,6 +16,8 @@ import { CanonicalStreamEvent, TokenUsage } from '../../canonical/canonical.type
 export class ChatCompletionsStreamParser {
   private buffer = '';
   private hasSentStop = false;
+
+  constructor(private readonly usageSchema?: UsageSchema) {}
 
   /**
    * Feed raw SSE text chunks and get parsed events.
@@ -62,16 +68,10 @@ export class ChatCompletionsStreamParser {
     if (!choices || choices.length === 0) {
       // Could be a usage-only chunk at the end
       if (data.usage) {
-        const usage = data.usage as Record<string, unknown>;
-        const promptDetails = (usage.prompt_tokens_details || {}) as Record<string, unknown>;
         yield {
           type: 'stop',
           stop_reason: 'end_turn',
-          usage: {
-            input_tokens: (usage.prompt_tokens as number) || 0,
-            output_tokens: (usage.completion_tokens as number) || 0,
-            cache_read_input_tokens: (promptDetails.cached_tokens as number) || undefined,
-          },
+          usage: this.resolveUsage(data),
         };
       }
       return;
@@ -118,16 +118,10 @@ export class ChatCompletionsStreamParser {
     // Finish reason — end of stream
     if (finishReason) {
       this.hasSentStop = true;
-      const usage = (data.usage || {}) as Record<string, unknown>;
-      const promptDetails = (usage.prompt_tokens_details || {}) as Record<string, unknown>;
       yield {
         type: 'stop',
         stop_reason: this.mapFinishReason(finishReason),
-        usage: {
-          input_tokens: (usage.prompt_tokens as number) || 0,
-          output_tokens: (usage.completion_tokens as number) || 0,
-          cache_read_input_tokens: (promptDetails.cached_tokens as number) || undefined,
-        },
+        usage: this.resolveUsage(data),
       };
     }
   }
@@ -143,5 +137,36 @@ export class ChatCompletionsStreamParser {
       default:
         return 'end_turn';
     }
+  }
+
+  private resolveUsage(data: Record<string, unknown>): TokenUsage {
+    const usage = (data.usage || {}) as Record<string, unknown>;
+    const promptDetails = (usage.prompt_tokens_details || {}) as Record<
+      string,
+      unknown
+    >;
+    const fallbackUsage: TokenUsage = {
+      input_tokens: (usage.prompt_tokens as number) || 0,
+      output_tokens: (usage.completion_tokens as number) || 0,
+      cache_read_input_tokens: (promptDetails.cached_tokens as number) || 0,
+    };
+
+    if (!this.usageSchema) {
+      return fallbackUsage;
+    }
+
+    const schemaUsage = extractUsageBySchema(data, this.usageSchema);
+    return {
+      input_tokens: schemaUsage.input_tokens || fallbackUsage.input_tokens || 0,
+      output_tokens: schemaUsage.output_tokens || fallbackUsage.output_tokens || 0,
+      cache_creation_input_tokens:
+        schemaUsage.cache_creation_input_tokens ||
+        fallbackUsage.cache_creation_input_tokens ||
+        0,
+      cache_read_input_tokens:
+        schemaUsage.cache_read_input_tokens ||
+        fallbackUsage.cache_read_input_tokens ||
+        0,
+    };
   }
 }

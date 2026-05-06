@@ -11,13 +11,16 @@ import {
 import { Request, Response } from 'express';
 import { ChatCompletionsNormalizer } from '../canonical/normalizers/chat-completions.normalizer';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { BudgetExceededError } from '../budget/budget.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import {
   attachGatewayApiKeyMetadata,
   gatewayApiKeyFromRequest,
 } from '../auth/gateway-api-key-metadata';
+import {
+  sendMappedPublicErrorResponse,
+  sendPublicResponse,
+} from '../http/public-error-handling';
 import { ChatCompletionsRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
 
 @Controller('v1')
@@ -53,29 +56,12 @@ export class ChatCompletionsController {
         await this.pipeline.processStream(canonical, res);
       } else {
         const result = await this.pipeline.process(canonical);
-        res.status(result.statusCode).json(result.body);
+        sendPublicResponse(res, result);
       }
     } catch (err) {
       this.logger.error(`[chat/completions] Error: ${(err as Error).message}`);
       if (!res.headersSent) {
-        const status = err instanceof BudgetExceededError ? 429 : 500;
-        if (err instanceof BudgetExceededError) {
-          res.status(429).json({
-            error: {
-              message: err.message,
-              type: 'budget_exceeded',
-              code: err.budgetType,
-              details: err.toDetails(),
-            },
-          });
-          return;
-        }
-        res.status(status).json({
-          error: {
-            message: (err as Error).message,
-            type: 'internal_error',
-          },
-        });
+        sendMappedPublicErrorResponse(res, req, err);
       }
     }
   }

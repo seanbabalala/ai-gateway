@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route, Database } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { TierBadge } from '@/components/shared/TierBadge'
@@ -27,7 +27,13 @@ import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
-import { isPromptCacheLog, isSemanticCacheLog, sourceFormatLabel } from '@/lib/call-log-display'
+import {
+  isPromptCacheLog,
+  isProviderCacheLog,
+  isSemanticCacheLog,
+  providerCacheSavingsUsd,
+  sourceFormatLabel,
+} from '@/lib/call-log-display'
 import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
@@ -49,6 +55,26 @@ function LogRouteBadge({ log }: { log: CallLog }) {
     return <Badge variant="emerald">{t('cache.semanticHit')}</Badge>
   }
   return <TierBadge tier={log.tier} />
+}
+
+function ProviderCacheBadge({ log }: { log: CallLog }) {
+  const { t } = useTranslation('logs')
+  if (!isProviderCacheLog(log)) return null
+
+  return (
+    <Tooltip
+      content={t('cache.tooltip', {
+        cached: formatTokens(log.cache_read_input_tokens || 0),
+        total: formatTokens(log.input_tokens || 0),
+        saved: formatCost(providerCacheSavingsUsd(log)),
+      })}
+    >
+      <Badge variant="emerald" className="gap-1">
+        <Database className="h-3 w-3" />
+        {t('cache.providerBadge')}
+      </Badge>
+    </Tooltip>
+  )
 }
 
 function SourceBadge({ sourceFormat }: { sourceFormat: string }) {
@@ -263,6 +289,22 @@ function LogDetailRow({ log }: { log: CallLog }) {
                 <span className="text-[var(--foreground-dim)]">{t('cache.creationTokens')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">{log.cache_creation_input_tokens ?? 0}</span>
               </div>
+              {isProviderCacheLog(log) && (
+                <>
+                  <div>
+                    <span className="text-[var(--foreground-dim)]">{t('cache.withoutCacheCost')}: </span>
+                    <span className="font-mono text-[var(--foreground-muted)]">
+                      {formatCost(log.cost_without_cache_usd || 0)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--foreground-dim)]">{t('cache.savedCost')}: </span>
+                    <span className="font-mono text-emerald-700 dark:text-emerald-300">
+                      {formatCost(providerCacheSavingsUsd(log))}
+                    </span>
+                  </div>
+                </>
+              )}
               <div>
                 <span className="text-[var(--foreground-dim)]">{t('cache.routingEffect')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">
@@ -529,7 +571,10 @@ export function LogsPage() {
                         <SourceBadge sourceFormat={log.source_format} />
                       </TableCell>
                       <TableCell>
-                        <LogRouteBadge log={log} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <LogRouteBadge log={log} />
+                          <ProviderCacheBadge log={log} />
+                        </div>
                       </TableCell>
                       <TableCell className="max-w-[160px]">
                         <UpstreamCell log={log} />

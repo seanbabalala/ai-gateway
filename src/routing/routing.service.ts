@@ -22,6 +22,10 @@ import { CanonicalMediaSourceFormat, Tier, TokenUsage } from '../canonical/canon
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MomentumService } from './momentum.service';
 import {
+  CacheAffinityResult,
+  CacheAffinityService,
+} from './cache-affinity.service';
+import {
   LoadBalancingStrategy,
   NodeConfig,
   RouteTarget,
@@ -202,6 +206,7 @@ export class RoutingService {
     private readonly capabilityService: CapabilityService,
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly momentum: MomentumService,
+    private readonly cacheAffinityService: CacheAffinityService,
   ) {}
 
   /**
@@ -283,6 +288,7 @@ export class RoutingService {
           initialTargets: this.normalizeTierTargets(fallbackConfig).targets,
           finalTargets: fallbackTargets,
           selected,
+          sessionKey,
           loadBalancing,
           reason: `tier "${effectiveTier}" missing; fell back to "${firstTier}"`,
         }),
@@ -377,6 +383,7 @@ export class RoutingService {
           initialTargets: splitAllTargets,
           finalTargets: splitOrdered,
           selected: splitOrdered[0],
+          sessionKey,
           loadBalancing,
           reason: 'A/B split experiment',
         }),
@@ -455,7 +462,7 @@ export class RoutingService {
       primary,
       selection.strategy,
       normalized.source,
-      this.selectionReason(selection.strategy, primary),
+      this.selectionReason(selection.strategy, primary, sessionKey, selectionHints),
     );
 
     const loadBalancing = {
@@ -487,8 +494,14 @@ export class RoutingService {
         initialTargets: normalized.targets,
         finalTargets: orderedTargets,
         selected: this.toRouteTarget(primary),
+        sessionKey,
         loadBalancing,
-        reason: this.selectionReason(selection.strategy, primary, selectionHints),
+        reason: this.selectionReason(
+          selection.strategy,
+          primary,
+          sessionKey,
+          selectionHints,
+        ),
       }),
     };
   }
@@ -533,6 +546,20 @@ export class RoutingService {
     current.cacheReadTokens += readTokens;
     current.cacheCreationTokens += creationTokens;
     this.targetCacheStats.set(key, current);
+  }
+
+  recordSessionRouteResult(
+    sessionKey: string | undefined,
+    node: string,
+    model: string,
+    usage: Pick<TokenUsage, 'cache_read_input_tokens'> | undefined,
+  ): void {
+    this.cacheAffinityService.recordRouteResult(
+      sessionKey,
+      node,
+      model,
+      usage,
+    );
   }
 
   resolveEmbeddingRoute(
@@ -930,6 +957,7 @@ export class RoutingService {
       const optimizedTarget = this.selectTargetByOptimization(
         optimization,
         targets,
+        sessionKey,
         selectionHints,
       );
       if (optimizedTarget) {
@@ -945,7 +973,7 @@ export class RoutingService {
       case 'round_robin':
         return { target: this.selectRoundRobin(tier, targets), strategy };
       case 'least_latency':
-        return { target: this.selectLeastLatency(targets), strategy };
+        return { target: this.selectLeastLatency(targets, sessionKey), strategy };
       case 'random':
         return {
           target: targets[Math.floor(Math.random() * targets.length)] || targets[0],
@@ -960,15 +988,16 @@ export class RoutingService {
   private selectTargetByOptimization(
     optimization: RoutingOptimization,
     targets: WeightedRouteTarget[],
+    sessionKey: string | undefined,
     selectionHints: RouteSelectionHints,
   ): WeightedRouteTarget | null {
     switch (optimization) {
       case 'cost':
-        return this.selectLowestCost(targets, selectionHints);
+        return this.selectLowestCost(targets, sessionKey, selectionHints);
       case 'latency':
-        return this.selectLeastLatency(targets);
+        return this.selectLeastLatency(targets, sessionKey);
       case 'balanced':
-        return this.selectBalanced(targets, selectionHints);
+        return this.selectBalanced(targets, sessionKey, selectionHints);
       case 'quality':
         return this.selectHighestQuality(targets);
       default:
@@ -1008,6 +1037,7 @@ export class RoutingService {
 
   private selectLowestCost(
     targets: WeightedRouteTarget[],
+    sessionKey: string | undefined,
     selectionHints: RouteSelectionHints,
   ): WeightedRouteTarget | null {
     const priced = targets
@@ -1015,12 +1045,21 @@ export class RoutingService {
         target,
         index,
         cost: this.estimateTargetCost(target, selectionHints),
+        affinityBonus: this.affinityBonusForTarget(target, sessionKey),
       }))
       .filter((item) => item.cost !== null);
 
     if (priced.length === 0) return null;
 
+    const costs = priced.map((item) => item.cost as number);
+    const minCost = Math.min(...costs);
+    const maxCost = Math.max(...costs);
     priced.sort((a, b) => {
+      const aScore =
+        this.normalizeMetric(a.cost, minCost, maxCost) - a.affinityBonus;
+      const bScore =
+        this.normalizeMetric(b.cost, minCost, maxCost) - b.affinityBonus;
+      if (aScore !== bScore) return aScore - bScore;
       if (a.cost !== b.cost) return (a.cost as number) - (b.cost as number);
       return a.index - b.index;
     });
@@ -1029,6 +1068,7 @@ export class RoutingService {
 
   private selectBalanced(
     targets: WeightedRouteTarget[],
+    sessionKey: string | undefined,
     selectionHints: RouteSelectionHints,
   ): WeightedRouteTarget | null {
     const entries = targets.map((target, index) => ({
@@ -1037,6 +1077,7 @@ export class RoutingService {
       cost: this.estimateTargetCost(target, selectionHints),
       latency: this.averageLatency(target.node, target.model),
       cacheScore: this.estimateCacheScore(target, selectionHints),
+      affinityBonus: this.affinityBonusForTarget(target, sessionKey),
     }));
     const costs = entries
       .map((entry) => entry.cost)
@@ -1065,7 +1106,8 @@ export class RoutingService {
         score:
           this.normalizeMetric(entry.cost, minCost, maxCost) * costWeight +
           this.normalizeMetric(entry.latency, minLatency, maxLatency) * latencyWeight +
-          cachePenalty * (cacheAware ? 0.1 : 0),
+          cachePenalty * (cacheAware ? 0.1 : 0) -
+          entry.affinityBonus,
       };
     });
 
@@ -1112,7 +1154,7 @@ export class RoutingService {
 
     const inputTokens = selectionHints.estimated_input_tokens ?? 1_000_000;
     const outputTokens = selectionHints.estimated_output_tokens ?? 1_000_000;
-    const evidence = this.buildCacheEvidence(target, selectionHints);
+    const evidence = this.buildCacheEvidence(target, undefined, selectionHints);
     return evidence.estimated_cache_adjusted_cost_usd ?? (
       (inputTokens / 1_000_000) * pricing.input +
       (outputTokens / 1_000_000) * pricing.output
@@ -1123,11 +1165,12 @@ export class RoutingService {
     target: RouteTarget,
     selectionHints: RouteSelectionHints,
   ): number | null {
-    return this.buildCacheEvidence(target, selectionHints).cache_score;
+    return this.buildCacheEvidence(target, undefined, selectionHints).cache_score;
   }
 
   private buildCacheEvidence(
     target: RouteTarget,
+    sessionKey: string | undefined,
     selectionHints: RouteSelectionHints,
   ): RouteDecisionCacheEvidence {
     const capabilities =
@@ -1135,6 +1178,14 @@ export class RoutingService {
         target.node,
         target.model,
       ) || {};
+    const circuitState =
+      this.circuitBreaker.getCircuitState?.(target.node, target.model) || 'CLOSED';
+    const cacheAffinity = this.resolveCacheAffinity(
+      target,
+      sessionKey,
+      capabilities,
+      circuitState,
+    );
     const pricing = capabilities.pricing;
     const stats = this.targetCacheStats.get(
       this.buildExperimentTargetKey(target.node, target.model),
@@ -1146,12 +1197,14 @@ export class RoutingService {
     const providerReadCache = Boolean(
       capabilities.read_cache ||
       capabilities.prompt_cache ||
-      pricing?.cache_read_input !== undefined,
+      pricing?.cache_read_input !== undefined ||
+      pricing?.cache_read_per_1m_tokens !== undefined,
     );
     const providerWriteCache = Boolean(
       capabilities.write_cache ||
       capabilities.prompt_cache ||
-      pricing?.cache_creation_input !== undefined,
+      pricing?.cache_creation_input !== undefined ||
+      pricing?.cache_write_per_1m_tokens !== undefined,
     );
     const providerPromptCache = Boolean(
       capabilities.prompt_cache ||
@@ -1169,8 +1222,10 @@ export class RoutingService {
         : null;
     const supportsDiscountedRead =
       providerReadCache &&
-      pricing?.cache_read_input !== undefined &&
-      pricing.cache_read_input < pricing.input;
+      (pricing?.cache_read_input !== undefined ||
+        pricing?.cache_read_per_1m_tokens !== undefined) &&
+      (pricing.cache_read_input ?? pricing.cache_read_per_1m_tokens ?? pricing.input) <
+        pricing.input;
     const priorHitRate =
       observedHitRate !== null
         ? observedHitRate
@@ -1182,7 +1237,10 @@ export class RoutingService {
     const adjustedCost =
       pricing && baseCost !== null && supportsDiscountedRead
         ? (inputTokens / 1_000_000) *
-            (priorHitRate * (pricing.cache_read_input as number) +
+            (priorHitRate *
+              ((pricing.cache_read_input ??
+                pricing.cache_read_per_1m_tokens ??
+                pricing.input) as number) +
               (1 - priorHitRate) * pricing.input) +
           (outputTokens / 1_000_000) * pricing.output
         : baseCost;
@@ -1218,12 +1276,18 @@ export class RoutingService {
       provider_prompt_cache: providerPromptCache,
       provider_read_cache: providerReadCache,
       provider_write_cache: providerWriteCache,
+      supports_cache: capabilities.supports_cache ?? providerPromptCache,
+      cache_type: capabilities.cache_type ?? null,
+      cache_min_tokens: capabilities.cache_min_tokens ?? null,
+      cache_read_discount: capabilities.cache_read_discount ?? null,
       observed_cache_hit_rate: observedHitRate,
       observed_cache_read_tokens: stats?.cacheReadTokens ?? 0,
       observed_cache_creation_tokens: stats?.cacheCreationTokens ?? 0,
       input_price_per_mtok: pricing?.input ?? null,
-      cache_read_price_per_mtok: pricing?.cache_read_input ?? null,
-      cache_write_price_per_mtok: pricing?.cache_creation_input ?? null,
+      cache_read_price_per_mtok:
+        pricing?.cache_read_input ?? pricing?.cache_read_per_1m_tokens ?? null,
+      cache_write_price_per_mtok:
+        pricing?.cache_creation_input ?? pricing?.cache_write_per_1m_tokens ?? null,
       estimated_base_cost_usd:
         baseCost === null ? null : Number(baseCost.toFixed(6)),
       estimated_cache_adjusted_cost_usd:
@@ -1231,8 +1295,57 @@ export class RoutingService {
       estimated_cache_savings_usd:
         savings === null ? null : Number(savings.toFixed(6)),
       cache_score: cacheScore === null ? null : this.roundScore(cacheScore),
+      cache_affinity_active: cacheAffinity.active,
+      cache_affinity_reason: cacheAffinity.reason,
+      cache_affinity_bonus: cacheAffinity.bonus || null,
+      provider_cache_ttl_seconds: cacheAffinity.provider_cache_ttl_seconds,
+      time_since_last_cache_hit_seconds:
+        cacheAffinity.time_since_last_cache_hit_seconds,
+      estimated_cache_hit_probability:
+        cacheAffinity.estimated_cache_hit_probability,
       reason,
     };
+  }
+
+  private affinityBonusForTarget(
+    target: RouteTarget,
+    sessionKey: string | undefined,
+  ): number {
+    return this.resolveCacheAffinity(target, sessionKey).bonus;
+  }
+
+  private resolveCacheAffinity(
+    target: RouteTarget,
+    sessionKey: string | undefined,
+    capabilitiesInput?: ResolvedModelRoutingCapabilities,
+    circuitStateInput?: string,
+  ): CacheAffinityResult {
+    const capabilities =
+      capabilitiesInput ||
+      this.capabilityService.resolveModelRoutingCapabilities?.(
+        target.node,
+        target.model,
+      ) ||
+      {};
+    const circuitState =
+      circuitStateInput ||
+      this.circuitBreaker.getCircuitState?.(target.node, target.model) ||
+      'CLOSED';
+    const affinity = this.cacheAffinityService.getCacheAffinity(
+      sessionKey,
+      target.node,
+      target.model,
+      capabilities,
+    );
+    if (String(circuitState) === 'OPEN' && affinity.active) {
+      return {
+        ...affinity,
+        active: false,
+        bonus: 0,
+        reason: 'circuit_open',
+      };
+    }
+    return affinity;
   }
 
   private getEmbeddingTargets(): RouteTarget[] {
@@ -1443,18 +1556,37 @@ export class RoutingService {
     return targets[targets.length - 1];
   }
 
-  private selectLeastLatency(targets: WeightedRouteTarget[]): WeightedRouteTarget {
-    const coldTarget = targets.find((target) =>
-      this.getLatencySamples(target.node, target.model).length === 0,
-    );
-    if (coldTarget) return coldTarget;
+  private selectLeastLatency(
+    targets: WeightedRouteTarget[],
+    sessionKey: string | undefined,
+  ): WeightedRouteTarget {
+    const entries = targets.map((target, index) => ({
+      target,
+      index,
+      latency: this.averageLatency(target.node, target.model),
+      affinityBonus: this.affinityBonusForTarget(target, sessionKey),
+    }));
+    const latencies = entries
+      .map((entry) => entry.latency)
+      .filter((value): value is number => value !== null);
+    const minLatency = latencies.length ? Math.min(...latencies) : 0;
+    const maxLatency = latencies.length ? Math.max(...latencies) : 0;
 
-    return [...targets].sort((a, b) => {
-      const aAvg = this.averageLatency(a.node, a.model) ?? Number.POSITIVE_INFINITY;
-      const bAvg = this.averageLatency(b.node, b.model) ?? Number.POSITIVE_INFINITY;
+    return [...entries].sort((a, b) => {
+      const aScore =
+        (a.latency === null ? 0 : this.normalizeMetric(a.latency, minLatency, maxLatency)) -
+        a.affinityBonus;
+      const bScore =
+        (b.latency === null ? 0 : this.normalizeMetric(b.latency, minLatency, maxLatency)) -
+        b.affinityBonus;
+      if (aScore !== bScore) return aScore - bScore;
+      if (a.latency === null && b.latency !== null) return -1;
+      if (a.latency !== null && b.latency === null) return 1;
+      const aAvg = a.latency ?? Number.POSITIVE_INFINITY;
+      const bAvg = b.latency ?? Number.POSITIVE_INFINITY;
       if (aAvg !== bAvg) return aAvg - bAvg;
-      return targets.indexOf(a) - targets.indexOf(b);
-    })[0];
+      return a.index - b.index;
+    })[0].target;
   }
 
   private buildTargetMetrics(target: WeightedRouteTarget): RouteTargetMetrics {
@@ -1491,25 +1623,37 @@ export class RoutingService {
   private selectionReason(
     strategy: EffectiveRoutingStrategy,
     target: RouteTarget,
+    sessionKey: string | undefined,
     selectionHints: RouteSelectionHints = {},
   ): string {
+    const cache = this.buildCacheEvidence(target, sessionKey, selectionHints);
+    const affinityPrefix = cache.cache_affinity_active
+      ? 'cache affinity kept the session on a recent provider-cache target; '
+      : '';
     if (strategy === 'cost') {
       const cost = this.estimateTargetCost(target, selectionHints);
-      const cache = this.buildCacheEvidence(target, selectionHints);
       if (cache.estimated_cache_savings_usd && cache.estimated_cache_savings_usd > 0) {
-        return `lowest cache-adjusted estimated cost (${cost?.toFixed(6)} USD)`;
+        return `${affinityPrefix}lowest cache-adjusted estimated cost (${cost?.toFixed(6)} USD)`;
       }
-      return cost === null ? 'lowest configured cost' : `lowest estimated cost (${cost.toFixed(6)} USD)`;
+      return cost === null
+        ? `${affinityPrefix}lowest configured cost`
+        : `${affinityPrefix}lowest estimated cost (${cost.toFixed(6)} USD)`;
     }
     if (strategy === 'latency') {
       const avg = this.averageLatency(target.node, target.model);
-      return avg === null ? 'latency optimization cold-start fallback' : `lowest local average latency (${avg}ms)`;
+      return avg === null
+        ? `${affinityPrefix}latency optimization cold-start fallback`
+        : `${affinityPrefix}lowest local average latency (${avg}ms)`;
     }
-    if (strategy === 'balanced') return 'balanced local cost, latency, and cache-aware score';
+    if (strategy === 'balanced') {
+      return `${affinityPrefix}balanced local cost, latency, cache-aware score, and cache affinity`;
+    }
     if (strategy === 'quality') return 'highest configured quality score';
     if (strategy === 'least_latency') {
       const avg = this.averageLatency(target.node, target.model);
-      return avg === null ? 'cold-start ordered fallback' : `lowest local average latency (${avg}ms)`;
+      return avg === null
+        ? `${affinityPrefix}cold-start ordered fallback`
+        : `${affinityPrefix}lowest local average latency (${avg}ms)`;
     }
     if (strategy === 'round_robin') return 'next round-robin slot';
     if (strategy === 'random') return 'random target';
@@ -1524,6 +1668,7 @@ export class RoutingService {
     score: number;
     momentumAdjusted: boolean;
     domainHint: string | null;
+    sessionKey?: string;
     modalityHints?: Modality[] | string[];
     selectionHints: RouteSelectionHints;
     initialTargets: RouteTarget[];
@@ -1563,6 +1708,7 @@ export class RoutingService {
         routeTargetKey(target) === selectedKey,
         finalKeys.has(routeTargetKey(target)) && routeTargetKey(target) !== selectedKey,
         reasons,
+        input.sessionKey,
         input.selectionHints,
       );
     });
@@ -1632,6 +1778,7 @@ export class RoutingService {
     selected: boolean,
     fallback: boolean,
     filterReasons: string[],
+    sessionKey: string | undefined,
     selectionHints: RouteSelectionHints,
   ): RouteDecisionTraceCandidate {
     const capabilities =
@@ -1651,7 +1798,11 @@ export class RoutingService {
       target,
       selectionHints,
     );
-    const cacheEvidence = this.buildCacheEvidence(target, selectionHints);
+    const cacheEvidence = this.buildCacheEvidence(
+      target,
+      sessionKey,
+      selectionHints,
+    );
     const compatibility = this.buildCompatibilityEvidence(
       target,
       selectionHints,
@@ -1731,6 +1882,9 @@ export class RoutingService {
     const savingsCandidates = candidates.filter((candidate) =>
       (candidate.cache_evidence?.estimated_cache_savings_usd || 0) > 0,
     );
+    const affinityCandidates = candidates.filter((candidate) =>
+      candidate.cache_evidence?.cache_affinity_active,
+    );
     const notes = new Set<string>();
     if (selectionHints.local_prompt_cache_hit) notes.add('local_prompt_cache_hit');
     if (selectionHints.local_prompt_cache_eligible && !selectionHints.local_prompt_cache_hit) {
@@ -1738,6 +1892,7 @@ export class RoutingService {
     }
     if (providerCacheCandidates.length > 0) notes.add('provider_cache_capable_candidates');
     if (savingsCandidates.length > 0) notes.add('cache_read_price_considered');
+    if (affinityCandidates.length > 0) notes.add('cache_affinity_active');
 
     return {
       local_prompt_cache_eligible: Boolean(selectionHints.local_prompt_cache_eligible),

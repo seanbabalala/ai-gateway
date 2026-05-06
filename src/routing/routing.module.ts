@@ -7,6 +7,7 @@ import { ConcurrencyLimiterService } from './concurrency-limiter.service';
 import { ActiveHealthProbeService } from './active-health-probe.service';
 import { AdaptiveRoutingStatsService } from './adaptive-routing-stats.service';
 import { RoutingRecommendationService } from './routing-recommendation.service';
+import { CacheAffinityService } from './cache-affinity.service';
 import { ConfigModule } from '../config/config.module';
 import { CallLog } from '../database/entities/call-log.entity';
 import { AlertsModule } from '../alerts/alerts.module';
@@ -21,6 +22,7 @@ import { AlertsModule } from '../alerts/alerts.module';
     ActiveHealthProbeService,
     AdaptiveRoutingStatsService,
     RoutingRecommendationService,
+    CacheAffinityService,
   ],
   exports: [
     RoutingService,
@@ -30,6 +32,7 @@ import { AlertsModule } from '../alerts/alerts.module';
     ActiveHealthProbeService,
     AdaptiveRoutingStatsService,
     RoutingRecommendationService,
+    CacheAffinityService,
   ],
 })
 export class RoutingModule {}

@@ -75,6 +75,12 @@ function formatScore(value: number | null | undefined) {
   return value.toFixed(3)
 }
 
+function formatSecondsValue(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-'
+  if (value < 60) return `${value.toFixed(1)}s`
+  return `${(value / 60).toFixed(1)}m`
+}
+
 function formatTarget(target: RouteDecisionTarget | null | undefined, t: TFunction) {
   if (!target?.node && !target?.model) return t('routeExplanation.values.none')
   return `${target.node || t('routeExplanation.values.unknown')} / ${target.model || t('routeExplanation.values.unknown')}`
@@ -723,6 +729,9 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                     {candidate.cache_evidence.provider_write_cache && (
                       <Badge variant="blue">{t('routeExplanation.cache.write')}</Badge>
                     )}
+                    {candidate.cache_evidence.cache_affinity_active && (
+                      <Badge variant="emerald">{t('routeExplanation.cache.affinityActive')}</Badge>
+                    )}
                   </div>
                   <div className="font-mono text-[10px] leading-4 text-[var(--foreground-dim)]">
                     {candidate.cache_evidence.observed_cache_hit_rate !== null && (
@@ -738,6 +747,52 @@ function CandidateTable({ candidates }: { candidates: RouteDecisionCandidate[] }
                           value: formatCost(candidate.cache_evidence.estimated_cache_savings_usd),
                         })}
                       </div>
+                    )}
+                    {candidate.cache_evidence.cache_affinity_active && (
+                      <>
+                        <div>
+                          {t('routeExplanation.cache.affinityReason', {
+                            reason: t(
+                              `routeExplanation.cache.affinityReasons.${candidate.cache_evidence.cache_affinity_reason || 'cache_affinity_active'}`,
+                              {
+                                defaultValue: (candidate.cache_evidence.cache_affinity_reason || 'cache_affinity_active').replaceAll('_', ' '),
+                              },
+                            ),
+                          })}
+                        </div>
+                        {candidate.cache_evidence.cache_affinity_bonus !== null &&
+                          candidate.cache_evidence.cache_affinity_bonus !== undefined && (
+                            <div>
+                              {t('routeExplanation.cache.affinityBonus', {
+                                value: candidate.cache_evidence.cache_affinity_bonus.toFixed(2),
+                              })}
+                            </div>
+                          )}
+                        {candidate.cache_evidence.provider_cache_ttl_seconds !== null &&
+                          candidate.cache_evidence.provider_cache_ttl_seconds !== undefined && (
+                            <div>
+                              {t('routeExplanation.cache.affinityTtl', {
+                                value: formatSecondsValue(candidate.cache_evidence.provider_cache_ttl_seconds),
+                              })}
+                            </div>
+                          )}
+                        {candidate.cache_evidence.time_since_last_cache_hit_seconds !== null &&
+                          candidate.cache_evidence.time_since_last_cache_hit_seconds !== undefined && (
+                            <div>
+                              {t('routeExplanation.cache.affinityLastHit', {
+                                value: formatSecondsValue(candidate.cache_evidence.time_since_last_cache_hit_seconds),
+                              })}
+                            </div>
+                          )}
+                        {candidate.cache_evidence.estimated_cache_hit_probability !== null &&
+                          candidate.cache_evidence.estimated_cache_hit_probability !== undefined && (
+                            <div>
+                              {t('routeExplanation.cache.affinityHitProbability', {
+                                value: formatPercent(candidate.cache_evidence.estimated_cache_hit_probability * 100),
+                              })}
+                            </div>
+                          )}
+                      </>
                     )}
                   </div>
                 </div>

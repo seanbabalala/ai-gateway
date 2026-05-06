@@ -760,6 +760,8 @@ export interface RoutingConfig {
   optimization?: RoutingOptimization;
   /** Optional v0.3 fallback trigger policies. */
   fallback_policy?: FallbackPolicyConfig;
+  /** Optional provider-cache session affinity bonus for cache-aware routing. */
+  cache_affinity?: CacheAffinityRoutingConfig;
 
   /**
    * Domain-based node preference.
@@ -778,6 +780,17 @@ export interface RoutingConfig {
    * If not configured, nodes with matching tags are auto-preferred.
    */
   domain_preferences?: Record<string, string[]>;
+}
+
+export interface CacheAffinityRoutingConfig {
+  /** Enable session-level provider-cache affinity (default: true). */
+  enabled?: boolean;
+  /** Consecutive same-target successes required before affinity can activate. */
+  min_consecutive_hits?: number;
+  /** Bonus weight applied to the matching candidate during cache-aware routing. */
+  bonus_weight?: number;
+  /** Safety multiplier applied to provider cache TTL before affinity expires. */
+  ttl_safety_margin?: number;
 }
 
 /**
