@@ -82,13 +82,18 @@ function makeMinimalNodes(openAiApiKey: string) {
 
 function loadConfigService(overrides: Record<string, unknown> = {}): { svc: ConfigService; configPath: string } {
   const configPath = createTempConfig(makeMinimalConfig(overrides));
+  const isolatedCatalogDir = path.join(path.dirname(configPath), '.siftgate');
   process.env.GATEWAY_CONFIG_PATH = configPath;
+  process.env.SIFTGATE_CATALOG_OVERRIDE = path.join(isolatedCatalogDir, 'catalog.override.yaml');
+  process.env.SIFTGATE_CATALOG_SYNC_CACHE = path.join(isolatedCatalogDir, 'catalog-sync-cache.yaml');
   const svc = new ConfigService();
   return { svc, configPath };
 }
 
 afterEach(() => {
   delete process.env.GATEWAY_CONFIG_PATH;
+  delete process.env.SIFTGATE_CATALOG_OVERRIDE;
+  delete process.env.SIFTGATE_CATALOG_SYNC_CACHE;
   delete process.env.REQUIRED_OPENAI_KEY;
   delete process.env.RELOAD_OPENAI_KEY;
   delete process.env.SIGHUP_OPENAI_KEY;
