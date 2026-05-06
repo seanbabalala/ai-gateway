@@ -257,6 +257,7 @@ interface PricingRow {
   output: string;
   source?: string;
   manual_review_required?: boolean;
+  pricing_trust?: NonNullable<CatalogModel["pricing_trust"]>;
 }
 
 interface HealthCheckForm {
@@ -602,6 +603,7 @@ function pricingRowForModel(model: CatalogModel): PricingRow {
         : String(model.pricing.output),
     source: model.pricing.source,
     manual_review_required: model.pricing.manual_review_required,
+    pricing_trust: model.pricing_trust,
   };
 }
 
@@ -782,6 +784,7 @@ function pricingRowsFromCapabilities(
           : String(capability.pricing.output),
       source: "local",
       manual_review_required: false,
+      pricing_trust: "reference_estimate",
     }));
 }
 
@@ -2161,7 +2164,7 @@ export function NodeFormModal({
                         form.pricing.some(
                           (row) =>
                             (row.source && row.source !== "local") ||
-                            row.manual_review_required,
+                            row.pricing_trust === "review_required",
                         ),
                       )}
                       t={t}
@@ -2880,12 +2883,28 @@ function PricingEditor({
           >
             <Trash2 className="h-3.5 w-3.5 text-red-500" />
           </Button>
-          {row.manual_review_required && (
+          {row.pricing_trust === "aligned_estimate" && (
+            <div className="md:col-span-4 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+              {t("form.pricing.alignedEstimateRow")}
+            </div>
+          )}
+          {row.pricing_trust === "reference_estimate" && (
+            <div className="md:col-span-4 text-[10px] font-semibold text-[var(--foreground-dim)]">
+              {t("form.pricing.referenceRow")}
+            </div>
+          )}
+          {row.pricing_trust === "review_required" && (
             <div className="md:col-span-4 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
               {t("form.pricing.manualReview")}
             </div>
           )}
-          {!row.manual_review_required &&
+          {!row.pricing_trust && row.manual_review_required && (
+            <div className="md:col-span-4 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+              {t("form.pricing.manualReview")}
+            </div>
+          )}
+          {!row.pricing_trust &&
+            !row.manual_review_required &&
             row.source &&
             row.source !== "local" && (
               <div className="md:col-span-4 text-[10px] font-semibold text-[var(--foreground-dim)]">

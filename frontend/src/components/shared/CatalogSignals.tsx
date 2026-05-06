@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type {
   CatalogModel,
+  CatalogPricingTrust,
   CatalogProvider,
   CatalogProviderStatus,
   NodeInfo,
@@ -120,6 +121,10 @@ export function providerHasZeroEvalSecondary(provider: CatalogProvider): boolean
 }
 
 export function providerNeedsPricingReview(provider: CatalogProvider): boolean {
+  const summary = provider.pricing_trust_summary;
+  if (summary) {
+    return summary.review_required_models > 0;
+  }
   if (provider.manual_review_required || provider.pricing?.manual_review_required) {
     return true;
   }
@@ -136,7 +141,28 @@ export function hasCanonicalCoverage(provider: CatalogProvider): boolean {
 }
 
 export function hasPricingCoverage(provider: CatalogProvider): boolean {
-  return Boolean(provider.pricing_coverage?.priced_models);
+  return Boolean(
+    provider.pricing_coverage?.estimate_ready_models ??
+      provider.pricing_coverage?.priced_models,
+  );
+}
+
+export function providerPricingTrustStatus(
+  provider: CatalogProvider,
+): CatalogPricingTrust {
+  return (
+    provider.pricing_trust_summary?.status ||
+    (provider.pricing_coverage?.priced_models ? "reference_estimate" : "missing")
+  );
+}
+
+function pricingTrustVariant(
+  status: CatalogPricingTrust,
+): "zinc" | "emerald" | "amber" | "blue" | "red" {
+  if (status === "aligned_estimate") return "emerald";
+  if (status === "reference_estimate") return "blue";
+  if (status === "review_required") return "amber";
+  return "red";
 }
 
 export function matchCatalogProviderForNode(
@@ -189,6 +215,8 @@ export function CatalogCoveragePills({
       </Badge>
       <Badge variant={hasPricingCoverage(provider) ? "blue" : "amber"} className={dense ? "text-[9px]" : undefined}>
         {t("catalogSignals.pricingCoverage", {
+          estimate:
+            pricing?.estimate_ready_models ?? pricing?.priced_models ?? 0,
           priced: pricing?.priced_models ?? 0,
           total: pricing?.total_models ?? provider.models.length,
         })}
@@ -219,9 +247,31 @@ export function CatalogTrustPills({
   const hasOpenRouter = providerHasOpenRouterReference(provider);
   const hasZeroEval = providerHasZeroEvalSecondary(provider);
   const needsReview = providerNeedsPricingReview(provider);
+  const summary = provider.pricing_trust_summary;
 
   return (
     <div className={cn("flex flex-wrap gap-1.5", className)}>
+      {summary && summary.aligned_estimate_models > 0 && (
+        <Badge variant="emerald" className={dense ? "text-[9px]" : undefined}>
+          {t("catalogSignals.alignedEstimate", {
+            count: summary.aligned_estimate_models,
+          })}
+        </Badge>
+      )}
+      {summary && summary.reference_estimate_models > 0 && (
+        <Badge variant="blue" className={dense ? "text-[9px]" : undefined}>
+          {t("catalogSignals.referenceEstimate", {
+            count: summary.reference_estimate_models,
+          })}
+        </Badge>
+      )}
+      {summary && summary.missing_models > 0 && (
+        <Badge variant="zinc" className={dense ? "text-[9px]" : undefined}>
+          {t("catalogSignals.missingPricing", {
+            count: summary.missing_models,
+          })}
+        </Badge>
+      )}
       {hasOpenRouter && (
         <Badge variant="blue" className={dense ? "text-[9px]" : undefined}>
           {t("catalogSignals.openrouterReference")}
@@ -232,7 +282,14 @@ export function CatalogTrustPills({
           {t("catalogSignals.zeroevalSecondary")}
         </Badge>
       )}
-      {needsReview && (
+      {(summary?.review_required_models || 0) > 0 && (
+        <Badge variant="amber" className={dense ? "text-[9px]" : undefined}>
+          {t("catalogSignals.reviewRequiredCount", {
+            count: summary?.review_required_models ?? 0,
+          })}
+        </Badge>
+      )}
+      {!summary && needsReview && (
         <Badge variant="amber" className={dense ? "text-[9px]" : undefined}>
           {t("catalogSignals.reviewRequired")}
         </Badge>
@@ -243,6 +300,46 @@ export function CatalogTrustPills({
         </Badge>
       )}
     </div>
+  );
+}
+
+export function PricingTrustBadge({
+  status,
+  dense = false,
+  count,
+  className,
+}: {
+  status: CatalogPricingTrust;
+  dense?: boolean;
+  count?: number;
+  className?: string;
+}) {
+  const { t } = useTranslation("nodes");
+  if (count === undefined) {
+    return (
+      <Badge
+        variant={pricingTrustVariant(status)}
+        className={cn(dense ? "text-[9px]" : undefined, className)}
+      >
+        {t(`catalogPage.pricingTrust.${status}`)}
+      </Badge>
+    );
+  }
+  const key =
+    status === "aligned_estimate"
+      ? "catalogSignals.alignedEstimate"
+      : status === "reference_estimate"
+        ? "catalogSignals.referenceEstimate"
+        : status === "review_required"
+          ? "catalogSignals.reviewRequiredCount"
+          : "catalogSignals.missingPricing";
+  return (
+    <Badge
+      variant={pricingTrustVariant(status)}
+      className={cn(dense ? "text-[9px]" : undefined, className)}
+    >
+      {t(key, { count })}
+    </Badge>
   );
 }
 

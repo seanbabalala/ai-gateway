@@ -1751,7 +1751,21 @@ describe("DashboardController — catalog", () => {
         recommended_models: 1,
         recommended_priced_models: 1,
         manual_review_required_priced_models: 0,
+        estimate_ready_models: 1,
+        aligned_estimate_models: 0,
+        reference_estimate_models: 1,
+        review_required_models: 0,
+        missing_models: 0,
         coverage_ratio: 1,
+      },
+      pricing_trust_summary: {
+        status: "reference_estimate",
+        total_models: 1,
+        estimate_ready_models: 1,
+        aligned_estimate_models: 0,
+        reference_estimate_models: 1,
+        review_required_models: 0,
+        missing_models: 0,
       },
     });
     expect(gpt41).toMatchObject({
@@ -1764,6 +1778,7 @@ describe("DashboardController — catalog", () => {
         gpqa_score: 0.91,
       },
       match_confidence: "high",
+      pricing_trust: "reference_estimate",
       pricing_sources: {
         effective: expect.objectContaining({
           source: "catalog-override",
@@ -1784,6 +1799,206 @@ describe("DashboardController — catalog", () => {
         primary_reference_source: "openrouter-public-api",
         secondary_reference_source: "zeroeval",
       },
+    });
+  });
+
+  it("marks OpenRouter canonical numeric pricing as aligned estimate instead of review-required", () => {
+    const catalogLoad = {
+      catalog: {
+        providers: [
+          {
+            id: "anthropic",
+            name: "Anthropic",
+            base_url: "https://api.anthropic.com",
+            auth_type: "x-api-key",
+            endpoints: { messages: "/v1/messages" },
+            models: [
+              {
+                id: "claude-3-7-sonnet-20250219",
+                provider: "anthropic",
+                modalities: ["text"],
+                endpoints: { messages: "/v1/messages" },
+                capabilities: ["streaming"],
+                pricing: {
+                  input: 3,
+                  output: 15,
+                  input_per_1m_tokens: 3,
+                  output_per_1m_tokens: 15,
+                  source: "openrouter-public-api",
+                  source_type: "aggregator_api",
+                  last_updated: "2026-05-06",
+                  manual_review_required: true,
+                  pricing_confidence: "medium",
+                },
+                enrichment: {
+                  source: "zeroeval",
+                  enriched_from: "zeroeval",
+                  match_strategy: "exact_source_model_id",
+                  match_confidence: "high",
+                  canonical_model_id: "anthropic/claude-3-7-sonnet-20250219",
+                },
+                source: "sync_cache",
+                synced: true,
+              },
+            ],
+            source: "sync_cache",
+            overridden: false,
+          },
+        ],
+      },
+      overridePath: "catalog.override.yaml",
+      overrideFound: false,
+      syncCachePath: ".siftgate/catalog-sync-cache.yaml",
+      syncCacheFound: true,
+      internal: {
+        canonical_registry: {
+          version: 1,
+          primary_source: "openrouter",
+          source_url: "https://openrouter.ai/api/v1/models?output_modalities=all",
+          generated_at: "2026-05-06T00:00:00.000Z",
+          model_count: 1,
+          models: [
+            {
+              canonical_id: "anthropic/claude-3-7-sonnet-20250219",
+              source_model_id: "anthropic/claude-3-7-sonnet-20250219",
+              source_provider_slug: "anthropic",
+              display_name: "Claude 3.7 Sonnet",
+              canonical_slug: "claude-3-7-sonnet-20250219",
+              source_metadata: {
+                source: "openrouter",
+                synced_at: "2026-05-06T00:00:00.000Z",
+                dataset_role: "canonical_primary",
+              },
+            },
+          ],
+        },
+      },
+      issues: [],
+    };
+    const { controller } = makeDashboard({
+      catalog: {
+        load: jest.fn().mockReturnValue(catalogLoad),
+      },
+    });
+
+    const providers = controller.getCatalogProviders();
+    const models = controller.getCatalogModels("anthropic");
+    const anthropic = providers.providers.find(
+      (provider: any) => provider.id === "anthropic",
+    );
+    const sonnet = models.models.find(
+      (model: any) => model.id === "claude-3-7-sonnet-20250219",
+    );
+
+    expect(sonnet).toMatchObject({
+      canonical_id: "anthropic/claude-3-7-sonnet-20250219",
+      pricing_trust: "aligned_estimate",
+      pricing_sources: {
+        effective: expect.objectContaining({
+          source: "openrouter-public-api",
+          has_pricing: true,
+        }),
+      },
+    });
+    expect(anthropic).toMatchObject({
+      manual_review_required: false,
+      pricing_trust_summary: {
+        status: "aligned_estimate",
+        total_models: 1,
+        estimate_ready_models: 1,
+        aligned_estimate_models: 1,
+        reference_estimate_models: 0,
+        review_required_models: 0,
+        missing_models: 0,
+      },
+      pricing_coverage: expect.objectContaining({
+        estimate_ready_models: 1,
+        aligned_estimate_models: 1,
+        review_required_models: 0,
+        missing_models: 0,
+      }),
+    });
+    expect(anthropic?.pricing_trust_summary?.status).not.toBe(
+      "review_required",
+    );
+  });
+
+  it("keeps docs-only provider references without numeric values in review buckets", () => {
+    const catalogLoad = {
+      catalog: {
+        providers: [
+          {
+            id: "01ai",
+            name: "01.AI",
+            base_url: "https://api.01.ai",
+            auth_type: "bearer",
+            endpoints: { chat_completions: "/v1/chat/completions" },
+            models: [
+              {
+                id: "yi-large",
+                provider: "01ai",
+                modalities: ["text"],
+                endpoints: { chat_completions: "/v1/chat/completions" },
+                capabilities: ["streaming"],
+                pricing: {
+                  source: "provider-reference",
+                  source_type: "docs_review",
+                  source_url: "https://platform.01.ai/docs",
+                  last_updated: "2026-05-06",
+                  manual_review_required: true,
+                  pricing_confidence: "low",
+                },
+                source: "builtin",
+              },
+            ],
+            source: "builtin",
+            overridden: false,
+          },
+        ],
+      },
+      overridePath: "catalog.override.yaml",
+      overrideFound: false,
+      syncCachePath: ".siftgate/catalog-sync-cache.yaml",
+      syncCacheFound: false,
+      issues: [],
+    };
+    const { controller } = makeDashboard({
+      catalog: {
+        load: jest.fn().mockReturnValue(catalogLoad),
+      },
+    });
+
+    const providers = controller.getCatalogProviders();
+    const models = controller.getCatalogModels("01ai");
+    const provider = providers.providers.find(
+      (entry: any) => entry.id === "01ai",
+    );
+    const yi = models.models.find((model: any) => model.id === "yi-large");
+
+    expect(yi).toMatchObject({
+      pricing_trust: "review_required",
+      pricing_sources: {
+        effective: expect.objectContaining({
+          source: "provider-reference",
+          has_pricing: false,
+        }),
+      },
+    });
+    expect(provider).toMatchObject({
+      manual_review_required: true,
+      pricing_trust_summary: expect.objectContaining({
+        status: "review_required",
+        estimate_ready_models: 0,
+        aligned_estimate_models: 0,
+        reference_estimate_models: 0,
+        review_required_models: 1,
+        missing_models: 0,
+      }),
+      pricing_coverage: expect.objectContaining({
+        estimate_ready_models: 0,
+        review_required_models: 1,
+        missing_models: 0,
+      }),
     });
   });
 
@@ -1916,7 +2131,6 @@ describe("DashboardController — catalog", () => {
     const anthropic = result.providers.find(
       (provider: any) => provider.id === "anthropic",
     );
-
     expect(anthropic?.recommended_model_buckets?.models).toEqual([
       "claude-3-7-sonnet-20250219",
       "claude-3-5-haiku-20241022",
@@ -2035,6 +2249,10 @@ describe("DashboardController — catalog", () => {
     const anthropic = result.providers.find(
       (provider: any) => provider.id === "anthropic",
     );
+    const models = controller.getCatalogModels("anthropic");
+    const lowConfidence = models.models.find(
+      (model: any) => model.id === "claude-sonnet-4-6-candidate",
+    );
 
     expect(anthropic?.recommended_model_buckets?.models).toEqual([
       "claude-3-7-sonnet-20250219",
@@ -2049,6 +2267,25 @@ describe("DashboardController — catalog", () => {
         }),
       ]),
     );
+    expect(lowConfidence).toMatchObject({
+      match_confidence: "low",
+      pricing_trust: "review_required",
+    });
+    expect(lowConfidence?.pricing_trust).not.toBe("aligned_estimate");
+    expect(anthropic).toMatchObject({
+      pricing_coverage: expect.objectContaining({
+        aligned_estimate_models: 1,
+        reference_estimate_models: 0,
+        review_required_models: 1,
+        missing_models: 0,
+      }),
+      pricing_trust_summary: expect.objectContaining({
+        status: "aligned_estimate",
+        estimate_ready_models: 1,
+        aligned_estimate_models: 1,
+        review_required_models: 1,
+      }),
+    });
   });
 });
 

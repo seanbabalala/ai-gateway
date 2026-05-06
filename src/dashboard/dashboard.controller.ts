@@ -186,6 +186,11 @@ type DashboardCompatibilityProfile =
   | "local"
   | "custom";
 type DashboardModelBucket = (typeof DASHBOARD_MODEL_BUCKETS)[number];
+type DashboardPricingTrustStatus =
+  | "aligned_estimate"
+  | "reference_estimate"
+  | "review_required"
+  | "missing";
 
 const DASHBOARD_PROVIDER_ALIAS_HINTS: Record<string, string[]> = {
   openai: ["gpt", "o-series", "dall-e", "openai api"],
@@ -368,6 +373,14 @@ function toDashboardCatalogProvider(
       last_updated: "",
       manual_review_required: true,
     };
+  const pricingCoverage = dashboardProviderPricingCoverage(
+    models,
+    recommendations.recommended_models,
+  );
+  const pricingTrustSummary = dashboardProviderPricingTrustSummary(
+    models,
+    pricingCoverage,
+  );
   const providerType = deriveDashboardProviderType(provider, modalities);
   const family = deriveDashboardProviderFamily(
     provider,
@@ -420,16 +433,15 @@ function toDashboardCatalogProvider(
     pricing,
     tags: [provider.source, ...(provider.overridden ? ["override"] : [])],
     canonical_model_coverage: dashboardProviderCanonicalCoverage(models),
-    pricing_coverage: dashboardProviderPricingCoverage(
-      models,
-      recommendations.recommended_models,
-    ),
+    pricing_coverage: pricingCoverage,
+    pricing_trust_summary: pricingTrustSummary,
     enrichment_summary: dashboardProviderEnrichmentSummary(models),
     allows_unknown_models:
       provider.id === "openai-compatible" || provider.status === "custom",
     manual_review_required:
-      pricing.manual_review_required ||
-      models.some((model) => model.pricing?.manual_review_required),
+      pricingTrustSummary.estimate_ready_models === 0 &&
+      (pricing.manual_review_required ||
+        models.some((model) => model.pricing_trust === "review_required")),
     pricing_hygiene: assessCatalogPricing(pricing, modalities),
     models,
   };
@@ -466,6 +478,12 @@ function toDashboardCatalogModel(
       last_updated: "",
       manual_review_required: true,
     };
+  const pricingSources = dashboardModelPricingSources(model, canonical);
+  const pricingTrust = dashboardModelPricingTrust({
+    canonicalId,
+    matchConfidence: model.enrichment?.match_confidence,
+    pricing,
+  });
   return {
     ...model,
     name: model.display_name || model.id,
@@ -480,8 +498,9 @@ function toDashboardCatalogModel(
     benchmarks: dashboardModelBenchmarks(model, canonical),
     match_strategy: model.enrichment?.match_strategy,
     match_confidence: model.enrichment?.match_confidence,
-    pricing_sources: dashboardModelPricingSources(model, canonical),
+    pricing_sources: pricingSources,
     pricing,
+    pricing_trust: pricingTrust,
     pricing_hygiene: assessCatalogPricing(pricing, model.modalities),
     manual_review_required: pricing.manual_review_required,
   };
@@ -751,18 +770,20 @@ function dashboardRecommendedModelBuckets(
     buckets[bucket] = recommended.models.map((model) => model.id);
     if (recommended.models.length === 0) continue;
     const primary = recommended.models[0];
+    const primaryHasPricing = dashboardModelHasPricing(primary);
     latestModelHints[bucket] = {
       primary_model: primary.id,
       release_date: dashboardModelReleaseDate(primary) || undefined,
-      has_pricing: dashboardModelHasPricing(primary),
+      has_pricing: primaryHasPricing,
       source: recommended.source,
     };
     for (const model of recommended.models) {
+      const hasPricing = dashboardModelHasPricing(model);
       recommendedModels.push({
         bucket,
         model_id: model.id,
         release_date: dashboardModelReleaseDate(model) || undefined,
-        has_pricing: dashboardModelHasPricing(model),
+        has_pricing: hasPricing,
         source: recommended.source,
       });
     }
@@ -889,12 +910,7 @@ function dashboardModelReleaseTimestamp(
 function dashboardModelHasPricing(
   model: ReturnType<typeof toDashboardCatalogModel>,
 ): boolean {
-  if (
-    dashboardModelIsLowConfidence(model) &&
-    model.pricing?.source === "zeroeval"
-  ) {
-    return false;
-  }
+  if (model.pricing_trust === "missing") return false;
   return dashboardPricingHasAnyValue(model.pricing);
 }
 
@@ -905,18 +921,82 @@ function dashboardPricingHasAnyValue(pricing: CatalogPricing | undefined): boole
     reference.output,
     reference.input_per_1m_tokens,
     reference.output_per_1m_tokens,
+    reference.cache_read_input,
+    reference.cache_creation_input,
+    reference.cache_read_per_1m_tokens,
+    reference.cache_write_per_1m_tokens,
     reference.embedding,
     reference.embedding_per_1m_tokens,
     reference.rerank,
     reference.rerank_per_1k_requests,
+    reference.rerank_per_1k_docs,
     reference.image,
     reference.image_per_generation,
+    reference.image_per_edit,
     reference.audio,
     reference.audio_per_minute,
+    reference.audio_per_1m_chars,
     reference.video,
     reference.video_per_second,
+    reference.video_per_generation,
     reference.realtime_per_minute,
   ].some((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function dashboardModelPricingTrust(input: {
+  pricing: CatalogPricing | undefined;
+  canonicalId?: string;
+  matchConfidence?: "high" | "medium" | "low";
+}): DashboardPricingTrustStatus {
+  const { pricing, canonicalId, matchConfidence } = input;
+  if (!pricing) return "missing";
+  const hasNumericPricing = dashboardPricingHasAnyValue(pricing);
+  const source = pricing.source || "";
+  if (source === "missing") return "missing";
+  const confidence = matchConfidence || pricing.pricing_confidence;
+  const hasReviewSource =
+    source === "operator_required" ||
+    source === "provider_docs" ||
+    source === "docs_review" ||
+    pricing.source_type === "docs_review" ||
+    Boolean(pricing.source_url) ||
+    Boolean(pricing.review_reason) ||
+    pricing.manual_review_required;
+
+  if (!hasNumericPricing) return hasReviewSource ? "review_required" : "missing";
+
+  if (
+    source === "openrouter-public-api" &&
+    Boolean(canonicalId) &&
+    matchConfidence !== "low"
+  ) {
+    return "aligned_estimate";
+  }
+
+  if (source === "zeroeval") {
+    return confidence === "high" || confidence === "medium"
+      ? "reference_estimate"
+      : "review_required";
+  }
+
+  if (
+    source === "builtin-reference" ||
+    source === "builtin-static-placeholder" ||
+    source === "manual_placeholder" ||
+    source === "provider-reference" ||
+    source === "provider_docs" ||
+    source === "docs_review" ||
+    pricing.source_type === "official_docs" ||
+    pricing.source_type === "docs_review"
+  ) {
+    return "reference_estimate";
+  }
+
+  if (source === "operator_required") return "review_required";
+  if (pricing.pricing_confidence === "low" || pricing.pricing_confidence === "unknown") {
+    return "review_required";
+  }
+  return "reference_estimate";
 }
 
 function dashboardModelSourcePriority(
@@ -1088,10 +1168,28 @@ function dashboardProviderPricingCoverage(
   recommended_models: number;
   recommended_priced_models: number;
   manual_review_required_priced_models: number;
+  estimate_ready_models: number;
+  aligned_estimate_models: number;
+  reference_estimate_models: number;
+  review_required_models: number;
+  missing_models: number;
   coverage_ratio: number;
 } {
   const totalModels = models.length;
   const pricedModels = models.filter((model) => dashboardModelHasPricing(model)).length;
+  const alignedEstimateModels = models.filter(
+    (model) => model.pricing_trust === "aligned_estimate",
+  ).length;
+  const referenceEstimateModels = models.filter(
+    (model) => model.pricing_trust === "reference_estimate",
+  ).length;
+  const reviewRequiredModels = models.filter(
+    (model) => model.pricing_trust === "review_required",
+  ).length;
+  const missingModels = models.filter(
+    (model) => model.pricing_trust === "missing",
+  ).length;
+  const estimateReadyModels = alignedEstimateModels + referenceEstimateModels;
   const recommendedIds = new Set(recommendedModels.map((entry) => entry.model_id));
   const recommendedPricedModels = models.filter(
     (model) => recommendedIds.has(model.id) && dashboardModelHasPricing(model),
@@ -1107,7 +1205,40 @@ function dashboardProviderPricingCoverage(
     recommended_models: recommendedIds.size,
     recommended_priced_models: recommendedPricedModels,
     manual_review_required_priced_models: manualReviewRequiredPricedModels,
+    estimate_ready_models: estimateReadyModels,
+    aligned_estimate_models: alignedEstimateModels,
+    reference_estimate_models: referenceEstimateModels,
+    review_required_models: reviewRequiredModels,
+    missing_models: missingModels,
     coverage_ratio: totalModels > 0 ? pricedModels / totalModels : 0,
+  };
+}
+
+function dashboardProviderPricingTrustSummary(
+  models: ReturnType<typeof toDashboardCatalogModel>[],
+  coverage: ReturnType<typeof dashboardProviderPricingCoverage>,
+): {
+  status: DashboardPricingTrustStatus;
+  total_models: number;
+  estimate_ready_models: number;
+  aligned_estimate_models: number;
+  reference_estimate_models: number;
+  review_required_models: number;
+  missing_models: number;
+} {
+  let status: DashboardPricingTrustStatus = "missing";
+  if (coverage.aligned_estimate_models > 0) status = "aligned_estimate";
+  else if (coverage.reference_estimate_models > 0) status = "reference_estimate";
+  else if (coverage.review_required_models > 0) status = "review_required";
+  else if (models.length === 0) status = "missing";
+  return {
+    status,
+    total_models: coverage.total_models,
+    estimate_ready_models: coverage.estimate_ready_models,
+    aligned_estimate_models: coverage.aligned_estimate_models,
+    reference_estimate_models: coverage.reference_estimate_models,
+    review_required_models: coverage.review_required_models,
+    missing_models: coverage.missing_models,
   };
 }
 
@@ -1211,6 +1342,8 @@ function dashboardModelBenchmarks(
 
 function dashboardPricingSourceSummary(
   pricing: CatalogPricing | undefined,
+  hasPricing: (pricing: CatalogPricing | undefined) => boolean =
+    dashboardPricingHasAnyValue,
 ):
   | {
       source: string;
@@ -1234,7 +1367,7 @@ function dashboardPricingSourceSummary(
     last_updated: pricing.last_updated || null,
     retrieved_at: pricing.retrieved_at || null,
     last_verified_at: pricing.last_verified_at || null,
-    has_pricing: dashboardPricingHasAnyValue(pricing),
+    has_pricing: hasPricing(pricing),
   };
 }
 
@@ -1249,7 +1382,15 @@ function dashboardModelPricingSources(
   primary_reference_source: string | null;
   secondary_reference_source: string | null;
 } {
-  const effective = dashboardPricingSourceSummary(model.pricing);
+  const effective = dashboardPricingSourceSummary(
+    model.pricing,
+    (pricing) =>
+      dashboardModelPricingTrust({
+        pricing,
+        canonicalId: dashboardCanonicalId(model, canonical),
+        matchConfidence: model.enrichment?.match_confidence,
+      }) !== "missing" && dashboardPricingHasAnyValue(pricing),
+  );
   const primaryReference = dashboardPricingSourceSummary(
     canonical?.pricing_reference,
   );
