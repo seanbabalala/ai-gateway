@@ -1,6 +1,6 @@
 {
   "name": "@siftgate/client",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "Lightweight TypeScript client for the SiftGate open-source data plane",
   "license": "MIT",
   "private": true,

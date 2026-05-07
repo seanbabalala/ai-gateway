@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route, Database } from 'lucide-react'
@@ -26,6 +26,7 @@ import { useLogs } from '@/hooks/use-logs'
 import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
+import { useNodes } from '@/hooks/use-nodes'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
 import {
   isPromptCacheLog,
@@ -38,6 +39,7 @@ import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
 const LIMIT = 20
+const TABLE_COLUMNS = 11
 
 function formatBytes(value?: number | null) {
   if (value === null || value === undefined) return null
@@ -86,6 +88,35 @@ function SourceBadge({ sourceFormat }: { sourceFormat: string }) {
   )
 }
 
+function UpstreamProtocolBadge({
+  log,
+  protocol,
+}: {
+  log: CallLog
+  protocol?: string | null
+}) {
+  const { t } = useTranslation('logs')
+  if (isPromptCacheLog(log) || isSemanticCacheLog(log)) {
+    return (
+      <Badge variant="zinc" className="max-w-[150px] truncate whitespace-nowrap">
+        {t('cache.noUpstream')}
+      </Badge>
+    )
+  }
+  if (!protocol) {
+    return (
+      <span className="font-mono text-[11px] text-[var(--foreground-dim)]">
+        {t('common.na')}
+      </span>
+    )
+  }
+  return (
+    <Badge variant="purple" className="max-w-[150px] truncate whitespace-nowrap">
+      {sourceFormatLabel(protocol, t)}
+    </Badge>
+  )
+}
+
 function UpstreamCell({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
   if (isPromptCacheLog(log)) {
@@ -119,14 +150,20 @@ function UpstreamCell({ log }: { log: CallLog }) {
   )
 }
 
-function LogDetailRow({ log }: { log: CallLog }) {
+function LogDetailRow({
+  log,
+  upstreamProtocol,
+}: {
+  log: CallLog
+  upstreamProtocol?: string | null
+}) {
   const { t } = useTranslation('logs')
   const mediaByteSize = formatBytes(log.media_byte_size)
   const isSemanticCache = isSemanticCacheLog(log)
   const isCache = isPromptCacheLog(log) || isSemanticCache
   return (
     <TableRow>
-      <TableCell colSpan={10} className="bg-[var(--inset-bg)] px-6 py-4">
+      <TableCell colSpan={TABLE_COLUMNS} className="bg-[var(--inset-bg)] px-6 py-4">
         <div className="grid gap-4 text-xs md:grid-cols-2 xl:grid-cols-3">
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.requestId')}: </span>
@@ -156,6 +193,16 @@ function LogDetailRow({ log }: { log: CallLog }) {
             <span className="text-[var(--foreground-dim)]">{t('detail.upstream')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
               {isCache ? t('cache.noUpstream') : log.node_id}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.upstreamProtocol')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {isCache
+                ? t('cache.noUpstream')
+                : upstreamProtocol
+                  ? sourceFormatLabel(upstreamProtocol, t)
+                  : t('common.na')}
             </span>
           </div>
           <div>
@@ -360,6 +407,11 @@ export function LogsPage() {
 
   const { data: apiKeysData } = useApiKeys()
   const { data: namespacesData } = useNamespaces()
+  const { data: nodesData } = useNodes()
+  const protocolByNodeId = useMemo(
+    () => new Map((nodesData?.nodes || []).map((node) => [node.id, node.protocol])),
+    [nodesData?.nodes],
+  )
   const tierOptions = [
     { value: '', label: t('filters.allTiers') },
     { value: 'simple', label: t('tiers.simple') },
@@ -530,7 +582,7 @@ export function LogsPage() {
         {isError ? (
           <ErrorState error={error} onRetry={refetch} />
         ) : isLoading ? (
-          <SkeletonTable rows={10} cols={10} />
+          <SkeletonTable rows={10} cols={TABLE_COLUMNS} />
         ) : (
           <>
             <Table>
@@ -541,6 +593,7 @@ export function LogsPage() {
                   <TableHead>{t('table.source')}</TableHead>
                   <TableHead>{t('table.routeResult')}</TableHead>
                   <TableHead>{t('table.upstream')}</TableHead>
+                  <TableHead>{t('table.upstreamProtocol')}</TableHead>
                   <TableHead>{t('table.model')}</TableHead>
                   <TableHead className="text-right">{t('table.tokens')}</TableHead>
                   <TableHead className="text-right">{t('table.cost')}</TableHead>
@@ -579,6 +632,12 @@ export function LogsPage() {
                       <TableCell className="max-w-[160px]">
                         <UpstreamCell log={log} />
                       </TableCell>
+                      <TableCell>
+                        <UpstreamProtocolBadge
+                          log={log}
+                          protocol={protocolByNodeId.get(log.node_id)}
+                        />
+                      </TableCell>
                       <TableCell className="max-w-[180px] truncate font-mono text-[11px] text-[var(--foreground-dim)]">
                         <Tooltip content={log.model}>
                           <span className="block truncate">{log.model}</span>
@@ -606,13 +665,17 @@ export function LogsPage() {
                       </TableCell>
                     </TableRow>
                     {expandedId === log.id && (
-                      <LogDetailRow key={`detail-${log.id}`} log={log} />
+                      <LogDetailRow
+                        key={`detail-${log.id}`}
+                        log={log}
+                        upstreamProtocol={protocolByNodeId.get(log.node_id)}
+                      />
                     )}
                   </Fragment>
                 ))}
                 {(!logsData?.data || logsData.data.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={10} className="p-0">
+                    <TableCell colSpan={TABLE_COLUMNS} className="p-0">
                       <EmptyState
                         icon={ScrollText}
                         title={t('empty.title')}

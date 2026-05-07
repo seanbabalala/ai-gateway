@@ -6,6 +6,13 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.8.3 - 2026-05-07
+
+### Fixed
+
+- Clarified Dashboard call logs by renaming the source-format column to ingress protocol and adding a separate upstream protocol column derived from the configured node protocol, so GPT/Claude requests entering through Chat Completions no longer appear to be forwarded with the wrong upstream API.
+- Updated log detail localization across Dashboard locales so ingress protocol and upstream protocol are consistently distinguishable in expanded call log rows.
+
 ## 1.8.2 - 2026-05-07
 
 ### Fixed
