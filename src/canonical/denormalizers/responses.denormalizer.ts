@@ -136,7 +136,7 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
       items.push({
         type: 'message',
         role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: this.denormalizeContent(msg.content),
+        content: this.denormalizeContent(msg.content, msg.role),
       });
     }
 
@@ -145,15 +145,18 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
 
   private denormalizeContent(
     content: string | CanonicalContentBlock[],
+    role: CanonicalMessage['role'] = 'user',
   ): Record<string, unknown>[] {
+    const textType = role === 'assistant' ? 'output_text' : 'input_text';
+
     if (typeof content === 'string') {
-      return [{ type: 'input_text', text: content }];
+      return [{ type: textType, text: content }];
     }
 
     return content.map((block) => {
       switch (block.type) {
         case 'text':
-          return { type: 'input_text', text: block.text };
+          return { type: textType, text: block.text };
 
         case 'image':
           if (block.source.type === 'base64') {
@@ -165,7 +168,7 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
           return { type: 'input_image', image_url: block.source.data };
 
         default:
-          return { type: 'input_text', text: JSON.stringify(block) };
+          return { type: textType, text: JSON.stringify(block) };
       }
     });
   }

@@ -6,6 +6,12 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.8.2 - 2026-05-07
+
+### Fixed
+
+- Fixed Responses upstream request denormalization so assistant history is forwarded with `output_text` content parts while user content remains `input_text`, preventing OpenAI Responses-compatible gateways from rejecting multi-turn direct GPT requests and triggering unintended fallback chains.
+
 ## 1.8.0 - 2026-05-06
 
 ### Added

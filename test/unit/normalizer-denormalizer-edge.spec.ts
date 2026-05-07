@@ -922,7 +922,7 @@ describe('ResponsesDenormalizer — additional edge cases', () => {
     expect(result.tool_choice).toBe('required');
   });
 
-  it('should denormalize assistant string content as input_text', () => {
+  it('should denormalize assistant string content as output_text', () => {
     const canonical = makeCanonicalRequest({
       messages: [{ role: 'assistant', content: 'Plain string' }],
     });
@@ -930,7 +930,7 @@ describe('ResponsesDenormalizer — additional edge cases', () => {
     const input = result.input as any[];
     expect(input[0].type).toBe('message');
     expect(input[0].role).toBe('assistant');
-    expect(input[0].content[0].type).toBe('input_text');
+    expect(input[0].content[0].type).toBe('output_text');
     expect(input[0].content[0].text).toBe('Plain string');
   });
 
