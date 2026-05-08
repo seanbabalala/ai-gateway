@@ -4,20 +4,16 @@ import {
   AlertTriangle,
   Bot,
   Check,
-  CircleDot,
   Code2,
   Copy,
-  Feather,
   KeyRound,
   Layers3,
-  MessagesSquare,
   Pencil,
   Plus,
   RefreshCw,
   Route,
   Server,
   ShieldCheck,
-  Sparkles,
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
@@ -122,24 +118,24 @@ const connectorDescriptionKeys: Record<AgentProfileConnector, string> = {
   generic_anthropic: 'agents.connectorDescriptions.genericAnthropic',
 }
 
-const connectorIcons: Record<AgentProfileConnector, typeof Bot> = {
-  codex: TerminalSquare,
-  claude_code: Feather,
-  cherry_studio: MessagesSquare,
-  hermes: Sparkles,
-  openclaw: CircleDot,
-  generic_openai: Code2,
-  generic_anthropic: Feather,
+const connectorLogos: Record<AgentProfileConnector, string> = {
+  codex: '/agents/codex.svg',
+  claude_code: '/agents/claude-code.svg',
+  cherry_studio: '/agents/cherry-studio.png',
+  hermes: '/agents/hermes.svg',
+  openclaw: '/agents/openclaw.svg',
+  generic_openai: '/agents/generic-openai.svg',
+  generic_anthropic: '/agents/generic-anthropic.svg',
 }
 
-const connectorAccentClassNames: Record<AgentProfileConnector, string> = {
-  codex: 'from-zinc-900 to-zinc-600 text-white dark:from-zinc-100 dark:to-zinc-400 dark:text-zinc-950',
-  claude_code: 'from-orange-600 to-amber-500 text-white',
-  cherry_studio: 'from-rose-500 to-sky-500 text-white',
-  hermes: 'from-emerald-600 to-cyan-500 text-white',
-  openclaw: 'from-slate-700 to-lime-500 text-white',
-  generic_openai: 'from-black to-emerald-600 text-white dark:from-white dark:to-emerald-300 dark:text-zinc-950',
-  generic_anthropic: 'from-stone-700 to-orange-500 text-white',
+const connectorLogoClassNames: Record<AgentProfileConnector, string> = {
+  codex: 'bg-white text-zinc-950',
+  claude_code: 'bg-[#f4efe6] text-[#181818]',
+  cherry_studio: 'bg-[#ff5a5f] text-white',
+  hermes: 'bg-[#191512] text-amber-300',
+  openclaw: 'bg-[#fff1f2] text-red-600',
+  generic_openai: 'bg-white text-zinc-950',
+  generic_anthropic: 'bg-[#f4efe6] text-[#181818]',
 }
 
 const fieldLabelKeys: Record<string, string> = {
@@ -381,6 +377,24 @@ function FieldLabel({ children }: { children: string }) {
     <label className="text-[12px] font-semibold leading-5 text-[var(--foreground-dim)]">
       {children}
     </label>
+  )
+}
+
+function ConnectorLogo({ connector, label }: { connector: AgentProfileConnector; label: string }) {
+  return (
+    <span
+      className={cn(
+        'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10',
+        connectorLogoClassNames[connector],
+      )}
+    >
+      <img
+        src={connectorLogos[connector]}
+        alt={label}
+        className="h-7 w-7 object-contain"
+        loading="lazy"
+      />
+    </span>
   )
 }
 
@@ -840,8 +854,8 @@ function ConnectorPicker({
       </div>
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {CONNECTORS.map((connector) => {
-          const Icon = connectorIcons[connector]
           const selected = value === connector
+          const label = t(connectorLabelKeys[connector])
           return (
             <button
               key={connector}
@@ -856,17 +870,10 @@ function ConnectorPicker({
               )}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span
-                  className={cn(
-                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-sm',
-                    connectorAccentClassNames[connector],
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                </span>
+                <ConnectorLogo connector={connector} label={label} />
                 <span className="min-w-0">
                   <span className="block break-words text-[13px] font-bold text-[var(--foreground)]">
-                    {t(connectorLabelKeys[connector])}
+                    {label}
                   </span>
                   <span className="mt-1 block break-words text-[12px] leading-5 text-[var(--foreground-dim)]">
                     {t(connectorDescriptionKeys[connector])}

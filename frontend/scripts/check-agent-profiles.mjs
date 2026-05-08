@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -107,9 +107,20 @@ const privacyKeys = [
   'agents.privacy.title',
 ]
 
+const connectorLogoFiles = {
+  codex: '/agents/codex.svg',
+  claude_code: '/agents/claude-code.svg',
+  cherry_studio: '/agents/cherry-studio.png',
+  hermes: '/agents/hermes.svg',
+  openclaw: '/agents/openclaw.svg',
+  generic_openai: '/agents/generic-openai.svg',
+  generic_anthropic: '/agents/generic-anthropic.svg',
+}
+
 const allowedLiteralStrings = new Set([
   '-',
   '/agents',
+  ...Object.values(connectorLogoFiles),
   '/api/dashboard/agent-profiles',
   '/render',
   'SiftGate',
@@ -144,13 +155,6 @@ const allowedLiteralStrings = new Set([
   '=${rendered.smart_model_id}',
   '=${model}',
   'agents.errors.connectorRequired',
-  'from-zinc-900 to-zinc-600 text-white dark:from-zinc-100 dark:to-zinc-400 dark:text-zinc-950',
-  'from-orange-600 to-amber-500 text-white',
-  'from-rose-500 to-sky-500 text-white',
-  'from-emerald-600 to-cyan-500 text-white',
-  'from-slate-700 to-lime-500 text-white',
-  'from-black to-emerald-600 text-white dark:from-white dark:to-emerald-300 dark:text-zinc-950',
-  'from-stone-700 to-orange-500 text-white',
 ])
 
 const allowedVisibleLiteralPatterns = [
@@ -232,6 +236,8 @@ for (const needle of [
   'ConnectorPicker',
   'useNodes',
   'modelOptionsFromNodes',
+  'ConnectorLogo',
+  'connectorLogos',
   'agents.help.directModelSelect',
   'agents.routingHint.optional',
   'agents.privacy.gatewayKey',
@@ -244,6 +250,18 @@ for (const needle of [
   'agents.warnings.noApiKeys.title',
 ]) {
   assert(pageSource.includes(needle), `AgentProfilesPage missing ${needle}`)
+}
+
+assert(!pageSource.includes('connectorIcons'), 'AgentProfilesPage must use real connector logos, not fake connector icon registry.')
+assert(!pageSource.includes('connectorAccentClassNames'), 'AgentProfilesPage must not use fake connector gradient badge registry.')
+assert(pageSource.includes('<img'), 'Connector logos must render through image assets.')
+
+for (const [connector, logoPath] of Object.entries(connectorLogoFiles)) {
+  assert(pageSource.includes(`${connector}: '${logoPath}'`), `AgentProfilesPage missing logo mapping for ${connector}`)
+  assert(
+    existsSync(join(root, 'public', logoPath.slice(1))),
+    `Agent connector logo asset is missing: public${logoPath}`,
+  )
 }
 
 assert(
@@ -310,7 +328,7 @@ for (const locale of translatedLocales) {
 }
 
 console.log(
-  'Agent Profiles Dashboard checks passed: route, nav, hook, API types, i18n-only page copy, connector labels, privacy copy, key drift, and 7-language locale values.',
+  'Agent Profiles Dashboard checks passed: route, nav, hook, API types, real connector logos, i18n-only page copy, connector labels, privacy copy, key drift, and 7-language locale values.',
 )
 
 function read(file) {
