@@ -218,7 +218,7 @@
   "sse.newLogsReceived_one": "{{count}} new log received — click to refresh",
   "sse.newLogsReceived_other": "{{count}} new logs received — click to refresh",
   "table.cost": "Cost",
-  "table.latency": "Latency",
+  "table.latency": "Total time",
   "table.model": "Model",
   "table.node": "Node",
   "table.status": "Status",
@@ -327,5 +327,10 @@
   "routeExplanation.table.missingPriceUnit": "missing {{unit}}",
   "routeExplanation.table.pricingStatus": "price status {{status}}",
   "routeExplanation.table.pricingUsedFrom": "price from {{source}}",
-  "routeExplanation.values.stale": "stale"
+  "routeExplanation.values.stale": "stale",
+  "detail.deliveryMode": "Mode",
+  "detail.totalTime": "Total time",
+  "table.deliveryMode": "Mode",
+  "table.streamMode.stream": "Streaming",
+  "table.streamMode.sync": "Sync"
 }

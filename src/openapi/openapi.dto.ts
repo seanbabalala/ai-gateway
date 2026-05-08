@@ -464,6 +464,21 @@ export class ModelItemDto {
 
   @ApiPropertyOptional({ example: 'gpt-4o' })
   resolves_to?: string;
+
+  @ApiPropertyOptional({ example: true })
+  is_agent_profile_model?: boolean;
+
+  @ApiPropertyOptional({ example: 'profile_01h...' })
+  agent_profile_id?: string;
+
+  @ApiPropertyOptional({ example: 'Claude Code local' })
+  agent_profile_name?: string;
+
+  @ApiPropertyOptional({ example: 'claude_code' })
+  agent_connector?: string;
+
+  @ApiPropertyOptional({ example: 'claude-siftgate-auto' })
+  agent_virtual_model?: string;
 }
 
 export class ModelListResponseDto {
@@ -770,4 +785,223 @@ export class GatewayApiKeyCreatedResponseDto extends GatewayApiKeyMutationRespon
     description: 'Plain Gateway API key returned once. Example is redacted.',
   })
   key!: string;
+}
+
+export class AgentProfileGatewayKeySummaryDto {
+  @ApiProperty({ example: 'key_01h...' })
+  id!: string;
+
+  @ApiProperty({ example: 'agent-local-key' })
+  name!: string;
+
+  @ApiProperty({
+    example: 'gw_sk_live_abcd...wxyz',
+    description: 'Masked Gateway API key metadata only. Plaintext is never returned.',
+  })
+  key_prefix!: string;
+
+  @ApiProperty({ enum: ['active', 'disabled'], example: 'active' })
+  status!: string;
+
+  @ApiProperty({ example: true })
+  allow_auto!: boolean;
+
+  @ApiProperty({ example: false })
+  allow_direct!: boolean;
+
+  @ApiProperty({ type: [String], example: [] })
+  allowed_models!: string[];
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_id!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_name!: string | null;
+}
+
+export class AgentProfileSummaryDto {
+  @ApiProperty({ example: 'profile_01h...' })
+  id!: string;
+
+  @ApiProperty({ example: 'Claude Code local' })
+  name!: string;
+
+  @ApiProperty({ example: null, nullable: true })
+  description!: string | null;
+
+  @ApiProperty({
+    enum: [
+      'codex',
+      'claude_code',
+      'cherry_studio',
+      'hermes',
+      'openclaw',
+      'generic_openai',
+      'generic_anthropic',
+    ],
+    example: 'claude_code',
+  })
+  connector!: string;
+
+  @ApiProperty({ enum: ['active', 'disabled'], example: 'active' })
+  status!: string;
+
+  @ApiProperty({ example: 'key_01h...', nullable: true })
+  api_key_id!: string | null;
+
+  @ApiProperty({ type: AgentProfileGatewayKeySummaryDto, nullable: true })
+  api_key!: AgentProfileGatewayKeySummaryDto | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_id!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_name!: string | null;
+
+  @ApiProperty({ example: 'auto' })
+  default_model!: string;
+
+  @ApiProperty({ example: 'claude-siftgate-auto' })
+  smart_model_id!: string;
+
+  @ApiProperty({
+    enum: ['openai_v1', 'anthropic_v1', 'root'],
+    example: 'anthropic_v1',
+  })
+  base_url_mode!: string;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+  })
+  routing_hint!: Record<string, unknown> | null;
+
+  @ApiProperty({ type: [String], example: [] })
+  mcp_server_ids!: string[];
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+  })
+  metadata!: Record<string, unknown> | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  last_generated_at!: string | null;
+
+  @ApiProperty({ example: '2026-05-08T00:00:00.000Z' })
+  created_at!: string;
+
+  @ApiProperty({ example: '2026-05-08T00:00:00.000Z' })
+  updated_at!: string;
+}
+
+export class AgentProfileListResponseDto {
+  @ApiProperty({ type: [AgentProfileSummaryDto] })
+  items!: AgentProfileSummaryDto[];
+
+  @ApiProperty({ type: [String], example: ['codex', 'claude_code'] })
+  connectors!: string[];
+
+  @ApiProperty({ example: 'local_only' })
+  mode!: string;
+}
+
+export class AgentProfileMutationResponseDto extends ActionResponseDto {
+  @ApiProperty({ type: AgentProfileSummaryDto })
+  item!: AgentProfileSummaryDto;
+}
+
+export class AgentProfileGatewayApiKeyRenderDto {
+  @ApiProperty({ example: '<SIFTGATE_GATEWAY_API_KEY>' })
+  placeholder!: string;
+
+  @ApiProperty({ example: 'gw_sk_live_abcd...wxyz', nullable: true })
+  key_prefix!: string | null;
+
+  @ApiProperty({ example: 'agent-local-key', nullable: true })
+  name!: string | null;
+
+  @ApiProperty({ example: 'active', nullable: true })
+  status!: string | null;
+}
+
+export class AgentProfileRenderedCardDto {
+  @ApiProperty({ example: 'claude_code-anthropic' })
+  id!: string;
+
+  @ApiProperty({ example: 'Claude Code Anthropic-compatible config' })
+  title!: string;
+
+  @ApiProperty({ enum: ['openai', 'anthropic', 'root'], example: 'anthropic' })
+  protocol!: string;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  fields!: Record<string, unknown>;
+
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  env!: Record<string, string>;
+
+  @ApiProperty({
+    example:
+      'export ANTHROPIC_BASE_URL="http://localhost:2099"\nexport ANTHROPIC_AUTH_TOKEN="<SIFTGATE_GATEWAY_API_KEY>"',
+  })
+  snippet!: string;
+
+  @ApiProperty({ type: [String] })
+  notes!: string[];
+}
+
+export class AgentProfileRenderedConfigDto {
+  @ApiProperty({ example: 'claude_code' })
+  connector!: string;
+
+  @ApiProperty({ example: 'Claude Code' })
+  connector_label!: string;
+
+  @ApiProperty({ example: 'profile_01h...' })
+  profile_id!: string;
+
+  @ApiProperty({ example: 'Claude Code local' })
+  profile_name!: string;
+
+  @ApiProperty({ enum: ['active', 'disabled'], example: 'active' })
+  status!: string;
+
+  @ApiProperty({ example: 'http://localhost:2099' })
+  base_url!: string;
+
+  @ApiProperty({ enum: ['openai_v1', 'anthropic_v1', 'root'] })
+  base_url_mode!: string;
+
+  @ApiProperty({ example: 'claude-siftgate-auto' })
+  smart_model_id!: string;
+
+  @ApiProperty({ example: 'auto' })
+  default_model!: string;
+
+  @ApiProperty({ type: AgentProfileGatewayApiKeyRenderDto })
+  gateway_api_key!: AgentProfileGatewayApiKeyRenderDto;
+
+  @ApiProperty({ example: true })
+  secrets_redacted!: true;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+  })
+  routing_hint!: Record<string, unknown> | null;
+
+  @ApiProperty({ type: [String], example: [] })
+  mcp_server_ids!: string[];
+
+  @ApiProperty({ type: [AgentProfileRenderedCardDto] })
+  cards!: AgentProfileRenderedCardDto[];
+}
+
+export class AgentProfileRenderResponseDto extends ActionResponseDto {
+  @ApiProperty({ type: AgentProfileRenderedConfigDto })
+  item!: AgentProfileRenderedConfigDto;
 }

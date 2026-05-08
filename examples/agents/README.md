@@ -2,12 +2,15 @@
 
 These examples show how common Python agent stacks can send traffic through the local SiftGate Data Plane without storing real provider keys in application code.
 
+For Dashboard-managed v1.9 agent and chatbot setup, see [Agent Gateway Profiles](../../docs/AGENT_GATEWAY.md).
+
 They cover:
 
 - OpenAI Python SDK with `base_url`
 - LangChain with `ChatOpenAI`
 - CrewAI with an OpenAI-compatible `LLM`
 - OpenAI Agents SDK with a custom `AsyncOpenAI` client
+- Agent Gateway Profiles for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic clients
 
 Each example uses environment variables for the SiftGate base URL and Gateway API key. Do not commit a real `.env` file.
 
@@ -44,6 +47,40 @@ python examples/agents/openai_agents_sdk.py
 | `SIFTGATE_SESSION_ID` | Stable session header for routing momentum and log correlation |
 | `SIFTGATE_TRACE_ID` | Trace label sent as `x-trace-id`; `traceparent` is also generated |
 | `SIFTGATE_ROUTING_HINT` | Advisory `x-siftgate-routing-hint` JSON, such as `{"optimization":"cost"}` |
+
+## Agent Gateway Profiles
+
+Use the Dashboard **Agents** page when configuring agents or chatbot clients directly. Agent Profiles render redacted setup snippets for:
+
+- Codex
+- Claude Code
+- Cherry Studio
+- Hermes
+- OpenClaw
+- Generic OpenAI
+- Generic Anthropic
+
+OpenAI-compatible clients:
+
+```env
+OPENAI_BASE_URL=http://localhost:2099/v1
+OPENAI_API_KEY=<SIFTGATE_GATEWAY_API_KEY>
+model=auto
+```
+
+Anthropic/Claude-style clients:
+
+```env
+ANTHROPIC_BASE_URL=http://localhost:2099
+ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>
+model=claude-siftgate-auto
+```
+
+`claude-siftgate-auto` is profile-scoped and maps to SiftGate smart routing. It is not a global direct Claude model. Smart routing requires `allow_auto`; explicit direct model routing requires `allow_direct`.
+
+Gateway API key policies, namespaces, budgets, rate limits, endpoint/model/node/modality restrictions, and MCP `allowed_endpoints` still apply. For MCP, scope access with values such as `mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`.
+
+Rendered configs do not expose stored secrets. Provider API keys stay in Nodes, env vars, or secret references.
 
 ## What The Examples Demonstrate
 

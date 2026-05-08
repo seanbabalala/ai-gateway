@@ -73,6 +73,7 @@ import { AlertService } from '../alerts/alert.service';
 import { LogSinkService } from '../log-sinks/log-sink.service';
 import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
+import { AgentProfileService } from '../agent-profiles/agent-profile.service';
 import {
   RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionCacheEvidence,
@@ -208,6 +209,7 @@ export class PipelineService {
     @Optional() private readonly logSinks?: LogSinkService,
     @Optional() private readonly embeddingBatching?: EmbeddingBatchingService,
     @Optional() private readonly shadowTraffic?: ShadowTrafficService,
+    @Optional() private readonly agentProfiles?: AgentProfileService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -3221,7 +3223,7 @@ export class PipelineService {
     canonical: CanonicalRequest,
     store?: Map<string, unknown>,
   ): Promise<SmartRouteResolution> {
-    const requestedModel = canonical.metadata.original_model;
+    const requestedModel = await this.applyAgentProfileVirtualModel(canonical);
 
     if (this.shouldPinMessagesRequestToClaude(canonical)) {
       const pinnedNode = this.findPinnedMessagesNode(requestedModel);
@@ -4480,6 +4482,28 @@ export class PipelineService {
     }
   }
 
+  private async applyAgentProfileVirtualModel(
+    canonical: CanonicalRequest,
+  ): Promise<string | undefined> {
+    const requestedModel = canonical.metadata.original_model;
+    if (!this.agentProfiles || !requestedModel) return requestedModel;
+
+    const match = await this.agentProfiles.matchVirtualModel(
+      canonical.metadata.api_key_id,
+      requestedModel,
+    );
+    if (!match) return requestedModel;
+
+    canonical.metadata.agent_profile_id = match.profile.id;
+    canonical.metadata.agent_profile_name = match.profile.name;
+    canonical.metadata.agent_connector = match.profile.connector;
+    canonical.metadata.agent_virtual_model = match.virtual_model;
+    canonical.metadata.agent_requested_model = match.requested_model;
+    canonical.metadata.original_model = match.internal_model;
+
+    return match.internal_model;
+  }
+
   private assertApiKeyRequestAllowed(canonical: LoggableCanonicalRequest): void {
     const permissions = canonical.metadata.api_key_permissions;
     if (!permissions) return;
@@ -4736,6 +4760,10 @@ export class PipelineService {
 
   private shouldPinMessagesRequestToClaude(canonical: CanonicalRequest): boolean {
     if (canonical.metadata.source_format !== 'messages') {
+      return false;
+    }
+
+    if (canonical.metadata.agent_virtual_model) {
       return false;
     }
 
@@ -5287,6 +5315,9 @@ export class PipelineService {
         cache_read_input_tokens: params.usage.cache_read_input_tokens || 0,
         cost_without_cache_usd: costWithoutCacheUsd,
         cost_usd: costUsd, latency_ms: params.latencyMs,
+        stream: 'stream' in params.canonical
+          ? Boolean(params.canonical.stream)
+          : false,
         status_code: params.statusCode, is_fallback: params.isFallback,
         fallback_reason: params.fallbackReason || null,
         structured_output_requested:

@@ -2,7 +2,7 @@
 
 > 本文档定义开源数据面（Data Plane）的功能迭代计划。
 > 经过验证的功能将在后续抽象到企业版云控制面。
-> 最后更新：2026-05-06
+> 最后更新：2026-05-08
 
 ---
 
@@ -27,8 +27,53 @@
 | v1.6 | Provider Cache Intelligence | 已发布 — v1.6.0 Usage Schema Registry、Cache Savings Dashboard、Cache Session Affinity 路由增强 | ✅ Released |
 | v1.7 | Catalog Enrichment + Fresh Model Defaults | 已发布 — v1.7.0 ZeroEval catalog enrichment、Fresh defaults、默认价格预填、模型元数据扩展 | ✅ Released |
 | v1.8 | Canonical Catalog Normalization + Node UX Cleanup | 已发布 — v1.8.0 OpenRouter-first canonical registry、ZeroEval overlay、provider projection、legacy cleanup、Nodes/Add Node/Provider Catalog UX 统一 | ✅ Released |
+| v1.9 | Agent Gateway Profiles | 已发布 — v1.9.0 Agent Profiles、Codex/Claude Code/Cherry Studio/Hermes/OpenClaw/Generic OpenAI/Generic Anthropic 入口、profile-scoped virtual smart model | ✅ Released |
 
 ---
+
+## v1.9 — Agent Gateway Profiles（Agent 与 Chatbot 入口）
+
+**v1.9.0 发布状态**：已发布。v1.9 继续保持 MIT 开源 Data Plane 本地优先；不引入 SiftGate Cloud 依赖，不加入企业 SSO/RBAC/workspace/org billing。本次 minor release 的目标是把 agents 和 chatbot clients 从“自己猜 base URL 与模型参数”的接入方式，提升为 Dashboard **Agents** 页面里的 first-class Agent Gateway Profiles，同时继续使用现有 Gateway API key、namespace、budget、rate limit、allowed endpoints/models/nodes/modalities 和 metadata-only 隐私边界。
+
+### P0：Agent Profiles 本地持久化与 Dashboard API
+
+- **状态**：✅ v1.9.0 已发布
+- **目标**：新增本地 `agent_profiles` 表，用于保存 Codex、Claude Code、Cherry Studio、Hermes、OpenClaw、Generic OpenAI、Generic Anthropic 的连接元数据。
+- **实现方案**：
+  - Profile 保存 `connector`、`status`、可选 `api_key_id`、可选 `namespace_id`、`default_model`、`smart_model_id`、`base_url_mode`、`routing_hint`、`mcp_server_ids`、`metadata` 与生成时间
+  - Dashboard API 提供 `GET/POST/PUT/DELETE /api/dashboard/agent-profiles` 与 `POST /api/dashboard/agent-profiles/:id/render`
+  - render 输出 connector-specific setup cards，但只返回 placeholder 或 masked metadata，不返回 Gateway API key 明文、provider key、raw auth header、prompt/response、MCP tool payload、media bytes 或 video bytes
+
+### P0：Connector-Safe Smart Routing
+
+- **状态**：✅ v1.9.0 已发布
+- **目标**：让 OpenAI-compatible agents 使用 `auto`，让 Claude-style agents 使用 profile-scoped `claude-siftgate-auto`，并且不把它误当成 direct Claude model routing。
+- **实现方案**：
+  - `claude-siftgate-auto` 只在 matching active profile + Gateway API key context 下出现在 `/v1/models`
+  - virtual model 映射到内部 `auto`，并保留 `agent_profile_id`、`agent_profile_name`、`agent_connector`、`agent_virtual_model`、`agent_requested_model` metadata
+  - smart routing 仍要求 `allow_auto`；direct model routing 仍要求 `allow_direct`
+  - routing hints 只是 advisory signal，不能绕过 Gateway API key policy、budget、namespace、rate limit、endpoint/model/node/modality restrictions、circuit breaker 或 fallback rules
+  - metadata-only logs、sessions、route explanations 和 MCP `allowed_endpoints` 权限继续复用现有治理边界
+
+### P1：Dashboard Agents 页面与七语言文案
+
+- **状态**：✅ v1.9.0 已发布
+- **目标**：提供可视化创建、编辑、删除、渲染 Agent Profiles 的入口，并保持 en、zh、zh-TW、ja、ko、th、es 七语言完整覆盖。
+- **实现方案**：
+  - 新增 `/agents` route 与 `nav.agents`
+  - 支持 connector selector、API key selector、namespace selector、Smart router vs direct model、routing hint JSON validation、MCP server selection 和 render panel
+  - 静态 i18n check 确保 Agent Profiles 相关 key 在七语言中都存在，不依赖英文 fallback
+  - 七语言覆盖 `en`、`zh`、`zh-TW`、`ja`、`ko`、`th`、`es`，包括页面、导航、按钮、表单、隐私提示、connector labels、render snippets labels 和错误状态
+
+### 非目标
+
+- **状态**：✅ 已明确
+- **不做内容**：
+  - 不引入 SiftGate Cloud 运行时依赖
+  - 不把 provider API key 放进 agent/chatbot config
+  - 不存储 prompt、response、raw auth header、provider key、Gateway API key 明文、MCP tool payload、media bytes 或 video bytes
+  - 不实现 enterprise SSO/RBAC/workspace/org billing
+  - 不让 routing hint 绕过 Gateway API key policy
 
 ## v1.8 — Canonical Catalog Normalization + Node UX Cleanup（规范目录统一与 Node 体验收口）
 

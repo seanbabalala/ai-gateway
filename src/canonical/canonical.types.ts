@@ -196,6 +196,11 @@ export interface CanonicalRequestMetadata {
   namespace_name?: string | null;
   team_id?: string | null;
   team_name?: string | null;
+  agent_profile_id?: string;
+  agent_profile_name?: string;
+  agent_connector?: string;
+  agent_virtual_model?: string;
+  agent_requested_model?: string;
   api_key_permissions?: {
     allow_auto: boolean;
     allow_direct: boolean;

@@ -53,6 +53,7 @@ export class TelemetryUploaderService implements OnModuleInit, OnModuleDestroy {
       domain_hint: context.domainHint || null,
       modality: context.modalities || [],
       latency_ms: Number(log.latency_ms || 0),
+      stream: Boolean(log.stream),
       status_code: Number(log.status_code || 0),
       input_tokens: Number(log.input_tokens || 0),
       output_tokens: Number(log.output_tokens || 0),

@@ -1,8 +1,42 @@
 # Agent Framework Integrations
 
-SiftGate can sit between agent frameworks and upstream model providers as an OpenAI-compatible gateway. The framework keeps its normal client shape, while SiftGate handles local Gateway API key auth, namespace policy, routing, fallback, budgets, logs, route explanations, and cost evidence.
+SiftGate can sit between agent frameworks and upstream model providers as an OpenAI-compatible or Anthropic-compatible gateway. The framework keeps its normal client shape, while SiftGate handles local Gateway API key auth, namespace policy, routing, fallback, budgets, logs, route explanations, and cost evidence.
 
 The runnable examples live in [examples/agents](../examples/agents).
+
+For v1.9 Dashboard-managed connector profiles, see [Agent Gateway Profiles](AGENT_GATEWAY.md).
+
+## Agent Gateway Profiles
+
+Agent Gateway Profiles are the first-class Dashboard entry for agents and chatbot clients. The **Agents** page can render redacted setup cards for:
+
+- Codex
+- Claude Code
+- Cherry Studio
+- Hermes
+- OpenClaw
+- Generic OpenAI
+- Generic Anthropic
+
+OpenAI-compatible clients should use:
+
+```env
+OPENAI_BASE_URL=http://localhost:2099/v1
+OPENAI_API_KEY=<SIFTGATE_GATEWAY_API_KEY>
+model=auto
+```
+
+Anthropic/Claude-style clients should use:
+
+```env
+ANTHROPIC_BASE_URL=http://localhost:2099
+ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>
+model=claude-siftgate-auto
+```
+
+`claude-siftgate-auto` is profile-scoped. It is exposed only for the matching active Agent Profile and Gateway API key, and it maps to internal smart routing as `auto` rather than direct Claude model routing. Smart routing requires `allow_auto`; direct model routing requires `allow_direct`.
+
+Agent and chatbot configs should use Gateway API keys only. Provider API keys stay in Nodes, env vars, or secret references. Rendered configs use placeholders or masked metadata and never expose stored secrets.
 
 ## Supported Examples
 
@@ -43,6 +77,8 @@ All examples send:
 Namespace enforcement is not based on trusting an arbitrary client header. Bind the Gateway API key to a local namespace in SiftGate when you want `allowed_nodes`, `allowed_models`, endpoint/modality policy, budget, and rate-limit constraints.
 
 Routing hints are preferences only. SiftGate still applies Gateway API key permissions, namespace policy, budgets, rate limits, circuit state, model capability filters, and fallback policy before forwarding.
+
+MCP access uses the same Gateway API key boundary. Use `allowed_endpoints` such as `mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>` to scope tool access for agents.
 
 ## Structured Output
 

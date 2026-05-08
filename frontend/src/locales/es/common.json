@@ -23,6 +23,7 @@
   "header.notificationsComingSoon": "Notificaciones próximamente",
   "header.searchPlaceholder": "Buscar logs, nodes, modelos...",
   "language.label": "Idioma",
+  "nav.agents": "Agentes",
   "nav.analytics": "Analítica",
   "nav.apiKeys": "Claves API",
   "nav.budget": "Presupuesto",

@@ -240,6 +240,10 @@ function makePipeline(overrides: Record<string, any> = {}): {
     enqueueEmbeddings: jest.fn(),
     ...overrides.shadowTraffic,
   };
+  const agentProfiles = {
+    matchVirtualModel: jest.fn().mockResolvedValue(null),
+    ...overrides.agentProfiles,
+  };
 
   const callLogRepo = {
     create: jest.fn().mockImplementation((data: any) => data),
@@ -272,6 +276,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     logSinks as any,
     embeddingBatching as any,
     shadowTraffic as any,
+    agentProfiles as any,
   );
 
   return {
@@ -282,6 +287,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
       logEventBus, hooks, telemetry, telemetryUploader, callLogRepo, routeDecisionRepo, alerts, logSinks,
       embeddingBatching,
       shadowTraffic,
+      agentProfiles,
     },
   };
 }
@@ -361,6 +367,90 @@ describe('PipelineService — direct routing', () => {
 
     expect(mocks.scoringService.score).toHaveBeenCalled();
     expect(mocks.routingService.resolve).toHaveBeenCalled();
+  });
+
+  it('maps a profile-scoped Claude Code virtual model to auto routing when allow_auto is enabled', async () => {
+    const { pipeline, mocks } = makePipeline({
+      agentProfiles: {
+        matchVirtualModel: jest.fn().mockResolvedValue({
+          profile: {
+            id: 'profile-1',
+            name: 'Claude Code',
+            connector: 'claude_code',
+          },
+          virtual_model: 'claude-siftgate-auto',
+          requested_model: 'claude-siftgate-auto',
+          internal_model: 'auto',
+        }),
+      },
+    });
+    const request = makeRequest('Hello', { originalModel: 'claude-siftgate-auto' });
+    request.metadata.api_key_id = 'key-1';
+    request.metadata.api_key_permissions = {
+      allow_auto: true,
+      allow_direct: false,
+      allowed_nodes: [],
+      allowed_models: [],
+      allowed_endpoints: [],
+      allowed_modalities: [],
+    };
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.agentProfiles.matchVirtualModel).toHaveBeenCalledWith(
+      'key-1',
+      'claude-siftgate-auto',
+    );
+    expect(request.metadata.original_model).toBe('auto');
+    expect(request.metadata).toMatchObject({
+      agent_profile_id: 'profile-1',
+      agent_profile_name: 'Claude Code',
+      agent_connector: 'claude_code',
+      agent_virtual_model: 'claude-siftgate-auto',
+      agent_requested_model: 'claude-siftgate-auto',
+    });
+    expect(mocks.scoringService.score).toHaveBeenCalled();
+    expect(mocks.routingService.resolve).toHaveBeenCalled();
+    expect(mocks.providerClient.forward).toHaveBeenCalledWith(
+      request,
+      'openai',
+      'gpt-4o',
+      expect.objectContaining({ tier: 'standard', is_fallback: false }),
+    );
+  });
+
+  it('rejects profile virtual smart routing when allow_auto is disabled', async () => {
+    const { pipeline, mocks } = makePipeline({
+      agentProfiles: {
+        matchVirtualModel: jest.fn().mockResolvedValue({
+          profile: {
+            id: 'profile-1',
+            name: 'Claude Code',
+            connector: 'claude_code',
+          },
+          virtual_model: 'claude-siftgate-auto',
+          requested_model: 'claude-siftgate-auto',
+          internal_model: 'auto',
+        }),
+      },
+    });
+    const request = makeRequest('Hello', { originalModel: 'claude-siftgate-auto' });
+    request.metadata.api_key_id = 'key-1';
+    request.metadata.api_key_permissions = {
+      allow_auto: false,
+      allow_direct: false,
+      allowed_nodes: [],
+      allowed_models: [],
+      allowed_endpoints: [],
+      allowed_modalities: [],
+    };
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(403);
+    expect(mocks.providerClient.forward).not.toHaveBeenCalled();
+    expect(mocks.scoringService.score).not.toHaveBeenCalled();
   });
 
   it('should reject chat requests when API key endpoint permissions exclude chat', async () => {

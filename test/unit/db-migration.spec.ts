@@ -11,6 +11,7 @@ import {
 
 const TABLES: DbMigrationTableName[] = [
   "gateway_api_keys",
+  "agent_profiles",
   "local_teams",
   "budget_rules",
   "node_status",
@@ -108,6 +109,25 @@ function createSqliteFixture(dir: string): string {
       updated_at datetime
     );
 
+    CREATE TABLE agent_profiles (
+      id varchar PRIMARY KEY,
+      name varchar,
+      description text,
+      connector varchar,
+      status varchar,
+      api_key_id varchar,
+      namespace_id varchar,
+      default_model varchar,
+      smart_model_id varchar,
+      base_url_mode varchar,
+      routing_hint text,
+      mcp_server_ids text,
+      metadata text,
+      last_generated_at datetime,
+      created_at datetime,
+      updated_at datetime
+    );
+
     CREATE TABLE local_teams (
       id varchar PRIMARY KEY,
       name varchar,
@@ -164,6 +184,7 @@ function createSqliteFixture(dir: string): string {
       cost_usd real,
       cost_without_cache_usd real,
       latency_ms integer,
+      stream integer,
       status_code integer,
       is_fallback integer,
       fallback_reason varchar,
@@ -430,6 +451,34 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO agent_profiles (
+      id, name, description, connector, status, api_key_id, namespace_id,
+      default_model, smart_model_id, base_url_mode, routing_hint,
+      mcp_server_ids, metadata, last_generated_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "profile-1",
+    "Claude Code",
+    "Agent profile",
+    "claude_code",
+    "active",
+    "key-1",
+    "team-alpha",
+    "auto",
+    "claude-siftgate-auto",
+    "anthropic_v1",
+    JSON.stringify({ tier: "reasoning" }),
+    JSON.stringify(["filesystem"]),
+    JSON.stringify({ owner: "local" }),
+    "2026-05-01T00:00:30.000Z",
+    "2026-05-01T00:00:00.000Z",
+    "2026-05-01T00:00:30.000Z",
+  );
+
+  db.prepare(
+    `
     INSERT INTO local_teams (
       id, name, description, status, namespace_id, allowed_nodes,
       allowed_models, allowed_endpoints, allowed_modalities,
@@ -492,14 +541,14 @@ function createSqliteFixture(dir: string): string {
     INSERT INTO call_logs (
       request_id, timestamp, source_format, tier, score, node_id, model,
       input_tokens, output_tokens, cost_usd, cost_without_cache_usd,
-      latency_ms, status_code,
+      latency_ms, stream, status_code,
       is_fallback, fallback_reason, structured_output_requested,
       structured_output_type, structured_output_strategy,
       structured_output_supported, structured_output_schema_name,
       session_key, error, api_key_name, api_key_id, team_id, retry_count,
       cache_creation_input_tokens, cache_read_input_tokens, experiment_group
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     "req-1",
@@ -514,6 +563,7 @@ function createSqliteFixture(dir: string): string {
     0.01,
     0.012,
     456,
+    1,
     200,
     0,
     null,
@@ -857,7 +907,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(15);
+    expect(result.totals.source_rows).toBe(16);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -893,6 +943,15 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(apiKey?.team_id).toBe("team-1");
     expect(apiKey?.created_at).toBeInstanceOf(Date);
 
+    const agentProfile = target.rows.get("agent_profiles")?.[0];
+    expect(agentProfile?.id).toBe("profile-1");
+    expect(agentProfile?.connector).toBe("claude_code");
+    expect(agentProfile?.routing_hint).toEqual({ tier: "reasoning" });
+    expect(agentProfile?.mcp_server_ids).toEqual(["filesystem"]);
+    expect(agentProfile?.metadata).toEqual({ owner: "local" });
+    expect(agentProfile?.last_generated_at).toBeInstanceOf(Date);
+    expect(agentProfile?.created_at).toBeInstanceOf(Date);
+
     const team = target.rows.get("local_teams")?.[0];
     expect(team?.name).toBe("Platform");
     expect(team?.namespace_id).toBe("team-alpha");
@@ -905,6 +964,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(callLog?.structured_output_supported).toBe(true);
     expect(callLog?.team_id).toBe("team-1");
     expect(callLog?.cost_without_cache_usd).toBe(0.012);
+    expect(callLog?.stream).toBe(true);
     expect(callLog?.timestamp).toBeInstanceOf(Date);
 
     const routeDecision = target.rows.get("route_decisions")?.[0];
@@ -1002,7 +1062,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(15);
+    expect(result.validation.mismatches).toHaveLength(16);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

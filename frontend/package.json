@@ -1,7 +1,7 @@
 {
   "name": "siftgate-dashboard",
   "private": true,
-  "version": "1.8.5",
+  "version": "1.9.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -19,9 +19,10 @@
     "playground:check": "node scripts/check-playground.mjs",
     "sessions:check": "node scripts/check-sessions.mjs",
     "mcp:check": "node scripts/check-mcp-gateway.mjs",
+    "agent-profiles:check": "node scripts/check-agent-profiles.mjs",
     "evals:check": "node scripts/check-evals.mjs",
     "sidebar:check": "node scripts/check-sidebar-scroll.mjs",
-    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check && npm run shadow-report:check && npm run benchmark:check && npm run guardrails:check && npm run provider-catalog:check && npm run provider-logos:check && npm run api-keys:check && npm run playground:check && npm run sessions:check && npm run mcp:check && npm run batches:check && npm run evals:check && npm run sidebar:check",
+    "test": "npm run i18n:check && npm run routing:check && npm run route-explanation:check && npm run shadow-report:check && npm run benchmark:check && npm run guardrails:check && npm run provider-catalog:check && npm run provider-logos:check && npm run api-keys:check && npm run playground:check && npm run sessions:check && npm run mcp:check && npm run agent-profiles:check && npm run batches:check && npm run evals:check && npm run sidebar:check",
     "preview": "vite preview",
     "batches:check": "node scripts/check-batches.mjs"
   },

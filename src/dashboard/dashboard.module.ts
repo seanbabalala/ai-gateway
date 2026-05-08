@@ -24,6 +24,7 @@ import { BenchmarkReportService } from './benchmark-report.service';
 import { CacheSavingsService } from './cache-savings.service';
 import { McpModule } from '../mcp/mcp.module';
 import { BatchModule } from '../batch/batch.module';
+import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { BatchModule } from '../batch/batch.module';
     CatalogModule,
     McpModule,
     BatchModule,
+    AgentProfilesModule,
     TypeOrmModule.forFeature([
       CallLog,
       ConfigAuditEvent,

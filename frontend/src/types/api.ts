@@ -115,6 +115,7 @@ export interface CallLog {
   cost_usd: number;
   cost_without_cache_usd?: number | null;
   latency_ms: number;
+  stream?: boolean;
   status_code: number;
   is_fallback: boolean;
   fallback_reason: string | null;
@@ -2520,6 +2521,123 @@ export type UpdateGatewayApiKeyRequest = Partial<CreateGatewayApiKeyRequest> & {
 export interface GatewayApiKeyMutationResponse extends ActionResponse {
   item: GatewayApiKey;
   key?: string;
+}
+
+// ── Agent Gateway Profiles ──
+
+export type AgentProfileConnector =
+  | "codex"
+  | "claude_code"
+  | "cherry_studio"
+  | "hermes"
+  | "openclaw"
+  | "generic_openai"
+  | "generic_anthropic";
+
+export type AgentProfileStatus = "active" | "disabled";
+
+export type AgentProfileBaseUrlMode = "openai_v1" | "anthropic_v1" | "root";
+
+export interface AgentProfileGatewayKeySummary {
+  id: string;
+  name: string;
+  key_prefix: string;
+  status: string;
+  allow_auto: boolean;
+  allow_direct: boolean;
+  allowed_models: string[];
+  namespace_id: string | null;
+  namespace_name: string | null;
+}
+
+export interface AgentProfile {
+  id: string;
+  name: string;
+  description: string | null;
+  connector: AgentProfileConnector;
+  status: AgentProfileStatus;
+  api_key_id: string | null;
+  api_key: AgentProfileGatewayKeySummary | null;
+  namespace_id: string | null;
+  namespace_name: string | null;
+  default_model: string;
+  smart_model_id: string;
+  base_url_mode: AgentProfileBaseUrlMode;
+  routing_hint: Record<string, unknown> | null;
+  mcp_server_ids: string[];
+  metadata: Record<string, unknown> | null;
+  last_generated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentProfilesResponse {
+  items: AgentProfile[];
+  connectors: AgentProfileConnector[];
+  mode: "local_only";
+}
+
+export interface CreateAgentProfileRequest {
+  name: string;
+  description?: string | null;
+  connector: AgentProfileConnector;
+  status?: AgentProfileStatus;
+  api_key_id?: string | null;
+  namespace_id?: string | null;
+  default_model?: string;
+  smart_model_id?: string;
+  base_url_mode?: AgentProfileBaseUrlMode;
+  routing_hint?: Record<string, unknown> | null;
+  mcp_server_ids?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export type UpdateAgentProfileRequest = Partial<CreateAgentProfileRequest>;
+
+export interface AgentProfileMutationResponse extends ActionResponse {
+  item: AgentProfile;
+}
+
+export interface RenderAgentProfileRequest {
+  gateway_base_url?: string;
+}
+
+export interface AgentProfileRenderedGatewayKey {
+  placeholder: string;
+  key_prefix: string | null;
+  name: string | null;
+  status: string | null;
+}
+
+export interface AgentProfileRenderedCard {
+  id: string;
+  title: string;
+  protocol: "openai" | "anthropic" | "root";
+  fields: Record<string, string | string[] | Record<string, unknown> | null>;
+  env: Record<string, string>;
+  snippet: string;
+  notes: string[];
+}
+
+export interface AgentProfileRenderedConfig {
+  connector: AgentProfileConnector;
+  connector_label: string;
+  profile_id: string;
+  profile_name: string;
+  status: AgentProfileStatus;
+  base_url: string;
+  base_url_mode: AgentProfileBaseUrlMode;
+  smart_model_id: string;
+  default_model: string;
+  gateway_api_key: AgentProfileRenderedGatewayKey;
+  secrets_redacted: true;
+  routing_hint: Record<string, unknown> | null;
+  mcp_server_ids: string[];
+  cards: AgentProfileRenderedCard[];
+}
+
+export interface AgentProfileRenderResponse extends ActionResponse {
+  item: AgentProfileRenderedConfig;
 }
 
 // ── Local Namespaces + Shadow Traffic ──

@@ -59,6 +59,9 @@ export class CallLog {
   @Column({ type: 'integer', default: 0 })
   latency_ms!: number;
 
+  @Column({ type: 'boolean', default: false })
+  stream!: boolean;
+
   @Column({ type: 'integer', default: 200 })
   status_code!: number;
 

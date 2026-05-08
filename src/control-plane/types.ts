@@ -32,6 +32,7 @@ export interface ControlPlaneTelemetryEvent {
   domain_hint: string | null;
   modality: string[];
   latency_ms: number;
+  stream?: boolean;
   status_code: number;
   input_tokens: number;
   output_tokens: number;

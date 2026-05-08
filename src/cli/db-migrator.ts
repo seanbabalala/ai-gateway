@@ -7,6 +7,7 @@ import {
   CallLog,
   ConfigAuditEvent,
   ConfigVersion,
+  AgentProfile,
   GatewayApiKey,
   LocalTeam,
   NodeStatus,
@@ -22,6 +23,7 @@ import {
 
 export type DbMigrationTableName =
   | "gateway_api_keys"
+  | "agent_profiles"
   | "local_teams"
   | "budget_rules"
   | "node_status"
@@ -45,6 +47,7 @@ interface MigrationTableDefinition {
 
 const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "gateway_api_keys", entity: GatewayApiKey },
+  { table: "agent_profiles", entity: AgentProfile },
   { table: "local_teams", entity: LocalTeam },
   { table: "budget_rules", entity: BudgetRule, generatedSequenceColumn: "id" },
   { table: "node_status", entity: NodeStatus },
@@ -211,6 +214,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
         BudgetRule,
         NodeStatus,
         GatewayApiKey,
+        AgentProfile,
         LocalTeam,
         RouteDecisionLog,
         ShadowTrafficResult,
@@ -574,6 +578,17 @@ function normalizeRow(
     });
   }
 
+  if (table === "agent_profiles") {
+    return normalizeFields(row, {
+      routing_hint: toJsonObjectOrNull,
+      mcp_server_ids: toJsonArrayOrNull,
+      metadata: toJsonObjectOrNull,
+      last_generated_at: toNullableDate,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
   if (table === "local_teams") {
     return normalizeFields(row, {
       allowed_nodes: toJsonArrayOrNull,
@@ -735,6 +750,7 @@ function normalizeRow(
     cost_usd: toNumber,
     cost_without_cache_usd: toNullableNumber,
     latency_ms: toNumber,
+    stream: toBoolean,
     status_code: toNumber,
     is_fallback: toBoolean,
     structured_output_requested: toBoolean,
@@ -809,6 +825,22 @@ function toJsonArrayOrNull(value: unknown): string[] | null {
     const parsed = JSON.parse(value) as unknown;
     return Array.isArray(parsed)
       ? parsed.filter((item): item is string => typeof item === "string")
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function toJsonObjectOrNull(value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
       : null;
   } catch {
     return null;

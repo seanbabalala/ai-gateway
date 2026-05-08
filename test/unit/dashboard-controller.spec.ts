@@ -214,6 +214,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     remove: jest.fn(),
     ...overrides.gatewayApiKeys,
   };
+  const agentProfiles = {
+    list: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
+    render: jest.fn(),
+    ...overrides.agentProfiles,
+  };
   const teams = {
     list: jest.fn().mockResolvedValue([]),
     getSummary: jest.fn(),
@@ -466,6 +474,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     new TelemetryService(),
     routingRecommendations as any,
     gatewayApiKeys as any,
+    agentProfiles as any,
     teams as any,
     shadowTraffic as any,
     cacheSavings as any,
@@ -494,6 +503,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     budgetService,
     cacheService,
     gatewayApiKeys,
+    agentProfiles,
     teams,
     shadowTraffic,
     cacheSavings,

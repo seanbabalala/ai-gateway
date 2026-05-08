@@ -55,6 +55,8 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access. Dashboard-managed keys can also restrict endpoint families (`chat_completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, `realtime`, `batch`, `models`) and modalities (`text`, `vision`, `embedding`, `rerank`, `image`, `audio`, `video`, `realtime`) before routing reaches an upstream provider.
 
+In v1.9, Agent Gateway Profiles can expose profile-scoped virtual smart models to `/v1/models`. For example, `claude-siftgate-auto` is visible only when an active Claude Code or Generic Anthropic profile is bound to the calling Gateway API key and the key allows smart routing. Requests for that virtual model map to internal `auto`; they do not force direct Claude model routing.
+
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
 
 ### Structured Output
@@ -351,6 +353,11 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
 | `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
+| `GET` | `/api/dashboard/agent-profiles` | List local Agent Gateway profiles for the Dashboard **Agents** page |
+| `POST` | `/api/dashboard/agent-profiles` | Create a local Agent Gateway profile |
+| `PUT` | `/api/dashboard/agent-profiles/:id` | Update a local Agent Gateway profile |
+| `DELETE` | `/api/dashboard/agent-profiles/:id` | Delete a local Agent Gateway profile |
+| `POST` | `/api/dashboard/agent-profiles/:id/render` | Render redacted connector setup cards for a profile |
 | `GET` | `/api/dashboard/benchmarks/report` | Read-only local benchmark report from call-log metadata |
 | `GET` | `/api/dashboard/budget` | Global, namespace, team, and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
@@ -385,6 +392,26 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/cache/stats` | Prompt-cache statistics |
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
 | `GET` | `/api/dashboard/telemetry-status` | Optional connected-gateway telemetry status |
+
+### Agent Gateway Profiles API
+
+Agent Gateway Profiles are local Dashboard-managed records for agent and chatbot clients. They support Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic connectors. See [Agent Gateway Profiles](AGENT_GATEWAY.md) for setup examples.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/dashboard/agent-profiles` | Returns `{ items, connectors, mode: "local_only" }` with profile summaries |
+| `POST` | `/api/dashboard/agent-profiles` | Creates a profile with connector, status, key binding, namespace binding, model, routing hint, and MCP metadata |
+| `PUT` | `/api/dashboard/agent-profiles/:id` | Updates a profile and records a redacted config audit event |
+| `DELETE` | `/api/dashboard/agent-profiles/:id` | Deletes a profile and records a redacted config audit event |
+| `POST` | `/api/dashboard/agent-profiles/:id/render` | Returns redacted OpenAI-compatible or Anthropic-compatible setup cards |
+
+Create/update payloads may include `name`, `description`, `connector`, `status`, `api_key_id`, `namespace_id`, `default_model`, `smart_model_id`, `base_url_mode`, `routing_hint`, `mcp_server_ids`, and `metadata`.
+
+Connector values are `codex`, `claude_code`, `cherry_studio`, `hermes`, `openclaw`, `generic_openai`, and `generic_anthropic`. Status values are `active` and `disabled`. Base URL modes are `openai_v1`, `anthropic_v1`, and `root`.
+
+Rendered configs include connector label, base URL, default model, smart model id, advisory routing hint metadata, optional MCP server ids, and setup cards. They use `gateway_api_key.placeholder` plus masked key metadata; they never return stored Gateway API key plaintext, provider API keys, raw auth headers, prompts, responses, MCP tool payloads, media bytes, or video bytes.
+
+Smart routing through `auto` or profile virtual models requires `allow_auto`. Direct model routing requires `allow_direct` and still passes allowed model/node/namespace/policy checks. Profile routing hints are advisory and never bypass Gateway API key policy. MCP access remains enforced by API key `allowed_endpoints` such as `mcp`, `mcp:<serverId>`, and `mcp:<serverId>:<toolName>`.
 
 ### MCP Gateway Preview API
 

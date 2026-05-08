@@ -218,7 +218,7 @@
   "sse.newLogsReceived_one": "收到 {{count}} 筆新記錄，點選重新整理",
   "sse.newLogsReceived_other": "收到 {{count}} 筆新記錄，點選重新整理",
   "table.cost": "成本",
-  "table.latency": "延遲",
+  "table.latency": "整體回應時間",
   "table.model": "模型",
   "table.node": "節點",
   "table.status": "狀態",
@@ -327,5 +327,10 @@
   "routeExplanation.table.missingPriceUnit": "缺少 {{unit}}",
   "routeExplanation.table.pricingStatus": "價格狀態 {{status}}",
   "routeExplanation.table.pricingUsedFrom": "價格來自 {{source}}",
-  "routeExplanation.values.stale": "可能過期"
+  "routeExplanation.values.stale": "可能過期",
+  "detail.deliveryMode": "模式",
+  "detail.totalTime": "整體回應時間",
+  "table.deliveryMode": "模式",
+  "table.streamMode.stream": "串流",
+  "table.streamMode.sync": "同步"
 }

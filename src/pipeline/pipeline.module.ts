@@ -12,6 +12,7 @@ import { ControlPlaneModule } from '../control-plane/control-plane.module';
 import { AlertsModule } from '../alerts/alerts.module';
 import { LogSinksModule } from '../log-sinks/log-sinks.module';
 import { ShadowModule } from '../shadow/shadow.module';
+import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
 import { CallLog, RouteDecisionLog } from '../database/entities';
 
 @Module({
@@ -26,6 +27,7 @@ import { CallLog, RouteDecisionLog } from '../database/entities';
     AlertsModule,
     LogSinksModule,
     ShadowModule,
+    AgentProfilesModule,
     TypeOrmModule.forFeature([CallLog, RouteDecisionLog]),
   ],
   providers: [PipelineService, EmbeddingBatchingService],

@@ -280,15 +280,23 @@ describe('HealthController', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('ModelsController', () => {
-  it('should return OpenAI-compatible model list with "auto"', () => {
+  function makeAgentProfiles(overrides: Record<string, any> = {}) {
+    return {
+      hasActiveProfileForApiKey: jest.fn().mockResolvedValue(false),
+      listVirtualModelsForApiKey: jest.fn().mockResolvedValue([]),
+      ...overrides,
+    };
+  }
+
+  it('should return OpenAI-compatible model list with "auto"', async () => {
     const config = mockConfigService({
       listModels: jest.fn().mockReturnValue([
         { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai'] },
         { id: 'claude-3-opus', node: 'claude', nodeName: 'Claude', aliases: ['claude'] },
       ]),
     });
-    const controller = new ModelsController(config);
-    const result = controller.list();
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list();
 
     expect(result.object).toBe('list');
     expect(Array.isArray(result.data)).toBe(true);
@@ -308,14 +316,14 @@ describe('ModelsController', () => {
     expect(claude!.owned_by).toBe('claude');
   });
 
-  it('should include alias entries', () => {
+  it('should include alias entries', async () => {
     const config = mockConfigService({
       listModels: jest.fn().mockReturnValue([
         { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai', 'gpt'] },
       ]),
     });
-    const controller = new ModelsController(config);
-    const result = controller.list();
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list();
 
     const aliasEntries = result.data.filter((m: any) => m.is_alias);
     expect(aliasEntries.length).toBe(2);
@@ -329,41 +337,41 @@ describe('ModelsController', () => {
     expect((gptAlias as any).resolves_to).toBe('gpt-4o');
   });
 
-  it('should deduplicate aliases across models', () => {
+  it('should deduplicate aliases across models', async () => {
     const config = mockConfigService({
       listModels: jest.fn().mockReturnValue([
         { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['shared-alias'] },
         { id: 'gpt-4o-mini', node: 'openai', nodeName: 'OpenAI', aliases: ['shared-alias'] },
       ]),
     });
-    const controller = new ModelsController(config);
-    const result = controller.list();
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list();
 
     const aliasEntries = result.data.filter((m: any) => m.is_alias);
     expect(aliasEntries.length).toBe(1);
     expect(aliasEntries[0].id).toBe('shared-alias');
   });
 
-  it('should return empty data array (besides auto) when no models configured', () => {
+  it('should return empty data array (besides auto) when no models configured', async () => {
     const config = mockConfigService({
       listModels: jest.fn().mockReturnValue([]),
     });
-    const controller = new ModelsController(config);
-    const result = controller.list();
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list();
 
     expect(result.data).toHaveLength(1); // only "auto"
     expect(result.data[0].id).toBe('auto');
   });
 
-  it('should filter model list by Dashboard-managed API key permissions', () => {
+  it('should filter model list by Dashboard-managed API key permissions', async () => {
     const config = mockConfigService({
       listModels: jest.fn().mockReturnValue([
         { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai'] },
         { id: 'claude-3-opus', node: 'claude', nodeName: 'Claude', aliases: ['claude'] },
       ]),
     });
-    const controller = new ModelsController(config);
-    const result = controller.list({
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list({
       gatewayApiKey: {
         id: 'key_123',
         name: 'production',
@@ -383,11 +391,146 @@ describe('ModelsController', () => {
     expect(result.data.map((model: any) => model.id)).toEqual(['gpt-4o', 'openai']);
   });
 
-  it('should reject model list when API key endpoint permissions exclude models', () => {
-    const config = mockConfigService({ listModels: jest.fn().mockReturnValue([]) });
-    const controller = new ModelsController(config);
+  it('does not expose direct models when an API key is smart-router only', async () => {
+    const config = mockConfigService({
+      listModels: jest.fn().mockReturnValue([
+        { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai'] },
+        { id: 'claude-3-opus', node: 'claude', nodeName: 'Claude', aliases: ['claude'] },
+      ]),
+    });
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        name: 'agent',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: false,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+        namespace_id: null,
+        namespace_name: null,
+        rate_limit_per_minute: null,
+      },
+    } as any);
 
-    expect(() => controller.list({
+    expect(result.data.map((model: any) => model.id)).toEqual(['auto']);
+    expect(result.data.some((model: any) => model.is_alias)).toBe(false);
+  });
+
+  it('hides node shortcut aliases for Agent Profile-bound API keys', async () => {
+    const config = mockConfigService({
+      listModels: jest.fn().mockReturnValue([
+        { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai', 'gpt'] },
+      ]),
+    });
+    const agentProfiles = makeAgentProfiles({
+      hasActiveProfileForApiKey: jest.fn().mockResolvedValue(true),
+    });
+    const controller = new ModelsController(config, agentProfiles as any);
+    const result = await controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        name: 'agent',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: true,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+        namespace_id: null,
+        namespace_name: null,
+        rate_limit_per_minute: null,
+      },
+    } as any);
+
+    expect(agentProfiles.hasActiveProfileForApiKey).toHaveBeenCalledWith('key_123');
+    expect(result.data.map((model: any) => model.id)).toEqual(['auto', 'gpt-4o']);
+    expect(result.data.some((model: any) => model.is_alias)).toBe(false);
+    expect(result.data.find((model: any) => model.id === 'gpt-4o')).toEqual(
+      expect.objectContaining({ aliases: [] }),
+    );
+  });
+
+  it('exposes profile virtual models only for matching active profile and API key context', async () => {
+    const config = mockConfigService({
+      listModels: jest.fn().mockReturnValue([
+        { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: [] },
+      ]),
+    });
+    const agentProfiles = makeAgentProfiles({
+      listVirtualModelsForApiKey: jest.fn().mockResolvedValue([
+        {
+          id: 'claude-siftgate-auto',
+          object: 'model',
+          created: 0,
+          owned_by: 'siftgate',
+          description: 'SiftGate Agent Profile smart routing model scoped to this Gateway API key.',
+          agent_profile_id: 'profile-1',
+          agent_profile_name: 'Claude Code',
+          agent_connector: 'claude_code',
+          agent_virtual_model: 'claude-siftgate-auto',
+          is_agent_profile_model: true,
+        },
+      ]),
+    });
+    const controller = new ModelsController(config, agentProfiles as any);
+
+    const result = await controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        name: 'agent',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: false,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+        namespace_id: null,
+        namespace_name: null,
+        rate_limit_per_minute: null,
+      },
+    } as any);
+
+    expect(agentProfiles.listVirtualModelsForApiKey).toHaveBeenCalledWith(
+      'key_123',
+      { allow_auto: true, allowed_models: [] },
+    );
+    expect(result.data).toContainEqual(expect.objectContaining({
+      id: 'claude-siftgate-auto',
+      agent_profile_id: 'profile-1',
+      is_agent_profile_model: true,
+    }));
+  });
+
+  it('does not expose disabled profile virtual models returned as empty by the service', async () => {
+    const config = mockConfigService({ listModels: jest.fn().mockReturnValue([]) });
+    const agentProfiles = makeAgentProfiles();
+    const controller = new ModelsController(config, agentProfiles as any);
+    const result = await controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        allow_auto: true,
+        allow_direct: false,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+      },
+    } as any);
+
+    expect(result.data.map((model: any) => model.id)).not.toContain('claude-siftgate-auto');
+  });
+
+  it('should reject model list when API key endpoint permissions exclude models', async () => {
+    const config = mockConfigService({ listModels: jest.fn().mockReturnValue([]) });
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+
+    await expect(controller.list({
       gatewayApiKey: {
         allow_auto: true,
         allow_direct: true,
@@ -396,6 +539,6 @@ describe('ModelsController', () => {
         allowed_endpoints: ['chat_completions'],
         allowed_modalities: [],
       },
-    } as any)).toThrow(ForbiddenException);
+    } as any)).rejects.toThrow(ForbiddenException);
   });
 });
