@@ -122,7 +122,7 @@ const connectorLogos: Record<AgentProfileConnector, string> = {
   codex: '/agents/codex.svg',
   claude_code: '/agents/claude-code.svg',
   cherry_studio: '/agents/cherry-studio.png',
-  hermes: '/agents/hermes.svg',
+  hermes: '/agents/hermes.png',
   openclaw: '/agents/openclaw.svg',
   generic_openai: '/agents/generic-openai.svg',
   generic_anthropic: '/agents/generic-anthropic.svg',
@@ -132,10 +132,20 @@ const connectorLogoClassNames: Record<AgentProfileConnector, string> = {
   codex: 'bg-white text-zinc-950',
   claude_code: 'bg-[#f4efe6] text-[#181818]',
   cherry_studio: 'bg-[#ff5a5f] text-white',
-  hermes: 'bg-[#191512] text-amber-300',
+  hermes: 'bg-white text-zinc-950',
   openclaw: 'bg-[#fff1f2] text-red-600',
   generic_openai: 'bg-white text-zinc-950',
   generic_anthropic: 'bg-[#f4efe6] text-[#181818]',
+}
+
+const connectorLogoImageClassNames: Record<AgentProfileConnector, string> = {
+  codex: 'h-8 w-8 object-contain',
+  claude_code: 'h-8 w-8 object-contain',
+  cherry_studio: 'h-full w-full object-cover',
+  hermes: 'h-full w-full object-cover',
+  openclaw: 'h-9 w-9 object-contain',
+  generic_openai: 'h-8 w-8 object-contain',
+  generic_anthropic: 'h-8 w-8 object-contain',
 }
 
 const fieldLabelKeys: Record<string, string> = {
@@ -384,14 +394,14 @@ function ConnectorLogo({ connector, label }: { connector: AgentProfileConnector;
   return (
     <span
       className={cn(
-        'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10',
+        'flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10',
         connectorLogoClassNames[connector],
       )}
     >
       <img
         src={connectorLogos[connector]}
         alt={label}
-        className="h-7 w-7 object-contain"
+        className={connectorLogoImageClassNames[connector]}
         loading="lazy"
       />
     </span>
@@ -863,21 +873,21 @@ function ConnectorPicker({
               onClick={() => onChange(connector)}
               aria-pressed={selected}
               className={cn(
-                'group min-w-0 rounded-xl border bg-[var(--inset-bg)] p-3 text-left transition-all',
+                'group min-h-[132px] min-w-0 rounded-xl border bg-[var(--inset-bg)] p-3 text-left transition-all',
                 selected
                   ? 'border-[var(--accent)] shadow-[0_16px_38px_rgba(5,46,36,0.10)]'
                   : 'border-[var(--border)] hover:-translate-y-0.5 hover:bg-[var(--background-secondary)]',
               )}
             >
-              <div className="flex min-w-0 items-start gap-3">
-                <ConnectorLogo connector={connector} label={label} />
-                <span className="min-w-0">
-                  <span className="block break-words text-[13px] font-bold text-[var(--foreground)]">
+              <div className="grid min-w-0 gap-2">
+                <span className="flex min-w-0 items-center gap-3">
+                  <ConnectorLogo connector={connector} label={label} />
+                  <span className="block min-w-0 break-words text-[13px] font-bold leading-5 text-[var(--foreground)]">
                     {label}
                   </span>
-                  <span className="mt-1 block break-words text-[12px] leading-5 text-[var(--foreground-dim)]">
-                    {t(connectorDescriptionKeys[connector])}
-                  </span>
+                </span>
+                <span className="block break-words pl-[60px] text-[12px] leading-5 text-[var(--foreground-dim)]">
+                  {t(connectorDescriptionKeys[connector])}
                 </span>
               </div>
             </button>

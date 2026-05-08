@@ -111,7 +111,7 @@ const connectorLogoFiles = {
   codex: '/agents/codex.svg',
   claude_code: '/agents/claude-code.svg',
   cherry_studio: '/agents/cherry-studio.png',
-  hermes: '/agents/hermes.svg',
+  hermes: '/agents/hermes.png',
   openclaw: '/agents/openclaw.svg',
   generic_openai: '/agents/generic-openai.svg',
   generic_anthropic: '/agents/generic-anthropic.svg',
