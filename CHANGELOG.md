@@ -15,11 +15,15 @@
 - Added profile-scoped smart virtual models, including `claude-siftgate-auto`, so Claude-style clients can request a connector-safe model that maps to internal smart routing instead of direct Claude model routing.
 - Added secret-safe rendered configs that use Gateway API key placeholders and masked metadata only; provider keys remain in Nodes, env vars, or secret references and stored Gateway API key plaintext is never exposed.
 - Added full seven-language Dashboard localization for Agent Profiles across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`, plus a static Agent Profiles localization check in the frontend test chain.
+- Added real connector identity assets for the Agent Profiles picker, including Codex, Claude Code, Cherry Studio, Hermes Agent, OpenClaw, Generic OpenAI, and Generic Anthropic.
 
 ### Changed
 
 - Agent Profile traffic reuses existing SiftGate governance and observability: Gateway API keys, namespaces, budgets, rate limits, endpoint/model/node/modality policy, metadata-only logs, sessions, route explanations, and MCP endpoint permissions all continue to apply.
 - `/v1/models` now exposes Agent Profile virtual models only in the matching active profile and Gateway API key context.
+- Smart-router-only Agent Profile model listings now avoid exposing direct/provider model clutter to clients such as Cherry Studio, while direct routing in the Dashboard can select from configured node models instead of relying on free-text model entry.
+- Dashboard Logs now distinguishes streaming vs sync delivery and labels request duration as total response time, reducing confusion when streamed answers take longer because more content is returned.
+- The Agent Profiles edit dialog layout was tightened for CJK locales, with aligned connector logos, stable connector card rows, and top-aligned API key/status/namespace fields.
 - Release metadata is aligned to v1.9.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, and release-version sync coverage.
 
 ## 1.8.5 - 2026-05-08

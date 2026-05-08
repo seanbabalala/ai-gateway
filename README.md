@@ -56,6 +56,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 - Connector-safe smart routing: OpenAI-compatible agents can use `model=auto`; Claude-style agents can use the profile-scoped `claude-siftgate-auto` virtual model, which maps to internal smart routing instead of direct Claude routing.
 - Gateway key boundary: agent and chatbot configs use only Dashboard-generated Gateway API keys. Provider API keys stay in Nodes, env vars, or secret references, and rendered snippets expose placeholders or masked metadata only.
 - Seven-language Dashboard support: the Agent Profiles page, navigation, forms, render panel, connector labels, privacy copy, and error states are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Agent client UX polish: Cherry Studio smart-router-only setup now avoids leaking direct/provider model clutter into model pickers, direct routing uses model selectors instead of free-text-only entry, connector cards use real project logos, and Logs label total response time plus streaming/sync mode separately so long streamed replies are not mistaken for upstream latency.
 - Policy preservation: `allow_auto`, `allow_direct`, namespace bindings, budgets, rate limits, endpoint/model/node/modality restrictions, metadata-only logs, sessions, route explanations, and MCP `allowed_endpoints` still apply to all Agent Profile traffic.
 
 ## v1.8 Highlights
