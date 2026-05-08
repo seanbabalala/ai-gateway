@@ -29,6 +29,7 @@ import {
   Sse,
   Logger,
   Res,
+  Req,
   MessageEvent,
   ParseIntPipe,
   DefaultValuePipe,
@@ -48,7 +49,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { Response } from "express";
+import { Request, Response } from "express";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, FindOptionsWhere, In, Repository } from "typeorm";
 import { Observable, filter, interval, map, merge } from "rxjs";
@@ -73,6 +74,13 @@ import type { RouteDecisionTrace } from "../routing/route-decision-trace";
 import { LogEventBus } from "./log-event-bus";
 import { CreateNodeDto, UpdateNodeDto, TestNodeDto } from "./dto/node.dto";
 import { DashboardGuard } from "../auth/dashboard.guard";
+import { DashboardRbacGuard } from "../auth/dashboard-rbac.guard";
+import { RequireDashboardRole } from "../auth/dashboard-rbac";
+import { WorkspaceMembershipService } from "../auth/workspace-membership.service";
+import type {
+  WorkspaceMembershipRole,
+  WorkspaceMembershipStatus,
+} from "../database/entities";
 import { PromptCacheService } from "../cache/prompt-cache.service";
 import { TelemetryService } from "../telemetry/telemetry.service";
 import { RoutingRecommendationService } from "../routing/routing-recommendation.service";
@@ -141,6 +149,8 @@ import {
   GatewayApiKeyCreatedResponseDto,
   GatewayApiKeyListResponseDto,
   GatewayApiKeyMutationResponseDto,
+  WorkspaceMemberListResponseDto,
+  WorkspaceMemberMutationResponseDto,
   SanitizedConfigResponseDto,
   WorkspaceStateResponseDto,
 } from "../openapi/openapi.dto";
@@ -1503,7 +1513,7 @@ function baseUrlMatchers(baseUrl: string): string[] {
 }
 
 @Controller("api/dashboard")
-@UseGuards(DashboardGuard)
+@UseGuards(DashboardGuard, DashboardRbacGuard)
 @ApiTags("Dashboard")
 @ApiBearerAuth("dashboardSession")
 @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
@@ -1555,6 +1565,9 @@ export class DashboardController {
     @Optional()
     @Inject(McpGatewayService)
     private readonly mcp?: McpGatewayService,
+    @Optional()
+    @Inject(WorkspaceMembershipService)
+    private readonly memberships?: WorkspaceMembershipService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -1563,11 +1576,28 @@ export class DashboardController {
   @Get("workspaces")
   @ApiOperation({ summary: "List current organization and Dashboard workspaces" })
   @ApiOkResponse({ type: WorkspaceStateResponseDto })
-  async getWorkspaces() {
-    return this.workspaces.getState(this.workspaceContext.currentWorkspaceId());
+  async getWorkspaces(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+      dashboardRole?: WorkspaceMembershipRole;
+    },
+  ) {
+    const state = await this.workspaces.getState(
+      this.workspaceContext.currentWorkspaceId(),
+    );
+    return {
+      ...state,
+      access: {
+        user_id: req.dashboardUserId || "dashboard",
+        role: req.dashboardRole || "viewer",
+        permissions: this.dashboardPermissions(req.dashboardRole || "viewer"),
+      },
+    };
   }
 
   @Post("workspaces/switch")
+  @RequireDashboardRole("viewer")
   @ApiOperation({ summary: "Validate and switch the active Dashboard workspace" })
   @ApiBody({
     schema: {
@@ -1580,13 +1610,98 @@ export class DashboardController {
     description:
       "Validated workspace state. The Dashboard persists the selected workspace client-side.",
   })
-  async switchWorkspace(@Body() body: { workspace_id?: string }) {
+  async switchWorkspace(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+      dashboardRole?: WorkspaceMembershipRole;
+    },
+    @Body() body: { workspace_id?: string },
+  ) {
     const workspace = await this.workspaces.requireWorkspace(body?.workspace_id);
+    const state = await this.workspaces.getState(workspace.id);
     return {
       success: true,
       active_workspace: workspace,
-      state: await this.workspaces.getState(workspace.id),
+      state: {
+        ...state,
+        access: {
+          user_id: req.dashboardUserId || "dashboard",
+          role: req.dashboardRole || "viewer",
+          permissions: this.dashboardPermissions(req.dashboardRole || "viewer"),
+        },
+      },
     };
+  }
+
+  private dashboardPermissions(role: WorkspaceMembershipRole): {
+    can_read: boolean;
+    can_operate: boolean;
+    can_admin: boolean;
+  } {
+    return {
+      can_read: true,
+      can_operate: role === "operator" || role === "admin",
+      can_admin: role === "admin",
+    };
+  }
+
+  @Get("members")
+  @RequireDashboardRole("admin")
+  @ApiTags("Workspace Members")
+  @ApiOperation({ summary: "List workspace members and roles" })
+  @ApiOkResponse({ type: WorkspaceMemberListResponseDto })
+  async getWorkspaceMembers() {
+    return {
+      items: await this.workspaceMemberships().list(
+        this.workspaceContext.currentWorkspaceId(),
+      ),
+      roles: ["admin", "operator", "viewer"],
+      mode: "local_dashboard",
+    };
+  }
+
+  @Put("members/:id")
+  @RequireDashboardRole("admin")
+  @ApiTags("Workspace Members")
+  @ApiOperation({ summary: "Update a workspace member role or status" })
+  @ApiParam({ name: "id", example: "membership-default-dashboard-admin" })
+  @ApiOkResponse({ type: WorkspaceMemberMutationResponseDto })
+  async updateWorkspaceMember(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      role?: WorkspaceMembershipRole;
+      status?: WorkspaceMembershipStatus;
+    },
+  ) {
+    const updated = await this.workspaceMemberships().update(id, body || {});
+    await this.configAudit.recordManagementEvent({
+      action: "workspace_member.update",
+      target: `workspace_member:${id}`,
+      actor: { type: "dashboard", id: "dashboard" },
+      afterSummary: {
+        user_id: updated.user_id,
+        role: updated.role,
+        status: updated.status,
+        workspace_id: updated.workspace_id,
+      },
+    });
+    return {
+      success: true,
+      message: "Workspace member updated",
+      item: updated,
+    };
+  }
+
+  private workspaceMemberships(): WorkspaceMembershipService {
+    if (!this.memberships) {
+      throw new HttpException(
+        { success: false, message: "Workspace membership service unavailable" },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return this.memberships;
   }
 
   /** Delete logs older than log_retention_days (default: 30) */
@@ -3352,6 +3467,7 @@ export class DashboardController {
   }
 
   @Post("teams")
+  @RequireDashboardRole("admin")
   @ApiTags("Teams")
   @ApiOperation({ summary: "Create a local OSS team policy" })
   @ApiBody({ type: CreateTeamDto })
@@ -3372,6 +3488,7 @@ export class DashboardController {
   }
 
   @Put("teams/:id")
+  @RequireDashboardRole("admin")
   @ApiTags("Teams")
   @ApiOperation({ summary: "Update a local OSS team policy" })
   @ApiParam({ name: "id", example: "team_01h..." })
@@ -3396,6 +3513,7 @@ export class DashboardController {
   }
 
   @Delete("teams/:id")
+  @RequireDashboardRole("admin")
   @ApiTags("Teams")
   @ApiOperation({ summary: "Delete a local OSS team policy" })
   @ApiParam({ name: "id", example: "team_01h..." })
@@ -3425,6 +3543,7 @@ export class DashboardController {
   }
 
   @Post("api-keys")
+  @RequireDashboardRole("admin")
   @ApiTags("API Keys")
   @ApiOperation({ summary: "Create a Gateway API key" })
   @ApiBody({ type: CreateGatewayApiKeyDto })
@@ -3446,6 +3565,7 @@ export class DashboardController {
   }
 
   @Put("api-keys/:id")
+  @RequireDashboardRole("admin")
   @ApiTags("API Keys")
   @ApiOperation({ summary: "Update a Gateway API key policy" })
   @ApiParam({ name: "id", example: "key_01h..." })
@@ -3473,6 +3593,7 @@ export class DashboardController {
   }
 
   @Post("api-keys/:id/rotate")
+  @RequireDashboardRole("admin")
   @ApiTags("API Keys")
   @ApiOperation({ summary: "Rotate a Gateway API key secret" })
   @ApiParam({ name: "id", example: "key_01h..." })
@@ -3496,6 +3617,7 @@ export class DashboardController {
   }
 
   @Delete("api-keys/:id")
+  @RequireDashboardRole("admin")
   @ApiTags("API Keys")
   @ApiOperation({ summary: "Delete a Gateway API key" })
   @ApiParam({ name: "id", example: "key_01h..." })
@@ -3534,6 +3656,7 @@ export class DashboardController {
   }
 
   @Post("agent-profiles")
+  @RequireDashboardRole("operator")
   @ApiTags("Agent Profiles")
   @ApiOperation({ summary: "Create a local Agent Gateway profile" })
   @ApiBody({ type: CreateAgentProfileDto })
@@ -3554,6 +3677,7 @@ export class DashboardController {
   }
 
   @Put("agent-profiles/:id")
+  @RequireDashboardRole("operator")
   @ApiTags("Agent Profiles")
   @ApiOperation({ summary: "Update a local Agent Gateway profile" })
   @ApiParam({ name: "id", example: "profile_01h..." })
@@ -3583,6 +3707,7 @@ export class DashboardController {
   }
 
   @Delete("agent-profiles/:id")
+  @RequireDashboardRole("admin")
   @ApiTags("Agent Profiles")
   @ApiOperation({ summary: "Delete a local Agent Gateway profile" })
   @ApiParam({ name: "id", example: "profile_01h..." })
@@ -3602,6 +3727,7 @@ export class DashboardController {
   }
 
   @Post("agent-profiles/:id/render")
+  @RequireDashboardRole("operator")
   @ApiTags("Agent Profiles")
   @ApiOperation({
     summary: "Render redacted connector configuration for an Agent Gateway profile",
@@ -3740,6 +3866,7 @@ export class DashboardController {
   }
 
   @Post("budget/:id/reset")
+  @RequireDashboardRole("admin")
   @ApiOperation({ summary: "Reset a budget rule counter" })
   @ApiParam({ name: "id", example: 1 })
   @ApiOkResponse({ type: ActionResponseDto })
@@ -3760,6 +3887,7 @@ export class DashboardController {
   }
 
   @Post("cache/clear")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Clear prompt cache" })
   @ApiOkResponse({ type: ActionResponseDto })
   clearCache() {
@@ -3860,6 +3988,7 @@ export class DashboardController {
   }
 
   @Post("config/reload")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Reload gateway.config.yaml from disk" })
   @ApiOkResponse({ type: ActionResponseDto })
   async reloadConfig() {
@@ -3918,6 +4047,7 @@ export class DashboardController {
   }
 
   @Post("config/versions/:id/rollback")
+  @RequireDashboardRole("admin")
   @ApiOperation({
     summary: "Rollback gateway.config.yaml to a stored local version",
   })
@@ -3991,6 +4121,7 @@ export class DashboardController {
 
   /** Recommend tier suitability given a set of capabilities */
   @Post("capabilities/recommend-tiers")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Recommend tiers for a capability set" })
   @ApiBody({
     schema: {
@@ -4109,6 +4240,7 @@ export class DashboardController {
 
   /** Recommend full routing config based on all nodes' capabilities */
   @Post("routing/recommend")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Recommend routing config from node capabilities" })
   @ApiOkResponse({ description: "Suggested routing configuration." })
   recommendRouting() {
@@ -4131,6 +4263,7 @@ export class DashboardController {
 
   /** Update routing configuration (tiers, scoring, domain preferences) */
   @Put("routing")
+  @RequireDashboardRole("operator")
   @ApiOperation({
     summary: "Update routing tiers, scoring thresholds, and domain preferences",
   })
@@ -4434,6 +4567,7 @@ export class DashboardController {
 
   /** Test a new node before saving (provide all params) */
   @Post("nodes/test")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Test a node configuration before saving it" })
   @ApiBody({ type: TestNodeDto })
   @ApiOkResponse({
@@ -4454,6 +4588,7 @@ export class DashboardController {
 
   /** Test an existing node using its saved config (no need to re-enter API key) */
   @Post("nodes/:id/test")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Test an existing saved node" })
   @ApiParam({ name: "id", example: "openai" })
   @ApiOkResponse({
@@ -4479,6 +4614,7 @@ export class DashboardController {
   }
 
   @Post("nodes/:id/reset")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Reset node or node:model circuit breaker state" })
   @ApiParam({ name: "id", example: "openai" })
   @ApiQuery({ name: "model", required: false, example: "gpt-4o" })
@@ -4739,6 +4875,7 @@ export class DashboardController {
   // ── Node CRUD ──────────────────────────────────────────
 
   @Post("nodes")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Create a provider node" })
   @ApiBody({ type: CreateNodeDto })
   @ApiOkResponse({ type: ActionResponseDto })
@@ -4822,6 +4959,7 @@ export class DashboardController {
   }
 
   @Put("nodes/:id")
+  @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Update a provider node" })
   @ApiParam({ name: "id", example: "openai" })
   @ApiBody({ type: UpdateNodeDto })
@@ -4863,6 +5001,7 @@ export class DashboardController {
   }
 
   @Delete("nodes/:id")
+  @RequireDashboardRole("admin")
   @ApiOperation({ summary: "Delete a provider node" })
   @ApiParam({ name: "id", example: "openai" })
   @ApiOkResponse({ type: ActionResponseDto })

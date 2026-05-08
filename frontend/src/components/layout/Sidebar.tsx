@@ -23,6 +23,7 @@ import {
   Scale,
   ChevronDown,
   Bot,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -58,6 +59,7 @@ const navGroups = [
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
       { to: '/agents', icon: Bot, labelKey: 'nav.agents' },
+      { to: '/members', icon: ShieldCheck, labelKey: 'nav.members' },
       { to: '/config-audit', icon: FileClock, labelKey: 'nav.configAudit' },
     ],
   },

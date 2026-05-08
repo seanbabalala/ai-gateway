@@ -99,6 +99,70 @@ export class WorkspaceStateResponseDto {
 
   @ApiProperty({ type: [WorkspaceSummaryDto] })
   workspaces!: WorkspaceSummaryDto[];
+
+  @ApiPropertyOptional({
+    description: 'Current Dashboard user role and coarse-grained workspace permissions.',
+    example: {
+      user_id: 'dashboard',
+      role: 'admin',
+      permissions: {
+        can_read: true,
+        can_operate: true,
+        can_admin: true,
+      },
+    },
+  })
+  access?: {
+    user_id: string;
+    role: 'admin' | 'operator' | 'viewer';
+    permissions: {
+      can_read: boolean;
+      can_operate: boolean;
+      can_admin: boolean;
+    };
+  };
+}
+
+export class WorkspaceMemberDto {
+  @ApiProperty({ example: 'membership-default-dashboard-admin' })
+  id!: string;
+
+  @ApiProperty({ example: 'dashboard' })
+  user_id!: string;
+
+  @ApiProperty({ example: 'default-org' })
+  organization_id!: string;
+
+  @ApiProperty({ example: 'default-workspace' })
+  workspace_id!: string;
+
+  @ApiProperty({ enum: ['admin', 'operator', 'viewer'], example: 'admin' })
+  role!: string;
+
+  @ApiProperty({ enum: ['active', 'disabled'], example: 'active' })
+  status!: string;
+
+  @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
+  created_at!: string;
+
+  @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
+  updated_at!: string;
+}
+
+export class WorkspaceMemberListResponseDto {
+  @ApiProperty({ type: [WorkspaceMemberDto] })
+  items!: WorkspaceMemberDto[];
+
+  @ApiProperty({ type: [String], example: ['admin', 'operator', 'viewer'] })
+  roles!: string[];
+
+  @ApiProperty({ example: 'local_dashboard' })
+  mode!: string;
+}
+
+export class WorkspaceMemberMutationResponseDto extends ActionResponseDto {
+  @ApiProperty({ type: WorkspaceMemberDto })
+  item!: WorkspaceMemberDto;
 }
 
 export class ChatCompletionsRequestDto {

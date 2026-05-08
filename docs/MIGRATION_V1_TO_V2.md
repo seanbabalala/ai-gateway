@@ -83,8 +83,12 @@ The Dashboard stores the selected workspace client-side and sends
 authenticated by a Gateway API key uses that key's workspace; legacy keys with
 no stored workspace id resolve to `default-workspace`.
 
-RBAC, OIDC, invitations, organization billing, and full multi-workspace
-provisioning are intentionally out of scope for alpha.1.
+v2.0.0-alpha.2 adds local Dashboard RBAC on top of the alpha.1 workspace
+foundation. During startup, the migration bootstrap ensures the local
+Dashboard identity `dashboard` is an active Admin in `default-workspace`.
+Viewer and Operator memberships can then be managed through the local
+Dashboard member APIs. SSO/OIDC, invitations, organization billing, and full
+multi-workspace provisioning remain intentionally out of scope.
 
 ## Resource Assignment
 
@@ -195,3 +199,7 @@ npm run build
 
 v2.0.0-alpha.1 keeps the v1.9.2 dry-run contract working and uses this mapping
 as the compatibility baseline for later RBAC and production-runtime prompts.
+v2.0.0-alpha.2 keeps that mapping intact and adds only local membership
+metadata; it does not migrate prompts, responses, raw provider headers,
+provider keys, media bytes, tool payloads, hidden reasoning text, or resolved
+secrets.

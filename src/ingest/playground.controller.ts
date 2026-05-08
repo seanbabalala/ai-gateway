@@ -35,6 +35,8 @@ import { ConfigService } from '../config/config.service';
 import type { NamespaceConfig } from '../config/gateway.config';
 import { CallLog, RouteDecisionLog } from '../database/entities';
 import { DashboardGuard } from '../auth/dashboard.guard';
+import { DashboardRbacGuard } from '../auth/dashboard-rbac.guard';
+import { RequireDashboardRole } from '../auth/dashboard-rbac';
 import {
   attachGatewayApiKeyMetadata,
 } from '../auth/gateway-api-key-metadata';
@@ -115,7 +117,7 @@ const TEXT_ENDPOINTS = new Set<PlaygroundEndpoint>([
 const DEFAULT_MODEL = 'auto';
 
 @Controller('api/dashboard/playground')
-@UseGuards(DashboardGuard)
+@UseGuards(DashboardGuard, DashboardRbacGuard)
 @ApiTags('Dashboard')
 @ApiBearerAuth('dashboardSession')
 @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
@@ -140,6 +142,7 @@ export class PlaygroundController {
   ) {}
 
   @Post('run')
+  @RequireDashboardRole('operator')
   @ApiOperation({
     summary: 'Run a privacy-safe Dashboard Playground probe',
     description:

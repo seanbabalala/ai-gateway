@@ -6,6 +6,28 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-alpha.2 - 2026-05-09
+
+### Added
+
+- Added local Dashboard RBAC for workspace governance with `admin`, `operator`, and `viewer` roles backed by a new `workspace_memberships` table.
+- Bootstrapped the existing local Dashboard identity as an active Admin in `default-workspace` during fresh installs and v1.9-to-v2 upgrades.
+- Added centralized Dashboard permission helpers, decorators, and guards so role checks are shared across Dashboard controllers instead of being implemented ad hoc.
+- Added Dashboard member APIs: `GET /api/dashboard/members` and `PUT /api/dashboard/members/:id` for Admin-managed local role updates.
+- Added a Dashboard Members page, role badges in the header, and permission-aware disabled controls/tooltips for high-risk management actions.
+- Added seven-locale RBAC and member-management copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+
+### Changed
+
+- Dashboard read APIs default to Viewer access, operational writes require Operator where safe, and Admin-only actions cover member management, Gateway API keys, budgets, teams, workspace settings, destructive operations, and config rollback.
+- Added a guardrail that prevents disabling or demoting the last active workspace Admin.
+- Updated release metadata to v2.0.0-alpha.2 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- SSO/OIDC, custom permission expressions, invitations, and cloud/enterprise identity features remain out of scope for alpha.2.
+- Provider secrets, raw headers, prompts, responses, media bytes, tool payloads, hidden reasoning text, and resolved secrets remain excluded from Dashboard role responses and member APIs.
+
 ## 2.0.0-alpha.1 - 2026-05-08
 
 ### Added

@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +46,7 @@ import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNodes } from '@/hooks/use-nodes'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { useTeams } from '@/hooks/use-teams'
+import { hasWorkspaceRole, useWorkspaces } from '@/hooks/use-workspaces'
 import {
   useCreateGatewayApiKey,
   useCreateTeam,
@@ -1138,6 +1140,8 @@ export function ApiKeysPage() {
   const createTeam = useCreateTeam()
   const updateTeam = useUpdateTeam()
   const deleteTeam = useDeleteTeam()
+  const { data: workspaceState } = useWorkspaces()
+  const canAdmin = hasWorkspaceRole(workspaceState?.access, 'admin')
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<GatewayApiKey | null>(null)
   const [teamCreateOpen, setTeamCreateOpen] = useState(false)
@@ -1179,14 +1183,22 @@ export function ApiKeysPage() {
         icon={KeyRound}
       >
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setTeamCreateOpen(true)}>
-            <Users className="h-4 w-4" />
-            {t('teams.actions.newTeam')}
-          </Button>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            {t('actions.newKey')}
-          </Button>
+          <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+            <Button
+              variant="outline"
+              onClick={() => setTeamCreateOpen(true)}
+              disabled={!canAdmin}
+            >
+              <Users className="h-4 w-4" />
+              {t('teams.actions.newTeam')}
+            </Button>
+          </PermissionTooltip>
+          <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+            <Button onClick={() => setCreateOpen(true)} disabled={!canAdmin}>
+              <Plus className="h-4 w-4" />
+              {t('actions.newKey')}
+            </Button>
+          </PermissionTooltip>
         </div>
       </PageHeader>
 
@@ -1238,10 +1250,17 @@ export function ApiKeysPage() {
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <CardTitle>{t('teams.table.title')}</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => setTeamCreateOpen(true)}>
-              <Plus className="h-4 w-4" />
-              {t('teams.actions.createTeam')}
-            </Button>
+            <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTeamCreateOpen(true)}
+                disabled={!canAdmin}
+              >
+                <Plus className="h-4 w-4" />
+                {t('teams.actions.createTeam')}
+              </Button>
+            </PermissionTooltip>
           </div>
         </CardHeader>
         <CardContent>
@@ -1251,10 +1270,12 @@ export function ApiKeysPage() {
               title={t('teams.empty.title')}
               description={t('teams.empty.description')}
               action={
-                <Button onClick={() => setTeamCreateOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  {t('teams.actions.createTeam')}
-                </Button>
+                <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+                  <Button onClick={() => setTeamCreateOpen(true)} disabled={!canAdmin}>
+                    <Plus className="h-4 w-4" />
+                    {t('teams.actions.createTeam')}
+                  </Button>
+                </PermissionTooltip>
               }
             />
           ) : (
@@ -1315,13 +1336,20 @@ export function ApiKeysPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => setEditingTeam(team)} title={t('teams.actions.editTeam')}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditingTeam(team)}
+                          title={t('teams.actions.editTeam')}
+                          disabled={!canAdmin}
+                        >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
                           title={team.status === 'active' ? t('teams.actions.disableTeam') : t('teams.actions.enableTeam')}
+                          disabled={!canAdmin}
                           onClick={() =>
                             updateTeam.mutate({
                               id: team.id,
@@ -1335,6 +1363,7 @@ export function ApiKeysPage() {
                           variant="ghost"
                           size="icon"
                           title={t('teams.actions.deleteTeam')}
+                          disabled={!canAdmin}
                           onClick={() => {
                             if (confirm(t('teams.confirm.deleteTeam', { name: team.name }))) {
                               deleteTeam.mutate(team.id)
@@ -1366,10 +1395,12 @@ export function ApiKeysPage() {
               title={t('empty.title')}
               description={t('empty.description')}
               action={
-                <Button onClick={() => setCreateOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  {t('actions.createKey')}
-                </Button>
+                <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+                  <Button onClick={() => setCreateOpen(true)} disabled={!canAdmin}>
+                    <Plus className="h-4 w-4" />
+                    {t('actions.createKey')}
+                  </Button>
+                </PermissionTooltip>
               }
             />
           ) : (
@@ -1449,13 +1480,20 @@ export function ApiKeysPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => setEditing(key)} title={t('actions.editKey')}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditing(key)}
+                          title={t('actions.editKey')}
+                          disabled={!canAdmin}
+                        >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
                           title={key.status === 'active' ? t('actions.disableKey') : t('actions.enableKey')}
+                          disabled={!canAdmin}
                           onClick={() =>
                             updateKey.mutate({
                               id: key.id,
@@ -1469,6 +1507,7 @@ export function ApiKeysPage() {
                           variant="ghost"
                           size="icon"
                           title={t('actions.rotateKey')}
+                          disabled={!canAdmin}
                           onClick={() => rotateKey.mutate(key.id, { onSuccess: setCreated })}
                         >
                           <RefreshCw className="h-4 w-4" />
@@ -1477,6 +1516,7 @@ export function ApiKeysPage() {
                           variant="ghost"
                           size="icon"
                           title={t('actions.deleteKey')}
+                          disabled={!canAdmin}
                           onClick={() => {
                             if (confirm(t('confirm.deleteKey', { name: key.name }))) {
                               deleteKey.mutate(key.id)

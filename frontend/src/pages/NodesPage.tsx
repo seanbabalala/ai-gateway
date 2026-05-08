@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import {
   CatalogCoveragePills,
   CatalogTrustPills,
@@ -49,6 +50,7 @@ import { DeleteNodeDialog } from '@/components/nodes/DeleteNodeDialog'
 import { QuickModelReference } from '@/components/nodes/QuickModelReference'
 import { useNodes } from '@/hooks/use-nodes'
 import { useProviderCatalogProviders } from '@/hooks/use-provider-catalog'
+import { hasWorkspaceRole, useWorkspaces } from '@/hooks/use-workspaces'
 import {
   useResetCircuit,
   useReloadConfig,
@@ -259,6 +261,9 @@ export function NodesPage() {
   const updateNode = useUpdateNode()
   const deleteNode = useDeleteNode()
   const testCompatibility = useTestExistingNode()
+  const { data: workspaceState } = useWorkspaces()
+  const canOperate = hasWorkspaceRole(workspaceState?.access, 'operator')
+  const canAdmin = hasWorkspaceRole(workspaceState?.access, 'admin')
 
   // Modal state
   const [formOpen, setFormOpen] = useState(false)
@@ -354,21 +359,25 @@ export function NodesPage() {
           icon={Server}
         />
         <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => reloadConfig.mutate()}
-            disabled={reloadConfig.isPending}
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${reloadConfig.isPending ? 'animate-spin' : ''}`}
-            />
-            {reloadConfig.isPending ? t('actions.reloadingConfig') : t('actions.reloadConfig')}
-          </Button>
-          <Button size="sm" onClick={handleOpenCreate}>
-            <Plus className="h-3.5 w-3.5" />
-            {t('actions.addUpstream')}
-          </Button>
+          <PermissionTooltip allowed={canOperate} requiredRole="operator">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reloadConfig.mutate()}
+              disabled={reloadConfig.isPending || !canOperate}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${reloadConfig.isPending ? 'animate-spin' : ''}`}
+              />
+              {reloadConfig.isPending ? t('actions.reloadingConfig') : t('actions.reloadConfig')}
+            </Button>
+          </PermissionTooltip>
+          <PermissionTooltip allowed={canOperate} requiredRole="operator">
+            <Button size="sm" onClick={handleOpenCreate} disabled={!canOperate}>
+              <Plus className="h-3.5 w-3.5" />
+              {t('actions.addUpstream')}
+            </Button>
+          </PermissionTooltip>
         </div>
       </div>
 
@@ -524,10 +533,16 @@ export function NodesPage() {
                 <span className="text-[10px] font-semibold text-[var(--foreground-dim)]">
                   {t('nodes.sections.onboarding.addHint')}
                 </span>
-                <Button size="sm" onClick={() => handleOpenCreateFromCatalog(provider.id)}>
-                  <Plus className="h-3.5 w-3.5" />
-                  {t('actions.addUpstream')}
-                </Button>
+                <PermissionTooltip allowed={canOperate} requiredRole="operator">
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenCreateFromCatalog(provider.id)}
+                    disabled={!canOperate}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t('actions.addUpstream')}
+                  </Button>
+                </PermissionTooltip>
               </div>
             </div>
           ))}
@@ -569,10 +584,12 @@ export function NodesPage() {
           title={t('empty.title')}
           description={t('empty.description')}
           action={
-            <Button size="sm" onClick={handleOpenCreate}>
-              <Plus className="h-3.5 w-3.5" />
-              {t('actions.addUpstream')}
-            </Button>
+            <PermissionTooltip allowed={canOperate} requiredRole="operator">
+              <Button size="sm" onClick={handleOpenCreate} disabled={!canOperate}>
+                <Plus className="h-3.5 w-3.5" />
+                {t('actions.addUpstream')}
+              </Button>
+            </PermissionTooltip>
           }
         />
       ) : (
@@ -700,7 +717,7 @@ export function NodesPage() {
                                     e.stopPropagation()
                                     resetCircuit.mutate({ nodeId: node.id, model })
                                   }}
-                                  disabled={resetCircuit.isPending}
+                      disabled={resetCircuit.isPending || !canOperate}
                                   className="ml-1 text-[var(--foreground-dim)] transition-colors hover:text-[var(--foreground)]"
                                   title={t('actions.resetModelCircuit')}
                                 >
@@ -851,7 +868,7 @@ export function NodesPage() {
                   <div className="flex items-center gap-1 lg:justify-end">
                     <button
                       onClick={() => testCompatibility.mutate(node.id)}
-                      disabled={testCompatibility.isPending}
+                      disabled={testCompatibility.isPending || !canOperate}
                       className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-[var(--background-secondary)] hover:text-[var(--foreground)] hover:shadow-[0_10px_24px_rgba(5,46,36,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
                       title={t('compatibility.testMatrix')}
                     >
@@ -859,6 +876,7 @@ export function NodesPage() {
                     </button>
                     <button
                       onClick={() => handleOpenEdit(node)}
+                      disabled={!canOperate}
                       className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-[var(--background-secondary)] hover:text-[var(--foreground)] hover:shadow-[0_10px_24px_rgba(5,46,36,0.08)]"
                       title={t('actions.editUpstream')}
                     >
@@ -866,6 +884,7 @@ export function NodesPage() {
                     </button>
                     <button
                       onClick={() => setDeleteTarget(node)}
+                      disabled={!canAdmin}
                       className="rounded-lg p-2 text-[var(--foreground-dim)] transition-all hover:-translate-y-0.5 hover:bg-red-500/10 hover:text-red-500"
                       title={t('actions.deleteUpstream')}
                     >
