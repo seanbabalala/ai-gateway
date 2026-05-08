@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.3.0 Provider Extensibility**.
+Current release: **v2.4.0 Provider Ecosystem Expansion**.
 
-Current development focus after v2.3.0: preserve Platform Trust stability,
+Current development focus after v2.4.0: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -21,6 +21,10 @@ as minor releases.
   Provider SDK Generator beta output, community registry design, and the
   Provider Health Dashboard expand ecosystem coverage without auto-trusting
   generated adapters or community pricing.
+- Provider ecosystem expansion: v2.4 adds tested, source-governed catalog rows
+  for DeepInfra, Nebius AI Studio, Novita AI, FriendliAI, Databricks Mosaic AI,
+  and GitHub Models, plus offline provider registry manifest checks for
+  community PRs.
 - Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
   redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
   Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
@@ -63,6 +67,21 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.4 Highlights
+
+- v2.4.0 starts the Provider Ecosystem Expansion series by using the v2.3
+  extensibility foundation instead of adding untested rows for count inflation.
+- Added built-in, review-required provider metadata for DeepInfra, Nebius AI
+  Studio, Novita AI, FriendliAI, Databricks Mosaic AI, and GitHub Models.
+- Each new provider includes compatibility profile evidence, model buckets,
+  source-governed pricing references, health/catalog identity, and Dashboard
+  logo identity.
+- Added `npm run provider-registry:check` with an offline manifest fixture so
+  community provider PRs can validate provider shape, source URLs, pricing
+  governance, and secret hygiene without provider network calls.
+- See [`docs/PROVIDER_CATALOG.md`](docs/PROVIDER_CATALOG.md) and
+  [`docs/PROVIDER_EXTENSIBILITY.md`](docs/PROVIDER_EXTENSIBILITY.md).
 
 ## v2.3 Highlights
 

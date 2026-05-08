@@ -130,6 +130,7 @@ cd frontend && npm test
 
 For v2.3 community provider registry or generated-adapter PRs, also include:
 
+- `npm run provider-registry:check` for the provider manifest
 - generated or handwritten adapter request/response mapping tests
 - a custom provider template preview fixture when the provider is not in the
   built-in catalog

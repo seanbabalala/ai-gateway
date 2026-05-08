@@ -570,6 +570,12 @@ describe('catalog service', () => {
         'nvidia-nim',
         'cerebras',
         'sambanova',
+        'deepinfra',
+        'nebius',
+        'novita',
+        'friendli',
+        'databricks',
+        'github-models',
         'huggingface',
         'cloudflare-workers-ai',
         'ibm-watsonx',
@@ -634,6 +640,54 @@ describe('catalog service', () => {
         source_url: expect.stringContaining('huggingface.co'),
         manual_review_required: true,
         pricing_confidence: 'low',
+      }),
+    });
+
+    const deepinfra = result.catalog.providers.find((provider) => provider.id === 'deepinfra');
+    expect(deepinfra).toMatchObject({
+      status: 'transport_only',
+      base_url: 'https://api.deepinfra.com/v1/openai',
+      compatibility_profile: 'openai_compatible',
+      model_buckets: expect.objectContaining({
+        models: expect.arrayContaining([
+          'deepseek-ai/DeepSeek-V3',
+          'meta-llama/Llama-3.3-70B-Instruct',
+        ]),
+      }),
+      pricing: expect.objectContaining({
+        source_url: expect.stringContaining('deepinfra.com'),
+        manual_review_required: true,
+        pricing_confidence: 'low',
+      }),
+    });
+
+    const databricks = result.catalog.providers.find((provider) => provider.id === 'databricks');
+    expect(databricks).toMatchObject({
+      status: 'transport_only',
+      family: 'cloud_platform',
+      provider_type: 'cloud',
+      capabilities: expect.arrayContaining(['deployment_pricing', 'enterprise']),
+      model_buckets: expect.objectContaining({
+        embedding_models: expect.arrayContaining(['databricks-bge-large-en']),
+      }),
+      pricing: expect.objectContaining({
+        source_url: expect.stringContaining('databricks'),
+        manual_review_required: true,
+      }),
+    });
+
+    const githubModels = result.catalog.providers.find((provider) => provider.id === 'github-models');
+    expect(githubModels).toMatchObject({
+      status: 'transport_only',
+      family: 'aggregator',
+      provider_type: 'aggregator',
+      capabilities: expect.arrayContaining(['model_marketplace', 'multi_provider']),
+      endpoints: expect.objectContaining({
+        chat_completions: '/orgs/{org}/inference/chat/completions',
+      }),
+      pricing: expect.objectContaining({
+        source_url: expect.stringContaining('docs.github.com'),
+        manual_review_required: true,
       }),
     });
 

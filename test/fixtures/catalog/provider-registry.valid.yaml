@@ -1,0 +1,40 @@
+version: 1
+providers:
+  acme-openai-compatible:
+    name: Acme OpenAI Compatible
+    status: custom
+    family: custom
+    provider_type: direct
+    base_url: https://api.acme.example/v1
+    auth_type: custom-header
+    endpoints:
+      chat_completions: /chat/completions
+      embeddings: /embeddings
+    compatibility_profiles:
+      - openai_compatible
+    pricing:
+      source: provider_docs
+      source_type: docs_review
+      source_url: https://acme.example/pricing
+      last_updated: 2026-05-09
+      manual_review_required: true
+      pricing_confidence: low
+    models:
+      - id: acme-chat
+        modalities:
+          - text
+        endpoints:
+          chat_completions: /chat/completions
+        pricing:
+          source: provider_docs
+          source_type: docs_review
+          source_url: https://acme.example/pricing
+          last_updated: 2026-05-09
+          manual_review_required: true
+          pricing_confidence: low
+      - id: acme-embed
+        modalities:
+          - text
+          - embedding
+        endpoints:
+          embeddings: /embeddings
