@@ -193,4 +193,30 @@ describe('ActiveHealthProbeService', () => {
     expect(JSON.stringify(body)).not.toContain('hi');
     expect(status.status).toBe('healthy');
   });
+
+  it('uses custom header auth for active health probes', async () => {
+    const fetchMock = mockFetchResponse(204);
+    global.fetch = fetchMock as any;
+    const { service } = makeService([
+      makeNode({
+        auth_type: 'custom-header',
+        auth_header_name: 'api-key',
+        auth_header_prefix: 'Token',
+        api_key: 'sk-custom-health',
+        health_check: {
+          enabled: true,
+          method: 'HEAD',
+          path: '/healthz',
+        },
+      }),
+    ]);
+
+    const status = await service.probeNode('openai');
+    const [, init] = fetchMock.mock.calls[0];
+
+    expect(init.headers['api-key']).toBe('Token sk-custom-health');
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(init.headers['x-api-key']).toBeUndefined();
+    expect(status.status).toBe('healthy');
+  });
 });

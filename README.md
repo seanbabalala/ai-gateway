@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.2.0 Intelligence Loop**.
+Current release: **v2.3.0 Provider Extensibility**.
 
-Current development focus after v2.2.0: preserve Platform Trust stability,
+Current development focus after v2.3.0: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -17,6 +17,10 @@ as minor releases.
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
 - Catalog-backed setup: Nodes, Add Node Wizard, Provider Catalog, and config validation use one merged provider catalog surface backed by canonical model projections instead of hardcoded provider/model lists.
 - Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority over sync cache and built-in references.
+- Provider extensibility: custom provider templates, `custom-header` auth,
+  Provider SDK Generator beta output, community registry design, and the
+  Provider Health Dashboard expand ecosystem coverage without auto-trusting
+  generated adapters or community pricing.
 - Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
   redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
   Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
@@ -59,6 +63,24 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.3 Highlights
+
+- v2.3.0 adds Provider Extensibility for the OSS data plane: custom provider
+  templates, custom-header auth, Provider SDK Generator beta, community
+  registry design, and a workspace-scoped Provider Health Dashboard.
+- The Dashboard Add Node flow can configure providers that require a custom
+  auth header name and optional prefix while still keeping provider key values
+  in local config, env vars, or secret references.
+- Provider Health aggregates active probes, circuit state, call-log latency,
+  error rate, compatibility labels, and pricing-source warnings without raw
+  request/response content or provider keys.
+- Provider SDK Generator beta returns reviewable adapter, manifest, README, and
+  test skeleton files in the API response only. Generated adapters are not
+  written to disk or auto-trusted.
+- Community provider registry guidance now defines manifest shape, CI evidence,
+  compatibility proof, and pricing governance for sustainable provider growth.
+- See [`docs/PROVIDER_EXTENSIBILITY.md`](docs/PROVIDER_EXTENSIBILITY.md).
 
 ## v2.2 Highlights
 
@@ -168,15 +190,15 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
 | Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, pricing source governance, and catalog override/sync CLI. |
+| Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, custom provider templates, Provider SDK Generator beta, Provider Health Dashboard, pricing source governance, and catalog override/sync CLI. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples, Coding Agent Gateway profiles. |
 
-## After v2.1 Priorities
+## After v2.3 Priorities
 
-- Preserve Platform Trust behavior while adding intelligence-loop, provider
-  extensibility, and deeper agent-platform capabilities as minor releases.
+- Preserve Platform Trust behavior while adding deeper agent-platform and
+  semantic-layer capabilities as minor releases.
 - Continue improving connector compatibility for common coding agents while
   preserving advisory-only routing hints and profile-scoped virtual models.
 - Deepen canonical coverage without adding runtime coupling: more safe freshness adapters or provider-availability overlays are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
@@ -218,6 +240,7 @@ npm run validate:config
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
 | Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |
+| Provider Extensibility | [docs/PROVIDER_EXTENSIBILITY.md](docs/PROVIDER_EXTENSIBILITY.md) |
 | Adding Providers | [docs/ADDING_PROVIDERS.md](docs/ADDING_PROVIDERS.md) |
 | Provider Compatibility | [docs/PROVIDER_COMPATIBILITY.md](docs/PROVIDER_COMPATIBILITY.md) |
 | SDKs | [docs/SDKS.md](docs/SDKS.md) |

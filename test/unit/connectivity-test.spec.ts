@@ -166,11 +166,12 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   const managementAudit = {
     record: jest.fn().mockResolvedValue(null),
   } as any;
+  const providerExtensibility = {} as any;
 
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, managementAudit, catalog, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, managementAudit, catalog, providerExtensibility, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 
@@ -318,6 +319,48 @@ describe('runConnectivityTest — auth headers', () => {
     const [, opts] = fetchMock.mock.calls[0];
     expect(opts.headers['x-api-key']).toBe('mykey');
     expect(opts.headers['anthropic-version']).toBe('2023-06-01');
+  });
+
+  it('should support custom header auth without returning provider keys', async () => {
+    const fetchMock = mockFetchResponse(200);
+    global.fetch = fetchMock;
+    const dashboard = makeDashboard();
+
+    const result = await runTest(dashboard, {
+      protocol: 'chat_completions',
+      base_url: 'https://custom.com',
+      endpoint: '/api',
+      api_key: 'sk-custom-secret',
+      model: 'model',
+      auth_type: 'custom-header',
+      auth_header_name: 'api-key',
+      auth_header_prefix: 'Token',
+    });
+
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(opts.headers['api-key']).toBe('Token sk-custom-secret');
+    expect(opts.headers.Authorization).toBeUndefined();
+    expect(opts.headers['x-api-key']).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('sk-custom-secret');
+  });
+
+  it('should fail custom header auth when header name is missing', async () => {
+    const fetchMock = mockFetchResponse(200);
+    global.fetch = fetchMock;
+    const dashboard = makeDashboard();
+
+    const result = await runTest(dashboard, {
+      protocol: 'chat_completions',
+      base_url: 'https://custom.com',
+      endpoint: '/api',
+      api_key: 'sk-custom-secret',
+      model: 'model',
+      auth_type: 'custom-header',
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Custom auth header name is required');
   });
 });
 

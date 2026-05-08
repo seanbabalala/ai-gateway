@@ -24,6 +24,7 @@ import {
   Radio,
   RadioTower,
   XCircle,
+  ShieldCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -50,6 +51,7 @@ import { DeleteNodeDialog } from '@/components/nodes/DeleteNodeDialog'
 import { QuickModelReference } from '@/components/nodes/QuickModelReference'
 import { useNodes } from '@/hooks/use-nodes'
 import { useProviderCatalogProviders } from '@/hooks/use-provider-catalog'
+import { useProviderHealth } from '@/hooks/use-provider-extensibility'
 import { hasWorkspaceRole, useWorkspaces } from '@/hooks/use-workspaces'
 import {
   useResetCircuit,
@@ -68,6 +70,7 @@ import type {
   CreateNodeRequest,
   ProviderCompatibilityMatrixItem,
   UpdateNodeRequest,
+  ProviderHealthNode,
 } from '@/types/api'
 
 // ── Modality display configuration ──
@@ -251,10 +254,43 @@ function onboardingProviderScore(provider: CatalogProvider): number {
   )
 }
 
+function providerHealthTone(status: ProviderHealthNode['availability_status']): {
+  labelKey: string
+  className: string
+} {
+  if (status === 'healthy') {
+    return {
+      labelKey: 'providerHealth.status.healthy',
+      className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    }
+  }
+  if (status === 'degraded') {
+    return {
+      labelKey: 'providerHealth.status.degraded',
+      className: 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    }
+  }
+  if (status === 'unhealthy') {
+    return {
+      labelKey: 'providerHealth.status.unhealthy',
+      className: 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300',
+    }
+  }
+  return {
+    labelKey: 'providerHealth.status.unknown',
+    className: 'border-[var(--divider-dim)] bg-[var(--background-secondary)] text-[var(--foreground-dim)]',
+  }
+}
+
+function formatNullableMs(value: number | null | undefined, fallback: string): string {
+  return typeof value === 'number' ? `${value}ms` : fallback
+}
+
 export function NodesPage() {
   const { t } = useTranslation('nodes')
   const { data: nodesData, isLoading, isError, error, refetch } = useNodes()
   const providerCatalog = useProviderCatalogProviders()
+  const providerHealth = useProviderHealth('24h')
   const resetCircuit = useResetCircuit()
   const reloadConfig = useReloadConfig()
   const createNode = useCreateNode()
@@ -550,6 +586,128 @@ export function NodesPage() {
         <p className="mt-3 text-[10px] leading-4 text-[var(--foreground-dim)]">
           {t('nodes.sections.onboarding.legacyNote')}
         </p>
+      </CardStatic>
+
+      <CardStatic className="animate-fade-up p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+              {t('providerHealth.eyebrow')}
+            </div>
+            <h2 className="mt-1 text-[18px] font-extrabold text-[var(--foreground)]">
+              {t('providerHealth.title')}
+            </h2>
+            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[var(--foreground-dim)]">
+              {t('providerHealth.description')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="emerald">
+              {t('providerHealth.healthyCount', {
+                count: providerHealth.data?.totals.healthy_nodes ?? 0,
+                total: providerHealth.data?.totals.nodes ?? nodesData.nodes.length,
+              })}
+            </Badge>
+            <Badge variant="zinc">
+              {t('providerHealth.errorRate', {
+                value: providerHealth.data?.totals.error_rate ?? 0,
+              })}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => providerHealth.refetch()}
+              disabled={providerHealth.isFetching}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${providerHealth.isFetching ? 'animate-spin' : ''}`} />
+              {t('providerHealth.refresh')}
+            </Button>
+          </div>
+        </div>
+        {providerHealth.isError && (
+          <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-[12px] font-semibold text-red-700 dark:text-red-300">
+            {t('providerHealth.error')}
+          </div>
+        )}
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {providerHealth.isLoading &&
+            Array.from({ length: 3 }).map((_, index) => (
+              <SkeletonCard key={index} className="h-36" />
+            ))}
+          {!providerHealth.isLoading &&
+            (providerHealth.data?.nodes || []).slice(0, 6).map((node) => {
+              const tone = providerHealthTone(node.availability_status)
+              return (
+                <div
+                  key={node.node_id}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-extrabold text-[var(--foreground)]">
+                        {node.provider_name}
+                      </div>
+                      <div className="truncate font-mono text-[10px] text-[var(--foreground-dim)]">
+                        {node.node_id} / {node.base_url_host}
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-bold ${tone.className}`}>
+                      {t(tone.labelKey)}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="rounded-md bg-[var(--background)] px-2 py-2">
+                      <div className="text-[9px] font-bold uppercase text-[var(--foreground-dim)]">
+                        {t('providerHealth.calls')}
+                      </div>
+                      <div className="mt-1 font-mono text-[13px] font-extrabold text-[var(--foreground)]">
+                        {node.metrics.calls}
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-[var(--background)] px-2 py-2">
+                      <div className="text-[9px] font-bold uppercase text-[var(--foreground-dim)]">
+                        {t('providerHealth.p95')}
+                      </div>
+                      <div className="mt-1 font-mono text-[13px] font-extrabold text-[var(--foreground)]">
+                        {formatNullableMs(node.metrics.p95_latency_ms, t('providerHealth.noData'))}
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-[var(--background)] px-2 py-2">
+                      <div className="text-[9px] font-bold uppercase text-[var(--foreground-dim)]">
+                        {t('providerHealth.errors')}
+                      </div>
+                      <div className="mt-1 font-mono text-[13px] font-extrabold text-[var(--foreground)]">
+                        {node.metrics.error_rate}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Badge variant="zinc" className="font-mono text-[9px]">
+                      {node.health_probe.status}
+                    </Badge>
+                    <Badge variant="zinc" className="font-mono text-[9px]">
+                      {node.circuit.state}
+                    </Badge>
+                    {node.auth.type === 'custom-header' && (
+                      <Badge variant="blue" className="font-mono text-[9px]">
+                        {node.auth.custom_header_name || 'custom-header'}
+                      </Badge>
+                    )}
+                  </div>
+                  {node.pricing_warnings.length > 0 && (
+                    <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-[10px] leading-4 text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span>{node.pricing_warnings[0]}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold text-[var(--foreground-dim)]">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          {t('providerHealth.privacy')}
+        </div>
       </CardStatic>
 
       <div className="space-y-2">

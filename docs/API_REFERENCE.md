@@ -394,6 +394,9 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `GET` | `/api/dashboard/catalog/providers` | Merged Provider Catalog providers, Dashboard provider identity/family/type metadata, compatibility profile registry, enrichment summaries, recommended model defaults, price source status, override metadata, refresh-source availability, and pricing sync status |
 | `GET` | `/api/dashboard/catalog/models` | Flattened Provider Catalog models with provider/modality/endpoint filters, enrichment metadata, price source metadata, and pricing sync status |
+| `POST` | `/api/dashboard/provider-extensibility/templates/custom/preview` | Preview sanitized custom provider node/catalog metadata without mutating config |
+| `POST` | `/api/dashboard/provider-extensibility/sdk/generate` | Generate beta provider adapter skeleton files for manual review |
+| `GET` | `/api/dashboard/provider-health` | Workspace-scoped provider/node health, latency, errors, probe/circuit state, and pricing warnings |
 | `POST` | `/api/dashboard/routing/recommend` | Recommend routing changes for a request sample |
 | `GET` | `/api/dashboard/routing/recommendations` | Read-only adaptive routing recommendations from local sliding-window metrics |
 | `PUT` | `/api/dashboard/routing` | Update local routing configuration |
@@ -477,6 +480,43 @@ v1.7 adds model enrichment metadata to model rows and fresh-default metadata to 
 Both endpoints also accept `show_legacy=1` when the caller explicitly wants `transport_only`, `deprecated`, or `legacy_alias` providers and their projected model views instead of the default active-only path.
 
 Dashboard copy calls this **price source status**. The internal response field remains `pricing_hygiene` for backward compatibility.
+
+### Provider Extensibility API
+
+v2.3 adds read-only helper APIs for sustainable provider expansion. They sit
+beside the merged Provider Catalog rather than creating a second provider truth.
+
+`POST /api/dashboard/provider-extensibility/templates/custom/preview` accepts a
+custom provider template with `provider_id`, `provider_name`, `base_url`,
+`protocol`, optional `auth_type`, custom auth header mapping, endpoints, model
+ids, compatibility profiles, pricing rows, tags, and optional health probe
+settings. It returns:
+
+- `node_preview`: sanitized local node config with `${env:PROVIDER_API_KEY}` as
+  the key placeholder.
+- `catalog_manifest_preview`: a review-required provider manifest preview.
+- `issues`: validation errors, warnings, and manual-review notes.
+- `privacy`: metadata-only flags.
+
+`auth_type` may be `bearer`, `x-api-key`, `custom-header`, or `none`.
+`custom-header` requires `auth_header_name` and may include
+`auth_header_prefix`.
+
+`POST /api/dashboard/provider-extensibility/sdk/generate` accepts the same
+template plus `language: "typescript"`. It returns beta skeleton files for an
+adapter, manifest, README, and generated unit test. The response is for manual
+review; SiftGate does not write generated files to disk or auto-trust them as
+runtime adapters.
+
+`GET /api/dashboard/provider-health?period=1h|24h|7d` returns active workspace
+provider health summarized from existing metadata: active probe status, circuit
+state, calls, errors, error rate, average latency, p95 latency, compatibility
+profiles, custom auth header name when applicable, and pricing-source warnings.
+The response never includes provider key values.
+
+These endpoints do not expose prompts, responses, raw provider headers,
+provider keys, Gateway API key plaintext, media bytes, source code, diffs, tool
+payloads, hidden reasoning text, or resolved secrets by default.
 
 ### Provider Compatibility Profiles
 

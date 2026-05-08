@@ -232,7 +232,7 @@ interface ProviderPreset {
   base_url: string;
   endpoint: string;
   endpoints: Partial<Record<CatalogEndpoint, string>>;
-  auth_type?: "bearer" | "x-api-key";
+  auth_type?: "bearer" | "x-api-key" | "custom-header";
   buckets: Record<ModelBucketKey, string[]>;
   defaultBuckets: Record<ModelBucketKey, string[]>;
   suggestedCapabilities: WizardCapability[];
@@ -301,6 +301,8 @@ interface FormState {
   headers: KeyValueRow[];
   pricing: PricingRow[];
   auth_type: string;
+  auth_header_name: string;
+  auth_header_prefix: string;
   selectedCapabilities: WizardCapability[];
   max_concurrency: string;
   queue_timeout_ms: string;
@@ -361,6 +363,8 @@ const EMPTY_FORM: FormState = {
   headers: [],
   pricing: [],
   auth_type: "",
+  auth_header_name: "",
+  auth_header_prefix: "",
   selectedCapabilities: ["chat"],
   max_concurrency: "",
   queue_timeout_ms: "",
@@ -672,7 +676,9 @@ function providerToPreset(provider: CatalogProvider): ProviderPreset {
       "/v1/chat/completions",
     endpoints: provider.endpoints,
     auth_type:
-      provider.auth_type === "bearer" || provider.auth_type === "x-api-key"
+      provider.auth_type === "bearer" ||
+      provider.auth_type === "x-api-key" ||
+      provider.auth_type === "custom-header"
         ? provider.auth_type
         : undefined,
     buckets,
@@ -914,7 +920,9 @@ export function NodeFormModal({
           : editNode.resolved_compatibility_profiles || [],
         aliases: rowsFromRecord(editNode.aliases),
         headers: [],
-        auth_type: "",
+        auth_type: editNode.auth_type || "",
+        auth_header_name: editNode.auth_header_name || "",
+        auth_header_prefix: editNode.auth_header_prefix || "",
         max_concurrency: "",
         queue_timeout_ms: "",
         queue_policy: "wait",
@@ -1033,6 +1041,8 @@ export function NodeFormModal({
       tags: [...preset.tags],
       compatibility_profile: [...preset.compatibility_profiles],
       auth_type: preset.auth_type || "",
+      auth_header_name: "",
+      auth_header_prefix: "",
       selectedCapabilities,
       pricing: preset.pricingRows.slice(0, 16),
       health_check: { ...EMPTY_HEALTH_CHECK },
@@ -1251,6 +1261,9 @@ export function NodeFormModal({
         errs.max_concurrency = t("form.errors.positiveNumber");
       if (form.queue_timeout_ms && Number(form.queue_timeout_ms) < 0)
         errs.queue_timeout_ms = t("form.errors.nonNegativeNumber");
+      if (form.auth_type === "custom-header" && !form.auth_header_name.trim()) {
+        errs.auth_header_name = t("form.errors.customAuthHeaderRequired");
+      }
       const aliasNames = compactModels(form.aliases.map((alias) => alias.key));
       if (
         aliasNames.length !==
@@ -1407,8 +1420,16 @@ export function NodeFormModal({
       headers,
       model_capabilities: modelCapabilities,
       auth_type: form.auth_type
-        ? (form.auth_type as "bearer" | "x-api-key")
+        ? (form.auth_type as "bearer" | "x-api-key" | "custom-header")
         : undefined,
+      auth_header_name:
+        form.auth_type === "custom-header"
+          ? form.auth_header_name.trim()
+          : undefined,
+      auth_header_prefix:
+        form.auth_type === "custom-header" && form.auth_header_prefix.trim()
+          ? form.auth_header_prefix.trim()
+          : undefined,
       health_check: healthCheck,
       compatibility_profile:
         form.compatibility_profile.length > 0
@@ -1468,8 +1489,16 @@ export function NodeFormModal({
         api_key: form.api_key.trim(),
         model: textModelForTest,
         auth_type: form.auth_type
-          ? (form.auth_type as "bearer" | "x-api-key")
+          ? (form.auth_type as "bearer" | "x-api-key" | "custom-header")
           : undefined,
+        auth_header_name:
+          form.auth_type === "custom-header"
+            ? form.auth_header_name.trim()
+            : undefined,
+        auth_header_prefix:
+          form.auth_type === "custom-header" && form.auth_header_prefix.trim()
+            ? form.auth_header_prefix.trim()
+            : undefined,
         headers: toRecord(form.headers),
       },
       { onSuccess: onResult, onError: onFail },
@@ -1875,10 +1904,56 @@ export function NodeFormModal({
                                 value: "x-api-key",
                                 label: t("form.auth.xApiKey"),
                               },
+                              {
+                                value: "custom-header",
+                                label: t("form.auth.customHeader"),
+                              },
                             ]}
                           />
                         </FieldGroup>
+                        {form.auth_type === "custom-header" && (
+                          <>
+                            <FieldGroup
+                              label={t("form.labels.authHeaderName")}
+                              error={errors.auth_header_name}
+                            >
+                              <Input
+                                value={form.auth_header_name}
+                                onChange={(event) =>
+                                  setField(
+                                    "auth_header_name",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder={t(
+                                  "form.placeholders.authHeaderName",
+                                )}
+                              />
+                            </FieldGroup>
+                            <FieldGroup
+                              label={t("form.labels.authHeaderPrefix")}
+                            >
+                              <Input
+                                value={form.auth_header_prefix}
+                                onChange={(event) =>
+                                  setField(
+                                    "auth_header_prefix",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder={t(
+                                  "form.placeholders.authHeaderPrefix",
+                                )}
+                              />
+                            </FieldGroup>
+                          </>
+                        )}
                       </div>
+                      {form.auth_type === "custom-header" && (
+                        <p className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+                          {t("form.help.customAuthHeader")}
+                        </p>
+                      )}
                     </Panel>
 
                     <Panel

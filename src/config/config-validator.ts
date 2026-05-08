@@ -1313,6 +1313,7 @@ function validateNodes(
     } else {
       validateProviderApiKey(node, node.api_key, basePath, issues);
     }
+    validateNodeAuthMapping(node, basePath, issues);
     const hasSpecializedModels = [
       'embedding_models',
       'rerank_models',
@@ -6349,6 +6350,72 @@ function validateProviderApiKey(
   }
 }
 
+function validateNodeAuthMapping(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  const authType = node.auth_type;
+  if (authType === undefined) return;
+  if (!['bearer', 'x-api-key', 'custom-header'].includes(String(authType))) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_auth_type',
+        'nodes[].auth_type must be bearer, x-api-key, or custom-header.',
+        `${basePath}.auth_type`,
+      ),
+    );
+    return;
+  }
+  if (authType === 'custom-header') {
+    if (!isNonEmptyString(node.auth_header_name)) {
+      issues.push(
+        issue(
+          'error',
+          'missing_custom_auth_header_name',
+          'nodes[].auth_header_name is required when auth_type is custom-header.',
+          `${basePath}.auth_header_name`,
+        ),
+      );
+    } else if (isSensitiveHeaderName(node.auth_header_name)) {
+      issues.push(
+        issue(
+          'warning',
+          'custom_auth_header_sensitive_name',
+          'nodes[].auth_header_name uses a sensitive header name; SiftGate will redact it from UI and generated artifacts.',
+          `${basePath}.auth_header_name`,
+        ),
+      );
+    }
+    if (
+      node.auth_header_prefix !== undefined &&
+      !isNonEmptyString(node.auth_header_prefix)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_custom_auth_header_prefix',
+          'nodes[].auth_header_prefix must be a non-empty string when set.',
+          `${basePath}.auth_header_prefix`,
+        ),
+      );
+    }
+  } else if (
+    node.auth_header_name !== undefined ||
+    node.auth_header_prefix !== undefined
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'custom_auth_header_ignored',
+        'nodes[].auth_header_name/auth_header_prefix are only used when auth_type is custom-header.',
+        `${basePath}.auth_type`,
+      ),
+    );
+  }
+}
+
 function isPlaceholderApiKey(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return (
@@ -6363,6 +6430,11 @@ function isPlaceholderApiKey(value: string): boolean {
 
 function looksLikeSecret(value: string): boolean {
   return /^(sk-|sk_|xox|api_|key_)/i.test(value) || value.length >= 32;
+}
+
+function isSensitiveHeaderName(value: unknown): boolean {
+  if (!isNonEmptyString(value)) return false;
+  return isSensitiveLogField(value);
 }
 
 function isLocalNode(node: Record<string, unknown>): boolean {

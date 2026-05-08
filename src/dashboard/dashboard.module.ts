@@ -25,6 +25,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { ConfigAuditService } from './config-audit.service';
 import { BenchmarkReportService } from './benchmark-report.service';
 import { CacheSavingsService } from './cache-savings.service';
+import { ProviderExtensibilityService } from './provider-extensibility.service';
 import { McpModule } from '../mcp/mcp.module';
 import { BatchModule } from '../batch/batch.module';
 import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
@@ -62,6 +63,7 @@ import { ClusterModule } from '../cluster/cluster.module';
     ConfigAuditService,
     BenchmarkReportService,
     CacheSavingsService,
+    ProviderExtensibilityService,
   ],
   exports: [LogEventBus],
 })

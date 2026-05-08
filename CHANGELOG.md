@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 2.3.0 - 2026-05-09
+
+### Added
+
+- Added the v2.3 Provider Extensibility release for the OSS data plane: custom provider templates, custom-header auth, Provider SDK Generator beta, community registry design, and Provider Health Dashboard v1.
+- Added `POST /api/dashboard/provider-extensibility/templates/custom/preview` for read-only custom-provider node/catalog manifest previews with secret placeholders and manual-review evidence.
+- Added `POST /api/dashboard/provider-extensibility/sdk/generate` for beta TypeScript adapter skeleton generation with generated tests, manifest, README, and an explicit manual review checklist.
+- Added `GET /api/dashboard/provider-health` for workspace-scoped provider/node availability, probe status, circuit state, latency, error rate, compatibility labels, auth metadata, and pricing-source warnings.
+- Added Dashboard Nodes support for `custom-header` auth mapping plus provider health summary cards with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Added `docs/PROVIDER_EXTENSIBILITY.md` plus Provider Catalog, Adding Providers, API Reference, Dashboard, and README documentation for v2.3 operations.
+
+### Changed
+
+- Provider clients, active health probes, node test APIs, config validation, catalog validation, and Dashboard node DTOs now understand `auth_type: custom-header` with `auth_header_name` and optional `auth_header_prefix`.
+- Custom provider previews and generated manifests keep pricing as review-required operator metadata and do not auto-trust generated adapters or community pricing.
+- Provider Health uses existing probes, circuit breakers, call logs, compatibility metadata, and pricing governance instead of adding a raw-content health store.
+- Updated release metadata to v2.3.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- v2.3.0 does not promise 100+ provider coverage, scrape provider pricing, or merge generated adapters without review and tests.
+- Provider Extensibility and Provider Health do not store prompts, responses, raw provider headers, provider keys, Gateway API key plaintext, media bytes, source code, diffs, tool payloads, hidden reasoning text, or resolved secrets by default.
+- Generated SDK artifacts are returned to the caller as beta scaffolds only; SiftGate does not write them to disk or trust them as runtime providers automatically.
+
 ## 2.2.0 - 2026-05-09
 
 ### Added

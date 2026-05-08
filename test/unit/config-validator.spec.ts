@@ -2478,6 +2478,92 @@ describe('config validator', () => {
     );
   });
 
+  it('validates custom provider auth header mapping without requiring provider secrets', () => {
+    const valid = validateConfigObject(
+      secretReferenceConfig('${env:CUSTOM_PROVIDER_API_KEY}', {
+        nodes: [
+          {
+            id: 'custom-acme',
+            name: 'Acme AI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.acme.test',
+            endpoint: '/v1/chat/completions',
+            api_key: '${env:CUSTOM_PROVIDER_API_KEY}',
+            auth_type: 'custom-header',
+            auth_header_name: 'api-key',
+            auth_header_prefix: 'Token',
+            models: ['acme-chat'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'custom-acme', model: 'acme-chat' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        models_pricing: { 'acme-chat': { input: 0.1, output: 0.2 } },
+      }),
+      { env: {} },
+    );
+
+    expect(valid.ok).toBe(true);
+    expect(codes(valid.errors)).not.toContain('missing_custom_auth_header_name');
+
+    const invalid = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        nodes: [
+          {
+            id: 'custom-acme',
+            name: 'Acme AI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.acme.test',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            auth_type: 'custom-header',
+            models: ['acme-chat'],
+            timeout_ms: 60000,
+          },
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            auth_type: 'bearer',
+            auth_header_name: 'api-key',
+            models: ['gpt-4o-mini'],
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              targets: [
+                { node: 'custom-acme', model: 'acme-chat' },
+                { node: 'openai', model: 'gpt-4o-mini' },
+              ],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        models_pricing: {
+          'acme-chat': { input: 0.1, output: 0.2 },
+          'gpt-4o-mini': { input: 0.15, output: 0.6 },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(invalid.ok).toBe(false);
+    expect(codes(invalid.errors)).toContain('missing_custom_auth_header_name');
+    expect(codes(invalid.warnings)).toContain('custom_auth_header_ignored');
+  });
+
   it('validates local namespaces, API key bindings, and shadow traffic config', () => {
     const result = validateConfigObject(
       {

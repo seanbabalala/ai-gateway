@@ -593,7 +593,7 @@ export interface ShadowTrafficConfig {
 // ===== Node (AI Provider) =====
 export type NodeProtocol = 'chat_completions' | 'responses' | 'messages';
 
-export type AuthType = 'bearer' | 'x-api-key';
+export type AuthType = 'bearer' | 'x-api-key' | 'custom-header';
 
 export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 
@@ -676,6 +676,10 @@ export interface NodeConfig {
   endpoint: string;
   api_key: string;
   auth_type?: AuthType; // Default: 'bearer' for chat_completions/responses, 'x-api-key' for messages
+  /** Header name used when auth_type=custom-header. The api_key value is inserted into this header. */
+  auth_header_name?: string;
+  /** Optional prefix added before api_key when auth_type=custom-header, for example "Bearer". */
+  auth_header_prefix?: string;
   models: string[];
   /** Optional OpenAI-compatible embeddings endpoint path (default: /v1/embeddings). */
   embeddings_endpoint?: string;

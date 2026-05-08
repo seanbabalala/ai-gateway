@@ -1015,6 +1015,33 @@ describe('ProviderClientService', () => {
       expect(opts.headers['x-api-key']).toBe('sk-ant-test');
     });
 
+    it('should use custom header auth for compatible providers', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl-test',
+          model: 'custom-model',
+          choices: [{ message: { content: 'Hello!' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        auth_type: 'custom-header',
+        auth_header_name: 'api-key',
+        auth_header_prefix: 'Token',
+        api_key: 'sk-custom-provider',
+      });
+      await svc.forward(makeCanonical(), 'openai', 'custom-model', routingMeta);
+
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(opts.headers['api-key']).toBe('Token sk-custom-provider');
+      expect(opts.headers.Authorization).toBeUndefined();
+      expect(opts.headers['x-api-key']).toBeUndefined();
+    });
+
     it('should send debug message body when GATEWAY_DEBUG_MESSAGES_BODY is set', async () => {
       process.env.GATEWAY_DEBUG_MESSAGES_BODY = '1';
       global.fetch = jest.fn().mockResolvedValue({

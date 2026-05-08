@@ -441,7 +441,15 @@ export class ProviderClientService {
     // Auth
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    if (authType === 'x-api-key') {
+    if (authType === 'custom-header') {
+      const headerName = node.auth_header_name?.trim();
+      if (!headerName) {
+        throw new Error(`Node "${node.id}" auth_type=custom-header requires auth_header_name`);
+      }
+      headers[headerName] = node.auth_header_prefix
+        ? `${node.auth_header_prefix} ${apiKey}`
+        : apiKey;
+    } else if (authType === 'x-api-key') {
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
@@ -545,7 +553,15 @@ export class ProviderClientService {
 
     const authType =
       node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    if (authType === 'x-api-key') {
+    if (authType === 'custom-header') {
+      const headerName = node.auth_header_name?.trim();
+      if (!headerName) {
+        throw new Error(`Node "${node.id}" auth_type=custom-header requires auth_header_name`);
+      }
+      headers[headerName] = node.auth_header_prefix
+        ? `${node.auth_header_prefix} ${apiKey}`
+        : apiKey;
+    } else if (authType === 'x-api-key') {
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
