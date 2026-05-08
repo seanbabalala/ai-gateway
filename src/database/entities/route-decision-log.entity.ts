@@ -12,6 +12,7 @@ import {
 @Index(['tier'])
 @Index(['selected_node_id'])
 @Index(['selected_model'])
+@Index(['workspace_id'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
 @Index(['session_id'])
@@ -70,6 +71,9 @@ export class RouteDecisionLog {
 
   @Column({ type: 'varchar', nullable: true })
   trace_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   api_key_name!: string | null;

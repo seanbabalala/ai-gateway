@@ -36,7 +36,11 @@ describe('CacheSavingsService', () => {
     };
 
     return {
-      service: new CacheSavingsService(callLogRepo as any, config as any),
+      service: new CacheSavingsService(
+        callLogRepo as any,
+        config as any,
+        { currentWorkspaceId: jest.fn(() => 'default-workspace') } as any,
+      ),
       callLogRepo,
     };
   }

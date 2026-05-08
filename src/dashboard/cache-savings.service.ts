@@ -4,6 +4,8 @@ import { MoreThanOrEqual, Repository } from 'typeorm';
 import { ConfigService } from '../config/config.service';
 import { ModelPricing } from '../config/gateway.config';
 import { CallLog } from '../database/entities';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import { workspaceFindWhereStrict } from '../workspaces/workspace-scope';
 
 export type CacheSavingsGroupBy =
   | 'node'
@@ -87,6 +89,7 @@ export class CacheSavingsService {
     @InjectRepository(CallLog)
     private readonly callLogRepo: Repository<CallLog>,
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   async getSummary(
@@ -156,13 +159,13 @@ export class CacheSavingsService {
   }
 
   private buildWhere(since: Date, scope: CacheSavingsScope) {
-    return {
+    return workspaceFindWhereStrict(this.workspaceContext.currentWorkspaceId(), {
       timestamp: MoreThanOrEqual(since),
       ...(scope.api_key_id ? { api_key_id: scope.api_key_id } : {}),
       ...(!scope.api_key_id && scope.api_key ? { api_key_name: scope.api_key } : {}),
       ...(scope.namespace ? { namespace_id: scope.namespace } : {}),
       ...(scope.team_id ? { team_id: scope.team_id } : {}),
-    };
+    });
   }
 
   private accumulate(metrics: MutableCacheSavingsMetrics, row: CallLog): void {

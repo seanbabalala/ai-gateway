@@ -141,11 +141,26 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   const agentProfiles = {
     list: jest.fn().mockResolvedValue([]),
   } as any;
+  const workspaces = {
+    getState: jest.fn().mockResolvedValue({
+      organization: { id: 'default-org', name: 'Default Organization' },
+      active_workspace: { id: 'default-workspace', name: 'Default Workspace' },
+      default_workspace: { id: 'default-workspace', name: 'Default Workspace' },
+      workspaces: [{ id: 'default-workspace', name: 'Default Workspace' }],
+    }),
+    requireWorkspace: jest.fn().mockResolvedValue({
+      id: 'default-workspace',
+      name: 'Default Workspace',
+    }),
+  } as any;
+  const workspaceContext = {
+    currentWorkspaceId: jest.fn(() => 'default-workspace'),
+  } as any;
 
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, catalog, batchJobs, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, catalog, batchJobs, workspaces, workspaceContext, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

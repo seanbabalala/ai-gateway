@@ -13,10 +13,22 @@ function makeRepo(): any {
     }),
     find: jest.fn(async () => []),
     findOne: jest.fn(async ({ where }: any) =>
-      store.find((row) => Object.entries(where || {}).every(([key, value]) => row[key] === value)) || null,
+      store.find((row) => matchesWhere(row, where || {})) || null,
     ),
     delete: jest.fn(async () => ({ affected: 0 })),
   };
+}
+
+function matchesWhere(row: Record<string, any>, where: Record<string, unknown> | Record<string, unknown>[]): boolean {
+  if (Array.isArray(where)) {
+    return where.some((candidate) => matchesWhere(row, candidate));
+  }
+  return Object.entries(where).every(([key, value]) => {
+    if (value && typeof value === 'object' && (value as any)._type === 'isNull') {
+      return row[key] === null || row[key] === undefined;
+    }
+    return row[key] === value;
+  });
 }
 
 function makeService(overrides: Record<string, any> = {}) {
@@ -48,7 +60,14 @@ function makeService(overrides: Record<string, any> = {}) {
   };
   const repo = overrides.repo || makeRepo();
   const callLogRepo = overrides.callLogRepo || makeRepo();
-  const service = new ShadowTrafficService(config, providerClient as any, repo as any, callLogRepo as any);
+  const workspaceContext = { currentWorkspaceId: jest.fn(() => 'default-workspace') };
+  const service = new ShadowTrafficService(
+    config,
+    providerClient as any,
+    workspaceContext as any,
+    repo as any,
+    callLogRepo as any,
+  );
   return { service, config, providerClient, repo, callLogRepo };
 }
 
@@ -268,11 +287,14 @@ describe('ShadowTrafficService', () => {
     });
 
     expect(repo.find).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        namespace_id: 'team-alpha',
-        api_key_id: 'key-1',
-        source_format: 'chat_completions',
-      }),
+      where: expect.arrayContaining([
+        expect.objectContaining({
+          namespace_id: 'team-alpha',
+          api_key_id: 'key-1',
+          source_format: 'chat_completions',
+          workspace_id: 'default-workspace',
+        }),
+      ]),
     }));
     expect(report.primary_success_rate).toBe(1);
     expect(report.shadow_success_rate).toBe(0.5);

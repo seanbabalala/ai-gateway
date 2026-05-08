@@ -19,6 +19,7 @@ export function attachGatewayApiKeyMetadata<T extends MetadataCarrier>(
 ): T {
   canonical.metadata.api_key_name = gatewayKey?.name;
   canonical.metadata.api_key_id = gatewayKey?.id;
+  canonical.metadata.workspace_id = gatewayKey?.workspace_id || null;
   canonical.metadata.namespace_id = gatewayKey?.namespace_id || null;
   canonical.metadata.namespace_name = gatewayKey?.namespace_name || null;
   canonical.metadata.team_id = gatewayKey?.team_id || null;

@@ -4,8 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { FindOptionsWhere, Not, Repository } from 'typeorm';
 import { ConfigService } from '../config/config.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+} from '../workspaces/workspace-scope';
 import {
   AgentProfile,
   AGENT_PROFILE_BASE_URL_MODES,
@@ -34,6 +39,7 @@ const ANTHROPIC_SMART_CONNECTORS = new Set<AgentProfileConnector>([
 
 export interface AgentProfileSummary {
   id: string;
+  workspace_id: string;
   name: string;
   description: string | null;
   connector: AgentProfileConnector;
@@ -122,12 +128,14 @@ export class AgentProfileService {
   constructor(
     private readonly config: ConfigService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(AgentProfile)
     private readonly profileRepo: Repository<AgentProfile>,
   ) {}
 
   async list(): Promise<AgentProfileSummary[]> {
     const profiles = await this.profileRepo.find({
+      where: workspaceFindWhere(this.workspaceId(), {}),
       order: { created_at: 'DESC' },
     });
     return Promise.all(profiles.map((profile) => this.toSummary(profile)));
@@ -135,7 +143,9 @@ export class AgentProfileService {
 
   async create(dto: CreateAgentProfileDto): Promise<AgentProfileSummary> {
     const normalized = await this.normalizeCreateDto(dto);
-    await this.assertUniqueName(normalized.name);
+    const workspaceId = this.workspaceId();
+    normalized.workspace_id = workspaceId;
+    await this.assertUniqueName(normalized.name, undefined, workspaceId);
     const entity = this.profileRepo.create(normalized);
     const saved = await this.profileRepo.save(entity);
     return this.toSummary(saved);
@@ -148,7 +158,7 @@ export class AgentProfileService {
     const entity = await this.getById(id);
     const normalized = await this.normalizeUpdateDto(dto, entity);
     if (normalized.name && normalized.name !== entity.name) {
-      await this.assertUniqueName(normalized.name, id);
+      await this.assertUniqueName(normalized.name, id, this.entityWorkspaceId(entity));
     }
     Object.assign(entity, normalized);
     const saved = await this.profileRepo.save(entity);
@@ -181,7 +191,10 @@ export class AgentProfileService {
   ): Promise<AgentVirtualModel[]> {
     if (!apiKeyId || permissions?.allow_auto === false) return [];
     const profiles = await this.profileRepo.find({
-      where: { status: 'active', api_key_id: apiKeyId },
+      where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(this.workspaceId(), {
+        status: 'active',
+        api_key_id: apiKeyId,
+      }),
       order: { created_at: 'DESC' },
     });
     const models: AgentVirtualModel[] = [];
@@ -213,7 +226,10 @@ export class AgentProfileService {
   async hasActiveProfileForApiKey(apiKeyId: string | undefined): Promise<boolean> {
     if (!apiKeyId) return false;
     const count = await this.profileRepo.count({
-      where: { status: 'active', api_key_id: apiKeyId },
+      where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(this.workspaceId(), {
+        status: 'active',
+        api_key_id: apiKeyId,
+      }),
     });
     return count > 0;
   }
@@ -225,11 +241,11 @@ export class AgentProfileService {
     const normalizedModel = (requestedModel || '').trim();
     if (!apiKeyId || !normalizedModel) return null;
     const profile = await this.profileRepo.findOne({
-      where: {
+      where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(this.workspaceId(), {
         status: 'active',
         api_key_id: apiKeyId,
         smart_model_id: normalizedModel,
-      },
+      }),
       order: { updated_at: 'DESC' },
     });
     if (!profile) return null;
@@ -331,6 +347,7 @@ export class AgentProfileService {
     const namespace = this.config.getNamespace(profile.namespace_id);
     return {
       id: profile.id,
+      workspace_id: this.entityWorkspaceId(profile),
       name: profile.name,
       description: profile.description || null,
       connector: profile.connector,
@@ -532,15 +549,23 @@ export class AgentProfileService {
   }
 
   private async getById(id: string): Promise<AgentProfile> {
-    const entity = await this.profileRepo.findOne({ where: { id } });
+    const entity = await this.profileRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id }),
+    });
     if (!entity) throw new NotFoundException(`Agent profile not found: ${id}`);
     return entity;
   }
 
-  private async assertUniqueName(name: string, exceptId?: string): Promise<void> {
+  private async assertUniqueName(
+    name: string,
+    exceptId?: string,
+    workspaceId = this.workspaceId(),
+  ): Promise<void> {
     const where = exceptId ? { name, id: Not(exceptId) } : { name };
-    const existing = await this.profileRepo.findOne({ where });
-    if (existing) {
+    const scopedExisting = await this.profileRepo.findOne({
+      where: workspaceFindWhere(workspaceId, where),
+    });
+    if (scopedExisting) {
       throw new BadRequestException(`Agent profile name already exists: ${name}`);
     }
   }
@@ -718,5 +743,13 @@ export class AgentProfileService {
       case 'generic_anthropic':
         return 'Generic Anthropic';
     }
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
+  }
+
+  private entityWorkspaceId(entity: { workspace_id?: string | null }): string {
+    return normalizeWorkspaceId(entity.workspace_id);
   }
 }

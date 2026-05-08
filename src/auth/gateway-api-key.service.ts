@@ -14,6 +14,11 @@ import { LocalTeam } from '../database/entities/local-team.entity';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { CallLog } from '../database/entities/call-log.entity';
 import { ConfigService } from '../config/config.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+} from '../workspaces/workspace-scope';
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -23,6 +28,7 @@ export interface GatewayApiKeyContext {
   id: string;
   name: string;
   status: GatewayApiKeyStatus;
+  workspace_id: string;
   allow_auto: boolean;
   allow_direct: boolean;
   allowed_nodes: string[];
@@ -42,6 +48,7 @@ export interface GatewayApiKeySummary {
   description: string | null;
   key_prefix: string;
   status: GatewayApiKeyStatus;
+  workspace_id: string;
   allow_auto: boolean;
   allow_direct: boolean;
   allowed_nodes: string[];
@@ -78,6 +85,7 @@ export interface CreatedGatewayApiKey {
 export class GatewayApiKeyService {
   constructor(
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(GatewayApiKey)
     private readonly apiKeyRepo: Repository<GatewayApiKey>,
     @InjectRepository(LocalTeam)
@@ -90,8 +98,10 @@ export class GatewayApiKeyService {
 
   async create(dto: CreateGatewayApiKeyDto): Promise<CreatedGatewayApiKey> {
     const normalized = this.normalizeCreateDto(dto);
-    await this.assertUniqueName(normalized.name!);
-    await this.assertTeamAvailable(normalized.team_id);
+    const workspaceId = this.workspaceId();
+    normalized.workspace_id = workspaceId;
+    await this.assertUniqueName(normalized.name!, undefined, workspaceId);
+    await this.assertTeamAvailable(normalized.team_id, workspaceId);
 
     const key = this.generatePlainKey();
     const entity = this.apiKeyRepo.create({
@@ -111,7 +121,10 @@ export class GatewayApiKeyService {
   }
 
   async list(): Promise<GatewayApiKeySummary[]> {
-    const keys = await this.apiKeyRepo.find({ order: { created_at: 'DESC' } });
+    const keys = await this.apiKeyRepo.find({
+      where: workspaceFindWhere(this.workspaceId(), {}),
+      order: { created_at: 'DESC' },
+    });
     return Promise.all(keys.map((key) => this.toSummary(key)));
   }
 
@@ -124,7 +137,8 @@ export class GatewayApiKeyService {
     if (entity.status !== 'active') {
       throw new BadRequestException(`API key is not active: ${entity.name}`);
     }
-    const team = await this.resolveActiveTeam(entity.team_id);
+    const workspaceId = this.entityWorkspaceId(entity);
+    const team = await this.resolveActiveTeam(entity.team_id, workspaceId);
     if (entity.team_id && !team) {
       throw new BadRequestException(`API key team is not available: ${entity.team_id}`);
     }
@@ -144,7 +158,8 @@ export class GatewayApiKeyService {
     if (!entity || entity.status !== 'active') {
       return null;
     }
-    const team = await this.resolveActiveTeam(entity.team_id);
+    const workspaceId = this.entityWorkspaceId(entity);
+    const team = await this.resolveActiveTeam(entity.team_id, workspaceId);
     if (entity.team_id && !team) {
       return null;
     }
@@ -173,11 +188,11 @@ export class GatewayApiKeyService {
     const normalized = this.normalizeUpdateDto(dto);
 
     if (normalized.name && normalized.name !== entity.name) {
-      await this.assertUniqueName(normalized.name, id);
+      await this.assertUniqueName(normalized.name, id, this.entityWorkspaceId(entity));
       await this.renameBudgetRules(id, normalized.name);
     }
     if (normalized.team_id !== undefined) {
-      await this.assertTeamAvailable(normalized.team_id);
+      await this.assertTeamAvailable(normalized.team_id, this.entityWorkspaceId(entity));
     }
 
     Object.assign(entity, normalized);
@@ -189,7 +204,7 @@ export class GatewayApiKeyService {
   async remove(id: string): Promise<void> {
     const entity = await this.getById(id);
     await this.budgetRepo.update(
-      { api_key_id: id },
+      { api_key_id: id, workspace_id: this.entityWorkspaceId(entity) },
       { is_active: false },
     );
     await this.apiKeyRepo.remove(entity);
@@ -227,6 +242,7 @@ export class GatewayApiKeyService {
       id: entity.id,
       name: entity.name,
       status: entity.status,
+      workspace_id: this.entityWorkspaceId(entity),
       allow_auto: entity.allow_auto,
       allow_direct: entity.allow_direct,
       allowed_nodes: this.combineRestrictions(
@@ -260,11 +276,13 @@ export class GatewayApiKeyService {
   }
 
   private async toSummary(entity: GatewayApiKey): Promise<GatewayApiKeySummary> {
-    const team = await this.resolveTeam(entity.team_id);
+    const workspaceId = this.entityWorkspaceId(entity);
+    const team = await this.resolveTeam(entity.team_id, workspaceId);
     const since = this.startOfDay(new Date());
     const aggregate = await this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
+      .andWhere('log.workspace_id = :workspaceId', { workspaceId })
       .andWhere('(log.api_key_id = :id OR (log.api_key_id IS NULL AND log.api_key_name = :name))', {
         id: entity.id,
         name: entity.name,
@@ -284,6 +302,7 @@ export class GatewayApiKeyService {
       description: entity.description,
       key_prefix: entity.key_prefix,
       status: entity.status,
+      workspace_id: workspaceId,
       allow_auto: entity.allow_auto,
       allow_direct: entity.allow_direct,
       allowed_nodes: entity.allowed_nodes || [],
@@ -429,34 +448,53 @@ export class GatewayApiKeyService {
     return numeric;
   }
 
-  private async assertUniqueName(name: string, exceptId?: string): Promise<void> {
-    const existing = await this.apiKeyRepo.findOne({ where: { name } });
+  private async assertUniqueName(
+    name: string,
+    exceptId?: string,
+    workspaceId = this.workspaceId(),
+  ): Promise<void> {
+    const existing = await this.apiKeyRepo.findOne({
+      where: workspaceFindWhere(workspaceId, { name }),
+    });
     if (existing && existing.id !== exceptId) {
       throw new BadRequestException(`API key name already exists: ${name}`);
     }
   }
 
   private async getById(id: string): Promise<GatewayApiKey> {
-    const entity = await this.apiKeyRepo.findOne({ where: { id } });
+    const entity = await this.apiKeyRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id }),
+    });
     if (!entity) {
       throw new NotFoundException(`API key not found: ${id}`);
     }
     return entity;
   }
 
-  private async resolveTeam(id: string | null | undefined): Promise<LocalTeam | null> {
+  private async resolveTeam(
+    id: string | null | undefined,
+    workspaceId = this.workspaceId(),
+  ): Promise<LocalTeam | null> {
     if (!id) return null;
-    return this.teamRepo.findOne({ where: { id } });
+    return this.teamRepo.findOne({
+      where: workspaceFindWhere(workspaceId, { id }),
+    });
   }
 
-  private async resolveActiveTeam(id: string | null | undefined): Promise<LocalTeam | null> {
-    const team = await this.resolveTeam(id);
+  private async resolveActiveTeam(
+    id: string | null | undefined,
+    workspaceId = this.workspaceId(),
+  ): Promise<LocalTeam | null> {
+    const team = await this.resolveTeam(id, workspaceId);
     return team?.status === 'active' ? team : null;
   }
 
-  private async assertTeamAvailable(id: string | null | undefined): Promise<void> {
+  private async assertTeamAvailable(
+    id: string | null | undefined,
+    workspaceId = this.workspaceId(),
+  ): Promise<void> {
     if (!id) return;
-    const team = await this.resolveTeam(id);
+    const team = await this.resolveTeam(id, workspaceId);
     if (!team) {
       throw new BadRequestException(`Unknown team_id: ${id}`);
     }
@@ -479,7 +517,11 @@ export class GatewayApiKeyService {
     limit: number | null,
   ): Promise<void> {
     const existing = await this.budgetRepo.findOne({
-      where: { api_key_id: entity.id, type },
+      where: {
+        api_key_id: entity.id,
+        type,
+        workspace_id: this.entityWorkspaceId(entity),
+      },
     });
 
     if (limit === null) {
@@ -508,16 +550,28 @@ export class GatewayApiKeyService {
       is_active: true,
       api_key_name: entity.name,
       api_key_id: entity.id,
+      workspace_id: this.entityWorkspaceId(entity),
     }));
   }
 
   private async renameBudgetRules(id: string, name: string): Promise<void> {
-    await this.budgetRepo.update({ api_key_id: id }, { api_key_name: name });
+    await this.budgetRepo.update(
+      { api_key_id: id, workspace_id: this.workspaceId() },
+      { api_key_name: name },
+    );
   }
 
   private startOfDay(date: Date): Date {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
+  }
+
+  private entityWorkspaceId(entity: { workspace_id?: string | null }): string {
+    return normalizeWorkspaceId(entity.workspace_id);
   }
 }

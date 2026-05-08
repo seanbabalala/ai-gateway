@@ -11,6 +11,7 @@ import {
 @Index(['request_id'], { unique: true })
 @Index(['provider_batch_id'])
 @Index(['status'])
+@Index(['workspace_id'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
 export class BatchJob {
@@ -55,6 +56,9 @@ export class BatchJob {
 
   @Column({ type: 'integer', default: 0 })
   request_counts_failed!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   api_key_id!: string | null;

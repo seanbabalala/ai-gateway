@@ -32,9 +32,10 @@ export type AgentProfileBaseUrlMode =
   (typeof AGENT_PROFILE_BASE_URL_MODES)[number];
 
 @Entity('agent_profiles')
-@Index(['name'], { unique: true })
+@Index(['workspace_id', 'name'], { unique: true })
 @Index(['connector'])
 @Index(['status'])
+@Index(['workspace_id'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
 export class AgentProfile {
@@ -52,6 +53,9 @@ export class AgentProfile {
 
   @Column({ type: 'varchar', default: 'active' })
   status!: AgentProfileStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   api_key_id!: string | null;

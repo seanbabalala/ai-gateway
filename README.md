@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.9.2 v1 to v2 Migration Dry Run**.
+Current release: **v2.0.0-alpha.1 Workspace Core Data Model**.
 
-Current development focus after v1.9.2: prepare the v2.x transition from smart gateway to AI infrastructure platform while preserving v1.9 gateway compatibility, local-first operation, and metadata-only privacy boundaries.
+Current development focus after v2.0.0-alpha.1: continue the v2.0 Platform Trust sequence with RBAC, production database hardening, shared runtime state, auditability, and upgrade safety while preserving v1.9 gateway compatibility, local SQLite startup, and metadata-only privacy boundaries.
 
 ## Why SiftGate
 
@@ -49,6 +49,10 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.0 Alpha Highlights
+
+- v2.0.0-alpha.1 introduces the Workspace Core foundation: every OSS install now bootstraps a default organization and default workspace, legacy v1.9 resources map safely to that workspace, Dashboard APIs expose active workspace state, and the header selector sends `x-siftgate-workspace-id` for workspace-scoped views.
 
 ## v1.9 Highlights
 

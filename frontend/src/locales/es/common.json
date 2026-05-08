@@ -65,5 +65,11 @@
   "nav.sessions": "Sesiones",
   "nav.mcp": "MCP Gateway",
   "nav.batches": "Lotes",
-  "nav.evals": "Informes Eval"
+  "nav.evals": "Informes Eval",
+  "workspace.organization": "Organización",
+  "workspace.workspace": "Espacio",
+  "workspace.defaultWorkspace": "Espacio predeterminado",
+  "workspace.switchWorkspace": "Cambiar espacio",
+  "workspace.activeWorkspace": "Espacio activo",
+  "workspace.defaultWorkspaceMigration": "Los recursos heredados se asignan al espacio predeterminado."
 }

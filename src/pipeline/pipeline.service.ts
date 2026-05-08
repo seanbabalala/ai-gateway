@@ -74,6 +74,8 @@ import { LogSinkService } from '../log-sinks/log-sink.service';
 import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { AgentProfileService } from '../agent-profiles/agent-profile.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 import {
   RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionCacheEvidence,
@@ -205,6 +207,7 @@ export class PipelineService {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    private readonly workspaceContext: WorkspaceContextService,
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly logSinks?: LogSinkService,
     @Optional() private readonly embeddingBatching?: EmbeddingBatchingService,
@@ -5308,6 +5311,7 @@ export class PipelineService {
       const log = this.callLogRepo.create({
         request_id: params.requestId,
         source_format: params.canonical.metadata.source_format,
+        workspace_id: this.workspaceIdForCanonical(params.canonical),
         tier: params.tier, score: params.score,
         node_id: params.nodeId, model: params.model,
         input_tokens: params.usage.input_tokens, output_tokens: params.usage.output_tokens,
@@ -5596,10 +5600,11 @@ export class PipelineService {
     },
   ): Promise<void> {
     const trace = this.finalizeRouteTrace(params);
-    const log = this.routeDecisionRepo.create({
-      request_id: params.requestId,
-      source_format: params.canonical.metadata.source_format,
-      tier: params.tier,
+      const log = this.routeDecisionRepo.create({
+        request_id: params.requestId,
+        source_format: params.canonical.metadata.source_format,
+        workspace_id: this.workspaceIdForCanonical(params.canonical),
+        tier: params.tier,
       score: params.score,
       route_mode: trace.mode,
       strategy: String(trace.load_balancing.strategy),
@@ -5622,6 +5627,12 @@ export class PipelineService {
       trace_json: JSON.stringify(trace),
     });
     await this.routeDecisionRepo.save(log);
+  }
+
+  private workspaceIdForCanonical(canonical: LoggableCanonicalRequest): string {
+    return normalizeWorkspaceId(
+      canonical.metadata.workspace_id || this.workspaceContext.currentWorkspaceId(),
+    );
   }
 
   private finalizeRouteTrace(params: {

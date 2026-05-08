@@ -65,5 +65,11 @@
   "nav.sessions": "เซสชัน",
   "nav.mcp": "MCP Gateway",
   "nav.batches": "แบตช์",
-  "nav.evals": "รายงาน Eval"
+  "nav.evals": "รายงาน Eval",
+  "workspace.organization": "องค์กร",
+  "workspace.workspace": "เวิร์กสเปซ",
+  "workspace.defaultWorkspace": "เวิร์กสเปซเริ่มต้น",
+  "workspace.switchWorkspace": "สลับเวิร์กสเปซ",
+  "workspace.activeWorkspace": "เวิร์กสเปซปัจจุบัน",
+  "workspace.defaultWorkspaceMigration": "ทรัพยากรเดิมจะอยู่ในเวิร์กสเปซเริ่มต้น"
 }

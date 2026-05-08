@@ -40,6 +40,7 @@ function makeController(options: {
   gatewayApiKeys?: any;
   callLogRepo?: any;
   routeDecisionRepo?: any;
+  workspaceContext?: any;
 } = {}) {
   const pipeline = options.pipeline || makePipeline();
   const config = options.config || mockConfigService({
@@ -70,6 +71,7 @@ function makeController(options: {
     id: 'key_1',
     name: 'Playground Key',
     status: 'active',
+    workspace_id: 'default-workspace',
     allow_auto: true,
     allow_direct: true,
     allowed_nodes: ['openai', 'anthropic'],
@@ -96,6 +98,9 @@ function makeController(options: {
   const routeDecisionRepo = options.routeDecisionRepo || {
     findOne: jest.fn().mockResolvedValue({ request_id: 'req_play_1' }),
   };
+  const workspaceContext = options.workspaceContext || {
+    currentWorkspaceId: jest.fn(() => 'default-workspace'),
+  };
 
   return {
     controller: new PlaygroundController(
@@ -104,6 +109,7 @@ function makeController(options: {
       gatewayApiKeys,
       callLogRepo,
       routeDecisionRepo,
+      workspaceContext,
     ),
     pipeline,
     config,
@@ -162,15 +168,22 @@ describe('PlaygroundController', () => {
     });
     expect(gatewayApiKeys.getContextById).toHaveBeenCalledWith('key_1');
     expect(callLogRepo.findOne).toHaveBeenCalledWith(expect.objectContaining({
-      where: { session_key: expect.stringMatching(/^playground-/) },
+      where: {
+        workspace_id: 'default-workspace',
+        session_key: expect.stringMatching(/^playground-/),
+      },
     }));
     expect(routeDecisionRepo.findOne).toHaveBeenCalledWith({
-      where: { request_id: 'req_play_1' },
+      where: {
+        workspace_id: 'default-workspace',
+        request_id: 'req_play_1',
+      },
     });
 
     const canonical = pipeline.process.mock.calls[0][0];
     expect(canonical.model).toBeUndefined();
     expect(canonical.metadata.original_model).toBe('gpt-4o-mini');
+    expect(canonical.metadata.workspace_id).toBe('default-workspace');
     expect(canonical.metadata.api_key_id).toBe('key_1');
     expect(canonical.metadata.namespace_id).toBe('team-alpha');
     expect(canonical.metadata.api_key_permissions).toEqual({

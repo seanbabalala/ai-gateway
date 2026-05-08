@@ -65,5 +65,11 @@
   "nav.sessions": "工作階段",
   "nav.mcp": "MCP 閘道",
   "nav.batches": "批次任務",
-  "nav.evals": "評測報告"
+  "nav.evals": "評測報告",
+  "workspace.organization": "組織",
+  "workspace.workspace": "工作區",
+  "workspace.defaultWorkspace": "預設工作區",
+  "workspace.switchWorkspace": "切換工作區",
+  "workspace.activeWorkspace": "目前工作區",
+  "workspace.defaultWorkspaceMigration": "舊資源會歸入預設工作區。"
 }

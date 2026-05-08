@@ -13,46 +13,17 @@ function mockBudgetRepo() {
     _store: store,
     find: jest.fn(async (opts?: any) => {
       if (!opts?.where) return [...store];
-      const where = opts.where;
-      let results = [...store];
-
-      if ('is_active' in where) {
-        results = results.filter((r) => r.is_active === where.is_active);
-      }
-      if ('api_key_name' in where) {
-        const target = where.api_key_name;
-        // Handle TypeORM IsNull() — it becomes FindOperator
-        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
-          results = results.filter((r) => r.api_key_name === null || r.api_key_name === undefined);
-        } else {
-          results = results.filter((r) => r.api_key_name === target);
-        }
-      }
-      if ('api_key_id' in where) {
-        const target = where.api_key_id;
-        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
-          results = results.filter((r) => r.api_key_id === null || r.api_key_id === undefined);
-        } else {
-          results = results.filter((r) => r.api_key_id === target);
-        }
-      }
-      if ('namespace_id' in where) {
-        const target = where.namespace_id;
-        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
-          results = results.filter((r) => r.namespace_id === null || r.namespace_id === undefined);
-        } else {
-          results = results.filter((r) => r.namespace_id === target);
-        }
-      }
-      if ('team_id' in where) {
-        const target = where.team_id;
-        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
-          results = results.filter((r) => r.team_id === null || r.team_id === undefined);
-        } else {
-          results = results.filter((r) => r.team_id === target);
-        }
-      }
-      return results;
+      const where = Array.isArray(opts.where) ? opts.where : [opts.where];
+      return store.filter((row) =>
+        where.some((candidate: any) => matchesWhere(row, candidate)),
+      );
+    }),
+    findOne: jest.fn(async (opts?: any) => {
+      if (!opts?.where) return null;
+      const where = Array.isArray(opts.where) ? opts.where : [opts.where];
+      return store.find((row) =>
+        where.some((candidate: any) => matchesWhere(row, candidate)),
+      ) || null;
     }),
     findOneBy: jest.fn(async (where: any) => {
       return store.find((r) => r.id === where.id) || null;
@@ -89,6 +60,56 @@ function mockBudgetRepo() {
     }),
     clear: () => { store.length = 0; nextId = 1; },
   };
+
+  function matchesWhere(row: any, where: any): boolean {
+      if ('is_active' in where) {
+        if (row.is_active !== where.is_active) return false;
+      }
+      if ('api_key_name' in where) {
+        const target = where.api_key_name;
+        // Handle TypeORM IsNull() — it becomes FindOperator
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          if (row.api_key_name !== null && row.api_key_name !== undefined) return false;
+        } else if (row.api_key_name !== target) {
+          return false;
+        }
+      }
+      if ('api_key_id' in where) {
+        const target = where.api_key_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          if (row.api_key_id !== null && row.api_key_id !== undefined) return false;
+        } else if (row.api_key_id !== target) {
+          return false;
+        }
+      }
+      if ('namespace_id' in where) {
+        const target = where.namespace_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          if (row.namespace_id !== null && row.namespace_id !== undefined) return false;
+        } else if (row.namespace_id !== target) {
+          return false;
+        }
+      }
+      if ('team_id' in where) {
+        const target = where.team_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          if (row.team_id !== null && row.team_id !== undefined) return false;
+        } else if (row.team_id !== target) {
+          return false;
+        }
+      }
+      if ('workspace_id' in where) {
+        const target = where.workspace_id;
+        if (target === null || (target && typeof target === 'object' && target._type === 'isNull')) {
+          if (row.workspace_id !== null && row.workspace_id !== undefined) return false;
+        } else if (row.workspace_id !== target) {
+          return false;
+        }
+      }
+      if ('id' in where && row.id !== where.id) return false;
+      if ('type' in where && row.type !== where.type) return false;
+      return true;
+  }
 }
 
 function makeService(overrides: Record<string, unknown> = {}) {
@@ -107,8 +128,15 @@ function makeService(overrides: Record<string, unknown> = {}) {
   });
   const repo = mockBudgetRepo();
   const alerts = (overrides as any).alerts || { emit: jest.fn() };
-  const svc = new BudgetService(config, repo as any, alerts as any, telemetry as any);
-  return { svc, repo, config, alerts };
+  const workspaceContext = { currentWorkspaceId: jest.fn(() => 'default-workspace') };
+  const svc = new BudgetService(
+    config,
+    workspaceContext as any,
+    repo as any,
+    alerts as any,
+    telemetry as any,
+  );
+  return { svc, repo, config, alerts, workspaceContext };
 }
 
 describe('BudgetService', () => {

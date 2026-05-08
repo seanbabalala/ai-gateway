@@ -31,6 +31,7 @@ function mockQueryBuilder(
     andWhere: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     delete: jest.fn().mockReturnThis(),
@@ -460,6 +461,55 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     }),
     ...overrides.batchJobs,
   };
+  const workspaces = {
+    getState: jest.fn().mockResolvedValue({
+      organization: {
+        id: "default-org",
+        name: "Default Organization",
+        slug: "default-org",
+        status: "active",
+      },
+      active_workspace: {
+        id: "default-workspace",
+        organization_id: "default-org",
+        name: "Default Workspace",
+        slug: "default-workspace",
+        status: "active",
+        is_default: true,
+      },
+      default_workspace: {
+        id: "default-workspace",
+        organization_id: "default-org",
+        name: "Default Workspace",
+        slug: "default-workspace",
+        status: "active",
+        is_default: true,
+      },
+      workspaces: [
+        {
+          id: "default-workspace",
+          organization_id: "default-org",
+          name: "Default Workspace",
+          slug: "default-workspace",
+          status: "active",
+          is_default: true,
+        },
+      ],
+    }),
+    requireWorkspace: jest.fn().mockResolvedValue({
+      id: "default-workspace",
+      organization_id: "default-org",
+      name: "Default Workspace",
+      slug: "default-workspace",
+      status: "active",
+      is_default: true,
+    }),
+    ...overrides.workspaces,
+  };
+  const workspaceContext = {
+    currentWorkspaceId: jest.fn(() => "default-workspace"),
+    ...overrides.workspaceContext,
+  };
 
   const controller = new DashboardController(
     config,
@@ -482,6 +532,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     configAudit as any,
     catalog as any,
     batchJobs as any,
+    workspaces as any,
+    workspaceContext as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
@@ -510,6 +562,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     providerCompatibility,
     configAudit,
     batchJobs,
+    workspaces,
+    workspaceContext,
     callLogRepo,
     routeDecisionRepo,
     shadowTrafficRepo,
@@ -1052,7 +1106,7 @@ describe("DashboardController — getLogs", () => {
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     await controller.getLogs(1, 50, "standard", "openai", "200");
 
-    expect(qb.andWhere).toHaveBeenCalledTimes(3);
+    expect(qb.andWhere).toHaveBeenCalledTimes(4);
   });
 
   it("should clamp limit to max 200", async () => {
@@ -1249,7 +1303,10 @@ describe("DashboardController — route decisions", () => {
     const result = await controller.getRouteDecision("req-1");
 
     expect(routeDecisionRepo.findOne).toHaveBeenCalledWith({
-      where: { request_id: "req-1" },
+      where: {
+        workspace_id: "default-workspace",
+        request_id: "req-1",
+      },
     });
     expect(result.trace).toMatchObject({
       modality_evidence: {
@@ -3491,12 +3548,20 @@ describe("DashboardController — api_key filtering on stats", () => {
     await controller.getStats("renamed-key", "key_123");
 
     expect(repo.count).toHaveBeenNthCalledWith(1, {
-      where: { api_key_id: "key_123" },
+      where: { api_key_id: "key_123", workspace_id: "default-workspace" },
     });
     expect(repo.count).toHaveBeenNthCalledWith(2, {
-      where: { status_code: 200, api_key_id: "key_123" },
+      where: {
+        status_code: 200,
+        api_key_id: "key_123",
+        workspace_id: "default-workspace",
+      },
     });
-    expect(qb.where).toHaveBeenCalledWith("log.api_key_id = :apiKeyId", {
+    expect(qb.where).toHaveBeenCalledWith(
+      "(log.workspace_id = :workspaceId OR log.workspace_id IS NULL)",
+      { workspaceId: "default-workspace" },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith("log.api_key_id = :apiKeyId", {
       apiKeyId: "key_123",
     });
   });

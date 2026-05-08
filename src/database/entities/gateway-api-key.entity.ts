@@ -11,8 +11,9 @@ export type GatewayApiKeyStatus = 'active' | 'disabled';
 
 @Entity('gateway_api_keys')
 @Index(['key_hash'], { unique: true })
-@Index(['name'], { unique: true })
+@Index(['workspace_id', 'name'], { unique: true })
 @Index(['status'])
+@Index(['workspace_id'])
 @Index(['namespace_id'])
 @Index(['team_id'])
 export class GatewayApiKey {
@@ -33,6 +34,9 @@ export class GatewayApiKey {
 
   @Column({ type: 'varchar', default: 'active' })
   status!: GatewayApiKeyStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'boolean', default: true })
   allow_auto!: boolean;

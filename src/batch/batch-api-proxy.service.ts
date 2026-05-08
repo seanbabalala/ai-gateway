@@ -16,6 +16,8 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { normalizeRequestIdentityHeaders } from '../canonical/normalizers/request-metadata';
 import { gatewayApiKeyFromRequest } from '../auth/gateway-api-key-metadata';
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 import { BatchJobStoreService } from './batch-job-store.service';
 import { BatchProviderAdapterService } from './batch-provider-adapter.service';
 import type {
@@ -35,6 +37,7 @@ export class BatchApiProxyService {
     private readonly adapter: BatchProviderAdapterService,
     private readonly jobs: BatchJobStoreService,
     private readonly telemetry: TelemetryService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(CallLog)
     private readonly callLogs: Repository<CallLog>,
   ) {}
@@ -480,6 +483,10 @@ export class BatchApiProxyService {
       session_key: input.context.session_id || null,
       trace_id: input.context.trace_id || null,
       error: input.error,
+      workspace_id: normalizeWorkspaceId(
+        input.context.apiKey?.workspace_id ||
+          this.workspaceContext.currentWorkspaceId(),
+      ),
       api_key_name: input.context.apiKey?.name || null,
       api_key_id: input.context.apiKey?.id || null,
       namespace_id: input.context.apiKey?.namespace_id || null,

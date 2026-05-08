@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Optional,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -43,6 +44,11 @@ import {
 } from '../auth/gateway-api-key.service';
 import { PipelineResult, PipelineService } from '../pipeline/pipeline.service';
 import { ErrorEnvelopeDto } from '../openapi/openapi.dto';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  normalizeWorkspaceId,
+  workspaceFindWhereStrict,
+} from '../workspaces/workspace-scope';
 
 type PlaygroundEndpoint =
   | 'chat_completions'
@@ -129,6 +135,8 @@ export class PlaygroundController {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    @Optional()
+    private readonly workspaceContext?: WorkspaceContextService,
   ) {}
 
   @Post('run')
@@ -171,7 +179,11 @@ export class PlaygroundController {
     const execution = await this.execute(canonical, endpoint, stream);
     const log = await this.findPlaygroundLog(sessionKey);
     const decision = log
-      ? await this.routeDecisionRepo.findOne({ where: { request_id: log.request_id } })
+      ? await this.routeDecisionRepo.findOne({
+          where: workspaceFindWhereStrict(this.workspaceId(), {
+            request_id: log.request_id,
+          }),
+        })
       : null;
     const latencyMs = log?.latency_ms ?? Date.now() - startedAt;
 
@@ -277,6 +289,7 @@ export class PlaygroundController {
     canonical: PlaygroundCanonical,
     input: PlaygroundRunDto,
   ): Promise<void> {
+    canonical.metadata.workspace_id = this.workspaceId();
     const scope = await this.resolvePlaygroundScope(input);
 
     if (scope.effectiveContext) {
@@ -493,9 +506,15 @@ export class PlaygroundController {
 
   private async findPlaygroundLog(sessionKey: string): Promise<CallLog | null> {
     return this.callLogRepo.findOne({
-      where: { session_key: sessionKey },
+      where: workspaceFindWhereStrict(this.workspaceId(), {
+        session_key: sessionKey,
+      }),
       order: { timestamp: 'DESC' },
     });
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext?.currentWorkspaceId());
   }
 
   private normalizeEndpoint(value: unknown): PlaygroundEndpoint {

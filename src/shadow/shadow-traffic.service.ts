@@ -19,9 +19,15 @@ import {
   ShadowTrafficResult,
 } from '../database/entities/shadow-traffic-result.entity';
 import { CallLog } from '../database/entities/call-log.entity';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+} from '../workspaces/workspace-scope';
 
 interface ShadowTargetContext {
   requestId: string;
+  workspaceId: string;
   namespaceId?: string | null;
   apiKeyId?: string | null;
   apiKeyName?: string | null;
@@ -193,6 +199,7 @@ export class ShadowTrafficService {
   constructor(
     private readonly config: ConfigService,
     private readonly providerClient: ProviderClientService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(ShadowTrafficResult)
     private readonly shadowRepo: Repository<ShadowTrafficResult>,
     @InjectRepository(CallLog)
@@ -352,7 +359,10 @@ export class ShadowTrafficService {
   async recent(namespaceId?: string, limit = 50): Promise<ShadowTrafficResult[]> {
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     return this.shadowRepo.find({
-      where: namespaceId ? { namespace_id: namespaceId } : undefined,
+      where: workspaceFindWhere(
+        this.workspaceContext.currentWorkspaceId(),
+        namespaceId ? { namespace_id: namespaceId } : {},
+      ),
       order: { timestamp: 'DESC' },
       take: safeLimit,
     });
@@ -480,9 +490,13 @@ export class ShadowTrafficService {
   }
 
   async comparisonForResult(id: number): Promise<ShadowResultComparison | null> {
-    const row = await this.shadowRepo.findOne({ where: { id } });
+    const row = await this.shadowRepo.findOne({
+      where: workspaceFindWhere(this.workspaceContext.currentWorkspaceId(), { id }),
+    });
     if (!row) return null;
-    const primary = await this.callLogRepo.findOne({ where: { request_id: row.request_id } });
+    const primary = await this.callLogRepo.findOne({
+      where: workspaceFindWhere(row.workspace_id, { request_id: row.request_id }),
+    });
     const shadowCost = this.estimateShadowCost(row);
     const primaryTokens = primary ? primary.input_tokens + primary.output_tokens : null;
     const shadowTokens = row.input_tokens + row.output_tokens;
@@ -572,7 +586,7 @@ export class ShadowTrafficService {
     if (filters.sourceFormat) where.source_format = filters.sourceFormat;
 
     const rows = await this.shadowRepo.find({
-      where,
+      where: workspaceFindWhere(this.workspaceContext.currentWorkspaceId(), where),
       order: { timestamp: 'DESC' },
       take: Math.min(Math.max(this.config.shadowTraffic.max_recent_results, 100), 5000),
     });
@@ -592,7 +606,9 @@ export class ShadowTrafficService {
     const requestIds = Array.from(new Set(rows.map((row) => row.request_id).filter(Boolean)));
     if (requestIds.length === 0) return new Map();
     const logs = await this.callLogRepo.find({
-      where: { request_id: In(requestIds) },
+      where: workspaceFindWhere(this.workspaceContext.currentWorkspaceId(), {
+        request_id: In(requestIds),
+      }),
     });
     return new Map(logs.map((log) => [log.request_id, log]));
   }
@@ -826,6 +842,9 @@ export class ShadowTrafficService {
   ): ShadowTargetContext {
     return {
       requestId,
+      workspaceId: normalizeWorkspaceId(
+        canonical.metadata.workspace_id || this.workspaceContext.currentWorkspaceId(),
+      ),
       namespaceId: canonical.metadata.namespace_id || null,
       apiKeyId: canonical.metadata.api_key_id || null,
       apiKeyName: canonical.metadata.api_key_name || null,
@@ -927,6 +946,7 @@ export class ShadowTrafficService {
     const saved = await this.shadowRepo.save(this.shadowRepo.create({
       request_id: params.context.requestId,
       kind: params.kind,
+      workspace_id: params.context.workspaceId,
       namespace_id: params.context.namespaceId || null,
       api_key_id: params.context.apiKeyId || null,
       api_key_name: params.context.apiKeyName || null,

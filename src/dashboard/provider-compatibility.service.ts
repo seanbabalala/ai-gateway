@@ -12,6 +12,12 @@ import {
   compatibilityCapabilityConfigured,
   resolveNodeCompatibilityProfiles,
 } from '../catalog/compatibility-profiles';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+  workspaceFindWhereStrict,
+} from '../workspaces/workspace-scope';
 
 export interface ProviderCompatibilityMatrixItem {
   capability: ProviderCompatibilityCapability;
@@ -68,6 +74,7 @@ const CAPABILITIES: ProviderCompatibilityCapability[] = [
 @Injectable()
 export class ProviderCompatibilityService {
   constructor(
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(ProviderCompatibilityResult)
     private readonly repo: Repository<ProviderCompatibilityResult>,
     @Optional()
@@ -79,7 +86,11 @@ export class ProviderCompatibilityService {
   ): Promise<Record<string, ProviderCompatibilityMatrixItem[]>> {
     const nodeIds = nodes.map((node) => node.id);
     const saved = nodeIds.length
-      ? await this.repo.find({ where: { node_id: In(nodeIds) } })
+      ? await this.repo.find({
+          where: workspaceFindWhereStrict(this.workspaceId(), {
+            node_id: In(nodeIds),
+          }),
+        })
       : [];
     const byKey = new Map(
       saved.map((result) => [`${result.node_id}:${result.capability}`, result]),
@@ -410,10 +421,14 @@ export class ProviderCompatibilityService {
     },
   ): Promise<ProviderCompatibilityMatrixItem> {
     const existing = await this.repo.findOne({
-      where: { node_id: node.id, capability: plan.capability },
+      where: workspaceFindWhere(this.workspaceId(), {
+        node_id: node.id,
+        capability: plan.capability,
+      }),
     });
     const entity = this.repo.create({
       ...(existing || {}),
+      workspace_id: this.workspaceId(),
       node_id: node.id,
       capability: plan.capability,
       configured: result.configured,
@@ -628,5 +643,9 @@ export class ProviderCompatibilityService {
       .replace(/gw_sk_[A-Za-z0-9._~+/-]+/gi, 'gw_sk_[redacted]')
       .replace(/sk-[A-Za-z0-9._~+/-]+/gi, 'sk-[redacted]')
       .slice(0, 300);
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
   }
 }

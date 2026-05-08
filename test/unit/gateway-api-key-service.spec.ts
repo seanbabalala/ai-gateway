@@ -7,8 +7,21 @@ function makeRepo<T extends { id?: any }>(initial: T[] = []) {
   const store = [...initial];
   let nextId = 1;
 
-  const matchesWhere = (item: any, where: Record<string, unknown>) =>
-    Object.entries(where).every(([key, value]) => item[key] === value);
+  const matchesValue = (itemValue: unknown, whereValue: any) => {
+    if (whereValue && typeof whereValue === 'object' && whereValue._type === 'isNull') {
+      return itemValue === null || itemValue === undefined;
+    }
+    return itemValue === whereValue;
+  };
+  const matchesWhere = (
+    item: any,
+    where: Record<string, unknown> | Record<string, unknown>[],
+  ): boolean =>
+    Array.isArray(where)
+      ? where.some((candidate) => matchesWhere(item, candidate))
+      : Object.entries(where).every(([key, value]) =>
+          matchesValue(item[key], value),
+        );
 
   return {
     _store: store,
@@ -86,14 +99,16 @@ function makeService(seed: any[] = [], configOverrides: Record<string, unknown> 
     inputTokens: '100',
     outputTokens: '50',
   });
+  const workspaceContext = { currentWorkspaceId: jest.fn(() => 'default-workspace') };
   const service = new GatewayApiKeyService(
     config,
+    workspaceContext as any,
     apiKeyRepo as any,
     teamRepo as any,
     budgetRepo as any,
     callLogRepo as any,
   );
-  return { service, apiKeyRepo, teamRepo, budgetRepo, callLogRepo };
+  return { service, apiKeyRepo, teamRepo, budgetRepo, callLogRepo, workspaceContext };
 }
 
 describe('GatewayApiKeyService', () => {
@@ -359,7 +374,7 @@ describe('GatewayApiKeyService', () => {
     });
 
     expect(budgetRepo.update).toHaveBeenCalledWith(
-      { api_key_id: created.item.id },
+      { api_key_id: created.item.id, workspace_id: 'default-workspace' },
       { api_key_name: 'Renamed' },
     );
     expect(budgetRepo._store).toEqual(expect.arrayContaining([
@@ -380,7 +395,7 @@ describe('GatewayApiKeyService', () => {
 
     await service.remove(created.item.id);
     expect(budgetRepo.update).toHaveBeenCalledWith(
-      { api_key_id: created.item.id },
+      { api_key_id: created.item.id, workspace_id: 'default-workspace' },
       { is_active: false },
     );
   });

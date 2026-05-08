@@ -10,6 +10,8 @@ import {
 } from "../../src/cli/db-migrator";
 
 const TABLES: DbMigrationTableName[] = [
+  "organizations",
+  "workspaces",
   "gateway_api_keys",
   "agent_profiles",
   "local_teams",
@@ -907,7 +909,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(16);
+    expect(result.totals.source_rows).toBe(18);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -934,7 +936,26 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(target.sequencesReset).toBe(true);
     expect(target.closed).toBe(true);
 
+    const organization = target.rows.get("organizations")?.[0];
+    expect(organization).toMatchObject({
+      id: "default-org",
+      name: "Default Organization",
+      slug: "default-org",
+      status: "active",
+    });
+
+    const workspace = target.rows.get("workspaces")?.[0];
+    expect(workspace).toMatchObject({
+      id: "default-workspace",
+      organization_id: "default-org",
+      name: "Default Workspace",
+      slug: "default-workspace",
+      status: "active",
+      is_default: true,
+    });
+
     const apiKey = target.rows.get("gateway_api_keys")?.[0];
+    expect(apiKey?.workspace_id).toBe("default-workspace");
     expect(apiKey?.allow_auto).toBe(true);
     expect(apiKey?.allow_direct).toBe(false);
     expect(apiKey?.allowed_nodes).toEqual(["openai"]);
@@ -944,6 +965,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(apiKey?.created_at).toBeInstanceOf(Date);
 
     const agentProfile = target.rows.get("agent_profiles")?.[0];
+    expect(agentProfile?.workspace_id).toBe("default-workspace");
     expect(agentProfile?.id).toBe("profile-1");
     expect(agentProfile?.connector).toBe("claude_code");
     expect(agentProfile?.routing_hint).toEqual({ tier: "reasoning" });
@@ -953,12 +975,14 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(agentProfile?.created_at).toBeInstanceOf(Date);
 
     const team = target.rows.get("local_teams")?.[0];
+    expect(team?.workspace_id).toBe("default-workspace");
     expect(team?.name).toBe("Platform");
     expect(team?.namespace_id).toBe("team-alpha");
     expect(team?.allowed_endpoints).toEqual(["chat_completions", "responses"]);
     expect(team?.last_used_at).toBeInstanceOf(Date);
 
     const callLog = target.rows.get("call_logs")?.[0];
+    expect(callLog?.workspace_id).toBe("default-workspace");
     expect(callLog?.is_fallback).toBe(false);
     expect(callLog?.structured_output_requested).toBe(true);
     expect(callLog?.structured_output_supported).toBe(true);
@@ -1062,7 +1086,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(16);
+    expect(result.validation.mismatches).toHaveLength(18);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

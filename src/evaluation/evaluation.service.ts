@@ -15,6 +15,12 @@ import {
 } from '../database/entities';
 import type { PipelineResult } from '../pipeline/pipeline.service';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+} from '../workspaces/workspace-scope';
 
 export interface EvalTargetInput {
   node_id?: string | null;
@@ -95,6 +101,7 @@ export class EvaluationService {
     private readonly samples: Repository<EvalSampleResult>,
     @InjectRepository(CallLog)
     private readonly callLogs: Repository<CallLog>,
+    private readonly workspaceContext: WorkspaceContextService,
     @Optional()
     private readonly pipeline?: PipelineService,
   ) {}
@@ -103,6 +110,7 @@ export class EvaluationService {
     const period = filters.period || '30d';
     const limit = this.clamp(filters.limit, 50, 500);
     const qb = this.runs.createQueryBuilder('run').where('1 = 1');
+    applyWorkspaceQueryScope(qb, 'run', this.workspaceId());
     const since = this.periodStart(period);
     if (since) qb.andWhere('run.created_at >= :since', { since });
     if (filters.status) qb.andWhere('run.status = :status', { status: filters.status });
@@ -124,10 +132,12 @@ export class EvaluationService {
   }
 
   async getReport(id: string) {
-    const run = await this.runs.findOne({ where: { id } });
+    const run = await this.runs.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id }),
+    });
     if (!run) return null;
     const rows = await this.samples.find({
-      where: { run_id: id },
+      where: workspaceFindWhere(this.workspaceId(), { run_id: id }),
       order: { id: 'ASC' },
       take: 500,
     });
@@ -158,7 +168,9 @@ export class EvaluationService {
   }) {
     const dataset = await this.upsertDatasetMetadata(input.dataset, input.samples.length, false);
     const now = new Date().toISOString();
+    const workspaceId = this.workspaceId();
     const run = this.runs.create({
+      workspace_id: workspaceId,
       dataset_id: dataset.id,
       dataset_name: dataset.name,
       primary_node_id: input.primary.node_id || null,
@@ -192,6 +204,7 @@ export class EvaluationService {
     })));
     const saved = await this.runs.save(run);
     await this.samples.save(input.samples.map((sample) => this.samples.create({
+      workspace_id: workspaceId,
       run_id: saved.id,
       sample_id: sample.sample_id || null,
       sample_hash: sample.sample_hash,
@@ -227,7 +240,9 @@ export class EvaluationService {
 
     const sampleStorageEnabled = this.sampleStorageEnabled(input);
     const dataset = await this.upsertDatasetMetadata(input.dataset, input.samples.length, sampleStorageEnabled);
+    const workspaceId = this.workspaceId();
     const run = await this.runs.save(this.runs.create({
+      workspace_id: workspaceId,
       dataset_id: dataset.id,
       dataset_name: dataset.name,
       primary_node_id: input.primary.node_id || null,
@@ -258,6 +273,7 @@ export class EvaluationService {
         const judge = await this.executeJudge(run.id, sample, input.judge, primary.output_text, candidate.output_text, index);
         results.push({ primary, candidate, judge });
         await this.samples.save(this.samples.create({
+          workspace_id: workspaceId,
           run_id: run.id,
           sample_id: sample.id || null,
           sample_hash: sampleHash,
@@ -390,6 +406,7 @@ export class EvaluationService {
         session_id: sessionKey,
         trace_id: `eval-${sessionKey}`,
         raw_headers: {},
+        workspace_id: this.workspaceId(),
       };
       return cloned;
     }
@@ -410,12 +427,15 @@ export class EvaluationService {
         session_id: sessionKey,
         trace_id: `eval-${sessionKey}`,
         raw_headers: {},
+        workspace_id: this.workspaceId(),
       },
     } as CanonicalRequest & { model: string };
   }
 
   private async findLogBySession(sessionKey: string): Promise<CallLog | null> {
-    return this.callLogs.findOne({ where: { session_key: sessionKey } });
+    return this.callLogs.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { session_key: sessionKey }),
+    });
   }
 
   private async upsertDatasetMetadata(
@@ -425,9 +445,12 @@ export class EvaluationService {
   ): Promise<EvalDataset> {
     const name = this.requiredString(input.name, 'dataset.name');
     const existing = input.id
-      ? await this.datasets.findOne({ where: { id: input.id } })
+      ? await this.datasets.findOne({
+          where: workspaceFindWhere(this.workspaceId(), { id: input.id }),
+        })
       : null;
     const entity = existing || this.datasets.create();
+    entity.workspace_id = this.workspaceId();
     entity.name = name;
     entity.description = this.nullableString(input.description);
     entity.source = this.nullableString(input.source) || 'local';
@@ -435,6 +458,10 @@ export class EvaluationService {
     entity.sample_storage_enabled = sampleStorageEnabled;
     entity.metadata_json = this.stringifySafe(this.sanitizeMetadata(input.metadata || {}));
     return this.datasets.save(entity);
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
   }
 
   private applyAggregateMetrics(

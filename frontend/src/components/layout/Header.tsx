@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Bell, Search, LogOut, Menu } from 'lucide-react'
+import { Bell, Search, LogOut, Menu, Building2 } from 'lucide-react'
 import { useHealth } from '@/hooks/use-health'
+import { useWorkspaces } from '@/hooks/use-workspaces'
 import { useAuth } from '@/contexts/AuthContext'
 import { StatusDot } from '@/components/shared/StatusDot'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
@@ -16,6 +17,7 @@ interface HeaderProps {
 export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
   const { t } = useTranslation('common')
   const { data: health } = useHealth()
+  const { data: workspaceState, switchWorkspace } = useWorkspaces()
   const { authRequired, logout } = useAuth()
   const navigate = useNavigate()
   const [searchValue, setSearchValue] = useState('')
@@ -81,6 +83,28 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
       {/* Right section */}
       <div className="hidden items-center gap-3 sm:flex">
         <ThemeToggle />
+
+        {workspaceState && (
+          <label
+            className="flex items-center gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-1.5 text-[11px] font-medium text-[var(--foreground-dim)] shadow-[0_1px_2px_rgba(5,46,36,0.05)]"
+            title={t('workspace.activeWorkspace')}
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">{t('workspace.workspace')}</span>
+            <select
+              value={workspaceState.active_workspace.id}
+              aria-label={t('workspace.switchWorkspace')}
+              onChange={(event) => void switchWorkspace(event.target.value)}
+              className="max-w-[160px] bg-transparent text-[11px] font-semibold text-[var(--foreground)] outline-none"
+            >
+              {workspaceState.workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {/* Notification bell replaced with "Coming soon" tooltip */}
         <Tooltip content={t('header.notificationsComingSoon')} side="bottom">

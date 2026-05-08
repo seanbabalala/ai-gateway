@@ -65,5 +65,11 @@
   "nav.sessions": "会话",
   "nav.mcp": "MCP 网关",
   "nav.batches": "批处理",
-  "nav.evals": "评测报告"
+  "nav.evals": "评测报告",
+  "workspace.organization": "组织",
+  "workspace.workspace": "工作区",
+  "workspace.defaultWorkspace": "默认工作区",
+  "workspace.switchWorkspace": "切换工作区",
+  "workspace.activeWorkspace": "当前工作区",
+  "workspace.defaultWorkspaceMigration": "旧资源会归入默认工作区。"
 }

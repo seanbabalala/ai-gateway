@@ -4,6 +4,8 @@ The SiftGate Dashboard is part of the MIT open-source Data Plane. It runs from t
 
 v1.9 adds an **Agents** page for Agent Gateway Profiles. It gives Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic clients a clear local setup entry while keeping provider keys in Nodes, env vars, or secret references.
 
+v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows the active workspace, reads `GET /api/dashboard/workspaces`, validates switches through `POST /api/dashboard/workspaces/switch`, stores the selected workspace in browser local storage, and sends `x-siftgate-workspace-id` on Dashboard API calls. Fresh and upgraded OSS installs start with `Default Organization` and `Default Workspace`; legacy v1.9 metadata maps to that default workspace.
+
 ## Pages
 
 | Page | Purpose |
@@ -118,4 +120,4 @@ Dashboard copy is maintained in seven languages: English, Simplified Chinese, Tr
 
 ## Open-Source Boundary
 
-The Dashboard manages the local Data Plane only. It does not include enterprise workspace/RBAC, SSO, SCIM, organization billing, the public website, or private Cloud dashboard code.
+The Dashboard manages the local Data Plane only. Workspace Core in v2.0.0-alpha.1 is the OSS ownership boundary for local metadata. It does not include enterprise RBAC, SSO, SCIM, organization billing, the public website, or private Cloud dashboard code.

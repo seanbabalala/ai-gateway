@@ -12,6 +12,7 @@ export type ShadowTrafficKind = 'chat' | 'embeddings';
 @Entity('shadow_traffic_results')
 @Index(['timestamp'])
 @Index(['request_id'])
+@Index(['workspace_id'])
 @Index(['namespace_id'])
 @Index(['status'])
 @Index(['session_id'])
@@ -28,6 +29,9 @@ export class ShadowTrafficResult {
 
   @Column({ type: 'varchar' })
   kind!: ShadowTrafficKind;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;

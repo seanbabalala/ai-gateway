@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 
 @Entity('eval_datasets')
+@Index(['workspace_id'])
 @Index(['name'])
 @Index(['source'])
 export class EvalDataset {
@@ -16,6 +17,9 @@ export class EvalDataset {
 
   @Column({ type: 'varchar' })
   name!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'text', nullable: true })
   description!: string | null;

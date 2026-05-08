@@ -10,6 +10,7 @@ import {
 export type EvalExperimentStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 @Entity('eval_experiment_runs')
+@Index(['workspace_id'])
 @Index(['dataset_id'])
 @Index(['status'])
 @Index(['created_at'])
@@ -18,6 +19,9 @@ export type EvalExperimentStatus = 'queued' | 'running' | 'completed' | 'failed'
 export class EvalExperimentRun {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   dataset_id!: string | null;

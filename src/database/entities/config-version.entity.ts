@@ -15,6 +15,7 @@ export type ConfigVersionSource =
 
 @Entity('config_versions')
 @Index(['version_id'], { unique: true })
+@Index(['workspace_id'])
 @Index(['created_at'])
 @Index(['source'])
 @Index(['checksum'])
@@ -24,6 +25,9 @@ export class ConfigVersion {
 
   @Column({ type: 'varchar', unique: true })
   version_id!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @CreateDateColumn()
   created_at!: Date;

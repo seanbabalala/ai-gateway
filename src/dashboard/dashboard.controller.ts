@@ -51,7 +51,7 @@ import {
 import { Response } from "express";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, FindOptionsWhere, In, Repository } from "typeorm";
-import { Observable, interval, map, merge } from "rxjs";
+import { Observable, filter, interval, map, merge } from "rxjs";
 import { ConfigService } from "../config/config.service";
 import { CapabilityService } from "../config/capability.service";
 import { SecretReferenceResolverService } from "../config/secret-reference-resolver.service";
@@ -113,6 +113,12 @@ import {
   CacheSavingsGroupBy,
 } from "./cache-savings.service";
 import { BatchJobStoreService } from "../batch/batch-job-store.service";
+import { WorkspaceContextService } from "../workspaces/workspace-context.service";
+import { WorkspaceService } from "../workspaces/workspace.service";
+import {
+  applyWorkspaceQueryScope,
+  workspaceFindWhereStrict,
+} from "../workspaces/workspace-scope";
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -136,6 +142,7 @@ import {
   GatewayApiKeyListResponseDto,
   GatewayApiKeyMutationResponseDto,
   SanitizedConfigResponseDto,
+  WorkspaceStateResponseDto,
 } from "../openapi/openapi.dto";
 
 const DASHBOARD_PROTOCOLS = [
@@ -1524,6 +1531,8 @@ export class DashboardController {
     private readonly configAudit: ConfigAuditService,
     private readonly catalog: CatalogService,
     private readonly batchJobs: BatchJobStoreService,
+    private readonly workspaces: WorkspaceService,
+    private readonly workspaceContext: WorkspaceContextService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -1549,6 +1558,35 @@ export class DashboardController {
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
+  }
+
+  @Get("workspaces")
+  @ApiOperation({ summary: "List current organization and Dashboard workspaces" })
+  @ApiOkResponse({ type: WorkspaceStateResponseDto })
+  async getWorkspaces() {
+    return this.workspaces.getState(this.workspaceContext.currentWorkspaceId());
+  }
+
+  @Post("workspaces/switch")
+  @ApiOperation({ summary: "Validate and switch the active Dashboard workspace" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: { workspace_id: { type: "string" } },
+      required: ["workspace_id"],
+    },
+  })
+  @ApiOkResponse({
+    description:
+      "Validated workspace state. The Dashboard persists the selected workspace client-side.",
+  })
+  async switchWorkspace(@Body() body: { workspace_id?: string }) {
+    const workspace = await this.workspaces.requireWorkspace(body?.workspace_id);
+    return {
+      success: true,
+      active_workspace: workspace,
+      state: await this.workspaces.getState(workspace.id),
+    };
   }
 
   /** Delete logs older than log_retention_days (default: 30) */
@@ -1762,12 +1800,15 @@ export class DashboardController {
     apiKey?: string,
     apiKeyId?: string,
     namespaceId?: string,
-  ): FindOptionsWhere<CallLog> | undefined {
-    const where: FindOptionsWhere<CallLog> = {};
+  ): FindOptionsWhere<CallLog> {
+    const where: FindOptionsWhere<CallLog> = workspaceFindWhereStrict(
+      this.workspaceContext.currentWorkspaceId(),
+      {},
+    );
     if (apiKeyId) where.api_key_id = apiKeyId;
     else if (apiKey) where.api_key_name = apiKey;
     if (namespaceId) where.namespace_id = namespaceId;
-    return Object.keys(where).length > 0 ? where : undefined;
+    return where;
   }
 
   private applyLogScopeFilter<
@@ -1779,7 +1820,13 @@ export class DashboardController {
     namespaceId?: string,
     method: "where" | "andWhere" = "andWhere",
   ): T {
-    let currentMethod = method;
+    applyWorkspaceQueryScope(
+      qb,
+      "log",
+      this.workspaceContext.currentWorkspaceId(),
+      method,
+    );
+    let currentMethod: "where" | "andWhere" = "andWhere";
     if (apiKeyId) {
       qb[currentMethod]("log.api_key_id = :apiKeyId", { apiKeyId });
       currentMethod = "andWhere";
@@ -1802,7 +1849,13 @@ export class DashboardController {
     namespaceId?: string,
     method: "where" | "andWhere" = "andWhere",
   ): T {
-    let currentMethod = method;
+    applyWorkspaceQueryScope(
+      qb,
+      "decision",
+      this.workspaceContext.currentWorkspaceId(),
+      method,
+    );
+    let currentMethod: "where" | "andWhere" = "andWhere";
     if (apiKeyId) {
       qb[currentMethod]("decision.api_key_id = :apiKeyId", { apiKeyId });
       currentMethod = "andWhere";
@@ -2481,14 +2534,10 @@ export class DashboardController {
     @Query("namespace") namespaceId?: string,
   ) {
     const keyWhere = this.logWhere(apiKey, apiKeyId, namespaceId);
-    const totalCalls = keyWhere
-      ? await this.callLogRepo.count({ where: keyWhere })
-      : await this.callLogRepo.count();
-    const successCalls = keyWhere
-      ? await this.callLogRepo.count({
-          where: { status_code: 200, ...keyWhere },
-        })
-      : await this.callLogRepo.count({ where: { status_code: 200 } });
+    const totalCalls = await this.callLogRepo.count({ where: keyWhere });
+    const successCalls = await this.callLogRepo.count({
+      where: { status_code: 200, ...keyWhere },
+    });
     const failedCalls = totalCalls - successCalls;
 
     // Aggregations via raw query (works for both SQLite and Postgres)
@@ -2707,13 +2756,19 @@ export class DashboardController {
     const decisions =
       requestIds.length > 0
         ? await this.routeDecisionRepo.find({
-            where: { request_id: In(requestIds) },
+            where: workspaceFindWhereStrict(
+              this.workspaceContext.currentWorkspaceId(),
+              { request_id: In(requestIds) },
+            ),
           })
         : [];
     const shadows =
       requestIds.length > 0
         ? await this.shadowTrafficRepo.find({
-            where: { request_id: In(requestIds) },
+            where: workspaceFindWhereStrict(
+              this.workspaceContext.currentWorkspaceId(),
+              { request_id: In(requestIds) },
+            ),
             order: { timestamp: "ASC" },
           })
         : [];
@@ -2794,7 +2849,8 @@ export class DashboardController {
   ) {
     const qb = this.callLogRepo
       .createQueryBuilder("log")
-      .orderBy("log.timestamp", "DESC");
+      .orderBy("log.timestamp", "DESC")
+      .addOrderBy("log.id", "DESC");
 
     if (tier) qb.andWhere("log.tier = :tier", { tier });
     if (node) qb.andWhere("log.node_id = :node", { node });
@@ -2846,7 +2902,8 @@ export class DashboardController {
   ) {
     const qb = this.routeDecisionRepo
       .createQueryBuilder("decision")
-      .orderBy("decision.timestamp", "DESC");
+      .orderBy("decision.timestamp", "DESC")
+      .addOrderBy("decision.id", "DESC");
 
     if (tier) qb.andWhere("decision.tier = :tier", { tier });
     if (node) qb.andWhere("decision.selected_node_id = :node", { node });
@@ -2879,7 +2936,9 @@ export class DashboardController {
   @ApiOkResponse({ description: "Full route decision trace for one request." })
   async getRouteDecision(@Param("requestId") requestId: string) {
     const item = await this.routeDecisionRepo.findOne({
-      where: { request_id: requestId },
+      where: workspaceFindWhereStrict(this.workspaceContext.currentWorkspaceId(), {
+        request_id: requestId,
+      }),
     });
     if (!item) {
       throw new HttpException("Route decision not found", HttpStatus.NOT_FOUND);
@@ -3018,7 +3077,9 @@ export class DashboardController {
     );
 
     // New log events from the shared event bus
+    const workspaceId = this.workspaceContext.currentWorkspaceId();
     const logs$ = this.logEventBus.events$.pipe(
+      filter((log) => log.workspace_id === workspaceId),
       map((log) => ({ data: { type: "log", log } }) as MessageEvent),
     );
 
@@ -3776,7 +3837,7 @@ export class DashboardController {
       budget: full.budget,
       namespaces: full.namespaces || [],
       shadow: this.shadowTraffic.getStatus(),
-      realtime: this.realtime?.getStatus() || {
+      realtime: this.realtime?.getStatus(this.workspaceContext.currentWorkspaceId()) || {
         enabled: false,
         experimental: true,
         path: "/v1/realtime",
@@ -4338,7 +4399,10 @@ export class DashboardController {
         modelCircuits,
         concurrency,
         active_probe: activeProbe,
-        realtime: this.realtime?.getNodeStatus(node.id) || {
+        realtime: this.realtime?.getNodeStatus(
+          node.id,
+          this.workspaceContext.currentWorkspaceId(),
+        ) || {
           enabled: false,
           experimental: true,
           supported: false,

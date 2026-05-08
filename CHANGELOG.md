@@ -6,6 +6,28 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-alpha.1 - 2026-05-08
+
+### Added
+
+- Introduced the Workspace Core foundation with local `organizations` and `workspaces` entities, default `default-org` / `default-workspace` bootstrap, and safe default workspace mapping for fresh installs and v1.9 upgrades.
+- Added workspace ownership metadata across persisted API keys, local teams, budgets, nodes/status projections, agent profiles, call logs, route decision traces, eval metadata, batch jobs, MCP/shadow/provider-compatibility/video/config metadata, and related dashboard services.
+- Added workspace context resolution for Dashboard sessions and Gateway API keys, including safe fallback to `default-workspace` for legacy keys and rows without a workspace id.
+- Added Dashboard workspace APIs: `GET /api/dashboard/workspaces` and `POST /api/dashboard/workspaces/switch`.
+- Added a compact Dashboard header workspace selector and workspace-aware Dashboard API client headers with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Added unit and E2E coverage for default workspace bootstrap, migration backfill, context resolution, legacy API key compatibility, and Dashboard workspace filtering.
+
+### Changed
+
+- Extended the SQLite-to-PostgreSQL migrator to include default organization/workspace rows and normalize workspace-scoped rows into `default-workspace` when migrating v1.9-style databases.
+- Updated migration, Dashboard, and roadmap documentation for the alpha.1 workspace foundation while preserving the v1.9.2 read-only dry-run contract.
+- Updated release metadata to v2.0.0-alpha.1 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- RBAC, OIDC, invitations, organization billing, full multi-workspace provisioning, and production PostgreSQL hardening remain scheduled for later v2.0 prompts.
+- Existing `/v1/*` ingress compatibility, legacy Gateway API keys, local SQLite startup, Docker quickstart behavior, and metadata-only privacy boundaries are preserved.
+
 ## 1.9.2 - 2026-05-08
 
 ### Added

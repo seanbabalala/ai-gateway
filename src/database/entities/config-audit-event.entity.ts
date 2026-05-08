@@ -10,6 +10,7 @@ export type ConfigAuditResult = 'success' | 'failure';
 
 @Entity('config_audit_events')
 @Index(['event_id'], { unique: true })
+@Index(['workspace_id'])
 @Index(['timestamp'])
 @Index(['action'])
 @Index(['target'])
@@ -20,6 +21,9 @@ export class ConfigAuditEvent {
 
   @Column({ type: 'varchar', unique: true })
   event_id!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @CreateDateColumn()
   timestamp!: Date;

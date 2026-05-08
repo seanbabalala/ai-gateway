@@ -9,6 +9,12 @@ import {
   ConfigVersion,
   ConfigVersionSource,
 } from '../database/entities';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+} from '../workspaces/workspace-scope';
 
 const REDACTED = '[redacted]';
 
@@ -40,6 +46,7 @@ export class ConfigAuditService implements OnModuleInit {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(ConfigVersion)
     private readonly versionRepo: Repository<ConfigVersion>,
     @InjectRepository(ConfigAuditEvent)
@@ -314,6 +321,7 @@ export class ConfigAuditService implements OnModuleInit {
   async listVersions(limit?: number): Promise<Record<string, unknown>> {
     const safeLimit = this.limit(limit, this.config.configAudit.max_versions);
     const items = await this.versionRepo.find({
+      where: workspaceFindWhere(this.workspaceId(), {}),
       order: { created_at: 'DESC', id: 'DESC' },
       take: safeLimit,
     });
@@ -343,9 +351,11 @@ export class ConfigAuditService implements OnModuleInit {
     const safeLimit = this.limit(input.limit, this.config.configAudit.max_events);
     const qb = this.eventRepo
       .createQueryBuilder('event')
+      .where('1 = 1')
       .orderBy('event.timestamp', 'DESC')
       .addOrderBy('event.id', 'DESC')
       .take(safeLimit);
+    applyWorkspaceQueryScope(qb, 'event', this.workspaceId());
 
     if (input.action) {
       qb.andWhere('event.action = :action', { action: input.action });
@@ -379,6 +389,7 @@ export class ConfigAuditService implements OnModuleInit {
     const snapshot = this.config.getSnapshot();
     const version = this.versionRepo.create({
       version_id: `cfgv_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`,
+      workspace_id: this.workspaceId(),
       created_by: input.createdBy,
       source: input.source,
       checksum,
@@ -414,6 +425,7 @@ export class ConfigAuditService implements OnModuleInit {
     if (!this.config.configAudit.enabled) return null;
     const event = this.eventRepo.create({
       event_id: `cfge_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`,
+      workspace_id: this.workspaceId(),
       actor: input.actor ?? 'dashboard:dashboard',
       action: input.action,
       target: input.target,
@@ -431,10 +443,13 @@ export class ConfigAuditService implements OnModuleInit {
 
   private async pruneVersions(): Promise<void> {
     const maxVersions = this.config.configAudit.max_versions;
-    const count = await this.versionRepo.count();
+    const count = await this.versionRepo.count({
+      where: workspaceFindWhere(this.workspaceId(), {}),
+    });
     if (count <= maxVersions) return;
 
     const oldVersions = await this.versionRepo.find({
+      where: workspaceFindWhere(this.workspaceId(), {}),
       order: { created_at: 'ASC', id: 'ASC' },
       take: count - maxVersions,
     });
@@ -447,9 +462,19 @@ export class ConfigAuditService implements OnModuleInit {
     const numericId = Number(versionId);
     if (Number.isInteger(numericId) && numericId > 0) {
       const byId = await this.versionRepo.findOne({ where: { id: numericId } });
-      if (byId) return byId;
+      if (byId && this.entityWorkspaceId(byId) === this.workspaceId()) return byId;
     }
-    return this.versionRepo.findOne({ where: { version_id: versionId } });
+    return this.versionRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { version_id: versionId }),
+    });
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
+  }
+
+  private entityWorkspaceId(entity: { workspace_id?: string | null }): string {
+    return normalizeWorkspaceId(entity.workspace_id);
   }
 
   private summarizeRawConfigSafe(): Record<string, unknown> {

@@ -8,6 +8,13 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { CallLog } from '../database/entities/call-log.entity';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+  workspaceFindWhereStrict,
+} from '../workspaces/workspace-scope';
 import {
   LocalTeam,
   LocalTeamStatus,
@@ -22,6 +29,7 @@ export interface TeamSummary {
   name: string;
   description: string | null;
   status: LocalTeamStatus;
+  workspace_id: string;
   namespace_id: string | null;
   namespace_name: string | null;
   allowed_nodes: string[];
@@ -48,6 +56,7 @@ export interface TeamSummary {
 export class TeamService {
   constructor(
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(LocalTeam)
     private readonly teamRepo: Repository<LocalTeam>,
     @InjectRepository(BudgetRule)
@@ -58,7 +67,9 @@ export class TeamService {
 
   async create(dto: CreateTeamDto): Promise<TeamSummary> {
     const normalized = this.normalizeCreateDto(dto);
-    await this.assertUniqueName(normalized.name!);
+    const workspaceId = this.workspaceId();
+    normalized.workspace_id = workspaceId;
+    await this.assertUniqueName(normalized.name!, undefined, workspaceId);
     const saved = await this.teamRepo.save(this.teamRepo.create({
       ...normalized,
       status: 'active',
@@ -68,7 +79,10 @@ export class TeamService {
   }
 
   async list(): Promise<TeamSummary[]> {
-    const teams = await this.teamRepo.find({ order: { created_at: 'DESC' } });
+    const teams = await this.teamRepo.find({
+      where: workspaceFindWhere(this.workspaceId(), {}),
+      order: { created_at: 'DESC' },
+    });
     return Promise.all(teams.map((team) => this.toSummary(team)));
   }
 
@@ -80,7 +94,7 @@ export class TeamService {
     const entity = await this.getById(id);
     const normalized = this.normalizeUpdateDto(dto);
     if (normalized.name && normalized.name !== entity.name) {
-      await this.assertUniqueName(normalized.name, id);
+      await this.assertUniqueName(normalized.name, id, this.entityWorkspaceId(entity));
     }
     Object.assign(entity, normalized);
     const saved = await this.teamRepo.save(entity);
@@ -90,13 +104,18 @@ export class TeamService {
 
   async remove(id: string): Promise<void> {
     const entity = await this.getById(id);
-    await this.budgetRepo.update({ team_id: id }, { is_active: false });
+    await this.budgetRepo.update(
+      { team_id: id, workspace_id: this.entityWorkspaceId(entity) },
+      { is_active: false },
+    );
     await this.teamRepo.remove(entity);
   }
 
   async getActiveTeam(id: string | null | undefined): Promise<LocalTeam | null> {
     if (!id) return null;
-    const team = await this.teamRepo.findOne({ where: { id } });
+    const team = await this.teamRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id }),
+    });
     if (!team || team.status !== 'active') return null;
     if (team.namespace_id && !this.config.getNamespace(team.namespace_id)) {
       return null;
@@ -106,34 +125,43 @@ export class TeamService {
 
   async touchUsage(id: string | null | undefined, at = new Date()): Promise<void> {
     if (!id) return;
-    await this.teamRepo.update({ id }, { last_used_at: at });
+    await this.teamRepo.update(
+      workspaceFindWhereStrict(this.workspaceId(), { id }),
+      { last_used_at: at },
+    );
   }
 
   async exists(id: string | null | undefined): Promise<boolean> {
     if (!id) return true;
-    return !!(await this.teamRepo.findOne({ where: { id } }));
+    return !!(await this.teamRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id }),
+    }));
   }
 
   private async toSummary(entity: LocalTeam): Promise<TeamSummary> {
+    const workspaceId = this.entityWorkspaceId(entity);
     const since = this.startOfDay(new Date());
     const aggregate = await this.callLogRepo
       .createQueryBuilder('log')
       .where('log.timestamp >= :since', { since })
-      .andWhere('log.team_id = :id', { id: entity.id })
+      .andWhere('log.team_id = :id', { id: entity.id });
+    applyWorkspaceQueryScope(aggregate, 'log', workspaceId);
+    const raw = await aggregate
       .select('COUNT(*)', 'calls')
       .addSelect('SUM(CASE WHEN log.status_code >= 400 THEN 1 ELSE 0 END)', 'errors')
       .addSelect('SUM(log.cost_usd)', 'cost')
       .addSelect('SUM(log.input_tokens)', 'inputTokens')
       .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .getRawOne();
-    const calls = Number(aggregate?.calls || 0);
-    const errors = Number(aggregate?.errors || 0);
+    const calls = Number(raw?.calls || 0);
+    const errors = Number(raw?.errors || 0);
 
     return {
       id: entity.id,
       name: entity.name,
       description: entity.description,
       status: entity.status,
+      workspace_id: workspaceId,
       namespace_id: entity.namespace_id || null,
       namespace_name: this.config.getNamespace(entity.namespace_id)?.name || null,
       allowed_nodes: entity.allowed_nodes || [],
@@ -150,9 +178,9 @@ export class TeamService {
         calls,
         errors,
         error_rate: calls > 0 ? Number((errors / calls).toFixed(4)) : 0,
-        cost_usd: Number(Number(aggregate?.cost || 0).toFixed(6)),
-        input_tokens: Number(aggregate?.inputTokens || 0),
-        output_tokens: Number(aggregate?.outputTokens || 0),
+        cost_usd: Number(Number(raw?.cost || 0).toFixed(6)),
+        input_tokens: Number(raw?.inputTokens || 0),
+        output_tokens: Number(raw?.outputTokens || 0),
       },
     };
   }
@@ -241,15 +269,23 @@ export class TeamService {
     return numeric;
   }
 
-  private async assertUniqueName(name: string, exceptId?: string): Promise<void> {
-    const existing = await this.teamRepo.findOne({ where: { name } });
+  private async assertUniqueName(
+    name: string,
+    exceptId?: string,
+    workspaceId = this.workspaceId(),
+  ): Promise<void> {
+    const existing = await this.teamRepo.findOne({
+      where: workspaceFindWhere(workspaceId, { name }),
+    });
     if (existing && existing.id !== exceptId) {
       throw new BadRequestException(`Team name already exists: ${name}`);
     }
   }
 
   private async getById(id: string): Promise<LocalTeam> {
-    const entity = await this.teamRepo.findOne({ where: { id } });
+    const entity = await this.teamRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id }),
+    });
     if (!entity) {
       throw new NotFoundException(`Team not found: ${id}`);
     }
@@ -267,7 +303,10 @@ export class TeamService {
     limit: number | null,
   ): Promise<void> {
     const existing = await this.budgetRepo.findOne({
-      where: { team_id: entity.id, type },
+      where: workspaceFindWhere(this.entityWorkspaceId(entity), {
+        team_id: entity.id,
+        type,
+      }),
     });
 
     if (limit === null || entity.status !== 'active') {
@@ -300,6 +339,7 @@ export class TeamService {
       api_key_id: null,
       namespace_id: null,
       team_id: entity.id,
+      workspace_id: this.entityWorkspaceId(entity),
     }));
   }
 
@@ -307,5 +347,13 @@ export class TeamService {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
+  }
+
+  private entityWorkspaceId(entity: { workspace_id?: string | null }): string {
+    return normalizeWorkspaceId(entity.workspace_id);
   }
 }

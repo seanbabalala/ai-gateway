@@ -2,10 +2,10 @@
 
 SiftGate v2 turns the OSS data plane from a single-tenant smart gateway into a
 workspace-aware AI infrastructure platform. The migration path is deliberately
-conservative: v1.9 operators should be able to understand the future mapping
-before any schema change is introduced.
+conservative: v1.9 operators should be able to understand the mapping before
+and during the first schema change.
 
-v1.9.2 ships only a read-only dry run:
+v1.9.2 shipped only a read-only dry run:
 
 ```bash
 npm run build
@@ -22,10 +22,17 @@ npx ts-node src/cli/siftgate.ts migrate-v2 --dry-run --config gateway.config.yam
 The command does not write data, add columns, create tables, resolve provider
 secrets, or connect to upstream providers.
 
+v2.0.0-alpha.1 is the first mutating workspace foundation release. On startup,
+the OSS data plane creates the default organization/workspace if needed, adds
+nullable `workspace_id` ownership columns to local metadata tables, and
+backfills existing rows to `default-workspace`. Existing Gateway API keys,
+SQLite development startup, Docker quickstart behavior, and `/v1/*` ingress
+compatibility are preserved.
+
 ## Target Mapping
 
-v2 will create a default organization and workspace before assigning existing
-v1.x single-tenant resources:
+v2 creates a default organization and workspace before assigning existing v1.x
+single-tenant resources:
 
 | v2 target | Default value |
 | --- | --- |
@@ -43,13 +50,47 @@ node dist/cli/siftgate.js migrate-v2 --dry-run \
   --workspace-name "Platform Agents"
 ```
 
-The ids stay stable in the dry-run report so automation can compare reports
-across environments.
+The ids stay stable in the dry-run report and in v2.0.0-alpha.1, so automation
+can compare reports across environments.
+
+## v2.0.0-alpha.1 Runtime Behavior
+
+Fresh installs and upgraded v1.9.x installs now have:
+
+- `organizations` with `default-org`
+- `workspaces` with `default-workspace`
+- nullable `workspace_id` columns on persisted gateway metadata
+- default workspace backfill for existing rows that had no workspace owner
+- workspace context resolution for Dashboard requests and Gateway API keys
+- safe fallback to `default-workspace` for legacy API keys/config rows
+
+Dashboard clients can read the active state:
+
+```bash
+curl http://localhost:2099/api/dashboard/workspaces
+```
+
+Dashboard clients can validate a workspace switch:
+
+```bash
+curl http://localhost:2099/api/dashboard/workspaces/switch \
+  -H "content-type: application/json" \
+  -d '{"workspace_id":"default-workspace"}'
+```
+
+The Dashboard stores the selected workspace client-side and sends
+`x-siftgate-workspace-id` on local Dashboard API requests. Gateway traffic
+authenticated by a Gateway API key uses that key's workspace; legacy keys with
+no stored workspace id resolve to `default-workspace`.
+
+RBAC, OIDC, invitations, organization billing, and full multi-workspace
+provisioning are intentionally out of scope for alpha.1.
 
 ## Resource Assignment
 
 The dry run reports how many existing resources would be assigned to the
-default workspace.
+default workspace. v2.0.0-alpha.1 applies that default workspace owner to local
+metadata rows where the table exists.
 
 | Resource | Source inspected |
 | --- | --- |
@@ -69,6 +110,9 @@ default workspace.
 The report is metadata-only. It does not include prompts, responses, raw
 provider headers, provider keys, media bytes, tool payloads, hidden reasoning
 text, or resolved secrets.
+
+alpha.1 uses the same privacy boundary. Workspace ownership is operational
+metadata only; it does not create a prompt/response store.
 
 ## Report Format
 
@@ -113,11 +157,16 @@ SQLite deployments are inspected in read-only mode. If the SQLite file is
 missing, the dry run still reports config-backed counts and emits an
 informational `sqlite_not_found` issue.
 
-PostgreSQL deployments are intentionally not opened in v1.9.2. The dry run
+PostgreSQL deployments are intentionally not opened by the v1.9.2 dry run. The dry run
 reports `postgres_not_inspected` so operators can use normal database-native
 read-only queries or a copied SQLite export for row-count planning. This avoids
 putting production credentials into a planning-only command before the v2
 storage contract exists.
+
+v2.0.0-alpha.1 can run the workspace bootstrap and backfill against SQLite or
+PostgreSQL, but PostgreSQL production hardening is still scheduled for a later
+v2.0 alpha. Operators should keep normal database backups before adopting an
+alpha release.
 
 ## Backup Recommendation
 
@@ -144,5 +193,5 @@ npm run docs:check
 npm run build
 ```
 
-When v2 introduces the mutating migration, its prompt must keep the v1.9.2
-dry-run contract working and use this mapping as the compatibility baseline.
+v2.0.0-alpha.1 keeps the v1.9.2 dry-run contract working and uses this mapping
+as the compatibility baseline for later RBAC and production-runtime prompts.
