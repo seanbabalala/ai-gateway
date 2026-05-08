@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "siftgate"
-version = "1.9.1"
+version = "1.9.2"
 description = "Lightweight Python client scaffold for the SiftGate open-source data plane"
 readme = "README.md"
 requires-python = ">=3.9"

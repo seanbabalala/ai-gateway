@@ -41,6 +41,10 @@ import {
   migrateSqliteToPostgres,
 } from "./db-migrator";
 import {
+  buildV2MigrationDryRunReport,
+  formatV2MigrationDryRunReport,
+} from "./v2-migration-dry-run";
+import {
   CommandRunner,
   DEFAULT_PLUGINS_CONFIG,
   ManagedPluginConfigEntry,
@@ -102,6 +106,16 @@ interface MigrateDbArgs {
   batchSize?: number;
 }
 
+interface MigrateV2Args {
+  configPath?: string;
+  sqlitePath?: string;
+  organizationName?: string;
+  workspaceName?: string;
+  dryRun: boolean;
+  json: boolean;
+  help: boolean;
+}
+
 interface CatalogArgs {
   action?: "list" | "show" | "validate" | "export" | "import" | "sources" | "refresh" | "sync";
   provider?: string;
@@ -155,6 +169,10 @@ export async function runCli(
 
   if (command === "migrate-db") {
     return runMigrateDbCommand(args, cli);
+  }
+
+  if (command === "migrate-v2") {
+    return runMigrateV2Command(args, cli);
   }
 
   cli.stderr(`Unknown command: ${command}`);
@@ -727,6 +745,46 @@ async function runMigrateDbCommand(
   return result.validation.ok ? 0 : 2;
 }
 
+function runMigrateV2Command(args: string[], cli: CliIO): number {
+  let parsedArgs: MigrateV2Args;
+  try {
+    parsedArgs = parseMigrateV2Args(args);
+  } catch (error) {
+    cli.stderr(error instanceof Error ? error.message : "Invalid arguments.");
+    cli.stderr(formatMigrateV2Usage());
+    return 1;
+  }
+
+  if (parsedArgs.help) {
+    cli.stdout(formatMigrateV2Usage());
+    return 0;
+  }
+
+  if (!parsedArgs.dryRun) {
+    cli.stderr("v1.9.2 only supports migrate-v2 --dry-run. No data mutation is available yet.");
+    cli.stderr(formatMigrateV2Usage());
+    return 1;
+  }
+
+  const report = buildV2MigrationDryRunReport({
+    cwd: cli.cwd,
+    env: cli.env,
+    configPath: parsedArgs.configPath,
+    sqlitePath: parsedArgs.sqlitePath,
+    organizationName: parsedArgs.organizationName,
+    workspaceName: parsedArgs.workspaceName,
+    now: cli.now,
+  });
+
+  cli.stdout(
+    parsedArgs.json
+      ? JSON.stringify(report, null, 2)
+      : formatV2MigrationDryRunReport(report),
+  );
+
+  return report.blockers.length === 0 ? 0 : 2;
+}
+
 function parseValidateArgs(args: string[]): ValidateArgs {
   const parsed: ValidateArgs = { json: false, help: false };
 
@@ -1128,6 +1186,73 @@ function parseMigrateDbArgs(args: string[]): MigrateDbArgs {
   return parsed;
 }
 
+function parseMigrateV2Args(args: string[]): MigrateV2Args {
+  const parsed: MigrateV2Args = {
+    dryRun: false,
+    json: false,
+    help: false,
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--help" || arg === "-h") {
+      parsed.help = true;
+      continue;
+    }
+    if (arg === "--json") {
+      parsed.json = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      parsed.dryRun = true;
+      continue;
+    }
+    if (arg === "--config" || arg === "-c") {
+      parsed.configPath = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--config=")) {
+      parsed.configPath = requireInlineValue(arg, "--config");
+      continue;
+    }
+    if (arg === "--sqlite" || arg === "--sqlite-path") {
+      parsed.sqlitePath = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--sqlite=")) {
+      parsed.sqlitePath = requireInlineValue(arg, "--sqlite");
+      continue;
+    }
+    if (arg.startsWith("--sqlite-path=")) {
+      parsed.sqlitePath = requireInlineValue(arg, "--sqlite-path");
+      continue;
+    }
+    if (arg === "--organization-name") {
+      parsed.organizationName = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--organization-name=")) {
+      parsed.organizationName = requireInlineValue(arg, "--organization-name");
+      continue;
+    }
+    if (arg === "--workspace-name") {
+      parsed.workspaceName = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--workspace-name=")) {
+      parsed.workspaceName = requireInlineValue(arg, "--workspace-name");
+      continue;
+    }
+    throw new Error(`Unknown migrate-v2 option: ${arg}`);
+  }
+
+  return parsed;
+}
+
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
   if (!value || value.startsWith("-")) {
@@ -1522,6 +1647,7 @@ function formatUsage(): string {
     "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
     "  siftgate migrate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
+    "  siftgate migrate-v2 --dry-run [--config gateway.config.yaml] [--sqlite-path ./data/gateway.db] [--json]",
     "",
     "Commands:",
     "  validate   Validate a SiftGate gateway.config.yaml file",
@@ -1529,6 +1655,7 @@ function formatUsage(): string {
     "  plugin     Manage plugin declarations and npm/local installs",
     "  migrate    Migrate third-party gateway configs into SiftGate format",
     "  migrate-db Move local SQLite runtime data into PostgreSQL",
+    "  migrate-v2 Preview the future v1.x single-tenant to v2 workspace assignment",
   ].join("\n");
 }
 
@@ -1627,6 +1754,23 @@ function formatMigrateDbUsage(): string {
     "      --batch-size <n>      Rows per TypeORM save chunk (default: 500)",
     "      --json               Print machine-readable migration report",
     "  -h, --help               Show help",
+  ].join("\n");
+}
+
+function formatMigrateV2Usage(): string {
+  return [
+    "Usage:",
+    "  siftgate migrate-v2 --dry-run [--config gateway.config.yaml] [--sqlite-path ./data/gateway.db] [--json]",
+    "",
+    "Options:",
+    "  -c, --config <path>          v1.x SiftGate config file (default: gateway.config.yaml)",
+    "      --sqlite-path <path>     SQLite database path. Defaults to database.path from config or ./data/gateway.db",
+    "      --sqlite <path>          Alias for --sqlite-path",
+    "      --organization-name <n>  Default v2 organization name (default: Default Organization)",
+    "      --workspace-name <n>     Default v2 workspace name (default: Default Workspace)",
+    "      --dry-run                Required in v1.9.2; inspect only and do not mutate data",
+    "      --json                   Print stable machine-readable JSON",
+    "  -h, --help                  Show help",
   ].join("\n");
 }
 

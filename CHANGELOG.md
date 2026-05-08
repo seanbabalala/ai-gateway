@@ -6,6 +6,18 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.9.2 - 2026-05-08
+
+### Added
+
+- Added `docs/MIGRATION_V1_TO_V2.md` to document how existing v1.9 single-tenant config and metadata rows will map into the future v2 default organization/workspace.
+- Added a read-only `siftgate migrate-v2 --dry-run` CLI command with stable JSON and human-readable output for API keys, local teams, namespaces, nodes, budgets, routing policies, agent profiles, call logs, eval rows, MCP servers, batch jobs, and Dashboard user counts.
+- Added fixture coverage for a v1.9-style gateway config plus dry-run tests for normal SQLite, empty SQLite, missing SQLite, PostgreSQL planning, missing config blockers, CLI JSON output, dry-run enforcement, and human-readable formatting.
+
+### Changed
+
+- Updated release metadata to v1.9.2 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
 ## 1.9.1 - 2026-05-08
 
 ### Added

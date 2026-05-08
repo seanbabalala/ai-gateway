@@ -32,15 +32,19 @@ function makeMessagesRequest(
 }
 
 describe('Claude routing compatibility', () => {
+  let previousConfigPath: string | undefined;
+
   beforeEach(() => {
+    previousConfigPath = process.env.GATEWAY_CONFIG_PATH;
     process.env.GATEWAY_CONFIG_PATH = path.resolve(
       __dirname,
-      '../../gateway.config.yaml',
+      '../fixtures/config-service/config-service.gateway.yaml',
     );
   });
 
   afterEach(() => {
-    delete process.env.GATEWAY_CONFIG_PATH;
+    if (previousConfigPath) process.env.GATEWAY_CONFIG_PATH = previousConfigPath;
+    else delete process.env.GATEWAY_CONFIG_PATH;
     jest.restoreAllMocks();
   });
 

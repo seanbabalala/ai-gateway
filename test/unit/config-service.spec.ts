@@ -1,9 +1,8 @@
 /**
  * ConfigService unit tests.
  *
- * Since ConfigService eagerly loads from YAML in its constructor,
- * we use the real gateway.config.yaml for tests. Set GATEWAY_CONFIG_PATH
- * before constructing.
+ * ConfigService eagerly loads from YAML in its constructor, so these tests use
+ * a committed fixture instead of relying on a developer-local gateway.config.yaml.
  */
 
 import * as path from 'path';
@@ -13,17 +12,20 @@ import { ConfigService } from '../../src/config/config.service';
 
 describe('ConfigService', () => {
   let config: ConfigService;
+  let previousConfigPath: string | undefined;
 
   beforeAll(() => {
+    previousConfigPath = process.env.GATEWAY_CONFIG_PATH;
     process.env.GATEWAY_CONFIG_PATH = path.resolve(
       __dirname,
-      '../../gateway.config.yaml',
+      '../fixtures/config-service/config-service.gateway.yaml',
     );
     config = new ConfigService();
   });
 
   afterAll(() => {
-    delete process.env.GATEWAY_CONFIG_PATH;
+    if (previousConfigPath) process.env.GATEWAY_CONFIG_PATH = previousConfigPath;
+    else delete process.env.GATEWAY_CONFIG_PATH;
   });
 
   // ── Basic accessors ──────────────────────────────────────
