@@ -250,7 +250,7 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     streaming_strategy: 'openai_compatible',
     multipart_strategy: 'unsupported',
     async_job_strategy: 'unsupported',
-    supported_source_formats: ['responses'],
+    supported_source_formats: TEXT_SOURCES,
     supported_modalities: ['text', 'vision'],
     passthrough_fields: [
       'metadata',

@@ -127,6 +127,21 @@ describe('provider compatibility profiles', () => {
     expect(profile.downgraded_fields).toContain('response_format');
   });
 
+  it('allows gateway-translated OpenAI chat requests to route to OpenAI Responses targets', () => {
+    const profile = getCompatibilityProfile('openai_responses_compatible')!;
+
+    expect(profile.supported_source_formats).toEqual(
+      expect.arrayContaining(['chat_completions', 'responses', 'messages']),
+    );
+    expect(
+      compatibilityFilteredReason({
+        profiles: [profile],
+        sourceFormat: 'chat_completions',
+        requestedModality: 'text',
+      }),
+    ).toBeNull();
+  });
+
   it('flags unsupported streaming and multipart strategies', () => {
     const profiles = [getCompatibilityProfile('media_generation_sync')!];
 

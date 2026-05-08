@@ -418,7 +418,7 @@ export class RoutingService {
     // ── Step 4: Apply domain hint reordering ──
     let orderedTargets = [...availableTargets];
 
-    if (hint && availableTargets.length > 1) {
+    if (hint && normalized.source !== 'primary_fallback' && availableTargets.length > 1) {
       const preferredNodes = this.resolvePreferredNodes(hint);
 
       if (preferredNodes.length > 0) {

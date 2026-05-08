@@ -261,11 +261,31 @@ describe('RoutingService', () => {
 
   it('should reorder targets based on explicit domain preferences', () => {
     const svc = makeRoutingService({
+      tiers: {
+        simple: {
+          strategy: 'primary_fallback',
+          targets: [
+            { node: 'n1', model: 'fast-model' },
+            { node: 'n2', model: 'medium-model' },
+          ],
+        },
+      },
       domainPreferences: { backend: ['n2', 'n1'] },
     });
     const decision = svc.resolve('simple' as Tier, 0.1, undefined, 'backend');
 
     expect(decision.primary.node).toBe('n2');
+    expect(decision.domainHint).toBe('backend');
+  });
+
+  it('should preserve explicit primary/fallback order despite domain preferences', () => {
+    const svc = makeRoutingService({
+      domainPreferences: { backend: ['n2', 'n1'] },
+    });
+    const decision = svc.resolve('simple' as Tier, 0.1, undefined, 'backend');
+
+    expect(decision.primary.node).toBe('n1');
+    expect(decision.fallbacks).toEqual([{ node: 'n2', model: 'medium-model' }]);
     expect(decision.domainHint).toBe('backend');
   });
 
