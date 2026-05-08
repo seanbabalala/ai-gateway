@@ -165,6 +165,90 @@ describe('HealthController', () => {
     expect(result.uptime_ms).toBeGreaterThanOrEqual(0);
     expect(result.uptime_human).toBeDefined();
     expect(result.timestamp).toBeDefined();
+    expect(result.database).toMatchObject({
+      healthy: true,
+      type: 'sqlite',
+      connected: true,
+    });
+  });
+
+  it('should report degraded health but not conflate provider and database readiness', async () => {
+    const config = mockConfigService({
+      nodes: [{ id: 'n1', name: 'N1', protocol: 'chat_completions', models: ['m1'] }],
+    });
+    const cb = makeCircuitBreaker({ n1: CircuitState.OPEN });
+    const activeHealth = makeActiveHealthService();
+    const budget = makeBudgetService();
+    const databaseHealth = {
+      check: jest.fn().mockResolvedValue({
+        healthy: true,
+        type: 'sqlite',
+        target: ':memory:',
+        connected: true,
+        latency_ms: 1,
+        checked_at: '2026-05-09T00:00:00.000Z',
+        error: null,
+        synchronize: true,
+      }),
+    };
+
+    const controller = new HealthController(
+      config,
+      cb,
+      makeConcurrencyLimiter(),
+      activeHealth,
+      budget,
+      undefined,
+      undefined,
+      databaseHealth as any,
+    );
+
+    const health = await controller.check();
+    const ready = await controller.ready();
+
+    expect(health.status).toBe('degraded');
+    expect(health.database.healthy).toBe(true);
+    expect(ready).toMatchObject({ ready: true, status: 'ready' });
+  });
+
+  it('should fail readiness when the database is unavailable', async () => {
+    const config = mockConfigService({
+      nodes: [{ id: 'n1', name: 'N1', protocol: 'chat_completions', models: ['m1'] }],
+    });
+    const cb = makeCircuitBreaker();
+    const activeHealth = makeActiveHealthService();
+    const budget = makeBudgetService();
+    const databaseHealth = {
+      check: jest.fn().mockResolvedValue({
+        healthy: false,
+        type: 'postgres',
+        target: 'postgresql://siftgate:***@db:5432/siftgate',
+        connected: false,
+        latency_ms: null,
+        checked_at: '2026-05-09T00:00:00.000Z',
+        error: 'connect ECONNREFUSED',
+        synchronize: false,
+      }),
+    };
+    const controller = new HealthController(
+      config,
+      cb,
+      makeConcurrencyLimiter(),
+      activeHealth,
+      budget,
+      undefined,
+      undefined,
+      databaseHealth as any,
+    );
+
+    const health = await controller.check();
+    await expect(controller.ready()).rejects.toMatchObject({ status: 503 });
+    expect(health.status).toBe('degraded');
+    expect(health.database).toMatchObject({
+      healthy: false,
+      type: 'postgres',
+      connected: false,
+    });
   });
 
   it('should return degraded when a node is OPEN', async () => {

@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import Database = require("better-sqlite3");
-import { DataSource, EntityTarget } from "typeorm";
+import { DataSource, DataSourceOptions, EntityTarget } from "typeorm";
 import {
   BudgetRule,
   CallLog,
@@ -21,7 +21,9 @@ import {
   ShadowTrafficResult,
   VideoJob,
   Workspace,
+  WorkspaceMembership,
 } from "../database/entities";
+import { buildTypeOrmDatabaseOptions } from "../database/database-options";
 import {
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_ORGANIZATION_NAME,
@@ -34,6 +36,7 @@ import {
 export type DbMigrationTableName =
   | "organizations"
   | "workspaces"
+  | "workspace_memberships"
   | "gateway_api_keys"
   | "agent_profiles"
   | "local_teams"
@@ -60,6 +63,7 @@ interface MigrationTableDefinition {
 const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "organizations", entity: Organization },
   { table: "workspaces", entity: Workspace },
+  { table: "workspace_memberships", entity: WorkspaceMembership },
   { table: "gateway_api_keys", entity: GatewayApiKey },
   { table: "agent_profiles", entity: AgentProfile },
   { table: "local_teams", entity: LocalTeam },
@@ -97,6 +101,7 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
 const WORKSPACE_CORE_TABLES = new Set<DbMigrationTableName>([
   "organizations",
   "workspaces",
+  "workspace_memberships",
 ]);
 
 export interface DbMigrationWarning {
@@ -225,32 +230,39 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
   ) {}
 
   async initialize(): Promise<void> {
-    this.dataSource = new DataSource({
-      type: "postgres",
-      url: this.postgresUrl,
-      entities: [
-        CallLog,
-        Organization,
-        Workspace,
-        BudgetRule,
-        NodeStatus,
-        GatewayApiKey,
-        AgentProfile,
-        LocalTeam,
-        RouteDecisionLog,
-        ShadowTrafficResult,
-        ConfigVersion,
-        ConfigAuditEvent,
-        ProviderCompatibilityResult,
-        BatchJob,
-        EvalDataset,
-        EvalExperimentRun,
-        EvalSampleResult,
-        VideoJob,
-      ],
-      synchronize: false,
-      logging: false,
-    });
+    this.dataSource = new DataSource(
+      buildTypeOrmDatabaseOptions(
+        {
+          type: "postgres",
+          url: this.postgresUrl,
+          synchronize: false,
+        },
+        {
+          entities: [
+            CallLog,
+            Organization,
+            Workspace,
+            WorkspaceMembership,
+            BudgetRule,
+            NodeStatus,
+            GatewayApiKey,
+            AgentProfile,
+            LocalTeam,
+            RouteDecisionLog,
+            ShadowTrafficResult,
+            ConfigVersion,
+            ConfigAuditEvent,
+            ProviderCompatibilityResult,
+            BatchJob,
+            EvalDataset,
+            EvalExperimentRun,
+            EvalSampleResult,
+            VideoJob,
+          ],
+          logging: false,
+        },
+      ) as DataSourceOptions,
+    );
     await this.dataSource.initialize();
     await this.dataSource.synchronize(false);
   }
@@ -526,6 +538,9 @@ function ensureWorkspaceCoreRows(
     if (table.table === "workspaces" && table.source_rows === 0) {
       return { ...table, source_rows: 1 };
     }
+    if (table.table === "workspace_memberships" && table.source_rows === 0) {
+      return { ...table, source_rows: 1 };
+    }
     return table;
   });
 }
@@ -560,6 +575,21 @@ async function rowsForImport(
         slug: DEFAULT_WORKSPACE_SLUG,
         status: "active",
         is_default: true,
+        created_at: now,
+        updated_at: now,
+      },
+    ];
+  }
+  if (table === "workspace_memberships") {
+    const now = new Date();
+    return [
+      {
+        id: "membership-default-dashboard-admin",
+        user_id: "dashboard",
+        organization_id: DEFAULT_ORGANIZATION_ID,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        role: "admin",
+        status: "active",
         created_at: now,
         updated_at: now,
       },
@@ -676,6 +706,19 @@ function normalizeRow(
       daily_cost_limit: toNullableNumber,
       rate_limit_per_minute: toNullableNumber,
       last_used_at: toNullableDate,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "workspace_memberships") {
+    return normalizeFields(row, {
+      id: toDefaultWorkspaceMembershipId,
+      user_id: toDefaultDashboardUserId,
+      organization_id: toDefaultOrganizationId,
+      workspace_id: toDefaultWorkspaceId,
+      role: toWorkspaceMembershipRole,
+      status: toEntityStatus,
       created_at: toDateOrNow,
       updated_at: toDateOrNow,
     });
@@ -933,8 +976,22 @@ function toDefaultWorkspaceSlug(value: unknown): string {
     : DEFAULT_WORKSPACE_SLUG;
 }
 
+function toDefaultWorkspaceMembershipId(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : "membership-default-dashboard-admin";
+}
+
+function toDefaultDashboardUserId(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "dashboard";
+}
+
 function toEntityStatus(value: unknown): "active" | "disabled" {
   return value === "disabled" ? "disabled" : "active";
+}
+
+function toWorkspaceMembershipRole(value: unknown): "admin" | "operator" | "viewer" {
+  return value === "operator" || value === "viewer" ? value : "admin";
 }
 
 function toBoolean(value: unknown): boolean {

@@ -696,6 +696,49 @@ export class HealthBudgetDto {
   alert!: boolean;
 }
 
+export class HealthDatabaseDto {
+  @ApiProperty({ example: true })
+  healthy!: boolean;
+
+  @ApiProperty({ enum: ['sqlite', 'postgres'], example: 'postgres' })
+  type!: 'sqlite' | 'postgres';
+
+  @ApiProperty({
+    example: 'postgresql://siftgate:***@postgres:5432/siftgate',
+    description: 'Database target with credentials redacted.',
+  })
+  target!: string;
+
+  @ApiProperty({ example: true })
+  connected!: boolean;
+
+  @ApiProperty({ example: 4, nullable: true })
+  latency_ms!: number | null;
+
+  @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
+  checked_at!: string;
+
+  @ApiProperty({ example: null, nullable: true })
+  error!: string | null;
+
+  @ApiProperty({ example: false })
+  synchronize!: boolean;
+
+  @ApiPropertyOptional({
+    example: {
+      min: 0,
+      max: 10,
+      idle_timeout_ms: 30000,
+      connection_timeout_ms: 5000,
+      application_name: 'siftgate',
+    },
+  })
+  pool?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ enum: ['disabled', 'enabled', 'enabled-no-verify'] })
+  ssl?: 'disabled' | 'enabled' | 'enabled-no-verify';
+}
+
 export class HealthResponseDto {
   @ApiProperty({ enum: ['healthy', 'degraded'], example: 'healthy' })
   status!: 'healthy' | 'degraded';
@@ -708,6 +751,9 @@ export class HealthResponseDto {
 
   @ApiProperty({ example: '2026-05-02T04:00:00.000Z' })
   timestamp!: string;
+
+  @ApiProperty({ type: HealthDatabaseDto })
+  database!: HealthDatabaseDto;
 
   @ApiProperty({ type: [HealthNodeDto] })
   nodes!: HealthNodeDto[];

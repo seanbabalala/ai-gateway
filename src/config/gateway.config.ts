@@ -390,6 +390,25 @@ export interface DatabaseConfig {
   path?: string; // SQLite file path
   url?: string; // PostgreSQL connection URL
   synchronize?: boolean; // TypeORM schema sync; keep true for local dev, set false in production Postgres
+  pool?: {
+    max?: number; // PostgreSQL pool max clients (default: 10)
+    min?: number; // PostgreSQL pool min clients (default: 0)
+    idle_timeout_ms?: number; // PostgreSQL idle client timeout (default: 30000)
+    connection_timeout_ms?: number; // PostgreSQL connect timeout (default: 5000)
+    statement_timeout_ms?: number; // PostgreSQL statement timeout, 0 disables
+    query_timeout_ms?: number; // PostgreSQL client query timeout, 0 disables
+    max_uses?: number; // PostgreSQL client recycle count, 0 disables
+    application_name?: string; // PostgreSQL pg_stat_activity name
+  };
+  ssl?:
+    | boolean
+    | {
+        reject_unauthorized?: boolean;
+        ca?: string;
+        cert?: string;
+        key?: string;
+        servername?: string;
+      };
   log_retention_days?: number; // Auto-delete logs older than N days (default: 30)
 }
 

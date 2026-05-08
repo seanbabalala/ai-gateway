@@ -17,6 +17,11 @@ state:
     sync_interval_ms: 2000
 ```
 
+Redis is not a database replacement. v2.0.0-alpha.3 documents PostgreSQL as
+the production metadata database for durable workspace/RBAC/API-key/budget/log
+state, while Redis remains the optional shared runtime state backend for
+multi-instance coordination.
+
 ## What Uses Shared State
 
 | Component | Memory Default | Redis Mode |

@@ -203,3 +203,8 @@ v2.0.0-alpha.2 keeps that mapping intact and adds only local membership
 metadata; it does not migrate prompts, responses, raw provider headers,
 provider keys, media bytes, tool payloads, hidden reasoning text, or resolved
 secrets.
+
+v2.0.0-alpha.3 includes `workspace_memberships` in the SQLite-to-PostgreSQL
+production migration path. Existing alpha.2 local RBAC memberships therefore
+move with the rest of the default organization/workspace metadata when
+operators adopt PostgreSQL for production.

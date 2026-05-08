@@ -126,6 +126,67 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('postgres_synchronize_enabled');
   });
 
+  it('validates PostgreSQL pool and SSL production settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        database: {
+          type: 'postgres',
+          url: 'postgresql://siftgate:secret@localhost:5432/siftgate',
+          synchronize: false,
+          pool: {
+            min: 1,
+            max: 20,
+            idle_timeout_ms: 30000,
+            connection_timeout_ms: 5000,
+            statement_timeout_ms: 60000,
+            query_timeout_ms: 60000,
+            max_uses: 7500,
+            application_name: 'siftgate-prod',
+          },
+          ssl: {
+            reject_unauthorized: true,
+            servername: 'postgres.example.com',
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_postgres_pool');
+    expect(codes(result.errors)).not.toContain('invalid_postgres_ssl');
+  });
+
+  it('rejects invalid PostgreSQL pool and URL settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        database: {
+          type: 'postgres',
+          url: 'mysql://siftgate:secret@localhost:3306/siftgate',
+          synchronize: false,
+          pool: {
+            min: 10,
+            max: 2,
+            connection_timeout_ms: 50,
+          },
+          ssl: {
+            reject_unauthorized: 'no',
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_postgres_url',
+        'invalid_postgres_pool',
+        'invalid_postgres_ssl',
+      ]),
+    );
+  });
+
   it('validates config audit rollback settings', () => {
     const result = validateConfigObject(
       {
