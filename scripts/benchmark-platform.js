@@ -19,11 +19,25 @@ const yaml = require('js-yaml');
 
 const packageJson = require('../package.json');
 
-const BENCH_API_KEY = 'gw_sk_bench_local_rc2';
-const BENCH_KEY_PREFIX = 'gw_sk_bench_local...rc2';
+const BENCH_API_KEY = 'gw_sk_bench_local_ga';
+const BENCH_KEY_PREFIX = 'gw_sk_bench_local...ga';
 const DEFAULT_REQUESTS = 20;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 120000;
+
+function releaseLabel() {
+  return `v${packageJson.version}`;
+}
+
+function isReleaseCandidate() {
+  return /-rc\./.test(packageJson.version);
+}
+
+function measurementNote() {
+  return isReleaseCandidate()
+    ? `${releaseLabel()} numbers are release-candidate measurements and must be re-measured before GA if runtime behavior changes.`
+    : `${releaseLabel()} numbers are GA measurements from this commit and benchmark environment. Re-run before publishing comparative claims.`;
+}
 
 function positiveInt(value, fallback) {
   const parsed = Number(value);
@@ -989,13 +1003,13 @@ function buildMarkdown(report) {
     : '| n/a | n/a | n/a | n/a | n/a |';
 
   return [
-    '# SiftGate v2.0.0-rc.2 Performance Report',
+    `# SiftGate ${report.release} Performance Report`,
     '',
     `Generated at: ${measuredAt}`,
     `Commit: ${report.commit}`,
     `Version: ${report.version}`,
     '',
-    '> These are release-candidate measurements from a local deterministic mock upstream. Re-measure before v2.0.0 GA if runtime behavior changes.',
+    `> ${report.release} ${report.rc_measurement ? 'release-candidate' : 'GA'} measurements from a local deterministic mock upstream.`,
     '',
     '## Environment',
     '',
@@ -1095,8 +1109,8 @@ async function main() {
 
   const report = {
     report_schema: 'siftgate.platform_benchmark.v1',
-    release: 'v2.0.0-rc.2',
-    rc_measurement: true,
+    release: releaseLabel(),
+    rc_measurement: isReleaseCandidate(),
     generated_at: new Date().toISOString(),
     version: packageJson.version,
     commit: gitCommit(),
@@ -1120,7 +1134,7 @@ async function main() {
         'SQLite scenarios use a temporary on-disk database to match local/dev behavior.',
         'PostgreSQL and Redis scenarios are optional and are skipped unless their URLs are provided.',
         'Live provider or existing-gateway tests should use npm run benchmark:upstream with explicit environment variables.',
-        'v2.0.0-rc.2 numbers are release-candidate measurements and must be re-measured before GA if runtime behavior changes.',
+        measurementNote(),
       ],
     },
     privacy: {

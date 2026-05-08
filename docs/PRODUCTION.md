@@ -59,6 +59,20 @@ resolution is the right fit.
   previews.
 - Keep `/health` on the load balancer health check path.
 
+## Platform Trust Baseline
+
+v2.0.0 is the Platform Trust GA for the OSS data plane. Production operators
+should treat these as the stable baseline capabilities before layering on
+future v2.x features:
+
+- default organization/workspace bootstrap and workspace-scoped metadata,
+- local Dashboard RBAC with Admin, Operator, and Viewer roles,
+- optional generic OIDC login and metadata-only workspace invites,
+- PostgreSQL as the documented durable metadata path,
+- optional Redis shared runtime state for multi-instance deployments,
+- management audit logs with redacted summaries and hash-chain fields,
+- repeatable benchmark evidence under `docs/PERFORMANCE.md`.
+
 ## Dashboard Login, OIDC, And Invites
 
 v2.0.0-beta.1 adds optional generic OIDC login for the open-source Dashboard.

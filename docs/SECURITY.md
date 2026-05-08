@@ -22,6 +22,9 @@ The following surfaces avoid prompt/response persistence by default:
 - batch and video job metadata
 - semantic cache
 - evaluation reports
+- management audit events
+- first-run onboarding evidence
+- platform benchmark reports
 
 Features that can store samples or replayable responses require explicit configuration and should be documented in local operating procedures.
 

@@ -220,3 +220,20 @@ audit evidence and includes it in the SQLite-to-PostgreSQL migration path.
 Startup diagnostics and migration docs now treat the v1.9-to-v2 dry-run report,
 database backups, and metadata-only audit table as the final Platform Trust
 upgrade guardrails before v2.0.0 GA.
+
+## v2.0.0 GA Upgrade Checklist
+
+Before upgrading an existing v1.9.x deployment to v2.0.0:
+
+1. Run `siftgate migrate-v2 --dry-run --output ./reports/v2-migration-dry-run.json`.
+2. Back up `gateway.config.yaml`, `catalog.override.yaml`, `.env`, and the
+   SQLite or PostgreSQL database.
+3. Run `npm run validate:config`, `npm run build`, and the focused test suite
+   used by your deployment process.
+4. Start v2.0.0 and verify `/ready`, `/health`, local Dashboard login or OIDC,
+   workspace membership, API keys, budgets, logs, and audit events.
+5. Open the Dashboard first-run checklist to confirm the default workspace,
+   provider node, Gateway API key, first request, and logs/route/cost evidence.
+
+The default organization/workspace mapping remains backwards-compatible:
+legacy resources without a workspace owner resolve to `default-workspace`.

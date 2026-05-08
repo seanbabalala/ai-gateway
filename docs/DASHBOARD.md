@@ -10,11 +10,17 @@ v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mappe
 
 v2.0.0-rc.1 adds a workspace-scoped **Audit Log** page for platform management events. It records metadata-only evidence for Dashboard management operations, denied RBAC attempts, local config changes, key/member/invite operations, budget resets, cache clears, and node control actions.
 
+v2.0.0 GA adds a compact first-run checklist to the Overview page. It guides
+operators through selecting the active workspace, adding a provider node,
+creating a Gateway API key, running the first request, and opening logs,
+route evidence, and cost metadata. The checklist is read-only and uses existing
+Dashboard APIs.
+
 ## Pages
 
 | Page | Purpose |
 | --- | --- |
-| Overview | Live calls, cost, cache savings, latency, budget, provider health, guardrails finding summary, and recent activity |
+| Overview | First-run checklist, live calls, cost, cache savings, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
@@ -152,4 +158,4 @@ Dashboard copy is maintained in seven languages: English, Simplified Chinese, Tr
 
 ## Open-Source Boundary
 
-The Dashboard manages the local Data Plane only. Workspace Core in v2.0.0-alpha.1 is the OSS ownership boundary for local metadata, and v2.0.0-alpha.2 adds local Dashboard RBAC for that boundary. It does not include SSO/OIDC, SCIM, organization billing, the public website, private Cloud dashboard code, or custom enterprise permission expressions.
+The Dashboard manages the local Data Plane only. Workspace Core in v2.0.0-alpha.1 is the OSS ownership boundary for local metadata, and v2.0.0-alpha.2 adds local Dashboard RBAC for that boundary. Optional OIDC and invite metadata are available in v2.0.0, but the OSS Dashboard does not include SCIM, LDAP, organization billing, the public website, private Cloud dashboard code, or custom enterprise permission expressions.

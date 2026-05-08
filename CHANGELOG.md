@@ -2,9 +2,30 @@
 
 ## Unreleased
 
+## 2.0.0 - 2026-05-09
+
+### Added
+
+- Shipped Platform Trust GA for the OSS data plane: workspace isolation, local Dashboard RBAC, optional OIDC login and invites, PostgreSQL production guidance, Redis shared-state cluster mode, management audit logs, upgrade hardening, and repeatable benchmark evidence are now the stable v2.0 baseline.
+- Added a Dashboard first-run checklist that guides operators through active workspace, provider node, Gateway API key, first request, and logs/route/cost evidence without adding new storage or hosted dependencies.
+- Added committed GA sample benchmark reports in JSON and Markdown under `docs/reports/`.
+
+### Changed
+
+- Finalized README and docs positioning around "open-source AI infrastructure platform for teams and agents".
+- Updated `docs/PERFORMANCE.md` with v2.0.0 GA benchmark methodology and report links while keeping the rc.2 report as release-candidate history.
+- Updated release metadata to v2.0.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, release-version sync coverage, and benchmark script output.
+- Reviewed seven-locale Dashboard copy for the GA first-run path: `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+
 ### Fixed
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
+- Moved the Dashboard theme bootstrap out of inline HTML so the production app stays compatible with Helmet's default content-security policy without console CSP errors.
+
+### Boundaries
+
+- v2.0.0 GA does not add API resale/recharge flows, mandatory cloud dependency, SCIM/LDAP, organization billing, full DAG workflow orchestration, or broad provider-count expansion.
+- The first-run checklist and benchmark reports do not store prompts, responses, raw provider headers, provider keys, media bytes, tool payloads, hidden reasoning text, or resolved secrets by default.
 
 ## 2.0.0-rc.2 - 2026-05-09
 

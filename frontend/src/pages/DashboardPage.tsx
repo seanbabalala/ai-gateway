@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   PieChart,
@@ -31,6 +32,11 @@ import {
   ShieldCheck,
   TrendingDown,
   Network,
+  Building2,
+  PlayCircle,
+  FileSearch,
+  ArrowRight,
+  Circle,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -52,6 +58,7 @@ import { useAlerts } from '@/hooks/use-alerts'
 import { useGuardrails } from '@/hooks/use-guardrails'
 import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useClusterStatus } from '@/hooks/use-cluster-status'
+import { useWorkspaces } from '@/hooks/use-workspaces'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -150,6 +157,7 @@ export function DashboardPage() {
   const { data: alertsData } = useAlerts()
   const { data: guardrailsData } = useGuardrails()
   const { data: clusterStatus } = useClusterStatus()
+  const { data: workspaceState } = useWorkspaces()
   const { data: cacheSavings } = useCacheSavings('1d', 'node', {
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
@@ -204,6 +212,59 @@ export function DashboardPage() {
     ? Object.values(clusterStatus.state.categories)
     : []
   const sharedCategoryCount = stateCategories.filter((category) => category.shared).length
+  const configuredNodeCount = configData?.nodes.length ?? 0
+  const apiKeyCount = apiKeysData?.items.length ?? 0
+  const hasRequests = total.calls > 0 || recentLogs.length > 0
+  const hasEvidence = hasRequests && (tierDistribution.length > 0 || nodeDistribution.length > 0 || recentLogs.length > 0)
+  const workspaceName = workspaceState?.active_workspace?.name || t('onboarding.values.pending')
+  const firstRunSteps = [
+    {
+      key: 'workspace',
+      icon: Building2,
+      done: Boolean(workspaceState?.active_workspace),
+      title: t('onboarding.steps.workspace.title'),
+      description: t('onboarding.steps.workspace.description', { workspace: workspaceName }),
+      href: '/members',
+      action: t('onboarding.actions.reviewWorkspace'),
+    },
+    {
+      key: 'provider',
+      icon: Server,
+      done: configuredNodeCount > 0,
+      title: t('onboarding.steps.provider.title'),
+      description: t('onboarding.steps.provider.description', { count: configuredNodeCount }),
+      href: '/nodes',
+      action: t('onboarding.actions.addProvider'),
+    },
+    {
+      key: 'key',
+      icon: KeyRound,
+      done: apiKeyCount > 0,
+      title: t('onboarding.steps.key.title'),
+      description: t('onboarding.steps.key.description', { count: apiKeyCount }),
+      href: '/api-keys',
+      action: t('onboarding.actions.createKey'),
+    },
+    {
+      key: 'request',
+      icon: PlayCircle,
+      done: hasRequests,
+      title: t('onboarding.steps.request.title'),
+      description: t('onboarding.steps.request.description'),
+      href: '/playground',
+      action: t('onboarding.actions.runRequest'),
+    },
+    {
+      key: 'evidence',
+      icon: FileSearch,
+      done: hasEvidence,
+      title: t('onboarding.steps.evidence.title'),
+      description: t('onboarding.steps.evidence.description'),
+      href: '/logs',
+      action: t('onboarding.actions.openEvidence'),
+    },
+  ]
+  const completedFirstRunSteps = firstRunSteps.filter((step) => step.done).length
   const setupWarnings = [
     ...(apiKeysData && apiKeysData.items.length === 0
       ? [t('configHealth.missingApiKey')]
@@ -237,6 +298,85 @@ export function DashboardPage() {
           />
         </div>
       </PageHeader>
+
+      <Card className="animate-fade-up overflow-hidden">
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]">
+                <PlayCircle className="h-4.5 w-4.5" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle>{t('onboarding.title')}</CardTitle>
+                <p className="mt-1 max-w-3xl text-[12px] font-medium leading-5 text-[var(--foreground-dim)]">
+                  {t('onboarding.description')}
+                </p>
+              </div>
+            </div>
+            <Badge variant={completedFirstRunSteps === firstRunSteps.length ? 'emerald' : 'amber'}>
+              {t('onboarding.progress', {
+                completed: completedFirstRunSteps,
+                total: firstRunSteps.length,
+              })}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 lg:grid-cols-5">
+            {firstRunSteps.map((step) => {
+              const StepIcon = step.icon
+              return (
+                <div
+                  key={step.key}
+                  className="flex min-h-[148px] flex-col justify-between rounded-lg bg-[var(--background-tertiary)] px-3.5 py-3"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={
+                          step.done
+                            ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--background-secondary)] text-[var(--foreground-dim)]'
+                        }
+                      >
+                        <StepIcon className="h-4 w-4" />
+                      </div>
+                      <span
+                        className={
+                          step.done
+                            ? 'inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300'
+                            : 'inline-flex items-center gap-1 rounded-md bg-[var(--background-secondary)] px-2 py-1 text-[10px] font-bold text-[var(--foreground-dim)]'
+                        }
+                      >
+                        {step.done ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                        {step.done ? t('onboarding.status.done') : t('onboarding.status.todo')}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-extrabold leading-5 text-[var(--foreground)]">
+                        {step.title}
+                      </div>
+                      <div className="mt-1 text-[11px] font-medium leading-5 text-[var(--foreground-dim)]">
+                        {step.description}
+                      </div>
+                    </div>
+                  </div>
+                  <Link
+                    to={step.href}
+                    className="mt-4 inline-flex items-center justify-between gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2 text-[11px] font-bold text-[var(--foreground-muted)] transition-all hover:-translate-y-0.5 hover:text-[var(--foreground)] hover:shadow-[0_12px_28px_rgba(5,46,36,0.08)]"
+                  >
+                    <span className="min-w-0 truncate">{step.action}</span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2 text-[11px] font-medium leading-5 text-[var(--foreground-dim)]">
+            {t('onboarding.privacy')}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card className="animate-fade-up overflow-hidden">
