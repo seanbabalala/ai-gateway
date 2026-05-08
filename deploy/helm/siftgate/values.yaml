@@ -104,6 +104,7 @@ config:
 
     state:
       backend: memory
+      unavailable_policy: fail_open
 
     cluster:
       enabled: false
@@ -252,6 +253,23 @@ redis:
   urlSecret:
     name: ""
     key: REDIS_URL
+  # When enabled, set config.data.state.backend=redis and use the REDIS_URL
+  # secret above. Shared runtime state remains metadata-only except prompt cache
+  # entries, which are stored only when cache.enabled=true.
+  recommendedState:
+    unavailablePolicy: fail_open
+    prefix: "siftgate:state:"
+    timeoutMs: 500
+    syncIntervalMs: 2000
+    categoryTtlSeconds:
+      rate_limit: 60
+      circuit_breaker: 3600
+      cache_affinity: 1800
+      momentum: 1800
+      prompt_cache: 300
+      concurrency: 120
+      health_probe: 120
+      realtime_session: 1800
 
 probes:
   liveness:

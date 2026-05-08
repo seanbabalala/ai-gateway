@@ -3398,6 +3398,7 @@ export class PipelineService {
           scoringResult.modalityHints,
           {
             ...requestRouteHints,
+            workspace_id: this.workspaceIdForCanonical(canonical),
             estimated_input_tokens: tokenEstimate.input_tokens,
             estimated_output_tokens: tokenEstimate.output_tokens,
             estimated_context_tokens: tokenEstimate.context_tokens,
@@ -3504,6 +3505,7 @@ export class PipelineService {
     const traceSelectionHints: RouteSelectionHints = {
       ...requestEvidenceHints,
       ...input.selectionHints,
+      workspace_id: this.workspaceIdForCanonical(input.canonical),
       estimated_input_tokens: tokenEstimate?.input_tokens ?? undefined,
       estimated_output_tokens: tokenEstimate?.output_tokens ?? undefined,
       estimated_context_tokens: tokenEstimate?.context_tokens ?? undefined,
@@ -5399,6 +5401,7 @@ export class PipelineService {
           params.nodeId,
           params.model,
           params.usage,
+          this.workspaceIdForCanonical(params.canonical),
         );
       }
       const saved = await this.callLogRepo.save(log);

@@ -130,6 +130,46 @@ describe('ClusterService', () => {
     );
   });
 
+  it('returns dashboard-safe single-instance status with local state backend', async () => {
+    const redis = new MockClusterRedisClient();
+    const config = mockConfigService({
+      cluster: {
+        enabled: false,
+        instance_id: 'single',
+        redis: { url: 'redis://127.0.0.1:6379', prefix: 'siftgate:' },
+        heartbeat_interval_seconds: 10,
+        heartbeat_ttl_seconds: 30,
+        reload_broadcast: true,
+      },
+    });
+    const factory = jest.fn(() => redis);
+    const state = {
+      status: {
+        backend: 'memory',
+        configured_backend: 'memory',
+        key_prefix: 'siftgate:state:',
+        redis_available: false,
+        unavailable_policy: 'fail_open',
+        degraded: false,
+        last_error: null,
+        recent_errors: [],
+        categories: {},
+      },
+    };
+    const service = new ClusterService(config, factory, state as any);
+
+    await service.onModuleInit();
+
+    await expect(service.getDashboardStatus()).resolves.toMatchObject({
+      enabled: false,
+      mode: 'single_instance',
+      local_node_id: 'single',
+      redis: { status: 'disabled', url: null },
+      state: { backend: 'memory', degraded: false },
+      instance_count: 1,
+    });
+  });
+
   it('registers the local instance and exposes cluster status', async () => {
     const redis = new MockClusterRedisClient();
     const { config } = makeConfig();

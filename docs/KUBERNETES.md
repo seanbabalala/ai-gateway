@@ -158,7 +158,9 @@ Service endpoints.
 ## Redis And Cluster Mode
 
 Redis is optional. Use it only when you need shared state for rate limits,
-circuit breakers, prompt cache, routing momentum, or cluster inventory:
+circuit breakers, cache affinity, prompt cache, routing momentum, concurrency
+summaries, active health probe summaries, realtime session metadata, or
+cluster inventory:
 
 ```yaml
 redis:
@@ -173,9 +175,21 @@ Then update `config.data`:
 ```yaml
 state:
   backend: redis
+  unavailable_policy: fail_open
   redis:
     url: "${REDIS_URL}"
     prefix: siftgate:state:
+    timeout_ms: 500
+    sync_interval_ms: 2000
+  categories:
+    rate_limit:        { ttl_seconds: 60 }
+    circuit_breaker:   { ttl_seconds: 3600 }
+    cache_affinity:    { ttl_seconds: 1800 }
+    momentum:          { ttl_seconds: 1800 }
+    prompt_cache:      { ttl_seconds: 300 }
+    concurrency:       { ttl_seconds: 120 }
+    health_probe:      { ttl_seconds: 120 }
+    realtime_session:  { ttl_seconds: 1800 }
 
 cluster:
   enabled: true
@@ -184,7 +198,9 @@ cluster:
 ```
 
 There is no leader election. Every pod handles requests independently and must
-receive the same validated gateway config.
+receive the same validated gateway config. `/cluster/status` is available only
+when cluster mode is enabled; Dashboard reads privacy-safe local status from
+`/api/dashboard/cluster` in both single-instance and cluster deployments.
 
 ## Ingress, HPA, PDB, And Metrics
 

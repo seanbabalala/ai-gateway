@@ -510,6 +510,14 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     currentWorkspaceId: jest.fn(() => "default-workspace"),
     ...overrides.workspaceContext,
   };
+  const cluster = {
+    getDashboardStatus: jest.fn().mockResolvedValue({
+      enabled: false,
+      mode: "single_instance",
+      local_node_id: "test-instance",
+    }),
+    ...overrides.cluster,
+  };
 
   const controller = new DashboardController(
     config,
@@ -534,6 +542,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     batchJobs as any,
     workspaces as any,
     workspaceContext as any,
+    cluster as any,
     overrides.realtime as any,
     dataSource as any,
     callLogRepo as any,
@@ -564,6 +573,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     batchJobs,
     workspaces,
     workspaceContext,
+    cluster,
     callLogRepo,
     routeDecisionRepo,
     shadowTrafficRepo,
@@ -621,6 +631,49 @@ describe("DashboardController — getStats", () => {
     expect(result.total.calls).toBe(0);
     expect(result.total.successRate).toBe(0);
     expect(result.total.inputTokens).toBe(0);
+  });
+});
+
+describe("DashboardController — cluster status", () => {
+  it("should expose privacy-safe cluster and shared state status", async () => {
+    const clusterStatus = {
+      enabled: true,
+      mode: "redis_pubsub",
+      local_node_id: "pod-a",
+      redis: {
+        status: "ready",
+        url: "redis://redacted@redis:6379/",
+        prefix: "siftgate:state:",
+        last_error: null,
+      },
+      state: {
+        backend: "redis",
+        configured_backend: "redis",
+        key_prefix: "siftgate:state:",
+        redis_available: true,
+        unavailable_policy: "fail_open",
+        degraded: false,
+        last_error: null,
+        recent_errors: [],
+        categories: {
+          rate_limit: {
+            name: "rate_limit",
+            unavailable_policy: "fail_open",
+            ttl_seconds: 60,
+            shared: true,
+          },
+        },
+      },
+      instance_count: 2,
+    };
+    const { controller, cluster } = makeDashboard({
+      cluster: {
+        getDashboardStatus: jest.fn().mockResolvedValue(clusterStatus),
+      },
+    });
+
+    await expect(controller.getClusterStatus()).resolves.toBe(clusterStatus);
+    expect(cluster.getDashboardStatus).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -2110,6 +2110,16 @@ describe('config validator', () => {
             url: '${REDIS_URL:-redis://127.0.0.1:6379}',
             prefix: 'siftgate:',
           },
+          categories: {
+            rate_limit: { unavailable_policy: 'fail_closed', ttl_seconds: 60 },
+            circuit_breaker: { ttl_seconds: 3600 },
+            cache_affinity: { unavailable_policy: 'fail_open' },
+            momentum: { ttl_seconds: 1800 },
+            prompt_cache: { ttl_seconds: 300 },
+            concurrency: { unavailable_policy: 'fail_closed', ttl_seconds: 120 },
+            health_probe: { ttl_seconds: 120 },
+            realtime_session: { ttl_seconds: 1800 },
+          },
         },
         cluster: {
           enabled: true,
@@ -2163,6 +2173,11 @@ describe('config validator', () => {
         state: {
           backend: 'shared',
           redis: { url: 'http://localhost:6379', prefix: '' },
+          categories: {
+            unknown: { ttl_seconds: 60 },
+            rate_limit: { unavailable_policy: 'closed', ttl_seconds: 0 },
+            circuit_breaker: 'bad',
+          },
         },
         cluster: {
           enabled: 'yes',
@@ -2210,6 +2225,9 @@ describe('config validator', () => {
         'invalid_state_backend',
         'invalid_redis_url',
         'invalid_state_redis_prefix',
+        'invalid_state_category',
+        'invalid_state_category_policy',
+        'invalid_state_category_ttl',
         'invalid_cluster_config',
       ]),
     );

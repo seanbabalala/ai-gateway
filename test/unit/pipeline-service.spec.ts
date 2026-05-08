@@ -2863,6 +2863,7 @@ describe('PipelineService — cache-aware cost calculation', () => {
       'openai',
       'gpt-4o',
       expect.objectContaining({ cache_read_input_tokens: 150 }),
+      'default-workspace',
     );
   });
 

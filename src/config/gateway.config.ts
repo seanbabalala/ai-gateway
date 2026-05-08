@@ -181,6 +181,12 @@ export interface StateBackendConfig {
   /** Behavior when Redis is configured but unavailable (default: fail_open). */
   unavailable_policy?: StateUnavailablePolicy;
   redis?: RedisStateBackendConfig;
+  /**
+   * Optional per-category runtime state policy. Defaults keep v1.9 behavior:
+   * safety gates such as rate limits and circuit breakers inherit
+   * unavailable_policy; metadata/affinity/cache state fails open.
+   */
+  categories?: Partial<Record<StateCategoryName, StateCategoryConfig>>;
 }
 
 export interface RedisStateBackendConfig {
@@ -192,6 +198,23 @@ export interface RedisStateBackendConfig {
   timeout_ms?: number;
   /** Poll interval for sync-only local mirrors such as circuit/momentum (default: 2000). */
   sync_interval_ms?: number;
+}
+
+export type StateCategoryName =
+  | 'rate_limit'
+  | 'circuit_breaker'
+  | 'cache_affinity'
+  | 'momentum'
+  | 'prompt_cache'
+  | 'concurrency'
+  | 'health_probe'
+  | 'realtime_session';
+
+export interface StateCategoryConfig {
+  /** Redis unavailable behavior for this category. Defaults by category. */
+  unavailable_policy?: StateUnavailablePolicy;
+  /** Default TTL for category entries when callers do not supply one. */
+  ttl_seconds?: number;
 }
 
 // ===== Hot Reload =====

@@ -10,6 +10,8 @@ import {
 import * as os from 'os';
 import { Subscription } from 'rxjs';
 import { ConfigReloadResult, ConfigService } from '../config/config.service';
+import { StateBackendService } from '../state/state-backend.service';
+import type { StateRuntimeStatus } from '../state/state.types';
 import {
   ClusterRedisClient,
   RespClusterRedisClient,
@@ -76,6 +78,7 @@ export class ClusterService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject(CLUSTER_REDIS_CLIENT_FACTORY)
     private readonly clientFactory?: ClusterRedisClientFactory,
+    @Optional() private readonly stateBackend?: StateBackendService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -155,12 +158,14 @@ export class ClusterService implements OnModuleInit, OnModuleDestroy {
       enabled: true,
       mode: 'redis_pubsub',
       leader_election: false,
+      local_node_id: runtime.instance_id,
       redis: {
         status: this.redisStatus,
         url: sanitizeRedisUrl(runtime.redis.url),
         prefix: runtime.redis.prefix,
         last_error: this.lastError,
       },
+      state: this.privacySafeStateStatus(),
       reload_broadcast: runtime.reload_broadcast,
       heartbeat_interval_seconds: runtime.heartbeat_interval_seconds,
       heartbeat_ttl_seconds: runtime.heartbeat_ttl_seconds,
@@ -175,6 +180,37 @@ export class ClusterService implements OnModuleInit, OnModuleDestroy {
       last_inbound_reload_at: this.lastInboundReloadAt,
       last_outbound_reload_at: this.lastOutboundReloadAt,
     };
+  }
+
+  async getDashboardStatus(): Promise<Record<string, unknown>> {
+    const runtime = this.runtime();
+    if (!this.isEnabled()) {
+      return {
+        enabled: false,
+        mode: 'single_instance',
+        leader_election: false,
+        local_node_id: runtime.instance_id,
+        redis: {
+          status: 'disabled',
+          url: null,
+          prefix: runtime.redis.prefix,
+          last_error: null,
+        },
+        state: this.privacySafeStateStatus(),
+        reload_broadcast: false,
+        heartbeat_interval_seconds: runtime.heartbeat_interval_seconds,
+        heartbeat_ttl_seconds: runtime.heartbeat_ttl_seconds,
+        local_instance: this.localInstanceRecord('online'),
+        instances: [this.localInstanceRecord('online')],
+        instance_count: 1,
+        channels: { events: null },
+        last_heartbeat_at: null,
+        last_event_at: this.lastEventAt,
+        last_inbound_reload_at: this.lastInboundReloadAt,
+        last_outbound_reload_at: this.lastOutboundReloadAt,
+      };
+    }
+    return this.getStatus();
   }
 
   private runtime() {
@@ -336,6 +372,18 @@ export class ClusterService implements OnModuleInit, OnModuleDestroy {
     this.redisStatus = 'error';
     this.lastError = message;
     this.logger.warn(`Cluster Redis operation failed: ${message}`);
+  }
+
+  private privacySafeStateStatus(): StateRuntimeStatus | null {
+    const status = this.stateBackend?.status;
+    if (!status) return null;
+    return {
+      ...status,
+      key_prefix: status.key_prefix,
+      last_error: status.last_error,
+      recent_errors: status.recent_errors,
+      categories: status.categories,
+    };
   }
 }
 

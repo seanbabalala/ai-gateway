@@ -131,6 +131,7 @@ export interface RouteSelectionHints {
   semantic_cache_reason?: string | null;
   stream?: boolean;
   multipart?: boolean;
+  workspace_id?: string | null;
 }
 
 export interface EmbeddingRouteDecision {
@@ -229,11 +230,16 @@ export class RoutingService {
   ): RouteDecision {
     const hint = domainHint || null;
 
+    const scopedSessionKey = this.momentum.scopedSessionKey(
+      sessionKey,
+      selectionHints.workspace_id,
+    );
+
     // ── Step 1: Momentum smoothing ──
     const { tier: effectiveTier, adjusted } = this.momentum.apply(
       tier,
       score,
-      sessionKey,
+      scopedSessionKey,
     );
 
     // ── Step 2: Get tier config ──
@@ -288,7 +294,7 @@ export class RoutingService {
           initialTargets: this.normalizeTierTargets(fallbackConfig).targets,
           finalTargets: fallbackTargets,
           selected,
-          sessionKey,
+          sessionKey: scopedSessionKey,
           loadBalancing,
           reason: `tier "${effectiveTier}" missing; fell back to "${firstTier}"`,
         }),
@@ -300,7 +306,7 @@ export class RoutingService {
 
     if (tierConfig.split && tierConfig.split.length > 0) {
       const splitResult = this.resolveABSplit(
-        tierConfig.split, effectiveTier, sessionKey,
+        tierConfig.split, effectiveTier, scopedSessionKey,
       );
       // Use split-derived targets for Steps 3+
       const splitAllTargets = splitResult.orderedTargets;
@@ -383,7 +389,7 @@ export class RoutingService {
           initialTargets: splitAllTargets,
           finalTargets: splitOrdered,
           selected: splitOrdered[0],
-          sessionKey,
+          sessionKey: scopedSessionKey,
           loadBalancing,
           reason: 'A/B split experiment',
         }),
@@ -443,7 +449,7 @@ export class RoutingService {
       effectiveTier,
       normalized.strategy,
       orderedTargets,
-      sessionKey,
+      scopedSessionKey,
       selectionHints,
     );
     const primary = selection.target;
@@ -462,7 +468,7 @@ export class RoutingService {
       primary,
       selection.strategy,
       normalized.source,
-      this.selectionReason(selection.strategy, primary, sessionKey, selectionHints),
+      this.selectionReason(selection.strategy, primary, scopedSessionKey, selectionHints),
     );
 
     const loadBalancing = {
@@ -494,12 +500,12 @@ export class RoutingService {
         initialTargets: normalized.targets,
         finalTargets: orderedTargets,
         selected: this.toRouteTarget(primary),
-        sessionKey,
+        sessionKey: scopedSessionKey,
         loadBalancing,
         reason: this.selectionReason(
           selection.strategy,
           primary,
-          sessionKey,
+          scopedSessionKey,
           selectionHints,
         ),
       }),
@@ -553,12 +559,14 @@ export class RoutingService {
     node: string,
     model: string,
     usage: Pick<TokenUsage, 'cache_read_input_tokens'> | undefined,
+    workspaceId?: string | null,
   ): void {
     this.cacheAffinityService.recordRouteResult(
       sessionKey,
       node,
       model,
       usage,
+      { workspaceId },
     );
   }
 
@@ -973,7 +981,10 @@ export class RoutingService {
       case 'round_robin':
         return { target: this.selectRoundRobin(tier, targets), strategy };
       case 'least_latency':
-        return { target: this.selectLeastLatency(targets, sessionKey), strategy };
+        return {
+          target: this.selectLeastLatency(targets, sessionKey, selectionHints),
+          strategy,
+        };
       case 'random':
         return {
           target: targets[Math.floor(Math.random() * targets.length)] || targets[0],
@@ -995,7 +1006,7 @@ export class RoutingService {
       case 'cost':
         return this.selectLowestCost(targets, sessionKey, selectionHints);
       case 'latency':
-        return this.selectLeastLatency(targets, sessionKey);
+        return this.selectLeastLatency(targets, sessionKey, selectionHints);
       case 'balanced':
         return this.selectBalanced(targets, sessionKey, selectionHints);
       case 'quality':
@@ -1045,7 +1056,11 @@ export class RoutingService {
         target,
         index,
         cost: this.estimateTargetCost(target, selectionHints),
-        affinityBonus: this.affinityBonusForTarget(target, sessionKey),
+        affinityBonus: this.affinityBonusForTarget(
+          target,
+          sessionKey,
+          selectionHints.workspace_id,
+        ),
       }))
       .filter((item) => item.cost !== null);
 
@@ -1077,7 +1092,11 @@ export class RoutingService {
       cost: this.estimateTargetCost(target, selectionHints),
       latency: this.averageLatency(target.node, target.model),
       cacheScore: this.estimateCacheScore(target, selectionHints),
-      affinityBonus: this.affinityBonusForTarget(target, sessionKey),
+      affinityBonus: this.affinityBonusForTarget(
+        target,
+        sessionKey,
+        selectionHints.workspace_id,
+      ),
     }));
     const costs = entries
       .map((entry) => entry.cost)
@@ -1185,6 +1204,7 @@ export class RoutingService {
       sessionKey,
       capabilities,
       circuitState,
+      selectionHints.workspace_id,
     );
     const pricing = capabilities.pricing;
     const stats = this.targetCacheStats.get(
@@ -1310,8 +1330,15 @@ export class RoutingService {
   private affinityBonusForTarget(
     target: RouteTarget,
     sessionKey: string | undefined,
+    workspaceId?: string | null,
   ): number {
-    return this.resolveCacheAffinity(target, sessionKey).bonus;
+    return this.resolveCacheAffinity(
+      target,
+      sessionKey,
+      undefined,
+      undefined,
+      workspaceId,
+    ).bonus;
   }
 
   private resolveCacheAffinity(
@@ -1319,6 +1346,7 @@ export class RoutingService {
     sessionKey: string | undefined,
     capabilitiesInput?: ResolvedModelRoutingCapabilities,
     circuitStateInput?: string,
+    workspaceId?: string | null,
   ): CacheAffinityResult {
     const capabilities =
       capabilitiesInput ||
@@ -1336,6 +1364,7 @@ export class RoutingService {
       target.node,
       target.model,
       capabilities,
+      { workspaceId },
     );
     if (String(circuitState) === 'OPEN' && affinity.active) {
       return {
@@ -1559,12 +1588,17 @@ export class RoutingService {
   private selectLeastLatency(
     targets: WeightedRouteTarget[],
     sessionKey: string | undefined,
+    selectionHints: RouteSelectionHints = {},
   ): WeightedRouteTarget {
     const entries = targets.map((target, index) => ({
       target,
       index,
       latency: this.averageLatency(target.node, target.model),
-      affinityBonus: this.affinityBonusForTarget(target, sessionKey),
+      affinityBonus: this.affinityBonusForTarget(
+        target,
+        sessionKey,
+        selectionHints.workspace_id,
+      ),
     }));
     const latencies = entries
       .map((entry) => entry.latency)

@@ -9,6 +9,8 @@ import { ConfigService } from '../config/config.service';
 import type { ResolvedModelRoutingCapabilities } from '../config/capability.service';
 import type { ProviderCacheType } from '../catalog/catalog.types';
 import { StateBackendService } from '../state/state-backend.service';
+import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -20,6 +22,10 @@ interface SessionCacheAffinityState {
   last_cache_read_tokens: number;
   last_request_at: number;
   last_cache_hit_at: number | null;
+}
+
+interface CacheAffinityScope {
+  workspaceId?: string | null;
 }
 
 export interface CacheAffinityResult {
@@ -62,6 +68,7 @@ export class CacheAffinityService implements OnModuleDestroy {
       | 'cache_type'
       | 'cache_ttl_seconds'
     > = {},
+    scope: CacheAffinityScope = {},
   ): CacheAffinityResult {
     const cacheType = capabilities.cache_type ?? null;
     const providerCacheTtlSeconds =
@@ -97,14 +104,15 @@ export class CacheAffinityService implements OnModuleDestroy {
       return baseResult('provider_cache_unsupported');
     }
 
-    const state = this.getSessionState(sessionKey);
+    const scopedSessionKey = this.scopedSessionKey(sessionKey, scope.workspaceId);
+    const state = this.getSessionState(scopedSessionKey, scope.workspaceId);
     if (!state) {
       return baseResult('no_session_history');
     }
 
     const now = Date.now();
     if (now - state.last_request_at > SESSION_TTL_MS) {
-      this.sessions.delete(sessionKey);
+      this.sessions.delete(scopedSessionKey);
       return baseResult('session_history_expired');
     }
 
@@ -182,6 +190,7 @@ export class CacheAffinityService implements OnModuleDestroy {
     node: string,
     model: string,
     usage?: Pick<TokenUsage, 'cache_read_input_tokens'>,
+    scope: CacheAffinityScope = {},
   ): void {
     if (
       !sessionKey ||
@@ -192,9 +201,11 @@ export class CacheAffinityService implements OnModuleDestroy {
       return;
     }
 
+    const workspaceId = normalizeWorkspaceId(scope.workspaceId);
+    const scopedSessionKey = this.scopedSessionKey(sessionKey, workspaceId);
     const now = Date.now();
     const targetKey = this.nodeModelKey(node, model);
-    const current = this.getSessionState(sessionKey);
+    const current = this.getSessionState(scopedSessionKey, workspaceId);
     const readTokens = Math.max(0, Number(usage?.cache_read_input_tokens || 0));
     const next: SessionCacheAffinityState = {
       last_node_model: targetKey,
@@ -214,23 +225,27 @@ export class CacheAffinityService implements OnModuleDestroy {
             : null,
     };
 
-    this.sessions.set(sessionKey, next);
-    this.persistState(sessionKey, next);
+    this.sessions.set(scopedSessionKey, next);
+    this.persistState(scopedSessionKey, next, workspaceId);
   }
 
   private getSessionState(
     sessionKey: string,
+    workspaceId: string | null | undefined,
   ): SessionCacheAffinityState | undefined {
     const current = this.sessions.get(sessionKey);
     if (current) {
       return current;
     }
 
-    this.hydrateSessionFromState(sessionKey);
+    this.hydrateSessionFromState(sessionKey, workspaceId);
     return undefined;
   }
 
-  private hydrateSessionFromState(sessionKey: string): void {
+  private hydrateSessionFromState(
+    sessionKey: string,
+    workspaceId: string | null | undefined,
+  ): void {
     if (
       !this.stateBackend?.isRedisConfigured() ||
       this.hydratingSessions.has(sessionKey)
@@ -240,7 +255,9 @@ export class CacheAffinityService implements OnModuleDestroy {
 
     this.hydratingSessions.add(sessionKey);
     this.stateBackend
-      .getJson<SessionCacheAffinityState>(STATE_NAMESPACE, sessionKey)
+      .getJson<SessionCacheAffinityState>(STATE_NAMESPACE, sessionKey, {
+        workspaceId,
+      })
       .then((state) => {
         if (!state || !this.isSessionState(state)) return;
         this.sessions.set(sessionKey, state);
@@ -258,6 +275,7 @@ export class CacheAffinityService implements OnModuleDestroy {
   private persistState(
     sessionKey: string,
     state: SessionCacheAffinityState,
+    workspaceId: string | null | undefined,
   ): void {
     if (!this.stateBackend?.isRedisConfigured()) {
       return;
@@ -269,6 +287,7 @@ export class CacheAffinityService implements OnModuleDestroy {
         sessionKey,
         state,
         Math.ceil(SESSION_TTL_MS / 1000),
+        { workspaceId },
       )
       .catch((err) => {
         this.logger.warn(
@@ -321,6 +340,15 @@ export class CacheAffinityService implements OnModuleDestroy {
 
   private nodeModelKey(node: string, model: string): string {
     return `${node}:${model}`;
+  }
+
+  private scopedSessionKey(
+    sessionKey: string,
+    workspaceId: string | null | undefined,
+  ): string {
+    const workspace = normalizeWorkspaceId(workspaceId);
+    if (workspace === DEFAULT_WORKSPACE_ID) return sessionKey;
+    return `${workspace}:${sessionKey}`;
   }
 
   private cleanup(): void {

@@ -81,6 +81,16 @@ const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
 const STATE_BACKENDS = new Set(['memory', 'redis']);
 const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
+const STATE_CATEGORIES = new Set([
+  'rate_limit',
+  'circuit_breaker',
+  'cache_affinity',
+  'momentum',
+  'prompt_cache',
+  'concurrency',
+  'health_probe',
+  'realtime_session',
+]);
 const HAS_CONFIG_REF_PATTERN = /\$\{[^}]*\}/;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CAPABILITY_ENDPOINTS = new Set<string>(VALID_CAPABILITY_ENDPOINTS);
@@ -4192,6 +4202,73 @@ function validateState(
           `state.redis.${field}`,
         ),
       );
+    }
+  }
+
+  if (state.categories !== undefined) {
+    if (!isRecord(state.categories)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_state_categories',
+          'state.categories must be an object keyed by known state categories.',
+          'state.categories',
+        ),
+      );
+      return;
+    }
+
+    for (const [category, config] of Object.entries(state.categories)) {
+      const basePath = `state.categories.${category}`;
+      if (!STATE_CATEGORIES.has(category)) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_state_category',
+            `Unknown state category "${category}".`,
+            basePath,
+          ),
+        );
+        continue;
+      }
+      if (!isRecord(config)) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_state_category',
+            `${basePath} must be an object.`,
+            basePath,
+          ),
+        );
+        continue;
+      }
+      if (
+        config.unavailable_policy !== undefined &&
+        (!isNonEmptyString(config.unavailable_policy) ||
+          !STATE_UNAVAILABLE_POLICIES.has(config.unavailable_policy))
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_state_category_policy',
+            `${basePath}.unavailable_policy must be "fail_open" or "fail_closed".`,
+            `${basePath}.unavailable_policy`,
+          ),
+        );
+      }
+      if (
+        config.ttl_seconds !== undefined &&
+        (!isFiniteNumber(config.ttl_seconds) || config.ttl_seconds <= 0)
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_state_category_ttl',
+            `${basePath}.ttl_seconds must be a positive number.`,
+            `${basePath}.ttl_seconds`,
+          ),
+        );
+      }
     }
   }
 }

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { StateBackendService } from '../state/state-backend.service';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 
 interface WindowEntry {
   timestamps: number[];
@@ -41,12 +42,13 @@ export class RateLimitGuard implements CanActivate {
     const response = context.switchToHttp().getResponse();
     const rateLimit = this.config.auth?.rate_limit;
     const gatewayApiKey:
-      | { id?: string; name: string; rate_limit_per_minute: number | null }
+      | { id?: string; name: string; rate_limit_per_minute: number | null; workspace_id?: string | null }
       | undefined = request.gatewayApiKey;
 
     const apiKeyId: string | undefined = request.apiKeyId || gatewayApiKey?.id;
     const apiKeyName: string | undefined = request.apiKeyName;
     const ip: string = request.ip || request.connection?.remoteAddress || 'unknown';
+    const workspaceId = normalizeWorkspaceId(request.workspaceId || gatewayApiKey?.workspace_id);
 
     const key = apiKeyId ? `key:${apiKeyId}` : apiKeyName ? `key-name:${apiKeyName}` : `ip:${ip}`;
     const limit = gatewayApiKey?.rate_limit_per_minute
@@ -55,7 +57,9 @@ export class RateLimitGuard implements CanActivate {
 
     const now = Date.now();
     const windowMs = 60_000; // 1 minute
-    const result = await this.state!.hitRateLimit('rate_limit', key, limit, windowMs, now);
+    const result = await this.state!.hitRateLimit('rate_limit', key, limit, windowMs, now, {
+      workspaceId,
+    });
 
     response.setHeader('X-RateLimit-Limit', String(limit));
     response.setHeader('X-RateLimit-Remaining', String(result.remaining));
