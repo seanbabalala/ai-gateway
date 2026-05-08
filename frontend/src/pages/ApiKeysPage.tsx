@@ -269,36 +269,53 @@ function MultiResourcePicker({
   const { t } = useTranslation('apiKeys')
   const [query, setQuery] = useState('')
   const selected = new Set(value)
+  const normalizedQuery = query.trim().toLowerCase()
   const selectedOptions = value.map((item) => options.find((opt) => opt.value === item) || {
     value: item,
     label: item,
   })
   const filtered = options.filter((opt) => {
     const haystack = `${opt.label} ${opt.value} ${opt.description || ''}`.toLowerCase()
-    return haystack.includes(query.trim().toLowerCase())
+    return haystack.includes(normalizedQuery)
   })
+  const filteredValues = filtered.map((opt) => opt.value)
+  const allVisibleSelected = filtered.length > 0 && filteredValues.every((item) => selected.has(item))
+  const selectedPreview = selectedOptions.slice(0, 3).map((opt) => opt.label).join(', ')
 
   const toggle = (item: string) => {
     onChange(selected.has(item) ? value.filter((v) => v !== item) : [...value, item])
   }
 
-  const selectVisible = () => {
-    onChange(Array.from(new Set([...value, ...filtered.map((opt) => opt.value)])))
+  const toggleVisible = () => {
+    if (filtered.length === 0) return
+    if (allVisibleSelected) {
+      const visible = new Set(filteredValues)
+      onChange(value.filter((item) => !visible.has(item)))
+      return
+    }
+    onChange(Array.from(new Set([...value, ...filteredValues])))
   }
 
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-between gap-3">
-        <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+    <div className="grid min-w-0 gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <label className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
           {label}
         </label>
-        <div className="text-[11px] font-medium text-[var(--foreground-dim)]">
+        <div
+          className={cn(
+            'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+            value.length === 0
+              ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+              : 'bg-[var(--background-tertiary)] text-[var(--foreground-dim)]',
+          )}
+        >
           {value.length === 0 ? allLabel : t('picker.selected', { count: value.length })}
         </div>
       </div>
 
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] p-2 shadow-sm">
-        <div className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] p-2 shadow-sm">
+        <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3">
           <Search className="h-3.5 w-3.5 shrink-0 text-[var(--foreground-dim)]" />
           <input
             value={query}
@@ -318,36 +335,66 @@ function MultiResourcePicker({
           )}
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {selectedOptions.length === 0 ? (
-            <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--foreground-dim)]">
-              {emptyLabel}
+        <div
+          className={cn(
+            'mt-2 rounded-lg border p-2.5',
+            value.length === 0
+              ? 'border-[var(--accent-muted)] bg-[var(--accent-muted)]'
+              : 'border-[var(--border)] bg-[var(--background)]',
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                'flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+                value.length === 0
+                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]'
+                  : 'border-[var(--border)] bg-[var(--inset-bg)]',
+              )}
+            >
+              {value.length === 0 && <Check className="h-3.5 w-3.5" />}
             </span>
-          ) : (
-            selectedOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => toggle(opt.value)}
-                className="inline-flex max-w-full items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[11px] font-medium text-[var(--foreground-muted)] transition-colors hover:border-red-400/40 hover:text-red-500"
-                title={t('picker.remove', { value: opt.value })}
-              >
-                <span className="truncate">{opt.label}</span>
-                <X className="h-3 w-3 shrink-0" />
-              </button>
-            ))
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] font-semibold text-[var(--foreground)]">
+                {value.length === 0 ? allLabel : t('picker.selected', { count: value.length })}
+              </span>
+              <span className="block truncate text-[11px] text-[var(--foreground-dim)]">
+                {value.length === 0 ? emptyLabel : selectedPreview}
+              </span>
+            </span>
+          </div>
+
+          {selectedOptions.length > 0 && (
+            <div className="mt-2 flex max-h-16 flex-wrap gap-1.5 overflow-y-auto pr-1">
+              {selectedOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => toggle(opt.value)}
+                  className="inline-flex max-w-full items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-2 py-1 text-[11px] font-medium text-[var(--foreground-muted)] transition-colors hover:border-red-400/40 hover:text-red-500"
+                  title={t('picker.remove', { value: opt.value })}
+                >
+                  <span className="truncate">{opt.label}</span>
+                  <X className="h-3 w-3 shrink-0" />
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
-        <div className="mt-2 flex items-center gap-2 border-t border-[var(--border)] pt-2">
+        <div className="mt-2 grid grid-cols-2 gap-2 border-t border-[var(--border)] pt-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={selectVisible}
+            onClick={toggleVisible}
             disabled={filtered.length === 0}
+            className="min-w-0 overflow-hidden px-2"
           >
-            {t('picker.selectVisible')}
+            <Check className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">
+              {allVisibleSelected ? t('picker.deselectVisible') : t('picker.selectVisible')}
+            </span>
           </Button>
           <Button
             type="button"
@@ -355,8 +402,10 @@ function MultiResourcePicker({
             size="sm"
             onClick={() => onChange([])}
             disabled={value.length === 0}
+            className="min-w-0 overflow-hidden px-2"
           >
-            {t('actions.clear')}
+            <X className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{t('picker.useAll')}</span>
           </Button>
         </div>
 
@@ -373,8 +422,9 @@ function MultiResourcePicker({
                   key={opt.value}
                   type="button"
                   onClick={() => toggle(opt.value)}
+                  aria-pressed={checked}
                   className={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
+                    'flex min-h-12 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
                     checked ? 'bg-[var(--accent-muted)]' : 'hover:bg-[var(--background-secondary)]',
                   )}
                 >

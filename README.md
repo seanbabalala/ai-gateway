@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.8.3 Dashboard Protocol Clarity Fix**.
+Current release: **v1.8.5 API Key Permission Picker Fix**.
 
-Current development focus after v1.8.3: keep the MIT Data Plane local-first while reducing operator review friction around canonical model coverage, reviewed pricing imports, provider availability overlays, and future catalog freshness work without turning external enrichment into a runtime dependency or billing authority.
+Current development focus after v1.8.5: keep the MIT Data Plane local-first while reducing operator review friction around canonical model coverage, reviewed pricing imports, provider availability overlays, and future catalog freshness work without turning external enrichment into a runtime dependency or billing authority.
 
 ## Why SiftGate
 

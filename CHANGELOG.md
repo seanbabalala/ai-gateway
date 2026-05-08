@@ -6,6 +6,19 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.8.5 - 2026-05-08
+
+### Fixed
+
+- Fixed the Dashboard API key and local team permission picker layout so the allowed endpoint/modality selectors no longer overlap in the create/edit modal at constrained widths or in CJK locales.
+- Improved permission picker selection ergonomics with a clearer "all items" state, bounded selected chips, and visible-item select/deselect controls across all Dashboard locales.
+
+## 1.8.4 - 2026-05-08
+
+### Fixed
+
+- Preserved explicit routing order for Responses-compatible targets so configured smart-routing priority remains stable when resolving upstream compatibility.
+
 ## 1.8.3 - 2026-05-07
 
 ### Fixed
