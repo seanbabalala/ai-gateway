@@ -1,10 +1,10 @@
 # SiftGate
 
-SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
+SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.0.0-rc.2 Performance Benchmark And Public Report**.
+Current release: **v2.0.0 Platform Trust GA**.
 
-Current development focus after v2.0.0-rc.2: finish v2.0.0 GA readiness with final regression testing, final benchmark re-measurement, release notes, and upgrade validation while preserving v1.9 gateway compatibility, local SQLite startup, local Dashboard login, optional OIDC login, and metadata-only privacy boundaries.
+Current development focus after v2.0.0: preserve Platform Trust stability, keep v2.0.x for hotfixes and safe polish, and move new non-breaking product capabilities to minor releases such as v2.1.0+.
 
 ## Why SiftGate
 
@@ -52,7 +52,8 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.0 Highlights
 
-- v2.0.0-rc.2 publishes the Platform Trust performance benchmark: a deterministic local `benchmark:platform` harness, JSON/Markdown sample reports, direct mock baselines, non-streaming and streaming proxy overhead, `model=auto` smart-routing overhead, Dashboard metadata read/write measurements, and optional PostgreSQL/Redis modes that are skipped unless explicitly configured.
+- v2.0.0 GA ships the Platform Trust foundation: workspace isolation, local Dashboard RBAC, optional OIDC login and workspace invites, PostgreSQL production guidance, Redis shared-state cluster mode, management audit logs, upgrade guardrails, first-run onboarding, and public benchmark evidence.
+- v2.0.0 publishes the GA Platform Trust performance benchmark: a deterministic local `benchmark:platform` harness, JSON/Markdown reports, direct mock baselines, non-streaming and streaming proxy overhead, `model=auto` smart-routing overhead, Dashboard metadata read/write measurements, and optional PostgreSQL/Redis modes that are skipped unless explicitly configured.
 - v2.0.0-rc.1 completes the Platform Trust audit and upgrade hardening pass: workspace-scoped management audit events, denied-action evidence, a Dashboard Audit Log page, hash-chain fields, finalized migration dry-run export, and SQLite-to-PostgreSQL coverage for `management_audit_events`.
 - v2.0.0-beta.1 adds optional generic OIDC Dashboard login plus workspace invitation metadata: local password login remains supported, OIDC uses secret references for client secrets, Admins can create/revoke invite links, invitations can be accepted by local or OIDC identities, and seven-locale Dashboard copy covers login and invite flows.
 - v2.0.0-alpha.4 turns Redis shared state into coherent cluster mode for multi-instance data planes: workspace-scoped runtime keys, per-category TTL/fail policy, shared rate limits/circuit state/cache affinity/momentum/concurrency/health/realtime metadata, Dashboard cluster status, and updated Docker/Helm/Kubernetes guidance while keeping Redis optional.

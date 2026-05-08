@@ -4,12 +4,12 @@ This page captures repeatable benchmark workflows for the open-source SiftGate
 Data Plane. Use them to separate local gateway overhead from upstream/provider
 latency and to publish evidence with enough context for operators to rerun it.
 
-## v2.0.0-rc.2 Platform Benchmark
+## v2.0.0 Platform Benchmark
 
-v2.0.0-rc.2 adds a deterministic platform benchmark harness for the Platform
-Trust release candidate. It starts a local mock upstream plus real SiftGate
-AppModule instances, seeds a temporary Gateway API key, and measures the public
-HTTP path without contacting external model providers:
+v2.0.0 ships a deterministic platform benchmark harness for the Platform Trust
+GA. It starts a local mock upstream plus real SiftGate AppModule instances,
+seeds a temporary Gateway API key, and measures the public HTTP path without
+contacting external model providers:
 
 ```bash
 SIFTGATE_BENCH_REQUESTS=50 \
@@ -67,14 +67,21 @@ and explicit privacy flags. PostgreSQL, Redis, and live upstream scenarios are
 reported as `skipped` unless the required environment is present; SiftGate does
 not invent numbers for unavailable dependencies.
 
-The rc.2 sample reports are committed at:
+The GA sample reports are committed at:
+
+- [`docs/reports/v2.0.0-performance.json`](reports/v2.0.0-performance.json)
+- [`docs/reports/v2.0.0-performance.md`](reports/v2.0.0-performance.md)
+
+The rc.2 release-candidate reports remain available for comparison at:
 
 - [`docs/reports/v2.0.0-rc.2-performance.json`](reports/v2.0.0-rc.2-performance.json)
 - [`docs/reports/v2.0.0-rc.2-performance.md`](reports/v2.0.0-rc.2-performance.md)
 
-These numbers are release-candidate measurements from a local deterministic
-mock upstream. If any runtime behavior changes after rc.2, rerun the harness
-and update all public benchmark numbers before tagging v2.0.0 GA.
+These numbers are local deterministic mock-upstream measurements. They are
+useful for tracking SiftGate overhead on the measured commit and machine; do
+not publish comparative claims unless request body, concurrency, commit,
+hardware, network placement, upstream latency profile, and config are
+identical.
 
 ## Upstream Connection Pools
 

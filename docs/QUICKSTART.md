@@ -34,7 +34,21 @@ Open:
 - API docs: `http://localhost:2099/docs`
 - Health: `http://localhost:2099/health`
 
-## 4. Send A Request
+## 4. Finish The First-Run Path
+
+The v2.0.0 Dashboard opens with a Platform Trust checklist:
+
+1. Confirm the active workspace.
+2. Add or verify one provider node.
+3. Create a Gateway API key.
+4. Send a first request from Playground or an OpenAI-compatible client.
+5. Open logs, route evidence, and cost metadata.
+
+This checklist is read-only evidence. It does not store prompts, responses, raw
+headers, provider keys, media bytes, tool payloads, hidden reasoning, or
+resolved secrets.
+
+## 5. Send A Request
 
 ```bash
 curl http://localhost:2099/v1/chat/completions \
@@ -46,7 +60,7 @@ curl http://localhost:2099/v1/chat/completions \
   }'
 ```
 
-## 5. Validate Before Production
+## 6. Validate Before Production
 
 ```bash
 npm run validate:config
