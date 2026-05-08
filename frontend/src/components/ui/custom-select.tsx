@@ -180,7 +180,7 @@ export function CustomSelect({
         onClick={() => (open ? closeDropdown() : openDropdown())}
         onKeyDown={handleKeyDown}
         className={cn(
-          'flex h-9 w-full items-center justify-between rounded-lg bg-[var(--background-secondary)] px-3.5 py-1 text-[13px] text-[var(--foreground)] shadow-[0_1px_2px_rgba(5,46,36,0.05)] transition-all duration-200',
+          'flex h-9 w-full min-w-0 items-center justify-between rounded-lg bg-[var(--background-secondary)] px-3.5 py-1 text-[13px] text-[var(--foreground)] shadow-[0_1px_2px_rgba(5,46,36,0.05)] transition-all duration-200',
           'focus:outline-none focus:ring-2 focus:ring-[var(--accent-muted)]',
           'hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(5,46,36,0.09)]',
           'disabled:cursor-not-allowed disabled:opacity-40',
@@ -188,7 +188,13 @@ export function CustomSelect({
           className,
         )}
       >
-        <span className={cn(!selectedOption && 'text-[var(--foreground-dim)]')}>
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-left',
+            !selectedOption && 'text-[var(--foreground-dim)]',
+          )}
+          title={selectedOption?.label ?? placeholder ?? t('form.selectPlaceholder')}
+        >
           {selectedOption?.label ?? placeholder ?? t('form.selectPlaceholder')}
         </span>
         <ChevronDown
@@ -233,7 +239,7 @@ export function CustomSelect({
                           : 'text-[var(--foreground-muted)]',
                       )}
                     >
-                      <span className="truncate">{opt.label}</span>
+                      <span className="min-w-0 flex-1 truncate" title={opt.label}>{opt.label}</span>
                       {isSelected && (
                         <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
                       )}
