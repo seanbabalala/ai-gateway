@@ -217,7 +217,8 @@ The migrator:
 - Reads `organizations`, `workspaces`, `workspace_memberships`,
   `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
   `route_decisions`, `config_versions`, `config_audit_events`,
-  `provider_compatibility_results`, `batch_jobs`, and `video_jobs`.
+  `management_audit_events`, `provider_compatibility_results`, `batch_jobs`,
+  and `video_jobs`.
 - Creates a timestamped SQLite backup when `--backup` is set.
 - Creates/updates the PostgreSQL schema through the OSS TypeORM entities before
   import.
@@ -354,8 +355,9 @@ Operational guidance:
   attempts keep the current config active and write a failure audit event.
 - In multi-instance deployments, rollback is local to one instance. Roll config
   changes through your deployment system so every instance converges.
-- Include `config_versions` and `config_audit_events` in PostgreSQL backups and
-  restore tests if you rely on Dashboard rollback during incident response.
+- Include `config_versions`, `config_audit_events`, and
+  `management_audit_events` in PostgreSQL backups and restore tests if you rely
+  on Dashboard rollback or management audit evidence during incident response.
 
 ## Docker Compose PostgreSQL Profile
 

@@ -2,7 +2,14 @@ import { existsSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { CallLog, GatewayApiKey, Organization, Workspace, WorkspaceMembership } from '../../src/database/entities';
+import {
+  CallLog,
+  GatewayApiKey,
+  ManagementAuditEvent,
+  Organization,
+  Workspace,
+  WorkspaceMembership,
+} from '../../src/database/entities';
 import {
   applyWorkspaceSchemaPatches,
 } from '../../src/database/workspace-schema-patch.service';
@@ -18,7 +25,14 @@ function makeDataSource(name: string): DataSource {
   return new DataSource({
     type: 'better-sqlite3',
     database,
-    entities: [Organization, Workspace, WorkspaceMembership, GatewayApiKey, CallLog],
+    entities: [
+      Organization,
+      Workspace,
+      WorkspaceMembership,
+      ManagementAuditEvent,
+      GatewayApiKey,
+      CallLog,
+    ],
     synchronize: true,
     logging: false,
   });
@@ -44,6 +58,9 @@ describe('Workspace schema patch', () => {
       const organizations = await dataSource.getRepository(Organization).find();
       const workspaces = await dataSource.getRepository(Workspace).find();
       const memberships = await dataSource.getRepository(WorkspaceMembership).find();
+      const managementAuditMetadata = await dataSource.query(
+        `PRAGMA table_info('management_audit_events')`,
+      );
 
       expect(result.backfilledTables).toEqual([]);
       expect(organizations).toHaveLength(1);
@@ -70,6 +87,18 @@ describe('Workspace schema patch', () => {
         role: 'admin',
         status: 'active',
       });
+      expect(
+        managementAuditMetadata.map((column: { name: string }) => column.name),
+      ).toEqual(
+        expect.arrayContaining([
+          'event_id',
+          'actor_id',
+          'action',
+          'resource_type',
+          'event_hash',
+          'previous_hash',
+        ]),
+      );
     } finally {
       await dataSource.destroy();
     }

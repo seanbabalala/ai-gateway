@@ -109,5 +109,6 @@
   "members.invites.status.pending": "대기",
   "members.invites.status.accepted": "수락됨",
   "members.invites.status.expired": "만료됨",
-  "members.invites.status.revoked": "취소됨"
+  "members.invites.status.revoked": "취소됨",
+  "nav.audit": "감사 로그"
 }

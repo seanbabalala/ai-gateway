@@ -11,6 +11,7 @@ v1.9.2 shipped only a read-only dry run:
 npm run build
 node dist/cli/siftgate.js migrate-v2 --dry-run --config gateway.config.yaml
 node dist/cli/siftgate.js migrate-v2 --dry-run --config gateway.config.yaml --json
+node dist/cli/siftgate.js migrate-v2 --dry-run --config gateway.config.yaml --output ./reports/v2-migration-dry-run.json
 ```
 
 For local TypeScript development, the same command can be run through ts-node:
@@ -147,6 +148,11 @@ The JSON report is the stable automation contract for v1.9.2:
 
 Human-readable output is available by omitting `--json`.
 
+v2.0.0-rc.1 finalizes the dry-run export path. `--output`, `--report`, `--out`,
+and `-o` write the stable JSON report to disk while keeping the command
+read-only. Use that exported report as change-management evidence before
+running mutating v2 startup or database migration steps.
+
 Exit codes:
 
 | Code | Meaning |
@@ -208,3 +214,9 @@ v2.0.0-alpha.3 includes `workspace_memberships` in the SQLite-to-PostgreSQL
 production migration path. Existing alpha.2 local RBAC memberships therefore
 move with the rest of the default organization/workspace metadata when
 operators adopt PostgreSQL for production.
+
+v2.0.0-rc.1 adds the `management_audit_events` table for platform management
+audit evidence and includes it in the SQLite-to-PostgreSQL migration path.
+Startup diagnostics and migration docs now treat the v1.9-to-v2 dry-run report,
+database backups, and metadata-only audit table as the final Platform Trust
+upgrade guardrails before v2.0.0 GA.

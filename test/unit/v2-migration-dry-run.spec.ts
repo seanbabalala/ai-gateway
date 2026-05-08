@@ -272,6 +272,34 @@ describe('v1 to v2 migration dry run', () => {
     expect(output).toContain('config_not_found');
   });
 
+  it('exports a stable JSON dry-run report without mutating data', async () => {
+    const cwd = makeTempDir();
+    const configPath = path.join(cwd, 'gateway.config.yaml');
+    const reportPath = path.join(cwd, 'reports', 'v2-migration-report.json');
+    fs.copyFileSync(fixture('siftgate.v1.9.gateway.yaml'), configPath);
+    const { io, stdout, stderr } = makeIo(cwd);
+
+    const exitCode = await runCli([
+      'migrate-v2',
+      '--dry-run',
+      '--config',
+      configPath,
+      '--output',
+      reportPath,
+    ], io);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toHaveLength(0);
+    expect(stdout.join('\n')).toContain(`Wrote v2 migration dry-run report to ${reportPath}`);
+    const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+    expect(report).toMatchObject({
+      version: 'siftgate.v2_migration_dry_run.v1',
+      dry_run: true,
+      mutates_data: false,
+      config_found: true,
+    });
+  });
+
   it('formats reports with resource counts and validation commands', () => {
     const cwd = makeTempDir();
     const configPath = path.join(cwd, 'gateway.config.yaml');

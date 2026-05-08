@@ -109,5 +109,6 @@
   "members.invites.status.pending": "待接受",
   "members.invites.status.accepted": "已接受",
   "members.invites.status.expired": "已过期",
-  "members.invites.status.revoked": "已撤销"
+  "members.invites.status.revoked": "已撤销",
+  "nav.audit": "审计日志"
 }

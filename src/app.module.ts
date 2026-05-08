@@ -5,6 +5,7 @@ import { join } from 'path';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
+import { AuditModule } from './audit/audit.module';
 import { IngestModule } from './ingest/ingest.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
@@ -30,6 +31,7 @@ import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.fi
     StateModule,
     DatabaseModule,
     WorkspacesModule,
+    AuditModule,
     TelemetryModule,
     ControlPlaneModule,
     AlertsModule,

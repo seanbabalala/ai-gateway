@@ -6,6 +6,27 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-rc.1 - 2026-05-09
+
+### Added
+
+- Added workspace-scoped platform management audit events for Dashboard management operations, including actor id/type, organization/workspace, action, resource type/id, redacted before/after summaries, request id, timestamp, result status, metadata, and hash-chain fields.
+- Added centralized audit writing and RBAC-denied audit coverage so successful, failed, and denied management operations have consistent metadata-only evidence.
+- Added the Dashboard Audit Log page with filters, event details, hash-chain evidence, and seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Added `GET /api/dashboard/audit` and OpenAPI response schemas for management audit event lists, pagination, and explicit privacy flags.
+- Added `management_audit_events` schema creation and SQLite-to-PostgreSQL migration coverage.
+
+### Changed
+
+- `siftgate migrate-v2 --dry-run` now supports `--output`, `--report`, `--out`, and `-o` for writing the stable JSON dry-run report to disk without mutating production data.
+- Config audit bridge events now also write redacted platform management audit entries where appropriate, while preserving existing local config audit and rollback behavior.
+- Updated production, Dashboard, API reference, v1.9-to-v2 migration, README, OpenAPI, Kubernetes, Helm, and release metadata to v2.0.0-rc.1.
+
+### Boundaries
+
+- Management audit rows do not store provider keys, Gateway API key plaintext, prompts, responses, raw provider headers, media bytes, tool payloads, hidden reasoning text, or resolved secrets by default.
+- Audit logs are read-only from the Dashboard and remain local to the OSS data plane.
+
 ## 2.0.0-beta.1 - 2026-05-09
 
 ### Added

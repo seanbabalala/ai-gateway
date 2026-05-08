@@ -109,5 +109,6 @@
   "members.invites.status.pending": "pendiente",
   "members.invites.status.accepted": "aceptada",
   "members.invites.status.expired": "caducada",
-  "members.invites.status.revoked": "revocada"
+  "members.invites.status.revoked": "revocada",
+  "nav.audit": "Auditoría"
 }

@@ -216,6 +216,104 @@ export class WorkspaceInvitationMutationResponseDto extends ActionResponseDto {
   item!: WorkspaceInvitationDto;
 }
 
+export class ManagementAuditEventDto {
+  @ApiProperty({ example: 1 })
+  id!: number;
+
+  @ApiProperty({ example: 'mga_01HX...' })
+  event_id!: string;
+
+  @ApiPropertyOptional({ example: 'default-org', nullable: true })
+  organization_id?: string | null;
+
+  @ApiPropertyOptional({ example: 'default-workspace', nullable: true })
+  workspace_id?: string | null;
+
+  @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
+  timestamp!: string;
+
+  @ApiProperty({ example: 'dashboard' })
+  actor_type!: string;
+
+  @ApiProperty({ example: 'dashboard' })
+  actor_id!: string;
+
+  @ApiProperty({ example: 'api_key.create' })
+  action!: string;
+
+  @ApiProperty({ example: 'api_key' })
+  resource_type!: string;
+
+  @ApiPropertyOptional({ example: 'key_prod', nullable: true })
+  resource_id?: string | null;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  before_summary!: Record<string, unknown>;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  after_summary!: Record<string, unknown>;
+
+  @ApiProperty({ enum: ['success', 'failure', 'denied'], example: 'success' })
+  result!: string;
+
+  @ApiPropertyOptional({ example: null, nullable: true })
+  failure_reason?: string | null;
+
+  @ApiPropertyOptional({ example: 'req_123', nullable: true })
+  request_id?: string | null;
+
+  @ApiPropertyOptional({ example: 'dashboard', nullable: true })
+  source?: string | null;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  metadata!: Record<string, unknown>;
+
+  @ApiPropertyOptional({ example: null, nullable: true })
+  previous_hash?: string | null;
+
+  @ApiProperty({ example: 'b7a6d6f3e5...' })
+  event_hash!: string;
+
+  @ApiProperty({ example: 1 })
+  schema_version!: number;
+}
+
+export class ManagementAuditPaginationDto {
+  @ApiProperty({ example: 100 })
+  limit!: number;
+
+  @ApiProperty({ example: 12 })
+  count!: number;
+}
+
+export class ManagementAuditPrivacyDto {
+  @ApiProperty({ example: false })
+  prompt_response_stored!: boolean;
+
+  @ApiProperty({ example: false })
+  raw_headers_stored!: boolean;
+
+  @ApiProperty({ example: false })
+  provider_keys_stored!: boolean;
+
+  @ApiProperty({ example: false })
+  tool_payloads_stored!: boolean;
+
+  @ApiProperty({ example: false })
+  hidden_reasoning_stored!: boolean;
+}
+
+export class ManagementAuditEventsResponseDto {
+  @ApiProperty({ type: [ManagementAuditEventDto] })
+  data!: ManagementAuditEventDto[];
+
+  @ApiProperty({ type: ManagementAuditPaginationDto })
+  pagination!: ManagementAuditPaginationDto;
+
+  @ApiProperty({ type: ManagementAuditPrivacyDto })
+  privacy!: ManagementAuditPrivacyDto;
+}
+
 export class ChatCompletionsRequestDto {
   @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate smart routing or a direct model/node name.' })
   model!: string;

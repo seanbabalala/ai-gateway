@@ -446,6 +446,16 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     trackChange: jest.fn((_input, mutation) => mutation()),
     ...overrides.configAudit,
   };
+  const managementAudit = {
+    record: jest.fn().mockResolvedValue(null),
+    recordDenied: jest.fn().mockResolvedValue(null),
+    list: jest.fn().mockResolvedValue({
+      data: [],
+      pagination: { limit: 100, count: 0 },
+      privacy: {},
+    }),
+    ...overrides.managementAudit,
+  };
   const batchJobs = {
     dashboardSummary: jest.fn().mockResolvedValue({
       metadata_only: true,
@@ -538,6 +548,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     cacheSavings as any,
     providerCompatibility as any,
     configAudit as any,
+    managementAudit as any,
     catalog as any,
     batchJobs as any,
     workspaces as any,
@@ -570,6 +581,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     cacheSavings,
     providerCompatibility,
     configAudit,
+    managementAudit,
     batchJobs,
     workspaces,
     workspaceContext,
@@ -2504,9 +2516,9 @@ describe("DashboardController — cache", () => {
     expect(result).toHaveProperty("entries");
   });
 
-  it("should clear cache", () => {
+  it("should clear cache", async () => {
     const { controller, cacheService } = makeDashboard();
-    const result = controller.clearCache();
+    const result = await controller.clearCache();
     expect(result.success).toBe(true);
     expect(cacheService.clear).toHaveBeenCalled();
   });
@@ -2734,16 +2746,16 @@ describe("DashboardController — nodes", () => {
     expect(result.nodes[0].healthy).toBe(false);
   });
 
-  it("should reset circuit breaker for a node", () => {
+  it("should reset circuit breaker for a node", async () => {
     const { controller, circuitBreaker } = makeDashboard();
-    const result = controller.resetNodeCircuit("openai");
+    const result = await controller.resetNodeCircuit("openai");
     expect(result.success).toBe(true);
     expect(circuitBreaker.reset).toHaveBeenCalledWith("openai");
   });
 
-  it("should reset circuit breaker for a specific model", () => {
+  it("should reset circuit breaker for a specific model", async () => {
     const { controller, circuitBreaker } = makeDashboard();
-    const result = controller.resetNodeCircuit("openai", "gpt-4o");
+    const result = await controller.resetNodeCircuit("openai", "gpt-4o");
     expect(result.success).toBe(true);
     expect(circuitBreaker.reset).toHaveBeenCalledWith("openai", "gpt-4o");
   });

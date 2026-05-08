@@ -194,13 +194,17 @@ function makeService(rawRef: { value: string }, overrides: Record<string, unknow
   const workspaceContext = {
     currentWorkspaceId: jest.fn(() => 'default-workspace'),
   };
+  const managementAudit = {
+    record: jest.fn().mockResolvedValue(null),
+  };
   const service = new ConfigAuditService(
     config as any,
     workspaceContext as any,
     versionRepo as any,
     eventRepo as any,
+    managementAudit as any,
   );
-  return { service, config, versionRepo, eventRepo };
+  return { service, config, versionRepo, eventRepo, managementAudit };
 }
 
 describe('ConfigAuditService', () => {

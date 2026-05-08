@@ -1155,6 +1155,47 @@ export interface ConfigRollbackResponse extends ActionResponse {
   reload: unknown;
 }
 
+// ── Platform Management Audit ──
+
+export type ManagementAuditResult = "success" | "failure" | "denied";
+
+export interface ManagementAuditPrivacy {
+  prompt_response_stored: boolean;
+  raw_headers_stored: boolean;
+  provider_keys_stored: boolean;
+  tool_payloads_stored: boolean;
+  hidden_reasoning_stored: boolean;
+}
+
+export interface ManagementAuditEvent {
+  id: number;
+  event_id: string;
+  organization_id: string | null;
+  workspace_id: string | null;
+  timestamp: string;
+  actor_type: string;
+  actor_id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  before_summary: Record<string, unknown>;
+  after_summary: Record<string, unknown>;
+  result: ManagementAuditResult;
+  failure_reason: string | null;
+  request_id: string | null;
+  source: string | null;
+  metadata: Record<string, unknown>;
+  previous_hash: string | null;
+  event_hash: string;
+  schema_version: number;
+}
+
+export interface ManagementAuditEventsResponse {
+  data: ManagementAuditEvent[];
+  pagination: { limit: number; count: number };
+  privacy: ManagementAuditPrivacy;
+}
+
 // ── SSE Events ──
 
 export type SSEEvent =

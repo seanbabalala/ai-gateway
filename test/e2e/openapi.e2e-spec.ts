@@ -54,6 +54,7 @@ describe('OpenAPI documentation endpoints', () => {
       '/api/dashboard/benchmarks/report',
       '/api/dashboard/config',
       '/api/dashboard/config/reload',
+      '/api/dashboard/audit',
       '/api/dashboard/api-keys',
       '/api/dashboard/api-keys/{id}',
       '/api/dashboard/api-keys/{id}/rotate',
@@ -67,6 +68,9 @@ describe('OpenAPI documentation endpoints', () => {
     });
     expect(res.body.components.schemas.SanitizedNodeConfigDto.properties.api_key).toMatchObject({
       readOnly: true,
+    });
+    expect(res.body.components.schemas.ManagementAuditEventsResponseDto.properties.privacy).toMatchObject({
+      $ref: '#/components/schemas/ManagementAuditPrivacyDto',
     });
     expect(res.body.components.schemas.ErrorDetailDto.properties.request_id).toMatchObject({
       type: 'string',

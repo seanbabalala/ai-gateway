@@ -13,6 +13,7 @@ const ORGANIZATIONS_TABLE = 'organizations';
 const WORKSPACES_TABLE = 'workspaces';
 const WORKSPACE_MEMBERSHIPS_TABLE = 'workspace_memberships';
 const WORKSPACE_INVITATIONS_TABLE = 'workspace_invitations';
+const MANAGEMENT_AUDIT_EVENTS_TABLE = 'management_audit_events';
 const WORKSPACE_COLUMN = 'workspace_id';
 
 export const WORKSPACE_SCOPED_TABLES = [
@@ -86,6 +87,7 @@ export async function applyWorkspaceSchemaPatches(
       WORKSPACES_TABLE,
       WORKSPACE_MEMBERSHIPS_TABLE,
       WORKSPACE_INVITATIONS_TABLE,
+      MANAGEMENT_AUDIT_EVENTS_TABLE,
     );
   }
   await bootstrapDefaultOrganizationAndWorkspace(dataSource);
@@ -112,6 +114,7 @@ export async function createWorkspaceCoreTables(
   const hadWorkspaces = await hasTable(dataSource, WORKSPACES_TABLE);
   const hadMemberships = await hasTable(dataSource, WORKSPACE_MEMBERSHIPS_TABLE);
   const hadInvitations = await hasTable(dataSource, WORKSPACE_INVITATIONS_TABLE);
+  const hadManagementAudit = await hasTable(dataSource, MANAGEMENT_AUDIT_EVENTS_TABLE);
 
   if (dataSource.options.type === 'postgres') {
     await dataSource.query(`
@@ -192,6 +195,7 @@ export async function createWorkspaceCoreTables(
     await dataSource.query(
       `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_status ON ${WORKSPACE_INVITATIONS_TABLE} (status)`,
     );
+    await createManagementAuditTable(dataSource);
   } else {
     await dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${ORGANIZATIONS_TABLE} (
@@ -271,9 +275,87 @@ export async function createWorkspaceCoreTables(
     await dataSource.query(
       `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_status ON ${WORKSPACE_INVITATIONS_TABLE} (status)`,
     );
+    await createManagementAuditTable(dataSource);
   }
 
-  return !hadOrganizations || !hadWorkspaces || !hadMemberships || !hadInvitations;
+  return (
+    !hadOrganizations ||
+    !hadWorkspaces ||
+    !hadMemberships ||
+    !hadInvitations ||
+    !hadManagementAudit
+  );
+}
+
+async function createManagementAuditTable(
+  dataSource: DataSource & { options: { type: SupportedDatabaseDriver } },
+): Promise<void> {
+  if (dataSource.options.type === 'postgres') {
+    await dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${MANAGEMENT_AUDIT_EVENTS_TABLE} (
+        id SERIAL PRIMARY KEY,
+        event_id varchar NOT NULL UNIQUE,
+        organization_id varchar NULL,
+        workspace_id varchar NULL,
+        timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        actor_type varchar NOT NULL,
+        actor_id varchar NOT NULL,
+        action varchar NOT NULL,
+        resource_type varchar NOT NULL,
+        resource_id varchar NULL,
+        before_summary_json text NULL,
+        after_summary_json text NULL,
+        result varchar NOT NULL,
+        failure_reason text NULL,
+        request_id varchar NULL,
+        source varchar NULL,
+        metadata_json text NULL,
+        previous_hash varchar NULL,
+        event_hash varchar NOT NULL,
+        schema_version integer NOT NULL DEFAULT 1
+      )
+    `);
+  } else {
+    await dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${MANAGEMENT_AUDIT_EVENTS_TABLE} (
+        id integer PRIMARY KEY AUTOINCREMENT,
+        event_id varchar NOT NULL UNIQUE,
+        organization_id varchar,
+        workspace_id varchar,
+        timestamp datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        actor_type varchar NOT NULL,
+        actor_id varchar NOT NULL,
+        action varchar NOT NULL,
+        resource_type varchar NOT NULL,
+        resource_id varchar,
+        before_summary_json text,
+        after_summary_json text,
+        result varchar NOT NULL,
+        failure_reason text,
+        request_id varchar,
+        source varchar,
+        metadata_json text,
+        previous_hash varchar,
+        event_hash varchar NOT NULL,
+        schema_version integer NOT NULL DEFAULT 1
+      )
+    `);
+  }
+
+  for (const [name, column] of [
+    ['org', 'organization_id'],
+    ['workspace', 'workspace_id'],
+    ['timestamp', 'timestamp'],
+    ['actor', 'actor_id'],
+    ['action', 'action'],
+    ['resource_type', 'resource_type'],
+    ['resource_id', 'resource_id'],
+    ['result', 'result'],
+  ] as const) {
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS idx_management_audit_events_${name} ON ${MANAGEMENT_AUDIT_EVENTS_TABLE} (${column})`,
+    );
+  }
 }
 
 export async function bootstrapDefaultOrganizationAndWorkspace(
