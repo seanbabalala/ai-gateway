@@ -4,11 +4,14 @@ import {
   Get,
   Body,
   Req,
+  Res,
   UnauthorizedException,
   HttpException,
   HttpStatus,
   Optional,
+  Query,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiBody,
   ApiOkResponse,
@@ -18,6 +21,9 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { OidcService } from './oidc.service';
+import { WorkspaceInvitationService } from './workspace-invitation.service';
+import { WorkspaceMembershipService } from './workspace-membership.service';
 import { ConfigService } from '../config/config.service';
 import {
   AuthStatusResponseDto,
@@ -38,6 +44,9 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
     @Optional() private readonly state?: StateBackendService,
+    @Optional() private readonly oidc?: OidcService,
+    @Optional() private readonly invitations?: WorkspaceInvitationService,
+    @Optional() private readonly memberships?: WorkspaceMembershipService,
   ) {}
 
   /**
@@ -50,12 +59,23 @@ export class AuthController {
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
   @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
-  async login(@Req() req: any, @Body() body: { password?: string }) {
+  async login(@Req() req: any, @Body() body: { password?: string; invite?: string }) {
     const ip: string = req.ip || req.connection?.remoteAddress || 'unknown';
     await this.checkLoginRate(ip);
 
-    if (!this.authService.isAuthRequired) {
-      // No password configured — this shouldn't be called, but handle gracefully
+    if (!this.authService.isLocalPasswordAuthEnabled) {
+      if (this.authService.isAuthRequired) {
+        throw new HttpException(
+          {
+            error: {
+              message: 'Local Dashboard login is not enabled.',
+              type: 'local_login_disabled',
+            },
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      // No Dashboard auth configured: preserve the open local/dev behavior.
       return { token: '' };
     }
 
@@ -70,7 +90,17 @@ export class AuthController {
       throw new UnauthorizedException('Invalid password');
     }
 
-    const token = this.authService.generateToken();
+    const inviteMapping = await this.acceptLocalInvite(body.invite);
+    const token = this.authService.generateToken(
+      'dashboard',
+      inviteMapping
+        ? {
+            auth_provider: 'local',
+            workspace_id: inviteMapping.workspaceId,
+            role: inviteMapping.role,
+          }
+        : {},
+    );
     return { token };
   }
 
@@ -83,7 +113,72 @@ export class AuthController {
   @ApiOperation({ summary: 'Check whether Dashboard authentication is enabled' })
   @ApiOkResponse({ type: AuthStatusResponseDto })
   getStatus() {
-    return { authRequired: this.authService.isAuthRequired };
+    const oidc = this.oidc?.getPublicStatus() ?? {
+      enabled: false,
+      issuer: null,
+      client_id: null,
+      scopes: [],
+    };
+    return {
+      authRequired: this.authService.isAuthRequired,
+      localLoginEnabled: this.authService.isLocalPasswordAuthEnabled,
+      oidc,
+    };
+  }
+
+  @Get('oidc/start')
+  @ApiOperation({ summary: 'Start generic OIDC Dashboard login' })
+  async startOidcLogin(
+    @Query('invite') inviteToken: string | undefined,
+    @Res() res: Response,
+  ) {
+    if (!this.oidc?.isEnabled()) {
+      throw new HttpException(
+        {
+          error: {
+            message: 'OIDC login is not enabled.',
+            type: 'oidc_disabled',
+          },
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    const redirect = await this.oidc.createAuthorizationRedirect({
+      inviteToken,
+    });
+    return res.redirect(302, redirect);
+  }
+
+  @Get('oidc/callback')
+  @ApiOperation({ summary: 'Complete generic OIDC Dashboard login' })
+  async oidcCallback(
+    @Query('code') code: string | undefined,
+    @Query('state') state: string | undefined,
+    @Query('error') error: string | undefined,
+    @Query('error_description') errorDescription: string | undefined,
+    @Res() res: Response,
+  ) {
+    if (!this.oidc?.isEnabled()) {
+      throw new HttpException(
+        {
+          error: {
+            message: 'OIDC login is not enabled.',
+            type: 'oidc_disabled',
+          },
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (error) {
+      return res.redirect(
+        302,
+        this.oidc.loginRedirectUrl({
+          error: errorDescription || error,
+        }),
+      );
+    }
+    const result = await this.oidc.completeCallback({ code, state });
+    return res.redirect(302, this.oidc.loginRedirectUrl({ token: result.token }));
   }
 
   /**
@@ -149,5 +244,40 @@ export class AuthController {
 
     // Record this attempt
     timestamps.push(now);
+  }
+
+  private async acceptLocalInvite(
+    inviteToken: string | undefined,
+  ): Promise<{
+    workspaceId: string;
+    organizationId: string;
+    role: 'admin' | 'operator' | 'viewer';
+  } | null> {
+    const token = inviteToken?.trim();
+    if (!token) return null;
+    if (!this.invitations || !this.memberships) {
+      throw new HttpException(
+        {
+          error: {
+            message: 'Workspace invitation service unavailable.',
+            type: 'workspace_invitation_unavailable',
+          },
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const accepted = await this.invitations.acceptForUser(token, 'dashboard');
+    if (!accepted) return null;
+    await this.memberships.ensureMembership({
+      userId: 'dashboard',
+      organizationId: accepted.organizationId,
+      workspaceId: accepted.workspaceId,
+      role: accepted.role,
+    });
+    return {
+      workspaceId: accepted.workspaceId,
+      organizationId: accepted.organizationId,
+      role: accepted.role,
+    };
   }
 }

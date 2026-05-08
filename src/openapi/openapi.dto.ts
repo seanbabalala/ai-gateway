@@ -165,6 +165,57 @@ export class WorkspaceMemberMutationResponseDto extends ActionResponseDto {
   item!: WorkspaceMemberDto;
 }
 
+export class WorkspaceInvitationDto {
+  @ApiProperty({ example: 'e7a1f4be-2af0-4c6d-8bfb-9a6c4ff7d4b0' })
+  id!: string;
+
+  @ApiProperty({ example: 'default-org' })
+  organization_id!: string;
+
+  @ApiProperty({ example: 'default-workspace' })
+  workspace_id!: string;
+
+  @ApiProperty({ enum: ['admin', 'operator', 'viewer'], example: 'viewer' })
+  role!: string;
+
+  @ApiPropertyOptional({ example: 'teammate@example.com', nullable: true })
+  email?: string | null;
+
+  @ApiProperty({ enum: ['pending', 'accepted', 'expired', 'revoked'], example: 'pending' })
+  status!: string;
+
+  @ApiProperty({ example: '2026-05-16T00:00:00.000Z' })
+  expires_at!: string;
+
+  @ApiPropertyOptional({ example: null, nullable: true })
+  accepted_at?: string | null;
+
+  @ApiPropertyOptional({ example: null, nullable: true })
+  accepted_by_user_id?: string | null;
+
+  @ApiPropertyOptional({ example: 'dashboard', nullable: true })
+  created_by_user_id?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'sg_inv_redacted',
+    description: 'Plain invitation token. Returned once on creation only.',
+  })
+  token?: string;
+
+  @ApiPropertyOptional({ example: '/login?invite=sg_inv_redacted' })
+  accept_path?: string;
+}
+
+export class WorkspaceInvitationListResponseDto {
+  @ApiProperty({ type: [WorkspaceInvitationDto] })
+  items!: WorkspaceInvitationDto[];
+}
+
+export class WorkspaceInvitationMutationResponseDto extends ActionResponseDto {
+  @ApiProperty({ type: WorkspaceInvitationDto })
+  item!: WorkspaceInvitationDto;
+}
+
 export class ChatCompletionsRequestDto {
   @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate smart routing or a direct model/node name.' })
   model!: string;

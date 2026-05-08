@@ -93,5 +93,21 @@
   "members.status.active": "启用",
   "members.status.disabled": "禁用",
   "members.empty.title": "暂无成员",
-  "members.empty.description": "默认本地控制台管理员会在工作区初始化时自动创建。"
+  "members.empty.description": "默认本地控制台管理员会在工作区初始化时自动创建。",
+  "members.invites.title": "邀请",
+  "members.invites.emailPlaceholder": "邮箱（可选）",
+  "members.invites.create": "创建邀请",
+  "members.invites.creating": "创建中...",
+  "members.invites.created": "邀请链接已创建",
+  "members.invites.emptyTitle": "暂无邀请",
+  "members.invites.emptyDescription": "为本地或 OIDC 用户创建邀请链接。OSS 暂不发送邮件。",
+  "members.invites.email": "邮箱",
+  "members.invites.anyEmail": "任意已验证身份",
+  "members.invites.expires": "过期时间",
+  "members.invites.action": "操作",
+  "members.invites.revoke": "撤销",
+  "members.invites.status.pending": "待接受",
+  "members.invites.status.accepted": "已接受",
+  "members.invites.status.expired": "已过期",
+  "members.invites.status.revoked": "已撤销"
 }

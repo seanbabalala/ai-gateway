@@ -1701,11 +1701,38 @@ export interface WorkspaceMember {
 export interface WorkspaceMembersResponse {
   items: WorkspaceMember[];
   roles: WorkspaceRole[];
-  mode: "local_dashboard";
+  mode: "local_dashboard" | "local_dashboard_oidc";
 }
 
 export interface WorkspaceMemberMutationResponse extends ActionResponse {
   item: WorkspaceMember;
+}
+
+export type WorkspaceInvitationStatus = "pending" | "accepted" | "expired" | "revoked";
+
+export interface WorkspaceInvitation {
+  id: string;
+  organization_id: string;
+  workspace_id: string;
+  role: WorkspaceRole;
+  email: string | null;
+  status: WorkspaceInvitationStatus;
+  expires_at: string;
+  accepted_at: string | null;
+  accepted_by_user_id: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  token?: string;
+  accept_path?: string;
+}
+
+export interface WorkspaceInvitationsResponse {
+  items: WorkspaceInvitation[];
+}
+
+export interface WorkspaceInvitationMutationResponse extends ActionResponse {
+  item: WorkspaceInvitation;
 }
 
 // ── Node CRUD ──

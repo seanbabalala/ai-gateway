@@ -93,5 +93,21 @@
   "members.status.active": "활성",
   "members.status.disabled": "비활성",
   "members.empty.title": "멤버 없음",
-  "members.empty.description": "기본 로컬 대시보드 관리자는 워크스페이스 부트스트랩 중 자동 생성됩니다."
+  "members.empty.description": "기본 로컬 대시보드 관리자는 워크스페이스 부트스트랩 중 자동 생성됩니다.",
+  "members.invites.title": "초대",
+  "members.invites.emailPlaceholder": "이메일(선택)",
+  "members.invites.create": "초대 생성",
+  "members.invites.creating": "생성 중...",
+  "members.invites.created": "초대 링크가 생성되었습니다",
+  "members.invites.emptyTitle": "초대 없음",
+  "members.invites.emptyDescription": "로컬 또는 OIDC 사용자를 위한 초대 링크를 만듭니다. OSS에서는 이메일을 보내지 않습니다.",
+  "members.invites.email": "이메일",
+  "members.invites.anyEmail": "검증된 모든 ID",
+  "members.invites.expires": "만료",
+  "members.invites.action": "작업",
+  "members.invites.revoke": "취소",
+  "members.invites.status.pending": "대기",
+  "members.invites.status.accepted": "수락됨",
+  "members.invites.status.expired": "만료됨",
+  "members.invites.status.revoked": "취소됨"
 }

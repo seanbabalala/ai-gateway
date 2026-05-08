@@ -27,6 +27,7 @@ import {
   EvalSampleResult,
   VideoJob,
   Workspace,
+  WorkspaceInvitation,
   WorkspaceMembership,
 } from './entities';
 
@@ -40,6 +41,7 @@ import {
             CallLog,
             Organization,
             Workspace,
+            WorkspaceInvitation,
             WorkspaceMembership,
             ConfigAuditEvent,
             ConfigVersion,
@@ -83,6 +85,7 @@ import {
       CallLog,
       Organization,
       Workspace,
+      WorkspaceInvitation,
       WorkspaceMembership,
       ConfigAuditEvent,
       ConfigVersion,

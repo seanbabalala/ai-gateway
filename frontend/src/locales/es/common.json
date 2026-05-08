@@ -93,5 +93,21 @@
   "members.status.active": "activo",
   "members.status.disabled": "deshabilitado",
   "members.empty.title": "Aún no hay miembros",
-  "members.empty.description": "El Admin local predeterminado se crea automáticamente al inicializar el espacio."
+  "members.empty.description": "El Admin local predeterminado se crea automáticamente al inicializar el espacio.",
+  "members.invites.title": "Invitaciones",
+  "members.invites.emailPlaceholder": "Email (opcional)",
+  "members.invites.create": "Crear invitación",
+  "members.invites.creating": "Creando...",
+  "members.invites.created": "Enlace de invitación creado",
+  "members.invites.emptyTitle": "Sin invitaciones",
+  "members.invites.emptyDescription": "Crea un enlace para usuarios locales u OIDC. OSS no envía emails.",
+  "members.invites.email": "Email",
+  "members.invites.anyEmail": "Cualquier identidad verificada",
+  "members.invites.expires": "Caduca",
+  "members.invites.action": "Acción",
+  "members.invites.revoke": "Revocar",
+  "members.invites.status.pending": "pendiente",
+  "members.invites.status.accepted": "aceptada",
+  "members.invites.status.expired": "caducada",
+  "members.invites.status.revoked": "revocada"
 }

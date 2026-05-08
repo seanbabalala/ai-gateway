@@ -28,6 +28,13 @@ export interface UpdateWorkspaceMembershipInput {
   status?: WorkspaceMembershipStatus;
 }
 
+export interface EnsureWorkspaceMembershipInput {
+  userId: string;
+  organizationId: string;
+  workspaceId: string;
+  role: WorkspaceMembershipRole;
+}
+
 @Injectable()
 export class WorkspaceMembershipService {
   constructor(
@@ -69,6 +76,34 @@ export class WorkspaceMembershipService {
     if (input.role) membership.role = assertRole(input.role);
     if (input.status) membership.status = assertStatus(input.status);
     return this.toSummary(await this.memberships.save(membership));
+  }
+
+  async ensureMembership(
+    input: EnsureWorkspaceMembershipInput,
+  ): Promise<WorkspaceMembershipSummary> {
+    const userId = normalizeUserId(input.userId);
+    const workspaceId = input.workspaceId || DEFAULT_WORKSPACE_ID;
+    const organizationId = input.organizationId || DEFAULT_ORGANIZATION_ID;
+    const role = assertRole(input.role);
+    const existing = await this.memberships.findOne({
+      where: { user_id: userId, workspace_id: workspaceId },
+    });
+    if (existing) {
+      existing.organization_id = organizationId;
+      existing.role = role;
+      existing.status = 'active';
+      return this.toSummary(await this.memberships.save(existing));
+    }
+    const created = await this.memberships.save(
+      this.memberships.create({
+        user_id: userId,
+        organization_id: organizationId,
+        workspace_id: workspaceId,
+        role,
+        status: 'active',
+      }),
+    );
+    return this.toSummary(created);
   }
 
   async ensureDefaultAdmin(): Promise<WorkspaceMembershipSummary> {
@@ -143,6 +178,14 @@ function assertRole(role: string): WorkspaceMembershipRole {
     return role as WorkspaceMembershipRole;
   }
   throw new BadRequestException(`Invalid workspace member role: ${role}`);
+}
+
+function normalizeUserId(value: string): string {
+  const normalized = (value || '').trim();
+  if (!normalized) {
+    throw new BadRequestException('Workspace member user id is required.');
+  }
+  return normalized;
 }
 
 function assertStatus(status: string): WorkspaceMembershipStatus {

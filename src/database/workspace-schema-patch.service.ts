@@ -12,6 +12,7 @@ import {
 const ORGANIZATIONS_TABLE = 'organizations';
 const WORKSPACES_TABLE = 'workspaces';
 const WORKSPACE_MEMBERSHIPS_TABLE = 'workspace_memberships';
+const WORKSPACE_INVITATIONS_TABLE = 'workspace_invitations';
 const WORKSPACE_COLUMN = 'workspace_id';
 
 export const WORKSPACE_SCOPED_TABLES = [
@@ -84,6 +85,7 @@ export async function applyWorkspaceSchemaPatches(
       ORGANIZATIONS_TABLE,
       WORKSPACES_TABLE,
       WORKSPACE_MEMBERSHIPS_TABLE,
+      WORKSPACE_INVITATIONS_TABLE,
     );
   }
   await bootstrapDefaultOrganizationAndWorkspace(dataSource);
@@ -109,6 +111,7 @@ export async function createWorkspaceCoreTables(
   const hadOrganizations = await hasTable(dataSource, ORGANIZATIONS_TABLE);
   const hadWorkspaces = await hasTable(dataSource, WORKSPACES_TABLE);
   const hadMemberships = await hasTable(dataSource, WORKSPACE_MEMBERSHIPS_TABLE);
+  const hadInvitations = await hasTable(dataSource, WORKSPACE_INVITATIONS_TABLE);
 
   if (dataSource.options.type === 'postgres') {
     await dataSource.query(`
@@ -166,6 +169,29 @@ export async function createWorkspaceCoreTables(
     await dataSource.query(
       `CREATE INDEX IF NOT EXISTS idx_workspace_memberships_status ON ${WORKSPACE_MEMBERSHIPS_TABLE} (status)`,
     );
+    await dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${WORKSPACE_INVITATIONS_TABLE} (
+        id varchar PRIMARY KEY,
+        organization_id varchar NOT NULL,
+        workspace_id varchar NOT NULL,
+        role varchar NOT NULL DEFAULT 'viewer',
+        email varchar NULL,
+        token_hash varchar NOT NULL UNIQUE,
+        status varchar NOT NULL DEFAULT 'pending',
+        expires_at timestamp NOT NULL,
+        accepted_at timestamp NULL,
+        accepted_by_user_id varchar NULL,
+        created_by_user_id varchar NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace ON ${WORKSPACE_INVITATIONS_TABLE} (workspace_id)`,
+    );
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_status ON ${WORKSPACE_INVITATIONS_TABLE} (status)`,
+    );
   } else {
     await dataSource.query(`
       CREATE TABLE IF NOT EXISTS ${ORGANIZATIONS_TABLE} (
@@ -222,9 +248,32 @@ export async function createWorkspaceCoreTables(
     await dataSource.query(
       `CREATE INDEX IF NOT EXISTS idx_workspace_memberships_status ON ${WORKSPACE_MEMBERSHIPS_TABLE} (status)`,
     );
+    await dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ${WORKSPACE_INVITATIONS_TABLE} (
+        id varchar PRIMARY KEY,
+        organization_id varchar NOT NULL,
+        workspace_id varchar NOT NULL,
+        role varchar NOT NULL DEFAULT 'viewer',
+        email varchar,
+        token_hash varchar NOT NULL UNIQUE,
+        status varchar NOT NULL DEFAULT 'pending',
+        expires_at datetime NOT NULL,
+        accepted_at datetime,
+        accepted_by_user_id varchar,
+        created_by_user_id varchar,
+        created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace ON ${WORKSPACE_INVITATIONS_TABLE} (workspace_id)`,
+    );
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_status ON ${WORKSPACE_INVITATIONS_TABLE} (status)`,
+    );
   }
 
-  return !hadOrganizations || !hadWorkspaces || !hadMemberships;
+  return !hadOrganizations || !hadWorkspaces || !hadMemberships || !hadInvitations;
 }
 
 export async function bootstrapDefaultOrganizationAndWorkspace(

@@ -93,5 +93,21 @@
   "members.status.active": "ใช้งาน",
   "members.status.disabled": "ปิดใช้งาน",
   "members.empty.title": "ยังไม่มีสมาชิก",
-  "members.empty.description": "ผู้ดูแล Dashboard ภายในเครื่องเริ่มต้นจะถูกสร้างอัตโนมัติระหว่าง bootstrap เวิร์กสเปซ"
+  "members.empty.description": "ผู้ดูแล Dashboard ภายในเครื่องเริ่มต้นจะถูกสร้างอัตโนมัติระหว่าง bootstrap เวิร์กสเปซ",
+  "members.invites.title": "คำเชิญ",
+  "members.invites.emailPlaceholder": "อีเมล (ไม่บังคับ)",
+  "members.invites.create": "สร้างคำเชิญ",
+  "members.invites.creating": "กำลังสร้าง...",
+  "members.invites.created": "สร้างลิงก์คำเชิญแล้ว",
+  "members.invites.emptyTitle": "ยังไม่มีคำเชิญ",
+  "members.invites.emptyDescription": "สร้างลิงก์เชิญสำหรับผู้ใช้ local หรือ OIDC รุ่น OSS ยังไม่ส่งอีเมล",
+  "members.invites.email": "อีเมล",
+  "members.invites.anyEmail": "ตัวตนที่ยืนยันแล้วใดก็ได้",
+  "members.invites.expires": "หมดอายุ",
+  "members.invites.action": "การทำงาน",
+  "members.invites.revoke": "ยกเลิก",
+  "members.invites.status.pending": "รอรับ",
+  "members.invites.status.accepted": "รับแล้ว",
+  "members.invites.status.expired": "หมดอายุ",
+  "members.invites.status.revoked": "ยกเลิกแล้ว"
 }

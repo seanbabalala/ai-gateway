@@ -93,5 +93,21 @@
   "members.status.active": "active",
   "members.status.disabled": "disabled",
   "members.empty.title": "No members yet",
-  "members.empty.description": "The default local Dashboard admin is created automatically during workspace bootstrap."
+  "members.empty.description": "The default local Dashboard admin is created automatically during workspace bootstrap.",
+  "members.invites.title": "Invitations",
+  "members.invites.emailPlaceholder": "Email (optional)",
+  "members.invites.create": "Create invite",
+  "members.invites.creating": "Creating...",
+  "members.invites.created": "Invite link created",
+  "members.invites.emptyTitle": "No invitations",
+  "members.invites.emptyDescription": "Create an invite link for local or OIDC users. Email delivery is not enabled in OSS.",
+  "members.invites.email": "Email",
+  "members.invites.anyEmail": "Any accepted identity",
+  "members.invites.expires": "Expires",
+  "members.invites.action": "Action",
+  "members.invites.revoke": "Revoke",
+  "members.invites.status.pending": "pending",
+  "members.invites.status.accepted": "accepted",
+  "members.invites.status.expired": "expired",
+  "members.invites.status.revoked": "revoked"
 }

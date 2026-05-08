@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.0.0-alpha.4 Redis Shared State And Cluster Mode**.
+Current release: **v2.0.0-beta.1 OIDC Basic Login And Invite Skeleton**.
 
-Current development focus after v2.0.0-alpha.4: continue the v2.0 Platform Trust sequence with auditability, benchmarks, and upgrade safety while preserving v1.9 gateway compatibility, local SQLite startup, local Dashboard login, and metadata-only privacy boundaries.
+Current development focus after v2.0.0-beta.1: continue the v2.0 Platform Trust sequence with auditability, benchmarks, and upgrade safety while preserving v1.9 gateway compatibility, local SQLite startup, local Dashboard login, optional OIDC login, and metadata-only privacy boundaries.
 
 ## Why SiftGate
 
@@ -50,8 +50,9 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
-## v2.0 Alpha Highlights
+## v2.0 Highlights
 
+- v2.0.0-beta.1 adds optional generic OIDC Dashboard login plus workspace invitation metadata: local password login remains supported, OIDC uses secret references for client secrets, Admins can create/revoke invite links, invitations can be accepted by local or OIDC identities, and seven-locale Dashboard copy covers login and invite flows.
 - v2.0.0-alpha.4 turns Redis shared state into coherent cluster mode for multi-instance data planes: workspace-scoped runtime keys, per-category TTL/fail policy, shared rate limits/circuit state/cache affinity/momentum/concurrency/health/realtime metadata, Dashboard cluster status, and updated Docker/Helm/Kubernetes guidance while keeping Redis optional.
 - v2.0.0-alpha.3 makes PostgreSQL the documented production path with pool/SSL configuration, fail-fast diagnostics, database-aware `/health`, database-only `/ready`, production examples, and RBAC membership migration coverage while keeping SQLite as the local default.
 - v2.0.0-alpha.2 adds local Dashboard RBAC for workspace governance: Admin, Operator, and Viewer memberships, centralized Dashboard permission guards, a Members page, role badges, permission-aware disabled controls, and seven-locale role copy.

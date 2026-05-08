@@ -81,6 +81,7 @@ const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
 const STATE_BACKENDS = new Set(['memory', 'redis']);
 const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
+const WORKSPACE_ROLES = new Set(['admin', 'operator', 'viewer']);
 const STATE_CATEGORIES = new Set([
   'rate_limit',
   'circuit_breaker',
@@ -245,6 +246,7 @@ export function validateConfigObject(
   validateSecretReferences(config, env, issues, '', secretBackendState(config.secret_manager));
   validateServer(config.server, issues);
   validateDatabase(config.database, issues);
+  validateDashboard(config.dashboard, issues);
   validateAuth(config.auth, config.namespaces, issues);
   validateNodes(config.nodes, issues, config.models_pricing, {
     skipLegacyCatalogDiagnostics: Boolean(options.catalog),
@@ -286,6 +288,93 @@ export function validateConfigObject(
   );
 
   return finalizeResult(configPath, issues, config as GatewayConfig);
+}
+
+function validateDashboard(
+  dashboard: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (dashboard === undefined) return;
+  if (!isRecord(dashboard)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_section_type',
+        'dashboard must be an object.',
+        'dashboard',
+      ),
+    );
+    return;
+  }
+  if (dashboard.oidc !== undefined) {
+    validateDashboardOidc(dashboard.oidc, dashboard, issues);
+  }
+}
+
+function validateDashboardOidc(
+  oidc: unknown,
+  dashboard: Record<string, unknown>,
+  issues: ConfigValidationIssue[],
+): void {
+  if (!isRecord(oidc)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_dashboard_oidc',
+        'dashboard.oidc must be an object.',
+        'dashboard.oidc',
+      ),
+    );
+    return;
+  }
+  if (oidc.enabled !== undefined && !isBoolean(oidc.enabled)) {
+    issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.enabled must be a boolean.', 'dashboard.oidc.enabled'));
+  }
+  const enabled = oidc.enabled === true;
+  for (const field of ['issuer', 'client_id', 'redirect_uri']) {
+    if (enabled && !isNonEmptyString(oidc[field])) {
+      issues.push(
+        issue(
+          'error',
+          'missing_required_field',
+          `dashboard.oidc.${field} is required when OIDC is enabled.`,
+          `dashboard.oidc.${field}`,
+        ),
+      );
+    }
+  }
+  if (isNonEmptyString(oidc.issuer) && !HAS_CONFIG_REF_PATTERN.test(oidc.issuer)) {
+    validateHttpUrl(oidc.issuer, 'dashboard.oidc.issuer', 'invalid_dashboard_oidc_url', issues);
+  }
+  if (isNonEmptyString(oidc.redirect_uri) && !HAS_CONFIG_REF_PATTERN.test(oidc.redirect_uri)) {
+    validateHttpUrl(oidc.redirect_uri, 'dashboard.oidc.redirect_uri', 'invalid_dashboard_oidc_url', issues);
+  }
+  if (oidc.allowed_domains !== undefined) {
+    if (!Array.isArray(oidc.allowed_domains) || !oidc.allowed_domains.every(isNonEmptyString)) {
+      issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.allowed_domains must be an array of non-empty domain strings.', 'dashboard.oidc.allowed_domains'));
+    }
+  }
+  if (oidc.scopes !== undefined) {
+    if (!Array.isArray(oidc.scopes) || !oidc.scopes.every(isNonEmptyString)) {
+      issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.scopes must be an array of non-empty strings.', 'dashboard.oidc.scopes'));
+    }
+  }
+  if (oidc.default_role !== undefined && (!isNonEmptyString(oidc.default_role) || !WORKSPACE_ROLES.has(oidc.default_role))) {
+    issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.default_role must be admin, operator, or viewer.', 'dashboard.oidc.default_role'));
+  }
+  if (oidc.default_workspace_id !== undefined && !isNonEmptyString(oidc.default_workspace_id)) {
+    issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.default_workspace_id must be a non-empty string.', 'dashboard.oidc.default_workspace_id'));
+  }
+  if (enabled && !isNonEmptyString(dashboard.password) && !isNonEmptyString(dashboard.session_secret)) {
+    issues.push(
+      issue(
+        'error',
+        'missing_dashboard_session_secret',
+        'dashboard.session_secret is required when OIDC is enabled without a local dashboard password.',
+        'dashboard.session_secret',
+      ),
+    );
+  }
 }
 
 function validateTopLevel(

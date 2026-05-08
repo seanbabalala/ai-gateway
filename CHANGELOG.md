@@ -6,6 +6,29 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-beta.1 - 2026-05-09
+
+### Added
+
+- Added optional generic OIDC Dashboard login with discovery, authorization-code callback handling, userinfo identity mapping, allowed-domain checks, default role/workspace mapping, and local Dashboard JWT issuance.
+- Added OIDC config under `dashboard.oidc` plus `dashboard.session_secret` support for stable Dashboard sessions when OIDC is enabled without a local password.
+- Added workspace invitation metadata with role, workspace, optional email, expiry, status, one-time plain invite link return, SHA-256 token hashing at rest, local-login acceptance, OIDC acceptance, and revoke/list Dashboard APIs.
+- Added Members page invitation creation/list/revoke UI and Login page SSO entry with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Added provider docs/templates for Google, GitHub OIDC-capable setups, and Azure AD / Entra ID.
+
+### Changed
+
+- `GET /api/auth/status` now returns local login and privacy-safe OIDC public status metadata while preserving the existing `authRequired` field.
+- Dashboard auth remains backwards-compatible: installs without `dashboard.password` or OIDC stay open, and local password login still works when configured.
+- Updated config examples, env examples, production docs, security docs, and release metadata to v2.0.0-beta.1.
+
+### Boundaries
+
+- OIDC is disabled by default, does not require SiftGate Cloud, and does not force SSO for local installs.
+- OIDC client secrets are resolved through the existing secret-reference path and are never returned by Dashboard APIs.
+- No SCIM, LDAP, or built-in email delivery was added in this release.
+- Invitation and OIDC state do not store prompts, responses, raw provider headers, provider keys, media bytes, tool payloads, hidden reasoning text, resolved secrets, or reusable invite tokens by default.
+
 ## 2.0.0-alpha.4 - 2026-05-09
 
 ### Added
