@@ -1,0 +1,325 @@
+{
+  "report_schema": "siftgate.platform_benchmark.v1",
+  "release": "v2.0.0",
+  "rc_measurement": false,
+  "generated_at": "2026-05-08T21:07:07.420Z",
+  "version": "2.0.0",
+  "commit": "2328dd76ba1a26e7de5b9d2b88610921aec69883",
+  "environment": {
+    "node": "v24.12.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu_count": 10,
+    "cpu_model": "Apple M4",
+    "total_memory_mib": 16384
+  },
+  "target": {
+    "upstream": "local_mock",
+    "requests": 1,
+    "concurrency": 1,
+    "timeout_ms": 120000,
+    "mock_upstream_delay_ms": 1,
+    "mock_stream_chunk_delay_ms": 1
+  },
+  "scenarios": [
+    {
+      "name": "upstream_mock_baseline",
+      "status": "measured",
+      "category": "direct_mock_baseline",
+      "description": "Direct non-streaming request to the local mock upstream without SiftGate.",
+      "storage": null,
+      "state_backend": null,
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 51.56,
+      "duration_seconds": 0.019,
+      "latency_ms": {
+        "avg": 19,
+        "p50": 19,
+        "p95": 19,
+        "p99": 19,
+        "max": 19
+      },
+      "status_counts": {
+        "200": 1
+      },
+      "top_errors": []
+    },
+    {
+      "name": "upstream_mock_streaming_baseline",
+      "status": "measured",
+      "category": "direct_mock_streaming_baseline",
+      "description": "Direct streaming request to the local mock upstream without SiftGate.",
+      "storage": null,
+      "state_backend": null,
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 141.46,
+      "duration_seconds": 0.007,
+      "latency_ms": {
+        "avg": 7,
+        "p50": 7,
+        "p95": 7,
+        "p99": 7,
+        "max": 7
+      },
+      "status_counts": {
+        "200": 1
+      },
+      "top_errors": [],
+      "first_byte_ms": {
+        "avg": 1,
+        "p50": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      }
+    },
+    {
+      "name": "chat_proxy_direct_sqlite",
+      "status": "measured",
+      "category": "non_streaming_chat_proxy",
+      "description": "OpenAI-compatible non-streaming chat request through SiftGate with a direct model.",
+      "storage": "sqlite",
+      "state_backend": "memory",
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 37.14,
+      "duration_seconds": 0.027,
+      "latency_ms": {
+        "avg": 27,
+        "p50": 27,
+        "p95": 27,
+        "p99": 27,
+        "max": 27
+      },
+      "status_counts": {
+        "200": 1
+      },
+      "top_errors": []
+    },
+    {
+      "name": "chat_smart_routing_sqlite",
+      "status": "measured",
+      "category": "smart_routing",
+      "description": "OpenAI-compatible non-streaming chat request through SiftGate with model=auto.",
+      "storage": "sqlite",
+      "state_backend": "memory",
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 67.52,
+      "duration_seconds": 0.015,
+      "latency_ms": {
+        "avg": 15,
+        "p50": 15,
+        "p95": 15,
+        "p99": 15,
+        "max": 15
+      },
+      "status_counts": {
+        "200": 1
+      },
+      "top_errors": []
+    },
+    {
+      "name": "streaming_chat_sqlite",
+      "status": "measured",
+      "category": "streaming_chat_proxy",
+      "description": "OpenAI-compatible streaming chat request through SiftGate, including first-byte timing.",
+      "storage": "sqlite",
+      "state_backend": "memory",
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 58.09,
+      "duration_seconds": 0.017,
+      "latency_ms": {
+        "avg": 17,
+        "p50": 17,
+        "p95": 17,
+        "p99": 17,
+        "max": 17
+      },
+      "status_counts": {
+        "201": 1
+      },
+      "top_errors": [],
+      "first_byte_ms": {
+        "avg": 4,
+        "p50": 4,
+        "p95": 4,
+        "p99": 4,
+        "max": 4
+      }
+    },
+    {
+      "name": "dashboard_log_write_sqlite",
+      "status": "measured",
+      "category": "dashboard_log_write",
+      "description": "Metadata-only call_log insert overhead through the configured SQLite database.",
+      "storage": "sqlite",
+      "state_backend": null,
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 1097.34,
+      "duration_seconds": 0.001,
+      "latency_ms": {
+        "avg": 1,
+        "p50": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "status_counts": {
+        "200": 1
+      },
+      "top_errors": []
+    },
+    {
+      "name": "dashboard_log_read_sqlite",
+      "status": "measured",
+      "category": "dashboard_log_read",
+      "description": "Dashboard benchmark report read from sanitized call-log metadata.",
+      "storage": "sqlite",
+      "state_backend": "memory",
+      "requests": 1,
+      "concurrency": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 100,
+      "throughput_rps": 215.66,
+      "duration_seconds": 0.005,
+      "latency_ms": {
+        "avg": 5,
+        "p50": 5,
+        "p95": 5,
+        "p99": 5,
+        "max": 5
+      },
+      "status_counts": {
+        "200": 1
+      },
+      "top_errors": []
+    },
+    {
+      "name": "postgres_production_chat_proxy",
+      "status": "skipped",
+      "category": "postgres_production_mode",
+      "description": null,
+      "reason": "Set SIFTGATE_BENCH_POSTGRES_URL to run this optional benchmark against a prepared PostgreSQL database.",
+      "requests": 0,
+      "concurrency": 0,
+      "success": 0,
+      "failed": 0,
+      "latency_ms": null,
+      "throughput_rps": null,
+      "storage": "postgres",
+      "state_backend": "memory"
+    },
+    {
+      "name": "redis_cluster_chat_proxy",
+      "status": "skipped",
+      "category": "redis_cluster_mode",
+      "description": null,
+      "reason": "Set SIFTGATE_BENCH_REDIS_URL to run this optional benchmark against Redis-backed shared state and cluster mode.",
+      "requests": 0,
+      "concurrency": 0,
+      "success": 0,
+      "failed": 0,
+      "latency_ms": null,
+      "throughput_rps": null,
+      "storage": "sqlite",
+      "state_backend": "redis"
+    },
+    {
+      "name": "real_upstream_direct_optional",
+      "status": "skipped",
+      "category": "real_upstream_optional",
+      "description": null,
+      "reason": "Set SIFTGATE_BENCH_REAL_UPSTREAM_URL and SIFTGATE_BENCH_REAL_UPSTREAM_API_KEY to measure a live direct upstream baseline. Use npm run benchmark:upstream for live gateway runs.",
+      "requests": 0,
+      "concurrency": 0,
+      "success": 0,
+      "failed": 0,
+      "latency_ms": null,
+      "throughput_rps": null
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "non_streaming_proxy_overhead",
+      "baseline": "upstream_mock_baseline",
+      "target": "chat_proxy_direct_sqlite",
+      "metric": "latency_ms",
+      "p50_delta_ms": 8,
+      "p95_delta_ms": 8,
+      "p99_delta_ms": 8
+    },
+    {
+      "name": "smart_routing_delta",
+      "baseline": "chat_proxy_direct_sqlite",
+      "target": "chat_smart_routing_sqlite",
+      "metric": "latency_ms",
+      "p50_delta_ms": -12,
+      "p95_delta_ms": -12,
+      "p99_delta_ms": -12
+    },
+    {
+      "name": "streaming_total_overhead",
+      "baseline": "upstream_mock_streaming_baseline",
+      "target": "streaming_chat_sqlite",
+      "metric": "latency_ms",
+      "p50_delta_ms": 10,
+      "p95_delta_ms": 10,
+      "p99_delta_ms": 10
+    },
+    {
+      "name": "streaming_first_byte_overhead",
+      "baseline": "upstream_mock_streaming_baseline",
+      "target": "streaming_chat_sqlite",
+      "metric": "first_byte_ms",
+      "p50_delta_ms": 3,
+      "p95_delta_ms": 3,
+      "p99_delta_ms": 3
+    }
+  ],
+  "methodology": {
+    "script": "npm run benchmark:platform",
+    "deterministic_mode": true,
+    "provider_dependency": "none",
+    "notes": [
+      "The harness starts a local mock upstream and real SiftGate AppModule instances.",
+      "SQLite scenarios use a temporary on-disk database to match local/dev behavior.",
+      "PostgreSQL and Redis scenarios are optional and are skipped unless their URLs are provided.",
+      "Live provider or existing-gateway tests should use npm run benchmark:upstream with explicit environment variables.",
+      "v2.0.0 numbers are GA measurements from this commit and benchmark environment. Re-run before publishing comparative claims."
+    ]
+  },
+  "privacy": {
+    "prompt_response_stored": false,
+    "raw_headers_stored": false,
+    "provider_keys_exposed": false,
+    "media_bytes_stored": false,
+    "tool_payloads_stored": false,
+    "hidden_reasoning_stored": false,
+    "resolved_secrets_stored": false,
+    "metadata_only": true
+  }
+}
