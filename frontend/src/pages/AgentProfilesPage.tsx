@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   AlertTriangle,
   Bot,
@@ -14,8 +15,10 @@ import {
   Route,
   Server,
   ShieldCheck,
+  Timer,
   TerminalSquare,
   Trash2,
+  Wallet,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -39,7 +42,8 @@ import { useApiKeys } from '@/hooks/use-api-keys'
 import { useMcpGateway } from '@/hooks/use-mcp'
 import { useNamespaces } from '@/hooks/use-namespaces'
 import { useNodes } from '@/hooks/use-nodes'
-import { cn, formatDate } from '@/lib/utils'
+import { useSessions } from '@/hooks/use-sessions'
+import { cn, formatCost, formatDate, formatLatency, formatNumber } from '@/lib/utils'
 import type {
   AgentProfile,
   AgentProfileBaseUrlMode,
@@ -52,6 +56,8 @@ import type {
   McpServerSummary,
   NamespaceInfo,
   NodeInfo,
+  SessionsResponse,
+  SessionSummary,
 } from '@/types/api'
 
 type RoutingMode = 'smart' | 'direct'
@@ -79,13 +85,18 @@ interface ParsedRoutingHint {
 }
 
 const CONNECTORS: AgentProfileConnector[] = [
+  'cursor',
+  'cline',
+  'roo_code',
+  'continue',
   'codex',
   'claude_code',
+  'opencode',
+  'generic_openai',
+  'generic_anthropic',
   'cherry_studio',
   'hermes',
   'openclaw',
-  'generic_openai',
-  'generic_anthropic',
 ]
 
 const BASE_URL_MODES: AgentProfileBaseUrlMode[] = ['openai_v1', 'anthropic_v1', 'root']
@@ -93,8 +104,13 @@ const BASE_URL_MODES: AgentProfileBaseUrlMode[] = ['openai_v1', 'anthropic_v1', 
 const anthropicConnectors = new Set<AgentProfileConnector>(['claude_code', 'generic_anthropic'])
 
 const connectorLabelKeys: Record<AgentProfileConnector, string> = {
+  cursor: 'agents.connectors.cursor',
+  cline: 'agents.connectors.cline',
+  roo_code: 'agents.connectors.rooCode',
+  continue: 'agents.connectors.continue',
   codex: 'agents.connectors.codex',
   claude_code: 'agents.connectors.claudeCode',
+  opencode: 'agents.connectors.openCode',
   cherry_studio: 'agents.connectors.cherryStudio',
   hermes: 'agents.connectors.hermes',
   openclaw: 'agents.connectors.openclaw',
@@ -109,8 +125,13 @@ const baseUrlModeLabelKeys: Record<AgentProfileBaseUrlMode, string> = {
 }
 
 const connectorDescriptionKeys: Record<AgentProfileConnector, string> = {
+  cursor: 'agents.connectorDescriptions.cursor',
+  cline: 'agents.connectorDescriptions.cline',
+  roo_code: 'agents.connectorDescriptions.rooCode',
+  continue: 'agents.connectorDescriptions.continue',
   codex: 'agents.connectorDescriptions.codex',
   claude_code: 'agents.connectorDescriptions.claudeCode',
+  opencode: 'agents.connectorDescriptions.openCode',
   cherry_studio: 'agents.connectorDescriptions.cherryStudio',
   hermes: 'agents.connectorDescriptions.hermes',
   openclaw: 'agents.connectorDescriptions.openclaw',
@@ -119,8 +140,13 @@ const connectorDescriptionKeys: Record<AgentProfileConnector, string> = {
 }
 
 const connectorLogos: Record<AgentProfileConnector, string> = {
+  cursor: '/agents/cursor.svg',
+  cline: '/agents/cline.svg',
+  roo_code: '/agents/roo-code.svg',
+  continue: '/agents/continue.svg',
   codex: '/agents/codex.svg',
   claude_code: '/agents/claude-code.svg',
+  opencode: '/agents/opencode.svg',
   cherry_studio: '/agents/cherry-studio.png',
   hermes: '/agents/hermes.png',
   openclaw: '/agents/openclaw.svg',
@@ -129,8 +155,13 @@ const connectorLogos: Record<AgentProfileConnector, string> = {
 }
 
 const connectorLogoClassNames: Record<AgentProfileConnector, string> = {
+  cursor: 'bg-white text-zinc-950',
+  cline: 'bg-[#f1f5f9] text-[#0f172a]',
+  roo_code: 'bg-[#ecfeff] text-[#0e7490]',
+  continue: 'bg-[#eef2ff] text-[#3730a3]',
   codex: 'bg-white text-zinc-950',
   claude_code: 'bg-[#f4efe6] text-[#181818]',
+  opencode: 'bg-[#111827] text-white',
   cherry_studio: 'bg-[#ff5a5f] text-white',
   hermes: 'bg-white text-zinc-950',
   openclaw: 'bg-[#fff1f2] text-red-600',
@@ -139,8 +170,13 @@ const connectorLogoClassNames: Record<AgentProfileConnector, string> = {
 }
 
 const connectorLogoImageClassNames: Record<AgentProfileConnector, string> = {
+  cursor: 'h-8 w-8 object-contain',
+  cline: 'h-8 w-8 object-contain',
+  roo_code: 'h-8 w-8 object-contain',
+  continue: 'h-8 w-8 object-contain',
   codex: 'h-8 w-8 object-contain',
   claude_code: 'h-8 w-8 object-contain',
+  opencode: 'h-8 w-8 object-contain',
   cherry_studio: 'h-full w-full object-cover',
   hermes: 'h-full w-full object-cover',
   openclaw: 'h-9 w-9 object-contain',
@@ -153,7 +189,10 @@ const fieldLabelKeys: Record<string, string> = {
   api_key: 'agents.fields.apiKey',
   model: 'agents.render.model',
   default_model: 'agents.fields.defaultModel',
+  virtual_model_aliases: 'agents.fields.virtualModels',
 }
+
+const CODING_VIRTUAL_MODELS = ['coding-auto', 'coding-fast', 'coding-deep', 'coding-security']
 
 const emptyForm: AgentProfileFormState = {
   name: '',
@@ -179,6 +218,10 @@ function defaultSmartModel(connector: AgentProfileConnectorChoice) {
   return isAgentProfileConnector(connector) && anthropicConnectors.has(connector)
     ? 'claude-siftgate-auto'
     : 'auto'
+}
+
+function defaultCodingModel(profile: Pick<AgentProfile, 'virtual_model_aliases' | 'smart_model_id'>) {
+  return profile.virtual_model_aliases?.[0] || profile.smart_model_id || 'coding-auto'
 }
 
 function defaultBaseUrlMode(connector: AgentProfileConnectorChoice): AgentProfileBaseUrlMode {
@@ -319,6 +362,11 @@ function ConnectorPresetSummary({
           </div>
         ))}
       </div>
+      <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+        {CODING_VIRTUAL_MODELS.map((alias) => (
+          <Badge key={alias} variant="purple">{alias}</Badge>
+        ))}
+      </div>
     </div>
   )
 }
@@ -347,7 +395,7 @@ function AgentWarning({
 function renderedModel(profile: AgentProfile | null, rendered: AgentProfileRenderedConfig) {
   return profile && routingModeFromProfile(profile) === 'direct'
     ? rendered.default_model
-    : rendered.smart_model_id
+    : rendered.virtual_model_aliases[0] || rendered.smart_model_id
 }
 
 function displaySnippet(card: AgentProfileRenderedCard, model: string, rendered: AgentProfileRenderedConfig) {
@@ -359,7 +407,11 @@ function displaySnippet(card: AgentProfileRenderedCard, model: string, rendered:
 
 function formatFieldValue(value: unknown) {
   if (value === null || value === undefined) return '-'
-  if (Array.isArray(value)) return value.join(', ')
+  if (Array.isArray(value)) {
+    return value.every((item) => typeof item === 'string')
+      ? value.join(', ')
+      : JSON.stringify(value)
+  }
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
@@ -414,6 +466,7 @@ function PrivacyCopy() {
     t('agents.privacy.gatewayKey'),
     t('agents.privacy.providerKeys'),
     t('agents.privacy.noStoredSecrets'),
+    t('agents.privacy.noSourceCode'),
     t('agents.privacy.routingHints'),
     t('agents.privacy.smartRouter'),
   ]
@@ -427,7 +480,7 @@ function PrivacyCopy() {
           </div>
           <div className="min-w-0">
             <CardTitle>{t('agents.privacy.title')}</CardTitle>
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {items.map((item) => (
                 <div
                   key={item}
@@ -1051,6 +1104,14 @@ function ProfileList({
               </div>
             </div>
 
+            {profile.virtual_model_aliases.length > 0 && (
+              <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+                {profile.virtual_model_aliases.map((alias) => (
+                  <Badge key={alias} variant="purple">{alias}</Badge>
+                ))}
+              </div>
+            )}
+
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <ProfileMeta icon={KeyRound} label={t('agents.fields.apiKey')} value={profile.api_key?.name || t('agents.values.noApiKey')} detail={profile.api_key?.key_prefix || null} />
               <ProfileMeta icon={Layers3} label={t('agents.fields.namespace')} value={profile.namespace_name || profile.namespace_id || t('agents.values.noNamespace')} />
@@ -1058,7 +1119,7 @@ function ProfileList({
                 icon={Route}
                 label={t('agents.fields.routingMode')}
                 value={routingMode === 'smart' ? t('agents.routing.smart') : t('agents.routing.direct')}
-                detail={routingMode === 'smart' ? profile.smart_model_id : profile.default_model}
+                detail={routingMode === 'smart' ? defaultCodingModel(profile) : profile.default_model}
               />
               <ProfileMeta
                 icon={Server}
@@ -1192,6 +1253,12 @@ function RenderPanel({
                 <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] p-3">
                   <RenderFact label={t('agents.render.baseUrl')} value={rendered.base_url} />
                   <RenderFact label={t('agents.render.model')} value={activeModel} />
+                  {rendered.virtual_model_aliases.length > 0 && (
+                    <RenderFact
+                      label={t('agents.fields.virtualModels')}
+                      value={rendered.virtual_model_aliases.join(', ')}
+                    />
+                  )}
                   <RenderFact
                     label={t('agents.render.gatewayKey')}
                     value={rendered.gateway_api_key.key_prefix || rendered.gateway_api_key.placeholder}
@@ -1266,6 +1333,184 @@ function RenderFact({ label, value, detail }: { label: string; value: string; de
   )
 }
 
+function CodingAgentSessionsPanel({
+  sessions,
+  loading,
+  error,
+  onRetry,
+}: {
+  sessions: SessionsResponse | undefined
+  loading: boolean
+  error: Error | null
+  onRetry: () => void
+}) {
+  const { t } = useTranslation('agents')
+  const rows = sessions?.data || []
+  const agentRows = rows.filter((session) => session.agent?.connector)
+  const totals = agentRows.reduce(
+    (acc, session) => ({
+      requests: acc.requests + session.request_count,
+      cost: acc.cost + session.total_cost_usd,
+      latency: acc.latency + session.avg_latency_ms,
+    }),
+    { requests: 0, cost: 0, latency: 0 },
+  )
+  const avgLatency = agentRows.length > 0 ? totals.latency / agentRows.length : 0
+  const breakdowns = buildAgentBreakdowns(agentRows)
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle>{t('agents.sessions.title')}</CardTitle>
+            <p className="mt-1 break-words text-[12px] leading-5 text-[var(--foreground-dim)]">
+              {t('agents.sessions.description')}
+            </p>
+          </div>
+          <Badge variant="zinc">{t('agents.sessions.metadataOnly')}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <SkeletonTable rows={4} cols={4} />
+        ) : error ? (
+          <ErrorState error={error} onRetry={onRetry} />
+        ) : agentRows.length === 0 ? (
+          <EmptyState
+            icon={Timer}
+            title={t('agents.sessions.emptyTitle')}
+            description={t('agents.sessions.emptyDescription')}
+          />
+        ) : (
+          <div className="grid gap-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <AgentMetric icon={TerminalSquare} label={t('agents.sessions.requests')} value={formatNumber(totals.requests)} />
+              <AgentMetric icon={Wallet} label={t('agents.sessions.cost')} value={formatCost(totals.cost)} />
+              <AgentMetric icon={Timer} label={t('agents.sessions.latency')} value={formatLatency(avgLatency)} />
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-3">
+              <BreakdownColumn title={t('agents.sessions.byAgent')} rows={breakdowns.connectors} />
+              <BreakdownColumn title={t('agents.sessions.byRepo')} rows={breakdowns.repos} />
+              <BreakdownColumn title={t('agents.sessions.byProject')} rows={breakdowns.projects} />
+            </div>
+
+            <div className="grid gap-2">
+              {agentRows.slice(0, 5).map((session) => (
+                <Link
+                  key={session.session_id}
+                  to={`/sessions/${encodeURIComponent(session.session_id)}`}
+                  className="grid min-w-0 gap-3 rounded-lg border border-[var(--border)] bg-[var(--inset-bg)] p-3 transition-colors hover:bg-[var(--background-secondary)] md:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <Badge variant="blue">{connectorDisplay(session.agent.connector || '-', t)}</Badge>
+                      {session.agent.repo && <Badge variant="zinc">{session.agent.repo}</Badge>}
+                      {session.agent.project && <Badge variant="zinc">{session.agent.project}</Badge>}
+                    </div>
+                    <div className="mt-2 break-all font-mono text-[12px] text-[var(--foreground)]">
+                      {session.session_id}
+                    </div>
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-3 text-[12px] text-[var(--foreground-dim)]">
+                    <span>{formatNumber(session.request_count)}</span>
+                    <span>{formatCost(session.total_cost_usd)}</span>
+                    <span>{formatLatency(session.avg_latency_ms)}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </CardStatic>
+  )
+}
+
+function AgentMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof TerminalSquare
+  label: string
+  value: string
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--inset-bg)] p-3">
+      <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold text-[var(--foreground-dim)]">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 break-words">{label}</span>
+      </div>
+      <div className="mt-1 font-mono text-[15px] font-bold text-[var(--foreground)]">{value}</div>
+    </div>
+  )
+}
+
+function BreakdownColumn({
+  title,
+  rows,
+}: {
+  title: string
+  rows: Array<{ key: string; count: number; cost: number }>
+}) {
+  const { t } = useTranslation('agents')
+  return (
+    <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--inset-bg)] p-3">
+      <div className="text-[12px] font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-3 grid gap-2">
+        {rows.length === 0 ? (
+          <div className="text-[12px] text-[var(--foreground-dim)]">{t('agents.values.none')}</div>
+        ) : rows.slice(0, 4).map((row) => (
+          <div key={row.key} className="flex min-w-0 items-center justify-between gap-3 text-[12px]">
+            <span className="min-w-0 truncate text-[var(--foreground)]">{row.key}</span>
+            <span className="shrink-0 font-mono text-[var(--foreground-dim)]">
+              {formatNumber(row.count)} / {formatCost(row.cost)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function buildAgentBreakdowns(rows: AgentProfileSessionRow[]) {
+  return {
+    connectors: collectBreakdown(rows, (row) => row.agent.connector),
+    repos: collectBreakdown(rows, (row) => row.agent.repo),
+    projects: collectBreakdown(rows, (row) => row.agent.project),
+  }
+}
+
+type AgentProfileSessionRow = SessionSummary
+
+function collectBreakdown(
+  rows: AgentProfileSessionRow[],
+  pick: (row: AgentProfileSessionRow) => string | null | undefined,
+) {
+  const buckets = new Map<string, { key: string; count: number; cost: number }>()
+  for (const row of rows) {
+    const key = pick(row)
+    if (!key) continue
+    const current = buckets.get(key) || { key, count: 0, cost: 0 }
+    current.count += row.request_count
+    current.cost += row.total_cost_usd
+    buckets.set(key, current)
+  }
+  return [...buckets.values()].sort((a, b) => b.cost - a.cost || b.count - a.count)
+}
+
+function connectorDisplay(connector: string, t: TFunction) {
+  if (
+    connector &&
+    Object.prototype.hasOwnProperty.call(connectorLabelKeys, connector)
+  ) {
+    return t(connectorLabelKeys[connector as AgentProfileConnector])
+  }
+  return connector
+}
+
 export function AgentProfilesPage() {
   const { t } = useTranslation('agents')
   const { t: tCommon } = useTranslation('common')
@@ -1274,6 +1519,7 @@ export function AgentProfilesPage() {
   const namespaces = useNamespaces()
   const mcpGateway = useMcpGateway()
   const nodes = useNodes()
+  const codingSessions = useSessions(1, 25, { period: '24h' })
   const createProfile = useCreateAgentProfile()
   const updateProfile = useUpdateAgentProfile()
   const deleteProfile = useDeleteAgentProfile()
@@ -1323,6 +1569,7 @@ export function AgentProfilesPage() {
 
   const refresh = () => {
     void agentProfiles.refetch()
+    void codingSessions.refetch()
     void apiKeys.refetch()
     void namespaces.refetch()
     void mcpGateway.refetch()
@@ -1347,6 +1594,15 @@ export function AgentProfilesPage() {
       </PageHeader>
 
       <PrivacyCopy />
+
+      <CodingAgentSessionsPanel
+        sessions={codingSessions.data}
+        loading={codingSessions.isLoading}
+        error={codingSessions.error || null}
+        onRetry={() => {
+          void codingSessions.refetch()
+        }}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,430px)]">
         <CardStatic>

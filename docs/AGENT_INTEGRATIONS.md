@@ -4,26 +4,34 @@ SiftGate can sit between agent frameworks and upstream model providers as an Ope
 
 The runnable examples live in [examples/agents](../examples/agents).
 
-For v1.9 Dashboard-managed connector profiles, see [Agent Gateway Profiles](AGENT_GATEWAY.md).
+For v2.1 Dashboard-managed coding-agent profiles, see
+[Coding Agent Gateway](CODING_AGENT_GATEWAY.md) and
+[Agent Gateway Profiles](AGENT_GATEWAY.md).
 
 ## Agent Gateway Profiles
 
-Agent Gateway Profiles are the first-class Dashboard entry for agents and chatbot clients. The **Agents** page can render redacted setup cards for:
+Agent Gateway Profiles are the first-class Dashboard entry for coding agents
+and chatbot clients. The **Agents** page can render redacted setup cards for:
 
+- Cursor
+- Cline
+- Roo Code
+- Continue
 - Codex
 - Claude Code
+- OpenCode
+- Generic OpenAI-compatible coding agents
+- Generic Anthropic-compatible coding agents
 - Cherry Studio
 - Hermes
 - OpenClaw
-- Generic OpenAI
-- Generic Anthropic
 
 OpenAI-compatible clients should use:
 
 ```env
 OPENAI_BASE_URL=http://localhost:2099/v1
 OPENAI_API_KEY=<SIFTGATE_GATEWAY_API_KEY>
-model=auto
+model=coding-auto
 ```
 
 Anthropic/Claude-style clients should use:
@@ -31,10 +39,14 @@ Anthropic/Claude-style clients should use:
 ```env
 ANTHROPIC_BASE_URL=http://localhost:2099
 ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>
-model=claude-siftgate-auto
+model=coding-auto
 ```
 
-`claude-siftgate-auto` is profile-scoped. It is exposed only for the matching active Agent Profile and Gateway API key, and it maps to internal smart routing as `auto` rather than direct Claude model routing. Smart routing requires `allow_auto`; direct model routing requires `allow_direct`.
+`coding-auto`, `coding-fast`, `coding-deep`, and `coding-security` are
+profile-scoped. They are exposed only for the matching active Agent Profile and
+Gateway API key, and they map to internal smart routing as `auto` rather than
+direct provider model routing. Smart routing requires `allow_auto`; direct
+model routing requires `allow_direct`.
 
 Agent and chatbot configs should use Gateway API keys only. Provider API keys stay in Nodes, env vars, or secret references. Rendered configs use placeholders or masked metadata and never expose stored secrets.
 
@@ -71,6 +83,8 @@ All examples send:
 - `Authorization: Bearer <SIFTGATE_API_KEY>` through the framework's OpenAI-compatible client.
 - `x-siftgate-routing-hint` with advisory routing preferences.
 - `x-session-id` for SiftGate session momentum and log correlation.
+- optional coding-agent labels such as `x-siftgate-agent-session-id`,
+  `x-siftgate-agent-turn-id`, `x-siftgate-repo`, and `x-siftgate-project`.
 - `x-trace-id` plus `traceparent` for application-side trace labels.
 - `x-siftgate-namespace` as an operator label.
 
@@ -98,10 +112,16 @@ After running an agent example, use the Dashboard to answer production questions
 - **What did it cost?** Open Logs, API Keys, Analytics, or Benchmark reports. SiftGate attributes usage to the Gateway API key and namespace when available.
 - **Why this model?** Open the log detail and follow the Route Explanation link for candidate targets, filtering reasons, capability evidence, cost/latency/context tradeoffs, and fallback chain.
 - **Did fallback happen?** Logs and Route Explanation show fallback reason and final selected node/model.
-- **Which agent run was this?** Filter or inspect `session_key` in logs. Use the same `SIFTGATE_SESSION_ID` across an agent workflow to correlate multiple model calls.
+- **Which agent run was this?** Filter or inspect `agent_session_id` or
+  `session_key` in logs. Use the same `SIFTGATE_SESSION_ID` or
+  `x-siftgate-agent-session-id` across an agent workflow to correlate multiple
+  model calls.
 - **Which namespace was charged?** Bind the Gateway API key to a SiftGate namespace. The namespace header in these examples is just a readable label unless your local deployment explicitly consumes it.
 
-By default, SiftGate records metadata, not prompt text, response text, raw auth headers, provider keys, media bytes, or video bytes. Keep that default unless you have a deliberate local retention policy.
+By default, SiftGate records metadata, not prompt text, response text, source
+code, diffs, tool payloads, raw auth headers, provider keys, media bytes, or
+video bytes. Keep that default unless you have a deliberate local retention
+policy.
 
 ## Framework Notes
 

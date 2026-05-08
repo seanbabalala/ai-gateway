@@ -379,14 +379,19 @@ describe('PipelineService — direct routing', () => {
             name: 'Claude Code',
             connector: 'claude_code',
           },
-          virtual_model: 'claude-siftgate-auto',
-          requested_model: 'claude-siftgate-auto',
+          virtual_model: 'coding-deep',
+          requested_model: 'coding-deep',
           internal_model: 'auto',
+          routing_hint: { mode: 'coding', depth: 'deep' },
         }),
       },
     });
-    const request = makeRequest('Hello', { originalModel: 'claude-siftgate-auto' });
+    const request = makeRequest('Hello', { originalModel: 'coding-deep' });
     request.metadata.api_key_id = 'key-1';
+    request.metadata.agent_session_id = 'agent-sess-1';
+    request.metadata.agent_turn_id = 'turn-1';
+    request.metadata.agent_repo = 'siftgate';
+    request.metadata.agent_project = 'platform';
     request.metadata.api_key_permissions = {
       allow_auto: true,
       allow_direct: false,
@@ -401,15 +406,16 @@ describe('PipelineService — direct routing', () => {
     expect(result.statusCode).toBe(200);
     expect(mocks.agentProfiles.matchVirtualModel).toHaveBeenCalledWith(
       'key-1',
-      'claude-siftgate-auto',
+      'coding-deep',
     );
     expect(request.metadata.original_model).toBe('auto');
     expect(request.metadata).toMatchObject({
       agent_profile_id: 'profile-1',
       agent_profile_name: 'Claude Code',
       agent_connector: 'claude_code',
-      agent_virtual_model: 'claude-siftgate-auto',
-      agent_requested_model: 'claude-siftgate-auto',
+      agent_virtual_model: 'coding-deep',
+      agent_requested_model: 'coding-deep',
+      agent_routing_hint: { mode: 'coding', depth: 'deep' },
     });
     expect(mocks.scoringService.score).toHaveBeenCalled();
     expect(mocks.routingService.resolve).toHaveBeenCalled();
@@ -419,6 +425,33 @@ describe('PipelineService — direct routing', () => {
       'gpt-4o',
       expect.objectContaining({ tier: 'standard', is_fallback: false }),
     );
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog).toMatchObject({
+      agent_connector: 'claude_code',
+      agent_profile_id: 'profile-1',
+      agent_virtual_model: 'coding-deep',
+      agent_requested_model: 'coding-deep',
+      agent_session_id: 'agent-sess-1',
+      agent_turn_id: 'turn-1',
+      agent_repo: 'siftgate',
+      agent_project: 'platform',
+    });
+    const routeDecision = mocks.routeDecisionRepo.create.mock.calls[0][0];
+    expect(routeDecision).toMatchObject({
+      agent_connector: 'claude_code',
+      agent_session_id: 'agent-sess-1',
+    });
+    const trace = JSON.parse(routeDecision.trace_json);
+    expect(trace.agent).toMatchObject({
+      connector: 'claude_code',
+      profile_id: 'profile-1',
+      virtual_model: 'coding-deep',
+      session_id: 'agent-sess-1',
+      repo: 'siftgate',
+      project: 'platform',
+      routing_hint: { mode: 'coding', depth: 'deep' },
+    });
+    expect(JSON.stringify(trace)).not.toContain('Bearer ');
   });
 
   it('rejects profile virtual smart routing when allow_auto is disabled', async () => {

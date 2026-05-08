@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-05-09
+
+### Added
+
+- Added the v2.1 Coding Agent Gateway release for the OSS data plane: workspace-scoped Agent Profiles now render governed setup snippets for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI-compatible coding agents, and Generic Anthropic-compatible coding agents.
+- Added coding-agent virtual model aliases `coding-auto`, `coding-fast`, `coding-deep`, and `coding-security`, mapped to internal smart-routing hints without forcing one upstream provider.
+- Added metadata-only coding-agent observability across canonical request metadata, call logs, route-decision traces, Dashboard session summaries, and Route Explanation serialization.
+- Added allowlisted safe coding-agent headers for session id, turn id, connector, repo label, and project label, with normalization/truncation instead of raw-header storage.
+- Added Dashboard **Agents** recent-session summaries with request count, cost, latency, connector/repo/project breakdowns, and links to session traces.
+- Added connector logo assets and seven-locale Dashboard copy for the new Coding Agent Gateway connectors, virtual model labels, setup snippets, privacy copy, empty states, and errors.
+- Added `docs/CODING_AGENT_GATEWAY.md` with connector setup, safe headers, virtual aliases, and the Engineering PR Review Workspace North Star demo.
+
+### Changed
+
+- Updated `/v1/models` agent-profile virtual model exposure so Gateway API keys can see profile `smart_model_id` values plus the coding aliases when `allow_auto` permits smart routing.
+- Updated Agent Profile rendering to prefer coding aliases for coding-agent connectors while preserving existing Cherry Studio, Hermes, OpenClaw, Claude-style, and generic connector compatibility.
+- Updated Dashboard sessions APIs to group by `agent_session_id` when present and to filter by `agent_connector`, `agent_repo`, and `agent_project`.
+- Updated docs, README positioning, API reference, Dashboard docs, and release metadata to v2.1.0.
+
+### Boundaries
+
+- Coding Agent Gateway does not store source code, prompts, responses, diffs, tool payloads, raw repository content, raw provider headers, provider keys, Gateway API key plaintext, hidden reasoning text, media bytes, or resolved secrets by default.
+- Coding aliases are advisory and profile-scoped. They do not bypass workspace isolation, RBAC, Gateway API key permissions, budgets, allowed models/nodes/modalities, circuit breakers, fallback policy, or audit boundaries.
+- v2.1.0 does not add a workflow engine, hosted cloud dependency, provider-key exposure in agent configs, or coding-agent vendor lock-in.
+
 ## 2.0.0 - 2026-05-09
 
 ### Added

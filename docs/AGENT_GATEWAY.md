@@ -1,8 +1,18 @@
 # Agent Gateway Profiles
 
-SiftGate v1.9.0 adds Agent Gateway Profiles: local, Dashboard-managed connection profiles for agents and chatbot clients. They give tools such as Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI-compatible clients, and Generic Anthropic-compatible clients a clear entry point without putting provider keys in the agent runtime.
+SiftGate v2.1.0 upgrades Agent Gateway Profiles into workspace-scoped Coding
+Agent Gateway profiles. The Dashboard can now render governed setup snippets
+for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic
+OpenAI-compatible coding agents, and Generic Anthropic-compatible coding agents.
+Cherry Studio, Hermes, and OpenClaw remain supported as local agent/chatbot
+connectors for compatibility.
 
-Profiles are part of the MIT open-source Data Plane. They do not require SiftGate Cloud, enterprise workspace/RBAC, SSO, SCIM, or organization billing.
+For the v2.1 coding-agent walkthrough, safe headers, and North Star demo, see
+[Coding Agent Gateway](CODING_AGENT_GATEWAY.md).
+
+Profiles are part of the MIT open-source Data Plane. They use the OSS
+workspace/RBAC boundary when enabled and do not require SiftGate Cloud, the
+enterprise app, SSO, SCIM, or organization billing.
 
 ## What A Profile Does
 
@@ -16,6 +26,7 @@ An Agent Profile stores local metadata for one client connector:
 - smart model id
 - base URL mode
 - advisory routing hint JSON
+- coding virtual model aliases
 - optional MCP server ids
 
 The profile can render connector-specific setup cards in the Dashboard. Rendered snippets use placeholders and masked key metadata. They never expose stored Gateway API key plaintext, provider API keys, raw auth headers, prompts, responses, MCP tool payloads, media bytes, or video bytes.
@@ -25,7 +36,9 @@ The profile can render connector-specific setup cards in the Dashboard. Rendered
 Open the Dashboard and go to **Agents**.
 
 1. Create a profile.
-2. Choose a connector: Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, or Generic Anthropic.
+2. Choose a connector: Cursor, Cline, Roo Code, Continue, Codex, Claude Code,
+   OpenCode, Generic OpenAI, Generic Anthropic, Cherry Studio, Hermes, or
+   OpenClaw.
 3. Select a Dashboard-generated Gateway API key.
 4. Optionally select a namespace and MCP servers.
 5. Choose Smart router or Direct model.
@@ -37,7 +50,8 @@ The Dashboard copy intentionally mirrors the product UI:
 - Provider API keys stay in Nodes, env vars, or secret references.
 - Rendered configs do not expose stored secrets.
 - Routing hints are advisory.
-- Smart router uses `auto` or a connector-safe virtual model.
+- Smart router uses `auto`, `claude-siftgate-auto`, or a coding-agent alias
+  such as `coding-auto`.
 
 ## Required Gateway API Key
 
@@ -79,14 +93,24 @@ For Anthropic/Claude-style clients:
 ```env
 ANTHROPIC_BASE_URL=http://localhost:2099
 ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>
-model=claude-siftgate-auto
+model=coding-auto
 ```
 
-`claude-siftgate-auto` is not a global model. It is a profile-scoped virtual model. When an active profile is bound to the matching Gateway API key, and that profile exposes `claude-siftgate-auto`, SiftGate maps the request to internal smart routing as `auto`.
+`claude-siftgate-auto` and the v2.1 coding aliases are not global provider
+models. They are profile-scoped virtual models. When an active profile is bound
+to the matching Gateway API key, SiftGate maps the request to internal smart
+routing as `auto`.
 
-The virtual model keeps agent-facing compatibility for Claude-style clients without forcing traffic into a direct Claude model route. SiftGate still applies normal `auto` routing policy and stores metadata such as profile id, connector, virtual model, and requested model in route/call metadata.
+The virtual model keeps agent-facing compatibility without forcing traffic into
+a direct provider model route. SiftGate still applies normal `auto` routing
+policy and stores metadata such as profile id, connector, virtual model,
+requested model, optional coding-agent session id, optional turn id, optional
+repo/project tags, cost, latency, and fallback state in route/call metadata.
 
-Smart routing requires `allow_auto: true` on the Gateway API key. If `allow_auto` is false, requests for `auto` or a profile smart model such as `claude-siftgate-auto` are rejected.
+Smart routing requires `allow_auto: true` on the Gateway API key. If
+`allow_auto` is false, requests for `auto`, `coding-auto`,
+`coding-fast`, `coding-deep`, `coding-security`, or a legacy profile smart
+model such as `claude-siftgate-auto` are rejected.
 
 Direct model routing sends an explicit model id:
 
@@ -102,13 +126,18 @@ Direct routing requires `allow_direct: true` on the Gateway API key, and the req
 
 | Connector | Protocol style | Recommended smart model | Base URL |
 | --- | --- | --- | --- |
-| Codex | OpenAI-compatible | `auto` | `http://localhost:2099/v1` |
+| Cursor | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Cline | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Roo Code | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Continue | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Codex | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Claude Code | Anthropic/Claude-style | `coding-auto` | `http://localhost:2099` |
+| OpenCode | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Generic OpenAI | OpenAI-compatible | `coding-auto` | `http://localhost:2099/v1` |
+| Generic Anthropic | Anthropic/Claude-style | `coding-auto` | `http://localhost:2099` |
 | Cherry Studio | OpenAI-compatible or Anthropic-compatible | `auto` or `claude-siftgate-auto` | `http://localhost:2099/v1` or `http://localhost:2099` |
 | Hermes | OpenAI-compatible | `auto` | `http://localhost:2099/v1` |
 | OpenClaw | OpenAI-compatible | `auto` | `http://localhost:2099/v1` |
-| Generic OpenAI | OpenAI-compatible | `auto` | `http://localhost:2099/v1` |
-| Claude Code | Anthropic/Claude-style | `claude-siftgate-auto` | `http://localhost:2099` |
-| Generic Anthropic | Anthropic/Claude-style | `claude-siftgate-auto` | `http://localhost:2099` |
 
 If a connector requires a `/v1` Anthropic base URL in your local version, use the rendered Dashboard card. The profile stores `base_url_mode` so the Dashboard can render the connector-safe form.
 
@@ -119,10 +148,98 @@ Use an OpenAI-compatible config:
 ```env
 OPENAI_BASE_URL=http://localhost:2099/v1
 OPENAI_API_KEY=<SIFTGATE_GATEWAY_API_KEY>
-OPENAI_MODEL=auto
+OPENAI_MODEL=coding-auto
 ```
 
 Codex traffic can use Smart router with `auto` when the Gateway API key allows `allow_auto`.
+
+## Cursor
+
+Use the Dashboard-rendered Cursor card or an OpenAI-compatible config:
+
+```json
+{
+  "openAIBaseUrl": "http://localhost:2099/v1",
+  "openAIKey": "<SIFTGATE_GATEWAY_API_KEY>",
+  "model": "coding-auto"
+}
+```
+
+Use `coding-fast`, `coding-deep`, or `coding-security` when the workflow wants
+a stronger latency, depth, or security-audit hint.
+
+## Cline
+
+Select OpenAI Compatible in Cline and point it at SiftGate:
+
+```json
+{
+  "apiProvider": "openai-compatible",
+  "baseUrl": "http://localhost:2099/v1",
+  "apiKey": "<SIFTGATE_GATEWAY_API_KEY>",
+  "modelId": "coding-auto"
+}
+```
+
+Compatible clients may add SiftGate agent headers for session, turn, repo, and
+project labels. SiftGate stores those labels as metadata only.
+
+## Roo Code
+
+Select OpenAI Compatible in Roo Code:
+
+```json
+{
+  "provider": "openai-compatible",
+  "baseUrl": "http://localhost:2099/v1",
+  "apiKey": "<SIFTGATE_GATEWAY_API_KEY>",
+  "model": "coding-auto"
+}
+```
+
+Provider keys stay server-side in SiftGate nodes or secret references.
+
+## Continue
+
+Use the rendered Continue model config:
+
+```json
+{
+  "models": [
+    {
+      "provider": "openai",
+      "model": "coding-auto",
+      "title": "SiftGate Coding Agent",
+      "apiBase": "http://localhost:2099/v1",
+      "apiKey": "<SIFTGATE_GATEWAY_API_KEY>"
+    }
+  ]
+}
+```
+
+## OpenCode
+
+Use an OpenAI-compatible OpenCode provider pointed at SiftGate:
+
+```json
+{
+  "provider": {
+    "siftgate": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "SiftGate",
+      "options": {
+        "baseURL": "http://localhost:2099/v1",
+        "apiKey": "<SIFTGATE_GATEWAY_API_KEY>"
+      },
+      "models": {
+        "coding-auto": {
+          "name": "coding-auto"
+        }
+      }
+    }
+  }
+}
+```
 
 ## Claude Code
 
@@ -131,10 +248,11 @@ Use the Claude-style rendered profile:
 ```env
 ANTHROPIC_BASE_URL=http://localhost:2099
 ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>
-ANTHROPIC_MODEL=claude-siftgate-auto
+ANTHROPIC_MODEL=coding-auto
 ```
 
-`claude-siftgate-auto` is profile-scoped. It maps to internal `auto` routing only for the matching active Agent Profile and Gateway API key.
+`coding-auto` is profile-scoped. It maps to internal `auto` routing only for
+the matching active Agent Profile and Gateway API key.
 
 Do not configure Claude Code with a provider Anthropic API key when using SiftGate. Use a SiftGate Gateway API key. The upstream Anthropic key, if any, belongs in the SiftGate node config or secret reference.
 
@@ -189,7 +307,7 @@ Any OpenAI-compatible client can use:
 ```env
 OPENAI_BASE_URL=http://localhost:2099/v1
 OPENAI_API_KEY=<SIFTGATE_GATEWAY_API_KEY>
-OPENAI_MODEL=auto
+OPENAI_MODEL=coding-auto
 ```
 
 For code:
@@ -203,7 +321,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "auto",
+  model: "coding-auto",
   messages: [{ role: "user", content: "Hello from SiftGate." }],
 });
 ```
@@ -215,7 +333,7 @@ Anthropic/Claude-style clients should use a profile-scoped smart model:
 ```env
 ANTHROPIC_BASE_URL=http://localhost:2099
 ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>
-ANTHROPIC_MODEL=claude-siftgate-auto
+ANTHROPIC_MODEL=coding-auto
 ```
 
 SiftGate maps the profile virtual model to internal `auto` routing. This is different from direct routing to a Claude model id.
@@ -248,10 +366,15 @@ The local Dashboard API exposes Agent Profiles:
 
 Create/update fields include `name`, `description`, `connector`, `status`, `api_key_id`, `namespace_id`, `default_model`, `smart_model_id`, `base_url_mode`, `routing_hint`, `mcp_server_ids`, and `metadata`.
 
-Render responses include connector label, base URL, default/smart model ids, masked Gateway API key metadata, redaction status, routing hint metadata, MCP server ids, and one or more setup cards. They do not include stored secret plaintext.
+Render responses include connector label, base URL, default/smart model ids,
+coding virtual model aliases, masked Gateway API key metadata, redaction status,
+routing hint metadata, MCP server ids, and one or more setup cards. They do not
+include stored secret plaintext.
 
 ## Privacy Boundary
 
-By default, Agent Gateway Profiles do not store prompts, responses, raw auth headers, provider keys, Gateway API key plaintext, MCP tool payloads, media bytes, or video bytes.
+By default, Agent Gateway Profiles do not store prompts, responses, source
+code, diffs, raw auth headers, raw repository content, provider keys, Gateway
+API key plaintext, MCP tool payloads, media bytes, or video bytes.
 
 They store local operational metadata needed to make agent setup repeatable and policy-safe. The data plane remains local-first in SQLite by default, with PostgreSQL optional.

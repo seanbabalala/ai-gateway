@@ -740,6 +740,16 @@ export class ModelItemDto {
 
   @ApiPropertyOptional({ example: 'claude-siftgate-auto' })
   agent_virtual_model?: string;
+
+  @ApiPropertyOptional({ example: 'coding-auto' })
+  agent_virtual_alias?: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+  })
+  routing_hint?: Record<string, unknown> | null;
 }
 
 export class ModelListResponseDto {
@@ -1144,8 +1154,13 @@ export class AgentProfileSummaryDto {
 
   @ApiProperty({
     enum: [
+      'cursor',
+      'cline',
+      'roo_code',
+      'continue',
       'codex',
       'claude_code',
+      'opencode',
       'cherry_studio',
       'hermes',
       'openclaw',
@@ -1176,6 +1191,12 @@ export class AgentProfileSummaryDto {
 
   @ApiProperty({ example: 'claude-siftgate-auto' })
   smart_model_id!: string;
+
+  @ApiProperty({
+    type: [String],
+    example: ['coding-auto', 'coding-fast', 'coding-deep', 'coding-security'],
+  })
+  virtual_model_aliases!: string[];
 
   @ApiProperty({
     enum: ['openai_v1', 'anthropic_v1', 'root'],
@@ -1214,7 +1235,7 @@ export class AgentProfileListResponseDto {
   @ApiProperty({ type: [AgentProfileSummaryDto] })
   items!: AgentProfileSummaryDto[];
 
-  @ApiProperty({ type: [String], example: ['codex', 'claude_code'] })
+  @ApiProperty({ type: [String], example: ['cursor', 'cline', 'codex', 'claude_code'] })
   connectors!: string[];
 
   @ApiProperty({ example: 'local_only' })
@@ -1293,6 +1314,12 @@ export class AgentProfileRenderedConfigDto {
 
   @ApiProperty({ example: 'auto' })
   default_model!: string;
+
+  @ApiProperty({
+    type: [String],
+    example: ['coding-auto', 'coding-fast', 'coding-deep', 'coding-security'],
+  })
+  virtual_model_aliases!: string[];
 
   @ApiProperty({ type: AgentProfileGatewayApiKeyRenderDto })
   gateway_api_key!: AgentProfileGatewayApiKeyRenderDto;

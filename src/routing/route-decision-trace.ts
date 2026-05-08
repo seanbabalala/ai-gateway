@@ -149,6 +149,18 @@ export interface RouteDecisionTrace {
   trace_id?: string | null;
   source_format?: string;
   requested_model?: string | null;
+  agent?: {
+    connector: string | null;
+    profile_id: string | null;
+    profile_name: string | null;
+    virtual_model: string | null;
+    requested_model: string | null;
+    session_id: string | null;
+    turn_id: string | null;
+    repo: string | null;
+    project: string | null;
+    routing_hint: Record<string, unknown> | null;
+  };
   mode: RouteDecisionTraceMode;
   tier: Tier;
   score: number;

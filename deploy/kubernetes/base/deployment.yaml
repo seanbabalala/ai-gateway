@@ -21,7 +21,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: siftgate
-          image: ghcr.io/seanbabalala/ai-gateway:2.0.0
+          image: ghcr.io/seanbabalala/ai-gateway:2.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -9,6 +9,9 @@ export interface SessionFilters {
   api_key_id?: string
   model?: string
   source_format?: string
+  agent_connector?: string
+  agent_repo?: string
+  agent_project?: string
 }
 
 export function useSessions(
@@ -28,6 +31,9 @@ export function useSessions(
         api_key_id: filters.api_key_id,
         model: filters.model,
         source_format: filters.source_format,
+        agent_connector: filters.agent_connector,
+        agent_repo: filters.agent_repo,
+        agent_project: filters.agent_project,
       }),
   })
 }
@@ -48,6 +54,9 @@ export function useSessionDetail(
           api_key_id: filters.api_key_id,
           model: filters.model,
           source_format: filters.source_format,
+          agent_connector: filters.agent_connector,
+          agent_repo: filters.agent_repo,
+          agent_project: filters.agent_project,
         },
       ),
     enabled: Boolean(sessionId),

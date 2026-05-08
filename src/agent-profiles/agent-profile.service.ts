@@ -31,11 +31,52 @@ import {
 } from './dto/agent-profile.dto';
 
 export const CLAUDE_AGENT_SMART_MODEL_ID = 'claude-siftgate-auto';
+export const CODING_AGENT_VIRTUAL_MODELS = [
+  'coding-auto',
+  'coding-fast',
+  'coding-deep',
+  'coding-security',
+] as const;
+
+type CodingAgentVirtualModel = (typeof CODING_AGENT_VIRTUAL_MODELS)[number];
 
 const ANTHROPIC_SMART_CONNECTORS = new Set<AgentProfileConnector>([
   'claude_code',
   'generic_anthropic',
 ]);
+
+const ANTHROPIC_CARD_CONNECTORS = new Set<AgentProfileConnector>([
+  'claude_code',
+  'cherry_studio',
+  'generic_anthropic',
+]);
+
+const CODING_AGENT_CONNECTORS = new Set<AgentProfileConnector>([
+  'cursor',
+  'cline',
+  'roo_code',
+  'continue',
+  'codex',
+  'claude_code',
+  'opencode',
+  'generic_openai',
+  'generic_anthropic',
+]);
+
+const LEGACY_CHATBOT_CONNECTORS = new Set<AgentProfileConnector>([
+  'hermes',
+  'openclaw',
+]);
+
+const CODING_AGENT_ALIAS_HINTS: Record<
+  CodingAgentVirtualModel,
+  Record<string, unknown>
+> = {
+  'coding-auto': { mode: 'coding', optimization: 'balanced' },
+  'coding-fast': { mode: 'coding', optimization: 'latency' },
+  'coding-deep': { mode: 'coding', depth: 'deep' },
+  'coding-security': { mode: 'coding', task: 'security_audit' },
+};
 
 export interface AgentProfileSummary {
   id: string;
@@ -50,6 +91,7 @@ export interface AgentProfileSummary {
   namespace_name: string | null;
   default_model: string;
   smart_model_id: string;
+  virtual_model_aliases: string[];
   base_url_mode: AgentProfileBaseUrlMode;
   routing_hint: Record<string, unknown> | null;
   mcp_server_ids: string[];
@@ -89,6 +131,7 @@ export interface AgentProfileRenderedConfig {
   };
   secrets_redacted: true;
   routing_hint: Record<string, unknown> | null;
+  virtual_model_aliases: string[];
   mcp_server_ids: string[];
   cards: AgentProfileRenderedCard[];
 }
@@ -97,7 +140,14 @@ export interface AgentProfileRenderedCard {
   id: string;
   title: string;
   protocol: 'openai' | 'anthropic' | 'root';
-  fields: Record<string, string | string[] | Record<string, unknown> | null>;
+  fields: Record<
+    string,
+    | string
+    | string[]
+    | Record<string, unknown>
+    | Array<Record<string, unknown>>
+    | null
+  >;
   env: Record<string, string>;
   snippet: string;
   notes: string[];
@@ -113,6 +163,8 @@ export interface AgentVirtualModel {
   agent_profile_name: string;
   agent_connector: AgentProfileConnector;
   agent_virtual_model: string;
+  agent_virtual_alias: string;
+  routing_hint: Record<string, unknown> | null;
   is_agent_profile_model: true;
 }
 
@@ -121,6 +173,7 @@ export interface AgentVirtualModelMatch {
   virtual_model: string;
   requested_model: string;
   internal_model: 'auto';
+  routing_hint: Record<string, unknown> | null;
 }
 
 @Injectable()
@@ -191,34 +244,41 @@ export class AgentProfileService {
   ): Promise<AgentVirtualModel[]> {
     if (!apiKeyId || permissions?.allow_auto === false) return [];
     const profiles = await this.profileRepo.find({
-      where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(this.workspaceId(), {
-        status: 'active',
-        api_key_id: apiKeyId,
-      }),
-      order: { created_at: 'DESC' },
+      where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(
+        this.workspaceId(),
+        {
+          status: 'active',
+          api_key_id: apiKeyId,
+        },
+      ),
+      order: { updated_at: 'DESC' },
     });
     const models: AgentVirtualModel[] = [];
     const seen = new Set<string>();
     for (const profile of profiles) {
       const summary = await this.toSummary(profile);
-      if (!this.virtualModelAllowed(summary.smart_model_id, permissions)) {
-        continue;
+      for (const modelId of this.virtualModelIdsForProfile(summary)) {
+        if (!this.virtualModelAllowed(modelId, permissions)) {
+          continue;
+        }
+        if (seen.has(modelId)) continue;
+        seen.add(modelId);
+        models.push({
+          id: modelId,
+          object: 'model',
+          created: 0,
+          owned_by: 'siftgate',
+          description:
+            'SiftGate Coding Agent virtual model scoped to this Gateway API key.',
+          agent_profile_id: summary.id,
+          agent_profile_name: summary.name,
+          agent_connector: summary.connector,
+          agent_virtual_model: modelId,
+          agent_virtual_alias: modelId,
+          routing_hint: this.routingHintForVirtualModel(summary, modelId),
+          is_agent_profile_model: true,
+        });
       }
-      if (seen.has(summary.smart_model_id)) continue;
-      seen.add(summary.smart_model_id);
-      models.push({
-        id: summary.smart_model_id,
-        object: 'model',
-        created: 0,
-        owned_by: 'siftgate',
-        description:
-          'SiftGate Agent Profile smart routing model scoped to this Gateway API key.',
-        agent_profile_id: summary.id,
-        agent_profile_name: summary.name,
-        agent_connector: summary.connector,
-        agent_virtual_model: summary.smart_model_id,
-        is_agent_profile_model: true,
-      });
     }
     return models;
   }
@@ -240,7 +300,7 @@ export class AgentProfileService {
   ): Promise<AgentVirtualModelMatch | null> {
     const normalizedModel = (requestedModel || '').trim();
     if (!apiKeyId || !normalizedModel) return null;
-    const profile = await this.profileRepo.findOne({
+    let profile = await this.profileRepo.findOne({
       where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(this.workspaceId(), {
         status: 'active',
         api_key_id: apiKeyId,
@@ -248,13 +308,26 @@ export class AgentProfileService {
       }),
       order: { updated_at: 'DESC' },
     });
+    if (!profile && this.isCodingAgentVirtualModel(normalizedModel)) {
+      profile = await this.profileRepo.findOne({
+        where: workspaceFindWhere<FindOptionsWhere<AgentProfile>>(this.workspaceId(), {
+          status: 'active',
+          api_key_id: apiKeyId,
+        }),
+        order: { updated_at: 'DESC' },
+      });
+    }
     if (!profile) return null;
     const summary = await this.toSummary(profile);
+    if (!this.virtualModelIdsForProfile(summary).includes(normalizedModel)) {
+      return null;
+    }
     return {
       profile: summary,
-      virtual_model: summary.smart_model_id,
+      virtual_model: normalizedModel,
       requested_model: normalizedModel,
       internal_model: 'auto',
+      routing_hint: this.routingHintForVirtualModel(summary, normalizedModel),
     };
   }
 
@@ -359,6 +432,7 @@ export class AgentProfileService {
       default_model: profile.default_model || 'auto',
       smart_model_id:
         profile.smart_model_id || this.defaultSmartModelId(profile.connector),
+      virtual_model_aliases: this.virtualAliasesForConnector(profile.connector),
       base_url_mode:
         profile.base_url_mode || this.defaultBaseUrlMode(profile.connector),
       routing_hint: profile.routing_hint || null,
@@ -397,6 +471,7 @@ export class AgentProfileService {
       gateway_api_key: gatewayKey,
       secrets_redacted: true,
       routing_hint: profile.routing_hint,
+      virtual_model_aliases: profile.virtual_model_aliases,
       mcp_server_ids: profile.mcp_server_ids,
       cards: this.renderCards(profile, baseUrl),
     };
@@ -410,10 +485,82 @@ export class AgentProfileService {
     const env = {
       SIFTGATE_BASE_URL: baseUrl,
       SIFTGATE_API_KEY: '<SIFTGATE_GATEWAY_API_KEY>',
-      SIFTGATE_MODEL: profile.smart_model_id,
+      SIFTGATE_MODEL: this.primaryCodingModel(profile),
     };
 
     switch (profile.connector) {
+      case 'cursor':
+        return [
+          this.openAiCard(profile, baseUrl, label, {
+            id: 'cursor-openai',
+            title: 'Cursor OpenAI-compatible config',
+            snippet: this.jsonSnippet({
+              openAIBaseUrl: baseUrl,
+              openAIKey: '<SIFTGATE_GATEWAY_API_KEY>',
+              model: this.primaryCodingModel(profile),
+            }),
+            notes: [
+              'Use Cursor custom OpenAI-compatible settings with the SiftGate /v1 base URL.',
+              'The rendered config uses a Gateway API key placeholder only.',
+            ],
+          }),
+        ];
+      case 'cline':
+        return [
+          this.openAiCard(profile, baseUrl, label, {
+            id: 'cline-openai-compatible',
+            title: 'Cline OpenAI-compatible config',
+            snippet: this.jsonSnippet({
+              apiProvider: 'openai-compatible',
+              baseUrl,
+              apiKey: '<SIFTGATE_GATEWAY_API_KEY>',
+              modelId: this.primaryCodingModel(profile),
+            }),
+            notes: [
+              'Select OpenAI Compatible in Cline and paste the rendered base URL, key placeholder, and model alias.',
+              'Repo/project tags can be supplied with SiftGate headers by compatible clients.',
+            ],
+          }),
+        ];
+      case 'roo_code':
+        return [
+          this.openAiCard(profile, baseUrl, label, {
+            id: 'roo-code-openai-compatible',
+            title: 'Roo Code OpenAI-compatible config',
+            snippet: this.jsonSnippet({
+              provider: 'openai-compatible',
+              baseUrl,
+              apiKey: '<SIFTGATE_GATEWAY_API_KEY>',
+              model: this.primaryCodingModel(profile),
+            }),
+            notes: [
+              'Select OpenAI Compatible in Roo Code and use the SiftGate /v1 base URL.',
+              'Provider keys stay server-side in SiftGate Nodes or secret references.',
+            ],
+          }),
+        ];
+      case 'continue':
+        return [
+          this.openAiCard(profile, baseUrl, label, {
+            id: 'continue-openai',
+            title: 'Continue OpenAI-compatible config',
+            snippet: this.jsonSnippet({
+              models: [
+                {
+                  provider: 'openai',
+                  model: this.primaryCodingModel(profile),
+                  title: `${profile.name} via SiftGate`,
+                  apiBase: baseUrl,
+                  apiKey: '<SIFTGATE_GATEWAY_API_KEY>',
+                },
+              ],
+            }),
+            notes: [
+              'Use Continue custom model config with apiBase pointing at SiftGate /v1.',
+              'The model alias maps back to SiftGate smart routing for this workspace profile.',
+            ],
+          }),
+        ];
       case 'claude_code':
       case 'generic_anthropic':
         return [
@@ -424,14 +571,15 @@ export class AgentProfileService {
             fields: {
               base_url: baseUrl,
               api_key: '<SIFTGATE_GATEWAY_API_KEY>',
-              model: profile.smart_model_id,
+              model: this.primaryCodingModel(profile),
               default_model: profile.default_model,
+              virtual_model_aliases: profile.virtual_model_aliases,
             },
             env,
             snippet: [
               `export ANTHROPIC_BASE_URL="${baseUrl}"`,
               'export ANTHROPIC_AUTH_TOKEN="<SIFTGATE_GATEWAY_API_KEY>"',
-              `export ANTHROPIC_MODEL="${profile.smart_model_id}"`,
+              `export ANTHROPIC_MODEL="${this.primaryCodingModel(profile)}"`,
             ].join('\n'),
             notes: [
               'Uses a Dashboard-generated Gateway API key placeholder only.',
@@ -458,6 +606,34 @@ export class AgentProfileService {
             ],
           }),
         ];
+      case 'opencode':
+        return [
+          this.openAiCard(profile, baseUrl, label, {
+            id: 'opencode-openai',
+            title: 'OpenCode OpenAI-compatible config',
+            snippet: this.jsonSnippet({
+              provider: {
+                siftgate: {
+                  npm: '@ai-sdk/openai-compatible',
+                  name: 'SiftGate',
+                  options: {
+                    baseURL: baseUrl,
+                    apiKey: '<SIFTGATE_GATEWAY_API_KEY>',
+                  },
+                  models: {
+                    [this.primaryCodingModel(profile)]: {
+                      name: this.primaryCodingModel(profile),
+                    },
+                  },
+                },
+              },
+            }),
+            notes: [
+              'Use an OpenAI-compatible OpenCode provider pointed at SiftGate.',
+              'Keep raw repository content in the agent client; SiftGate stores metadata only.',
+            ],
+          }),
+        ];
       case 'codex':
       case 'hermes':
       case 'openclaw':
@@ -480,8 +656,9 @@ export class AgentProfileService {
     profile: AgentProfileSummary,
     baseUrl: string,
     _label: string,
-    options: { id: string; title: string; notes: string[] },
+    options: { id: string; title: string; notes: string[]; snippet?: string },
   ): AgentProfileRenderedCard {
+    const model = this.primaryCodingModel(profile);
     return {
       id: options.id,
       title: options.title,
@@ -489,18 +666,19 @@ export class AgentProfileService {
       fields: {
         base_url: baseUrl,
         api_key: '<SIFTGATE_GATEWAY_API_KEY>',
-        model: profile.smart_model_id,
+        model,
         default_model: profile.default_model,
+        virtual_model_aliases: profile.virtual_model_aliases,
       },
       env: {
         OPENAI_BASE_URL: baseUrl,
         OPENAI_API_KEY: '<SIFTGATE_GATEWAY_API_KEY>',
-        OPENAI_MODEL: profile.smart_model_id,
+        OPENAI_MODEL: model,
       },
-      snippet: [
+      snippet: options.snippet || [
         `export OPENAI_BASE_URL="${baseUrl}"`,
         'export OPENAI_API_KEY="<SIFTGATE_GATEWAY_API_KEY>"',
-        `export OPENAI_MODEL="${profile.smart_model_id}"`,
+        `export OPENAI_MODEL="${model}"`,
       ].join('\n'),
       notes: options.notes,
     };
@@ -519,21 +697,61 @@ export class AgentProfileService {
       fields: {
         base_url: baseUrl,
         api_key: '<SIFTGATE_GATEWAY_API_KEY>',
-        model: profile.smart_model_id,
+        model: this.primaryCodingModel(profile),
         default_model: profile.default_model,
+        virtual_model_aliases: profile.virtual_model_aliases,
       },
       env: {
         ANTHROPIC_BASE_URL: baseUrl,
         ANTHROPIC_AUTH_TOKEN: '<SIFTGATE_GATEWAY_API_KEY>',
-        ANTHROPIC_MODEL: profile.smart_model_id,
+        ANTHROPIC_MODEL: this.primaryCodingModel(profile),
       },
       snippet: [
         `export ANTHROPIC_BASE_URL="${baseUrl}"`,
         'export ANTHROPIC_AUTH_TOKEN="<SIFTGATE_GATEWAY_API_KEY>"',
-        `export ANTHROPIC_MODEL="${profile.smart_model_id}"`,
+        `export ANTHROPIC_MODEL="${this.primaryCodingModel(profile)}"`,
       ].join('\n'),
       notes: options.notes,
     };
+  }
+
+  private virtualModelIdsForProfile(profile: AgentProfileSummary): string[] {
+    return [...new Set([profile.smart_model_id, ...profile.virtual_model_aliases])];
+  }
+
+  private virtualAliasesForConnector(connector: AgentProfileConnector): string[] {
+    return CODING_AGENT_CONNECTORS.has(connector) ||
+      ANTHROPIC_CARD_CONNECTORS.has(connector)
+      ? [...CODING_AGENT_VIRTUAL_MODELS]
+      : [];
+  }
+
+  private primaryCodingModel(profile: AgentProfileSummary): string {
+    return profile.virtual_model_aliases[0] ||
+      (LEGACY_CHATBOT_CONNECTORS.has(profile.connector) ? profile.smart_model_id : 'coding-auto');
+  }
+
+  private isCodingAgentVirtualModel(value: string): value is CodingAgentVirtualModel {
+    return CODING_AGENT_VIRTUAL_MODELS.includes(value as CodingAgentVirtualModel);
+  }
+
+  private routingHintForVirtualModel(
+    profile: AgentProfileSummary,
+    modelId: string,
+  ): Record<string, unknown> | null {
+    const base = profile.routing_hint || {};
+    if (!this.isCodingAgentVirtualModel(modelId)) {
+      return Object.keys(base).length > 0 ? base : null;
+    }
+    return {
+      ...base,
+      ...CODING_AGENT_ALIAS_HINTS[modelId],
+      connector: profile.connector,
+    };
+  }
+
+  private jsonSnippet(value: unknown): string {
+    return JSON.stringify(value, null, 2);
   }
 
   private virtualModelAllowed(
@@ -728,10 +946,20 @@ export class AgentProfileService {
 
   private connectorLabel(connector: AgentProfileConnector): string {
     switch (connector) {
+      case 'cursor':
+        return 'Cursor';
+      case 'cline':
+        return 'Cline';
+      case 'roo_code':
+        return 'Roo Code';
+      case 'continue':
+        return 'Continue';
       case 'codex':
         return 'Codex';
       case 'claude_code':
         return 'Claude Code';
+      case 'opencode':
+        return 'OpenCode';
       case 'cherry_studio':
         return 'Cherry Studio';
       case 'hermes':

@@ -1,0 +1,6 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">Cline</title>
+  <rect width="64" height="64" rx="14" fill="#e0f2fe"/>
+  <path d="M17 22c0-5 4-9 9-9h15c4 0 7 3 7 7v24c0 4-3 7-7 7H26c-5 0-9-4-9-9V22z" fill="#0284c7"/>
+  <path d="M27 24l-7 8 7 8M37 24l7 8-7 8" fill="none" stroke="#f8fafc" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

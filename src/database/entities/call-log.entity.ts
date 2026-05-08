@@ -20,6 +20,11 @@ import {
 @Index(['namespace_id'])
 @Index(['team_id'])
 @Index(['fallback_reason'])
+@Index(['agent_connector'])
+@Index(['agent_profile_id'])
+@Index(['agent_session_id'])
+@Index(['agent_repo'])
+@Index(['agent_project'])
 export class CallLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -158,6 +163,33 @@ export class CallLog {
 
   @Column({ type: 'varchar', nullable: true })
   team_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_connector!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_profile_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_profile_name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_virtual_model!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_requested_model!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_session_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_turn_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_repo!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_project!: string | null;
 
   @Column({ type: 'integer', default: 0 })
   retry_count!: number;
