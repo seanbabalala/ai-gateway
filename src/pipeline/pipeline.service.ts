@@ -5315,6 +5315,9 @@ export class PipelineService {
         cache_read_input_tokens: params.usage.cache_read_input_tokens || 0,
         cost_without_cache_usd: costWithoutCacheUsd,
         cost_usd: costUsd, latency_ms: params.latencyMs,
+        stream: 'stream' in params.canonical
+          ? Boolean(params.canonical.stream)
+          : false,
         status_code: params.statusCode, is_fallback: params.isFallback,
         fallback_reason: params.fallbackReason || null,
         structured_output_requested:

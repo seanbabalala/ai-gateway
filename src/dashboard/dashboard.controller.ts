@@ -2016,6 +2016,7 @@ export class DashboardController {
       model: log.model,
       status_code: log.status_code,
       latency_ms: log.latency_ms,
+      stream: Boolean(log.stream),
       cost_usd: Number((log.cost_usd || 0).toFixed(6)),
       input_tokens: log.input_tokens,
       output_tokens: log.output_tokens,

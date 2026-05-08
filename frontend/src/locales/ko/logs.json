@@ -218,7 +218,7 @@
   "sse.newLogsReceived_one": "새 로그 {{count}}개를 받았습니다. 클릭하여 새로고침하세요",
   "sse.newLogsReceived_other": "새 로그 {{count}}개를 받았습니다. 클릭하여 새로고침하세요",
   "table.cost": "비용",
-  "table.latency": "지연 시간",
+  "table.latency": "전체 응답 시간",
   "table.model": "모델",
   "table.node": "노드",
   "table.status": "상태",
@@ -327,5 +327,10 @@
   "routeExplanation.table.missingPriceUnit": "{{unit}} 누락",
   "routeExplanation.table.pricingStatus": "가격 상태 {{status}}",
   "routeExplanation.table.pricingUsedFrom": "가격 출처 {{source}}",
-  "routeExplanation.values.stale": "오래됨"
+  "routeExplanation.values.stale": "오래됨",
+  "detail.deliveryMode": "모드",
+  "detail.totalTime": "전체 응답 시간",
+  "table.deliveryMode": "모드",
+  "table.streamMode.stream": "스트리밍",
+  "table.streamMode.sync": "동기"
 }

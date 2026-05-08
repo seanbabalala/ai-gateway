@@ -115,6 +115,7 @@ export interface CallLog {
   cost_usd: number;
   cost_without_cache_usd?: number | null;
   latency_ms: number;
+  stream?: boolean;
   status_code: number;
   is_fallback: boolean;
   fallback_reason: string | null;

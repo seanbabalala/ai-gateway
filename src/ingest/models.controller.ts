@@ -49,7 +49,11 @@ export class ModelsController {
     ) {
       throw new ForbiddenException('This API key is not allowed to use /v1/models.');
     }
-    const models = this.config.listModels().filter((model) => {
+    const hasAgentProfile = await this.agentProfiles.hasActiveProfileForApiKey(
+      gatewayKey?.id,
+    );
+    const canExposeDirectModels = gatewayKey?.allow_direct !== false;
+    const models = canExposeDirectModels ? this.config.listModels().filter((model) => {
       const nodeAllowed =
         !gatewayKey?.allowed_nodes.length ||
         gatewayKey.allowed_nodes.includes(model.node);
@@ -58,7 +62,7 @@ export class ModelsController {
         gatewayKey.allowed_models.includes(model.id) ||
         model.aliases.some((alias) => gatewayKey.allowed_models.includes(alias));
       return nodeAllowed && modelAllowed;
-    });
+    }) : [];
 
     // Build OpenAI-compatible response
     const profileModels = await this.agentProfiles.listVirtualModelsForApiKey(
@@ -89,10 +93,10 @@ export class ModelsController {
         created: 0,
         owned_by: m.node,
         node_name: m.nodeName,
-        aliases: m.aliases,
+        aliases: hasAgentProfile ? [] : m.aliases,
       })),
       // Alias entries (so clients can discover shortcuts)
-      ...this.buildAliasEntries(models),
+      ...(hasAgentProfile ? [] : this.buildAliasEntries(models)),
     ];
 
     const seenIds = new Set(data.map((item) => String(item.id)));

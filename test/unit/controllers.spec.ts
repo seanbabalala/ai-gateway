@@ -282,6 +282,7 @@ describe('HealthController', () => {
 describe('ModelsController', () => {
   function makeAgentProfiles(overrides: Record<string, any> = {}) {
     return {
+      hasActiveProfileForApiKey: jest.fn().mockResolvedValue(false),
       listVirtualModelsForApiKey: jest.fn().mockResolvedValue([]),
       ...overrides,
     };
@@ -388,6 +389,70 @@ describe('ModelsController', () => {
     } as any);
 
     expect(result.data.map((model: any) => model.id)).toEqual(['gpt-4o', 'openai']);
+  });
+
+  it('does not expose direct models when an API key is smart-router only', async () => {
+    const config = mockConfigService({
+      listModels: jest.fn().mockReturnValue([
+        { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai'] },
+        { id: 'claude-3-opus', node: 'claude', nodeName: 'Claude', aliases: ['claude'] },
+      ]),
+    });
+    const controller = new ModelsController(config, makeAgentProfiles() as any);
+    const result = await controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        name: 'agent',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: false,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+        namespace_id: null,
+        namespace_name: null,
+        rate_limit_per_minute: null,
+      },
+    } as any);
+
+    expect(result.data.map((model: any) => model.id)).toEqual(['auto']);
+    expect(result.data.some((model: any) => model.is_alias)).toBe(false);
+  });
+
+  it('hides node shortcut aliases for Agent Profile-bound API keys', async () => {
+    const config = mockConfigService({
+      listModels: jest.fn().mockReturnValue([
+        { id: 'gpt-4o', node: 'openai', nodeName: 'OpenAI', aliases: ['openai', 'gpt'] },
+      ]),
+    });
+    const agentProfiles = makeAgentProfiles({
+      hasActiveProfileForApiKey: jest.fn().mockResolvedValue(true),
+    });
+    const controller = new ModelsController(config, agentProfiles as any);
+    const result = await controller.list({
+      gatewayApiKey: {
+        id: 'key_123',
+        name: 'agent',
+        status: 'active',
+        allow_auto: true,
+        allow_direct: true,
+        allowed_nodes: [],
+        allowed_models: [],
+        allowed_endpoints: ['models'],
+        allowed_modalities: [],
+        namespace_id: null,
+        namespace_name: null,
+        rate_limit_per_minute: null,
+      },
+    } as any);
+
+    expect(agentProfiles.hasActiveProfileForApiKey).toHaveBeenCalledWith('key_123');
+    expect(result.data.map((model: any) => model.id)).toEqual(['auto', 'gpt-4o']);
+    expect(result.data.some((model: any) => model.is_alias)).toBe(false);
+    expect(result.data.find((model: any) => model.id === 'gpt-4o')).toEqual(
+      expect.objectContaining({ aliases: [] }),
+    );
   });
 
   it('exposes profile virtual models only for matching active profile and API key context', async () => {

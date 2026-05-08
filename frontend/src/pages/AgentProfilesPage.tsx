@@ -4,16 +4,20 @@ import {
   AlertTriangle,
   Bot,
   Check,
+  CircleDot,
   Code2,
   Copy,
+  Feather,
   KeyRound,
   Layers3,
+  MessagesSquare,
   Pencil,
   Plus,
   RefreshCw,
   Route,
   Server,
   ShieldCheck,
+  Sparkles,
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
@@ -38,6 +42,7 @@ import {
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useMcpGateway } from '@/hooks/use-mcp'
 import { useNamespaces } from '@/hooks/use-namespaces'
+import { useNodes } from '@/hooks/use-nodes'
 import { cn, formatDate } from '@/lib/utils'
 import type {
   AgentProfile,
@@ -50,6 +55,7 @@ import type {
   GatewayApiKey,
   McpServerSummary,
   NamespaceInfo,
+  NodeInfo,
 } from '@/types/api'
 
 type RoutingMode = 'smart' | 'direct'
@@ -114,6 +120,26 @@ const connectorDescriptionKeys: Record<AgentProfileConnector, string> = {
   openclaw: 'agents.connectorDescriptions.openclaw',
   generic_openai: 'agents.connectorDescriptions.genericOpenAI',
   generic_anthropic: 'agents.connectorDescriptions.genericAnthropic',
+}
+
+const connectorIcons: Record<AgentProfileConnector, typeof Bot> = {
+  codex: TerminalSquare,
+  claude_code: Feather,
+  cherry_studio: MessagesSquare,
+  hermes: Sparkles,
+  openclaw: CircleDot,
+  generic_openai: Code2,
+  generic_anthropic: Feather,
+}
+
+const connectorAccentClassNames: Record<AgentProfileConnector, string> = {
+  codex: 'from-zinc-900 to-zinc-600 text-white dark:from-zinc-100 dark:to-zinc-400 dark:text-zinc-950',
+  claude_code: 'from-orange-600 to-amber-500 text-white',
+  cherry_studio: 'from-rose-500 to-sky-500 text-white',
+  hermes: 'from-emerald-600 to-cyan-500 text-white',
+  openclaw: 'from-slate-700 to-lime-500 text-white',
+  generic_openai: 'from-black to-emerald-600 text-white dark:from-white dark:to-emerald-300 dark:text-zinc-950',
+  generic_anthropic: 'from-stone-700 to-orange-500 text-white',
 }
 
 const fieldLabelKeys: Record<string, string> = {
@@ -332,6 +358,24 @@ function formatFieldValue(value: unknown) {
   return String(value)
 }
 
+function modelOptionsFromNodes(nodes: NodeInfo[]): SelectOption[] {
+  const seen = new Set<string>()
+  const options: SelectOption[] = []
+
+  for (const node of nodes) {
+    for (const model of node.models || []) {
+      if (!model || seen.has(model)) continue
+      seen.add(model)
+      options.push({
+        value: model,
+        label: `${model} (${node.name || node.id})`,
+      })
+    }
+  }
+
+  return options.sort((a, b) => a.value.localeCompare(b.value))
+}
+
 function FieldLabel({ children }: { children: string }) {
   return (
     <label className="text-[12px] font-semibold leading-5 text-[var(--foreground-dim)]">
@@ -383,6 +427,7 @@ function ProfileFormDialog({
   apiKeys,
   namespaces,
   mcpServers,
+  modelOptions,
   onClose,
   onSubmit,
   pending,
@@ -393,6 +438,7 @@ function ProfileFormDialog({
   apiKeys: GatewayApiKey[]
   namespaces: NamespaceInfo[]
   mcpServers: McpServerSummary[]
+  modelOptions: SelectOption[]
   onClose: () => void
   onSubmit: (form: AgentProfileFormState, routingHint: Record<string, unknown> | null) => void
   pending: boolean
@@ -402,6 +448,9 @@ function ProfileFormDialog({
   const [form, setForm] = useState<AgentProfileFormState>(initial)
   const [showRoutingHintError, setShowRoutingHintError] = useState(false)
   const selectedConnector = isAgentProfileConnector(form.connector) ? form.connector : null
+  const customModelValue = modelOptions.some((option) => option.value === form.default_model)
+    ? ''
+    : form.default_model
 
   useEffect(() => {
     if (open) {
@@ -456,6 +505,13 @@ function ProfileFormDialog({
     })),
     [t],
   )
+  const directModelOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: '', label: t('agents.placeholders.selectDirectModel') },
+      ...modelOptions,
+    ],
+    [modelOptions, t],
+  )
 
   const parsedRoutingHint = useMemo(
     () => parseRoutingHint(form.routing_hint_text),
@@ -474,6 +530,19 @@ function ProfileFormDialog({
       smart_model_id: defaultSmartModel(nextConnector),
       base_url_mode: defaultBaseUrlMode(nextConnector),
     }))
+  }
+
+  const applyRoutingHintSample = () => {
+    setForm((prev) => ({
+      ...prev,
+      routing_hint_text: t('agents.placeholders.routingHint'),
+    }))
+    setShowRoutingHintError(true)
+  }
+
+  const clearRoutingHint = () => {
+    setForm((prev) => ({ ...prev, routing_hint_text: '' }))
+    setShowRoutingHintError(false)
   }
 
   const submit = () => {
@@ -512,16 +581,13 @@ function ProfileFormDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="grid min-w-0 gap-2">
-              <FieldLabel>{t('agents.fields.connector')}</FieldLabel>
-              <Select options={connectorOptions} value={form.connector} onChange={updateConnector} className="w-full" />
-              {selectedConnector && (
-                <div className="text-[12px] leading-5 text-[var(--foreground-dim)]">
-                  {t(connectorDescriptionKeys[selectedConnector])}
-                </div>
-              )}
-            </div>
+          <ConnectorPicker
+            value={form.connector}
+            connectorOptions={connectorOptions}
+            onChange={updateConnector}
+          />
+
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="grid min-w-0 gap-2">
               <FieldLabel>{t('agents.fields.status')}</FieldLabel>
               <Select
@@ -646,11 +712,32 @@ function ProfileFormDialog({
           <div className="grid gap-4 md:grid-cols-3">
             <div className="grid min-w-0 gap-2">
               <FieldLabel>{t('agents.fields.defaultModel')}</FieldLabel>
-              <Input
-                value={form.default_model}
-                onChange={(event) => setForm((prev) => ({ ...prev, default_model: event.target.value }))}
-                placeholder={form.routing_mode === 'smart' ? 'auto' : t('agents.placeholders.directModel')}
-              />
+              {form.routing_mode === 'direct' ? (
+                <div className="grid gap-2">
+                  <Select
+                    options={directModelOptions}
+                    value={modelOptions.some((option) => option.value === form.default_model) ? form.default_model : ''}
+                    onChange={(default_model) => setForm((prev) => ({ ...prev, default_model }))}
+                    className="w-full"
+                  />
+                  <Input
+                    value={customModelValue}
+                    onChange={(event) => setForm((prev) => ({ ...prev, default_model: event.target.value }))}
+                    placeholder={t('agents.placeholders.customDirectModel')}
+                  />
+                  <div className="text-[12px] leading-5 text-[var(--foreground-dim)]">
+                    {modelOptions.length > 0
+                      ? t('agents.help.directModelSelect')
+                      : t('agents.help.directModelUnavailable')}
+                  </div>
+                </div>
+              ) : (
+                <Input
+                  value={form.default_model}
+                  onChange={(event) => setForm((prev) => ({ ...prev, default_model: event.target.value }))}
+                  placeholder="auto"
+                />
+              )}
             </div>
             <div className="grid min-w-0 gap-2">
               <FieldLabel>{t('agents.fields.smartModel')}</FieldLabel>
@@ -676,10 +763,21 @@ function ProfileFormDialog({
 
           <div className="grid gap-2">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <FieldLabel>{t('agents.fields.routingHint')}</FieldLabel>
-              {form.routing_hint_text.trim() && !parsedRoutingHint.error && (
-                <Badge variant="emerald">{t('agents.routingHint.valid')}</Badge>
-              )}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <FieldLabel>{t('agents.fields.routingHint')}</FieldLabel>
+                <Badge variant="zinc">{t('agents.routingHint.optional')}</Badge>
+                {form.routing_hint_text.trim() && !parsedRoutingHint.error && (
+                  <Badge variant="emerald">{t('agents.routingHint.valid')}</Badge>
+                )}
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={applyRoutingHintSample}>
+                  {t('agents.routingHint.useExample')}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={clearRoutingHint}>
+                  {t('agents.routingHint.clear')}
+                </Button>
+              </div>
             </div>
             <textarea
               value={form.routing_hint_text}
@@ -718,6 +816,68 @@ function ProfileFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ConnectorPicker({
+  value,
+  connectorOptions,
+  onChange,
+}: {
+  value: AgentProfileConnectorChoice
+  connectorOptions: SelectOption[]
+  onChange: (value: string) => void
+}) {
+  const { t } = useTranslation('agents')
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <FieldLabel>{t('agents.fields.connector')}</FieldLabel>
+        <div className="w-full sm:w-64">
+          <Select options={connectorOptions} value={value} onChange={onChange} className="w-full" />
+        </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {CONNECTORS.map((connector) => {
+          const Icon = connectorIcons[connector]
+          const selected = value === connector
+          return (
+            <button
+              key={connector}
+              type="button"
+              onClick={() => onChange(connector)}
+              aria-pressed={selected}
+              className={cn(
+                'group min-w-0 rounded-xl border bg-[var(--inset-bg)] p-3 text-left transition-all',
+                selected
+                  ? 'border-[var(--accent)] shadow-[0_16px_38px_rgba(5,46,36,0.10)]'
+                  : 'border-[var(--border)] hover:-translate-y-0.5 hover:bg-[var(--background-secondary)]',
+              )}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span
+                  className={cn(
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-sm',
+                    connectorAccentClassNames[connector],
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block break-words text-[13px] font-bold text-[var(--foreground)]">
+                    {t(connectorLabelKeys[connector])}
+                  </span>
+                  <span className="mt-1 block break-words text-[12px] leading-5 text-[var(--foreground-dim)]">
+                    {t(connectorDescriptionKeys[connector])}
+                  </span>
+                </span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -1100,6 +1260,7 @@ export function AgentProfilesPage() {
   const apiKeys = useApiKeys()
   const namespaces = useNamespaces()
   const mcpGateway = useMcpGateway()
+  const nodes = useNodes()
   const createProfile = useCreateAgentProfile()
   const updateProfile = useUpdateAgentProfile()
   const deleteProfile = useDeleteAgentProfile()
@@ -1114,6 +1275,10 @@ export function AgentProfilesPage() {
   const keys = apiKeys.data?.items || []
   const namespaceItems = namespaces.data?.namespaces || []
   const mcpServers = mcpGateway.data?.servers || []
+  const modelOptions = useMemo(
+    () => modelOptionsFromNodes(nodes.data?.nodes || []),
+    [nodes.data?.nodes],
+  )
   const renderingId = renderProfile.isPending ? selectedProfile?.id || null : null
 
   useEffect(() => {
@@ -1148,6 +1313,7 @@ export function AgentProfilesPage() {
     void apiKeys.refetch()
     void namespaces.refetch()
     void mcpGateway.refetch()
+    void nodes.refetch()
   }
 
   if (agentProfiles.isError) {
@@ -1230,6 +1396,7 @@ export function AgentProfilesPage() {
         apiKeys={keys}
         namespaces={namespaceItems}
         mcpServers={mcpServers}
+        modelOptions={modelOptions}
         pending={createProfile.isPending}
         onClose={() => setCreateOpen(false)}
         onSubmit={(form, routingHint) => {
@@ -1249,6 +1416,7 @@ export function AgentProfilesPage() {
         apiKeys={keys}
         namespaces={namespaceItems}
         mcpServers={mcpServers}
+        modelOptions={modelOptions}
         pending={updateProfile.isPending}
         onClose={() => setEditing(null)}
         onSubmit={(form, routingHint) => {

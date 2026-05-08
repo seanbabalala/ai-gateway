@@ -59,7 +59,11 @@ const requiredAgentKeys = [
   'agents.errors.connectorRequired',
   'agents.fields.baseUrlMode',
   'agents.help.apiKey',
+  'agents.help.directModelSelect',
+  'agents.help.directModelUnavailable',
   'agents.placeholders.connector',
+  'agents.placeholders.customDirectModel',
+  'agents.placeholders.selectDirectModel',
   'agents.privacy.smartRouter',
   'agents.preset.anthropicCompatible',
   'agents.preset.baseUrl',
@@ -73,6 +77,9 @@ const requiredAgentKeys = [
   'agents.preset.title',
   'agents.render.gatewayBaseUrl',
   'agents.render.gatewayKey',
+  'agents.routingHint.clear',
+  'agents.routingHint.optional',
+  'agents.routingHint.useExample',
   'agents.warnings.apiKeyRequired.description',
   'agents.warnings.apiKeyRequired.title',
   'agents.warnings.connectorRequired.description',
@@ -137,6 +144,13 @@ const allowedLiteralStrings = new Set([
   '=${rendered.smart_model_id}',
   '=${model}',
   'agents.errors.connectorRequired',
+  'from-zinc-900 to-zinc-600 text-white dark:from-zinc-100 dark:to-zinc-400 dark:text-zinc-950',
+  'from-orange-600 to-amber-500 text-white',
+  'from-rose-500 to-sky-500 text-white',
+  'from-emerald-600 to-cyan-500 text-white',
+  'from-slate-700 to-lime-500 text-white',
+  'from-black to-emerald-600 text-white dark:from-white dark:to-emerald-300 dark:text-zinc-950',
+  'from-stone-700 to-orange-500 text-white',
 ])
 
 const allowedVisibleLiteralPatterns = [
@@ -158,6 +172,8 @@ const allowedVisibleLiteralPatterns = [
   /^hover:/,
   /^dark:/,
   /^animate-/,
+  /^from-/,
+  /^to-/,
   /^grid/,
   /^flex/,
   /^block/,
@@ -199,6 +215,8 @@ assert(sidebarSource.includes("{ to: '/agents', icon: Bot, labelKey: 'nav.agents
 assert(hookSource.includes("apiGet<AgentProfilesResponse>('/api/dashboard/agent-profiles')"), 'Hook must list /api/dashboard/agent-profiles')
 assert(hookSource.includes('`/api/dashboard/agent-profiles/${id}`'), 'Hook must update/delete /api/dashboard/agent-profiles/:id')
 assert(hookSource.includes('`/api/dashboard/agent-profiles/${id}/render`'), 'Hook must render /api/dashboard/agent-profiles/:id/render')
+assert(pageSource.includes("useNodes()"), 'AgentProfilesPage must load configured node models for direct model selection')
+assert(pageSource.includes('modelOptionsFromNodes'), 'AgentProfilesPage must build direct model options from Nodes')
 assert(typeSource.includes('export interface AgentProfile '), 'API types must include AgentProfile')
 assert(typeSource.includes('export interface AgentProfileRenderedConfig '), 'API types must include AgentProfileRenderedConfig')
 assert(typeSource.includes('export interface AgentProfileRenderResponse '), 'API types must include AgentProfileRenderResponse')
@@ -211,6 +229,11 @@ for (const needle of [
   'navigator.clipboard.writeText',
   'ConnectorPresetSummary',
   'AgentWarning',
+  'ConnectorPicker',
+  'useNodes',
+  'modelOptionsFromNodes',
+  'agents.help.directModelSelect',
+  'agents.routingHint.optional',
   'agents.privacy.gatewayKey',
   'agents.privacy.providerKeys',
   'agents.privacy.noStoredSecrets',

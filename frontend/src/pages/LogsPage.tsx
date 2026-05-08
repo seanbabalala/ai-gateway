@@ -39,7 +39,7 @@ import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
 const LIMIT = 20
-const TABLE_COLUMNS = 11
+const TABLE_COLUMNS = 12
 
 function formatBytes(value?: number | null) {
   if (value === null || value === undefined) return null
@@ -84,6 +84,15 @@ function SourceBadge({ sourceFormat }: { sourceFormat: string }) {
   return (
     <Badge variant="blue" className="max-w-[150px] truncate whitespace-nowrap">
       {sourceFormatLabel(sourceFormat, t)}
+    </Badge>
+  )
+}
+
+function DeliveryModeBadge({ stream }: { stream?: boolean }) {
+  const { t } = useTranslation('logs')
+  return (
+    <Badge variant={stream ? 'emerald' : 'zinc'} className="max-w-[120px] truncate whitespace-nowrap">
+      {stream ? t('table.streamMode.stream') : t('table.streamMode.sync')}
     </Badge>
   )
 }
@@ -203,6 +212,18 @@ function LogDetailRow({
                 : upstreamProtocol
                   ? sourceFormatLabel(upstreamProtocol, t)
                   : t('common.na')}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.deliveryMode')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.stream ? t('table.streamMode.stream') : t('table.streamMode.sync')}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.totalTime')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {formatLatency(log.latency_ms)}
             </span>
           </div>
           <div>
@@ -595,6 +616,7 @@ export function LogsPage() {
                   <TableHead>{t('table.upstream')}</TableHead>
                   <TableHead>{t('table.upstreamProtocol')}</TableHead>
                   <TableHead>{t('table.model')}</TableHead>
+                  <TableHead>{t('table.deliveryMode')}</TableHead>
                   <TableHead className="text-right">{t('table.tokens')}</TableHead>
                   <TableHead className="text-right">{t('table.cost')}</TableHead>
                   <TableHead className="text-right">{t('table.latency')}</TableHead>
@@ -642,6 +664,9 @@ export function LogsPage() {
                         <Tooltip content={log.model}>
                           <span className="block truncate">{log.model}</span>
                         </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <DeliveryModeBadge stream={log.stream} />
                       </TableCell>
                       <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
                         {formatTokens(log.input_tokens + log.output_tokens)}

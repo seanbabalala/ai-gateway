@@ -210,6 +210,14 @@ export class AgentProfileService {
     return models;
   }
 
+  async hasActiveProfileForApiKey(apiKeyId: string | undefined): Promise<boolean> {
+    if (!apiKeyId) return false;
+    const count = await this.profileRepo.count({
+      where: { status: 'active', api_key_id: apiKeyId },
+    });
+    return count > 0;
+  }
+
   async matchVirtualModel(
     apiKeyId: string | undefined,
     requestedModel: string | undefined,

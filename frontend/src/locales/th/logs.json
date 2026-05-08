@@ -218,7 +218,7 @@
   "sse.newLogsReceived_one": "ได้รับ log ใหม่ {{count}} รายการ — คลิกเพื่อรีเฟรช",
   "sse.newLogsReceived_other": "ได้รับ logs ใหม่ {{count}} รายการ — คลิกเพื่อรีเฟรช",
   "table.cost": "Cost",
-  "table.latency": "Latency",
+  "table.latency": "เวลาตอบกลับรวม",
   "table.model": "Model",
   "table.node": "Node",
   "table.status": "Status",
@@ -327,5 +327,10 @@
   "routeExplanation.table.missingPriceUnit": "ขาด {{unit}}",
   "routeExplanation.table.pricingStatus": "สถานะราคา {{status}}",
   "routeExplanation.table.pricingUsedFrom": "ราคาจาก {{source}}",
-  "routeExplanation.values.stale": "อาจเก่า"
+  "routeExplanation.values.stale": "อาจเก่า",
+  "detail.deliveryMode": "โหมด",
+  "detail.totalTime": "เวลาตอบกลับรวม",
+  "table.deliveryMode": "โหมด",
+  "table.streamMode.stream": "สตรีม",
+  "table.streamMode.sync": "ซิงก์"
 }

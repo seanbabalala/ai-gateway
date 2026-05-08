@@ -750,6 +750,7 @@ function normalizeRow(
     cost_usd: toNumber,
     cost_without_cache_usd: toNullableNumber,
     latency_ms: toNumber,
+    stream: toBoolean,
     status_code: toNumber,
     is_fallback: toBoolean,
     structured_output_requested: toBoolean,
