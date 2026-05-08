@@ -12,6 +12,7 @@ import { PlaygroundController } from './playground.controller';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
+import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
 import { CallLog, RouteDecisionLog, VideoJob } from '../database/entities';
 
 @Module({
@@ -19,6 +20,7 @@ import { CallLog, RouteDecisionLog, VideoJob } from '../database/entities';
     PipelineModule,
     ConfigModule,
     AuthModule,
+    AgentProfilesModule,
     TypeOrmModule.forFeature([CallLog, RouteDecisionLog, VideoJob]),
   ],
   controllers: [

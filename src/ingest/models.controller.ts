@@ -18,6 +18,7 @@ import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RateLimitGuard } from '../auth/rate-limit.guard';
 import { gatewayApiKeyFromRequest } from '../auth/gateway-api-key-metadata';
 import { ErrorEnvelopeDto, ModelListResponseDto } from '../openapi/openapi.dto';
+import { AgentProfileService } from '../agent-profiles/agent-profile.service';
 import type { Request } from 'express';
 
 /**
@@ -31,13 +32,16 @@ import type { Request } from 'express';
 export class ModelsController {
   private readonly logger = new Logger(ModelsController.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly agentProfiles: AgentProfileService,
+  ) {}
 
   @Get('models')
   @ApiOperation({ summary: 'List OpenAI-compatible models and SiftGate aliases' })
   @ApiOkResponse({ type: ModelListResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
-  list(@Req() req?: Request) {
+  async list(@Req() req?: Request) {
     const gatewayKey = gatewayApiKeyFromRequest(req);
     if (
       gatewayKey?.allowed_endpoints.length &&
@@ -57,7 +61,17 @@ export class ModelsController {
     });
 
     // Build OpenAI-compatible response
-    const data = [
+    const profileModels = await this.agentProfiles.listVirtualModelsForApiKey(
+      gatewayKey?.id,
+      gatewayKey
+        ? {
+            allow_auto: gatewayKey.allow_auto,
+            allowed_models: gatewayKey.allowed_models,
+          }
+        : undefined,
+    );
+
+    const data: Record<string, unknown>[] = [
       // "auto" — the gateway's smart routing model
       ...(gatewayKey?.allow_auto === false
         ? []
@@ -80,6 +94,14 @@ export class ModelsController {
       // Alias entries (so clients can discover shortcuts)
       ...this.buildAliasEntries(models),
     ];
+
+    const seenIds = new Set(data.map((item) => String(item.id)));
+    for (const profileModel of profileModels) {
+      if (!seenIds.has(profileModel.id)) {
+        seenIds.add(profileModel.id);
+        data.push({ ...profileModel });
+      }
+    }
 
     return {
       object: 'list',

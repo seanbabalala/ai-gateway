@@ -14,6 +14,7 @@ const namespaces = [
   'routing',
   'budget',
   'analytics',
+  'agents',
   'apiKeys',
   'login',
 ]

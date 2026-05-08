@@ -120,8 +120,17 @@ import {
 import { GatewayApiKeyService } from "../auth/gateway-api-key.service";
 import { CreateTeamDto, UpdateTeamDto } from "../auth/dto/team.dto";
 import { TeamService } from "../auth/team.service";
+import { AgentProfileService } from "../agent-profiles/agent-profile.service";
+import {
+  CreateAgentProfileDto,
+  RenderAgentProfileDto,
+  UpdateAgentProfileDto,
+} from "../agent-profiles/dto/agent-profile.dto";
 import {
   ActionResponseDto,
+  AgentProfileListResponseDto,
+  AgentProfileMutationResponseDto,
+  AgentProfileRenderResponseDto,
   ErrorEnvelopeDto,
   GatewayApiKeyCreatedResponseDto,
   GatewayApiKeyListResponseDto,
@@ -1507,6 +1516,7 @@ export class DashboardController {
     private readonly telemetry: TelemetryService,
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
+    private readonly agentProfiles: AgentProfileService,
     private readonly teams: TeamService,
     private readonly shadowTraffic: ShadowTrafficService,
     private readonly cacheSavings: CacheSavingsService,
@@ -3440,6 +3450,127 @@ export class DashboardController {
     return { success: true, message: "Gateway API key deleted" };
   }
 
+  @Get("agent-profiles")
+  @ApiTags("Agent Profiles")
+  @ApiOperation({ summary: "List local Agent Gateway profiles" })
+  @ApiOkResponse({ type: AgentProfileListResponseDto })
+  async getAgentProfiles() {
+    const items = await this.agentProfiles.list();
+    return {
+      items,
+      connectors: [
+        "codex",
+        "claude_code",
+        "cherry_studio",
+        "hermes",
+        "openclaw",
+        "generic_openai",
+        "generic_anthropic",
+      ],
+      mode: "local_only",
+    };
+  }
+
+  @Post("agent-profiles")
+  @ApiTags("Agent Profiles")
+  @ApiOperation({ summary: "Create a local Agent Gateway profile" })
+  @ApiBody({ type: CreateAgentProfileDto })
+  @ApiOkResponse({ type: AgentProfileMutationResponseDto })
+  async createAgentProfile(@Body() body: CreateAgentProfileDto) {
+    const created = await this.agentProfiles.create(body);
+    await this.configAudit.recordManagementEvent({
+      action: "agent_profile.create",
+      target: `agent_profile:${created.id}`,
+      actor: { type: "dashboard", id: "dashboard" },
+      afterSummary: this.agentProfileAuditSummary(created),
+    });
+    return {
+      success: true,
+      message: "Agent profile created",
+      item: created,
+    };
+  }
+
+  @Put("agent-profiles/:id")
+  @ApiTags("Agent Profiles")
+  @ApiOperation({ summary: "Update a local Agent Gateway profile" })
+  @ApiParam({ name: "id", example: "profile_01h..." })
+  @ApiBody({ type: UpdateAgentProfileDto })
+  @ApiOkResponse({ type: AgentProfileMutationResponseDto })
+  async updateAgentProfile(
+    @Param("id") id: string,
+    @Body() body: UpdateAgentProfileDto,
+  ) {
+    const before = (await this.agentProfiles.list()).find(
+      (profile) => profile.id === id,
+    );
+    const updated = await this.agentProfiles.update(id, body);
+    await this.configAudit.recordManagementEvent({
+      action: "agent_profile.update",
+      target: `agent_profile:${id}`,
+      actor: { type: "dashboard", id: "dashboard" },
+      beforeSummary: before ? this.agentProfileAuditSummary(before) : undefined,
+      afterSummary: this.agentProfileAuditSummary(updated),
+      metadata: { fields: Object.keys(body || {}) },
+    });
+    return {
+      success: true,
+      message: "Agent profile updated",
+      item: updated,
+    };
+  }
+
+  @Delete("agent-profiles/:id")
+  @ApiTags("Agent Profiles")
+  @ApiOperation({ summary: "Delete a local Agent Gateway profile" })
+  @ApiParam({ name: "id", example: "profile_01h..." })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async deleteAgentProfile(@Param("id") id: string) {
+    const before = (await this.agentProfiles.list()).find(
+      (profile) => profile.id === id,
+    );
+    await this.agentProfiles.remove(id);
+    await this.configAudit.recordManagementEvent({
+      action: "agent_profile.delete",
+      target: `agent_profile:${id}`,
+      actor: { type: "dashboard", id: "dashboard" },
+      beforeSummary: before ? this.agentProfileAuditSummary(before) : undefined,
+    });
+    return { success: true, message: "Agent profile deleted" };
+  }
+
+  @Post("agent-profiles/:id/render")
+  @ApiTags("Agent Profiles")
+  @ApiOperation({
+    summary: "Render redacted connector configuration for an Agent Gateway profile",
+  })
+  @ApiParam({ name: "id", example: "profile_01h..." })
+  @ApiBody({ type: RenderAgentProfileDto })
+  @ApiOkResponse({ type: AgentProfileRenderResponseDto })
+  async renderAgentProfile(
+    @Param("id") id: string,
+    @Body() body: RenderAgentProfileDto,
+  ) {
+    const rendered = await this.agentProfiles.render(id, body || {});
+    await this.configAudit.recordManagementEvent({
+      action: "agent_profile.render",
+      target: `agent_profile:${id}`,
+      actor: { type: "dashboard", id: "dashboard" },
+      afterSummary: {
+        id: rendered.profile_id,
+        name: rendered.profile_name,
+        connector: rendered.connector,
+        smart_model_id: rendered.smart_model_id,
+        secrets_redacted: true,
+      },
+    });
+    return {
+      success: true,
+      message: "Agent profile rendered",
+      item: rendered,
+    };
+  }
+
   private apiKeyAuditSummary(key: {
     id: string;
     name: string;
@@ -3477,6 +3608,34 @@ export class DashboardController {
         daily_cost_limit: key.daily_cost_limit,
       },
       rate_limit_per_minute: key.rate_limit_per_minute,
+      secret: "redacted",
+    };
+  }
+
+  private agentProfileAuditSummary(profile: {
+    id: string;
+    name: string;
+    connector: string;
+    status: string;
+    api_key_id: string | null;
+    namespace_id: string | null;
+    default_model: string;
+    smart_model_id: string;
+    base_url_mode: string;
+    mcp_server_ids: string[];
+  }) {
+    return {
+      id: profile.id,
+      name: profile.name,
+      connector: profile.connector,
+      status: profile.status,
+      api_key_id: profile.api_key_id,
+      namespace_id: profile.namespace_id,
+      default_model: profile.default_model,
+      smart_model_id: profile.smart_model_id,
+      base_url_mode: profile.base_url_mode,
+      mcp_server_count: profile.mcp_server_ids.length,
+      mode: "local_only",
       secret: "redacted",
     };
   }

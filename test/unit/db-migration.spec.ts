@@ -11,6 +11,7 @@ import {
 
 const TABLES: DbMigrationTableName[] = [
   "gateway_api_keys",
+  "agent_profiles",
   "local_teams",
   "budget_rules",
   "node_status",
@@ -104,6 +105,25 @@ function createSqliteFixture(dir: string): string {
       rate_limit_per_minute integer,
       last_used_at datetime,
       last_used_ip varchar,
+      created_at datetime,
+      updated_at datetime
+    );
+
+    CREATE TABLE agent_profiles (
+      id varchar PRIMARY KEY,
+      name varchar,
+      description text,
+      connector varchar,
+      status varchar,
+      api_key_id varchar,
+      namespace_id varchar,
+      default_model varchar,
+      smart_model_id varchar,
+      base_url_mode varchar,
+      routing_hint text,
+      mcp_server_ids text,
+      metadata text,
+      last_generated_at datetime,
       created_at datetime,
       updated_at datetime
     );
@@ -426,6 +446,34 @@ function createSqliteFixture(dir: string): string {
     "127.0.0.1",
     "2026-05-01T00:00:00.000Z",
     "2026-05-01T00:00:00.000Z",
+  );
+
+  db.prepare(
+    `
+    INSERT INTO agent_profiles (
+      id, name, description, connector, status, api_key_id, namespace_id,
+      default_model, smart_model_id, base_url_mode, routing_hint,
+      mcp_server_ids, metadata, last_generated_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "profile-1",
+    "Claude Code",
+    "Agent profile",
+    "claude_code",
+    "active",
+    "key-1",
+    "team-alpha",
+    "auto",
+    "claude-siftgate-auto",
+    "anthropic_v1",
+    JSON.stringify({ tier: "reasoning" }),
+    JSON.stringify(["filesystem"]),
+    JSON.stringify({ owner: "local" }),
+    "2026-05-01T00:00:30.000Z",
+    "2026-05-01T00:00:00.000Z",
+    "2026-05-01T00:00:30.000Z",
   );
 
   db.prepare(
@@ -857,7 +905,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(15);
+    expect(result.totals.source_rows).toBe(16);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -892,6 +940,15 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(apiKey?.allowed_modalities).toEqual(["text"]);
     expect(apiKey?.team_id).toBe("team-1");
     expect(apiKey?.created_at).toBeInstanceOf(Date);
+
+    const agentProfile = target.rows.get("agent_profiles")?.[0];
+    expect(agentProfile?.id).toBe("profile-1");
+    expect(agentProfile?.connector).toBe("claude_code");
+    expect(agentProfile?.routing_hint).toEqual({ tier: "reasoning" });
+    expect(agentProfile?.mcp_server_ids).toEqual(["filesystem"]);
+    expect(agentProfile?.metadata).toEqual({ owner: "local" });
+    expect(agentProfile?.last_generated_at).toBeInstanceOf(Date);
+    expect(agentProfile?.created_at).toBeInstanceOf(Date);
 
     const team = target.rows.get("local_teams")?.[0];
     expect(team?.name).toBe("Platform");
@@ -1002,7 +1059,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(15);
+    expect(result.validation.mismatches).toHaveLength(16);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

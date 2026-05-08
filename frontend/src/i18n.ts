@@ -3,6 +3,7 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
 import analytics from '@/locales/en/analytics.json'
+import agents from '@/locales/en/agents.json'
 import apiKeys from '@/locales/en/apiKeys.json'
 import budget from '@/locales/en/budget.json'
 import common from '@/locales/en/common.json'
@@ -12,6 +13,7 @@ import logs from '@/locales/en/logs.json'
 import nodes from '@/locales/en/nodes.json'
 import routing from '@/locales/en/routing.json'
 import zhAnalytics from '@/locales/zh/analytics.json'
+import zhAgents from '@/locales/zh/agents.json'
 import zhApiKeys from '@/locales/zh/apiKeys.json'
 import zhBudget from '@/locales/zh/budget.json'
 import zhCommon from '@/locales/zh/common.json'
@@ -21,6 +23,7 @@ import zhLogs from '@/locales/zh/logs.json'
 import zhNodes from '@/locales/zh/nodes.json'
 import zhRouting from '@/locales/zh/routing.json'
 import zhTWAnalytics from '@/locales/zh-TW/analytics.json'
+import zhTWAgents from '@/locales/zh-TW/agents.json'
 import zhTWApiKeys from '@/locales/zh-TW/apiKeys.json'
 import zhTWBudget from '@/locales/zh-TW/budget.json'
 import zhTWCommon from '@/locales/zh-TW/common.json'
@@ -30,6 +33,7 @@ import zhTWLogs from '@/locales/zh-TW/logs.json'
 import zhTWNodes from '@/locales/zh-TW/nodes.json'
 import zhTWRouting from '@/locales/zh-TW/routing.json'
 import jaAnalytics from '@/locales/ja/analytics.json'
+import jaAgents from '@/locales/ja/agents.json'
 import jaApiKeys from '@/locales/ja/apiKeys.json'
 import jaBudget from '@/locales/ja/budget.json'
 import jaCommon from '@/locales/ja/common.json'
@@ -39,6 +43,7 @@ import jaLogs from '@/locales/ja/logs.json'
 import jaNodes from '@/locales/ja/nodes.json'
 import jaRouting from '@/locales/ja/routing.json'
 import koAnalytics from '@/locales/ko/analytics.json'
+import koAgents from '@/locales/ko/agents.json'
 import koApiKeys from '@/locales/ko/apiKeys.json'
 import koBudget from '@/locales/ko/budget.json'
 import koCommon from '@/locales/ko/common.json'
@@ -48,6 +53,7 @@ import koLogs from '@/locales/ko/logs.json'
 import koNodes from '@/locales/ko/nodes.json'
 import koRouting from '@/locales/ko/routing.json'
 import thAnalytics from '@/locales/th/analytics.json'
+import thAgents from '@/locales/th/agents.json'
 import thApiKeys from '@/locales/th/apiKeys.json'
 import thBudget from '@/locales/th/budget.json'
 import thCommon from '@/locales/th/common.json'
@@ -57,6 +63,7 @@ import thLogs from '@/locales/th/logs.json'
 import thNodes from '@/locales/th/nodes.json'
 import thRouting from '@/locales/th/routing.json'
 import esAnalytics from '@/locales/es/analytics.json'
+import esAgents from '@/locales/es/agents.json'
 import esApiKeys from '@/locales/es/apiKeys.json'
 import esBudget from '@/locales/es/budget.json'
 import esCommon from '@/locales/es/common.json'
@@ -118,10 +125,11 @@ void i18n
     keySeparator: false,
     load: 'currentOnly',
     lowerCaseLng: false,
-    ns: ['common', 'dashboard', 'logs', 'nodes', 'routing', 'budget', 'analytics', 'apiKeys', 'login'],
+    ns: ['common', 'dashboard', 'logs', 'nodes', 'routing', 'budget', 'analytics', 'agents', 'apiKeys', 'login'],
     resources: {
       en: {
         analytics,
+        agents,
         apiKeys,
         budget,
         common,
@@ -133,6 +141,7 @@ void i18n
       },
       zh: {
         analytics: zhAnalytics,
+        agents: zhAgents,
         apiKeys: zhApiKeys,
         budget: zhBudget,
         common: zhCommon,
@@ -144,6 +153,7 @@ void i18n
       },
       'zh-TW': {
         analytics: zhTWAnalytics,
+        agents: zhTWAgents,
         apiKeys: zhTWApiKeys,
         budget: zhTWBudget,
         common: zhTWCommon,
@@ -155,6 +165,7 @@ void i18n
       },
       ja: {
         analytics: jaAnalytics,
+        agents: jaAgents,
         apiKeys: jaApiKeys,
         budget: jaBudget,
         common: jaCommon,
@@ -166,6 +177,7 @@ void i18n
       },
       ko: {
         analytics: koAnalytics,
+        agents: koAgents,
         apiKeys: koApiKeys,
         budget: koBudget,
         common: koCommon,
@@ -177,6 +189,7 @@ void i18n
       },
       th: {
         analytics: thAnalytics,
+        agents: thAgents,
         apiKeys: thApiKeys,
         budget: thBudget,
         common: thCommon,
@@ -188,6 +201,7 @@ void i18n
       },
       es: {
         analytics: esAnalytics,
+        agents: esAgents,
         apiKeys: esApiKeys,
         budget: esBudget,
         common: esCommon,

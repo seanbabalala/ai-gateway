@@ -23,6 +23,7 @@
   "header.notificationsComingSoon": "การแจ้งเตือนจะพร้อมใช้งานเร็วๆ นี้ครับ",
   "header.searchPlaceholder": "ค้นหา logs, nodes, models...",
   "language.label": "ภาษา",
+  "nav.agents": "เอเจนต์",
   "nav.analytics": "การวิเคราะห์",
   "nav.apiKeys": "API Keys",
   "nav.budget": "งบประมาณ",
