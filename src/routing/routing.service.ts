@@ -1790,6 +1790,7 @@ export class RoutingService {
         .filter((target) => routeTargetKey(target) !== selectedKey)
         .map((target) => this.toRouteTarget(target)),
       cost_downgrade: null,
+      intelligence: undefined,
       final_selection: {
         node: input.selected?.node ?? null,
         model: input.selected?.model ?? null,

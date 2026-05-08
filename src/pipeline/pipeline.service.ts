@@ -74,6 +74,7 @@ import { LogSinkService } from '../log-sinks/log-sink.service';
 import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { AgentProfileService } from '../agent-profiles/agent-profile.service';
+import { IntelligenceLoopService } from '../intelligence/intelligence-loop.service';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 import {
@@ -116,7 +117,8 @@ type FallbackReason =
   | 'structured_output_parse_failed'
   | 'structured_output_schema_failed'
   | 'cost_downgrade'
-  | 'concurrency_limited';
+  | 'concurrency_limited'
+  | 'quality_gate_failed';
 
 interface NodeAttemptResult {
   response: CanonicalResponse | null;
@@ -213,6 +215,7 @@ export class PipelineService {
     @Optional() private readonly embeddingBatching?: EmbeddingBatchingService,
     @Optional() private readonly shadowTraffic?: ShadowTrafficService,
     @Optional() private readonly agentProfiles?: AgentProfileService,
+    @Optional() private readonly intelligenceLoop?: IntelligenceLoopService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -423,25 +426,55 @@ export class PipelineService {
           rootSpan.setAttributes({ 'gateway.tier': tier, 'gateway.score': score });
           const retryConfig = this.config.retry;
           const costDowngrade = this.applyCostDowngrade(canonical, route, tier);
-          const activeRoute = costDowngrade.route;
-          const activeRouteTrace = this.applyCostDowngradeToTrace(
+          let activeRoute = costDowngrade.route;
+          let activeRouteTrace = this.applyCostDowngradeToTrace(
             routeTrace,
             route,
             activeRoute,
             costDowngrade.reason,
           );
-          const originalPrimary = route.primary;
+          const intelligenceDecision = this.intelligenceLoop
+            ? await this.intelligenceLoop.evaluateRoute({
+                canonical,
+                tier,
+                score,
+                route: activeRoute,
+                routeTrace: activeRouteTrace,
+              })
+            : null;
+          if (intelligenceDecision?.rejected) {
+            return {
+              body: this.formatError(
+                canonical.metadata.source_format,
+                intelligenceDecision.rejected.statusCode,
+                intelligenceDecision.rejected.message,
+              ),
+              statusCode: intelligenceDecision.rejected.statusCode,
+            };
+          }
+          if (intelligenceDecision) {
+            activeRoute = intelligenceDecision.route;
+            activeRouteTrace = intelligenceDecision.routeTrace;
+          }
+          const originalPrimary =
+            costDowngrade.reason || intelligenceDecision?.fallbackReason
+              ? route.primary
+              : activeRoute.primary;
 
           let canonicalResponse: CanonicalResponse | null = null;
           let usedNodeId = activeRoute.primary.node;
           let usedModel = activeRoute.primary.model;
-          let isFallback = costDowngrade.reason !== null;
+          let isFallback =
+            costDowngrade.reason !== null ||
+            intelligenceDecision?.fallbackReason !== null &&
+              intelligenceDecision?.fallbackReason !== undefined;
           let lastError: Error | null = null;
           let totalRetries = 0;
-          let fallbackReason: FallbackReason | null = costDowngrade.reason;
+          let fallbackReason: FallbackReason | null =
+            intelligenceDecision?.fallbackReason || costDowngrade.reason;
           let fallbackFromNode: string | null = costDowngrade.reason
             ? originalPrimary.node
-            : null;
+            : intelligenceDecision?.fallbackFromNode || null;
           let fallbacksToTry = activeRoute.fallbacks;
 
           // Try primary with retries
@@ -562,6 +595,101 @@ export class PipelineService {
             canonicalResponse = (hookResult.data as { response: CanonicalResponse }).response;
           }
 
+          let finalRouteTrace = activeRouteTrace;
+          if (this.intelligenceLoop && canonicalResponse) {
+            const qualityGate = this.intelligenceLoop.evaluateQualityGate({
+              canonical,
+              response: canonicalResponse,
+              target: { node: usedNodeId, model: usedModel },
+              fallbacks: fallbacksToTry,
+              tier,
+              score,
+              streamStarted: false,
+            });
+            finalRouteTrace = this.intelligenceLoop.withIntelligence(finalRouteTrace, {
+              quality_gate: qualityGate.traceEvidence,
+            });
+            if (qualityGate.shouldFallback && fallbacksToTry.length > 0) {
+              const fb = fallbacksToTry[0];
+              const gateEvidence = this.intelligenceLoop.markQualityGateAction(
+                qualityGate.traceEvidence,
+                'fallback',
+              );
+              finalRouteTrace = this.intelligenceLoop.withIntelligence(finalRouteTrace, {
+                quality_gate: gateEvidence,
+              });
+              const fbResult = await this.tryNodeWithRetry(
+                canonical,
+                fb.node,
+                fb.model,
+                {
+                  tier,
+                  score,
+                  is_fallback: true,
+                  fallback_reason: 'quality_gate_failed',
+                },
+                retryConfig,
+                store,
+              );
+              totalRetries += fbResult.retries;
+              if (fbResult.response) {
+                canonicalResponse = fbResult.response;
+                isFallback = true;
+                fallbackReason = 'quality_gate_failed';
+                fallbackFromNode = usedNodeId;
+                usedNodeId = fb.node;
+                usedModel = fb.model;
+                fallbacksToTry = fallbacksToTry.filter(
+                  (target) => routeTargetKey(target) !== routeTargetKey(fb),
+                );
+              } else {
+                lastError = fbResult.lastError || lastError;
+              }
+            } else if (qualityGate.shouldRetry) {
+              const gateEvidence = this.intelligenceLoop.markQualityGateAction(
+                qualityGate.traceEvidence,
+                'retry',
+              );
+              finalRouteTrace = this.intelligenceLoop.withIntelligence(finalRouteTrace, {
+                quality_gate: gateEvidence,
+              });
+              const retryResult = await this.tryNodeWithRetry(
+                canonical,
+                usedNodeId,
+                usedModel,
+                {
+                  tier,
+                  score,
+                  is_fallback: isFallback,
+                  fallback_reason: 'quality_gate_failed',
+                },
+                { ...retryConfig, max_retries: 0 },
+                store,
+              );
+              totalRetries += 1 + retryResult.retries;
+              if (retryResult.response) {
+                canonicalResponse = retryResult.response;
+                fallbackReason = 'quality_gate_failed';
+              } else {
+                lastError = retryResult.lastError || lastError;
+              }
+            } else if (qualityGate.alertOnly) {
+              this.intelligenceLoop.emitQualityGateAlert(
+                {
+                  canonical,
+                  response: canonicalResponse,
+                  target: { node: usedNodeId, model: usedModel },
+                  fallbacks: fallbacksToTry,
+                  tier,
+                  score,
+                  streamStarted: false,
+                },
+                qualityGate.traceEvidence,
+                qualityGate.failureReasons,
+              );
+            }
+          }
+
           let responseBody = this.denormalizeForClient(canonicalResponse, canonical.metadata.source_format);
 
           // ── preResponse Hook ──
@@ -615,11 +743,23 @@ export class PipelineService {
             usedModel,
             experimentGroup,
           );
+          if (this.intelligenceLoop) {
+            finalRouteTrace = this.intelligenceLoop.withIntelligence(finalRouteTrace, {
+              async_eval: this.intelligenceLoop.enqueueAsyncEval({
+                canonical,
+                response: canonicalResponse,
+                target: { node: usedNodeId, model: usedModel },
+                requestId,
+                statusCode: 200,
+                latencyMs: canonicalResponse.routing.latency_ms,
+              }),
+            });
+          }
           await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
             statusCode: 200, isFallback, latencyMs: canonicalResponse.routing.latency_ms,
             usage: canonicalResponse.usage, error: null, retryCount: totalRetries,
             experimentGroup: resolvedExperimentGroup, domainHint, modalityHints,
-            fallbackReason, fallbackFromNode, routeTrace: activeRouteTrace });
+            fallbackReason, fallbackFromNode, routeTrace: finalRouteTrace });
           this.shadowTraffic?.enqueueChat(
             requestId,
             canonical,
@@ -2472,14 +2612,46 @@ export class PipelineService {
         await this.resolveSmartRoute(canonical, store);
       const retryConfig = this.config.retry;
       const costDowngrade = this.applyCostDowngrade(canonical, route, tier);
-      const activeRoute = costDowngrade.route;
-      const activeRouteTrace = this.applyCostDowngradeToTrace(
+      let activeRoute = costDowngrade.route;
+      let activeRouteTrace = this.applyCostDowngradeToTrace(
         routeTrace,
         route,
         activeRoute,
         costDowngrade.reason,
       );
-      const originalPrimary = route.primary;
+      const intelligenceDecision = this.intelligenceLoop
+        ? await this.intelligenceLoop.evaluateRoute({
+            canonical,
+            tier,
+            score,
+            route: activeRoute,
+            routeTrace: activeRouteTrace,
+          })
+        : null;
+      if (intelligenceDecision?.rejected) {
+        res.status(intelligenceDecision.rejected.statusCode).json(
+          this.formatError(
+            canonical.metadata.source_format,
+            intelligenceDecision.rejected.statusCode,
+            intelligenceDecision.rejected.message,
+          ),
+        );
+        rootSpan.end();
+        return;
+      }
+      if (intelligenceDecision) {
+        activeRoute = intelligenceDecision.route;
+        activeRouteTrace = intelligenceDecision.routeTrace;
+      }
+      if (this.intelligenceLoop) {
+        activeRouteTrace = this.intelligenceLoop.withIntelligence(activeRouteTrace, {
+          quality_gate: this.intelligenceLoop.qualityGateStreamingEvidence(),
+        });
+      }
+      const originalPrimary =
+        costDowngrade.reason || intelligenceDecision?.fallbackReason
+          ? route.primary
+          : activeRoute.primary;
 
       const startTime = Date.now();
 
@@ -2491,13 +2663,17 @@ export class PipelineService {
       let streamConnected = false;
       let usedNodeId = activeRoute.primary.node;
       let usedModel = activeRoute.primary.model;
-      let isFallback = costDowngrade.reason !== null;
+      let isFallback =
+        costDowngrade.reason !== null ||
+        intelligenceDecision?.fallbackReason !== null &&
+          intelligenceDecision?.fallbackReason !== undefined;
       let lastError: Error | null = null;
       let totalRetries = 0;
-      let fallbackReason: FallbackReason | null = costDowngrade.reason;
+      let fallbackReason: FallbackReason | null =
+        intelligenceDecision?.fallbackReason || costDowngrade.reason;
       let fallbackFromNode: string | null = costDowngrade.reason
         ? originalPrimary.node
-        : null;
+        : intelligenceDecision?.fallbackFromNode || null;
 
       for (let i = 0; i < targets.length; i++) {
         const target = targets[i];
@@ -2668,6 +2844,17 @@ export class PipelineService {
                 usedModel,
                 experimentGroup,
               );
+              if (this.intelligenceLoop) {
+                activeRouteTrace = this.intelligenceLoop.withIntelligence(activeRouteTrace, {
+                  async_eval: this.intelligenceLoop.enqueueAsyncEval({
+                    canonical,
+                    target: { node: usedNodeId, model: usedModel },
+                    requestId,
+                    statusCode: 200,
+                    latencyMs,
+                  }),
+                });
+              }
               await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
                 statusCode: 200, isFallback, latencyMs, usage, error: null,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
@@ -3696,6 +3883,7 @@ export class PipelineService {
       },
       fallback_chain: input.route.fallbacks,
       cost_downgrade: null,
+      intelligence: undefined,
       final_selection: {
         node: input.route.primary.node,
         model: input.route.primary.model,
@@ -5362,6 +5550,9 @@ export class PipelineService {
         params.mediaProviderResponseType,
       );
       const agentMetadata = this.resolveAgentLogFields(params.canonical);
+      const intelligenceMetadata = this.resolveIntelligenceLogFields(
+        params.routeTrace,
+      );
 
       const log = this.callLogRepo.create({
         request_id: params.requestId,
@@ -5420,6 +5611,7 @@ export class PipelineService {
         semantic_cache_score:
           params.semanticCacheScore === undefined ? null : params.semanticCacheScore,
         experiment_group: params.experimentGroup || null,
+        ...intelligenceMetadata,
       });
       this.telemetry.recordCallMetrics({
         tier: params.tier,
@@ -5668,6 +5860,60 @@ export class PipelineService {
     };
   }
 
+  private resolveIntelligenceLogFields(
+    trace?: RouteDecisionTrace,
+  ): {
+    intelligence_optimizer_applied: boolean;
+    intelligence_estimated_cost_usd: number | null;
+    intelligence_estimated_savings_usd: number | null;
+    token_prediction_risk: string | null;
+    quality_gate_status: string | null;
+    async_eval_queued: boolean;
+  } {
+    const intelligence = trace?.intelligence;
+    const optimizer = intelligence?.optimizer;
+    const tokenPrediction = intelligence?.token_prediction;
+    const qualityGate = intelligence?.quality_gate;
+    const asyncEval = intelligence?.async_eval;
+    const selected = optimizer?.candidates.find((candidate) => candidate.selected);
+    const fromCost =
+      optimizer?.from
+        ? optimizer.candidates.find(
+            (candidate) =>
+              candidate.node === optimizer.from?.node &&
+              candidate.model === optimizer.from?.model,
+          )?.estimated_cost_usd
+        : null;
+    const toCost =
+      optimizer?.to
+        ? optimizer.candidates.find(
+            (candidate) =>
+              candidate.node === optimizer.to?.node &&
+              candidate.model === optimizer.to?.model,
+          )?.estimated_cost_usd
+        : null;
+    const savings =
+      fromCost !== null &&
+      fromCost !== undefined &&
+      toCost !== null &&
+      toCost !== undefined
+        ? Math.max(0, fromCost - toCost)
+        : null;
+
+    return {
+      intelligence_optimizer_applied: Boolean(optimizer?.applied),
+      intelligence_estimated_cost_usd:
+        selected?.estimated_cost_usd ??
+        tokenPrediction?.estimated_cost_usd ??
+        null,
+      intelligence_estimated_savings_usd:
+        savings === null ? null : Number(savings.toFixed(6)),
+      token_prediction_risk: tokenPrediction?.risk || null,
+      quality_gate_status: qualityGate?.final_status || null,
+      async_eval_queued: Boolean(asyncEval?.queued),
+    };
+  }
+
   private async saveRouteDecisionTrace(
     params: {
       requestId: string; canonical: LoggableCanonicalRequest; tier: Tier; score: number;
@@ -5684,6 +5930,7 @@ export class PipelineService {
   ): Promise<void> {
     const trace = this.finalizeRouteTrace(params);
     const agentMetadata = this.resolveAgentLogFields(params.canonical);
+    const intelligenceMetadata = this.resolveIntelligenceLogFields(trace);
     const log = this.routeDecisionRepo.create({
       request_id: params.requestId,
       source_format: params.canonical.metadata.source_format,
@@ -5709,6 +5956,11 @@ export class PipelineService {
       api_key_id: params.canonical.metadata.api_key_id || null,
       namespace_id: params.canonical.metadata.namespace_id || null,
       ...agentMetadata,
+      intelligence_optimizer_applied:
+        intelligenceMetadata.intelligence_optimizer_applied,
+      token_prediction_risk: intelligenceMetadata.token_prediction_risk,
+      quality_gate_status: intelligenceMetadata.quality_gate_status,
+      async_eval_queued: intelligenceMetadata.async_eval_queued,
       trace_json: JSON.stringify(trace),
     });
     await this.routeDecisionRepo.save(log);

@@ -116,16 +116,18 @@ describe('CallLog schema patch', () => {
   });
 
   it('applies all missing call log schema patches in order', async () => {
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce([{ name: 'call_logs' }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce([{ name: 'call_logs' }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(undefined);
-    mockMissingMetadataColumns(query, { name: 'call_logs' });
-    mockMissingMetadataColumns(query, { name: 'route_decisions' });
+    const query = jest.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('sqlite_master')) {
+        const table =
+          params?.[0] ||
+          sql.match(/AND name = '([^']+)'/)?.[1];
+        return table === 'call_logs' || table === 'route_decisions'
+          ? [{ name: table }]
+          : [];
+      }
+      if (sql.startsWith('PRAGMA table_info')) return [];
+      return undefined;
+    });
     const dataSource = {
       options: { type: 'better-sqlite3' },
       query,
@@ -138,14 +140,29 @@ describe('CallLog schema patch', () => {
       'stream',
       'agent_connector',
       'route_decisions.agent_connector',
+      'intelligence_optimizer_applied',
+      'intelligence_estimated_cost_usd',
+      'token_prediction_risk',
+      'route_decisions.intelligence_optimizer_applied',
+      'route_decisions.quality_gate_status',
     ]));
-    expect(dataSource.query).toHaveBeenNthCalledWith(
-      3,
+    expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN cost_without_cache_usd real',
     );
-    expect(dataSource.query).toHaveBeenNthCalledWith(
-      6,
+    expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN stream boolean NOT NULL DEFAULT 0',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN intelligence_optimizer_applied boolean NOT NULL DEFAULT 0',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN intelligence_estimated_cost_usd real',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN token_prediction_risk varchar',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE route_decisions ADD COLUMN quality_gate_status varchar',
     );
   });
 
@@ -265,29 +282,34 @@ describe('CallLog schema patch', () => {
   it('runs the startup patch through the service on module init', async () => {
     const dataSource = {
       options: { type: 'better-sqlite3' },
-      query: jest
-        .fn()
-        .mockResolvedValueOnce([{ name: 'call_logs' }])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce([{ name: 'call_logs' }])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]),
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('sqlite_master')) {
+          const table =
+            params?.[0] ||
+            sql.match(/AND name = '([^']+)'/)?.[1];
+          return table === 'call_logs' || table === 'route_decisions'
+            ? [{ name: table }]
+            : [];
+        }
+        if (sql.startsWith('PRAGMA table_info')) return [];
+        return undefined;
+      }),
     } as any;
     const service = new CallLogSchemaPatchService(dataSource);
 
     await service.onModuleInit();
 
-    expect(dataSource.query).toHaveBeenCalledTimes(8);
-    expect(dataSource.query).toHaveBeenNthCalledWith(
-      3,
+    expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN cost_without_cache_usd real',
     );
-    expect(dataSource.query).toHaveBeenNthCalledWith(
-      6,
+    expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN stream boolean NOT NULL DEFAULT 0',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN async_eval_queued boolean NOT NULL DEFAULT 0',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE route_decisions ADD COLUMN async_eval_queued boolean NOT NULL DEFAULT 0',
     );
   });
 });

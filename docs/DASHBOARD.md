@@ -8,6 +8,12 @@ OpenAI-compatible coding agents, Generic Anthropic-compatible coding agents,
 and compatible chatbot clients a clear local setup entry while keeping provider
 keys in Nodes, env vars, or secret references.
 
+v2.2 adds Intelligence Loop evidence to Overview and Route Explanation. Operators
+can inspect cost optimizer decisions, token prediction risk, async eval metadata,
+and opt-in quality gate events without storing prompts, responses, raw headers,
+provider keys, source code, diffs, tool payloads, media bytes, or hidden
+reasoning text by default.
+
 v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows the active workspace, reads `GET /api/dashboard/workspaces`, validates switches through `POST /api/dashboard/workspaces/switch`, stores the selected workspace in browser local storage, and sends `x-siftgate-workspace-id` on Dashboard API calls. Fresh and upgraded OSS installs start with `Default Organization` and `Default Workspace`; legacy v1.9 metadata maps to that default workspace.
 
 v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mapped to a workspace membership, the header shows an Admin / Operator / Viewer role badge, and Dashboard write APIs now enforce centralized role checks. Existing local installs bootstrap the `dashboard` identity as an Admin in the default workspace.
@@ -24,7 +30,7 @@ Dashboard APIs.
 
 | Page | Purpose |
 | --- | --- |
-| Overview | First-run checklist, live calls, cost, cache savings, latency, budget, provider health, guardrails finding summary, and recent activity |
+| Overview | First-run checklist, live calls, cost, cache savings, Intelligence Loop summary, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
@@ -34,7 +40,7 @@ Dashboard APIs.
 | Nodes | Upstream node health, configured-upstream vs catalog-onboarding views, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
 | Provider Catalog | Merged provider projection with provider status, canonical/pricing coverage, compatibility profiles, enrichment metadata, recommended model defaults, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
-| Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, compatibility evidence, and reasoning support |
+| Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, Intelligence Loop evidence, multimodal evidence, compatibility evidence, and reasoning support |
 | Sessions | Metadata-only request timelines grouped by `agent_session_id`, `session_id`, or legacy `session_key`, with coding-agent connector/repo/project filters, model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
 | Logs | Request metadata, source format, route result, local/provider cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, per-request cache-savings evidence, and export-safe call details |
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
@@ -141,6 +147,26 @@ project label, and Route Explanation links without storing source files, diffs,
 prompts, responses, or tool payloads.
 
 Routing hints are advisory. Gateway API key policies, namespaces, local teams, budgets, rate limits, allowed endpoints, allowed models, allowed nodes, allowed modalities, circuit state, and fallback rules remain authoritative.
+
+## Intelligence Loop
+
+The Overview page reads `GET /api/dashboard/intelligence/summary` and shows a
+compact Intelligence Loop card with estimated savings, optimized route count,
+and quality gate failures for the active window.
+
+Route Explanation adds an Intelligence Loop panel when a trace contains v2.2
+evidence. The panel shows:
+
+- Cost Optimizer enabled/applied state, objective, and evidence-only vs applied
+  mode.
+- Token Prediction risk, action, estimated cost, and remaining budget.
+- Quality Gate final status, mode, and matched rule events.
+- Async Eval queue state, metadata-only status, and configured dimensions.
+
+Quality Gate actions are visible only as metadata. The Dashboard does not expose
+prompt text, response text, raw headers, provider keys, source code, diffs, tool
+payloads, media bytes, hidden reasoning text, or resolved secrets. Streaming
+requests are marked as skipped for post-start retry/fallback safety.
 
 ## Playground Safety
 

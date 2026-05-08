@@ -37,6 +37,7 @@ import {
   FileSearch,
   ArrowRight,
   Circle,
+  Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -59,6 +60,7 @@ import { useGuardrails } from '@/hooks/use-guardrails'
 import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useClusterStatus } from '@/hooks/use-cluster-status'
 import { useWorkspaces } from '@/hooks/use-workspaces'
+import { useIntelligenceSummary } from '@/hooks/use-intelligence'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -159,6 +161,10 @@ export function DashboardPage() {
   const { data: clusterStatus } = useClusterStatus()
   const { data: workspaceState } = useWorkspaces()
   const { data: cacheSavings } = useCacheSavings('1d', 'node', {
+    id: apiKeyFilter || undefined,
+    namespaceId: namespaceFilter || undefined,
+  })
+  const { data: intelligenceSummary } = useIntelligenceSummary('1d', {
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
   })
@@ -698,7 +704,7 @@ export function DashboardPage() {
       </Card>
 
       {/* Metric Cards */}
-      <div className="stagger-children grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="stagger-children grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
         <MetricCard
           label={t('metrics.totalCalls')}
           value={formatNumber(total.calls)}
@@ -767,6 +773,33 @@ export function DashboardPage() {
                 }}
               />
             ))}
+          </div>
+        </Card>
+        <Card className="animate-fade-up relative overflow-hidden p-5">
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="text-[11px] font-bold text-[var(--foreground-dim)]">
+                {t('metrics.intelligenceLoop')}
+              </div>
+              <div className="text-[29px] font-extrabold leading-none tracking-tight text-[var(--foreground)]">
+                {formatCost(intelligenceSummary?.summary.estimated_savings_usd || 0)}
+              </div>
+              <div className="space-y-1">
+                <div className="text-[11px] font-medium text-[var(--foreground-dim)]">
+                  {t('metrics.optimizerApplied', {
+                    count: formatNumber(intelligenceSummary?.summary.optimizer_applied || 0),
+                  })}
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+                  {t('metrics.qualityGateFailed', {
+                    count: formatNumber(intelligenceSummary?.summary.quality_gate.failed || 0),
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--background-secondary)] text-[var(--accent)]">
+              <Sparkles className="h-5 w-5" />
+            </div>
           </div>
         </Card>
         <MetricCard

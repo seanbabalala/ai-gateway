@@ -421,6 +421,120 @@ function CacheEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
   )
 }
 
+function IntelligenceEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
+  const { t } = useTranslation('logs')
+  const intelligence = trace.intelligence
+  if (!intelligence) return null
+
+  const optimizer = intelligence.optimizer
+  const tokenPrediction = intelligence.token_prediction
+  const asyncEval = intelligence.async_eval
+  const qualityGate = intelligence.quality_gate
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <CardTitle>{t('routeExplanation.sections.intelligence')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.intelligence.optimizer')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={optimizer?.enabled ? 'blue' : 'zinc'}>
+                {optimizer?.enabled
+                  ? t('routeExplanation.intelligence.enabled')
+                  : t('routeExplanation.intelligence.disabled')}
+              </Badge>
+              <Badge variant={optimizer?.applied ? 'emerald' : 'zinc'}>
+                {optimizer?.applied
+                  ? t('routeExplanation.intelligence.applied')
+                  : t('routeExplanation.intelligence.evidenceOnly')}
+              </Badge>
+              {optimizer?.objective && (
+                <Badge variant="gold">
+                  {t(`routeExplanation.intelligence.objectives.${optimizer.objective}`, {
+                    defaultValue: optimizer.objective,
+                  })}
+                </Badge>
+              )}
+            </div>
+            {optimizer?.from && optimizer.to && (
+              <div className="mt-2 font-mono text-[10px] leading-4 text-[var(--foreground-dim)]">
+                {formatTarget(optimizer.from, t)} -&gt; {formatTarget(optimizer.to, t)}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.intelligence.tokenPrediction')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={tokenPrediction?.risk === 'over_limit' ? 'red' : tokenPrediction?.risk === 'near_limit' ? 'amber' : 'emerald'}>
+                {t(`routeExplanation.intelligence.risk.${tokenPrediction?.risk || 'unknown'}`)}
+              </Badge>
+              <Badge variant="zinc">
+                {t(`routeExplanation.intelligence.actions.${tokenPrediction?.action || 'skipped'}`)}
+              </Badge>
+            </div>
+            <div className="mt-2 font-mono text-[10px] leading-4 text-[var(--foreground-dim)]">
+              <div>{t('routeExplanation.intelligence.estimatedCost', { value: tokenPrediction?.estimated_cost_usd === null || tokenPrediction?.estimated_cost_usd === undefined ? '-' : formatCost(tokenPrediction.estimated_cost_usd) })}</div>
+              <div>{t('routeExplanation.intelligence.remaining', { value: tokenPrediction?.budget_remaining_usd === null || tokenPrediction?.budget_remaining_usd === undefined ? '-' : formatCost(tokenPrediction.budget_remaining_usd) })}</div>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.intelligence.qualityGate')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={qualityGate?.final_status === 'failed' ? 'red' : qualityGate?.final_status === 'passed' ? 'emerald' : 'zinc'}>
+                {t(`routeExplanation.intelligence.quality.${qualityGate?.final_status || 'skipped'}`)}
+              </Badge>
+              <Badge variant="zinc">
+                {t(`routeExplanation.intelligence.modes.${qualityGate?.mode || 'disabled'}`)}
+              </Badge>
+            </div>
+            <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+              {qualityGate?.events.length
+                ? qualityGate.events.slice(0, 2).map((event) => (
+                    <div key={event.rule_id} className="font-mono">
+                      {event.rule_id}: {event.failure_reasons.join(', ') || event.status}
+                    </div>
+                  ))
+                : t('routeExplanation.intelligence.noGateEvents')}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.intelligence.asyncEval')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={asyncEval?.queued ? 'emerald' : asyncEval?.enabled ? 'amber' : 'zinc'}>
+                {asyncEval?.queued
+                  ? t('routeExplanation.intelligence.queued')
+                  : asyncEval?.enabled
+                    ? t('routeExplanation.intelligence.notQueued')
+                    : t('routeExplanation.intelligence.disabled')}
+              </Badge>
+              {asyncEval?.metadata_only && (
+                <Badge variant="blue">{t('routeExplanation.intelligence.metadataOnly')}</Badge>
+              )}
+            </div>
+            <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+              {asyncEval?.dimensions?.join(', ') || t('routeExplanation.values.none')}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
 function CompatibilityEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
   const { t } = useTranslation('logs')
   const selected = trace.candidate_targets.find((candidate) => candidate.selected)
@@ -1028,6 +1142,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
           <ModalityEvidencePanel trace={trace} />
           <CompatibilityEvidencePanel trace={trace} />
           <CacheEvidencePanel trace={trace} />
+          <IntelligenceEvidencePanel trace={trace} />
 
           <CardStatic>
             <CardHeader>

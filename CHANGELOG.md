@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 2.2.0 - 2026-05-09
+
+### Added
+
+- Added the v2.2 Intelligence Loop for the OSS data plane: Real-time Cost Optimizer v1, Token Prediction v1, Async Eval metadata, and disabled-by-default Quality Gate v1.
+- Added privacy-safe `intelligence` route-decision evidence for optimizer candidates, token estimates, budget risk, quality gate events, and async eval queue state.
+- Added metadata columns on call logs and route decisions for optimizer applied state, estimated cost/savings, token prediction risk, quality gate status, and async eval queued state.
+- Added `GET /api/dashboard/intelligence/summary` for metadata-only optimizer, token risk, async eval, and quality gate summaries grouped by agent and node.
+- Added Dashboard Overview and Route Explanation surfaces for Intelligence Loop evidence with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Added `docs/INTELLIGENCE_LOOP.md` plus config example, API reference, Dashboard, and architecture documentation for v2.2 operations.
+
+### Changed
+
+- Cost optimization remains evidence-only unless `intelligence.cost_optimizer.action=optimize` is explicitly configured.
+- Token Prediction can reject or request downgrade only through explicit budget policy; default behavior records evidence without changing traffic.
+- Quality Gate retries/fallbacks are limited to non-streaming responses before bytes are sent. Streaming requests record a `streaming_no_post_start_retry` skip reason.
+- Updated release metadata to v2.2.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- Intelligence Loop does not store prompts, responses, raw provider headers, provider keys, Gateway API key plaintext, source code, diffs, tool payloads, MCP payloads, media bytes, hidden reasoning text, or resolved secrets by default.
+- Async Eval v1 is metadata-only by default and does not make inline eval mandatory.
+- Optimizer and token prediction do not bypass workspace isolation, RBAC, Gateway API key permissions, endpoint/model/node policy, budgets, circuit breakers, or fallback policy.
+
 ## 2.1.0 - 2026-05-09
 
 ### Added

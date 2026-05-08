@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.1.0 Coding Agent Gateway**.
+Current release: **v2.2.0 Intelligence Loop**.
 
-Current development focus after v2.1.0: preserve Platform Trust stability,
+Current development focus after v2.2.0: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -21,6 +21,11 @@ as minor releases.
   redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
   Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
   Anthropic-compatible agents.
+- Intelligence Loop: optional cost optimizer evidence, token prediction,
+  async eval metadata, and opt-in quality gates make routing decisions easier
+  to trust without storing prompts, responses, raw headers, provider keys,
+  source code, diffs, tool payloads, media bytes, or hidden reasoning text by
+  default.
 
 ## Quick Start
 
@@ -54,6 +59,25 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.2 Highlights
+
+- v2.2.0 adds the first Intelligence Loop for the OSS data plane: Real-time Cost
+  Optimizer v1, Token Prediction v1, Async Eval metadata, and disabled-by-default
+  Quality Gate v1.
+- Cost Optimizer starts in evidence-only mode and can apply route changes only
+  when `intelligence.cost_optimizer.action=optimize` is explicit. Quality-critical
+  coding/security/deep requests are protected from silent downgrade by default.
+- Token Prediction estimates input/output/context tokens and cost risk before
+  the upstream call. Reject or downgrade behavior happens only through explicit
+  workspace/config policy.
+- Quality Gate can retry, fallback, or alert for configured critical
+  non-streaming routes, and never retries or falls back after streaming bytes
+  have started.
+- Dashboard Overview and Route Explanation show optimizer evidence, token risk,
+  quality gate events, async eval metadata, and a workspace cost optimization
+  summary with seven-locale copy.
+- See [`docs/INTELLIGENCE_LOOP.md`](docs/INTELLIGENCE_LOOP.md).
 
 ## v2.1 Highlights
 

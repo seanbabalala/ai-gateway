@@ -16,6 +16,26 @@ const AGENT_METADATA_COLUMNS = [
   'agent_repo',
   'agent_project',
 ] as const;
+const INTELLIGENCE_BOOLEAN_COLUMNS = [
+  'intelligence_optimizer_applied',
+  'async_eval_queued',
+] as const;
+const INTELLIGENCE_REAL_COLUMNS = [
+  'intelligence_estimated_cost_usd',
+  'intelligence_estimated_savings_usd',
+] as const;
+const INTELLIGENCE_TEXT_COLUMNS = [
+  'token_prediction_risk',
+  'quality_gate_status',
+] as const;
+const ROUTE_DECISION_INTELLIGENCE_BOOLEAN_COLUMNS = [
+  'intelligence_optimizer_applied',
+  'async_eval_queued',
+] as const;
+const ROUTE_DECISION_INTELLIGENCE_TEXT_COLUMNS = [
+  'token_prediction_risk',
+  'quality_gate_status',
+] as const;
 
 type SupportedDatabaseDriver = 'postgres' | 'better-sqlite3';
 
@@ -59,6 +79,41 @@ export async function applyCallLogSchemaPatches(
       dataSource,
       ROUTE_DECISIONS_TABLE,
       AGENT_METADATA_COLUMNS,
+    )).map((column) => `${ROUTE_DECISIONS_TABLE}.${column}`),
+  );
+  applied.push(
+    ...(await applyMetadataBooleanColumnPatches(
+      dataSource,
+      CALL_LOGS_TABLE,
+      INTELLIGENCE_BOOLEAN_COLUMNS,
+    )),
+  );
+  applied.push(
+    ...(await applyMetadataRealColumnPatches(
+      dataSource,
+      CALL_LOGS_TABLE,
+      INTELLIGENCE_REAL_COLUMNS,
+    )),
+  );
+  applied.push(
+    ...(await applyMetadataTextColumnPatches(
+      dataSource,
+      CALL_LOGS_TABLE,
+      INTELLIGENCE_TEXT_COLUMNS,
+    )),
+  );
+  applied.push(
+    ...(await applyMetadataBooleanColumnPatches(
+      dataSource,
+      ROUTE_DECISIONS_TABLE,
+      ROUTE_DECISION_INTELLIGENCE_BOOLEAN_COLUMNS,
+    )).map((column) => `${ROUTE_DECISIONS_TABLE}.${column}`),
+  );
+  applied.push(
+    ...(await applyMetadataTextColumnPatches(
+      dataSource,
+      ROUTE_DECISIONS_TABLE,
+      ROUTE_DECISION_INTELLIGENCE_TEXT_COLUMNS,
     )).map((column) => `${ROUTE_DECISIONS_TABLE}.${column}`),
   );
   return applied;
@@ -217,6 +272,54 @@ async function applyMetadataTextColumnPatches(
       );
     } else {
       await dataSource.query(`ALTER TABLE ${table} ADD COLUMN ${column} varchar`);
+    }
+    applied.push(column);
+  }
+
+  return applied;
+}
+
+async function applyMetadataBooleanColumnPatches(
+  dataSource: DataSource,
+  table: string,
+  columns: readonly string[],
+): Promise<string[]> {
+  const applied: string[] = [];
+  if (!supportsSchemaPatch(dataSource)) return applied;
+  if (!(await hasTable(dataSource, table))) return applied;
+
+  for (const column of columns) {
+    if (await hasTableColumnInternal(dataSource, table, column, true)) continue;
+    if (dataSource.options.type === 'postgres') {
+      await dataSource.query(
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} boolean NOT NULL DEFAULT false`,
+      );
+    } else {
+      await dataSource.query(`ALTER TABLE ${table} ADD COLUMN ${column} boolean NOT NULL DEFAULT 0`);
+    }
+    applied.push(column);
+  }
+
+  return applied;
+}
+
+async function applyMetadataRealColumnPatches(
+  dataSource: DataSource,
+  table: string,
+  columns: readonly string[],
+): Promise<string[]> {
+  const applied: string[] = [];
+  if (!supportsSchemaPatch(dataSource)) return applied;
+  if (!(await hasTable(dataSource, table))) return applied;
+
+  for (const column of columns) {
+    if (await hasTableColumnInternal(dataSource, table, column, true)) continue;
+    if (dataSource.options.type === 'postgres') {
+      await dataSource.query(
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} double precision NULL`,
+      );
+    } else {
+      await dataSource.query(`ALTER TABLE ${table} ADD COLUMN ${column} real`);
     }
     applied.push(column);
   }

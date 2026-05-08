@@ -19,6 +19,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { McpModule } from './mcp/mcp.module';
 import { BatchModule } from './batch/batch.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
+import { IntelligenceModule } from './intelligence/intelligence.module';
 import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.filter';
 
 @Module({
@@ -40,6 +41,7 @@ import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.fi
     McpModule,
     BatchModule,
     EvaluationModule,
+    IntelligenceModule,
     PluginModule,
     AuthModule,
     IngestModule,

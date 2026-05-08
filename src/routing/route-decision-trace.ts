@@ -142,6 +142,85 @@ export interface RouteDecisionTraceFilter {
   reason: string;
 }
 
+export interface RouteDecisionTokenPredictionEvidence {
+  enabled: boolean;
+  estimated_input_tokens: number | null;
+  estimated_output_tokens: number | null;
+  estimated_context_tokens: number | null;
+  estimated_cost_usd: number | null;
+  budget_policy: 'observe' | 'reject' | 'downgrade';
+  budget_scope: 'workspace' | 'namespace' | 'team' | 'api_key' | 'global' | 'none';
+  budget_limit_usd: number | null;
+  budget_current_usd: number | null;
+  budget_remaining_usd: number | null;
+  budget_usage_ratio: number | null;
+  risk: 'unknown' | 'within_budget' | 'near_limit' | 'over_limit';
+  action: 'observed' | 'rejected' | 'downgrade_requested' | 'downgraded' | 'skipped';
+  reason: string;
+}
+
+export interface RouteDecisionCostOptimizerCandidateEvidence {
+  node: string;
+  model: string;
+  estimated_cost_usd: number | null;
+  cache_hit_probability: number | null;
+  latency_ms: number | null;
+  success_rate: number | null;
+  quality_score: number | null;
+  composite_score: number | null;
+  selected: boolean;
+  rejected_reasons: string[];
+}
+
+export interface RouteDecisionCostOptimizerEvidence {
+  enabled: boolean;
+  action: 'evidence_only' | 'optimize';
+  objective: 'cost' | 'balanced' | 'latency' | 'quality';
+  applied: boolean;
+  from: RouteTarget | null;
+  to: RouteTarget | null;
+  reason: string;
+  budget_remaining_usd: number | null;
+  quality_critical: boolean;
+  candidates: RouteDecisionCostOptimizerCandidateEvidence[];
+}
+
+export interface RouteDecisionAsyncEvalEvidence {
+  enabled: boolean;
+  queued: boolean;
+  sample_rate: number;
+  dimensions: string[];
+  metadata_only: boolean;
+  job_id: string | null;
+  reason: string;
+}
+
+export interface RouteDecisionQualityGateEvent {
+  rule_id: string;
+  status: 'passed' | 'failed' | 'skipped';
+  actions: Array<'retry' | 'fallback' | 'alert'>;
+  failure_reasons: string[];
+  selected_action: 'none' | 'retry' | 'fallback' | 'alert' | 'skip';
+  stream_started: boolean;
+  retry_attempted: boolean;
+  fallback_attempted: boolean;
+}
+
+export interface RouteDecisionQualityGateEvidence {
+  enabled: boolean;
+  mode: 'disabled' | 'metadata_only' | 'enforced';
+  final_status: 'passed' | 'failed' | 'skipped';
+  events: RouteDecisionQualityGateEvent[];
+  reason: string;
+}
+
+export interface RouteDecisionIntelligenceEvidence {
+  optimizer?: RouteDecisionCostOptimizerEvidence;
+  token_prediction?: RouteDecisionTokenPredictionEvidence;
+  async_eval?: RouteDecisionAsyncEvalEvidence;
+  quality_gate?: RouteDecisionQualityGateEvidence;
+}
+
 export interface RouteDecisionTrace {
   version: 1;
   request_id?: string;
@@ -226,6 +305,7 @@ export interface RouteDecisionTrace {
     to: RouteTarget;
     reason: string;
   } | null;
+  intelligence?: RouteDecisionIntelligenceEvidence;
   final_selection: {
     node: string | null;
     model: string | null;

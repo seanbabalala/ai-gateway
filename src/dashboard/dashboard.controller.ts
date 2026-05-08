@@ -2169,6 +2169,7 @@ export class DashboardController {
         reason: finalSelection.reason,
         fallback_chain: trace?.fallback_chain || [],
         filters: trace?.filters || [],
+        intelligence: trace?.intelligence || null,
         compatibility:
           trace?.candidate_targets.find((candidate) => candidate.selected)
             ?.compatibility_evidence || null,
@@ -2501,6 +2502,169 @@ export class DashboardController {
       tool_payloads: false,
       storage: "metadata_only",
     };
+  }
+
+  @Get("intelligence/summary")
+  @ApiOperation({
+    summary: "Get metadata-only cost optimizer and quality gate summary",
+  })
+  @ApiQuery({ name: "period", required: false, example: "7d" })
+  @ApiQuery({ name: "api_key", required: false })
+  @ApiQuery({ name: "api_key_id", required: false })
+  @ApiQuery({ name: "namespace", required: false })
+  @ApiOkResponse({
+    description:
+      "Intelligence loop summary from call-log metadata; no prompts, responses, raw headers, provider keys, or tool payloads.",
+  })
+  async getIntelligenceSummary(
+    @Query("period") period: string = "7d",
+    @Query("api_key") apiKey?: string,
+    @Query("api_key_id") apiKeyId?: string,
+    @Query("namespace") namespaceId?: string,
+  ) {
+    const periodDays = period === "90d" ? 90 : period === "30d" ? 30 : 7;
+    const since = new Date(Date.now() - periodDays * 86_400_000);
+    const qb = this.callLogRepo
+      .createQueryBuilder("log")
+      .where("log.timestamp >= :since", { since })
+      .orderBy("log.timestamp", "DESC")
+      .take(5000);
+    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
+    const logs = await qb.getMany();
+
+    const optimizerApplied = logs.filter(
+      (log) => Boolean((log as CallLog & { intelligence_optimizer_applied?: boolean }).intelligence_optimizer_applied),
+    );
+    const estimatedSavings = logs.reduce(
+      (sum, log) =>
+        sum +
+        Number(
+          (log as CallLog & { intelligence_estimated_savings_usd?: number | null })
+            .intelligence_estimated_savings_usd || 0,
+        ),
+      0,
+    );
+    const asyncQueued = logs.filter(
+      (log) => Boolean((log as CallLog & { async_eval_queued?: boolean }).async_eval_queued),
+    ).length;
+    const tokenRisk = this.countBy(
+      logs.map((log) =>
+        String(
+          (log as CallLog & { token_prediction_risk?: string | null })
+            .token_prediction_risk || "unknown",
+        ),
+      ),
+    );
+    const qualityGate = this.countBy(
+      logs.map((log) =>
+        String(
+          (log as CallLog & { quality_gate_status?: string | null })
+            .quality_gate_status || "skipped",
+        ),
+      ),
+    );
+    const byAgent = this.groupIntelligenceRows(logs, (log) =>
+      log.agent_virtual_model || log.agent_connector || "non_agent",
+    );
+    const byNode = this.groupIntelligenceRows(logs, (log) =>
+      `${log.node_id || "unknown"}:${log.model || "unknown"}`,
+    );
+
+    return {
+      period,
+      generated_at: new Date().toISOString(),
+      summary: {
+        total_requests: logs.length,
+        optimizer_applied: optimizerApplied.length,
+        optimizer_applied_rate:
+          logs.length > 0
+            ? Number((optimizerApplied.length / logs.length).toFixed(4))
+            : 0,
+        estimated_savings_usd: Number(estimatedSavings.toFixed(6)),
+        async_eval_queued: asyncQueued,
+        token_risk: tokenRisk,
+        quality_gate: qualityGate,
+        privacy: {
+          prompt: false,
+          response: false,
+          raw_headers: false,
+          provider_keys: false,
+          tool_payloads: false,
+          storage: "metadata_only",
+        },
+      },
+      by_agent: byAgent,
+      by_node: byNode,
+    };
+  }
+
+  private groupIntelligenceRows(
+    logs: CallLog[],
+    keyFn: (log: CallLog) => string,
+  ) {
+    const groups = new Map<string, {
+      key: string;
+      requests: number;
+      optimizer_applied: number;
+      estimated_savings_usd: number;
+      async_eval_queued: number;
+      quality_gate_failed: number;
+      near_or_over_budget: number;
+    }>();
+    for (const log of logs) {
+      const key = keyFn(log);
+      const group = groups.get(key) || {
+        key,
+        requests: 0,
+        optimizer_applied: 0,
+        estimated_savings_usd: 0,
+        async_eval_queued: 0,
+        quality_gate_failed: 0,
+        near_or_over_budget: 0,
+      };
+      group.requests += 1;
+      if ((log as CallLog & { intelligence_optimizer_applied?: boolean }).intelligence_optimizer_applied) {
+        group.optimizer_applied += 1;
+      }
+      group.estimated_savings_usd += Number(
+        (log as CallLog & { intelligence_estimated_savings_usd?: number | null })
+          .intelligence_estimated_savings_usd || 0,
+      );
+      if ((log as CallLog & { async_eval_queued?: boolean }).async_eval_queued) {
+        group.async_eval_queued += 1;
+      }
+      if (
+        (log as CallLog & { quality_gate_status?: string | null })
+          .quality_gate_status === "failed"
+      ) {
+        group.quality_gate_failed += 1;
+      }
+      const risk = (log as CallLog & { token_prediction_risk?: string | null })
+        .token_prediction_risk;
+      if (risk === "near_limit" || risk === "over_limit") {
+        group.near_or_over_budget += 1;
+      }
+      groups.set(key, group);
+    }
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        estimated_savings_usd: Number(group.estimated_savings_usd.toFixed(6)),
+      }))
+      .sort(
+        (a, b) =>
+          b.estimated_savings_usd - a.estimated_savings_usd ||
+          b.requests - a.requests ||
+          a.key.localeCompare(b.key),
+      )
+      .slice(0, 12);
+  }
+
+  private countBy(values: string[]): Record<string, number> {
+    return values.reduce<Record<string, number>>((acc, value) => {
+      acc[value] = (acc[value] || 0) + 1;
+      return acc;
+    }, {});
   }
 
   private maskSecretHeaderRecord(

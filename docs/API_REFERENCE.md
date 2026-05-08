@@ -65,6 +65,13 @@ supported for older Claude-style profile configs.
 
 The gateway preserves the caller-facing protocol while routing across configured provider protocols. Requests and responses may be normalized internally, but provider credentials and raw authorization headers are not exposed in OpenAPI examples or Dashboard DTOs.
 
+v2.2 adds the optional Intelligence Loop. Token prediction can reject a request
+before an upstream call only when `intelligence.token_prediction.budget_policy`
+is explicitly set to `reject`; otherwise it records metadata-only route
+evidence. Cost optimizer route changes require
+`intelligence.cost_optimizer.action=optimize`. Quality Gate retries/fallbacks
+run only before response bytes are sent and never after streaming has started.
+
 ### Structured Output
 
 Structured-output intent is preserved in the canonical request and forwarded to the selected provider when SiftGate has a safe protocol mapping.
@@ -356,6 +363,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/route-decisions` | Paginated explainable routing summaries |
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
+| `GET` | `/api/dashboard/intelligence/summary` | Metadata-only cost optimizer, token prediction, async eval, and quality gate summary |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
 | `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
@@ -613,6 +621,32 @@ The report includes total requests, success/error/fallback/cache rates, p50/p75/
 This endpoint is read-only and never applies routing changes. It does not store or return prompts, responses, raw headers, provider keys, media bytes, or video bytes. Treat it as local operational evidence; fair comparisons still require identical machine, upstream latency, request body, concurrency, config, and commit.
 
 Route Decision Trace responses may include `cache_evidence` on the trace and on each candidate target. Cache evidence records only metadata such as local prompt-cache lookup state, provider cache capability, observed provider cache-read hit rate, cache read/write token counters, cache-adjusted estimated cost, estimated savings, and v1.3 semantic cache match state.
+
+v2.2 route decision traces may also include top-level `intelligence` evidence:
+
+- `token_prediction` records estimated input/output/context tokens, estimated
+  cost, budget scope/headroom, risk, and configured action.
+- `optimizer` records objective, evidence-only or optimize mode, whether a
+  route change was applied, and candidate metadata such as estimated cost,
+  latency, success, quality, cache probability, and rejection reasons.
+- `quality_gate` records enabled mode, final status, matched rule ids, selected
+  action, failure reasons, and streaming retry/fallback safety state.
+- `async_eval` records metadata queue status, sample rate, dimensions, and job
+  id.
+
+These fields are metadata-only. They do not include prompt text, response text,
+tool payloads, raw headers, provider keys, source code, diffs, media bytes, or
+hidden reasoning text.
+
+### Intelligence Summary
+
+`GET /api/dashboard/intelligence/summary` supports `period`, `api_key`,
+`api_key_id`, and `namespace` filters. It returns total requests, optimizer
+application rate, estimated savings, async eval queue count, token-risk counts,
+quality-gate status counts, and grouped summaries by agent and node.
+
+The endpoint reads `call_logs` metadata only. It is read-only and never applies
+routing changes, eval jobs, retries, fallbacks, or alerts by itself.
 
 ### Semantic Cache Preview
 
