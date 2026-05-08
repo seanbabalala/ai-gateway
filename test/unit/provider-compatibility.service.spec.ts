@@ -1,12 +1,42 @@
 import { ProviderCompatibilityService } from '../../src/dashboard/provider-compatibility.service';
 
+const workspaceContext = {
+  currentWorkspaceId: jest.fn(() => 'default-workspace'),
+};
+
+function makeService(repo: ReturnType<typeof makeRepo>) {
+  return new ProviderCompatibilityService(workspaceContext as any, repo as any);
+}
+
 function makeRepo() {
   const rows: any[] = [];
+  const matchesWhere = (row: any, where: any): boolean => {
+    if (Array.isArray(where)) return where.some((entry) => matchesWhere(row, entry));
+    return Object.entries(where || {}).every(([key, value]) => {
+      if (key === 'workspace_id' && value && typeof value === 'object') {
+        return row.workspace_id === null || row.workspace_id === undefined;
+      }
+      if (value && typeof value === 'object' && '_type' in (value as any)) {
+        if ((value as any)._type === 'in') {
+          return ((value as any)._value as unknown[]).includes(row[key]);
+        }
+        if ((value as any)._type === 'isNull') {
+          return row[key] === null || row[key] === undefined;
+        }
+      }
+      if (value && typeof value === 'object' && '_value' in (value as any)) {
+        return row[key] === (value as any)._value;
+      }
+      return row[key] === value;
+    });
+  };
   return {
     rows,
-    find: jest.fn(async () => rows),
+    find: jest.fn(async (options?: any) =>
+      options?.where ? rows.filter((row) => matchesWhere(row, options.where)) : rows,
+    ),
     findOne: jest.fn(async ({ where }: any) =>
-      rows.find((row) => row.node_id === where.node_id && row.capability === where.capability) || null,
+      rows.find((row) => matchesWhere(row, where)) || null,
     ),
     create: jest.fn((value: any) => value),
     save: jest.fn(async (value: any) => {
@@ -37,13 +67,14 @@ const originalFetch = global.fetch;
 
 afterEach(() => {
   global.fetch = originalFetch;
+  workspaceContext.currentWorkspaceId.mockReturnValue('default-workspace');
   jest.restoreAllMocks();
 });
 
 describe('ProviderCompatibilityService', () => {
   it('builds an untested matrix without touching provider secrets', async () => {
     const repo = makeRepo();
-    const service = new ProviderCompatibilityService(repo as any);
+    const service = makeService(repo);
 
     const matrix = await service.matrixForNode(node({
       embedding_models: ['text-embedding-3-small'],
@@ -67,7 +98,7 @@ describe('ProviderCompatibilityService', () => {
 
   it('marks capabilities unsupported by the node compatibility profile', async () => {
     const repo = makeRepo();
-    const service = new ProviderCompatibilityService(repo as any);
+    const service = makeService(repo);
 
     const matrix = await service.matrixForNode(node({
       compatibility_profile: ['openai_compatible'],
@@ -89,7 +120,7 @@ describe('ProviderCompatibilityService', () => {
 
   it('runs safe low-token requests for text capabilities', async () => {
     const repo = makeRepo();
-    const service = new ProviderCompatibilityService(repo as any);
+    const service = makeService(repo);
     const fetchMock = jest.fn().mockResolvedValue({
       status: 200,
       text: jest.fn().mockResolvedValue('{"ok":true}'),
@@ -113,7 +144,7 @@ describe('ProviderCompatibilityService', () => {
 
   it('uses the minimum portable Responses output token limit', async () => {
     const repo = makeRepo();
-    const service = new ProviderCompatibilityService(repo as any);
+    const service = makeService(repo);
     const fetchMock = jest.fn().mockResolvedValue({
       status: 200,
       text: jest.fn().mockResolvedValue('{"ok":true}'),
@@ -139,7 +170,7 @@ describe('ProviderCompatibilityService', () => {
 
   it('uses endpoint probes for realtime by default', async () => {
     const repo = makeRepo();
-    const service = new ProviderCompatibilityService(repo as any);
+    const service = makeService(repo);
     const fetchMock = jest.fn().mockResolvedValue({
       status: 405,
       text: jest.fn().mockResolvedValue('method not allowed'),
@@ -163,7 +194,7 @@ describe('ProviderCompatibilityService', () => {
 
   it('emits non-blocking diagnostics for failed or untested configured capabilities', async () => {
     const repo = makeRepo();
-    const service = new ProviderCompatibilityService(repo as any);
+    const service = makeService(repo);
     global.fetch = jest.fn().mockResolvedValue({
       status: 401,
       text: jest.fn().mockResolvedValue('Unauthorized sk-secret'),

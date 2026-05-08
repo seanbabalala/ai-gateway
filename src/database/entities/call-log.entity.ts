@@ -14,6 +14,7 @@ import {
 @Index(['session_id'])
 @Index(['trace_id'])
 @Index(['experiment_group'])
+@Index(['workspace_id'])
 @Index(['api_key_name'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
@@ -142,6 +143,9 @@ export class CallLog {
 
   @Column({ type: 'text', nullable: true })
   error!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   api_key_name!: string | null;

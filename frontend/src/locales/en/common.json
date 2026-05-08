@@ -65,5 +65,11 @@
   "nav.sessions": "Sessions",
   "nav.mcp": "MCP Gateway",
   "nav.batches": "Batches",
-  "nav.evals": "Eval Reports"
+  "nav.evals": "Eval Reports",
+  "workspace.organization": "Organization",
+  "workspace.workspace": "Workspace",
+  "workspace.defaultWorkspace": "Default workspace",
+  "workspace.switchWorkspace": "Switch workspace",
+  "workspace.activeWorkspace": "Active workspace",
+  "workspace.defaultWorkspaceMigration": "Legacy resources map to the default workspace."
 }

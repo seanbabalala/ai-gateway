@@ -34,6 +34,7 @@ function makeService(rows: any[], traceCount = 0, config?: any) {
   };
   const traceQb = {
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
     getCount: jest.fn().mockResolvedValue(traceCount),
   };
   const callRepo = {
@@ -53,8 +54,17 @@ function makeService(rows: any[], traceCount = 0, config?: any) {
       },
     ]),
   };
+  const workspaceContext = {
+    currentWorkspaceId: jest.fn(() => 'default-workspace'),
+  };
   return {
-    service: new BenchmarkReportService(callRepo as any, routeDecisionRepo as any, catalog as any, config),
+    service: new BenchmarkReportService(
+      callRepo as any,
+      routeDecisionRepo as any,
+      catalog as any,
+      config,
+      workspaceContext as any,
+    ),
     callQb,
     traceQb,
   };

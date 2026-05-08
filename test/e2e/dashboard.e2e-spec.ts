@@ -4,6 +4,7 @@
 
 import * as fs from 'fs';
 import { createE2EHarness, E2EHarness, API_KEY, FIXTURE_PATH } from './setup';
+import { DEFAULT_WORKSPACE_ID } from '../../src/workspaces/workspace.constants';
 
 describe('Dashboard (e2e)', () => {
   let harness: E2EHarness;
@@ -56,6 +57,59 @@ describe('Dashboard (e2e)', () => {
     expect(res.status).toBe(200);
     expect(res.body.pagination.page).toBe(1);
     expect(res.body.pagination.limit).toBe(5);
+  });
+
+  it('GET /api/dashboard/workspaces → returns default organization and workspace', async () => {
+    const res = await harness.agent.get('/api/dashboard/workspaces');
+
+    expect(res.status).toBe(200);
+    expect(res.body.organization.id).toBe('default-org');
+    expect(res.body.active_workspace.id).toBe(DEFAULT_WORKSPACE_ID);
+    expect(res.body.default_workspace.id).toBe(DEFAULT_WORKSPACE_ID);
+    expect(res.body.fallback.legacy_resources_map_to_default_workspace).toBe(true);
+  });
+
+  it('GET /api/dashboard/logs — active workspace header filters dashboard results', async () => {
+    await harness.callLogRepo.save([
+      harness.callLogRepo.create({
+        request_id: `workspace-default-${Date.now()}`,
+        source_format: 'chat_completions',
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o',
+        input_tokens: 1,
+        output_tokens: 1,
+        cost_usd: 0,
+        latency_ms: 1,
+        status_code: 200,
+        api_key_name: 'workspace-default',
+      }),
+      harness.callLogRepo.create({
+        request_id: `workspace-other-${Date.now()}`,
+        source_format: 'chat_completions',
+        workspace_id: 'other-workspace',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o',
+        input_tokens: 1,
+        output_tokens: 1,
+        cost_usd: 0,
+        latency_ms: 1,
+        status_code: 200,
+        api_key_name: 'workspace-other',
+      }),
+    ]);
+
+    const res = await harness.agent
+      .get('/api/dashboard/logs?limit=20')
+      .set('x-siftgate-workspace-id', DEFAULT_WORKSPACE_ID);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.some((log: any) => log.api_key_name === 'workspace-default')).toBe(true);
+    expect(res.body.data.some((log: any) => log.api_key_name === 'workspace-other')).toBe(false);
   });
 
   // ══════════════════════════════════════════════════════

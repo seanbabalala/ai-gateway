@@ -5,6 +5,11 @@ import { CallLog, RouteDecisionLog } from '../database/entities';
 import { CatalogService } from '../catalog/catalog.service';
 import { ConfigService } from '../config/config.service';
 import { catalogPricingIsStale } from '../catalog/pricing-governance';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
+} from '../workspaces/workspace-scope';
 
 export type BenchmarkPeriod = '1h' | '24h' | '7d' | '30d' | '90d';
 export type BenchmarkCheckStatus = 'pass' | 'warn' | 'fail';
@@ -214,6 +219,8 @@ export class BenchmarkReportService {
     private readonly catalog?: CatalogService,
     @Optional()
     private readonly config?: ConfigService,
+    @Optional()
+    private readonly workspaceContext?: WorkspaceContextService,
   ) {}
 
   async getReport(input: BenchmarkReportInput = {}): Promise<BenchmarkReport> {
@@ -227,6 +234,7 @@ export class BenchmarkReportService {
       .where('log.timestamp >= :since', { since })
       .orderBy('log.timestamp', 'DESC')
       .take(sampleLimit);
+    applyWorkspaceQueryScope(qb, 'log', this.workspaceId());
 
     this.applyFilters(qb, input);
 
@@ -622,11 +630,13 @@ export class BenchmarkReportService {
     try {
       const matched = await this.routeDecisionRepo
         .createQueryBuilder('decision')
-        .where('decision.request_id IN (:...requestIds)', { requestIds })
+        .where('decision.request_id IN (:...requestIds)', { requestIds });
+      applyWorkspaceQueryScope(matched, 'decision', this.workspaceId());
+      const count = await matched
         .getCount();
       return {
-        matched_requests: matched,
-        coverage_rate: this.percent(matched, requestIds.length),
+        matched_requests: count,
+        coverage_rate: this.percent(count, requestIds.length),
       };
     } catch {
       return { matched_requests: 0, coverage_rate: 0 };
@@ -659,6 +669,10 @@ export class BenchmarkReportService {
       return index;
     }
     return index;
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext?.currentWorkspaceId());
   }
 
   private sanitizeError(value: string): string {

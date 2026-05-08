@@ -11,6 +11,7 @@ import {
 @Index(['request_id'], { unique: true })
 @Index(['provider_job_id'])
 @Index(['status'])
+@Index(['workspace_id'])
 export class VideoJob {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -26,6 +27,9 @@ export class VideoJob {
 
   @Column({ type: 'varchar' })
   model!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   api_key_id!: string | null;

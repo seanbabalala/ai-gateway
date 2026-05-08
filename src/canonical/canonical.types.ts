@@ -190,6 +190,7 @@ export interface CanonicalRequestMetadata {
   raw_headers: Record<string, string>;
   raw_body?: unknown;
   media?: CanonicalMediaMetadata;
+  workspace_id?: string | null;
   api_key_name?: string;
   api_key_id?: string;
   namespace_id?: string | null;

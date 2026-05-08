@@ -16,12 +16,14 @@ import { createHash } from 'crypto';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
 import { CallLog } from '../../src/database/entities/call-log.entity';
+import { DEFAULT_WORKSPACE_ID } from '../../src/workspaces/workspace.constants';
 import type { Repository } from 'typeorm';
 
 // ── Constants ──────────────────────────────────────────────
 
 export const API_KEY = 'e2e-test-key-1';
 export const API_KEY_2 = 'e2e-test-key-2';
+export const LEGACY_API_KEY = 'e2e-legacy-key';
 export const FIXTURE_PATH = path.resolve(__dirname, 'fixtures', 'gateway.e2e.yaml');
 
 // ── FetchMock ──────────────────────────────────────────────
@@ -502,6 +504,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   await apiKeyRepo.save([
     apiKeyRepo.create({
       name: 'test-default',
+      workspace_id: DEFAULT_WORKSPACE_ID,
       key_hash: createHash('sha256').update(API_KEY).digest('hex'),
       key_prefix: 'e2e-test-key-1',
       status: 'active',
@@ -512,8 +515,20 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     }),
     apiKeyRepo.create({
       name: 'test-secondary',
+      workspace_id: DEFAULT_WORKSPACE_ID,
       key_hash: createHash('sha256').update(API_KEY_2).digest('hex'),
       key_prefix: 'e2e-test-key-2',
+      status: 'active',
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: [],
+    }),
+    apiKeyRepo.create({
+      name: 'legacy-default',
+      workspace_id: null,
+      key_hash: createHash('sha256').update(LEGACY_API_KEY).digest('hex'),
+      key_prefix: 'e2e-legacy-key',
       status: 'active',
       allow_auto: true,
       allow_direct: true,

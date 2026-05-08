@@ -3,12 +3,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BatchJob } from '../database/entities';
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import {
+  applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
+} from '../workspaces/workspace-scope';
 import { batchDashboardItem } from './batch.types';
 import type { BatchDashboardResponse } from './batch.types';
 
 @Injectable()
 export class BatchJobStoreService {
   constructor(
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(BatchJob)
     private readonly batchJobs: Repository<BatchJob>,
   ) {}
@@ -36,6 +42,9 @@ export class BatchJobStoreService {
       request_counts_total: extracted.requestCounts.total,
       request_counts_completed: extracted.requestCounts.completed,
       request_counts_failed: extracted.requestCounts.failed,
+      workspace_id: normalizeWorkspaceId(
+        input.apiKey?.workspace_id || this.workspaceContext.currentWorkspaceId(),
+      ),
       api_key_id: input.apiKey?.id || null,
       api_key_name: input.apiKey?.name || null,
       namespace_id: input.apiKey?.namespace_id || null,
@@ -70,6 +79,12 @@ export class BatchJobStoreService {
     });
     if (!job) return null;
     if (!apiKey) return null;
+    if (
+      normalizeWorkspaceId(job.workspace_id) !==
+      normalizeWorkspaceId(apiKey.workspace_id)
+    ) {
+      return null;
+    }
     if (job.api_key_id && job.api_key_id !== apiKey.id) return null;
     if (job.namespace_id && job.namespace_id !== (apiKey.namespace_id || null)) return null;
     return job;
@@ -91,6 +106,7 @@ export class BatchJobStoreService {
     const qb = this.batchJobs
       .createQueryBuilder('batch')
       .where('1 = 1');
+    applyWorkspaceQueryScope(qb, 'batch', this.workspaceContext.currentWorkspaceId());
     const since = periodStart(period);
     if (since) {
       qb.andWhere('batch.created_at >= :since', { since });

@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 
 @Entity('budget_rules')
+@Index(['workspace_id'])
 @Index(['api_key_name'])
 @Index(['api_key_id'])
 @Index(['api_key_id', 'type'])
@@ -17,6 +18,9 @@ import {
 export class BudgetRule {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar' })
   type!: string; // daily_tokens | daily_cost | monthly_cost

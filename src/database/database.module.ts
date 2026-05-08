@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '../config/config.service';
 import { CallLogSchemaPatchService } from './call-log-schema-patch.service';
+import { WorkspaceSchemaPatchService } from './workspace-schema-patch.service';
 import {
   BudgetRule,
   CallLog,
@@ -11,6 +12,7 @@ import {
   GatewayApiKey,
   LocalTeam,
   NodeStatus,
+  Organization,
   ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
@@ -19,6 +21,7 @@ import {
   EvalExperimentRun,
   EvalSampleResult,
   VideoJob,
+  Workspace,
 } from './entities';
 
 @Module({
@@ -29,6 +32,8 @@ import {
         const shared = {
           entities: [
             CallLog,
+            Organization,
+            Workspace,
             ConfigAuditEvent,
             ConfigVersion,
             BudgetRule,
@@ -68,11 +73,14 @@ import {
     }),
     TypeOrmModule.forFeature([
       CallLog,
+      Organization,
+      Workspace,
       ConfigAuditEvent,
       ConfigVersion,
       BudgetRule,
       NodeStatus,
       AgentProfile,
+      GatewayApiKey,
       LocalTeam,
       ShadowTrafficResult,
       RouteDecisionLog,
@@ -84,7 +92,7 @@ import {
       VideoJob,
     ]),
   ],
-  providers: [CallLogSchemaPatchService],
+  providers: [CallLogSchemaPatchService, WorkspaceSchemaPatchService],
   exports: [TypeOrmModule],
 })
 export class DatabaseModule {}

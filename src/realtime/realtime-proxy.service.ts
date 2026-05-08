@@ -16,6 +16,7 @@ import {
   GatewayApiKeyContext,
   GatewayApiKeyService,
 } from '../auth/gateway-api-key.service';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 
 type RealtimeCloseReason =
   | 'client_closed'
@@ -45,6 +46,7 @@ interface RealtimeSession {
   upstream?: InstanceType<typeof UpstreamWebSocket>;
   target: RealtimeTarget;
   apiKey: GatewayApiKeyContext;
+  workspaceId: string;
   startedAt: number;
   lastActivityAt: number;
   clientMessages: number;
@@ -66,6 +68,7 @@ export interface RealtimeConnectionSummary {
   node: string;
   model: string;
   mode: 'auto' | 'direct';
+  workspace_id: string;
   api_key_name: string | null;
   namespace_id: string | null;
   connected_at: string;
@@ -157,37 +160,40 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  getStatus(): RealtimeStatus {
+  getStatus(workspaceId?: string | null): RealtimeStatus {
     const realtime = this.config.realtime;
+    const currentWorkspaceId = normalizeWorkspaceId(workspaceId);
     return {
       enabled: realtime.enabled,
       experimental: true,
       path: realtime.path,
-      active_connections: this.sessions.size,
+      active_connections: this.activeConnectionsForWorkspace(currentWorkspaceId),
       max_connections: realtime.max_connections,
       max_connections_per_node: realtime.max_connections_per_node,
       idle_timeout_ms: realtime.idle_timeout_ms,
       upstream_connect_timeout_ms: realtime.upstream_connect_timeout_ms,
       max_session_ms: realtime.max_session_ms,
-      recent: [...this.recent],
+      recent: this.recent.filter((item) => item.workspace_id === currentWorkspaceId),
     };
   }
 
-  getNodeStatus(nodeId: string): RealtimeNodeStatus {
+  getNodeStatus(nodeId: string, workspaceId?: string | null): RealtimeNodeStatus {
     const realtime = this.config.realtime;
     const node = this.config.getNode(nodeId);
     const models = node?.realtime_models || [];
+    const currentWorkspaceId = normalizeWorkspaceId(workspaceId);
+    const nodeKey = this.nodeWorkspaceKey(nodeId, currentWorkspaceId);
     return {
       enabled: realtime.enabled,
       experimental: true,
       supported: models.length > 0,
       endpoint: node?.realtime_endpoint || (models.length > 0 ? '/v1/realtime' : null),
       models,
-      active_connections: this.activeConnectionsForNode(nodeId),
+      active_connections: this.activeConnectionsForNode(nodeId, currentWorkspaceId),
       max_connections_per_node: realtime.max_connections_per_node,
-      last_connected_at: this.nodeLastConnectedAt.get(nodeId) || null,
-      last_closed_at: this.nodeLastClosedAt.get(nodeId) || null,
-      last_error: this.nodeLastError.get(nodeId) || null,
+      last_connected_at: this.nodeLastConnectedAt.get(nodeKey) || null,
+      last_closed_at: this.nodeLastClosedAt.get(nodeKey) || null,
+      last_error: this.nodeLastError.get(nodeKey) || null,
     };
   }
 
@@ -236,7 +242,10 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (
-      this.activeConnectionsForNode(target.node.id) >=
+      this.activeConnectionsForNode(
+        target.node.id,
+        normalizeWorkspaceId(apiKey.workspace_id),
+      ) >=
       realtime.max_connections_per_node
     ) {
       this.rejectUpgrade(socket, 429, 'Realtime node connection limit exceeded');
@@ -246,7 +255,10 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     this.acceptUpgrade(req, socket);
     const session = this.createSession(socket, target, apiKey);
     this.sessions.set(session.id, session);
-    this.nodeLastConnectedAt.set(target.node.id, new Date().toISOString());
+    this.nodeLastConnectedAt.set(
+      this.nodeWorkspaceKey(target.node.id, session.workspaceId),
+      new Date().toISOString(),
+    );
     this.recordRecent(session, 'open', null, null);
     this.scheduleTimers(session);
     this.attachClientSocket(session);
@@ -269,7 +281,10 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       const sanitized = this.sanitizeError(err);
-      this.nodeLastError.set(target.node.id, sanitized);
+      this.nodeLastError.set(
+        this.nodeWorkspaceKey(target.node.id, session.workspaceId),
+        sanitized,
+      );
       this.logger.warn(
         `Realtime upstream connection failed request=${session.requestId} node=${target.node.id}: ${sanitized}`,
       );
@@ -408,6 +423,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       socket,
       target,
       apiKey,
+      workspaceId: normalizeWorkspaceId(apiKey.workspace_id),
       startedAt: Date.now(),
       lastActivityAt: Date.now(),
       clientMessages: 0,
@@ -728,9 +744,15 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
 
     const sanitizedError = error ? this.sanitizeError(error) : null;
     if (sanitizedError) {
-      this.nodeLastError.set(session.target.node.id, sanitizedError);
+      this.nodeLastError.set(
+        this.nodeWorkspaceKey(session.target.node.id, session.workspaceId),
+        sanitizedError,
+      );
     }
-    this.nodeLastClosedAt.set(session.target.node.id, new Date().toISOString());
+    this.nodeLastClosedAt.set(
+      this.nodeWorkspaceKey(session.target.node.id, session.workspaceId),
+      new Date().toISOString(),
+    );
     this.recordRecent(session, 'closed', reason, sanitizedError);
 
     try {
@@ -875,12 +897,29 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     return value;
   }
 
-  private activeConnectionsForNode(nodeId: string): number {
+  private activeConnectionsForWorkspace(workspaceId: string): number {
     let count = 0;
     for (const session of this.sessions.values()) {
-      if (session.target.node.id === nodeId) count++;
+      if (session.workspaceId === workspaceId) count++;
     }
     return count;
+  }
+
+  private activeConnectionsForNode(nodeId: string, workspaceId?: string): number {
+    let count = 0;
+    for (const session of this.sessions.values()) {
+      if (
+        session.target.node.id === nodeId &&
+        (!workspaceId || session.workspaceId === workspaceId)
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private nodeWorkspaceKey(nodeId: string, workspaceId: string): string {
+    return `${workspaceId}:${nodeId}`;
   }
 
   private recordRecent(
@@ -897,6 +936,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       node: session.target.node.id,
       model: session.target.model,
       mode: session.target.mode,
+      workspace_id: session.workspaceId,
       api_key_name: session.apiKey.name || null,
       namespace_id: session.apiKey.namespace_id || null,
       connected_at: new Date(session.startedAt).toISOString(),

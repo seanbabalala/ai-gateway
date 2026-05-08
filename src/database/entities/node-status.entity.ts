@@ -1,9 +1,13 @@
-import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('node_status')
+@Index(['workspace_id'])
 export class NodeStatus {
   @PrimaryColumn({ type: 'varchar' })
   node_id!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'boolean', default: true })
   is_healthy!: boolean;

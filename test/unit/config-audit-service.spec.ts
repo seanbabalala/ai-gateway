@@ -5,6 +5,19 @@ class MemoryRepo<T extends { id?: number }> {
   private rows: T[] = [];
   private nextId = 1;
 
+  private matchesWhere(row: T, where: Partial<T> | Partial<T>[]): boolean {
+    if (Array.isArray(where)) {
+      return where.some((entry) => this.matchesWhere(row, entry));
+    }
+    return Object.entries(where).every(([key, value]) => {
+      const actual = (row as Record<string, unknown>)[key];
+      if (key === 'workspace_id' && value && typeof value === 'object') {
+        return actual === null || actual === undefined;
+      }
+      return actual === value;
+    });
+  }
+
   create(input: Partial<T>): T {
     return { ...(input as T) };
   }
@@ -33,8 +46,10 @@ class MemoryRepo<T extends { id?: number }> {
     return row;
   }
 
-  async count(): Promise<number> {
-    return this.rows.length;
+  async count(options: { where?: Partial<T> | Partial<T>[] } = {}): Promise<number> {
+    return options.where
+      ? this.rows.filter((row) => this.matchesWhere(row, options.where!)).length
+      : this.rows.length;
   }
 
   async delete(ids: number[]): Promise<void> {
@@ -42,8 +57,14 @@ class MemoryRepo<T extends { id?: number }> {
     this.rows = this.rows.filter((row) => !idSet.has(row.id ?? -1));
   }
 
-  async find(options: { order?: Record<string, 'ASC' | 'DESC'>; take?: number } = {}): Promise<T[]> {
-    const sorted = [...this.rows];
+  async find(options: {
+    where?: Partial<T> | Partial<T>[];
+    order?: Record<string, 'ASC' | 'DESC'>;
+    take?: number;
+  } = {}): Promise<T[]> {
+    const sorted = options.where
+      ? this.rows.filter((row) => this.matchesWhere(row, options.where!))
+      : [...this.rows];
     const order = options.order ?? {};
     const entries = Object.entries(order);
     sorted.sort((a, b) => {
@@ -60,11 +81,9 @@ class MemoryRepo<T extends { id?: number }> {
     return options.take ? sorted.slice(0, options.take) : sorted;
   }
 
-  async findOne(options: { where: Partial<T> }): Promise<T | null> {
+  async findOne(options: { where: Partial<T> | Partial<T>[] }): Promise<T | null> {
     const found = this.rows.find((row) =>
-      Object.entries(options.where).every(
-        ([key, value]) => (row as Record<string, unknown>)[key] === value,
-      ),
+      this.matchesWhere(row, options.where),
     );
     return found ?? null;
   }
@@ -79,6 +98,7 @@ class MemoryRepo<T extends { id?: number }> {
     const qb: any = {
       orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
       take: jest.fn((limit: number) => {
         state.take = limit;
         return qb;
@@ -171,7 +191,15 @@ function makeService(rawRef: { value: string }, overrides: Record<string, unknow
   };
   const versionRepo = new MemoryRepo<ConfigVersion>();
   const eventRepo = new MemoryRepo<ConfigAuditEvent>();
-  const service = new ConfigAuditService(config as any, versionRepo as any, eventRepo as any);
+  const workspaceContext = {
+    currentWorkspaceId: jest.fn(() => 'default-workspace'),
+  };
+  const service = new ConfigAuditService(
+    config as any,
+    workspaceContext as any,
+    versionRepo as any,
+    eventRepo as any,
+  );
   return { service, config, versionRepo, eventRepo };
 }
 

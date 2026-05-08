@@ -10,8 +10,9 @@ import {
 export type LocalTeamStatus = 'active' | 'disabled';
 
 @Entity('local_teams')
-@Index(['name'], { unique: true })
+@Index(['workspace_id', 'name'], { unique: true })
 @Index(['status'])
+@Index(['workspace_id'])
 @Index(['namespace_id'])
 export class LocalTeam {
   @PrimaryGeneratedColumn('uuid')
@@ -25,6 +26,9 @@ export class LocalTeam {
 
   @Column({ type: 'varchar', default: 'active' })
   status!: LocalTeamStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;

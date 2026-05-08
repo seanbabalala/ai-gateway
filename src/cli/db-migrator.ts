@@ -11,6 +11,7 @@ import {
   GatewayApiKey,
   LocalTeam,
   NodeStatus,
+  Organization,
   BatchJob,
   EvalDataset,
   EvalExperimentRun,
@@ -19,9 +20,20 @@ import {
   RouteDecisionLog,
   ShadowTrafficResult,
   VideoJob,
+  Workspace,
 } from "../database/entities";
+import {
+  DEFAULT_ORGANIZATION_ID,
+  DEFAULT_ORGANIZATION_NAME,
+  DEFAULT_ORGANIZATION_SLUG,
+  DEFAULT_WORKSPACE_ID,
+  DEFAULT_WORKSPACE_NAME,
+  DEFAULT_WORKSPACE_SLUG,
+} from "../workspaces/workspace.constants";
 
 export type DbMigrationTableName =
+  | "organizations"
+  | "workspaces"
   | "gateway_api_keys"
   | "agent_profiles"
   | "local_teams"
@@ -46,6 +58,8 @@ interface MigrationTableDefinition {
 }
 
 const MIGRATION_TABLES: MigrationTableDefinition[] = [
+  { table: "organizations", entity: Organization },
+  { table: "workspaces", entity: Workspace },
   { table: "gateway_api_keys", entity: GatewayApiKey },
   { table: "agent_profiles", entity: AgentProfile },
   { table: "local_teams", entity: LocalTeam },
@@ -79,6 +93,11 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
     generatedSequenceColumn: "id",
   },
 ];
+
+const WORKSPACE_CORE_TABLES = new Set<DbMigrationTableName>([
+  "organizations",
+  "workspaces",
+]);
 
 export interface DbMigrationWarning {
   code: string;
@@ -211,6 +230,8 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
       url: this.postgresUrl,
       entities: [
         CallLog,
+        Organization,
+        Workspace,
         BudgetRule,
         NodeStatus,
         GatewayApiKey,
@@ -306,6 +327,8 @@ export async function migrateSqliteToPostgres(
         ? createSqliteBackup(sqlitePath, cwd, now, options.backupPath)
         : undefined;
 
+    const importTables = ensureWorkspaceCoreRows(tables);
+
     if (dryRun) {
       warnings.push({
         code: "dry_run_no_target_connection",
@@ -318,7 +341,7 @@ export async function migrateSqliteToPostgres(
         dryRun,
         force,
         backupPath,
-        tables,
+        tables: importTables,
         warnings,
         now,
       });
@@ -332,7 +355,8 @@ export async function migrateSqliteToPostgres(
     targetInitialized = true;
 
     const nonEmptyTargets: string[] = [];
-    for (const summary of tables) {
+
+    for (const summary of importTables) {
       summary.target_rows_before = await target.countRows(summary.table);
       if (summary.target_rows_before > 0) {
         nonEmptyTargets.push(
@@ -349,8 +373,8 @@ export async function migrateSqliteToPostgres(
       );
     }
 
-    for (const summary of tables) {
-      const rows = await source.getRows(summary.table);
+    for (const summary of importTables) {
+      const rows = await rowsForImport(summary.table, source);
       const normalized = rows.map((row) => normalizeRow(summary.table, row));
       summary.imported_rows = await target.insertRows(
         summary.table,
@@ -367,7 +391,7 @@ export async function migrateSqliteToPostgres(
       dryRun,
       force,
       backupPath,
-      tables,
+      tables: importTables,
       warnings,
       now,
     });
@@ -474,12 +498,14 @@ async function inspectSourceTables(
   for (const definition of MIGRATION_TABLES) {
     const exists = await source.hasTable(definition.table);
     if (!exists) {
-      warnings.push({
-        code: "source_table_missing",
-        table: definition.table,
-        message:
-          "Source SQLite database does not contain this table; it will be treated as empty.",
-      });
+      if (!WORKSPACE_CORE_TABLES.has(definition.table)) {
+        warnings.push({
+          code: "source_table_missing",
+          table: definition.table,
+          message:
+            "Source SQLite database does not contain this table; it will be treated as empty.",
+        });
+      }
     }
     summaries.push({
       table: definition.table,
@@ -488,6 +514,58 @@ async function inspectSourceTables(
     });
   }
   return summaries;
+}
+
+function ensureWorkspaceCoreRows(
+  tables: DbMigrationTableSummary[],
+): DbMigrationTableSummary[] {
+  return tables.map((table) => {
+    if (table.table === "organizations" && table.source_rows === 0) {
+      return { ...table, source_rows: 1 };
+    }
+    if (table.table === "workspaces" && table.source_rows === 0) {
+      return { ...table, source_rows: 1 };
+    }
+    return table;
+  });
+}
+
+async function rowsForImport(
+  table: DbMigrationTableName,
+  source: SqliteMigrationSource,
+): Promise<Record<string, unknown>[]> {
+  if (await source.hasTable(table)) {
+    return source.getRows(table);
+  }
+  if (table === "organizations") {
+    const now = new Date();
+    return [
+      {
+        id: DEFAULT_ORGANIZATION_ID,
+        name: DEFAULT_ORGANIZATION_NAME,
+        slug: DEFAULT_ORGANIZATION_SLUG,
+        status: "active",
+        created_at: now,
+        updated_at: now,
+      },
+    ];
+  }
+  if (table === "workspaces") {
+    const now = new Date();
+    return [
+      {
+        id: DEFAULT_WORKSPACE_ID,
+        organization_id: DEFAULT_ORGANIZATION_ID,
+        name: DEFAULT_WORKSPACE_NAME,
+        slug: DEFAULT_WORKSPACE_SLUG,
+        status: "active",
+        is_default: true,
+        created_at: now,
+        updated_at: now,
+      },
+    ];
+  }
+  return [];
 }
 
 function buildResult(input: {
@@ -561,8 +639,33 @@ function normalizeRow(
   table: DbMigrationTableName,
   row: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (table === "organizations") {
+    return normalizeFields(row, {
+      id: toDefaultOrganizationId,
+      name: toDefaultOrganizationName,
+      slug: toDefaultOrganizationSlug,
+      status: toEntityStatus,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
+  if (table === "workspaces") {
+    return normalizeFields(row, {
+      id: toDefaultWorkspaceId,
+      organization_id: toDefaultOrganizationId,
+      name: toDefaultWorkspaceName,
+      slug: toDefaultWorkspaceSlug,
+      status: toEntityStatus,
+      is_default: toBoolean,
+      created_at: toDateOrNow,
+      updated_at: toDateOrNow,
+    });
+  }
+
   if (table === "gateway_api_keys") {
     return normalizeFields(row, {
+      workspace_id: toDefaultWorkspaceId,
       allow_auto: toBoolean,
       allow_direct: toBoolean,
       allowed_nodes: toJsonArrayOrNull,
@@ -580,6 +683,7 @@ function normalizeRow(
 
   if (table === "agent_profiles") {
     return normalizeFields(row, {
+      workspace_id: toDefaultWorkspaceId,
       routing_hint: toJsonObjectOrNull,
       mcp_server_ids: toJsonArrayOrNull,
       metadata: toJsonObjectOrNull,
@@ -591,6 +695,7 @@ function normalizeRow(
 
   if (table === "local_teams") {
     return normalizeFields(row, {
+      workspace_id: toDefaultWorkspaceId,
       allowed_nodes: toJsonArrayOrNull,
       allowed_models: toJsonArrayOrNull,
       allowed_endpoints: toJsonArrayOrNull,
@@ -607,6 +712,7 @@ function normalizeRow(
   if (table === "budget_rules") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       limit_value: toNumber,
       alert_threshold: toNumber,
       current_value: toNumber,
@@ -617,6 +723,7 @@ function normalizeRow(
 
   if (table === "node_status") {
     return normalizeFields(row, {
+      workspace_id: toDefaultWorkspaceId,
       is_healthy: toBoolean,
       last_check: toDateOrNow,
       consecutive_failures: toNumber,
@@ -628,6 +735,7 @@ function normalizeRow(
   if (table === "route_decisions") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       timestamp: toDateOrNow,
       score: toNumber,
       candidate_count: toNumber,
@@ -640,6 +748,7 @@ function normalizeRow(
   if (table === "provider_compatibility_results") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       configured: toBoolean,
       tested: toBoolean,
       latency_ms: toNullableNumber,
@@ -652,6 +761,7 @@ function normalizeRow(
   if (table === "shadow_traffic_results") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       timestamp: toDateOrNow,
       latency_ms: toNullableNumber,
       status_code: toNullableNumber,
@@ -663,6 +773,7 @@ function normalizeRow(
   if (table === "config_versions") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       created_at: toDateOrNow,
       runtime_version: toNumber,
       node_count: toNumber,
@@ -672,6 +783,7 @@ function normalizeRow(
   if (table === "config_audit_events") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       timestamp: toDateOrNow,
     });
   }
@@ -679,6 +791,7 @@ function normalizeRow(
   if (table === "batch_jobs") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       request_counts_total: toNumber,
       request_counts_completed: toNumber,
       request_counts_failed: toNumber,
@@ -689,6 +802,7 @@ function normalizeRow(
 
   if (table === "eval_datasets") {
     return normalizeFields(row, {
+      workspace_id: toDefaultWorkspaceId,
       sample_count: toNumber,
       sample_storage_enabled: toBoolean,
       created_at: toDateOrNow,
@@ -698,6 +812,7 @@ function normalizeRow(
 
   if (table === "eval_experiment_runs") {
     return normalizeFields(row, {
+      workspace_id: toDefaultWorkspaceId,
       sample_count: toNumber,
       primary_success_rate: toNumber,
       candidate_success_rate: toNumber,
@@ -718,6 +833,7 @@ function normalizeRow(
   if (table === "eval_sample_results") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       primary_status_code: toNullableNumber,
       candidate_status_code: toNullableNumber,
       primary_success: toBoolean,
@@ -736,6 +852,7 @@ function normalizeRow(
   if (table === "video_jobs") {
     return normalizeFields(row, {
       id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
       created_at: toDateOrNow,
       updated_at: toDateOrNow,
     });
@@ -743,6 +860,7 @@ function normalizeRow(
 
   return normalizeFields(row, {
     id: toNumber,
+    workspace_id: toDefaultWorkspaceId,
     timestamp: toDateOrNow,
     score: toNumber,
     input_tokens: toNumber,
@@ -772,11 +890,51 @@ function normalizeFields(
 ): Record<string, unknown> {
   const normalized = { ...row };
   for (const [field, normalizer] of Object.entries(normalizers)) {
-    if (field in normalized) {
+    if (field in normalized || field === "workspace_id") {
       normalized[field] = normalizer(normalized[field]);
     }
   }
   return normalized;
+}
+
+function toDefaultWorkspaceId(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : DEFAULT_WORKSPACE_ID;
+}
+
+function toDefaultOrganizationId(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : DEFAULT_ORGANIZATION_ID;
+}
+
+function toDefaultOrganizationName(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : DEFAULT_ORGANIZATION_NAME;
+}
+
+function toDefaultOrganizationSlug(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : DEFAULT_ORGANIZATION_SLUG;
+}
+
+function toDefaultWorkspaceName(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : DEFAULT_WORKSPACE_NAME;
+}
+
+function toDefaultWorkspaceSlug(value: unknown): string {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : DEFAULT_WORKSPACE_SLUG;
+}
+
+function toEntityStatus(value: unknown): "active" | "disabled" {
+  return value === "disabled" ? "disabled" : "active";
 }
 
 function toBoolean(value: unknown): boolean {

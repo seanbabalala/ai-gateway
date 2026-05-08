@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 
 @Entity('eval_sample_results')
+@Index(['workspace_id'])
 @Index(['run_id'])
 @Index(['sample_hash'])
 @Index(['primary_request_id'])
@@ -15,6 +16,9 @@ import {
 export class EvalSampleResult {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar' })
   run_id!: string;

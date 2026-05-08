@@ -17,6 +17,7 @@ import { ActiveHealthProbeService } from '../routing/active-health-probe.service
 import { BudgetService, BudgetStatus } from '../budget/budget.service';
 import { HealthResponseDto } from '../openapi/openapi.dto';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 
 @Controller()
 @ApiTags('Health')
@@ -33,6 +34,8 @@ export class HealthController {
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime?: RealtimeProxyService,
+    @Optional()
+    private readonly workspaceContext?: WorkspaceContextService,
   ) {}
 
   @Get('health')
@@ -73,7 +76,10 @@ export class HealthController {
         concurrency,
         healthy: cbStatus.state !== CircuitState.OPEN && activeProbe.status !== 'unhealthy',
         active_probe: activeProbe,
-        realtime: this.realtime?.getNodeStatus(node.id) || {
+        realtime: this.realtime?.getNodeStatus(
+          node.id,
+          this.workspaceContext?.currentWorkspaceId(),
+        ) || {
           enabled: false,
           experimental: true,
           supported: false,

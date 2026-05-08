@@ -6,6 +6,7 @@ const apiKey: GatewayApiKeyContext = {
   id: 'gak_1',
   name: 'agent-key',
   status: 'active',
+  workspace_id: 'default-workspace',
   allow_auto: true,
   allow_direct: true,
   allowed_nodes: [],
@@ -50,7 +51,11 @@ function makeService(overrides: Record<string, unknown> = {}) {
     resolveRecord: jest.fn().mockResolvedValue({ authorization: 'Bearer resolved' }),
   }
   return {
-    service: new McpGatewayService(config as any, secrets as any),
+    service: new McpGatewayService(
+      config as any,
+      secrets as any,
+      { currentWorkspaceId: jest.fn(() => 'default-workspace') } as any,
+    ),
     secrets,
   }
 }

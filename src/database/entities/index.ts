@@ -1,4 +1,6 @@
 export { CallLog } from './call-log.entity';
+export { Organization } from './organization.entity';
+export { Workspace } from './workspace.entity';
 export { BudgetRule } from './budget-rule.entity';
 export { NodeStatus } from './node-status.entity';
 export { GatewayApiKey } from './gateway-api-key.entity';
@@ -17,6 +19,8 @@ export { ConfigAuditEvent } from './config-audit-event.entity';
 export type { ConfigVersionSource } from './config-version.entity';
 export type { ConfigAuditResult } from './config-audit-event.entity';
 export type { LocalTeamStatus } from './local-team.entity';
+export type { OrganizationStatus } from './organization.entity';
+export type { WorkspaceStatus } from './workspace.entity';
 export type { EvalExperimentStatus } from './eval-experiment-run.entity';
 export type {
   AgentProfileBaseUrlMode,

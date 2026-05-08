@@ -77,7 +77,7 @@ This keeps semantic versioning clear:
 | --- | --- | --- |
 | v1.9.1 | Roadmap and release baseline | Document the v2.x execution plan, release checklist, and version checks without runtime changes. |
 | v1.9.2 | v1 to v2 migration dry run | Add a read-only migration report before changing the data model. |
-| v2.0.0-alpha.1 | Workspace core | Introduce organization/workspace bootstrap and default workspace mapping. |
+| v2.0.0-alpha.1 | Workspace core | Released. Introduces organization/workspace bootstrap, default workspace mapping, workspace-scoped metadata, and Dashboard workspace context. |
 | v2.0.0-alpha.2 | RBAC | Add Admin, Operator, and Viewer permissions for workspace resources. |
 | v2.0.0-alpha.3 | PostgreSQL production path | Harden the production database path while preserving SQLite for local use. |
 | v2.0.0-alpha.4 | Redis cluster state | Make shared runtime state coherent for multi-instance data planes. |

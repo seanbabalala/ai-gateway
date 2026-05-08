@@ -427,20 +427,27 @@ export function satisfiesGatewayRange(version: string, range: string): boolean {
   );
 }
 
-function satisfiesComparator(version: number[], token: string): boolean {
+interface ParsedVersion {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+}
+
+function satisfiesComparator(version: ParsedVersion, token: string): boolean {
   if (!token || token === '*') return true;
 
   if (token.startsWith('^')) {
     const base = parseVersion(token.slice(1));
-    const upper = base[0] === 0
-      ? [0, base[1] + 1, 0]
-      : [base[0] + 1, 0, 0];
+    const upper = base.major === 0
+      ? versionFromParts(0, base.minor + 1, 0)
+      : versionFromParts(base.major + 1, 0, 0);
     return compareVersions(version, base) >= 0 && compareVersions(version, upper) < 0;
   }
 
   if (token.startsWith('~')) {
     const base = parseVersion(token.slice(1));
-    const upper = [base[0], base[1] + 1, 0];
+    const upper = versionFromParts(base.major, base.minor + 1, 0);
     return compareVersions(version, base) >= 0 && compareVersions(version, upper) < 0;
   }
 
@@ -459,21 +466,68 @@ function satisfiesComparator(version: number[], token: string): boolean {
   }
 }
 
-function parseVersion(value: string): number[] {
-  const cleaned = value.trim().replace(/^v/, '').split('-')[0];
-  const parts = cleaned.split('.').map((part) => Number.parseInt(part, 10));
-  if (parts.length === 0 || parts.some((part) => Number.isNaN(part))) {
+function parseVersion(value: string): ParsedVersion {
+  const withoutBuild = value.trim().replace(/^v/, '').split('+')[0];
+  const [core, prerelease = ''] = withoutBuild.split('-', 2);
+  const parts = core.split('.').map((part) => Number.parseInt(part, 10));
+  if (
+    parts.length === 0 ||
+    parts.length > 3 ||
+    parts.some((part) => Number.isNaN(part))
+  ) {
     throw new Error(`Invalid semver version: ${value}`);
   }
-  return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  return {
+    major: parts[0] || 0,
+    minor: parts[1] || 0,
+    patch: parts[2] || 0,
+    prerelease: prerelease ? prerelease.split('.') : [],
+  };
 }
 
-function compareVersions(left: number[], right: number[]): number {
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] > right[index]) return 1;
-    if (left[index] < right[index]) return -1;
+function versionFromParts(
+  major: number,
+  minor: number,
+  patch: number,
+): ParsedVersion {
+  return { major, minor, patch, prerelease: [] };
+}
+
+function compareVersions(left: ParsedVersion, right: ParsedVersion): number {
+  for (const key of ['major', 'minor', 'patch'] as const) {
+    if (left[key] > right[key]) return 1;
+    if (left[key] < right[key]) return -1;
+  }
+
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0;
+  if (left.prerelease.length === 0) return 1;
+  if (right.prerelease.length === 0) return -1;
+
+  const maxLength = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftPart = left.prerelease[index];
+    const rightPart = right.prerelease[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    const partComparison = comparePrereleasePart(leftPart, rightPart);
+    if (partComparison !== 0) return partComparison;
   }
   return 0;
+}
+
+function comparePrereleasePart(left: string, right: string): number {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) {
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+    if (leftNumber > rightNumber) return 1;
+    if (leftNumber < rightNumber) return -1;
+    return 0;
+  }
+  if (leftNumeric) return -1;
+  if (rightNumeric) return 1;
+  return left.localeCompare(right);
 }
 
 function readGatewayVersion(): string {

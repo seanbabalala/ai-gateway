@@ -5,6 +5,7 @@ import { createE2EHarness, E2EHarness, API_KEY } from './setup';
 import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
 import { BatchJob } from '../../src/database/entities/batch-job.entity';
 import { CallLog } from '../../src/database/entities/call-log.entity';
+import { DEFAULT_WORKSPACE_ID } from '../../src/workspaces/workspace.constants';
 
 describe('Batch API proxy (e2e)', () => {
   let harness: E2EHarness;
@@ -132,6 +133,7 @@ describe('Batch API proxy (e2e)', () => {
     await keyRepo.save(
       keyRepo.create({
         name: 'batch-blocked',
+        workspace_id: DEFAULT_WORKSPACE_ID,
         key_hash: createHash('sha256').update(key).digest('hex'),
         key_prefix: 'e2e-batch-blocked',
         status: 'active',
@@ -163,6 +165,7 @@ describe('Batch API proxy (e2e)', () => {
     await keyRepo.save(
       keyRepo.create({
         name: 'batch-image-only',
+        workspace_id: DEFAULT_WORKSPACE_ID,
         key_hash: createHash('sha256').update(key).digest('hex'),
         key_prefix: 'e2e-batch-image',
         status: 'active',

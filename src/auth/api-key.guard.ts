@@ -33,6 +33,7 @@ export class ApiKeyGuard implements CanActivate {
     // Attach key context to request for logging, budget, rate-limit, and permissions.
     request.apiKeyName = match.name;
     request.apiKeyId = match.id;
+    request.workspaceId = match.workspace_id;
     request.gatewayApiKey = match;
     return true;
   }

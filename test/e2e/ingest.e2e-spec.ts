@@ -5,7 +5,14 @@
  * HTTP → Guard → Normalize → Score → Route → Provider(mock) → Denormalize → Response
  */
 
-import { createE2EHarness, E2EHarness, API_KEY, API_KEY_2 } from './setup';
+import {
+  createE2EHarness,
+  E2EHarness,
+  API_KEY,
+  API_KEY_2,
+  LEGACY_API_KEY,
+} from './setup';
+import { DEFAULT_WORKSPACE_ID } from '../../src/workspaces/workspace.constants';
 
 describe('Ingest (e2e)', () => {
   let harness: E2EHarness;
@@ -40,6 +47,25 @@ describe('Ingest (e2e)', () => {
     expect(Array.isArray(res.body.choices)).toBe(true);
     expect(res.body.choices[0].message.content).toBeDefined();
     expect(res.body.usage).toBeDefined();
+  });
+
+  it('POST /v1/chat/completions — legacy key falls back to default workspace', async () => {
+    const res = await harness.agent
+      .post('/v1/chat/completions')
+      .set('Authorization', `Bearer ${LEGACY_API_KEY}`)
+      .send({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'legacy key workspace mapping' }],
+      });
+
+    expect(res.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const log = await harness.callLogRepo.findOne({
+      where: { api_key_name: 'legacy-default' },
+      order: { id: 'DESC' },
+    });
+    expect(log?.workspace_id).toBe(DEFAULT_WORKSPACE_ID);
   });
 
   it('POST /v1/chat/completions — fetch called with correct URL and headers', async () => {

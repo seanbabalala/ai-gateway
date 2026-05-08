@@ -4,6 +4,8 @@ import { ConfigService } from '../config/config.service'
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service'
 import type { McpServerConfig, McpToolConfig } from '../config/gateway.config'
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service'
+import { WorkspaceContextService } from '../workspaces/workspace-context.service'
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope'
 
 export interface McpGatewayAuditEntry {
   id: string
@@ -13,6 +15,7 @@ export interface McpGatewayAuditEntry {
   method: string
   tool_name: string | null
   batch_size: number
+  workspace_id: string
   api_key_id: string | null
   api_key_name: string | null
   namespace_id: string | null
@@ -93,12 +96,15 @@ export class McpGatewayService {
   constructor(
     private readonly config: ConfigService,
     private readonly secrets: SecretReferenceResolverService,
+    private readonly workspaceContext: WorkspaceContextService,
   ) {}
 
   getDashboardSummary(): McpGatewayDashboardSummary {
     const mcp = this.config.mcpGateway
-    const servers = mcp.servers.map((server) => this.serverSummary(server))
-    const recentCalls = [...this.auditEntries].reverse()
+    const workspaceId = normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId())
+    const entries = this.auditEntries.filter((entry) => entry.workspace_id === workspaceId)
+    const servers = mcp.servers.map((server) => this.serverSummary(server, entries))
+    const recentCalls = [...entries].reverse()
     const recentErrors = recentCalls.filter((entry) => !entry.success)
 
     return {
@@ -112,7 +118,7 @@ export class McpGatewayService {
         servers: servers.length,
         enabled_servers: servers.filter((server) => server.enabled).length,
         tools: servers.reduce((sum, server) => sum + server.tools.length, 0),
-        recent_calls: this.auditEntries.length,
+        recent_calls: entries.length,
         recent_errors: recentErrors.length,
       },
     }
@@ -196,8 +202,8 @@ export class McpGatewayService {
     }
   }
 
-  private serverSummary(server: McpServerConfig): McpGatewayServerSummary {
-    const entries = this.auditEntries.filter((entry) => entry.server_id === server.id)
+  private serverSummary(server: McpServerConfig, auditEntries = this.auditEntries): McpGatewayServerSummary {
+    const entries = auditEntries.filter((entry) => entry.server_id === server.id)
     const errors = entries.filter((entry) => !entry.success)
     const last = entries.at(-1)
     return {
@@ -351,6 +357,9 @@ export class McpGatewayService {
       method,
       tool_name: input.metadata.toolName,
       batch_size: input.metadata.batchSize,
+      workspace_id: normalizeWorkspaceId(
+        input.apiKey?.workspace_id || this.workspaceContext.currentWorkspaceId(),
+      ),
       api_key_id: input.apiKey?.id || null,
       api_key_name: input.apiKey?.name || null,
       namespace_id: input.apiKey?.namespace_id || null,

@@ -65,5 +65,11 @@
   "nav.sessions": "セッション",
   "nav.mcp": "MCP Gateway",
   "nav.batches": "バッチ",
-  "nav.evals": "評価レポート"
+  "nav.evals": "評価レポート",
+  "workspace.organization": "組織",
+  "workspace.workspace": "ワークスペース",
+  "workspace.defaultWorkspace": "既定ワークスペース",
+  "workspace.switchWorkspace": "ワークスペースを切替",
+  "workspace.activeWorkspace": "現在のワークスペース",
+  "workspace.defaultWorkspaceMigration": "既存リソースは既定ワークスペースに割り当てられます。"
 }

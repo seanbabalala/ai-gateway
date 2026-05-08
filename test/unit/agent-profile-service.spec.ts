@@ -10,11 +10,19 @@ function makeRepo<T extends { id?: string }>(initial: T[] = []) {
     if (whereValue && typeof whereValue === 'object' && whereValue._type === 'not') {
       return itemValue !== whereValue._value;
     }
+    if (whereValue && typeof whereValue === 'object' && whereValue._type === 'isNull') {
+      return itemValue === null || itemValue === undefined;
+    }
     return itemValue === whereValue;
   };
 
-  const matchesWhere = (item: any, where: Record<string, unknown>) =>
-    Object.entries(where).every(([key, value]) => matchesValue(item[key], value));
+  const matchesWhere = (
+    item: any,
+    where: Record<string, unknown> | Record<string, unknown>[],
+  ): boolean =>
+    Array.isArray(where)
+      ? where.some((candidate) => matchesWhere(item, candidate))
+      : Object.entries(where).every(([key, value]) => matchesValue(item[key], value));
 
   return {
     _store: store,
@@ -80,12 +88,14 @@ function makeService(seed: any[] = [], configOverrides: Record<string, unknown> 
   });
   const repo = makeRepo(seed);
   const gatewayApiKeys = makeGatewayApiKeys();
+  const workspaceContext = { currentWorkspaceId: jest.fn(() => 'default-workspace') };
   const service = new AgentProfileService(
     config,
     gatewayApiKeys as any,
+    workspaceContext as any,
     repo as any,
   );
-  return { service, repo, gatewayApiKeys, config };
+  return { service, repo, gatewayApiKeys, config, workspaceContext };
 }
 
 describe('AgentProfileService', () => {

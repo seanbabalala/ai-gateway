@@ -19,11 +19,11 @@ class MemoryRepo<T extends Record<string, any>> {
     return this.saveOne(input);
   }
 
-  async findOne(options: { where: Where }): Promise<T | null> {
+  async findOne(options: { where: Where | Where[] }): Promise<T | null> {
     return this.rows.find((row) => matches(row, options.where)) || null;
   }
 
-  async find(options: { where?: Where; order?: Record<string, 'ASC' | 'DESC'>; take?: number } = {}): Promise<T[]> {
+  async find(options: { where?: Where | Where[]; order?: Record<string, 'ASC' | 'DESC'>; take?: number } = {}): Promise<T[]> {
     let rows = options.where
       ? this.rows.filter((row) => matches(row, options.where!))
       : [...this.rows];
@@ -88,8 +88,16 @@ class MemoryRepo<T extends Record<string, any>> {
   }
 }
 
-function matches(row: Record<string, any>, where: Where): boolean {
-  return Object.entries(where).every(([key, value]) => row[key] === value);
+function matches(row: Record<string, any>, where: Where | Where[]): boolean {
+  if (Array.isArray(where)) {
+    return where.some((candidate) => matches(row, candidate));
+  }
+  return Object.entries(where).every(([key, value]) => {
+    if (value && typeof value === 'object' && (value as any)._type === 'isNull') {
+      return row[key] === null || row[key] === undefined;
+    }
+    return row[key] === value;
+  });
 }
 
 function makeService(options: {
@@ -115,6 +123,7 @@ function makeService(options: {
     runs as any,
     samples as any,
     callLogs as any,
+    { currentWorkspaceId: jest.fn(() => 'default-workspace') } as any,
     options.pipeline as any,
   );
   return { service, datasets, runs, samples, callLogs, config };

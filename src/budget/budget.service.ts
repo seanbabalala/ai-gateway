@@ -14,6 +14,13 @@ import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { AlertService } from '../alerts/alert.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
+import {
+  applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
+  workspaceFindWhere,
+} from '../workspaces/workspace-scope';
 
 export interface BudgetStatus {
   id: number;
@@ -94,6 +101,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(BudgetRule)
     private readonly budgetRepo: Repository<BudgetRule>,
     @Optional() private readonly alerts?: AlertService,
@@ -115,8 +123,14 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Create default global budget rules from config if they don't exist yet.
    */
   private async ensureDefaultRules(): Promise<void> {
+    const workspaceId = this.workspaceId();
     const allGlobal = await this.budgetRepo.find({
-      where: { api_key_name: IsNull(), api_key_id: IsNull(), namespace_id: IsNull(), team_id: IsNull() },
+      where: workspaceFindWhere(workspaceId, {
+        api_key_name: IsNull(),
+        api_key_id: IsNull(),
+        namespace_id: IsNull(),
+        team_id: IsNull(),
+      }),
     });
     const budget = this.config.budget;
     const now = this.startOfDay(new Date());
@@ -144,6 +158,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           api_key_id: null,
           namespace_id: null,
           team_id: null,
+          workspace_id: workspaceId,
         }));
       }
     }
@@ -159,6 +174,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Create per-key budget rules from config for API keys that have `budget` set.
    */
   private async ensurePerKeyRules(): Promise<void> {
+    const workspaceId = this.workspaceId();
     const apiKeys = this.config.auth?.api_keys || [];
     const globalAlertThreshold = this.config.budget.alert_threshold;
     const now = this.startOfDay(new Date());
@@ -169,7 +185,12 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       const keyBudget = keyEntry.budget;
 
       const existingRules = await this.budgetRepo.find({
-        where: { api_key_name: keyName, api_key_id: IsNull(), namespace_id: IsNull(), team_id: IsNull() },
+        where: workspaceFindWhere(workspaceId, {
+          api_key_name: keyName,
+          api_key_id: IsNull(),
+          namespace_id: IsNull(),
+          team_id: IsNull(),
+        }),
       });
 
       // Upsert daily_token rule for this key
@@ -192,6 +213,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
             api_key_id: null,
             namespace_id: null,
             team_id: null,
+            workspace_id: workspaceId,
           }));
         }
       }
@@ -216,6 +238,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
             api_key_id: null,
             namespace_id: null,
             team_id: null,
+            workspace_id: workspaceId,
           }));
         }
       }
@@ -227,6 +250,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * namespaces are a lightweight policy scope, not enterprise workspaces.
    */
   private async ensureNamespaceRules(): Promise<void> {
+    const workspaceId = this.workspaceId();
     const namespaces = this.config.namespaces || [];
     const globalAlertThreshold = this.config.budget.alert_threshold;
     const now = this.startOfDay(new Date());
@@ -234,7 +258,10 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     for (const namespace of namespaces) {
       const budget = namespace.budget;
       const existingRules = await this.budgetRepo.find({
-        where: { namespace_id: namespace.id, is_active: true },
+        where: workspaceFindWhere(workspaceId, {
+          namespace_id: namespace.id,
+          is_active: true,
+        }),
       });
 
       await this.upsertNamespaceRule(
@@ -244,6 +271,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         budget?.alert_threshold ?? globalAlertThreshold,
         existingRules,
         now,
+        workspaceId,
       );
       await this.upsertNamespaceRule(
         namespace.id,
@@ -252,6 +280,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         budget?.alert_threshold ?? globalAlertThreshold,
         existingRules,
         now,
+        workspaceId,
       );
     }
   }
@@ -263,6 +292,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     alertThreshold: number,
     existingRules: BudgetRule[],
     periodStart: Date,
+    workspaceId = this.workspaceId(),
   ): Promise<void> {
     const existing = existingRules.find((rule) => rule.type === type);
     if (limit === undefined) {
@@ -292,6 +322,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       api_key_id: null,
       namespace_id: namespaceId,
       team_id: null,
+      workspace_id: workspaceId,
     }));
   }
 
@@ -309,14 +340,16 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     // deactivated just because they are not listed in YAML auth.api_keys.
     const allPerKeyRules = await this.budgetRepo
       .createQueryBuilder('rule')
-      .where('rule.api_key_name IS NOT NULL')
+      .where('rule.api_key_name IS NOT NULL');
+    applyWorkspaceQueryScope(allPerKeyRules, 'rule', this.workspaceId());
+    const rows = await allPerKeyRules
       .andWhere('rule.api_key_id IS NULL')
       .andWhere('rule.namespace_id IS NULL')
       .andWhere('rule.team_id IS NULL')
       .andWhere('rule.is_active = :active', { active: true })
       .getMany();
 
-    for (const rule of allPerKeyRules) {
+    for (const rule of rows) {
       if (!configKeyNames.has(rule.api_key_name!)) {
         rule.is_active = false;
         await this.budgetRepo.save(rule);
@@ -329,11 +362,13 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     const configNamespaces = new Set((this.config.namespaces || []).map((namespace) => namespace.id));
     const namespaceRules = await this.budgetRepo
       .createQueryBuilder('rule')
-      .where('rule.namespace_id IS NOT NULL')
+      .where('rule.namespace_id IS NOT NULL');
+    applyWorkspaceQueryScope(namespaceRules, 'rule', this.workspaceId());
+    const rows = await namespaceRules
       .andWhere('rule.is_active = :active', { active: true })
       .getMany();
 
-    for (const rule of namespaceRules) {
+    for (const rule of rows) {
       if (!rule.namespace_id || configNamespaces.has(rule.namespace_id)) {
         continue;
       }
@@ -446,7 +481,9 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
    * Reset a budget rule's counter (manual reset).
    */
   async resetRule(ruleId: number): Promise<void> {
-    const rule = await this.budgetRepo.findOneBy({ id: ruleId });
+    const rule = await this.budgetRepo.findOne({
+      where: workspaceFindWhere(this.workspaceId(), { id: ruleId }),
+    });
     if (rule) {
       rule.current_value = 0;
       rule.period_start = this.startOfDay(new Date());
@@ -464,6 +501,12 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       .createQueryBuilder('rule')
       .select('DISTINCT rule.api_key_name', 'api_key_name')
       .where('rule.api_key_name IS NOT NULL')
+      .andWhere(
+        this.workspaceId() === DEFAULT_WORKSPACE_ID
+          ? '(rule.workspace_id = :workspaceId OR rule.workspace_id IS NULL)'
+          : 'rule.workspace_id = :workspaceId',
+        { workspaceId: this.workspaceId() },
+      )
       .andWhere('rule.namespace_id IS NULL')
       .andWhere('rule.team_id IS NULL')
       .andWhere('rule.is_active = :active', { active: true })
@@ -480,41 +523,41 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private async loadActiveRules(apiKeyName: string | null, apiKeyId?: string | null, namespaceId?: string | null, teamId?: string | null): Promise<BudgetRule[]> {
     if (namespaceId) {
       return this.budgetRepo.find({
-        where: {
+        where: workspaceFindWhere(this.workspaceId(), {
           namespace_id: namespaceId,
           team_id: IsNull(),
           is_active: true,
-        },
+        }),
       });
     }
     if (teamId) {
       return this.budgetRepo.find({
-        where: {
+        where: workspaceFindWhere(this.workspaceId(), {
           team_id: teamId,
           api_key_name: IsNull(),
           api_key_id: IsNull(),
           namespace_id: IsNull(),
           is_active: true,
-        },
+        }),
       });
     }
     if (apiKeyId) {
       return this.budgetRepo.find({
-        where: {
+        where: workspaceFindWhere(this.workspaceId(), {
           api_key_id: apiKeyId,
           team_id: IsNull(),
           is_active: true,
-        },
+        }),
       });
     }
     return this.budgetRepo.find({
-      where: {
+      where: workspaceFindWhere(this.workspaceId(), {
         api_key_name: apiKeyName === null ? IsNull() : apiKeyName,
         api_key_id: IsNull(),
         namespace_id: IsNull(),
         team_id: IsNull(),
         is_active: true,
-      },
+      }),
     });
   }
 
@@ -639,7 +682,9 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
   private async refreshBudgetMetricSnapshot(): Promise<void> {
     try {
-      const rules = await this.budgetRepo.find({ where: { is_active: true } });
+      const rules = await this.budgetRepo.find({
+        where: workspaceFindWhere(this.workspaceId(), { is_active: true }),
+      });
       const statuses: BudgetStatus[] = rules.map((r) => ({
         id: r.id,
         type: r.type,
@@ -756,5 +801,9 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       suffix,
       this.startOfDay(new Date(rule.period_start)).toISOString(),
     ].join(':');
+  }
+
+  private workspaceId(): string {
+    return normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId());
   }
 }

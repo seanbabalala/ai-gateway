@@ -272,6 +272,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
     telemetryUploader as any,
     callLogRepo as any,
     routeDecisionRepo as any,
+    { currentWorkspaceId: jest.fn(() => 'default-workspace') } as any,
     alerts as any,
     logSinks as any,
     embeddingBatching as any,

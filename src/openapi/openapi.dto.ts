@@ -53,6 +53,54 @@ export class AuthStatusResponseDto {
   authRequired!: boolean;
 }
 
+export class OrganizationSummaryDto {
+  @ApiProperty({ example: 'default-org' })
+  id!: string;
+
+  @ApiProperty({ example: 'Default Organization' })
+  name!: string;
+
+  @ApiProperty({ example: 'default-org' })
+  slug!: string;
+
+  @ApiProperty({ example: 'active' })
+  status!: string;
+}
+
+export class WorkspaceSummaryDto {
+  @ApiProperty({ example: 'default-workspace' })
+  id!: string;
+
+  @ApiProperty({ example: 'default-org' })
+  organization_id!: string;
+
+  @ApiProperty({ example: 'Default Workspace' })
+  name!: string;
+
+  @ApiProperty({ example: 'default-workspace' })
+  slug!: string;
+
+  @ApiProperty({ example: 'active' })
+  status!: string;
+
+  @ApiProperty({ example: true })
+  is_default!: boolean;
+}
+
+export class WorkspaceStateResponseDto {
+  @ApiProperty({ type: OrganizationSummaryDto })
+  organization!: OrganizationSummaryDto;
+
+  @ApiProperty({ type: WorkspaceSummaryDto })
+  active_workspace!: WorkspaceSummaryDto;
+
+  @ApiProperty({ type: WorkspaceSummaryDto })
+  default_workspace!: WorkspaceSummaryDto;
+
+  @ApiProperty({ type: [WorkspaceSummaryDto] })
+  workspaces!: WorkspaceSummaryDto[];
+}
+
 export class ChatCompletionsRequestDto {
   @ApiProperty({ example: 'auto', description: 'Use "auto" for SiftGate smart routing or a direct model/node name.' })
   model!: string;
@@ -711,6 +759,9 @@ export class GatewayApiKeySummaryDto {
   @ApiProperty({ example: 'key_01h...' })
   id!: string;
 
+  @ApiProperty({ example: 'default-workspace' })
+  workspace_id!: string;
+
   @ApiProperty({ example: 'production-app' })
   name!: string;
 
@@ -822,6 +873,9 @@ export class AgentProfileGatewayKeySummaryDto {
 export class AgentProfileSummaryDto {
   @ApiProperty({ example: 'profile_01h...' })
   id!: string;
+
+  @ApiProperty({ example: 'default-workspace' })
+  workspace_id!: string;
 
   @ApiProperty({ example: 'Claude Code local' })
   name!: string;

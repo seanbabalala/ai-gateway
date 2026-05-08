@@ -26,12 +26,16 @@ export type ProviderCompatibilityStatus =
   | 'skipped';
 
 @Entity('provider_compatibility_results')
+@Index(['workspace_id'])
 @Index(['node_id'])
 @Index(['capability'])
 @Index(['node_id', 'capability'], { unique: true })
 export class ProviderCompatibilityResult {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  workspace_id!: string | null;
 
   @Column({ type: 'varchar' })
   node_id!: string;
