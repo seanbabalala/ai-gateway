@@ -15,6 +15,7 @@ const ApiKeysPage = lazy(() => import('@/pages/ApiKeysPage').then((m) => ({ defa
 const ShadowPage = lazy(() => import('@/pages/ShadowPage').then((m) => ({ default: m.ShadowPage })))
 const RouteExplanationPage = lazy(() => import('@/pages/RouteExplanationPage').then((m) => ({ default: m.RouteExplanationPage })))
 const ConfigAuditPage = lazy(() => import('@/pages/ConfigAuditPage').then((m) => ({ default: m.ConfigAuditPage })))
+const ManagementAuditPage = lazy(() => import('@/pages/ManagementAuditPage').then((m) => ({ default: m.ManagementAuditPage })))
 const BenchmarkPage = lazy(() => import('@/pages/BenchmarkPage').then((m) => ({ default: m.BenchmarkPage })))
 const BatchesPage = lazy(() => import('@/pages/BatchesPage').then((m) => ({ default: m.BatchesPage })))
 const EvalReportsPage = lazy(() => import('@/pages/EvalReportsPage').then((m) => ({ default: m.EvalReportsPage })))
@@ -71,6 +72,7 @@ export function App() {
         <Route path="/mcp" element={page(<McpGatewayPage />)} />
         <Route path="/agents" element={page(<AgentProfilesPage />)} />
         <Route path="/members" element={page(<MembersPage />)} />
+        <Route path="/audit" element={page(<ManagementAuditPage />)} />
         <Route path="/config-audit" element={page(<ConfigAuditPage />)} />
         <Route path="/benchmarks" element={page(<BenchmarkPage />)} />
         <Route path="/batches" element={page(<BatchesPage />)} />

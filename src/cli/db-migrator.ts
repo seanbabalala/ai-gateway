@@ -7,6 +7,7 @@ import {
   CallLog,
   ConfigAuditEvent,
   ConfigVersion,
+  ManagementAuditEvent,
   AgentProfile,
   GatewayApiKey,
   LocalTeam,
@@ -47,6 +48,7 @@ export type DbMigrationTableName =
   | "shadow_traffic_results"
   | "config_versions"
   | "config_audit_events"
+  | "management_audit_events"
   | "provider_compatibility_results"
   | "batch_jobs"
   | "eval_datasets"
@@ -74,6 +76,7 @@ const MIGRATION_TABLES: MigrationTableDefinition[] = [
   { table: "shadow_traffic_results", entity: ShadowTrafficResult, generatedSequenceColumn: "id" },
   { table: "config_versions", entity: ConfigVersion, generatedSequenceColumn: "id" },
   { table: "config_audit_events", entity: ConfigAuditEvent, generatedSequenceColumn: "id" },
+  { table: "management_audit_events", entity: ManagementAuditEvent, generatedSequenceColumn: "id" },
   {
     table: "provider_compatibility_results",
     entity: ProviderCompatibilityResult,
@@ -828,6 +831,16 @@ function normalizeRow(
       id: toNumber,
       workspace_id: toDefaultWorkspaceId,
       timestamp: toDateOrNow,
+    });
+  }
+
+  if (table === "management_audit_events") {
+    return normalizeFields(row, {
+      id: toNumber,
+      organization_id: toDefaultOrganizationId,
+      workspace_id: toDefaultWorkspaceId,
+      timestamp: toDateOrNow,
+      schema_version: toNumber,
     });
   }
 

@@ -17,6 +17,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import {
   CallLog,
   GatewayApiKey,
+  ManagementAuditEvent,
   WorkspaceInvitation,
   WorkspaceMembership,
 } from '../../src/database/entities';
@@ -452,6 +453,7 @@ export interface E2EHarness {
   callLogRepo: Repository<CallLog>;
   membershipRepo: Repository<WorkspaceMembership>;
   invitationRepo: Repository<WorkspaceInvitation>;
+  managementAuditRepo: Repository<ManagementAuditEvent>;
   close: () => Promise<void>;
 }
 
@@ -513,6 +515,9 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   const invitationRepo = app.get<Repository<WorkspaceInvitation>>(
     getRepositoryToken(WorkspaceInvitation),
   );
+  const managementAuditRepo = app.get<Repository<ManagementAuditEvent>>(
+    getRepositoryToken(ManagementAuditEvent),
+  );
   await apiKeyRepo.save([
     apiKeyRepo.create({
       name: 'test-default',
@@ -561,6 +566,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     callLogRepo,
     membershipRepo,
     invitationRepo,
+    managementAuditRepo,
     close: async () => {
       fetchMock.restore();
       await app.close();

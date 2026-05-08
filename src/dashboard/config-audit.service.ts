@@ -15,6 +15,7 @@ import {
   normalizeWorkspaceId,
   workspaceFindWhere,
 } from '../workspaces/workspace-scope';
+import { ManagementAuditService } from '../audit/management-audit.service';
 
 const REDACTED = '[redacted]';
 
@@ -51,6 +52,7 @@ export class ConfigAuditService implements OnModuleInit {
     private readonly versionRepo: Repository<ConfigVersion>,
     @InjectRepository(ConfigAuditEvent)
     private readonly eventRepo: Repository<ConfigAuditEvent>,
+    private readonly managementAudit: ManagementAuditService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -84,7 +86,31 @@ export class ConfigAuditService implements OnModuleInit {
     mutation: () => T | Promise<T>,
   ): Promise<T> {
     if (!this.config.configAudit.enabled) {
-      return mutation();
+      try {
+        const result = await mutation();
+        await this.managementAudit.record({
+          action: input.action,
+          resourceType: this.resourceTypeFromTarget(input.target ?? 'config'),
+          resourceId: this.resourceIdFromTarget(input.target ?? 'config'),
+          result: 'success',
+          source: input.source ?? 'dashboard',
+          actor: input.actor,
+          metadata: input.metadata,
+        });
+        return result;
+      } catch (err) {
+        await this.managementAudit.record({
+          action: input.action,
+          resourceType: this.resourceTypeFromTarget(input.target ?? 'config'),
+          resourceId: this.resourceIdFromTarget(input.target ?? 'config'),
+          result: 'failure',
+          failureReason: (err as Error).message,
+          source: input.source ?? 'dashboard',
+          actor: input.actor,
+          metadata: input.metadata,
+        });
+        throw err;
+      }
     }
 
     const beforeSummary = this.summarizeRawConfigSafe();
@@ -119,6 +145,17 @@ export class ConfigAuditService implements OnModuleInit {
         afterSummary,
         metadata: input.metadata,
       });
+      await this.managementAudit.record({
+        action: input.action,
+        resourceType: this.resourceTypeFromTarget(input.target ?? 'config'),
+        resourceId: this.resourceIdFromTarget(input.target ?? 'config'),
+        beforeSummary,
+        afterSummary,
+        result: 'success',
+        source: input.source ?? 'dashboard',
+        actor: input.actor,
+        metadata: input.metadata,
+      });
       return result;
     } catch (err) {
       await this.recordEvent({
@@ -133,6 +170,17 @@ export class ConfigAuditService implements OnModuleInit {
         metadata: input.metadata,
       }).catch((auditErr) => {
         this.logger.warn(`Config mutation failed and audit capture also failed: ${(auditErr as Error).message}`);
+      });
+      await this.managementAudit.record({
+        action: input.action,
+        resourceType: this.resourceTypeFromTarget(input.target ?? 'config'),
+        resourceId: this.resourceIdFromTarget(input.target ?? 'config'),
+        beforeSummary,
+        result: 'failure',
+        failureReason: (err as Error).message,
+        source: input.source ?? 'dashboard',
+        actor: input.actor,
+        metadata: input.metadata,
       });
       throw err;
     }
@@ -186,18 +234,32 @@ export class ConfigAuditService implements OnModuleInit {
     failureReason?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<ConfigAuditEvent | null> {
-    if (!this.config.configAudit.enabled) return null;
-    return this.recordEvent({
+    const event = this.config.configAudit.enabled
+      ? await this.recordEvent({
+          action: input.action,
+          target: input.target,
+          source: input.source ?? 'dashboard',
+          actor: this.actorLabel(input.actor),
+          result: input.result ?? 'success',
+          beforeSummary: input.beforeSummary ?? null,
+          afterSummary: input.afterSummary ?? null,
+          failureReason: input.failureReason ?? null,
+          metadata: input.metadata,
+        })
+      : null;
+    await this.managementAudit.record({
       action: input.action,
-      target: input.target,
-      source: input.source ?? 'dashboard',
-      actor: this.actorLabel(input.actor),
+      resourceType: this.resourceTypeFromTarget(input.target),
+      resourceId: this.resourceIdFromTarget(input.target),
+      actor: input.actor,
       result: input.result ?? 'success',
       beforeSummary: input.beforeSummary ?? null,
       afterSummary: input.afterSummary ?? null,
       failureReason: input.failureReason ?? null,
+      source: input.source ?? 'dashboard',
       metadata: input.metadata,
     });
+    return event;
   }
 
   async rollbackToVersion(
@@ -724,6 +786,16 @@ export class ConfigAuditService implements OnModuleInit {
 
   private actorLabel(actor?: ConfigAuditActor): string {
     return `${actor?.type ?? 'dashboard'}:${actor?.id ?? 'dashboard'}`;
+  }
+
+  private resourceTypeFromTarget(target: string): string {
+    return target.includes(':') ? target.split(':', 1)[0] : target;
+  }
+
+  private resourceIdFromTarget(target: string): string | null {
+    const separator = target.indexOf(':');
+    if (separator === -1) return null;
+    return target.slice(separator + 1) || null;
   }
 
   private normalizeSource(source: string | undefined): ConfigVersionSource {

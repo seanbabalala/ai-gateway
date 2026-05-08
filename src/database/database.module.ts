@@ -26,6 +26,7 @@ import {
   EvalExperimentRun,
   EvalSampleResult,
   VideoJob,
+  ManagementAuditEvent,
   Workspace,
   WorkspaceInvitation,
   WorkspaceMembership,
@@ -58,6 +59,7 @@ import {
             EvalExperimentRun,
             EvalSampleResult,
             VideoJob,
+            ManagementAuditEvent,
           ],
           // Default remains true for the OSS single-node SQLite/dev path.
           // Production PostgreSQL deployments should set database.synchronize=false.
@@ -102,6 +104,7 @@ import {
       EvalExperimentRun,
       EvalSampleResult,
       VideoJob,
+      ManagementAuditEvent,
     ]),
   ],
   providers: [

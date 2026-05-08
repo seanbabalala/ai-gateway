@@ -17,6 +17,7 @@ import {
 import { WORKSPACE_HEADER } from '../workspaces/workspace.constants';
 import { WorkspaceService } from '../workspaces/workspace.service';
 import { WorkspaceMembershipService } from './workspace-membership.service';
+import { ManagementAuditService } from '../audit/management-audit.service';
 
 @Injectable()
 export class DashboardRbacGuard implements CanActivate {
@@ -24,6 +25,7 @@ export class DashboardRbacGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly workspaces: WorkspaceService,
     private readonly memberships: WorkspaceMembershipService,
+    private readonly managementAudit: ManagementAuditService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -51,6 +53,20 @@ export class DashboardRbacGuard implements CanActivate {
     const role = await this.memberships.findActiveRole(userId, workspaceId);
 
     if (!dashboardRoleAllows(role, required)) {
+      await this.managementAudit.recordDenied({
+        actor: { type: 'dashboard', id: userId },
+        workspaceId,
+        action: `dashboard.${(request.method || 'GET').toLowerCase()}.denied`,
+        resourceType: 'dashboard_endpoint',
+        resourceId: request.path || request.url,
+        reason: `Requires ${required} role for this workspace.`,
+        metadata: {
+          required_role: required,
+          current_role: role,
+          method: request.method,
+          path: request.path || request.url,
+        },
+      });
       throw new ForbiddenException({
         error: {
           message: `Requires ${required} role for this workspace.`,

@@ -163,11 +163,14 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
       local_node_id: 'test-instance',
     }),
   } as any;
+  const managementAudit = {
+    record: jest.fn().mockResolvedValue(null),
+  } as any;
 
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, catalog, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, managementAudit, catalog, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

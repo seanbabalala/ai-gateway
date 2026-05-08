@@ -23,6 +23,7 @@ const TABLES: DbMigrationTableName[] = [
   "shadow_traffic_results",
   "config_versions",
   "config_audit_events",
+  "management_audit_events",
   "provider_compatibility_results",
   "batch_jobs",
   "eval_datasets",
@@ -286,6 +287,29 @@ function createSqliteFixture(dir: string): string {
       version_id varchar,
       previous_version_id varchar,
       metadata_json text
+    );
+
+    CREATE TABLE management_audit_events (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      event_id varchar,
+      organization_id varchar,
+      workspace_id varchar,
+      timestamp datetime,
+      actor_type varchar,
+      actor_id varchar,
+      action varchar,
+      resource_type varchar,
+      resource_id varchar,
+      before_summary_json text,
+      after_summary_json text,
+      result varchar,
+      failure_reason text,
+      request_id varchar,
+      source varchar,
+      metadata_json text,
+      previous_hash varchar,
+      event_hash varchar,
+      schema_version integer
     );
 
     CREATE TABLE provider_compatibility_results (
@@ -703,6 +727,38 @@ function createSqliteFixture(dir: string): string {
 
   db.prepare(
     `
+    INSERT INTO management_audit_events (
+      event_id, organization_id, workspace_id, timestamp, actor_type,
+      actor_id, action, resource_type, resource_id, before_summary_json,
+      after_summary_json, result, failure_reason, request_id, source,
+      metadata_json, previous_hash, event_hash, schema_version
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    "mgmt_1",
+    null,
+    null,
+    "2026-05-01T00:01:32.000Z",
+    "dashboard",
+    "dashboard",
+    "api_key.create",
+    "api_key",
+    "key-1",
+    null,
+    JSON.stringify({ name: "prod-key", key: "[REDACTED]" }),
+    "success",
+    null,
+    "req-audit-1",
+    "dashboard",
+    JSON.stringify({ fields: ["name"] }),
+    null,
+    "hash_1",
+    1,
+  );
+
+  db.prepare(
+    `
     INSERT INTO provider_compatibility_results (
       node_id, capability, configured, tested, last_status, last_checked_at,
       latency_ms, status_code, failure_reason, test_mode, created_at, updated_at
@@ -910,7 +966,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(19);
+    expect(result.totals.source_rows).toBe(20);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -1025,6 +1081,14 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(auditEvent?.timestamp).toBeInstanceOf(Date);
     expect(auditEvent?.action).toBe("config.node.create");
 
+    const managementAuditEvent = target.rows.get("management_audit_events")?.[0];
+    expect(managementAuditEvent?.event_id).toBe("mgmt_1");
+    expect(managementAuditEvent?.organization_id).toBe("default-org");
+    expect(managementAuditEvent?.workspace_id).toBe("default-workspace");
+    expect(managementAuditEvent?.timestamp).toBeInstanceOf(Date);
+    expect(managementAuditEvent?.action).toBe("api_key.create");
+    expect(managementAuditEvent?.schema_version).toBe(1);
+
     const compatibility = target.rows.get("provider_compatibility_results")?.[0];
     expect(compatibility?.configured).toBe(true);
     expect(compatibility?.tested).toBe(true);
@@ -1097,7 +1161,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(19);
+    expect(result.validation.mismatches).toHaveLength(20);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

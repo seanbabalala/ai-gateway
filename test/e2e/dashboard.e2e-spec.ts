@@ -95,6 +95,57 @@ describe('Dashboard (e2e)', () => {
     );
   });
 
+  it('GET /api/dashboard/audit → returns metadata-only management audit events with filters', async () => {
+    const timestamp = Date.now();
+    const created = await harness.managementAuditRepo.save(
+      harness.managementAuditRepo.create({
+        event_id: `mgmt_e2e_${timestamp}`,
+        organization_id: 'default-org',
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        actor_type: 'dashboard',
+        actor_id: 'dashboard',
+        action: 'e2e.audit.seed',
+        resource_type: 'e2e_resource',
+        resource_id: `seed-${timestamp}`,
+        before_summary_json: null,
+        after_summary_json: JSON.stringify({ safe: true }),
+        result: 'success',
+        failure_reason: null,
+        request_id: `req-e2e-${timestamp}`,
+        source: 'dashboard',
+        metadata_json: JSON.stringify({ note: 'seed' }),
+        previous_hash: null,
+        event_hash: 'a'.repeat(64),
+        schema_version: 1,
+      }),
+    );
+
+    const res = await harness.agent
+      .get(`/api/dashboard/audit?action=e2e.audit.seed&resource_type=e2e_resource&actor_id=dashboard&result=success`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({
+        event_id: created.event_id,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        action: 'e2e.audit.seed',
+        resource_type: 'e2e_resource',
+        resource_id: `seed-${timestamp}`,
+        actor_id: 'dashboard',
+        result: 'success',
+        after_summary: { safe: true },
+        metadata: { note: 'seed' },
+      }),
+    ]);
+    expect(res.body.privacy).toMatchObject({
+      prompt_response_stored: false,
+      raw_headers_stored: false,
+      provider_keys_stored: false,
+      tool_payloads_stored: false,
+      hidden_reasoning_stored: false,
+    });
+  });
+
   it('RBAC → Viewer can read but cannot write Dashboard resources', async () => {
     await harness.membershipRepo.update(
       { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
@@ -117,6 +168,18 @@ describe('Dashboard (e2e)', () => {
       expect(writeRes.body.error.type).toBe('dashboard_permission_denied');
       expect(writeRes.body.required_role).toBe('operator');
       expect(writeRes.body.current_role).toBe('viewer');
+
+      const auditRes = await harness.agent.get('/api/dashboard/audit?result=denied&resource_type=dashboard_endpoint');
+      expect(auditRes.status).toBe(200);
+      expect(auditRes.body.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            action: 'dashboard.post.denied',
+            resource_type: 'dashboard_endpoint',
+            result: 'denied',
+          }),
+        ]),
+      );
     } finally {
       await harness.membershipRepo.update(
         { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
@@ -165,6 +228,97 @@ describe('Dashboard (e2e)', () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.item.name).toContain('admin-rbac-');
+  });
+
+  it('management audit → records API key create, update, rotate, and delete without storing plaintext keys', async () => {
+    const unique = Date.now();
+    const createRes = await harness.agent
+      .post('/api/dashboard/api-keys')
+      .send({
+        name: `audit-key-${unique}`,
+        allow_auto: true,
+        allow_direct: false,
+        allowed_endpoints: ['chat_completions'],
+      });
+    expect(createRes.status).toBe(201);
+    const keyId = createRes.body.item.id;
+    const createdPlaintext = createRes.body.key;
+
+    const updateRes = await harness.agent
+      .put(`/api/dashboard/api-keys/${keyId}`)
+      .send({ description: 'audit updated', rate_limit_per_minute: 60 });
+    expect(updateRes.status).toBe(200);
+
+    const rotateRes = await harness.agent.post(`/api/dashboard/api-keys/${keyId}/rotate`);
+    expect(rotateRes.status).toBe(201);
+    const rotatedPlaintext = rotateRes.body.key;
+
+    const deleteRes = await harness.agent.delete(`/api/dashboard/api-keys/${keyId}`);
+    expect(deleteRes.status).toBe(200);
+
+    const auditRes = await harness.agent.get(`/api/dashboard/audit?resource_type=api_key&resource_id=${keyId}&limit=20`);
+    expect(auditRes.status).toBe(200);
+    const actions = auditRes.body.data.map((event: any) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'api_key.create',
+        'api_key.update',
+        'api_key.rotate',
+        'api_key.delete',
+      ]),
+    );
+    const payload = JSON.stringify(auditRes.body);
+    expect(payload).not.toContain(createdPlaintext);
+    expect(payload).not.toContain(rotatedPlaintext);
+    expect(payload).toContain('[redacted]');
+  });
+
+  it('management audit → records workspace member and invitation changes', async () => {
+    const unique = Date.now();
+    const member = await harness.membershipRepo.save(
+      harness.membershipRepo.create({
+        user_id: `audit-user-${unique}`,
+        organization_id: 'default-org',
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        role: 'viewer',
+        status: 'active',
+      }),
+    );
+
+    const updateRes = await harness.agent
+      .put(`/api/dashboard/members/${member.id}`)
+      .send({ role: 'operator' });
+    expect(updateRes.status).toBe(200);
+
+    const inviteRes = await harness.agent
+      .post('/api/dashboard/members/invitations')
+      .send({ email: `audit-${unique}@example.com`, role: 'viewer' });
+    expect(inviteRes.status).toBe(201);
+    const inviteId = inviteRes.body.item.id;
+    const inviteToken = inviteRes.body.item.token;
+
+    const revokeRes = await harness.agent.delete(`/api/dashboard/members/invitations/${inviteId}`);
+    expect(revokeRes.status).toBe(200);
+
+    const memberAudit = await harness.agent.get(`/api/dashboard/audit?action=workspace_member.update&resource_id=${member.id}`);
+    expect(memberAudit.status).toBe(200);
+    expect(memberAudit.body.data).toEqual([
+      expect.objectContaining({
+        action: 'workspace_member.update',
+        resource_type: 'workspace_member',
+        result: 'success',
+      }),
+    ]);
+
+    const inviteAudit = await harness.agent.get(`/api/dashboard/audit?resource_type=workspace_invitation&resource_id=${inviteId}&limit=10`);
+    expect(inviteAudit.status).toBe(200);
+    expect(inviteAudit.body.data.map((event: any) => event.action)).toEqual(
+      expect.arrayContaining([
+        'workspace_invitation.create',
+        'workspace_invitation.revoke',
+      ]),
+    );
+    expect(JSON.stringify(inviteAudit.body)).not.toContain(inviteToken);
   });
 
   it('GET /api/dashboard/logs — active workspace header filters dashboard results', async () => {
@@ -277,6 +431,16 @@ describe('Dashboard (e2e)', () => {
     const listRes2 = await harness.agent.get('/api/dashboard/nodes');
     const nodeIds2 = listRes2.body.nodes.map((n: any) => n.id);
     expect(nodeIds2).not.toContain('test-node-crud');
+
+    const auditRes = await harness.agent.get('/api/dashboard/audit?resource_type=node&resource_id=test-node-crud&limit=10');
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.data.map((event: any) => event.action)).toEqual(
+      expect.arrayContaining([
+        'config.node.create',
+        'config.node.delete',
+      ]),
+    );
+    expect(JSON.stringify(auditRes.body)).not.toContain('test-key');
   });
 
   it('PUT /api/dashboard/nodes/:id → update node', async () => {
@@ -293,6 +457,10 @@ describe('Dashboard (e2e)', () => {
     await harness.agent
       .put('/api/dashboard/nodes/mock-openai')
       .send({ name: 'Mock OpenAI' });
+
+    const auditRes = await harness.agent.get('/api/dashboard/audit?action=config.node.update&resource_type=node&resource_id=mock-openai');
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.data.length).toBeGreaterThan(0);
   });
 
   it('POST /api/dashboard/nodes/:id/reset → reset circuit breaker', async () => {
@@ -301,6 +469,17 @@ describe('Dashboard (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
+
+    const auditRes = await harness.agent.get('/api/dashboard/audit?action=circuit_breaker.reset&resource_id=mock-openai');
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resource_type: 'node_circuit',
+          result: 'success',
+        }),
+      ]),
+    );
   });
 
   it('POST /api/dashboard/nodes/:id/test → returns compatibility matrix without secrets', async () => {
@@ -362,6 +541,10 @@ describe('Dashboard (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
+
+    const auditRes = await harness.agent.get('/api/dashboard/audit?action=config.reload.dashboard&resource_type=config');
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.data.length).toBeGreaterThan(0);
   });
 
   it('POST /api/dashboard/config/reload → failure keeps previous config', async () => {
@@ -377,6 +560,17 @@ describe('Dashboard (e2e)', () => {
       expect(res.body.success).toBe(false);
       expect(res.body.rolled_back).toBe(true);
       expect(res.body.message).toContain('retained previous config');
+
+      const auditRes = await harness.agent.get('/api/dashboard/audit?action=config.reload.dashboard&resource_type=config&result=failure');
+      expect(auditRes.status).toBe(200);
+      expect(auditRes.body.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            action: 'config.reload.dashboard',
+            result: 'failure',
+          }),
+        ]),
+      );
 
       const after = await harness.agent.get('/api/dashboard/config');
       expect(after.body.nodes.map((node: any) => node.id)).toEqual(beforeNodeIds);
@@ -471,6 +665,37 @@ describe('Dashboard (e2e)', () => {
     expect(res.status).toBe(200);
     // Cache service returns stats object
     expect(res.body).toBeDefined();
+  });
+
+  it('management audit → records budget reset and cache clear operations', async () => {
+    const budget = await harness.agent.get('/api/dashboard/budget');
+    expect(budget.status).toBe(200);
+    const ruleId = budget.body.rules[0]?.id;
+    expect(typeof ruleId).toBe('number');
+
+    const budgetReset = await harness.agent.post(`/api/dashboard/budget/${ruleId}/reset`);
+    expect(budgetReset.status).toBe(201);
+
+    const cacheClear = await harness.agent.post('/api/dashboard/cache/clear');
+    expect(cacheClear.status).toBe(201);
+
+    const budgetAudit = await harness.agent.get(`/api/dashboard/audit?action=budget.reset&resource_id=${ruleId}`);
+    expect(budgetAudit.status).toBe(200);
+    expect(budgetAudit.body.data).toEqual([
+      expect.objectContaining({
+        resource_type: 'budget_rule',
+        result: 'success',
+      }),
+    ]);
+
+    const cacheAudit = await harness.agent.get('/api/dashboard/audit?action=cache.clear&resource_type=prompt_cache');
+    expect(cacheAudit.status).toBe(200);
+    expect(cacheAudit.body.data).toEqual([
+      expect.objectContaining({
+        resource_id: 'default',
+        result: 'success',
+      }),
+    ]);
   });
 
   it('GET /api/dashboard/analytics/cost → analytics shape', async () => {

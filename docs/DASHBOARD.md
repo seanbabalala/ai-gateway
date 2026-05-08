@@ -8,6 +8,8 @@ v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows th
 
 v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mapped to a workspace membership, the header shows an Admin / Operator / Viewer role badge, and Dashboard write APIs now enforce centralized role checks. Existing local installs bootstrap the `dashboard` identity as an Admin in the default workspace.
 
+v2.0.0-rc.1 adds a workspace-scoped **Audit Log** page for platform management events. It records metadata-only evidence for Dashboard management operations, denied RBAC attempts, local config changes, key/member/invite operations, budget resets, cache clears, and node control actions.
+
 ## Pages
 
 | Page | Purpose |
@@ -30,6 +32,7 @@ v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mappe
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
 | Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/namespace scope, and sanitized errors without local file-content storage |
 | Config Audit | Sanitized config versions, audit events, and validation-first rollback |
+| Audit Log | Workspace-scoped platform management audit events with redacted summaries, result filters, actor/resource filters, request ids, and hash-chain evidence |
 
 ## Provider Catalog UX
 
@@ -86,6 +89,20 @@ Role behavior:
 - Admin can manage members, Gateway API keys, local teams, budgets, workspace settings, destructive operations, node deletion, and config rollback.
 
 The Members page reads `GET /api/dashboard/members` and updates roles through `PUT /api/dashboard/members/:id`. SiftGate prevents disabling or demoting the last active workspace Admin to avoid local lockout. RBAC responses expose only membership metadata and never include provider secrets, raw headers, prompts, responses, media bytes, tool payloads, hidden reasoning text, or resolved secrets.
+
+## Management Audit Safety
+
+The Audit Log page reads `GET /api/dashboard/audit`. It is available to Viewer
+and above, because it is a read-only governance surface. Filters cover result,
+action, resource type, resource id, and actor id. Event details show
+redacted before/after summaries plus request id, source, metadata, previous
+hash, current hash, and schema version.
+
+Audit rows are not editable from the Dashboard. The audit writer sanitizes
+summaries before storage and response serialization. It redacts secret-like
+fields, Gateway API key plaintext, bearer tokens, provider keys, prompt/response
+content, raw headers, media bytes, tool payloads, hidden reasoning text, and
+resolved secrets by default.
 
 ## Agent Profiles Safety
 

@@ -109,5 +109,6 @@
   "members.invites.status.pending": "pending",
   "members.invites.status.accepted": "accepted",
   "members.invites.status.expired": "expired",
-  "members.invites.status.revoked": "revoked"
+  "members.invites.status.revoked": "revoked",
+  "nav.audit": "Audit Log"
 }

@@ -13,6 +13,7 @@ import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { CallLog } from '../database/entities/call-log.entity';
 import { WorkspaceMembership } from '../database/entities/workspace-membership.entity';
 import { WorkspaceInvitation } from '../database/entities/workspace-invitation.entity';
+import { ManagementAuditEvent } from '../database/entities/management-audit-event.entity';
 import { TeamService } from './team.service';
 import { DashboardRbacGuard } from './dashboard-rbac.guard';
 import { WorkspaceMembershipService } from './workspace-membership.service';
@@ -20,7 +21,7 @@ import { WorkspaceInvitationService } from './workspace-invitation.service';
 import { OidcService } from './oidc.service';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([GatewayApiKey, LocalTeam, BudgetRule, CallLog, WorkspaceMembership, WorkspaceInvitation])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([GatewayApiKey, LocalTeam, BudgetRule, CallLog, WorkspaceMembership, WorkspaceInvitation, ManagementAuditEvent])],
   controllers: [AuthController],
   providers: [AuthService, OidcService, GatewayApiKeyService, TeamService, WorkspaceMembershipService, WorkspaceInvitationService, DashboardGuard, DashboardRbacGuard, ApiKeyGuard, RateLimitGuard],
   exports: [AuthService, OidcService, GatewayApiKeyService, TeamService, WorkspaceMembershipService, WorkspaceInvitationService, DashboardGuard, DashboardRbacGuard, ApiKeyGuard, RateLimitGuard],

@@ -111,6 +111,7 @@ interface MigrateV2Args {
   sqlitePath?: string;
   organizationName?: string;
   workspaceName?: string;
+  outputPath?: string;
   dryRun: boolean;
   json: boolean;
   help: boolean;
@@ -776,6 +777,13 @@ function runMigrateV2Command(args: string[], cli: CliIO): number {
     now: cli.now,
   });
 
+  if (parsedArgs.outputPath) {
+    const outputPath = resolveCliPath(cli.cwd, parsedArgs.outputPath);
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    cli.stdout(`Wrote v2 migration dry-run report to ${outputPath}`);
+  }
+
   cli.stdout(
     parsedArgs.json
       ? JSON.stringify(report, null, 2)
@@ -1247,6 +1255,23 @@ function parseMigrateV2Args(args: string[]): MigrateV2Args {
       parsed.workspaceName = requireInlineValue(arg, "--workspace-name");
       continue;
     }
+    if (arg === "--output" || arg === "--report" || arg === "--out" || arg === "-o") {
+      parsed.outputPath = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--output=")) {
+      parsed.outputPath = requireInlineValue(arg, "--output");
+      continue;
+    }
+    if (arg.startsWith("--report=")) {
+      parsed.outputPath = requireInlineValue(arg, "--report");
+      continue;
+    }
+    if (arg.startsWith("--out=")) {
+      parsed.outputPath = requireInlineValue(arg, "--out");
+      continue;
+    }
     throw new Error(`Unknown migrate-v2 option: ${arg}`);
   }
 
@@ -1647,7 +1672,7 @@ function formatUsage(): string {
     "  siftgate migrate --from litellm|newapi|oneapi --config source.yaml [--out gateway.config.yaml]",
     "  siftgate migrate --to litellm|newapi|oneapi --config gateway.config.yaml [--out target.generated.yaml]",
     "  siftgate migrate-db --from sqlite --to postgres [--sqlite-path ./data/gateway.db] [--postgres-url postgresql://...]",
-    "  siftgate migrate-v2 --dry-run [--config gateway.config.yaml] [--sqlite-path ./data/gateway.db] [--json]",
+    "  siftgate migrate-v2 --dry-run [--config gateway.config.yaml] [--sqlite-path ./data/gateway.db] [--output report.json] [--json]",
     "",
     "Commands:",
     "  validate   Validate a SiftGate gateway.config.yaml file",
@@ -1768,6 +1793,8 @@ function formatMigrateV2Usage(): string {
     "      --sqlite <path>          Alias for --sqlite-path",
     "      --organization-name <n>  Default v2 organization name (default: Default Organization)",
     "      --workspace-name <n>     Default v2 workspace name (default: Default Workspace)",
+    "  -o, --output <path>          Write the stable JSON migration report to a file",
+    "      --report <path>          Alias for --output",
     "      --dry-run                Required in v1.9.2; inspect only and do not mutate data",
     "      --json                   Print stable machine-readable JSON",
     "  -h, --help                  Show help",

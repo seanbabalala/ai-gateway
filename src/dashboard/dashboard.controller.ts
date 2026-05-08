@@ -78,6 +78,8 @@ import { DashboardRbacGuard } from "../auth/dashboard-rbac.guard";
 import { RequireDashboardRole } from "../auth/dashboard-rbac";
 import { WorkspaceMembershipService } from "../auth/workspace-membership.service";
 import { WorkspaceInvitationService } from "../auth/workspace-invitation.service";
+import { ManagementAuditService } from "../audit/management-audit.service";
+import type { ManagementAuditResult } from "../database/entities";
 import type {
   WorkspaceMembershipRole,
   WorkspaceMembershipStatus,
@@ -151,6 +153,7 @@ import {
   GatewayApiKeyCreatedResponseDto,
   GatewayApiKeyListResponseDto,
   GatewayApiKeyMutationResponseDto,
+  ManagementAuditEventsResponseDto,
   WorkspaceMemberListResponseDto,
   WorkspaceMemberMutationResponseDto,
   WorkspaceInvitationListResponseDto,
@@ -1543,6 +1546,7 @@ export class DashboardController {
     private readonly cacheSavings: CacheSavingsService,
     private readonly providerCompatibility: ProviderCompatibilityService,
     private readonly configAudit: ConfigAuditService,
+    private readonly managementAudit: ManagementAuditService,
     private readonly catalog: CatalogService,
     private readonly batchJobs: BatchJobStoreService,
     private readonly workspaces: WorkspaceService,
@@ -3992,7 +3996,22 @@ export class DashboardController {
   @ApiParam({ name: "id", example: 1 })
   @ApiOkResponse({ type: ActionResponseDto })
   async resetBudget(@Param("id", ParseIntPipe) id: number) {
+    const before = (await this.budgetService.getStatus()).find(
+      (rule) => rule.id === id,
+    );
     await this.budgetService.resetRule(id);
+    const after = (await this.budgetService.getStatus()).find(
+      (rule) => rule.id === id,
+    );
+    await this.managementAudit.record({
+      action: "budget.reset",
+      resourceType: "budget_rule",
+      resourceId: String(id),
+      actor: { type: "dashboard", id: "dashboard" },
+      beforeSummary: before ? this.serializeBudgetStatus(before) : null,
+      afterSummary: after ? this.serializeBudgetStatus(after) : null,
+      source: "dashboard",
+    });
     return { success: true, message: `Budget rule ${id} reset` };
   }
 
@@ -4011,8 +4030,19 @@ export class DashboardController {
   @RequireDashboardRole("operator")
   @ApiOperation({ summary: "Clear prompt cache" })
   @ApiOkResponse({ type: ActionResponseDto })
-  clearCache() {
+  async clearCache() {
+    const before = this.cacheService.getStats();
     this.cacheService.clear();
+    const after = this.cacheService.getStats();
+    await this.managementAudit.record({
+      action: "cache.clear",
+      resourceType: "prompt_cache",
+      resourceId: "default",
+      actor: { type: "dashboard", id: "dashboard" },
+      beforeSummary: before,
+      afterSummary: after,
+      source: "dashboard",
+    });
     return { success: true, message: "Cache cleared" };
   }
 
@@ -4121,6 +4151,22 @@ export class DashboardController {
       type: "dashboard",
       id: "dashboard",
     });
+    await this.managementAudit.record({
+      action: `config.reload.${result.source}`,
+      resourceType: "config",
+      resourceId: null,
+      actor: { type: "dashboard", id: "dashboard" },
+      result: result.success ? "success" : "failure",
+      beforeSummary: result.previous,
+      afterSummary: result.current,
+      failureReason: result.error?.message ?? null,
+      source: "dashboard",
+      metadata: {
+        message: result.message,
+        rolled_back: result.rolled_back,
+        changed: result.changed,
+      },
+    });
     if (!result.success) {
       throw new HttpException(
         {
@@ -4223,6 +4269,42 @@ export class DashboardController {
     @Query("result") result?: "success" | "failure",
   ) {
     return this.configAudit.listEvents({ limit, action, target, result });
+  }
+
+  @Get("audit")
+  @RequireDashboardRole("viewer")
+  @ApiOperation({ summary: "List platform management audit events" })
+  @ApiQuery({ name: "limit", required: false, example: 100 })
+  @ApiQuery({ name: "action", required: false })
+  @ApiQuery({ name: "resource_type", required: false })
+  @ApiQuery({ name: "resource_id", required: false })
+  @ApiQuery({ name: "actor_id", required: false })
+  @ApiQuery({
+    name: "result",
+    required: false,
+    enum: ["success", "failure", "denied"],
+  })
+  @ApiOkResponse({
+    type: ManagementAuditEventsResponseDto,
+    description:
+      "Workspace-scoped platform management audit events. Summaries are redacted and metadata-only.",
+  })
+  async getManagementAuditEvents(
+    @Query("limit", new DefaultValuePipe(100), ParseIntPipe) limit: number,
+    @Query("action") action?: string,
+    @Query("resource_type") resourceType?: string,
+    @Query("resource_id") resourceId?: string,
+    @Query("actor_id") actorId?: string,
+    @Query("result") result?: ManagementAuditResult,
+  ) {
+    return this.managementAudit.list({
+      limit,
+      action,
+      resourceType,
+      resourceId,
+      actorId,
+      result,
+    });
   }
 
   // ══════════════════════════════════════════════════════
@@ -4740,18 +4822,34 @@ export class DashboardController {
   @ApiParam({ name: "id", example: "openai" })
   @ApiQuery({ name: "model", required: false, example: "gpt-4o" })
   @ApiOkResponse({ type: ActionResponseDto })
-  resetNodeCircuit(
+  async resetNodeCircuit(
     @Param("id") nodeId: string,
     @Query("model") model?: string,
   ) {
     if (model) {
       this.circuitBreaker.reset(nodeId, model);
+      await this.managementAudit.record({
+        action: "circuit_breaker.reset",
+        resourceType: "node_model_circuit",
+        resourceId: `${nodeId}:${model}`,
+        actor: { type: "dashboard", id: "dashboard" },
+        afterSummary: { node_id: nodeId, model, reset: true },
+        source: "dashboard",
+      });
       return {
         success: true,
         message: `Circuit breaker reset for "${nodeId}:${model}"`,
       };
     }
     this.circuitBreaker.reset(nodeId);
+    await this.managementAudit.record({
+      action: "circuit_breaker.reset",
+      resourceType: "node_circuit",
+      resourceId: nodeId,
+      actor: { type: "dashboard", id: "dashboard" },
+      afterSummary: { node_id: nodeId, reset: true },
+      source: "dashboard",
+    });
     return {
       success: true,
       message: `Circuit breaker reset for node "${nodeId}"`,

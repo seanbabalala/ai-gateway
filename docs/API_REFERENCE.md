@@ -375,6 +375,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/config/versions/:id` | Read one sanitized config version snapshot |
 | `POST` | `/api/dashboard/config/versions/:id/rollback` | Validate and restore a previous local config version |
 | `GET` | `/api/dashboard/config/audit-events` | List local config audit events |
+| `GET` | `/api/dashboard/audit` | List workspace-scoped platform management audit events |
 | `GET` | `/api/dashboard/capabilities` | Capability metadata used by routing and Dashboard views |
 | `POST` | `/api/dashboard/capabilities/recommend-tiers` | Recommend tier placement for models |
 | `GET` | `/api/dashboard/catalog/providers` | Merged Provider Catalog providers, Dashboard provider identity/family/type metadata, compatibility profile registry, enrichment summaries, recommended model defaults, price source status, override metadata, refresh-source availability, and pricing sync status |
@@ -545,6 +546,26 @@ The v0.9 Dashboard API exposes local config version history and audit events. It
 Rollback parses and validates the target snapshot first. If validation or secret rehydration fails, SiftGate keeps the current config and returns `400` with a clear message.
 
 `GET /api/dashboard/config/audit-events` supports optional `limit`, `action`, `target`, and `result=success|failure` filters. Events record actor, action, target, before/after summaries, result, failure reason, source, and related version ids.
+
+### Management Audit
+
+v2.0.0-rc.1 adds a platform management audit log for Dashboard operations that
+affect local governance, runtime config, workspace membership, invitations,
+Gateway API keys, budgets, cache operations, and node control actions.
+
+`GET /api/dashboard/audit` supports optional `limit`, `action`,
+`resource_type`, `resource_id`, `actor_id`, and
+`result=success|failure|denied` filters. Results are scoped to the active
+workspace and include actor id/type, organization/workspace id, action,
+resource type/id, redacted before/after summaries, request id, timestamp,
+result status, source, metadata, and hash-chain fields.
+
+The management audit log is append-only from the Dashboard perspective.
+Dashboard APIs do not expose an edit/delete operation for audit rows. Summaries
+are sanitized before storage and response serialization; SiftGate does not log
+provider keys, Gateway API key plaintext, prompts, responses, raw provider
+headers, media bytes, tool payloads, hidden reasoning text, or resolved secrets
+by default.
 
 ### Shadow Comparison Report
 
