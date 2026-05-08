@@ -13,6 +13,9 @@ export class DashboardGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     // No password configured → dashboard is open (backwards-compatible)
     if (!this.authService.isAuthRequired) {
+      const request = context.switchToHttp().getRequest();
+      request.dashboardUser = { sub: 'dashboard' };
+      request.dashboardUserId = 'dashboard';
       return true;
     }
 
@@ -30,6 +33,11 @@ export class DashboardGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
+    request.dashboardUser = payload;
+    request.dashboardUserId =
+      typeof payload.sub === 'string' && payload.sub.trim()
+        ? payload.sub.trim()
+        : 'dashboard';
     return true;
   }
 

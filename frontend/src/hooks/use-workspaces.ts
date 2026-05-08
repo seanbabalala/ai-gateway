@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiPost, getActiveWorkspaceId, setActiveWorkspaceId } from '@/lib/api'
+import type { WorkspaceAccess } from '@/types/api'
 
 export interface WorkspaceSummary {
   id: string
@@ -22,6 +23,7 @@ export interface WorkspaceState {
   active_workspace: WorkspaceSummary
   default_workspace: WorkspaceSummary
   workspaces: WorkspaceSummary[]
+  access?: WorkspaceAccess
 }
 
 export function useWorkspaces() {
@@ -58,4 +60,12 @@ export function useWorkspaces() {
   }, [])
 
   return { data, isLoading, refresh, switchWorkspace }
+}
+
+export function hasWorkspaceRole(
+  access: WorkspaceAccess | null | undefined,
+  required: 'viewer' | 'operator' | 'admin',
+) {
+  const rank = { viewer: 1, operator: 2, admin: 3 }
+  return rank[access?.role || 'viewer'] >= rank[required]
 }

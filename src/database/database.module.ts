@@ -22,6 +22,7 @@ import {
   EvalSampleResult,
   VideoJob,
   Workspace,
+  WorkspaceMembership,
 } from './entities';
 
 @Module({
@@ -34,6 +35,7 @@ import {
             CallLog,
             Organization,
             Workspace,
+            WorkspaceMembership,
             ConfigAuditEvent,
             ConfigVersion,
             BudgetRule,
@@ -75,6 +77,7 @@ import {
       CallLog,
       Organization,
       Workspace,
+      WorkspaceMembership,
       ConfigAuditEvent,
       ConfigVersion,
       BudgetRule,

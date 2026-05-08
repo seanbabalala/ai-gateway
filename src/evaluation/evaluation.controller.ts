@@ -20,6 +20,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { DashboardGuard } from '../auth/dashboard.guard';
+import { DashboardRbacGuard } from '../auth/dashboard-rbac.guard';
+import { RequireDashboardRole } from '../auth/dashboard-rbac';
 import { ErrorEnvelopeDto } from '../openapi/openapi.dto';
 import {
   EvalRunComparisonInput,
@@ -27,7 +29,7 @@ import {
 } from './evaluation.service';
 
 @Controller('api/dashboard/evals')
-@UseGuards(DashboardGuard)
+@UseGuards(DashboardGuard, DashboardRbacGuard)
 @ApiTags('Evaluations')
 @ApiBearerAuth('dashboardSession')
 @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
@@ -74,6 +76,7 @@ export class EvaluationController {
   }
 
   @Post('runs')
+  @RequireDashboardRole('operator')
   @ApiOperation({
     summary: 'Run a local primary-vs-candidate evaluation experiment',
     description:

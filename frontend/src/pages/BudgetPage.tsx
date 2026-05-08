@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp, RotateCcw, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { Card, CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -21,6 +22,7 @@ import { useApiKeys } from '@/hooks/use-api-keys'
 import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useConfig } from '@/hooks/use-config'
 import { useResetBudget } from '@/hooks/use-mutations'
+import { hasWorkspaceRole, useWorkspaces } from '@/hooks/use-workspaces'
 import { useThemeColors } from '@/lib/theme'
 import { formatNumber, formatCost, formatPercent, cn } from '@/lib/utils'
 import type { BudgetRule, BudgetPerKeyResponse } from '@/types/api'
@@ -142,10 +144,12 @@ function BudgetRulesSection({
   rules,
   label,
   resetBudget,
+  canAdmin,
 }: {
   rules: BudgetRule[]
   label: string
   resetBudget: ReturnType<typeof useResetBudget>
+  canAdmin: boolean
 }) {
   const { t } = useTranslation('budget')
   return (
@@ -176,15 +180,17 @@ function BudgetRulesSection({
                 </span>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => resetBudget.mutate(rule.id)}
-              disabled={resetBudget.isPending || !rule.id}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              {t('actions.reset')}
-            </Button>
+            <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => resetBudget.mutate(rule.id)}
+                disabled={resetBudget.isPending || !rule.id || !canAdmin}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t('actions.reset')}
+              </Button>
+            </PermissionTooltip>
           </div>
 
           <div className="flex items-center justify-between font-mono text-[10px] text-[var(--foreground-dim)] mb-2">
@@ -245,6 +251,8 @@ export function BudgetPage() {
   )
   const { data: config, isLoading: configLoading } = useConfig()
   const resetBudget = useResetBudget()
+  const { data: workspaceState } = useWorkspaces()
+  const canAdmin = hasWorkspaceRole(workspaceState?.access, 'admin')
   const colors = useThemeColors()
 
   const keyOptions = useMemo(() => {
@@ -482,14 +490,14 @@ export function BudgetPage() {
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                 {t('rules.perKeyLimits', { key: selectedLabel })}
               </div>
-              <BudgetRulesSection rules={perKeyRules} label={t('rules.perKeyLabel')} resetBudget={resetBudget} />
+              <BudgetRulesSection rules={perKeyRules} label={t('rules.perKeyLabel')} resetBudget={resetBudget} canAdmin={canAdmin} />
               <div className="my-4 border-t border-[var(--border)]" />
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
                 {t('rules.globalLimits')}
               </div>
             </>
           )}
-          <BudgetRulesSection rules={globalRules} label={isPerKeyView ? t('rules.globalLabel') : ''} resetBudget={resetBudget} />
+          <BudgetRulesSection rules={globalRules} label={isPerKeyView ? t('rules.globalLabel') : ''} resetBudget={resetBudget} canAdmin={canAdmin} />
         </CardContent>
       </CardStatic>
     </div>

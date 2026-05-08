@@ -67,6 +67,104 @@ describe('Dashboard (e2e)', () => {
     expect(res.body.active_workspace.id).toBe(DEFAULT_WORKSPACE_ID);
     expect(res.body.default_workspace.id).toBe(DEFAULT_WORKSPACE_ID);
     expect(res.body.fallback.legacy_resources_map_to_default_workspace).toBe(true);
+    expect(res.body.access).toMatchObject({
+      user_id: 'dashboard',
+      role: 'admin',
+      permissions: {
+        can_read: true,
+        can_operate: true,
+        can_admin: true,
+      },
+    });
+  });
+
+  it('GET /api/dashboard/members → returns default local Dashboard admin', async () => {
+    const res = await harness.agent.get('/api/dashboard/members');
+
+    expect(res.status).toBe(200);
+    expect(res.body.roles).toEqual(['admin', 'operator', 'viewer']);
+    expect(res.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'dashboard',
+          workspace_id: DEFAULT_WORKSPACE_ID,
+          role: 'admin',
+          status: 'active',
+        }),
+      ]),
+    );
+  });
+
+  it('RBAC → Viewer can read but cannot write Dashboard resources', async () => {
+    await harness.membershipRepo.update(
+      { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
+      { role: 'viewer' },
+    );
+    try {
+      const readRes = await harness.agent.get('/api/dashboard/logs');
+      expect(readRes.status).toBe(200);
+
+      const writeRes = await harness.agent
+        .post('/api/dashboard/nodes/test')
+        .send({
+          protocol: 'chat_completions',
+          base_url: 'http://test.example',
+          endpoint: '/v1/chat/completions',
+          api_key: 'test-key',
+          model: 'gpt-4o-mini',
+        });
+      expect(writeRes.status).toBe(403);
+      expect(writeRes.body.error.type).toBe('dashboard_permission_denied');
+      expect(writeRes.body.required_role).toBe('operator');
+      expect(writeRes.body.current_role).toBe('viewer');
+    } finally {
+      await harness.membershipRepo.update(
+        { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
+        { role: 'admin' },
+      );
+    }
+  });
+
+  it('RBAC → Operator can manage operations but cannot manage API keys, members, budgets, or destructive deletes', async () => {
+    await harness.membershipRepo.update(
+      { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
+      { role: 'operator' },
+    );
+    try {
+      const opRes = await harness.agent.post('/api/dashboard/nodes/mock-openai/reset');
+      expect(opRes.status).toBe(201);
+      expect(opRes.body.success).toBe(true);
+
+      const keyRes = await harness.agent
+        .post('/api/dashboard/api-keys')
+        .send({ name: `operator-denied-${Date.now()}` });
+      expect(keyRes.status).toBe(403);
+      expect(keyRes.body.required_role).toBe('admin');
+
+      const membersRes = await harness.agent.get('/api/dashboard/members');
+      expect(membersRes.status).toBe(403);
+
+      const budgetRes = await harness.agent.post('/api/dashboard/budget/1/reset');
+      expect(budgetRes.status).toBe(403);
+
+      const deleteRes = await harness.agent.delete('/api/dashboard/nodes/mock-openai');
+      expect(deleteRes.status).toBe(403);
+    } finally {
+      await harness.membershipRepo.update(
+        { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
+        { role: 'admin' },
+      );
+    }
+  });
+
+  it('RBAC → Admin can perform admin operations', async () => {
+    const res = await harness.agent
+      .post('/api/dashboard/api-keys')
+      .send({ name: `admin-rbac-${Date.now()}` });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.item.name).toContain('admin-rbac-');
   });
 
   it('GET /api/dashboard/logs — active workspace header filters dashboard results', async () => {

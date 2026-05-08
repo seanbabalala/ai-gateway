@@ -7,11 +7,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { DashboardGuard } from '../auth/dashboard.guard';
+import { DashboardRbacGuard } from '../auth/dashboard-rbac.guard';
 import { ErrorEnvelopeDto } from '../openapi/openapi.dto';
 import { AlertService } from './alert.service';
 
 @Controller('api/dashboard/alerts')
-@UseGuards(DashboardGuard)
+@UseGuards(DashboardGuard, DashboardRbacGuard)
 @ApiTags('Dashboard')
 @ApiBearerAuth('dashboardSession')
 @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })

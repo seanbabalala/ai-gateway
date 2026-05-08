@@ -1569,6 +1569,44 @@ export interface ActionResponse {
   message: string;
 }
 
+// ── Workspace RBAC ──
+
+export type WorkspaceRole = "admin" | "operator" | "viewer";
+export type WorkspaceMemberStatus = "active" | "disabled";
+
+export interface WorkspacePermissions {
+  can_read: boolean;
+  can_operate: boolean;
+  can_admin: boolean;
+}
+
+export interface WorkspaceAccess {
+  user_id: string;
+  role: WorkspaceRole;
+  permissions: WorkspacePermissions;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  user_id: string;
+  organization_id: string;
+  workspace_id: string;
+  role: WorkspaceRole;
+  status: WorkspaceMemberStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMembersResponse {
+  items: WorkspaceMember[];
+  roles: WorkspaceRole[];
+  mode: "local_dashboard";
+}
+
+export interface WorkspaceMemberMutationResponse extends ActionResponse {
+  item: WorkspaceMember;
+}
+
 // ── Node CRUD ──
 
 export interface CreateNodeRequest {

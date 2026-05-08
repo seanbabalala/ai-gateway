@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { CallLog, GatewayApiKey, Organization, Workspace } from '../../src/database/entities';
+import { CallLog, GatewayApiKey, Organization, Workspace, WorkspaceMembership } from '../../src/database/entities';
 import {
   applyWorkspaceSchemaPatches,
 } from '../../src/database/workspace-schema-patch.service';
@@ -8,7 +8,7 @@ function makeDataSource(name: string): DataSource {
   return new DataSource({
     type: 'better-sqlite3',
     database: `:memory:${name}`,
-    entities: [Organization, Workspace, GatewayApiKey, CallLog],
+    entities: [Organization, Workspace, WorkspaceMembership, GatewayApiKey, CallLog],
     synchronize: true,
     logging: false,
   });
@@ -23,6 +23,7 @@ describe('Workspace schema patch', () => {
 
       const organizations = await dataSource.getRepository(Organization).find();
       const workspaces = await dataSource.getRepository(Workspace).find();
+      const memberships = await dataSource.getRepository(WorkspaceMembership).find();
 
       expect(result.backfilledTables).toEqual([]);
       expect(organizations).toHaveLength(1);
@@ -40,6 +41,14 @@ describe('Workspace schema patch', () => {
         slug: 'default-workspace',
         status: 'active',
         is_default: true,
+      });
+      expect(memberships).toHaveLength(1);
+      expect(memberships[0]).toMatchObject({
+        user_id: 'dashboard',
+        organization_id: 'default-org',
+        workspace_id: 'default-workspace',
+        role: 'admin',
+        status: 'active',
       });
     } finally {
       await dataSource.destroy();
