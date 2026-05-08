@@ -49,6 +49,17 @@ curl http://localhost:2099/mcp/local-docs \
 
 The preview forwards JSON-RPC requests or batches over HTTP `POST`.
 
+## Agent Profiles
+
+Agent Gateway Profiles can include `mcp_server_ids` so the Dashboard **Agents**
+render panel can show which local MCP servers belong with a Codex, Claude Code,
+Cherry Studio, Hermes, OpenClaw, Generic OpenAI, or Generic Anthropic setup.
+
+Those ids are setup metadata only. Runtime MCP authorization still comes from
+the Gateway API key and the MCP server config. A rendered agent snippet never
+receives stored provider keys, resolved MCP secret headers, Gateway API key
+plaintext, tool arguments, or tool results from SiftGate.
+
 ## Permissions
 
 Gateway API keys can restrict MCP access with `allowed_endpoints`:

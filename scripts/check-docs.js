@@ -12,6 +12,7 @@ const requiredFiles = [
   'SECURITY.md',
   'CODE_OF_CONDUCT.md',
   'docs/QUICKSTART.md',
+  'docs/AGENT_GATEWAY.md',
   'docs/PRODUCTION.md',
   'docs/KUBERNETES.md',
   'docs/PROVIDER_CATALOG.md',

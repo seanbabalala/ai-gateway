@@ -18,6 +18,7 @@ describe('agent framework examples', () => {
     'examples/agents/langchain_chat.py',
     'examples/agents/crewai_researcher.py',
     'examples/agents/openai_agents_sdk.py',
+    'docs/AGENT_GATEWAY.md',
     'docs/AGENT_INTEGRATIONS.md',
   ];
 
@@ -68,6 +69,37 @@ describe('agent framework examples', () => {
       'session',
       'namespace',
       'Gateway API key',
+    ]) {
+      expect(docs).toContain(expected);
+    }
+  });
+
+  it('documents v1.9 Agent Gateway Profiles and connector-safe policies', () => {
+    const docs = [
+      read('docs/AGENT_GATEWAY.md'),
+      read('docs/AGENT_INTEGRATIONS.md'),
+      read('examples/agents/README.md'),
+    ].join('\n');
+
+    for (const expected of [
+      'Codex',
+      'Claude Code',
+      'Cherry Studio',
+      'Hermes',
+      'OpenClaw',
+      'Generic OpenAI',
+      'Generic Anthropic',
+      'OPENAI_BASE_URL=http://localhost:2099/v1',
+      'OPENAI_API_KEY=<SIFTGATE_GATEWAY_API_KEY>',
+      'ANTHROPIC_BASE_URL=http://localhost:2099',
+      'ANTHROPIC_AUTH_TOKEN=<SIFTGATE_GATEWAY_API_KEY>',
+      'claude-siftgate-auto',
+      'profile-scoped',
+      'allow_auto',
+      'allow_direct',
+      'mcp:<serverId>:<toolName>',
+      'Rendered configs do not expose stored secrets',
+      'Provider API keys stay in Nodes',
     ]) {
       expect(docs).toContain(expected);
     }
