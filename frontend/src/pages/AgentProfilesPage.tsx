@@ -586,8 +586,8 @@ function ProfileFormDialog({
         </DialogHeader>
 
         <div className="grid gap-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid min-w-0 gap-2">
+          <div className="grid items-start gap-4 md:grid-cols-2">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.name')}</FieldLabel>
               <Input
                 value={form.name}
@@ -595,7 +595,7 @@ function ProfileFormDialog({
                 placeholder={t('agents.placeholders.name')}
               />
             </div>
-            <div className="grid min-w-0 gap-2">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.description')}</FieldLabel>
               <Input
                 value={form.description}
@@ -611,8 +611,8 @@ function ProfileFormDialog({
             onChange={updateConnector}
           />
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="grid min-w-0 gap-2">
+          <div className="grid items-start gap-4 md:grid-cols-3">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.status')}</FieldLabel>
               <Select
                 options={statusOptions}
@@ -621,7 +621,7 @@ function ProfileFormDialog({
                 className="w-full"
               />
             </div>
-            <div className="grid min-w-0 gap-2">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.apiKey')}</FieldLabel>
               <Select
                 options={apiKeyOptions}
@@ -633,7 +633,7 @@ function ProfileFormDialog({
                 {t('agents.help.apiKey')}
               </div>
             </div>
-            <div className="grid min-w-0 gap-2">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.namespace')}</FieldLabel>
               <Select
                 options={namespaceOptions}
@@ -733,8 +733,8 @@ function ProfileFormDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="grid min-w-0 gap-2">
+          <div className="grid items-start gap-4 md:grid-cols-3">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.defaultModel')}</FieldLabel>
               {form.routing_mode === 'direct' ? (
                 <div className="grid gap-2">
@@ -763,7 +763,7 @@ function ProfileFormDialog({
                 />
               )}
             </div>
-            <div className="grid min-w-0 gap-2">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.smartModel')}</FieldLabel>
               <Input
                 value={form.smart_model_id}
@@ -771,7 +771,7 @@ function ProfileFormDialog({
                 placeholder={defaultSmartModel(form.connector)}
               />
             </div>
-            <div className="grid min-w-0 gap-2">
+            <div className="grid min-w-0 content-start gap-2">
               <FieldLabel>{t('agents.fields.baseUrlMode')}</FieldLabel>
               <Select
                 options={baseUrlModeOptions}
@@ -873,23 +873,19 @@ function ConnectorPicker({
               onClick={() => onChange(connector)}
               aria-pressed={selected}
               className={cn(
-                'group min-h-[132px] min-w-0 rounded-xl border bg-[var(--inset-bg)] p-3 text-left transition-all',
+                'group grid min-h-[148px] min-w-0 grid-cols-[48px_minmax(0,1fr)] grid-rows-[48px_auto] content-start gap-x-3 gap-y-2 rounded-xl border bg-[var(--inset-bg)] p-4 text-left transition-all',
                 selected
                   ? 'border-[var(--accent)] shadow-[0_16px_38px_rgba(5,46,36,0.10)]'
                   : 'border-[var(--border)] hover:-translate-y-0.5 hover:bg-[var(--background-secondary)]',
               )}
             >
-              <div className="grid min-w-0 gap-2">
-                <span className="flex min-w-0 items-center gap-3">
-                  <ConnectorLogo connector={connector} label={label} />
-                  <span className="block min-w-0 break-words text-[13px] font-bold leading-5 text-[var(--foreground)]">
-                    {label}
-                  </span>
-                </span>
-                <span className="block break-words pl-[60px] text-[12px] leading-5 text-[var(--foreground-dim)]">
-                  {t(connectorDescriptionKeys[connector])}
-                </span>
-              </div>
+              <ConnectorLogo connector={connector} label={label} />
+              <span className="flex min-h-12 min-w-0 items-center break-words text-[13px] font-bold leading-5 text-[var(--foreground)]">
+                {label}
+              </span>
+              <span className="col-start-2 block min-w-0 break-words text-[12px] leading-5 text-[var(--foreground-dim)]">
+                {t(connectorDescriptionKeys[connector])}
+              </span>
             </button>
           )
         })}
