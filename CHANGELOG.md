@@ -6,6 +6,19 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.9.1 - 2026-05-08
+
+### Added
+
+- Added the v2.x platform roadmap for the OSS Data Plane, positioning SiftGate as an AI infrastructure platform for teams and agents while keeping the v2.0.0 Platform Trust scope separate from later minor-release capabilities.
+- Added a release checklist covering version sync files, required tests, seven-locale review, branch/PR/merge/tag/GitHub release steps, rollback discipline, and privacy review.
+- Added `docs/V2_EXECUTION_PROMPTS.md` as the prompt runbook for the v2.x release train.
+- Added a read-only `npm run release:check` command that verifies release version alignment across packages, OpenAPI metadata, Helm, Kubernetes, README, and changelog without pushing, tagging, or creating releases.
+
+### Changed
+
+- Updated release metadata to v1.9.1 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
 ## 1.9.0 - 2026-05-08
 
 ### Added
