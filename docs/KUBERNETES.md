@@ -117,9 +117,9 @@ back to the config file.
 
 ## PostgreSQL
 
-PostgreSQL is optional and recommended for production traffic once SQLite is no
-longer enough. First create a Secret with `DATABASE_URL`, then enable the env
-wire-up:
+PostgreSQL is optional for local tests and recommended for production traffic
+once SQLite is no longer enough. First create a Secret with `DATABASE_URL`, then
+enable the env wire-up:
 
 ```yaml
 postgres:
@@ -136,10 +136,24 @@ database:
   type: postgres
   url: "${DATABASE_URL}"
   synchronize: false
+  pool:
+    max: 10
+    min: 0
+    idle_timeout_ms: 30000
+    connection_timeout_ms: 5000
+    statement_timeout_ms: 60000
+    query_timeout_ms: 60000
+    application_name: siftgate
+  ssl: true
 ```
 
 Run the SQLite-to-PostgreSQL migration or schema bootstrap before switching a
 live deployment to `synchronize: false`. See [Production Deployment](PRODUCTION.md).
+
+The chart and plain manifests use `/ready` for readiness and `/health` for
+liveness. `/ready` checks database availability only. Provider/node degradation
+is visible in `/health` and Dashboard views but does not evict a pod from the
+Service endpoints.
 
 ## Redis And Cluster Mode
 

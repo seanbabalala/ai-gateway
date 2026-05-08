@@ -12,6 +12,7 @@ import {
 const TABLES: DbMigrationTableName[] = [
   "organizations",
   "workspaces",
+  "workspace_memberships",
   "gateway_api_keys",
   "agent_profiles",
   "local_teams",
@@ -909,7 +910,7 @@ describe("SQLite to PostgreSQL migration", () => {
     expect(result.targetUrl).toBe(
       "postgresql://siftgate:***@localhost:5432/siftgate",
     );
-    expect(result.totals.source_rows).toBe(18);
+    expect(result.totals.source_rows).toBe(19);
     expect(result.totals.imported_rows).toBe(0);
     expect(result.validation.ok).toBe(true);
     expect(result.warnings.map((warning) => warning.code)).toContain(
@@ -952,6 +953,16 @@ describe("SQLite to PostgreSQL migration", () => {
       slug: "default-workspace",
       status: "active",
       is_default: true,
+    });
+
+    const membership = target.rows.get("workspace_memberships")?.[0];
+    expect(membership).toMatchObject({
+      id: "membership-default-dashboard-admin",
+      user_id: "dashboard",
+      organization_id: "default-org",
+      workspace_id: "default-workspace",
+      role: "admin",
+      status: "active",
     });
 
     const apiKey = target.rows.get("gateway_api_keys")?.[0];
@@ -1086,7 +1097,7 @@ describe("SQLite to PostgreSQL migration", () => {
     });
 
     expect(result.validation.ok).toBe(false);
-    expect(result.validation.mismatches).toHaveLength(18);
+    expect(result.validation.mismatches).toHaveLength(19);
   });
 
   it("exposes migrate-db through the CLI with CI-safe exit codes", async () => {

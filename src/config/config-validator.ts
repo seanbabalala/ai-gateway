@@ -394,6 +394,43 @@ function validateDatabase(
         'database.url',
       ),
     );
+  } else if (
+    database.type === 'postgres' &&
+    isNonEmptyString(database.url) &&
+    !HAS_CONFIG_REF_PATTERN.test(database.url)
+  ) {
+    try {
+      const parsed = new URL(database.url);
+      if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+        issues.push(
+          issue(
+            'error',
+            'invalid_postgres_url',
+            'database.url must use postgres:// or postgresql://.',
+            'database.url',
+          ),
+        );
+      }
+      if (!parsed.password) {
+        issues.push(
+          issue(
+            'warning',
+            'postgres_url_without_password',
+            'database.url has no password. Use a secret-backed DATABASE_URL for production PostgreSQL.',
+            'database.url',
+          ),
+        );
+      }
+    } catch {
+      issues.push(
+        issue(
+          'error',
+          'invalid_postgres_url',
+          'database.url must be a valid PostgreSQL connection URL.',
+          'database.url',
+        ),
+      );
+    }
   }
   if (
     database.synchronize !== undefined &&
@@ -418,6 +455,173 @@ function validateDatabase(
         'postgres_synchronize_enabled',
         'For production PostgreSQL, initialize/migrate schema first and set database.synchronize: false.',
         'database.synchronize',
+      ),
+    );
+  }
+  if (database.type === 'postgres') {
+    validatePostgresPool(database.pool, issues);
+    validatePostgresSsl(database.ssl, issues);
+  } else if (database.pool !== undefined || database.ssl !== undefined) {
+    issues.push(
+      issue(
+        'warning',
+        'sqlite_ignores_postgres_options',
+        'database.pool and database.ssl apply only when database.type is postgres.',
+        'database',
+      ),
+    );
+  }
+}
+
+function validatePostgresPool(
+  pool: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (pool === undefined) return;
+  if (!isRecord(pool)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_postgres_pool',
+        'database.pool must be an object when set.',
+        'database.pool',
+      ),
+    );
+    return;
+  }
+
+  validateOptionalInteger(pool.max, 'database.pool.max', 1, 500, issues);
+  validateOptionalInteger(pool.min, 'database.pool.min', 0, 500, issues);
+  if (
+    Number.isInteger(pool.min) &&
+    Number.isInteger(pool.max) &&
+    (pool.min as number) > (pool.max as number)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_postgres_pool',
+        'database.pool.min cannot exceed database.pool.max.',
+        'database.pool.min',
+      ),
+    );
+  }
+  validateOptionalInteger(
+    pool.idle_timeout_ms,
+    'database.pool.idle_timeout_ms',
+    1000,
+    3_600_000,
+    issues,
+  );
+  validateOptionalInteger(
+    pool.connection_timeout_ms,
+    'database.pool.connection_timeout_ms',
+    100,
+    300_000,
+    issues,
+  );
+  validateOptionalInteger(
+    pool.statement_timeout_ms,
+    'database.pool.statement_timeout_ms',
+    0,
+    3_600_000,
+    issues,
+  );
+  validateOptionalInteger(
+    pool.query_timeout_ms,
+    'database.pool.query_timeout_ms',
+    0,
+    3_600_000,
+    issues,
+  );
+  validateOptionalInteger(
+    pool.max_uses,
+    'database.pool.max_uses',
+    0,
+    1_000_000,
+    issues,
+  );
+  if (
+    pool.application_name !== undefined &&
+    !isNonEmptyString(pool.application_name)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_postgres_pool',
+        'database.pool.application_name must be a non-empty string when set.',
+        'database.pool.application_name',
+      ),
+    );
+  }
+}
+
+function validatePostgresSsl(
+  ssl: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (ssl === undefined) return;
+  if (typeof ssl === 'boolean') return;
+  if (!isRecord(ssl)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_postgres_ssl',
+        'database.ssl must be a boolean or object when set.',
+        'database.ssl',
+      ),
+    );
+    return;
+  }
+  if (ssl.reject_unauthorized !== undefined && !isBoolean(ssl.reject_unauthorized)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_postgres_ssl',
+        'database.ssl.reject_unauthorized must be a boolean when set.',
+        'database.ssl.reject_unauthorized',
+      ),
+    );
+  }
+  if (ssl.reject_unauthorized === false) {
+    issues.push(
+      issue(
+        'warning',
+        'postgres_ssl_no_verify',
+        'database.ssl.reject_unauthorized=false disables certificate verification. Use only for trusted private networks or local testing.',
+        'database.ssl.reject_unauthorized',
+      ),
+    );
+  }
+  for (const key of ['ca', 'cert', 'key', 'servername']) {
+    if (ssl[key] !== undefined && !isNonEmptyString(ssl[key])) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_postgres_ssl',
+          `database.ssl.${key} must be a non-empty string when set.`,
+          `database.ssl.${key}`,
+        ),
+      );
+    }
+  }
+}
+
+function validateOptionalInteger(
+  value: unknown,
+  path: string,
+  min: number,
+  max: number,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_postgres_pool',
+        `${path} must be an integer between ${min} and ${max}.`,
+        path,
       ),
     );
   }

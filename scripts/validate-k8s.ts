@@ -225,6 +225,7 @@ function validateHelmTemplateText(helmDir: string, result: K8sValidationResult):
   requireText(deployment, 'containerPort:', 'Helm deployment must expose a container port.', result);
   requireText(deployment, 'GATEWAY_CONFIG_PATH', 'Helm deployment must set GATEWAY_CONFIG_PATH.', result);
   requireText(deployment, '.Values.config.mountPath', 'Helm deployment must mount configurable gateway config path.', result);
+  requireText(deployment, 'path: /ready', 'Helm readinessProbe must use /ready.', result);
   requireText(deployment, 'persistentVolumeClaim', 'Helm deployment must mount the SQLite data PVC when persistence is enabled.', result);
   requireText(configmap, '.Values.config.data', 'Helm ConfigMap must render config.data.', result);
   requireText(secret, 'stringData:', 'Helm Secret template must use stringData placeholders/values.', result);
@@ -292,6 +293,14 @@ function validateKustomizeBase(
   }
   if (!mounts.some((mount) => (mount as Record<string, unknown>).mountPath === '/app/data')) {
     result.errors.push('Kubernetes base must mount /app/data for SQLite persistence.');
+  }
+  const readinessPath = getPath(container, ['readinessProbe', 'httpGet', 'path']);
+  if (readinessPath !== '/ready') {
+    result.errors.push('Kubernetes base readinessProbe must use /ready.');
+  }
+  const livenessPath = getPath(container, ['livenessProbe', 'httpGet', 'path']);
+  if (livenessPath !== '/health') {
+    result.errors.push('Kubernetes base livenessProbe must use /health.');
   }
   const servicePorts = Array.isArray(getPath(service, ['spec', 'ports']))
     ? (getPath(service, ['spec', 'ports']) as unknown[])

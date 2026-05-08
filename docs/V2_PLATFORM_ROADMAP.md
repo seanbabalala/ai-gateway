@@ -79,7 +79,7 @@ This keeps semantic versioning clear:
 | v1.9.2 | v1 to v2 migration dry run | Add a read-only migration report before changing the data model. |
 | v2.0.0-alpha.1 | Workspace core | Released. Introduces organization/workspace bootstrap, default workspace mapping, workspace-scoped metadata, and Dashboard workspace context. |
 | v2.0.0-alpha.2 | RBAC and resource permissions | Released. Adds local Dashboard memberships, Admin/Operator/Viewer enforcement, member management, role badges, and permission-aware controls. |
-| v2.0.0-alpha.3 | PostgreSQL production path | Harden the production database path while preserving SQLite for local use. |
+| v2.0.0-alpha.3 | PostgreSQL production path | Released. Adds pool/SSL config, fail-fast diagnostics, `/ready`, DB health, production examples, and RBAC migration coverage while preserving SQLite local use. |
 | v2.0.0-alpha.4 | Redis cluster state | Make shared runtime state coherent for multi-instance data planes. |
 | v2.0.0-beta.1 | OIDC and invite skeleton | Add generic OIDC login and invitation foundations behind safe configuration. |
 | v2.0.0-rc.1 | Audit and upgrade hardening | Add management audit logs and final v1.9-to-v2 upgrade guardrails. |

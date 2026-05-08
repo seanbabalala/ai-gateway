@@ -50,6 +50,16 @@ database:
   # type: postgres
   # url: "${DATABASE_URL}"
   # synchronize: false      # Recommended for production after schema migration/bootstrap
+  # pool:
+  #   max: 10
+  #   min: 0
+  #   idle_timeout_ms: 30000
+  #   connection_timeout_ms: 5000
+  #   statement_timeout_ms: 60000
+  #   query_timeout_ms: 60000
+  #   max_uses: 7500
+  #   application_name: siftgate
+  # ssl: false              # true or object for managed PostgreSQL that requires TLS
 
 auth:
   # Client Gateway API keys are generated and managed in the Dashboard.

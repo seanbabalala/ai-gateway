@@ -6,6 +6,30 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-alpha.3 - 2026-05-09
+
+### Added
+
+- Added a hardened PostgreSQL production path with connection-pool settings, SSL options, fail-fast database config validation, and redacted startup diagnostics.
+- Added `/ready` for load balancers and Kubernetes readiness probes. It checks database availability only, while `/health` continues to report provider/node degradation separately.
+- Added database health details to `/health`, including database type, redacted target, connectivity, latency, synchronize mode, pool summary, and SSL summary.
+- Added PostgreSQL pool/SSL config examples across `gateway.config.example.yaml`, `.env.example`, Docker Compose, Helm values, and Kubernetes Secret examples.
+- Added tests for PostgreSQL config validation, TypeORM option generation, database health/readiness behavior, and RBAC workspace membership migration coverage.
+
+### Changed
+
+- Kubernetes and Docker Compose readiness/healthcheck defaults now use `/ready` so upstream provider degradation does not remove an otherwise healthy gateway instance from service.
+- SQLite remains the default local/dev database with schema sync enabled; PostgreSQL now defaults to `synchronize: false` in runtime option generation unless explicitly overridden.
+- SQLite-to-PostgreSQL migration now includes `workspace_memberships` so alpha.2 RBAC data is preserved on production migration.
+- Updated production, state-backend, Docker, Kubernetes, and Helm docs with backup, migration, readiness, pool, SSL, and validation guidance.
+- Updated release metadata to v2.0.0-alpha.3 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- SQLite support and the zero-friction local quickstart remain unchanged.
+- No new ORM or migration framework was introduced.
+- PostgreSQL integration tests are skipped unless a local PostgreSQL service is explicitly available; deterministic config and migration tests cover the generated production path.
+
 ## 2.0.0-alpha.2 - 2026-05-09
 
 ### Added

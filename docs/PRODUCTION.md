@@ -79,6 +79,12 @@ production cluster.
 
 ## Database Recommendation
 
+v2.0.0-alpha.3 makes PostgreSQL the documented production database path while
+preserving SQLite as the zero-friction local and small single-node default.
+SQLite remains supported; PostgreSQL is recommended when generated Gateway API
+keys, RBAC memberships, budgets, call logs, eval metadata, batch jobs, audit
+events, and workspace metadata need managed backups or independent operations.
+
 SQLite is the default because it keeps local development and small self-hosted
 installs simple:
 
@@ -97,13 +103,52 @@ database:
   type: postgres
   url: "${DATABASE_URL}"
   synchronize: false
+  pool:
+    max: 10
+    min: 0
+    idle_timeout_ms: 30000
+    connection_timeout_ms: 5000
+    statement_timeout_ms: 60000
+    query_timeout_ms: 60000
+    max_uses: 7500
+    application_name: siftgate
+  ssl: false
   log_retention_days: 30
 ```
 
 `database.synchronize` defaults to `true` for backwards-compatible local
-development. Production PostgreSQL deployments should bootstrap or migrate the
-schema during a maintenance step, then run the gateway with
-`database.synchronize: false`.
+development. Runtime option generation now defaults PostgreSQL to
+`synchronize: false` unless explicitly overridden. Production PostgreSQL
+deployments should bootstrap or migrate the schema during a maintenance step,
+then run the gateway with `database.synchronize: false`.
+
+### PostgreSQL Pool And SSL
+
+The PostgreSQL pool maps directly to the underlying `pg` client:
+
+- `pool.max` limits concurrent database clients per SiftGate process.
+- `pool.min` keeps warm clients available when supported by the driver.
+- `pool.connection_timeout_ms` fails startup and readiness checks quickly when
+  the database is unreachable.
+- `pool.statement_timeout_ms` and `pool.query_timeout_ms` prevent stuck
+  metadata queries from consuming workers forever.
+- `pool.max_uses` recycles long-lived clients, useful behind some poolers.
+- `pool.application_name` appears in `pg_stat_activity`.
+
+Use `ssl: true` or an object when managed PostgreSQL requires TLS:
+
+```yaml
+database:
+  type: postgres
+  url: "${DATABASE_URL}"
+  synchronize: false
+  ssl:
+    reject_unauthorized: true
+    servername: postgres.example.com
+```
+
+`reject_unauthorized: false` is accepted for local tests and private networks
+but `siftgate validate` warns because certificate verification is disabled.
 
 ## SQLite To PostgreSQL Migration
 
@@ -132,7 +177,8 @@ node dist/cli/siftgate.js migrate-db \
 
 The migrator:
 
-- Reads `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
+- Reads `organizations`, `workspaces`, `workspace_memberships`,
+  `gateway_api_keys`, `budget_rules`, `node_status`, `call_logs`,
   `route_decisions`, `config_versions`, `config_audit_events`,
   `provider_compatibility_results`, `batch_jobs`, and `video_jobs`.
 - Creates a timestamped SQLite backup when `--backup` is set.
@@ -170,6 +216,24 @@ Recommended production process:
 5. Switch `gateway.config.yaml` to PostgreSQL with `synchronize: false`.
 6. Restart SiftGate and verify `/health`, Dashboard API keys, budgets, and call
    logs.
+
+## Health And Readiness
+
+Use `/ready` for load balancer and Kubernetes readiness probes. It checks the
+runtime database only and returns `503` when SQLite/PostgreSQL is unavailable.
+Provider/node health is intentionally excluded so a degraded upstream does not
+remove an otherwise usable gateway process from service.
+
+Use `/health` for dashboards and monitoring. It reports:
+
+- `database`: type, redacted target, connectivity, latency, synchronize mode,
+  pool summary, and SSL summary.
+- `nodes`: circuit breaker state, active health probe state, realtime state,
+  and model circuit state.
+- `budget`: current budget gauges.
+
+This separation lets operators distinguish database outage from upstream
+provider outage during incidents.
 
 Future releases that change persistent schema should ship explicit TypeORM
 migration files. Production operators should run those release migrations as a

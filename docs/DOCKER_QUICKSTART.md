@@ -40,12 +40,16 @@ http://localhost:2099
 
 ```bash
 curl http://localhost:2099/health
+curl http://localhost:2099/ready
 docker compose ps
 docker compose logs -f siftgate
 ```
 
-The container should become `healthy`. SQLite data is persisted in `./data`, so
-generated Gateway API keys and call logs survive container restarts.
+The container healthcheck uses `/ready`, which checks the local database. Use
+`/health` for the fuller status payload that includes provider/node degradation,
+budgets, realtime state, and database details. SQLite data is persisted in
+`./data`, so generated Gateway API keys and call logs survive container
+restarts.
 
 ## Automated Smoke Test
 
@@ -103,9 +107,10 @@ POSTGRES_PASSWORD=replace-me docker compose --profile postgres up -d postgres
 
 Set `DATABASE_URL=postgresql://siftgate:replace-me@postgres:5432/siftgate` in
 `.env`, change `gateway.config.yaml` to `database.type: postgres`, and set
-`database.synchronize: false` after running the migration/bootstrap step. See
-[Production Deployment](PRODUCTION.md) for the SQLite to PostgreSQL migration
-workflow.
+`database.synchronize: false` after running the migration/bootstrap step. You
+can also configure `database.pool` and `database.ssl` as shown in
+`gateway.config.example.yaml`. See [Production Deployment](PRODUCTION.md) for
+the SQLite to PostgreSQL migration workflow.
 
 ## Kubernetes Next Step
 

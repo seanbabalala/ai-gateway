@@ -8,8 +8,15 @@
 //   - Uptime
 // ===================================================================
 
-import { Controller, Get, Inject, Logger, Optional } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Inject,
+  Logger,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '../config/config.service';
 import { CircuitBreakerService, CircuitState } from '../routing/circuit-breaker.service';
 import { ConcurrencyLimiterService } from '../routing/concurrency-limiter.service';
@@ -18,6 +25,7 @@ import { BudgetService, BudgetStatus } from '../budget/budget.service';
 import { HealthResponseDto } from '../openapi/openapi.dto';
 import { RealtimeProxyService } from '../realtime/realtime-proxy.service';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import { DatabaseHealthService } from '../database/database-health.service';
 
 @Controller()
 @ApiTags('Health')
@@ -36,12 +44,15 @@ export class HealthController {
     private readonly realtime?: RealtimeProxyService,
     @Optional()
     private readonly workspaceContext?: WorkspaceContextService,
+    @Optional()
+    private readonly databaseHealth?: DatabaseHealthService,
   ) {}
 
   @Get('health')
-  @ApiOperation({ summary: 'Gateway health, budget, and circuit breaker status' })
+  @ApiOperation({ summary: 'Gateway health, database, budget, and circuit breaker status' })
   @ApiOkResponse({ type: HealthResponseDto })
   async check() {
+    const database = await this.checkDatabase();
     const nodes = this.config.nodes.map((node) => {
       const cbStatus = this.circuitBreaker.getNodeStatus(node.id);
       const modelStatuses = this.circuitBreaker.getModelStatuses(node.id);
@@ -107,10 +118,11 @@ export class HealthController {
     const uptimeMs = Date.now() - this.startedAt;
 
     return {
-      status: allHealthy ? 'healthy' : 'degraded',
+      status: database.healthy && allHealthy ? 'healthy' : 'degraded',
       uptime_ms: uptimeMs,
       uptime_human: this.formatUptime(uptimeMs),
       timestamp: new Date().toISOString(),
+      database,
       nodes,
       budget: budget.map((b) => ({
         type: b.type,
@@ -121,6 +133,26 @@ export class HealthController {
         alert: b.isAlert,
       })),
     };
+  }
+
+  @Get('ready')
+  @ApiOperation({ summary: 'Gateway readiness for load balancers and Kubernetes probes' })
+  @ApiOkResponse({ description: 'Database is available and the gateway can accept traffic.' })
+  @ApiServiceUnavailableResponse({
+    description: 'Database is unavailable; provider health is intentionally not part of readiness.',
+  })
+  async ready() {
+    const database = await this.checkDatabase();
+    const response = {
+      ready: database.healthy,
+      status: database.healthy ? 'ready' : 'not_ready',
+      timestamp: new Date().toISOString(),
+      database,
+    };
+    if (!database.healthy) {
+      throw new ServiceUnavailableException(response);
+    }
+    return response;
   }
 
   private formatUptime(ms: number): string {
@@ -137,5 +169,24 @@ export class HealthController {
 
   private formatBudgetCurrent(type: string, current: number): number {
     return Number(current.toFixed(type.includes('cost') ? 6 : 4));
+  }
+
+  private async checkDatabase() {
+    if (this.databaseHealth) {
+      return this.databaseHealth.check();
+    }
+    return {
+      healthy: true,
+      type: this.config.database.type,
+      target:
+        this.config.database.type === 'postgres'
+          ? 'postgres'
+          : this.config.database.path || './data/gateway.db',
+      connected: true,
+      latency_ms: null,
+      checked_at: new Date().toISOString(),
+      error: null,
+      synchronize: this.config.database.synchronize ?? this.config.database.type === 'sqlite',
+    };
   }
 }

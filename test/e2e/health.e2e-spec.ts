@@ -24,8 +24,26 @@ describe('Health (e2e)', () => {
     expect(typeof res.body.uptime_ms).toBe('number');
     expect(res.body.uptime_human).toBeDefined();
     expect(res.body.timestamp).toBeDefined();
+    expect(res.body.database).toMatchObject({
+      healthy: true,
+      type: 'sqlite',
+      connected: true,
+    });
     expect(Array.isArray(res.body.nodes)).toBe(true);
     expect(res.body.nodes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('GET /ready → 200 when the database is available', async () => {
+    const res = await harness.agent.get('/ready');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ready).toBe(true);
+    expect(res.body.status).toBe('ready');
+    expect(res.body.database).toMatchObject({
+      healthy: true,
+      type: 'sqlite',
+      connected: true,
+    });
   });
 
   it('GET /health — nodes have expected shape', async () => {

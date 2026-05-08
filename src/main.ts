@@ -62,11 +62,11 @@ async function bootstrap() {
     expressApp.set('trust proxy', config.server.trust_proxy);
   }
 
-  // SPA fallback: for any GET that doesn't match API/v1/health/cluster/static-asset,
+  // SPA fallback: for any GET that doesn't match API/v1/health/ready/cluster/static-asset,
   // serve index.html so client-side routing works on page refresh
   const expressApp = app.getHttpAdapter().getInstance();
   const indexPath = join(__dirname, '..', 'frontend', 'dist', 'index.html');
-  const apiPrefixes = ['/api', '/v1', '/health', '/cluster'];
+  const apiPrefixes = ['/api', '/v1', '/health', '/ready', '/cluster'];
 
   expressApp.use(
     (

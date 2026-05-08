@@ -727,11 +727,34 @@ export interface HealthBudgetStatus {
   alert: boolean;
 }
 
+export interface HealthDatabaseStatus {
+  healthy: boolean;
+  type: "sqlite" | "postgres";
+  target: string;
+  connected: boolean;
+  latency_ms: number | null;
+  checked_at: string;
+  error: string | null;
+  synchronize: boolean;
+  pool?: {
+    min: number;
+    max: number;
+    idle_timeout_ms: number;
+    connection_timeout_ms: number;
+    statement_timeout_ms?: number;
+    query_timeout_ms?: number;
+    max_uses?: number;
+    application_name: string;
+  };
+  ssl?: "disabled" | "enabled" | "enabled-no-verify";
+}
+
 export interface HealthResponse {
   status: "healthy" | "degraded";
   uptime_ms: number;
   uptime_human: string;
   timestamp: string;
+  database: HealthDatabaseStatus;
   nodes: HealthNodeStatus[];
   budget: HealthBudgetStatus[];
 }

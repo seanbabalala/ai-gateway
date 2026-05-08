@@ -4,6 +4,11 @@ import { ConfigService } from '../config/config.service';
 import { CallLogSchemaPatchService } from './call-log-schema-patch.service';
 import { WorkspaceSchemaPatchService } from './workspace-schema-patch.service';
 import {
+  buildTypeOrmDatabaseOptions,
+  databaseConnectionSummary,
+} from './database-options';
+import { DatabaseHealthService } from './database-health.service';
+import {
   BudgetRule,
   CallLog,
   ConfigAuditEvent,
@@ -58,19 +63,20 @@ import {
           logging: false,
         };
 
-        if (config.database.type === 'postgres') {
-          return {
-            type: 'postgres' as const,
-            url: config.database.url,
-            ...shared,
-          };
+        const summary = databaseConnectionSummary(config.database);
+        if (summary.type === 'postgres') {
+          console.info(
+            [
+              'SiftGate PostgreSQL production database configured:',
+              `target=${summary.target}`,
+              `pool=${summary.pool?.min ?? 0}-${summary.pool?.max ?? 10}`,
+              `ssl=${summary.ssl ?? 'disabled'}`,
+              `synchronize=${summary.synchronize}`,
+            ].join(' '),
+          );
         }
 
-        return {
-          type: 'better-sqlite3' as const,
-          database: config.database.path || './data/gateway.db',
-          ...shared,
-        };
+        return buildTypeOrmDatabaseOptions(config.database, shared);
       },
     }),
     TypeOrmModule.forFeature([
@@ -95,7 +101,11 @@ import {
       VideoJob,
     ]),
   ],
-  providers: [CallLogSchemaPatchService, WorkspaceSchemaPatchService],
-  exports: [TypeOrmModule],
+  providers: [
+    CallLogSchemaPatchService,
+    WorkspaceSchemaPatchService,
+    DatabaseHealthService,
+  ],
+  exports: [TypeOrmModule, DatabaseHealthService],
 })
 export class DatabaseModule {}

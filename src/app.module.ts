@@ -24,7 +24,7 @@ import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.fi
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'frontend', 'dist'),
-      exclude: ['/api{/*path}', '/v1{/*path}', '/mcp{/*path}', '/health{/*path}', '/cluster{/*path}'],
+      exclude: ['/api{/*path}', '/v1{/*path}', '/mcp{/*path}', '/health{/*path}', '/ready{/*path}', '/cluster{/*path}'],
     }),
     ConfigModule,
     StateModule,

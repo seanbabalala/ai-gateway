@@ -238,6 +238,14 @@ postgres:
   databaseUrlSecret:
     name: ""
     key: DATABASE_URL
+  # When enabled, set config.data.database.type=postgres,
+  # config.data.database.url="${DATABASE_URL}", and synchronize=false after
+  # migration/bootstrap. See docs/PRODUCTION.md.
+  recommendedPool:
+    max: 10
+    min: 0
+    idleTimeoutMs: 30000
+    connectionTimeoutMs: 5000
 
 redis:
   enabled: false
