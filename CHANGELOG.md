@@ -6,6 +6,26 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-rc.2 - 2026-05-09
+
+### Added
+
+- Added `npm run benchmark:platform`, a deterministic local benchmark harness that starts a mock upstream plus real SiftGate AppModule instances and measures direct mock, non-streaming proxy, streaming proxy, `model=auto` smart routing, metadata-only call-log write, and Dashboard benchmark-report read overhead.
+- Added optional benchmark coverage for PostgreSQL production metadata mode, Redis shared-state/cluster mode, and live direct-upstream baselines when explicit environment variables are provided.
+- Added committed rc.2 sample benchmark reports in JSON and Markdown under `docs/reports/`.
+- Added unit coverage for the platform benchmark script, including JSON/Markdown output, privacy flags, measured SQLite scenarios, and skipped optional Postgres/Redis behavior.
+
+### Changed
+
+- Expanded `docs/PERFORMANCE.md` with v2.0.0-rc.2 benchmark methodology, environment variables, scenario definitions, limitations, rerun instructions, and GA re-measurement requirements.
+- Added `benchmark:platform` alongside the existing `benchmark:upstream` command so deterministic local measurements and existing-gateway/live-upstream measurements are clearly separated.
+- Updated release metadata to v2.0.0-rc.2 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- rc.2 benchmark numbers are release-candidate measurements from a local deterministic mock upstream. They must be re-measured before v2.0.0 GA if runtime behavior changes.
+- The benchmark harness and reports do not store prompts, responses, raw provider headers, provider keys, media bytes, tool payloads, hidden reasoning text, or resolved secrets by default.
+
 ## 2.0.0-rc.1 - 2026-05-09
 
 ### Added

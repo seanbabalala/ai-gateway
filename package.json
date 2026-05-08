@@ -1,6 +1,6 @@
 {
   "name": "siftgate",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-rc.2",
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,
@@ -38,6 +38,7 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "benchmark:upstream": "node scripts/benchmark-upstream.js",
+    "benchmark:platform": "node scripts/benchmark-platform.js",
     "smoke:docker": "bash scripts/docker-smoke.sh"
   },
   "dependencies": {
