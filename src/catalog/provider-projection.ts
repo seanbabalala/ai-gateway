@@ -18,6 +18,12 @@ const EXPLICIT_PROVIDER_STATUS: Partial<Record<string, CatalogProviderStatus>> =
   predibase: 'transport_only',
   lamini: 'transport_only',
   'nvidia-nim': 'transport_only',
+  deepinfra: 'transport_only',
+  nebius: 'transport_only',
+  novita: 'transport_only',
+  friendli: 'transport_only',
+  databricks: 'transport_only',
+  'github-models': 'transport_only',
   ollama: 'transport_only',
   vllm: 'transport_only',
   'lm-studio': 'transport_only',
@@ -67,6 +73,18 @@ const PROVIDER_STATUS_REASONS: Partial<Record<string, string>> = {
     'Deployment platforms require operator-defined model truth and pricing, so the preset stays transport-only by default.',
   'nvidia-nim':
     'Hosted and self-hosted NIM surfaces vary by account and deployment, so built-in model defaults are hidden by default.',
+  deepinfra:
+    'DeepInfra exposes a fast-changing hosted open-weight catalog, so SiftGate ships reviewed transport metadata but expects operators to pin active model truth locally.',
+  nebius:
+    'Nebius AI Studio model availability and prices vary by account and release channel, so the preset remains transport-only until local model truth is reviewed.',
+  novita:
+    'Novita AI model availability, batch support, and prices change by model/API tier, so built-in defaults are review metadata rather than canonical truth.',
+  friendli:
+    'Friendli serverless and dedicated endpoint surfaces can differ by plan, so the preset remains transport-only until operators review active model truth.',
+  databricks:
+    'Databricks serving endpoints are workspace- and deployment-specific, so SiftGate keeps transport metadata without treating static model defaults as canonical.',
+  'github-models':
+    'GitHub Models routes through an organization-scoped model marketplace, so static built-in entries are transport evidence rather than canonical model truth.',
   ollama:
     'Local model availability is operator-managed, so the preset remains transport-only until local overrides define the active model list.',
   vllm:

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 2.4.0 - 2026-05-09
+
+### Added
+
+- Added the v2.4 Provider Ecosystem Expansion batch with source-governed built-in catalog rows for DeepInfra, Nebius AI Studio, Novita AI, FriendliAI, Databricks Mosaic AI, and GitHub Models.
+- Added Dashboard provider identity metadata for the v2.4 provider batch so OpenAI-compatible providers keep their own logos/badges instead of falling back to generic OpenAI identity.
+- Added `npm run provider-registry:check`, an offline community provider manifest validation check with a review-required fixture for provider shape, endpoint/model evidence, pricing source governance, and secret hygiene.
+- Added provider catalog and provider extensibility docs describing the v2.4 batch, registry CI expectations, and the continued requirement for reviewed local overrides before production cost routing.
+
+### Changed
+
+- Marked the v2.4 batch as transport/review metadata where model availability, workspace endpoints, marketplace access, or account-specific pricing can change outside SiftGate.
+- Updated release metadata to v2.4.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- v2.4.0 does not promise 100+ provider coverage and does not add untested provider rows for count inflation.
+- Built-in/community pricing remains review-required reference metadata unless a trusted operator override supplies high-confidence pricing.
+- Provider Ecosystem Expansion does not store prompts, responses, raw provider headers, provider keys, Gateway API key plaintext, media bytes, source code, diffs, tool payloads, hidden reasoning text, or resolved secrets by default.
+
 ## 2.3.0 - 2026-05-09
 
 ### Added

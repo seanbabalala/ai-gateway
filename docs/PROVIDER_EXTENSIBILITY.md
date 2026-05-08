@@ -129,12 +129,25 @@ providers:
 CI expectations:
 
 - catalog validation passes
+- `npm run provider-registry:check` passes for the provider manifest
 - generated or handwritten adapter tests pass
 - mocked request/response mapping tests pass
 - compatibility profile evidence is included
 - pricing source URL, date, confidence, and manual-review status are explicit
 - no provider keys, raw headers, prompts, responses, media bytes, source code,
   diffs, tool payloads, hidden reasoning text, or resolved secrets are committed
+
+The provider registry check is offline and deterministic. It validates provider
+ids, required transport fields, endpoint maps, compatibility profile evidence,
+model rows, review-required pricing metadata, source URLs, and secret hygiene.
+It does not call provider APIs, scrape pricing pages, or turn community pricing
+into billing authority.
+
+For v2.4.0, the first expansion batch adds reviewed transport/catalog metadata
+for DeepInfra, Nebius AI Studio, Novita AI, FriendliAI, Databricks Mosaic AI,
+and GitHub Models. These entries close important LiteLLM-style parity gaps, but
+remain source-governed references with model/pricing review required before
+production cost routing.
 
 Pricing governance:
 
@@ -147,3 +160,5 @@ Pricing governance:
 
 v2.3 does not promise 100+ providers. It creates the template, generator,
 registry, health, and review mechanics that make provider expansion sustainable.
+v2.4 starts using those mechanics with a small tested batch instead of adding
+untested catalog rows just to inflate counts.

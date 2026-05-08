@@ -649,6 +649,63 @@ describe('ProviderClientService', () => {
       );
     });
 
+    it('should route the v2.4 OpenAI-compatible provider batch through standard chat transport', async () => {
+      const providers = BUILTIN_PROVIDER_CATALOG.filter((provider) =>
+        ['deepinfra', 'nebius', 'novita', 'friendli'].includes(provider.id),
+      );
+
+      for (const provider of providers) {
+        const model = provider.models.find((entry) => entry.endpoints.chat_completions);
+        const fetchMock = jest.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            id: `chatcmpl-${provider.id}`,
+            model: model?.id,
+            choices: [{ message: { content: `Hello from ${provider.name}` }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 3, completion_tokens: 4 },
+          }),
+        });
+        global.fetch = fetchMock as any;
+
+        const svc = makeServiceWithConfig(
+          {
+            getMergedCatalog: jest.fn().mockReturnValue({
+              version: 1,
+              generated_at: '2026-05-09',
+              providers: BUILTIN_PROVIDER_CATALOG,
+            }),
+          },
+          {
+            id: provider.id,
+            name: provider.name,
+            protocol: 'chat_completions',
+            base_url: provider.base_url,
+            endpoint: provider.endpoints.chat_completions,
+            api_key: 'sk-v24-test',
+            models: provider.model_buckets?.models || [],
+          },
+        );
+
+        const result = await svc.forward(
+          makeCanonical(),
+          provider.id,
+          model?.id || 'test-model',
+          routingMeta,
+        );
+
+        const [url, opts] = fetchMock.mock.calls[0];
+        expect(url).toBe(`${provider.base_url}${provider.endpoints.chat_completions}`);
+        expect(opts.headers.Authorization).toBe('Bearer sk-v24-test');
+        expect(JSON.parse(opts.body)).toMatchObject({
+          model: model?.id,
+          stream: false,
+        });
+        expect(result.routing.node).toBe(provider.id);
+        expect(result.content[0]).toEqual({ type: 'text', text: `Hello from ${provider.name}` });
+      }
+    });
+
     it('should forward embeddings to the embeddings endpoint', async () => {
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
