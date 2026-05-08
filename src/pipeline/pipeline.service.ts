@@ -3380,6 +3380,7 @@ export class PipelineService {
     const requiresStructuredOutput = this.requestRequiresStructuredOutput(canonical);
     const reasoningFields = this.resolveReasoningSelectionFields(canonical);
     const requestRouteHints = this.routeSelectionHintsForTrace(canonical);
+    const agentRouteHints = this.agentRoutingHintsForTrace(canonical);
 
     const routeDecision = this.telemetry.withSpanSync(
       'gateway.routing',
@@ -3398,6 +3399,7 @@ export class PipelineService {
           scoringResult.modalityHints,
           {
             ...requestRouteHints,
+            ...agentRouteHints,
             workspace_id: this.workspaceIdForCanonical(canonical),
             estimated_input_tokens: tokenEstimate.input_tokens,
             estimated_output_tokens: tokenEstimate.output_tokens,
@@ -3409,8 +3411,16 @@ export class PipelineService {
             reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
             reasoning_strategy: reasoningFields.reasoning_strategy,
             required_capabilities: reasoningFields.requires_reasoning
-              ? Array.from(new Set([...(scoringResult.modalityHints || ['text']).map(String), 'reasoning']))
-              : requestRouteHints.required_capabilities,
+              ? Array.from(
+                  new Set([
+                    ...((agentRouteHints.required_capabilities ||
+                      requestRouteHints.required_capabilities ||
+                      (scoringResult.modalityHints || ['text']).map(String)) as string[]),
+                    'reasoning',
+                  ]),
+                )
+              : agentRouteHints.required_capabilities ||
+                requestRouteHints.required_capabilities,
           },
         );
         span.setAttributes({
@@ -3447,7 +3457,10 @@ export class PipelineService {
       reason: 'automatic routing',
       domainHint: routeDecision.domainHint || scoringResult.domainHint || null,
       modalityHints: scoringResult.modalityHints,
-      selectionHints: this.cacheSelectionHintsFromStore(store),
+      selectionHints: {
+        ...agentRouteHints,
+        ...this.cacheSelectionHintsFromStore(store),
+      },
     });
     const routeTrace = this.applyTargetFilterToTrace(
       baseRouteTrace,
@@ -3491,6 +3504,7 @@ export class PipelineService {
         ? estimateCanonicalRequestTokens(input.canonical as CanonicalRequest)
         : null;
     const requestEvidenceHints = this.routeSelectionHintsForTrace(input.canonical);
+    const agentEvidenceHints = this.agentRoutingHintsForTrace(input.canonical);
     const reasoningFields =
       input.canonical.metadata.source_format !== 'embeddings' &&
       input.canonical.metadata.source_format !== 'rerank' &&
@@ -3504,6 +3518,7 @@ export class PipelineService {
           };
     const traceSelectionHints: RouteSelectionHints = {
       ...requestEvidenceHints,
+      ...agentEvidenceHints,
       ...input.selectionHints,
       workspace_id: this.workspaceIdForCanonical(input.canonical),
       estimated_input_tokens: tokenEstimate?.input_tokens ?? undefined,
@@ -3518,10 +3533,13 @@ export class PipelineService {
       reasoning_strategy: reasoningFields.reasoning_strategy,
       required_capabilities: reasoningFields.requires_reasoning
         ? this.uniqueTraceStrings([
-            ...(requestEvidenceHints.required_capabilities || []),
+            ...((agentEvidenceHints.required_capabilities ||
+              requestEvidenceHints.required_capabilities ||
+              []) as string[]),
             'reasoning',
           ])
-        : requestEvidenceHints.required_capabilities,
+        : agentEvidenceHints.required_capabilities ||
+          requestEvidenceHints.required_capabilities,
     };
 
     return {
@@ -3740,6 +3758,39 @@ export class PipelineService {
       reasoning_effort: reasoningFields.reasoning_effort,
       reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
       reasoning_strategy: reasoningFields.reasoning_strategy,
+    };
+  }
+
+  private agentRoutingHintsForTrace(
+    canonical: LoggableCanonicalRequest,
+  ): Partial<RouteSelectionHints> {
+    const hint = canonical.metadata.agent_routing_hint;
+    if (!hint || typeof hint !== 'object' || Array.isArray(hint)) {
+      return {};
+    }
+    const task =
+      typeof hint.task === 'string'
+        ? hint.task
+        : typeof hint.mode === 'string'
+          ? hint.mode
+          : null;
+    const optimization =
+      typeof hint.optimization === 'string' ? hint.optimization : null;
+    const depth = typeof hint.depth === 'string' ? hint.depth : null;
+    const required = new Set<string>(['text']);
+    if (task === 'security_audit') required.add('security');
+    if (depth === 'deep') required.add('reasoning');
+
+    return {
+      required_capabilities: [...required],
+      endpoint_strategy:
+        task === 'security_audit'
+          ? 'coding_security'
+          : depth === 'deep'
+            ? 'coding_deep'
+            : optimization === 'latency'
+              ? 'coding_fast'
+              : 'coding_auto',
     };
   }
 
@@ -4504,6 +4555,7 @@ export class PipelineService {
     canonical.metadata.agent_connector = match.profile.connector;
     canonical.metadata.agent_virtual_model = match.virtual_model;
     canonical.metadata.agent_requested_model = match.requested_model;
+    canonical.metadata.agent_routing_hint = match.routing_hint || undefined;
     canonical.metadata.original_model = match.internal_model;
 
     return match.internal_model;
@@ -5309,6 +5361,7 @@ export class PipelineService {
         params.canonical,
         params.mediaProviderResponseType,
       );
+      const agentMetadata = this.resolveAgentLogFields(params.canonical);
 
       const log = this.callLogRepo.create({
         request_id: params.requestId,
@@ -5361,6 +5414,7 @@ export class PipelineService {
         api_key_id: params.canonical.metadata.api_key_id || null,
         namespace_id: params.canonical.metadata.namespace_id || null,
         team_id: params.canonical.metadata.team_id || null,
+        ...agentMetadata,
         retry_count: params.retryCount || 0,
         semantic_cache_hit: params.semanticCacheHit || false,
         semantic_cache_score:
@@ -5588,6 +5642,32 @@ export class PipelineService {
     };
   }
 
+  private resolveAgentLogFields(
+    canonical: LoggableCanonicalRequest,
+  ): {
+    agent_connector: string | null;
+    agent_profile_id: string | null;
+    agent_profile_name: string | null;
+    agent_virtual_model: string | null;
+    agent_requested_model: string | null;
+    agent_session_id: string | null;
+    agent_turn_id: string | null;
+    agent_repo: string | null;
+    agent_project: string | null;
+  } {
+    return {
+      agent_connector: canonical.metadata.agent_connector || null,
+      agent_profile_id: canonical.metadata.agent_profile_id || null,
+      agent_profile_name: canonical.metadata.agent_profile_name || null,
+      agent_virtual_model: canonical.metadata.agent_virtual_model || null,
+      agent_requested_model: canonical.metadata.agent_requested_model || null,
+      agent_session_id: canonical.metadata.agent_session_id || null,
+      agent_turn_id: canonical.metadata.agent_turn_id || null,
+      agent_repo: canonical.metadata.agent_repo || null,
+      agent_project: canonical.metadata.agent_project || null,
+    };
+  }
+
   private async saveRouteDecisionTrace(
     params: {
       requestId: string; canonical: LoggableCanonicalRequest; tier: Tier; score: number;
@@ -5603,11 +5683,12 @@ export class PipelineService {
     },
   ): Promise<void> {
     const trace = this.finalizeRouteTrace(params);
-      const log = this.routeDecisionRepo.create({
-        request_id: params.requestId,
-        source_format: params.canonical.metadata.source_format,
-        workspace_id: this.workspaceIdForCanonical(params.canonical),
-        tier: params.tier,
+    const agentMetadata = this.resolveAgentLogFields(params.canonical);
+    const log = this.routeDecisionRepo.create({
+      request_id: params.requestId,
+      source_format: params.canonical.metadata.source_format,
+      workspace_id: this.workspaceIdForCanonical(params.canonical),
+      tier: params.tier,
       score: params.score,
       route_mode: trace.mode,
       strategy: String(trace.load_balancing.strategy),
@@ -5627,6 +5708,7 @@ export class PipelineService {
       api_key_name: params.canonical.metadata.api_key_name || null,
       api_key_id: params.canonical.metadata.api_key_id || null,
       namespace_id: params.canonical.metadata.namespace_id || null,
+      ...agentMetadata,
       trace_json: JSON.stringify(trace),
     });
     await this.routeDecisionRepo.save(log);
@@ -5674,6 +5756,10 @@ export class PipelineService {
     trace.trace_id = params.canonical.metadata.trace_id || null;
     trace.source_format = params.canonical.metadata.source_format;
     trace.requested_model = params.canonical.metadata.original_model || null;
+    trace.agent = {
+      ...this.resolveAgentTraceFields(params.canonical),
+      routing_hint: params.canonical.metadata.agent_routing_hint || null,
+    };
     trace.tier = params.tier;
     trace.score = params.score;
     if (params.canonical.metadata.source_format !== 'embeddings' && 'messages' in params.canonical) {
@@ -5715,6 +5801,32 @@ export class PipelineService {
       );
     }
     return trace;
+  }
+
+  private resolveAgentTraceFields(
+    canonical: LoggableCanonicalRequest,
+  ): {
+    connector: string | null;
+    profile_id: string | null;
+    profile_name: string | null;
+    virtual_model: string | null;
+    requested_model: string | null;
+    session_id: string | null;
+    turn_id: string | null;
+    repo: string | null;
+    project: string | null;
+  } {
+    return {
+      connector: canonical.metadata.agent_connector || null,
+      profile_id: canonical.metadata.agent_profile_id || null,
+      profile_name: canonical.metadata.agent_profile_name || null,
+      virtual_model: canonical.metadata.agent_virtual_model || null,
+      requested_model: canonical.metadata.agent_requested_model || null,
+      session_id: canonical.metadata.agent_session_id || null,
+      turn_id: canonical.metadata.agent_turn_id || null,
+      repo: canonical.metadata.agent_repo || null,
+      project: canonical.metadata.agent_project || null,
+    };
   }
 
   private sanitizeTraceError(error: string): string {

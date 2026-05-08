@@ -1,0 +1,6 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">Roo Code</title>
+  <rect width="64" height="64" rx="14" fill="#ecfeff"/>
+  <path d="M16 42c0-13 7-24 16-24s16 11 16 24v7H16v-7z" fill="#0891b2"/>
+  <path d="M25 29h14M24 38l-5-5 5-5M40 28l5 5-5 5" fill="none" stroke="#f8fafc" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

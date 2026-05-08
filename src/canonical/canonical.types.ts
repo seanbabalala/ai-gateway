@@ -202,6 +202,11 @@ export interface CanonicalRequestMetadata {
   agent_connector?: string;
   agent_virtual_model?: string;
   agent_requested_model?: string;
+  agent_session_id?: string;
+  agent_turn_id?: string;
+  agent_repo?: string;
+  agent_project?: string;
+  agent_routing_hint?: Record<string, unknown>;
   api_key_permissions?: {
     allow_auto: boolean;
     allow_direct: boolean;

@@ -2149,6 +2149,22 @@ export class DashboardController {
       api_key_name: decision.api_key_name,
       api_key_id: decision.api_key_id,
       namespace_id: decision.namespace_id,
+      agent: {
+        connector: decision.agent_connector || trace?.agent?.connector || null,
+        profile_id:
+          decision.agent_profile_id || trace?.agent?.profile_id || null,
+        profile_name:
+          decision.agent_profile_name || trace?.agent?.profile_name || null,
+        virtual_model:
+          decision.agent_virtual_model || trace?.agent?.virtual_model || null,
+        requested_model:
+          decision.agent_requested_model || trace?.agent?.requested_model || null,
+        session_id:
+          decision.agent_session_id || trace?.agent?.session_id || null,
+        turn_id: decision.agent_turn_id || trace?.agent?.turn_id || null,
+        repo: decision.agent_repo || trace?.agent?.repo || null,
+        project: decision.agent_project || trace?.agent?.project || null,
+      },
       summary: {
         reason: finalSelection.reason,
         fallback_chain: trace?.fallback_chain || [],
@@ -2201,7 +2217,7 @@ export class DashboardController {
   private groupLogsBySession(logs: CallLog[]): Map<string, CallLog[]> {
     const grouped = new Map<string, CallLog[]>();
     for (const log of logs) {
-      const sessionId = log.session_id || log.session_key;
+      const sessionId = log.agent_session_id || log.session_id || log.session_key;
       if (!sessionId) continue;
       const rows = grouped.get(sessionId) || [];
       rows.push(log);
@@ -2229,6 +2245,26 @@ export class DashboardController {
     const traceIds = this.uniqueSorted(
       sorted
         .map((log) => log.trace_id)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const agentConnectors = this.uniqueSorted(
+      sorted
+        .map((log) => log.agent_connector)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const agentProfiles = this.uniqueSorted(
+      sorted
+        .map((log) => log.agent_profile_name || log.agent_profile_id)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const agentRepos = this.uniqueSorted(
+      sorted
+        .map((log) => log.agent_repo)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const agentProjects = this.uniqueSorted(
+      sorted
+        .map((log) => log.agent_project)
         .filter((value): value is string => Boolean(value)),
     );
     const errorCount = sorted.filter(
@@ -2269,6 +2305,21 @@ export class DashboardController {
       api_key_id: last?.api_key_id || null,
       api_key_name: last?.api_key_name || null,
       namespace_id: last?.namespace_id || null,
+      agent: {
+        connector: last?.agent_connector || null,
+        connectors: agentConnectors,
+        profile_id: last?.agent_profile_id || null,
+        profile_name: last?.agent_profile_name || null,
+        profiles: agentProfiles,
+        virtual_model: last?.agent_virtual_model || null,
+        requested_model: last?.agent_requested_model || null,
+        session_id: last?.agent_session_id || null,
+        turn_id: last?.agent_turn_id || null,
+        repo: last?.agent_repo || null,
+        repos: agentRepos,
+        project: last?.agent_project || null,
+        projects: agentProjects,
+      },
     };
   }
 
@@ -2299,7 +2350,7 @@ export class DashboardController {
 
     return {
       request_id: log.request_id,
-      session_id: log.session_id || log.session_key || null,
+      session_id: log.agent_session_id || log.session_id || log.session_key || null,
       trace_id: log.trace_id || decision?.trace_id || trace?.trace_id || null,
       timestamp: log.timestamp,
       source_format: log.source_format,
@@ -2321,6 +2372,20 @@ export class DashboardController {
         ? `/route-decisions/${encodeURIComponent(log.request_id)}`
         : null,
       has_route_decision: Boolean(decision),
+      agent: {
+        connector: log.agent_connector || trace?.agent?.connector || null,
+        profile_id: log.agent_profile_id || trace?.agent?.profile_id || null,
+        profile_name:
+          log.agent_profile_name || trace?.agent?.profile_name || null,
+        virtual_model:
+          log.agent_virtual_model || trace?.agent?.virtual_model || null,
+        requested_model:
+          log.agent_requested_model || trace?.agent?.requested_model || null,
+        session_id: log.agent_session_id || trace?.agent?.session_id || null,
+        turn_id: log.agent_turn_id || trace?.agent?.turn_id || null,
+        repo: log.agent_repo || trace?.agent?.repo || null,
+        project: log.agent_project || trace?.agent?.project || null,
+      },
       route_decision: decision
         ? {
             id: decision.id,
@@ -2431,6 +2496,9 @@ export class DashboardController {
       provider_keys: false,
       media_bytes: false,
       video_bytes: false,
+      source_code: false,
+      diffs: false,
+      tool_payloads: false,
       storage: "metadata_only",
     };
   }
@@ -2877,6 +2945,9 @@ export class DashboardController {
   @ApiQuery({ name: "api_key_id", required: false })
   @ApiQuery({ name: "model", required: false })
   @ApiQuery({ name: "source_format", required: false })
+  @ApiQuery({ name: "agent_connector", required: false })
+  @ApiQuery({ name: "agent_repo", required: false })
+  @ApiQuery({ name: "agent_project", required: false })
   @ApiQuery({ name: "page", required: false, example: 1 })
   @ApiQuery({ name: "limit", required: false, example: 25 })
   @ApiOkResponse({
@@ -2890,6 +2961,9 @@ export class DashboardController {
     @Query("api_key_id") apiKeyId?: string,
     @Query("model") model?: string,
     @Query("source_format") sourceFormat?: string,
+    @Query("agent_connector") agentConnector?: string,
+    @Query("agent_repo") agentRepo?: string,
+    @Query("agent_project") agentProject?: string,
     @Query("page", new DefaultValuePipe(1), ParseIntPipe) page: number = 1,
     @Query("limit", new DefaultValuePipe(25), ParseIntPipe) limit: number = 25,
   ) {
@@ -2900,7 +2974,7 @@ export class DashboardController {
 
     const qb = this.callLogRepo
       .createQueryBuilder("log")
-      .where("(log.session_id IS NOT NULL OR log.session_key IS NOT NULL)")
+      .where("(log.agent_session_id IS NOT NULL OR log.session_id IS NOT NULL OR log.session_key IS NOT NULL)")
       .orderBy("log.timestamp", "DESC")
       .take(scanLimit);
     if (window.since)
@@ -2908,6 +2982,13 @@ export class DashboardController {
     if (model) qb.andWhere("log.model = :model", { model });
     if (sourceFormat)
       qb.andWhere("log.source_format = :sourceFormat", { sourceFormat });
+    if (agentConnector) {
+      qb.andWhere("log.agent_connector = :agentConnector", { agentConnector });
+    }
+    if (agentRepo) qb.andWhere("log.agent_repo = :agentRepo", { agentRepo });
+    if (agentProject) {
+      qb.andWhere("log.agent_project = :agentProject", { agentProject });
+    }
     this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
 
     const logs = await qb.getMany();
@@ -2939,6 +3020,9 @@ export class DashboardController {
         api_key_name: apiKey || null,
         model: model || null,
         source_format: sourceFormat || null,
+        agent_connector: agentConnector || null,
+        agent_repo: agentRepo || null,
+        agent_project: agentProject || null,
       },
       privacy: this.sessionPrivacySummary(),
     };
@@ -2955,6 +3039,9 @@ export class DashboardController {
   @ApiQuery({ name: "api_key_id", required: false })
   @ApiQuery({ name: "model", required: false })
   @ApiQuery({ name: "source_format", required: false })
+  @ApiQuery({ name: "agent_connector", required: false })
+  @ApiQuery({ name: "agent_repo", required: false })
+  @ApiQuery({ name: "agent_project", required: false })
   @ApiQuery({ name: "limit", required: false, example: 200 })
   @ApiOkResponse({
     description:
@@ -2968,6 +3055,9 @@ export class DashboardController {
     @Query("api_key_id") apiKeyId?: string,
     @Query("model") model?: string,
     @Query("source_format") sourceFormat?: string,
+    @Query("agent_connector") agentConnector?: string,
+    @Query("agent_repo") agentRepo?: string,
+    @Query("agent_project") agentProject?: string,
     @Query("limit", new DefaultValuePipe(200), ParseIntPipe)
     limit: number = 200,
   ) {
@@ -2975,7 +3065,7 @@ export class DashboardController {
     const safeLimit = Math.min(Math.max(limit, 1), 500);
     const qb = this.callLogRepo
       .createQueryBuilder("log")
-      .where("(log.session_id = :sessionId OR log.session_key = :sessionId)", {
+      .where("(log.agent_session_id = :sessionId OR log.session_id = :sessionId OR log.session_key = :sessionId)", {
         sessionId,
       })
       .orderBy("log.timestamp", "ASC")
@@ -2985,6 +3075,13 @@ export class DashboardController {
     if (model) qb.andWhere("log.model = :model", { model });
     if (sourceFormat)
       qb.andWhere("log.source_format = :sourceFormat", { sourceFormat });
+    if (agentConnector) {
+      qb.andWhere("log.agent_connector = :agentConnector", { agentConnector });
+    }
+    if (agentRepo) qb.andWhere("log.agent_repo = :agentRepo", { agentRepo });
+    if (agentProject) {
+      qb.andWhere("log.agent_project = :agentProject", { agentProject });
+    }
     this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
 
     const logs = await qb.getMany();
@@ -3043,6 +3140,9 @@ export class DashboardController {
         api_key_name: apiKey || null,
         model: model || null,
         source_format: sourceFormat || null,
+        agent_connector: agentConnector || null,
+        agent_repo: agentRepo || null,
+        agent_project: agentProject || null,
       },
       links: {
         route_decisions: timeline.filter((item) => item.has_route_decision)
@@ -3768,13 +3868,18 @@ export class DashboardController {
     return {
       items,
       connectors: [
+        "cursor",
+        "cline",
+        "roo_code",
+        "continue",
         "codex",
         "claude_code",
+        "opencode",
+        "generic_openai",
+        "generic_anthropic",
         "cherry_studio",
         "hermes",
         "openclaw",
-        "generic_openai",
-        "generic_anthropic",
       ],
       mode: "local_only",
     };

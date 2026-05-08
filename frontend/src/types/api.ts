@@ -521,6 +521,23 @@ export interface SessionSummary {
   api_key_id: string | null;
   api_key_name: string | null;
   namespace_id: string | null;
+  agent: CodingAgentSessionMetadata;
+}
+
+export interface CodingAgentSessionMetadata {
+  connector: string | null;
+  connectors?: string[];
+  profile_id: string | null;
+  profile_name: string | null;
+  profiles?: string[];
+  virtual_model: string | null;
+  requested_model: string | null;
+  session_id: string | null;
+  turn_id: string | null;
+  repo: string | null;
+  repos?: string[];
+  project: string | null;
+  projects?: string[];
 }
 
 export interface SessionTimelineEvent {
@@ -544,6 +561,7 @@ export interface SessionTimelineEvent {
   error: string | null;
   route_decision_link: string | null;
   has_route_decision: boolean;
+  agent: CodingAgentSessionMetadata;
   route_decision: {
     id: number;
     selected_node_id: string | null;
@@ -576,6 +594,9 @@ export interface SessionPrivacy {
   provider_keys: false;
   media_bytes: false;
   video_bytes: false;
+  source_code: false;
+  diffs: false;
+  tool_payloads: false;
   storage: "metadata_only";
 }
 
@@ -2733,8 +2754,13 @@ export interface GatewayApiKeyMutationResponse extends ActionResponse {
 // ── Agent Gateway Profiles ──
 
 export type AgentProfileConnector =
+  | "cursor"
+  | "cline"
+  | "roo_code"
+  | "continue"
   | "codex"
   | "claude_code"
+  | "opencode"
   | "cherry_studio"
   | "hermes"
   | "openclaw"
@@ -2769,6 +2795,7 @@ export interface AgentProfile {
   namespace_name: string | null;
   default_model: string;
   smart_model_id: string;
+  virtual_model_aliases: string[];
   base_url_mode: AgentProfileBaseUrlMode;
   routing_hint: Record<string, unknown> | null;
   mcp_server_ids: string[];
@@ -2820,7 +2847,14 @@ export interface AgentProfileRenderedCard {
   id: string;
   title: string;
   protocol: "openai" | "anthropic" | "root";
-  fields: Record<string, string | string[] | Record<string, unknown> | null>;
+  fields: Record<
+    string,
+    | string
+    | string[]
+    | Record<string, unknown>
+    | Array<Record<string, unknown>>
+    | null
+  >;
   env: Record<string, string>;
   snippet: string;
   notes: string[];
@@ -2836,6 +2870,7 @@ export interface AgentProfileRenderedConfig {
   base_url_mode: AgentProfileBaseUrlMode;
   smart_model_id: string;
   default_model: string;
+  virtual_model_aliases: string[];
   gateway_api_key: AgentProfileRenderedGatewayKey;
   secrets_redacted: true;
   routing_hint: Record<string, unknown> | null;

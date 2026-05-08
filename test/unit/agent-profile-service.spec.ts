@@ -270,10 +270,100 @@ describe('AgentProfileService', () => {
         agent_profile_id: 'profile-1',
         is_agent_profile_model: true,
       }),
+      expect.objectContaining({
+        id: 'coding-auto',
+        agent_profile_id: 'profile-1',
+        routing_hint: expect.objectContaining({
+          mode: 'coding',
+          connector: 'claude_code',
+        }),
+      }),
+      expect.objectContaining({
+        id: 'coding-fast',
+        agent_profile_id: 'profile-1',
+      }),
+      expect.objectContaining({
+        id: 'coding-deep',
+        agent_profile_id: 'profile-1',
+      }),
+      expect.objectContaining({
+        id: 'coding-security',
+        agent_profile_id: 'profile-1',
+      }),
     ]);
     await expect(service.listVirtualModelsForApiKey('key-1', {
       allow_auto: false,
       allowed_models: [],
     })).resolves.toEqual([]);
+  });
+
+  it('renders coding-agent connector snippets with virtual aliases and redacted secrets', async () => {
+    const { service } = makeService();
+
+    const created = await service.create({
+      name: 'Cursor Workspace',
+      connector: 'cursor',
+      api_key_id: 'key-1',
+      routing_hint: { tier: 'standard' },
+    });
+    const rendered = await service.render(created.id, {
+      gateway_base_url: 'http://127.0.0.1:2099',
+    });
+
+    expect(rendered.connector).toBe('cursor');
+    expect(rendered.base_url).toBe('http://127.0.0.1:2099/v1');
+    expect(rendered.virtual_model_aliases).toEqual([
+      'coding-auto',
+      'coding-fast',
+      'coding-deep',
+      'coding-security',
+    ]);
+    expect(rendered.cards[0]).toMatchObject({
+      id: 'cursor-openai',
+      protocol: 'openai',
+      fields: expect.objectContaining({
+        model: 'coding-auto',
+        virtual_model_aliases: expect.arrayContaining(['coding-security']),
+      }),
+    });
+    expect(rendered.cards[0].snippet).toContain('<SIFTGATE_GATEWAY_API_KEY>');
+    expect(JSON.stringify(rendered)).not.toContain('gw_sk_live_secret');
+  });
+
+  it('matches shared coding aliases to the most recently updated active profile for the API key', async () => {
+    const { service } = makeService([
+      {
+        id: 'profile-cursor',
+        name: 'Cursor',
+        description: null,
+        connector: 'cursor',
+        status: 'active',
+        api_key_id: 'key-1',
+        namespace_id: null,
+        default_model: 'auto',
+        smart_model_id: 'auto',
+        base_url_mode: 'openai_v1',
+        routing_hint: { workspace: 'engineering' },
+        mcp_server_ids: null,
+        metadata: null,
+        last_generated_at: null,
+        created_at: new Date('2026-05-08T00:00:00.000Z'),
+        updated_at: new Date('2026-05-08T00:00:00.000Z'),
+      },
+    ]);
+
+    await expect(
+      service.matchVirtualModel('key-1', 'coding-security'),
+    ).resolves.toMatchObject({
+      virtual_model: 'coding-security',
+      requested_model: 'coding-security',
+      internal_model: 'auto',
+      profile: expect.objectContaining({ id: 'profile-cursor' }),
+      routing_hint: expect.objectContaining({
+        workspace: 'engineering',
+        task: 'security_audit',
+        connector: 'cursor',
+      }),
+    });
   });
 });

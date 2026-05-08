@@ -17,6 +17,9 @@ import {
 @Index(['namespace_id'])
 @Index(['session_id'])
 @Index(['trace_id'])
+@Index(['agent_connector'])
+@Index(['agent_profile_id'])
+@Index(['agent_session_id'])
 export class RouteDecisionLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -83,6 +86,33 @@ export class RouteDecisionLog {
 
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_connector!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_profile_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_profile_name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_virtual_model!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_requested_model!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_session_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_turn_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_repo!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agent_project!: string | null;
 
   @Column({ type: 'text' })
   trace_json!: string;

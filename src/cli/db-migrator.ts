@@ -255,6 +255,7 @@ export class TypeOrmPostgresMigrationTarget implements PostgresMigrationTarget {
             ShadowTrafficResult,
             ConfigVersion,
             ConfigAuditEvent,
+            ManagementAuditEvent,
             ProviderCompatibilityResult,
             BatchJob,
             EvalDataset,
@@ -778,6 +779,33 @@ function normalizeRow(
     });
   }
 
+  if (table === "call_logs") {
+    return normalizeFields(row, {
+      id: toNumber,
+      workspace_id: toDefaultWorkspaceId,
+      timestamp: toDateOrNow,
+      score: toNumber,
+      input_tokens: toNumber,
+      output_tokens: toNumber,
+      cost_usd: toNumber,
+      cost_without_cache_usd: toNullableNumber,
+      latency_ms: toNumber,
+      stream: toBoolean,
+      status_code: toNumber,
+      is_fallback: toBoolean,
+      structured_output_requested: toBoolean,
+      structured_output_supported: toNullableBoolean,
+      reasoning_requested: toBoolean,
+      reasoning_supported: toNullableBoolean,
+      reasoning_budget_tokens: toNullableNumber,
+      retry_count: toNumber,
+      cache_creation_input_tokens: toNumber,
+      cache_read_input_tokens: toNumber,
+      semantic_cache_hit: toBoolean,
+      semantic_cache_score: toNullableNumber,
+    });
+  }
+
   if (table === "route_decisions") {
     return normalizeFields(row, {
       id: toNumber,
@@ -917,26 +945,8 @@ function normalizeRow(
   return normalizeFields(row, {
     id: toNumber,
     workspace_id: toDefaultWorkspaceId,
-    timestamp: toDateOrNow,
-    score: toNumber,
-    input_tokens: toNumber,
-    output_tokens: toNumber,
-    cost_usd: toNumber,
-    cost_without_cache_usd: toNullableNumber,
-    latency_ms: toNumber,
-    stream: toBoolean,
-    status_code: toNumber,
-    is_fallback: toBoolean,
-    structured_output_requested: toBoolean,
-    structured_output_supported: toNullableBoolean,
-    reasoning_requested: toBoolean,
-    reasoning_supported: toNullableBoolean,
-    reasoning_budget_tokens: toNullableNumber,
-    retry_count: toNumber,
-    cache_creation_input_tokens: toNumber,
-    cache_read_input_tokens: toNumber,
-    semantic_cache_hit: toBoolean,
-    semantic_cache_score: toNullableNumber,
+    created_at: toDateOrNow,
+    updated_at: toDateOrNow,
   });
 }
 

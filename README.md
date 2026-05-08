@@ -2,9 +2,11 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.0.0 Platform Trust GA**.
+Current release: **v2.1.0 Coding Agent Gateway**.
 
-Current development focus after v2.0.0: preserve Platform Trust stability, keep v2.0.x for hotfixes and safe polish, and move new non-breaking product capabilities to minor releases such as v2.1.0+.
+Current development focus after v2.1.0: preserve Platform Trust stability,
+keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
+as minor releases.
 
 ## Why SiftGate
 
@@ -15,7 +17,10 @@ Current development focus after v2.0.0: preserve Platform Trust stability, keep 
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
 - Catalog-backed setup: Nodes, Add Node Wizard, Provider Catalog, and config validation use one merged provider catalog surface backed by canonical model projections instead of hardcoded provider/model lists.
 - Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority over sync cache and built-in references.
-- Agent-ready setup: Dashboard-managed Agent Gateway Profiles render redacted connector configs for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic clients.
+- Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
+  redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
+  Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
+  Anthropic-compatible agents.
 
 ## Quick Start
 
@@ -50,6 +55,27 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
+## v2.1 Highlights
+
+- v2.1.0 adds Coding Agent Gateway profiles for Cursor, Cline, Roo Code,
+  Continue, Codex, Claude Code, OpenCode, Generic OpenAI-compatible coding
+  agents, and Generic Anthropic-compatible coding agents.
+- Coding agents can use profile-scoped virtual model aliases:
+  `coding-auto`, `coding-fast`, `coding-deep`, and `coding-security`. The
+  aliases map to internal smart routing hints without forcing one provider and
+  still require Gateway API key `allow_auto`.
+- The Dashboard **Agents** page now shows metadata-only coding-agent sessions,
+  including connector, session, optional repo/project labels, token/cost/latency
+  summaries, fallback/retry evidence, and Route Explanation links.
+- Safe agent headers such as `x-siftgate-agent-session-id`,
+  `x-siftgate-agent-turn-id`, `x-siftgate-repo`, and `x-siftgate-project` are
+  sanitized and stored only as labels. SiftGate does not store source code,
+  prompts, responses, diffs, tool payloads, raw repository content, raw headers,
+  provider keys, or resolved secrets by default.
+- The v2.1 North Star demo is an Engineering PR Review Workspace where several
+  coding agents share one workspace-controlled gateway and operators inspect
+  cost, latency, fallback, and route explanations by connector/repo/project.
+
 ## v2.0 Highlights
 
 - v2.0.0 GA ships the Platform Trust foundation: workspace isolation, local Dashboard RBAC, optional OIDC login and workspace invites, PostgreSQL production guidance, Redis shared-state cluster mode, management audit logs, upgrade guardrails, first-run onboarding, and public benchmark evidence.
@@ -65,7 +91,9 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 - v1.9.2 adds the read-only `siftgate migrate-v2 --dry-run` migration planner and [`docs/MIGRATION_V1_TO_V2.md`](docs/MIGRATION_V1_TO_V2.md), so operators can preview how v1.9 single-tenant config and metadata rows will map into the future v2 default organization/workspace before any schema change exists.
 - v1.9.1 adds the v2.x platform roadmap, execution prompts, release checklist, and a read-only release version alignment check so future releases have consistent scope, tests, metadata, tags, and GitHub release steps.
-- Agent Gateway Profiles: SiftGate now has a Dashboard **Agents** page for local connection profiles that render setup snippets for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI-compatible clients, and Generic Anthropic-compatible clients.
+- Agent Gateway Profiles: SiftGate has a Dashboard **Agents** page for local
+  connection profiles that render setup snippets for coding agents and
+  compatible chatbot clients.
 - Connector-safe smart routing: OpenAI-compatible agents can use `model=auto`; Claude-style agents can use the profile-scoped `claude-siftgate-auto` virtual model, which maps to internal smart routing instead of direct Claude routing.
 - Gateway key boundary: agent and chatbot configs use only Dashboard-generated Gateway API keys. Provider API keys stay in Nodes, env vars, or secret references, and rendered snippets expose placeholders or masked metadata only.
 - Seven-language Dashboard support: the Agent Profiles page, navigation, forms, render panel, connector labels, privacy copy, and error states are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
@@ -119,12 +147,14 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, pricing source governance, and catalog override/sync CLI. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
-| Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples, Agent Gateway Profiles. |
+| Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples, Coding Agent Gateway profiles. |
 
-## After v1.9 Priorities
+## After v2.1 Priorities
 
-- Harden agent and chatbot onboarding paths without adding hosted dependencies: keep rendered configs secret-safe, local-first, and governed by existing Gateway API key policy.
-- Continue improving connector compatibility for common agent clients while preserving advisory-only routing hints and profile-scoped virtual models.
+- Preserve Platform Trust behavior while adding intelligence-loop, provider
+  extensibility, and deeper agent-platform capabilities as minor releases.
+- Continue improving connector compatibility for common coding agents while
+  preserving advisory-only routing hints and profile-scoped virtual models.
 - Deepen canonical coverage without adding runtime coupling: more safe freshness adapters or provider-availability overlays are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
 - Continue optional Redis semantic-cache backend and future Prompt Registry / Template work without regressing single-node memory/SQLite defaults.
 
@@ -159,6 +189,7 @@ npm run validate:config
 | Quickstart | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
 | API reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | Dashboard | [docs/DASHBOARD.md](docs/DASHBOARD.md) |
+| Coding Agent Gateway | [docs/CODING_AGENT_GATEWAY.md](docs/CODING_AGENT_GATEWAY.md) |
 | Agent Gateway Profiles | [docs/AGENT_GATEWAY.md](docs/AGENT_GATEWAY.md) |
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |

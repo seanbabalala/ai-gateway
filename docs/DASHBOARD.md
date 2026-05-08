@@ -2,7 +2,11 @@
 
 The SiftGate Dashboard is part of the MIT open-source Data Plane. It runs from the same gateway process, stores local metadata in SQLite by default, and does not require SiftGate Cloud.
 
-v1.9 adds an **Agents** page for Agent Gateway Profiles. It gives Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic clients a clear local setup entry while keeping provider keys in Nodes, env vars, or secret references.
+v2.1 adds Coding Agent Gateway profiles on the **Agents** page. It gives
+Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic
+OpenAI-compatible coding agents, Generic Anthropic-compatible coding agents,
+and compatible chatbot clients a clear local setup entry while keeping provider
+keys in Nodes, env vars, or secret references.
 
 v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows the active workspace, reads `GET /api/dashboard/workspaces`, validates switches through `POST /api/dashboard/workspaces/switch`, stores the selected workspace in browser local storage, and sends `x-siftgate-workspace-id` on Dashboard API calls. Fresh and upgraded OSS installs start with `Default Organization` and `Default Workspace`; legacy v1.9 metadata maps to that default workspace.
 
@@ -24,14 +28,14 @@ Dashboard APIs.
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
-| Agents | Agent Profiles for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic setup with redacted render snippets |
+| Agents | Coding Agent Gateway profiles for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic, and compatible chatbot setup with redacted render snippets and metadata-only recent coding-agent sessions |
 | Members | Local workspace membership governance with Admin, Operator, and Viewer roles |
 | MCP Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
 | Nodes | Upstream node health, configured-upstream vs catalog-onboarding views, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
 | Provider Catalog | Merged provider projection with provider status, canonical/pricing coverage, compatibility profiles, enrichment metadata, recommended model defaults, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
 | Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, multimodal evidence, compatibility evidence, and reasoning support |
-| Sessions | Metadata-only request timelines grouped by `session_id` / legacy `session_key`, with model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
+| Sessions | Metadata-only request timelines grouped by `agent_session_id`, `session_id`, or legacy `session_key`, with coding-agent connector/repo/project filters, model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
 | Logs | Request metadata, source format, route result, local/provider cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, per-request cache-savings evidence, and export-safe call details |
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
 | Shadow | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
@@ -112,11 +116,29 @@ resolved secrets by default.
 
 ## Agent Profiles Safety
 
-The **Agents** page reads and writes `/api/dashboard/agent-profiles`. Profiles store local setup metadata for agent and chatbot clients, including connector type, optional Gateway API key binding, optional namespace binding, default model, smart model id, base URL mode, advisory routing hint JSON, and optional MCP server ids.
+The **Agents** page reads and writes `/api/dashboard/agent-profiles`. Profiles
+store local setup metadata for agent and chatbot clients, including connector
+type, workspace, optional Gateway API key binding, optional namespace binding,
+default model, smart model id, coding virtual model aliases, base URL mode,
+advisory routing hint JSON, and optional MCP server ids.
 
-Rendered configs are intentionally redacted. The Dashboard shows a Gateway API key placeholder for agents and chatbots, plus masked key metadata when a profile is bound to an existing key. It does not expose stored Gateway API key plaintext, provider API keys, raw auth headers, prompts, responses, MCP tool payloads, media bytes, or video bytes.
+Rendered configs are intentionally redacted. The Dashboard shows a Gateway API
+key placeholder for agents and chatbots, plus masked key metadata when a profile
+is bound to an existing key. It does not expose stored Gateway API key
+plaintext, provider API keys, raw auth headers, prompts, responses, source code,
+diffs, repository content, MCP tool payloads, media bytes, or video bytes.
 
-Smart router uses `auto` or a connector-safe virtual model such as `claude-siftgate-auto`. That virtual model is profile-scoped and maps to internal `auto` only for a matching active profile and Gateway API key. Smart routing still requires `allow_auto`; direct model routing still requires `allow_direct`.
+Smart router uses `auto`, `coding-auto`, `coding-fast`, `coding-deep`,
+`coding-security`, or a legacy connector-safe virtual model such as
+`claude-siftgate-auto`. Those virtual models are profile-scoped and map to
+internal `auto` only for a matching active profile and Gateway API key. Smart
+routing still requires `allow_auto`; direct model routing still requires
+`allow_direct`.
+
+The Agents page also shows recent coding-agent sessions. These summaries are
+metadata-only and aggregate request count, cost, latency, connector, repo label,
+project label, and Route Explanation links without storing source files, diffs,
+prompts, responses, or tool payloads.
 
 Routing hints are advisory. Gateway API key policies, namespaces, local teams, budgets, rate limits, allowed endpoints, allowed models, allowed nodes, allowed modalities, circuit state, and fallback rules remain authoritative.
 
@@ -138,7 +160,14 @@ The Batch Jobs page reads `GET /api/dashboard/batches` and stays read-only. It s
 
 ## Session Traceability
 
-Applications can pass `x-session-id`, legacy `x-session-key`, `x-siftgate-session-id`, `x-trace-id`, `x-siftgate-trace-id`, or standard W3C `traceparent` headers. SiftGate records only the identifiers and operational metadata. The Session View does not persist prompt text, response text, raw authorization headers, provider keys, uploaded media, or generated video bytes.
+Applications can pass `x-session-id`, legacy `x-session-key`,
+`x-siftgate-session-id`, `x-trace-id`, `x-siftgate-trace-id`, or standard W3C
+`traceparent` headers. Coding agents can additionally pass safe labels such as
+`x-siftgate-agent-session-id`, `x-siftgate-agent-turn-id`, `x-siftgate-repo`,
+and `x-siftgate-project`. SiftGate records only identifiers, sanitized labels,
+and operational metadata. The Session View does not persist prompt text,
+response text, source code, diffs, tool payloads, raw authorization headers,
+provider keys, uploaded media, or generated video bytes.
 
 The page is read-only. It helps operators understand when a session changed models, fell back, hit shadow traffic, produced guardrails findings, or has a route-decision trace available. It does not change routing policy or replay traffic.
 

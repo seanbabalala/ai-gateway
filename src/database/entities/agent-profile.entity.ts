@@ -8,8 +8,14 @@ import {
 } from 'typeorm';
 
 export const AGENT_PROFILE_CONNECTORS = [
+  'cursor',
+  'cline',
+  'roo_code',
+  'continue',
   'codex',
   'claude_code',
+  'opencode',
+  // Existing non-coding chat clients remain supported for compatibility.
   'cherry_studio',
   'hermes',
   'openclaw',
