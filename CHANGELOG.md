@@ -6,6 +6,22 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 1.9.0 - 2026-05-08
+
+### Added
+
+- Released Agent Gateway Profiles for the MIT OSS Data Plane with a first-class Dashboard **Agents** page and local Dashboard APIs for creating, editing, deleting, listing, and rendering agent/client connection profiles.
+- Added connector templates for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI-compatible clients, and Generic Anthropic-compatible clients so agents and chatbot tools can use SiftGate without guessing base URLs or model wiring.
+- Added profile-scoped smart virtual models, including `claude-siftgate-auto`, so Claude-style clients can request a connector-safe model that maps to internal smart routing instead of direct Claude model routing.
+- Added secret-safe rendered configs that use Gateway API key placeholders and masked metadata only; provider keys remain in Nodes, env vars, or secret references and stored Gateway API key plaintext is never exposed.
+- Added full seven-language Dashboard localization for Agent Profiles across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`, plus a static Agent Profiles localization check in the frontend test chain.
+
+### Changed
+
+- Agent Profile traffic reuses existing SiftGate governance and observability: Gateway API keys, namespaces, budgets, rate limits, endpoint/model/node/modality policy, metadata-only logs, sessions, route explanations, and MCP endpoint permissions all continue to apply.
+- `/v1/models` now exposes Agent Profile virtual models only in the matching active profile and Gateway API key context.
+- Release metadata is aligned to v1.9.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, and release-version sync coverage.
+
 ## 1.8.5 - 2026-05-08
 
 ### Fixed

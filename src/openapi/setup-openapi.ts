@@ -3,6 +3,14 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import {
   ActionResponseDto,
+  AgentProfileGatewayApiKeyRenderDto,
+  AgentProfileGatewayKeySummaryDto,
+  AgentProfileListResponseDto,
+  AgentProfileMutationResponseDto,
+  AgentProfileRenderedCardDto,
+  AgentProfileRenderedConfigDto,
+  AgentProfileRenderResponseDto,
+  AgentProfileSummaryDto,
   AnthropicMessagesRequestDto,
   AudioSpeechRequestDto,
   AudioTranscriptionRequestDto,
@@ -34,7 +42,7 @@ export function setupOpenApi(app: INestApplication): void {
     .setDescription(
       'OpenAPI documentation for the MIT open-source SiftGate data plane, local dashboard API, and provider-compatible ingress endpoints.',
     )
-    .setVersion('1.8.5')
+    .setVersion('1.9.0')
     .addBearerAuth(
       {
         type: 'http',
@@ -59,6 +67,14 @@ export function setupOpenApi(app: INestApplication): void {
     deepScanRoutes: true,
     extraModels: [
       ActionResponseDto,
+      AgentProfileGatewayApiKeyRenderDto,
+      AgentProfileGatewayKeySummaryDto,
+      AgentProfileListResponseDto,
+      AgentProfileMutationResponseDto,
+      AgentProfileRenderedCardDto,
+      AgentProfileRenderedConfigDto,
+      AgentProfileRenderResponseDto,
+      AgentProfileSummaryDto,
       AnthropicMessagesRequestDto,
       AudioSpeechRequestDto,
       AudioTranscriptionRequestDto,

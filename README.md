@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.8.5 API Key Permission Picker Fix**.
+Current release: **v1.9.0 Agent Gateway Profiles**.
 
-Current development focus after v1.8.5: keep the MIT Data Plane local-first while reducing operator review friction around canonical model coverage, reviewed pricing imports, provider availability overlays, and future catalog freshness work without turning external enrichment into a runtime dependency or billing authority.
+Current development focus after v1.9.0: make agents and chatbot clients first-class local Data Plane callers while preserving the same Gateway API key policy, namespace, budget, routing, and metadata-only privacy boundaries used by application traffic.
 
 ## Why SiftGate
 
@@ -15,6 +15,7 @@ Current development focus after v1.8.5: keep the MIT Data Plane local-first whil
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
 - Catalog-backed setup: Nodes, Add Node Wizard, Provider Catalog, and config validation use one merged provider catalog surface backed by canonical model projections instead of hardcoded provider/model lists.
 - Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority over sync cache and built-in references.
+- Agent-ready setup: Dashboard-managed Agent Gateway Profiles render redacted connector configs for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI, and Generic Anthropic clients.
 
 ## Quick Start
 
@@ -48,6 +49,14 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v1.9 Highlights
+
+- Agent Gateway Profiles: SiftGate now has a Dashboard **Agents** page for local connection profiles that render setup snippets for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI-compatible clients, and Generic Anthropic-compatible clients.
+- Connector-safe smart routing: OpenAI-compatible agents can use `model=auto`; Claude-style agents can use the profile-scoped `claude-siftgate-auto` virtual model, which maps to internal smart routing instead of direct Claude routing.
+- Gateway key boundary: agent and chatbot configs use only Dashboard-generated Gateway API keys. Provider API keys stay in Nodes, env vars, or secret references, and rendered snippets expose placeholders or masked metadata only.
+- Seven-language Dashboard support: the Agent Profiles page, navigation, forms, render panel, connector labels, privacy copy, and error states are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Policy preservation: `allow_auto`, `allow_direct`, namespace bindings, budgets, rate limits, endpoint/model/node/modality restrictions, metadata-only logs, sessions, route explanations, and MCP `allowed_endpoints` still apply to all Agent Profile traffic.
 
 ## v1.8 Highlights
 
@@ -96,13 +105,13 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, pricing source governance, and catalog override/sync CLI. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
-| Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples. |
+| Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples, Agent Gateway Profiles. |
 
-## After v1.8 Priorities
+## After v1.9 Priorities
 
+- Harden agent and chatbot onboarding paths without adding hosted dependencies: keep rendered configs secret-safe, local-first, and governed by existing Gateway API key policy.
+- Continue improving connector compatibility for common agent clients while preserving advisory-only routing hints and profile-scoped virtual models.
 - Deepen canonical coverage without adding runtime coupling: more safe freshness adapters or provider-availability overlays are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
-- Add richer operator workflows around reviewed pricing imports, override authoring, diff visibility, and low-confidence-match diagnostics so reference enrichment is easier to adopt safely in production.
-- Continue reducing Provider Catalog maintenance cost by keeping transport metadata, canonical model materialization, and provider projections cleanly separated while avoiding any return to parallel operator-facing truths.
 - Continue optional Redis semantic-cache backend and future Prompt Registry / Template work without regressing single-node memory/SQLite defaults.
 
 ## Configuration
@@ -136,6 +145,7 @@ npm run validate:config
 | Quickstart | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
 | API reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | Dashboard | [docs/DASHBOARD.md](docs/DASHBOARD.md) |
+| Agent Gateway Profiles | [docs/AGENT_GATEWAY.md](docs/AGENT_GATEWAY.md) |
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
 | Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
 | Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |
