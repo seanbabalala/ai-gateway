@@ -1,6 +1,6 @@
 # Provider / Model Catalog And Compatibility
 
-SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers, adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profiles, and unifies pricing source governance so Dashboard, routing, benchmark reports, config validation, CLI export, sync cache, local overrides, route explanation, and provider compatibility checks all read the same catalog/pricing/compatibility evidence. v1.8 keeps the public merged catalog as that same single operator-facing surface, but normalizes the internals around an OpenRouter-first canonical model registry, a ZeroEval enrichment overlay, and provider projections so SiftGate no longer behaves like three parallel provider/model truths stitched together.
+SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Plane. v0.9 extends that same catalog with price source metadata and cost-routing fallback. v0.9.2 adds a safe refresh workflow for providers with stable public catalog APIs. v1.0 expands the built-in catalog to 30+ providers. v1.4 expands that same catalog to 50+ providers, adds governance metadata for provider family/category, provider type, logo identity, input/output types, model buckets, batch capability metadata, and compatibility profiles, and unifies pricing source governance so Dashboard, routing, benchmark reports, config validation, CLI export, sync cache, local overrides, route explanation, and provider compatibility checks all read the same catalog/pricing/compatibility evidence. v1.8 keeps the public merged catalog as that same single operator-facing surface, but normalizes the internals around an OpenRouter-first canonical model registry, a ZeroEval enrichment overlay, and provider projections so SiftGate no longer behaves like three parallel provider/model truths stitched together. v2.3 adds provider extensibility mechanisms on top of that same surface: custom provider templates, `custom-header` auth, a Provider SDK Generator beta, community registry guidance, and Provider Health Dashboard metadata.
 
 The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, and v1.8 can overlay ZeroEval metadata onto canonical models, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
@@ -15,7 +15,7 @@ The important product rule is honesty: built-in provider/model/pricing data is a
 
 ## Adding Providers
 
-Use [docs/ADDING_PROVIDERS.md](ADDING_PROVIDERS.md) when adding or reviewing provider metadata. In v1.8, do not treat built-in static provider model lists as the primary truth when canonical projection exists. Provider transport metadata, canonical model materialization, and provider projection now have different responsibilities. Do not hardcode provider/model lists in Dashboard components, and do not store provider API keys or resolved secrets in catalog override files.
+Use [docs/ADDING_PROVIDERS.md](ADDING_PROVIDERS.md) when adding or reviewing provider metadata, and [docs/PROVIDER_EXTENSIBILITY.md](PROVIDER_EXTENSIBILITY.md) for v2.3 custom-provider templates, generator beta output, and registry review expectations. In v1.8 and later, do not treat built-in static provider model lists as the primary truth when canonical projection exists. Provider transport metadata, canonical model materialization, provider projection, and operator-defined custom provider previews now have different responsibilities. Do not hardcode provider/model lists in Dashboard components, and do not store provider API keys or resolved secrets in catalog override files.
 
 ## Dashboard APIs
 
@@ -25,6 +25,9 @@ GET /api/dashboard/catalog/models
 GET /api/dashboard/catalog/models?provider=openai
 GET /api/dashboard/catalog/models?modality=embedding
 GET /api/dashboard/catalog/models?endpoint=rerank
+POST /api/dashboard/provider-extensibility/templates/custom/preview
+POST /api/dashboard/provider-extensibility/sdk/generate
+GET /api/dashboard/provider-health?period=24h
 ```
 
 Responses include merged built-in + override metadata:
@@ -57,6 +60,22 @@ Dashboard provider rows also include operator-facing fields derived from the mer
 | `enrichment_summary` | Lightweight provider-level summary of how many models were enriched, which sources were used, whether benchmark snippets exist, and the freshest enrichment timestamp. |
 
 Dashboard also includes a read-only Provider Catalog page. In v1.8 it shows provider status, default visibility, canonical/pricing coverage, price source status, source URL, manual-review state, confidence, refresh-source availability, modality coverage, provider family/type filters, compatibility filters, stale/review quick filters, and provider detail panels without changing routing or node config.
+
+v2.3 keeps those catalog APIs as the authoritative provider surface and adds
+provider extensibility APIs around them:
+
+- Custom Provider Template previews return sanitized node config and catalog
+  manifest previews for operator review.
+- Provider SDK Generator beta returns adapter skeleton files and generated tests
+  in the API response only. Generated adapters are never auto-merged or
+  auto-trusted.
+- Provider Health Dashboard aggregates active probes, circuit state, call-log
+  latency/error metrics, compatibility labels, and pricing-source warnings from
+  existing metadata.
+- `auth_type: custom-header` is valid for providers that require a non-standard
+  auth header name and optional prefix.
+
+See [Provider Extensibility And Health](PROVIDER_EXTENSIBILITY.md).
 
 ## v1.8 Canonical Catalog Normalization
 

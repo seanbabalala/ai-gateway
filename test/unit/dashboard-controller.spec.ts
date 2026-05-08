@@ -528,6 +528,11 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     }),
     ...overrides.cluster,
   };
+  const providerExtensibility = overrides.providerExtensibility || {
+    previewCustomProviderTemplate: jest.fn().mockReturnValue({ ok: true }),
+    generateProviderSdk: jest.fn().mockReturnValue({ beta: true }),
+    providerHealthSummary: jest.fn().mockResolvedValue({ period: "24h" }),
+  };
 
   const controller = new DashboardController(
     config,
@@ -550,6 +555,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     configAudit as any,
     managementAudit as any,
     catalog as any,
+    providerExtensibility as any,
     batchJobs as any,
     workspaces as any,
     workspaceContext as any,
@@ -586,6 +592,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     workspaces,
     workspaceContext,
     cluster,
+    providerExtensibility,
     callLogRepo,
     routeDecisionRepo,
     shadowTrafficRepo,
@@ -3744,5 +3751,47 @@ describe("DashboardController — api_key filtering on stats", () => {
     expect(qb.andWhere).toHaveBeenCalledWith("log.api_key_id = :apiKeyId", {
       apiKeyId: "key_123",
     });
+  });
+});
+
+describe("DashboardController — provider extensibility", () => {
+  it("delegates custom provider preview, SDK generation, and health summary", async () => {
+    const providerExtensibility = {
+      previewCustomProviderTemplate: jest.fn().mockReturnValue({ ok: true }),
+      generateProviderSdk: jest.fn().mockReturnValue({
+        beta: true,
+        manual_review_required: true,
+      }),
+      providerHealthSummary: jest.fn().mockResolvedValue({ period: "24h" }),
+    };
+    const { controller } = makeDashboard({ providerExtensibility });
+
+    const previewDto = {
+      provider_id: "custom-acme",
+      provider_name: "Acme AI",
+      base_url: "https://api.acme.test",
+      protocol: "chat_completions" as const,
+      models: ["acme-chat"],
+    };
+
+    expect(controller.previewCustomProviderTemplate(previewDto as any)).toEqual({
+      ok: true,
+    });
+    expect(controller.generateProviderSdk(previewDto as any)).toEqual({
+      beta: true,
+      manual_review_required: true,
+    });
+    await expect(controller.getProviderHealth("24h")).resolves.toEqual({
+      period: "24h",
+    });
+    expect(providerExtensibility.previewCustomProviderTemplate).toHaveBeenCalledWith(
+      previewDto,
+    );
+    expect(providerExtensibility.generateProviderSdk).toHaveBeenCalledWith(
+      previewDto,
+    );
+    expect(providerExtensibility.providerHealthSummary).toHaveBeenCalledWith(
+      "24h",
+    );
   });
 });

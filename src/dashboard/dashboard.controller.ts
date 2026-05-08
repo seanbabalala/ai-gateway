@@ -123,6 +123,11 @@ import {
   CacheSavingsService,
   CacheSavingsGroupBy,
 } from "./cache-savings.service";
+import { ProviderExtensibilityService } from "./provider-extensibility.service";
+import {
+  CustomProviderTemplatePreviewDto,
+  ProviderSdkGeneratorDto,
+} from "./dto/provider-extensibility.dto";
 import { BatchJobStoreService } from "../batch/batch-job-store.service";
 import { WorkspaceContextService } from "../workspaces/workspace-context.service";
 import { WorkspaceService } from "../workspaces/workspace.service";
@@ -1548,6 +1553,7 @@ export class DashboardController {
     private readonly configAudit: ConfigAuditService,
     private readonly managementAudit: ManagementAuditService,
     private readonly catalog: CatalogService,
+    private readonly providerExtensibility: ProviderExtensibilityService,
     private readonly batchJobs: BatchJobStoreService,
     private readonly workspaces: WorkspaceService,
     private readonly workspaceContext: WorkspaceContextService,
@@ -4710,6 +4716,50 @@ export class DashboardController {
     };
   }
 
+  @Post("provider-extensibility/templates/custom/preview")
+  @RequireDashboardRole("operator")
+  @ApiOperation({
+    summary: "Preview a custom provider node and catalog manifest without saving secrets",
+  })
+  @ApiBody({ type: CustomProviderTemplatePreviewDto })
+  @ApiOkResponse({
+    description:
+      "Sanitized custom provider node and catalog manifest preview. Provider API keys, raw headers, prompts, responses, media bytes, and tool payloads are never returned.",
+  })
+  previewCustomProviderTemplate(
+    @Body() dto: CustomProviderTemplatePreviewDto,
+  ) {
+    return this.providerExtensibility.previewCustomProviderTemplate(dto);
+  }
+
+  @Post("provider-extensibility/sdk/generate")
+  @RequireDashboardRole("operator")
+  @ApiOperation({
+    summary: "Generate a beta provider adapter skeleton for manual review",
+  })
+  @ApiBody({ type: ProviderSdkGeneratorDto })
+  @ApiOkResponse({
+    description:
+      "Generated provider adapter files and tests. Output is beta, metadata-only, and requires manual review before registry submission.",
+  })
+  generateProviderSdk(@Body() dto: ProviderSdkGeneratorDto) {
+    return this.providerExtensibility.generateProviderSdk(dto);
+  }
+
+  @Get("provider-health")
+  @RequireDashboardRole("viewer")
+  @ApiOperation({
+    summary: "Get workspace-scoped provider health, latency, errors, and pricing warnings",
+  })
+  @ApiQuery({ name: "period", required: false, example: "24h" })
+  @ApiOkResponse({
+    description:
+      "Provider health summary derived from probes, circuits, and call-log metadata without prompts, responses, raw headers, provider keys, media bytes, or tool payloads.",
+  })
+  getProviderHealth(@Query("period") period: string = "24h") {
+    return this.providerExtensibility.providerHealthSummary(period);
+  }
+
   /** Recommend full routing config based on all nodes' capabilities */
   @Post("routing/recommend")
   @RequireDashboardRole("operator")
@@ -4955,6 +5005,11 @@ export class DashboardController {
         protocol: node.protocol,
         base_url: node.base_url,
         endpoint: node.endpoint,
+        auth_type: node.auth_type || null,
+        auth_header_name:
+          node.auth_type === "custom-header" ? node.auth_header_name || null : null,
+        auth_header_prefix:
+          node.auth_type === "custom-header" ? node.auth_header_prefix || null : null,
         endpoints,
         models: node.models,
         embedding_models: node.embedding_models || [],
@@ -5054,6 +5109,8 @@ export class DashboardController {
       api_key: dto.api_key,
       model: dto.model,
       auth_type: dto.auth_type,
+      auth_header_name: dto.auth_header_name,
+      auth_header_prefix: dto.auth_header_prefix,
       headers: dto.headers,
     });
   }
@@ -5134,6 +5191,8 @@ export class DashboardController {
     api_key: string;
     model: string;
     auth_type?: string;
+    auth_header_name?: string;
+    auth_header_prefix?: string;
     headers?: Record<string, string>;
   }) {
     const {
@@ -5143,6 +5202,8 @@ export class DashboardController {
       api_key,
       model,
       auth_type,
+      auth_header_name,
+      auth_header_prefix,
       headers: extraHeaders,
     } = params;
     const url = `${base_url.replace(/\/+$/, "")}${endpoint}`;
@@ -5177,7 +5238,19 @@ export class DashboardController {
       };
     }
 
-    if (resolvedAuthType === "x-api-key") {
+    if (resolvedAuthType === "custom-header") {
+      if (!auth_header_name?.trim()) {
+        return {
+          success: false,
+          status: 0,
+          latency_ms: 0,
+          message: "Custom auth header name is required.",
+        };
+      }
+      headers[auth_header_name.trim()] = auth_header_prefix?.trim()
+        ? `${auth_header_prefix.trim()} ${resolvedApiKey}`
+        : resolvedApiKey;
+    } else if (resolvedAuthType === "x-api-key") {
       headers["x-api-key"] = resolvedApiKey;
       headers["anthropic-version"] = "2023-06-01";
     } else {
@@ -5432,6 +5505,8 @@ export class DashboardController {
             model_prefixes: dto.model_prefixes,
             headers: dto.headers,
             auth_type: dto.auth_type,
+            auth_header_name: dto.auth_header_name,
+            auth_header_prefix: dto.auth_header_prefix,
             model_capabilities: dto.model_capabilities as any,
             health_check: dto.health_check,
           }),

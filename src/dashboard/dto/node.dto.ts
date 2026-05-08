@@ -293,11 +293,27 @@ export class CreateNodeDto {
   @IsObject()
   model_capabilities?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
+  @ApiPropertyOptional({ enum: ['bearer', 'x-api-key', 'custom-header'], example: 'bearer' })
   @IsOptional()
   @IsString()
-  @IsIn(['bearer', 'x-api-key'])
-  auth_type?: 'bearer' | 'x-api-key';
+  @IsIn(['bearer', 'x-api-key', 'custom-header'])
+  auth_type?: 'bearer' | 'x-api-key' | 'custom-header';
+
+  @ApiPropertyOptional({
+    example: 'X-Provider-Key',
+    description: 'Header name used when auth_type=custom-header.',
+  })
+  @IsOptional()
+  @IsString()
+  auth_header_name?: string;
+
+  @ApiPropertyOptional({
+    example: 'Bearer',
+    description: 'Optional prefix prepended before the provider key for custom-header auth.',
+  })
+  @IsOptional()
+  @IsString()
+  auth_header_prefix?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -336,11 +352,27 @@ export class TestNodeDto {
   @IsNotEmpty()
   model!: string;
 
-  @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
+  @ApiPropertyOptional({ enum: ['bearer', 'x-api-key', 'custom-header'], example: 'bearer' })
   @IsOptional()
   @IsString()
-  @IsIn(['bearer', 'x-api-key'])
-  auth_type?: 'bearer' | 'x-api-key';
+  @IsIn(['bearer', 'x-api-key', 'custom-header'])
+  auth_type?: 'bearer' | 'x-api-key' | 'custom-header';
+
+  @ApiPropertyOptional({
+    example: 'X-Provider-Key',
+    description: 'Header name used when auth_type=custom-header.',
+  })
+  @IsOptional()
+  @IsString()
+  auth_header_name?: string;
+
+  @ApiPropertyOptional({
+    example: 'Bearer',
+    description: 'Optional prefix prepended before the provider key for custom-header auth.',
+  })
+  @IsOptional()
+  @IsString()
+  auth_header_prefix?: string;
 
   @ApiPropertyOptional({
     type: 'object',
@@ -620,11 +652,27 @@ export class UpdateNodeDto {
   @IsObject()
   model_capabilities?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ enum: ['bearer', 'x-api-key'], example: 'bearer' })
+  @ApiPropertyOptional({ enum: ['bearer', 'x-api-key', 'custom-header'], example: 'bearer' })
   @IsOptional()
   @IsString()
-  @IsIn(['bearer', 'x-api-key'])
-  auth_type?: 'bearer' | 'x-api-key';
+  @IsIn(['bearer', 'x-api-key', 'custom-header'])
+  auth_type?: 'bearer' | 'x-api-key' | 'custom-header';
+
+  @ApiPropertyOptional({
+    example: 'X-Provider-Key',
+    description: 'Header name used when auth_type=custom-header.',
+  })
+  @IsOptional()
+  @IsString()
+  auth_header_name?: string;
+
+  @ApiPropertyOptional({
+    example: 'Bearer',
+    description: 'Optional prefix prepended before the provider key for custom-header auth.',
+  })
+  @IsOptional()
+  @IsString()
+  auth_header_prefix?: string;
 
   @IsOptional()
   @ValidateNested()

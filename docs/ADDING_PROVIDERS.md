@@ -4,6 +4,12 @@ This guide describes how to add or maintain providers in the MIT open-source Sif
 
 The short rule: add provider knowledge to the shared Provider Catalog, keep pricing honest, keep secrets out of the repository, and make Dashboard/API/CLI views read from catalog data instead of hardcoded lists.
 
+For v2.3 custom providers, start with
+[Provider Extensibility And Health](PROVIDER_EXTENSIBILITY.md). The Dashboard
+template preview and Provider SDK Generator beta are review aids only; generated
+adapters and community manifests are not trusted until they pass tests and
+manual review.
+
 ## Scope
 
 - Work only in the open-source Data Plane.
@@ -47,6 +53,17 @@ Every new provider should include:
 - `pricing` metadata
 
 Use the existing v1.4 providers as templates. Prefer explicit, boring metadata over clever inference.
+
+For a custom provider manifest, also include enough evidence for review:
+
+- compatibility profile evidence and mocked request/response mapping coverage
+- endpoint support and unsupported operations
+- health probe behavior
+- pricing source URL, confidence, stale window, and manual-review status
+- whether auth uses `bearer`, `x-api-key`, `custom-header`, or `none`
+
+`custom-header` providers must define `auth_header_name`; `auth_header_prefix`
+is optional. Never commit provider key values or resolved secret material.
 
 ## Pricing Rules
 
@@ -111,6 +128,15 @@ npm test -- --runInBand test/unit/catalog-service.spec.ts test/unit/catalog-cli.
 cd frontend && npm test
 ```
 
+For v2.3 community provider registry or generated-adapter PRs, also include:
+
+- generated or handwritten adapter request/response mapping tests
+- a custom provider template preview fixture when the provider is not in the
+  built-in catalog
+- provider health/probe fixture evidence when health behavior differs from the
+  default endpoint check
+- pricing governance coverage for stale, low-confidence, or manual-review rows
+
 For release branches, still run the full quality gate:
 
 ```bash
@@ -129,6 +155,7 @@ When a provider addition changes operator behavior, update:
 - `docs/PROVIDER_CATALOG.md`
 - `docs/PROVIDER_COMPATIBILITY.md`
 - `docs/API_REFERENCE.md` if response fields change
+- `docs/PROVIDER_EXTENSIBILITY.md` if custom template, generator, registry, or health behavior changes
 - `docs/GATEWAY_ROADMAP.md` if the addition changes release scope
 - `gateway.config.example.yaml` only when a new config shape is introduced
 - `CHANGELOG.md`

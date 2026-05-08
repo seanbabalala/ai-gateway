@@ -823,6 +823,9 @@ export interface NodeInfo {
   protocol: "chat_completions" | "responses" | "messages";
   base_url: string;
   endpoint: string;
+  auth_type?: "bearer" | "x-api-key" | "custom-header" | null;
+  auth_header_name?: string | null;
+  auth_header_prefix?: string | null;
   endpoints?: Record<string, string>;
   models: string[];
   embeddings_endpoint?: string | null;
@@ -912,6 +915,79 @@ export interface ConfigDiagnostic {
 export interface NodesResponse {
   nodes: NodeInfo[];
   diagnostics: ConfigDiagnostic[];
+}
+
+// ── Provider Extensibility / Health ──
+
+export interface ProviderHealthMetrics {
+  calls: number;
+  success: number;
+  errors: number;
+  error_rate: number;
+  avg_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  last_seen_at: string | null;
+}
+
+export interface ProviderHealthNode {
+  node_id: string;
+  provider_name: string;
+  base_url_host: string;
+  protocol: string;
+  availability_status: "healthy" | "degraded" | "unhealthy" | "unknown";
+  health_probe: {
+    enabled: boolean;
+    status: "disabled" | "unknown" | "healthy" | "unhealthy";
+    method: string | null;
+    target: string | null;
+    last_checked_at: string | null;
+    last_success_at: string | null;
+    latency_ms: number | null;
+    failure_reason: string | null;
+    consecutive_failures: number;
+  };
+  circuit: {
+    state: "CLOSED" | "OPEN" | "HALF_OPEN";
+    consecutive_failures: number;
+    last_failure_at: string | null;
+  };
+  metrics: ProviderHealthMetrics;
+  compatibility_profiles: string[];
+  pricing_warnings: string[];
+  auth: {
+    type: "bearer" | "x-api-key" | "custom-header" | string;
+    custom_header_name: string | null;
+    provider_key_returned: false;
+  };
+}
+
+export interface ProviderHealthResponse {
+  period: "1h" | "24h" | "7d";
+  generated_at: string;
+  workspace_id: string;
+  totals: {
+    nodes: number;
+    healthy_nodes: number;
+    degraded_nodes: number;
+    unhealthy_nodes: number;
+    calls: number;
+    errors: number;
+    error_rate: number;
+    pricing_warning_count: number;
+  };
+  nodes: ProviderHealthNode[];
+  privacy: {
+    prompt: false;
+    response: false;
+    raw_headers: false;
+    provider_keys: false;
+    media_bytes: false;
+    source_code: false;
+    diffs: false;
+    tool_payloads: false;
+    hidden_reasoning: false;
+    storage: "metadata_only";
+  };
 }
 
 // ── Health ──
@@ -1953,7 +2029,9 @@ export interface CreateNodeRequest {
   model_prefixes?: string[];
   headers?: Record<string, string>;
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>;
-  auth_type?: "bearer" | "x-api-key";
+  auth_type?: "bearer" | "x-api-key" | "custom-header";
+  auth_header_name?: string;
+  auth_header_prefix?: string;
   health_check?: HealthCheckRequest;
   compatibility_profile?: string[];
 }
@@ -2000,7 +2078,9 @@ export interface UpdateNodeRequest {
   model_prefixes?: string[];
   headers?: Record<string, string>;
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>;
-  auth_type?: "bearer" | "x-api-key";
+  auth_type?: "bearer" | "x-api-key" | "custom-header";
+  auth_header_name?: string;
+  auth_header_prefix?: string;
   health_check?: HealthCheckRequest;
   compatibility_profile?: string[];
 }
@@ -2020,7 +2100,9 @@ export interface TestNodeRequest {
   endpoint: string;
   api_key: string;
   model: string;
-  auth_type?: "bearer" | "x-api-key";
+  auth_type?: "bearer" | "x-api-key" | "custom-header";
+  auth_header_name?: string;
+  auth_header_prefix?: string;
   headers?: Record<string, string>;
   capabilities?: ProviderCompatibilityCapability[];
   confirm_expensive?: boolean;
@@ -2069,6 +2151,7 @@ export type CatalogEndpoint =
 export type CatalogAuthType =
   | "bearer"
   | "x-api-key"
+  | "custom-header"
   | "api-key-header"
   | "query-key"
   | "none"

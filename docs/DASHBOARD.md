@@ -14,6 +14,12 @@ and opt-in quality gate events without storing prompts, responses, raw headers,
 provider keys, source code, diffs, tool payloads, media bytes, or hidden
 reasoning text by default.
 
+v2.3 adds Provider Extensibility to the **Nodes** workflow: custom provider
+templates, custom-header auth mapping, Provider SDK Generator beta docs, and a
+workspace-scoped Provider Health Dashboard that aggregates metadata-only
+availability, latency, error-rate, probe, circuit, compatibility, and pricing
+warning evidence.
+
 v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows the active workspace, reads `GET /api/dashboard/workspaces`, validates switches through `POST /api/dashboard/workspaces/switch`, stores the selected workspace in browser local storage, and sends `x-siftgate-workspace-id` on Dashboard API calls. Fresh and upgraded OSS installs start with `Default Organization` and `Default Workspace`; legacy v1.9 metadata maps to that default workspace.
 
 v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mapped to a workspace membership, the header shows an Admin / Operator / Viewer role badge, and Dashboard write APIs now enforce centralized role checks. Existing local installs bootstrap the `dashboard` identity as an Admin in the default workspace.
@@ -79,6 +85,20 @@ In v1.8, the Nodes page no longer treats catalog onboarding and configured runti
 - `Configured Upstreams` focuses on actual runtime nodes, then adds catalog match, status, and trust signals only when a clean provider mapping exists
 - operator-defined custom nodes remain editable without pretending they are canonical catalog rows
 - deprecated / transport-only / legacy provider rows are not promoted into the default onboarding path
+
+v2.3 adds a Provider Health Dashboard section on the Nodes page. It reads
+`GET /api/dashboard/provider-health` and shows configured provider availability,
+call counts, p95 latency, error rate, active probe/circuit state, compatibility
+labels, custom-header metadata, and pricing-source warnings for the active
+workspace. It is an operations view, not a content store: prompts, responses,
+raw headers, provider keys, source code, diffs, media bytes, tool payloads, and
+hidden reasoning text are not stored or returned by default.
+
+The Add Node Wizard can now configure `auth_type: custom-header` for compatible
+providers that need an auth header name such as `api-key` or `X-Provider-Key`.
+The optional prefix is rendered as metadata only; provider key values stay in
+local config, env vars, or secret references and are never returned by Dashboard
+APIs.
 
 ## Cache Savings Analytics
 

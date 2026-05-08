@@ -57,7 +57,7 @@ import type {
 export const DEFAULT_CATALOG_OVERRIDE_FILE = 'catalog.override.yaml';
 export const DEFAULT_CATALOG_SYNC_CACHE_FILE = '.siftgate/catalog-sync-cache.yaml';
 
-const VALID_AUTH_TYPES = new Set(['bearer', 'x-api-key', 'none']);
+const VALID_AUTH_TYPES = new Set(['bearer', 'x-api-key', 'custom-header', 'none']);
 const VALID_MODALITY_SET = new Set<string>(VALID_MODALITIES);
 const VALID_ENDPOINT_SET = new Set<string>([
   ...VALID_CAPABILITY_ENDPOINTS,
@@ -970,7 +970,7 @@ function validateOverrideProvider(
       issue(
         'error',
         'catalog_provider_auth_type_invalid',
-        'Provider auth_type must be bearer, x-api-key, or none.',
+        'Provider auth_type must be bearer, x-api-key, custom-header, or none.',
         `${basePath}.auth_type`,
       ),
     );
