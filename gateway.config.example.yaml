@@ -277,7 +277,7 @@ auth:
 #       timeout_ms: 5000
 
 # ============================================================
-# Cluster Mode — optional Redis Pub/Sub multi-instance inventory
+# Cluster Mode — optional Redis shared state and multi-instance inventory
 # ============================================================
 # SiftGate runs as a single local data plane by default. Enable Redis-backed
 # cluster mode only when running multiple gateway instances behind a load
@@ -285,13 +285,26 @@ auth:
 # independently.
 #
 # Cluster mode starts when cluster.enabled=true or state.backend=redis.
-# GET /cluster/status is available only in that mode.
+# GET /cluster/status is available only in that mode. Dashboard also reads
+# privacy-safe local status from GET /api/dashboard/cluster.
 # ============================================================
 # state:
-#   backend: memory                # memory (default) | redis
+#   backend: memory                 # memory (default) | redis
+#   unavailable_policy: fail_open   # default for safety gates when Redis is unavailable
 #   redis:
 #     url: ${REDIS_URL:-redis://127.0.0.1:6379}
-#     prefix: siftgate:
+#     prefix: siftgate:state:
+#     timeout_ms: 500
+#     sync_interval_ms: 2000
+#   categories:
+#     rate_limit:        { unavailable_policy: fail_open, ttl_seconds: 60 }
+#     circuit_breaker:   { unavailable_policy: fail_open, ttl_seconds: 3600 }
+#     cache_affinity:    { unavailable_policy: fail_open, ttl_seconds: 1800 }
+#     momentum:          { unavailable_policy: fail_open, ttl_seconds: 1800 }
+#     prompt_cache:      { unavailable_policy: fail_open, ttl_seconds: 300 }
+#     concurrency:       { unavailable_policy: fail_open, ttl_seconds: 120 }
+#     health_probe:      { unavailable_policy: fail_open, ttl_seconds: 120 }
+#     realtime_session:  { unavailable_policy: fail_open, ttl_seconds: 1800 }
 #
 # cluster:
 #   enabled: false                 # Explicit switch; state.backend=redis also enables it
@@ -301,7 +314,7 @@ auth:
 #   reload_broadcast: true         # Broadcast successful local reloads to peers
 #   redis:
 #     url: ${REDIS_URL:-redis://127.0.0.1:6379}
-#     prefix: siftgate:
+#     prefix: siftgate:state:
 
 # ============================================================
 # Nodes — upstream provider endpoints
@@ -853,8 +866,9 @@ models_pricing:
 # ============================================================
 # Defaults to local memory so a single open-source gateway works without
 # extra services. Set backend: redis when running multiple gateway replicas
-# that should share circuit breakers, rate limits, prompt cache, and
-# routing momentum.
+# that should share circuit breakers, rate limits, cache affinity, route
+# momentum, prompt cache entries, concurrency summaries, active health probe
+# summaries, and realtime/session metadata.
 # ============================================================
 # state:
 #   backend: memory              # memory | redis (default: memory)
@@ -864,6 +878,15 @@ models_pricing:
 #     prefix: siftgate:state:
 #     timeout_ms: 500
 #     sync_interval_ms: 2000      # Circuit/momentum local mirror refresh
+#   categories:
+#     rate_limit:        { ttl_seconds: 60 }
+#     circuit_breaker:   { ttl_seconds: 3600 }
+#     cache_affinity:    { ttl_seconds: 1800 }
+#     momentum:          { ttl_seconds: 1800 }
+#     prompt_cache:      { ttl_seconds: 300 }
+#     concurrency:       { ttl_seconds: 120 }
+#     health_probe:      { ttl_seconds: 120 }
+#     realtime_session:  { ttl_seconds: 1800 }
 
 # ============================================================
 # Cache — Prompt response caching

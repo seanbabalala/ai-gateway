@@ -26,6 +26,7 @@ import { CacheSavingsService } from './cache-savings.service';
 import { McpModule } from '../mcp/mcp.module';
 import { BatchModule } from '../batch/batch.module';
 import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
+import { ClusterModule } from '../cluster/cluster.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
     McpModule,
     BatchModule,
     AgentProfilesModule,
+    ClusterModule,
     TypeOrmModule.forFeature([
       CallLog,
       ConfigAuditEvent,

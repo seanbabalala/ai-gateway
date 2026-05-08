@@ -29,6 +29,7 @@ data:
 
     state:
       backend: memory
+      unavailable_policy: fail_open
 
     cluster:
       enabled: false

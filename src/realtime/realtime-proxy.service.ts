@@ -12,6 +12,7 @@ import { WebSocket as UpstreamWebSocket } from 'undici';
 import { ConfigService } from '../config/config.service';
 import { NodeConfig } from '../config/gateway.config';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import { StateBackendService } from '../state/state-backend.service';
 import {
   GatewayApiKeyContext,
   GatewayApiKeyService,
@@ -139,6 +140,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     private readonly apiKeys: GatewayApiKeyService,
     private readonly adapterHost: HttpAdapterHost,
     private readonly secretResolver: SecretReferenceResolverService,
+    private readonly stateBackend?: StateBackendService,
   ) {}
 
   onModuleInit(): void {
@@ -260,6 +262,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       new Date().toISOString(),
     );
     this.recordRecent(session, 'open', null, null);
+    this.persistRealtimeSummary(session, 'open', null, null);
     this.scheduleTimers(session);
     this.attachClientSocket(session);
 
@@ -754,6 +757,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       new Date().toISOString(),
     );
     this.recordRecent(session, 'closed', reason, sanitizedError);
+    this.persistRealtimeSummary(session, 'closed', reason, sanitizedError);
 
     try {
       if (session.upstream && session.upstream.readyState <= 1) {
@@ -956,6 +960,36 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       this.recent.unshift(summary);
     }
     this.recent.splice(50);
+  }
+
+  private persistRealtimeSummary(
+    session: RealtimeSession,
+    status: 'open' | 'closed',
+    reason: RealtimeCloseReason | null,
+    error: string | null,
+  ): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    const workspaceId = session.workspaceId;
+    this.stateBackend
+      .setHashJson(
+        'realtime_session',
+        'workspaces',
+        workspaceId,
+        {
+          workspace_id: workspaceId,
+          active_connections: this.activeConnectionsForWorkspace(workspaceId),
+          last_node: session.target.node.id,
+          last_model: session.target.model,
+          last_status: status,
+          last_close_reason: reason,
+          last_error: error,
+          updated_at: new Date().toISOString(),
+        },
+        { workspaceId },
+      )
+      .catch((err) =>
+        this.logger.warn(`Realtime session state write skipped: ${(err as Error).message}`),
+      );
   }
 
   private closeCodeFrom(payload: Buffer): number {

@@ -6,6 +6,27 @@
 
 - Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 
+## 2.0.0-alpha.4 - 2026-05-09
+
+### Added
+
+- Added coherent Redis shared-state cluster mode for multi-instance OSS data-plane deployments with workspace-scoped runtime keys: `<prefix>ws:<workspace-id>:<category>:<key>`.
+- Added per-category state backend policies and TTLs for `rate_limit`, `circuit_breaker`, `cache_affinity`, `momentum`, `prompt_cache`, `concurrency`, `health_probe`, and `realtime_session`.
+- Added shared Redis-backed runtime coordination for API/login rate limits, circuit state, cache affinity, routing momentum, prompt cache lookups, metadata-only concurrency summaries, metadata-only active health probe summaries, and metadata-only realtime/session summaries.
+- Added `GET /api/dashboard/cluster` for authenticated Dashboard viewers to inspect privacy-safe local node id, state backend, Redis connectivity, recent state errors, instance count, and per-category policy/TTL status even when cluster mode is disabled.
+- Added a Dashboard cluster state summary card with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+
+### Changed
+
+- `GET /cluster/status` remains the operator endpoint for enabled Redis-backed cluster mode, while Dashboard now uses the always-available privacy-safe local summary endpoint.
+- Updated production, state-backend, Docker, Kubernetes, Helm, config example, and environment example docs with alpha.4 Redis shared-state and cluster-mode guidance.
+- Updated release metadata to v2.0.0-alpha.4 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- Redis remains optional. Single-node memory state, local SQLite startup, local Dashboard login, and Docker quickstart behavior remain unchanged.
+- Redis shared state does not store prompts, responses, raw provider headers, provider keys, media bytes, tool payloads, hidden reasoning text, or resolved secrets by default. Prompt-cache response storage still requires the existing explicit cache opt-in.
+
 ## 2.0.0-alpha.3 - 2026-05-09
 
 ### Added

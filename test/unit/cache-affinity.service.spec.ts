@@ -157,6 +157,7 @@ describe('CacheAffinityService', () => {
         last_cache_read_tokens: 64,
       }),
       1800,
+      { workspaceId: 'default-workspace' },
     );
 
     service.onModuleDestroy();

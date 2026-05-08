@@ -30,6 +30,7 @@ import {
   BellRing,
   ShieldCheck,
   TrendingDown,
+  Network,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { MetricCard } from '@/components/shared/MetricCard'
@@ -50,6 +51,7 @@ import { useConfig } from '@/hooks/use-config'
 import { useAlerts } from '@/hooks/use-alerts'
 import { useGuardrails } from '@/hooks/use-guardrails'
 import { useCacheSavings } from '@/hooks/use-cache-savings'
+import { useClusterStatus } from '@/hooks/use-cluster-status'
 import { useThemeColors } from '@/lib/theme'
 import {
   formatNumber,
@@ -147,6 +149,7 @@ export function DashboardPage() {
   const { data: configData } = useConfig()
   const { data: alertsData } = useAlerts()
   const { data: guardrailsData } = useGuardrails()
+  const { data: clusterStatus } = useClusterStatus()
   const { data: cacheSavings } = useCacheSavings('1d', 'node', {
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
@@ -197,6 +200,10 @@ export function DashboardPage() {
   const totalTierCalls = tierDistribution.reduce((sum, entry) => sum + entry.count, 0)
   const maxNodeCalls = Math.max(1, ...nodeDistribution.map((entry) => entry.count))
   const configDiagnostics = configData?.diagnostics || []
+  const stateCategories = clusterStatus?.state
+    ? Object.values(clusterStatus.state.categories)
+    : []
+  const sharedCategoryCount = stateCategories.filter((category) => category.shared).length
   const setupWarnings = [
     ...(apiKeysData && apiKeysData.items.length === 0
       ? [t('configHealth.missingApiKey')]
@@ -231,66 +238,147 @@ export function DashboardPage() {
         </div>
       </PageHeader>
 
-      <Card className="animate-fade-up overflow-hidden">
-        <CardContent className="pt-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-muted)]">
-                {setupWarnings.length > 0 ? (
-                  <AlertTriangle className="h-4 w-4 text-[var(--warning)]" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 text-[var(--accent)]" />
-                )}
-              </div>
-              <div>
-                <div className="text-[14px] font-extrabold text-[var(--foreground)]">
-                  {t('configHealth.title')}
+      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+        <Card className="animate-fade-up overflow-hidden">
+          <CardContent className="pt-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-muted)]">
+                  {setupWarnings.length > 0 ? (
+                    <AlertTriangle className="h-4 w-4 text-[var(--warning)]" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-[var(--accent)]" />
+                  )}
                 </div>
-                <div className="mt-1 text-[12px] font-medium leading-5 text-[var(--foreground-dim)]">
-                  {setupWarnings.length > 0
-                    ? t('configHealth.needsAttention', { count: setupWarnings.length })
-                    : t('configHealth.ready')}
-                </div>
-                {setupWarnings.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {setupWarnings.slice(0, 3).map((warning) => (
-                      <div key={warning} className="text-[11px] leading-5 text-amber-700 dark:text-amber-300">
-                        {warning}
-                      </div>
-                    ))}
+                <div>
+                  <div className="text-[14px] font-extrabold text-[var(--foreground)]">
+                    {t('configHealth.title')}
                   </div>
-                )}
+                  <div className="mt-1 text-[12px] font-medium leading-5 text-[var(--foreground-dim)]">
+                    {setupWarnings.length > 0
+                      ? t('configHealth.needsAttention', { count: setupWarnings.length })
+                      : t('configHealth.ready')}
+                  </div>
+                  {setupWarnings.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {setupWarnings.slice(0, 3).map((warning) => (
+                        <div key={warning} className="text-[11px] leading-5 text-amber-700 dark:text-amber-300">
+                          {warning}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-[var(--foreground-dim)] sm:grid-cols-3">
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
+                  <div className="flex items-center gap-1.5 font-semibold text-[var(--foreground-muted)]">
+                    <Server className="h-3.5 w-3.5" />
+                    {t('configHealth.upstreams')}
+                  </div>
+                  <div className="mt-1 font-mono text-[13px] text-[var(--foreground)]">
+                    {configData?.nodes.length ?? '-'}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
+                  <div className="flex items-center gap-1.5 font-semibold text-[var(--foreground-muted)]">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {t('configHealth.clientKeys')}
+                  </div>
+                  <div className="mt-1 font-mono text-[13px] text-[var(--foreground)]">
+                    {apiKeysData?.items.length ?? '-'}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
+                  <div className="font-semibold text-[var(--foreground-muted)]">{t('configHealth.diagnostics')}</div>
+                  <div className="mt-1 font-mono text-[13px] text-[var(--foreground)]">
+                    {configDiagnostics.length}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px] text-[var(--foreground-dim)] sm:grid-cols-3">
-              <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
-                <div className="flex items-center gap-1.5 font-semibold text-[var(--foreground-muted)]">
-                  <Server className="h-3.5 w-3.5" />
-                  {t('configHealth.upstreams')}
+          </CardContent>
+        </Card>
+
+        <Card className="animate-fade-up overflow-hidden" style={{ animationDelay: '90ms' }}>
+          <CardContent className="pt-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div
+                  className={
+                    clusterStatus?.state?.degraded || clusterStatus?.redis.status === 'error'
+                      ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                      : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]'
+                  }
+                >
+                  <Network className="h-4 w-4" />
                 </div>
-                <div className="mt-1 font-mono text-[13px] text-[var(--foreground)]">
-                  {configData?.nodes.length ?? '-'}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[14px] font-extrabold text-[var(--foreground)]">
+                      {t('cluster.title')}
+                    </div>
+                    <Badge variant={clusterStatus?.enabled ? 'emerald' : 'zinc'}>
+                      {clusterStatus?.enabled ? t('cluster.mode.cluster') : t('cluster.mode.single')}
+                    </Badge>
+                  </div>
+                  <Tooltip content={clusterStatus?.local_node_id || t('cluster.loading')}>
+                    <div className="mt-1 max-w-[260px] truncate font-mono text-[11px] text-[var(--foreground-dim)]">
+                      {clusterStatus?.local_node_id || t('cluster.loading')}
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+              <Badge
+                variant={
+                  clusterStatus?.redis.status === 'ready'
+                    ? 'emerald'
+                    : clusterStatus?.redis.status === 'error'
+                      ? 'red'
+                      : 'zinc'
+                }
+              >
+                {t(`cluster.redis.${clusterStatus?.redis.status || 'disabled'}`)}
+              </Badge>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('cluster.instances')}
+                </div>
+                <div className="mt-1 font-mono text-[18px] font-extrabold text-[var(--foreground)]">
+                  {clusterStatus?.instance_count ?? 1}
                 </div>
               </div>
               <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
-                <div className="flex items-center gap-1.5 font-semibold text-[var(--foreground-muted)]">
-                  <KeyRound className="h-3.5 w-3.5" />
-                  {t('configHealth.clientKeys')}
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('cluster.state')}
                 </div>
-                <div className="mt-1 font-mono text-[13px] text-[var(--foreground)]">
-                  {apiKeysData?.items.length ?? '-'}
+                <div className="mt-1 font-mono text-[13px] font-extrabold text-[var(--foreground)]">
+                  {clusterStatus?.state?.backend || 'memory'}
                 </div>
               </div>
               <div className="rounded-lg bg-[var(--background-tertiary)] px-3 py-2">
-                <div className="font-semibold text-[var(--foreground-muted)]">{t('configHealth.diagnostics')}</div>
-                <div className="mt-1 font-mono text-[13px] text-[var(--foreground)]">
-                  {configDiagnostics.length}
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                  {t('cluster.shared')}
+                </div>
+                <div className="mt-1 font-mono text-[13px] font-extrabold text-[var(--foreground)]">
+                  {sharedCategoryCount}/{stateCategories.length || 8}
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            {clusterStatus?.state?.degraded || clusterStatus?.redis.last_error ? (
+              <div className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-700 dark:text-amber-300">
+                {clusterStatus.redis.last_error || clusterStatus.state?.last_error || t('cluster.degraded')}
+              </div>
+            ) : (
+              <div className="mt-3 text-[11px] font-medium text-[var(--foreground-dim)]">
+                {clusterStatus?.enabled ? t('cluster.ready') : t('cluster.singleReady')}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="animate-fade-up" style={{ animationDelay: '140ms' }}>
         <CardHeader>

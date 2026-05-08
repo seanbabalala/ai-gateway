@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { Tier } from '../canonical/canonical.types';
 import { StateBackendService } from '../state/state-backend.service';
+import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 
 // Map tier to numeric value for averaging
 const TIER_VALUES: Record<Tier, number> = {
@@ -102,6 +104,16 @@ export class MomentumService implements OnModuleDestroy {
    */
   getSessionHistory(sessionKey: string): { tier: Tier; timestamp: number }[] {
     return this.getHistory(sessionKey).tiers;
+  }
+
+  scopedSessionKey(
+    sessionKey: string | undefined,
+    workspaceId?: string | null,
+  ): string | undefined {
+    if (!sessionKey) return undefined;
+    const workspace = normalizeWorkspaceId(workspaceId);
+    if (workspace === DEFAULT_WORKSPACE_ID) return sessionKey;
+    return `${workspace}:${sessionKey}`;
   }
 
   private recordTier(sessionKey: string, tier: Tier): void {

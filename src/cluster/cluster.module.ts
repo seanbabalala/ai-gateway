@@ -6,8 +6,10 @@ import {
 } from './cluster.service';
 import { ClusterController } from './cluster.controller';
 import { RespClusterRedisClient } from './redis-cluster.client';
+import { StateModule } from '../state/state.module';
 
 @Module({
+  imports: [StateModule],
   controllers: [ClusterController],
   providers: [
     ClusterService,

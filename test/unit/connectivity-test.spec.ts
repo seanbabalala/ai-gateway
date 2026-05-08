@@ -156,11 +156,18 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   const workspaceContext = {
     currentWorkspaceId: jest.fn(() => 'default-workspace'),
   } as any;
+  const cluster = {
+    getDashboardStatus: jest.fn().mockResolvedValue({
+      enabled: false,
+      mode: 'single_instance',
+      local_node_id: 'test-instance',
+    }),
+  } as any;
 
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, catalog, batchJobs, workspaces, workspaceContext, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, catalog, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 

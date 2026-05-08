@@ -36,6 +36,9 @@ import {
   FallbackPolicyConfig,
   CacheAffinityRoutingConfig,
   StateBackendConfig,
+  StateCategoryConfig,
+  StateCategoryName,
+  StateUnavailablePolicy,
   RealtimeConfig,
   McpGatewayConfig,
   ConfigAuditConfig,
@@ -837,11 +840,13 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       timeout_ms: number;
       sync_interval_ms: number;
     };
+    categories: Record<StateCategoryName, Required<StateCategoryConfig>>;
   } {
     const state = this.config.state;
+    const unavailablePolicy = state?.unavailable_policy ?? 'fail_open';
     return {
       backend: state?.backend ?? 'memory',
-      unavailable_policy: state?.unavailable_policy ?? 'fail_open',
+      unavailable_policy: unavailablePolicy,
       redis: {
         url: state?.redis?.url ?? 'redis://localhost:6379',
         prefix: this.normalizeRedisPrefix(
@@ -851,6 +856,10 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
         timeout_ms: state?.redis?.timeout_ms ?? 500,
         sync_interval_ms: state?.redis?.sync_interval_ms ?? 2000,
       },
+      categories: this.normalizeStateCategories(
+        state?.categories,
+        unavailablePolicy,
+      ),
     };
   }
 
@@ -988,6 +997,31 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {
     const value = prefix && prefix.length > 0 ? prefix : fallback;
     return value.endsWith(':') ? value : `${value}:`;
+  }
+
+  private normalizeStateCategories(
+    categories: StateBackendConfig['categories'],
+    unavailablePolicy: StateUnavailablePolicy,
+  ): Record<StateCategoryName, Required<StateCategoryConfig>> {
+    const defaults: Record<StateCategoryName, Required<StateCategoryConfig>> = {
+      rate_limit: { unavailable_policy: unavailablePolicy, ttl_seconds: 60 },
+      circuit_breaker: { unavailable_policy: unavailablePolicy, ttl_seconds: 3600 },
+      cache_affinity: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
+      momentum: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
+      prompt_cache: { unavailable_policy: 'fail_open', ttl_seconds: 300 },
+      concurrency: { unavailable_policy: unavailablePolicy, ttl_seconds: 120 },
+      health_probe: { unavailable_policy: 'fail_open', ttl_seconds: 120 },
+      realtime_session: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
+    };
+    for (const key of Object.keys(defaults) as StateCategoryName[]) {
+      const override = categories?.[key];
+      defaults[key] = {
+        unavailable_policy:
+          override?.unavailable_policy ?? defaults[key].unavailable_policy,
+        ttl_seconds: override?.ttl_seconds ?? defaults[key].ttl_seconds,
+      };
+    }
+    return defaults;
   }
 
   /** Get hosted control-plane config with safe privacy-preserving defaults. */

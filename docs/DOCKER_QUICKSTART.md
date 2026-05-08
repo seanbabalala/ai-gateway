@@ -84,7 +84,7 @@ that is normally shared with the Docker VM.
 ## Optional Redis State Backend
 
 The default Compose stack runs the gateway with local memory state. To test the
-v0.5 Redis shared state backend for multi-instance deployments, enable the Redis
+v2 Redis shared state backend for multi-instance deployments, enable the Redis
 profile and configure `state.backend: redis` in `gateway.config.yaml`:
 
 ```bash
@@ -93,8 +93,11 @@ docker compose --profile redis up -d --build
 ```
 
 Redis shares rate limits, prompt cache, circuit breaker state, and routing
-momentum across gateway instances. See [Shared State Backend](STATE_BACKEND.md)
-for `fail_open` and `fail_closed` behavior.
+momentum across gateway instances, plus metadata-only concurrency, active
+health probe, cache affinity, and realtime/session summaries. The Dashboard
+overview shows local node id, Redis connectivity, and recent state errors.
+See [Shared State Backend](STATE_BACKEND.md) for per-category TTLs and
+`fail_open`/`fail_closed` behavior.
 
 ## Optional PostgreSQL Profile
 

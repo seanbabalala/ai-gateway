@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import {
+  StateCategoryName,
   StateBackendType,
   StateBackendUnavailableError,
   StateRateLimitResult,
@@ -13,6 +14,7 @@ import {
   StateUnavailablePolicy,
 } from './state.types';
 import { RespRedisClient } from './resp-redis.client';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 
 interface MemoryValue {
   value: string;
@@ -29,11 +31,16 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
   private readonly policy: StateUnavailablePolicy;
   private readonly prefix: string;
   private readonly syncIntervalMs: number;
+  private readonly categoryPolicies: Record<StateCategoryName, {
+    unavailable_policy: StateUnavailablePolicy;
+    ttl_seconds: number;
+  }>;
   private readonly redis?: RespRedisClient;
   private recoveryInterval?: ReturnType<typeof setInterval>;
   private redisAvailable = false;
   private lastError: string | null = null;
   private lastErrorLoggedAt = 0;
+  private readonly recentErrors: StateRuntimeStatus['recent_errors'] = [];
 
   constructor(private readonly config: ConfigService) {
     const state = this.config.state;
@@ -41,6 +48,10 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     this.policy = state.unavailable_policy;
     this.prefix = state.redis.prefix;
     this.syncIntervalMs = state.redis.sync_interval_ms;
+    this.categoryPolicies = mergeCategoryPolicies(
+      defaultCategoryPolicies(this.policy),
+      state.categories,
+    );
 
     if (state.backend === 'redis') {
       try {
@@ -69,10 +80,13 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     return {
       backend: this.activeBackend,
       configured_backend: this.configuredBackend,
+      key_prefix: this.prefix,
       redis_available: this.redisAvailable,
       unavailable_policy: this.policy,
       degraded: this.configuredBackend === 'redis' && !this.redisAvailable,
       last_error: this.lastError,
+      recent_errors: [...this.recentErrors],
+      categories: this.categoryStatuses(),
     };
   }
 
@@ -84,19 +98,27 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     return this.configuredBackend === 'redis';
   }
 
-  shouldFailClosed(): boolean {
-    return this.configuredBackend === 'redis' && !this.redisAvailable && this.policy === 'fail_closed';
+  shouldFailClosed(category?: StateCategoryName): boolean {
+    return (
+      this.configuredBackend === 'redis' &&
+      !this.redisAvailable &&
+      this.categoryPolicy(category).unavailable_policy === 'fail_closed'
+    );
   }
 
-  async getJson<T>(namespace: string, key: string): Promise<T | null> {
-    const storageKey = this.key(namespace, key);
+  async getJson<T>(
+    namespace: StateCategoryName,
+    key: string,
+    options: { workspaceId?: string | null } = {},
+  ): Promise<T | null> {
+    const storageKey = this.key(namespace, key, options.workspaceId);
     if (this.redis && this.redisAvailable) {
       try {
         const value = await this.redis.command(['GET', storageKey]);
         return parseJson<T>(typeof value === 'string' ? value : null);
       } catch (err) {
-        this.markRedisUnavailable(err);
-        if (this.policy === 'fail_closed') throw this.unavailableError();
+        this.markRedisUnavailable(err, namespace);
+        if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       }
     }
 
@@ -104,57 +126,67 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
   }
 
   async setJson(
-    namespace: string,
+    namespace: StateCategoryName,
     key: string,
     value: unknown,
     ttlSeconds?: number,
+    options: { workspaceId?: string | null } = {},
   ): Promise<void> {
-    const storageKey = this.key(namespace, key);
+    const categoryTtl = this.categoryPolicy(namespace).ttl_seconds;
+    const effectiveTtl = ttlSeconds ?? categoryTtl;
+    const storageKey = this.key(namespace, key, options.workspaceId);
     const json = JSON.stringify(value);
-    this.memorySet(storageKey, json, ttlSeconds);
+    this.memorySet(storageKey, json, effectiveTtl);
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
     try {
-      if (ttlSeconds && ttlSeconds > 0) {
-        await this.redis.command(['SETEX', storageKey, String(Math.ceil(ttlSeconds)), json]);
+      if (effectiveTtl && effectiveTtl > 0) {
+        await this.redis.command(['SETEX', storageKey, String(Math.ceil(effectiveTtl)), json]);
       } else {
         await this.redis.command(['SET', storageKey, json]);
       }
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
-  async delete(namespace: string, key: string): Promise<void> {
-    const storageKey = this.key(namespace, key);
+  async delete(
+    namespace: StateCategoryName,
+    key: string,
+    options: { workspaceId?: string | null } = {},
+  ): Promise<void> {
+    const storageKey = this.key(namespace, key, options.workspaceId);
     this.memory.delete(storageKey);
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
     try {
       await this.redis.command(['DEL', storageKey]);
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
-  async clearNamespace(namespace: string): Promise<void> {
-    const namespacePrefix = this.key(namespace, '');
+  async clearNamespace(
+    namespace: StateCategoryName,
+    options: { workspaceId?: string | null } = {},
+  ): Promise<void> {
+    const namespacePrefix = this.key(namespace, '', options.workspaceId);
     for (const key of [...this.memory.keys()]) {
       if (key.startsWith(namespacePrefix)) this.memory.delete(key);
     }
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
@@ -167,23 +199,24 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
         }
       }
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
   async getHashAllJson<T>(
-    namespace: string,
+    namespace: StateCategoryName,
     hashKey: string,
+    options: { workspaceId?: string | null } = {},
   ): Promise<Map<string, T>> {
-    const storageKey = this.key(namespace, hashKey);
+    const storageKey = this.key(namespace, hashKey, options.workspaceId);
     if (this.redis && this.redisAvailable) {
       try {
         const response = await this.redis.command(['HGETALL', storageKey]);
         return hashArrayToJsonMap<T>(response);
       } catch (err) {
-        this.markRedisUnavailable(err);
-        if (this.policy === 'fail_closed') throw this.unavailableError();
+        this.markRedisUnavailable(err, namespace);
+        if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       }
     }
 
@@ -198,12 +231,13 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
   }
 
   async setHashJson(
-    namespace: string,
+    namespace: StateCategoryName,
     hashKey: string,
     field: string,
     value: unknown,
+    options: { workspaceId?: string | null; ttlSeconds?: number } = {},
   ): Promise<void> {
-    const storageKey = this.key(namespace, hashKey);
+    const storageKey = this.key(namespace, hashKey, options.workspaceId);
     const json = JSON.stringify(value);
     let hash = this.memoryHashes.get(storageKey);
     if (!hash) {
@@ -213,68 +247,78 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     hash.set(field, json);
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
     try {
       await this.redis.command(['HSET', storageKey, field, json]);
+      const ttl = options.ttlSeconds ?? this.categoryPolicy(namespace).ttl_seconds;
+      if (ttl && ttl > 0) {
+        await this.redis.command(['EXPIRE', storageKey, String(Math.ceil(ttl))]);
+      }
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
   async deleteHashField(
-    namespace: string,
+    namespace: StateCategoryName,
     hashKey: string,
     field: string,
+    options: { workspaceId?: string | null } = {},
   ): Promise<void> {
-    const storageKey = this.key(namespace, hashKey);
+    const storageKey = this.key(namespace, hashKey, options.workspaceId);
     this.memoryHashes.get(storageKey)?.delete(field);
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
     try {
       await this.redis.command(['HDEL', storageKey, field]);
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
-  async clearHash(namespace: string, hashKey: string): Promise<void> {
-    const storageKey = this.key(namespace, hashKey);
+  async clearHash(
+    namespace: StateCategoryName,
+    hashKey: string,
+    options: { workspaceId?: string | null } = {},
+  ): Promise<void> {
+    const storageKey = this.key(namespace, hashKey, options.workspaceId);
     this.memoryHashes.delete(storageKey);
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
     try {
       await this.redis.command(['DEL', storageKey]);
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
   async hitRateLimit(
-    namespace: string,
+    namespace: StateCategoryName,
     key: string,
     limit: number,
     windowMs: number,
     now = Date.now(),
+    options: { workspaceId?: string | null } = {},
   ): Promise<StateRateLimitResult> {
     if (this.redis && this.redisAvailable) {
-      return this.hitRedisRateLimit(namespace, key, limit, windowMs, now);
+      return this.hitRedisRateLimit(namespace, key, limit, windowMs, now, options.workspaceId);
     }
 
-    if (this.shouldFailClosed()) {
+    if (this.shouldFailClosed(namespace)) {
       return {
         allowed: false,
         count: limit,
@@ -290,23 +334,24 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
       return this.openRateLimitResult(limit, windowMs, now);
     }
 
-    return this.hitMemoryRateLimit(namespace, key, limit, windowMs, now, this.isRedisConfigured());
+    return this.hitMemoryRateLimit(namespace, key, limit, windowMs, now, this.isRedisConfigured(), options.workspaceId);
   }
 
   async addSortedJson(
-    namespace: string,
+    namespace: StateCategoryName,
     key: string,
     value: unknown,
     score: number,
     maxEntries: number,
     ttlMs: number,
+    options: { workspaceId?: string | null } = {},
   ): Promise<void> {
-    const storageKey = this.key(namespace, key);
+    const storageKey = this.key(namespace, key, options.workspaceId);
     const json = JSON.stringify(value);
     this.memorySortedAdd(storageKey, json, score, maxEntries);
 
     if (!this.redis || !this.redisAvailable) {
-      if (this.shouldFailClosed()) throw this.unavailableError();
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       return;
     }
 
@@ -323,16 +368,17 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
       }
       await this.redis.command(['PEXPIRE', storageKey, String(ttlMs)]);
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') throw this.unavailableError();
+      this.markRedisUnavailable(err, namespace);
+      if (this.shouldFailClosed(namespace)) throw this.unavailableError();
     }
   }
 
   async getSortedJson<T>(
-    namespace: string,
+    namespace: StateCategoryName,
     key: string,
+    options: { workspaceId?: string | null } = {},
   ): Promise<T[]> {
-    const storageKey = this.key(namespace, key);
+    const storageKey = this.key(namespace, key, options.workspaceId);
     if (this.redis && this.redisAvailable) {
       try {
         const values = await this.redis.command(['ZRANGE', storageKey, '0', '-1']);
@@ -341,8 +387,8 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
           .map((value) => parseJson<T>(typeof value === 'string' ? value : null))
           .filter((value): value is T => value !== null);
       } catch (err) {
-        this.markRedisUnavailable(err);
-        if (this.policy === 'fail_closed') throw this.unavailableError();
+        this.markRedisUnavailable(err, namespace);
+        if (this.shouldFailClosed(namespace)) throw this.unavailableError();
       }
     }
 
@@ -358,9 +404,10 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     limit: number,
     windowMs: number,
     now: number,
+    workspaceId?: string | null,
   ): Promise<StateRateLimitResult> {
     const windowId = Math.floor(now / windowMs);
-    const storageKey = this.key(namespace, `${key}:${windowId}`);
+    const storageKey = this.key(namespace as StateCategoryName, `${key}:${windowId}`, workspaceId);
     try {
       const countResponse = await this.redis!.command(['INCR', storageKey]);
       const count = typeof countResponse === 'number' ? countResponse : 1;
@@ -383,8 +430,8 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
         degraded: false,
       };
     } catch (err) {
-      this.markRedisUnavailable(err);
-      if (this.policy === 'fail_closed') {
+      this.markRedisUnavailable(err, namespace as StateCategoryName);
+      if (this.shouldFailClosed(namespace as StateCategoryName)) {
         return {
           allowed: false,
           count: limit,
@@ -422,9 +469,10 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     windowMs: number,
     now: number,
     degraded: boolean,
+    workspaceId?: string | null,
   ): StateRateLimitResult {
     const windowId = Math.floor(now / windowMs);
-    const storageKey = this.key(namespace, `${key}:${windowId}`);
+    const storageKey = this.key(namespace as StateCategoryName, `${key}:${windowId}`, workspaceId);
     const current = Number(this.memoryGet(storageKey) || '0') + 1;
     this.memorySet(storageKey, String(current), Math.ceil(windowMs / 1000));
     const windowEnd = (windowId + 1) * windowMs;
@@ -469,13 +517,43 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
     this.memory.set(key, { value, expiresAt });
   }
 
-  private key(namespace: string, key: string): string {
-    return `${this.prefix}${namespace}:${key}`;
+  key(namespace: StateCategoryName, key: string, workspaceId?: string | null): string {
+    return `${this.keyPrefix(namespace, workspaceId)}${key}`;
   }
 
-  private markRedisUnavailable(err: unknown): void {
+  keyPrefix(namespace: StateCategoryName, workspaceId?: string | null): string {
+    return `${this.prefix}ws:${normalizeWorkspaceId(workspaceId)}:${namespace}:`;
+  }
+
+  categoryPolicy(category?: StateCategoryName): {
+    unavailable_policy: StateUnavailablePolicy;
+    ttl_seconds: number;
+  } {
+    if (category && this.categoryPolicies?.[category]) {
+      return this.categoryPolicies[category];
+    }
+    return { unavailable_policy: this.policy, ttl_seconds: 300 };
+  }
+
+  private categoryStatuses(): StateRuntimeStatus['categories'] {
+    const result = {} as StateRuntimeStatus['categories'];
+    const categories = this.categoryPolicies ?? defaultCategoryPolicies(this.policy);
+    for (const category of Object.keys(categories) as StateCategoryName[]) {
+      const policy = categories[category];
+      result[category] = {
+        name: category,
+        unavailable_policy: policy.unavailable_policy,
+        ttl_seconds: policy.ttl_seconds,
+        shared: this.configuredBackend === 'redis',
+      };
+    }
+    return result;
+  }
+
+  private markRedisUnavailable(err: unknown, category: StateCategoryName = 'rate_limit'): void {
     this.redisAvailable = false;
     this.lastError = err instanceof Error ? err.message : String(err);
+    this.recordRecentError(category, this.lastError);
     const now = Date.now();
     if (now - this.lastErrorLoggedAt > 30_000) {
       this.lastErrorLoggedAt = now;
@@ -483,6 +561,15 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
         `Redis state backend unavailable (${this.policy}): ${this.lastError}`,
       );
     }
+  }
+
+  private recordRecentError(category: StateCategoryName, message: string): void {
+    this.recentErrors.unshift({
+      category,
+      message,
+      at: new Date().toISOString(),
+    });
+    this.recentErrors.splice(8);
   }
 
   private async probeRedis(): Promise<void> {
@@ -504,6 +591,49 @@ export class StateBackendService implements OnModuleInit, OnModuleDestroy {
       `Redis state backend is unavailable (${this.lastError || 'unknown error'})`,
     );
   }
+}
+
+function defaultCategoryPolicies(
+  unavailablePolicy: StateUnavailablePolicy,
+): Record<StateCategoryName, {
+  unavailable_policy: StateUnavailablePolicy;
+  ttl_seconds: number;
+}> {
+  return {
+    rate_limit: { unavailable_policy: unavailablePolicy, ttl_seconds: 60 },
+    circuit_breaker: { unavailable_policy: unavailablePolicy, ttl_seconds: 3600 },
+    cache_affinity: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
+    momentum: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
+    prompt_cache: { unavailable_policy: 'fail_open', ttl_seconds: 300 },
+    concurrency: { unavailable_policy: unavailablePolicy, ttl_seconds: 120 },
+    health_probe: { unavailable_policy: 'fail_open', ttl_seconds: 120 },
+    realtime_session: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
+  };
+}
+
+function mergeCategoryPolicies(
+  defaults: Record<StateCategoryName, {
+    unavailable_policy: StateUnavailablePolicy;
+    ttl_seconds: number;
+  }>,
+  overrides?: Partial<Record<StateCategoryName, Partial<{
+    unavailable_policy: StateUnavailablePolicy;
+    ttl_seconds: number;
+  }>>>,
+): Record<StateCategoryName, {
+  unavailable_policy: StateUnavailablePolicy;
+  ttl_seconds: number;
+}> {
+  const merged = { ...defaults };
+  for (const category of Object.keys(defaults) as StateCategoryName[]) {
+    const override = overrides?.[category];
+    merged[category] = {
+      unavailable_policy:
+        override?.unavailable_policy ?? defaults[category].unavailable_policy,
+      ttl_seconds: override?.ttl_seconds ?? defaults[category].ttl_seconds,
+    };
+  }
+  return merged;
 }
 
 function parseJson<T>(value: string | null): T | null {

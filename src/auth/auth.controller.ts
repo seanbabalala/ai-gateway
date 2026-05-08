@@ -26,6 +26,7 @@ import {
   LoginResponseDto,
 } from '../openapi/openapi.dto';
 import { StateBackendService } from '../state/state-backend.service';
+import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
 
 @Controller('api/auth')
 @ApiTags('Dashboard Auth')
@@ -96,11 +97,12 @@ export class AuthController {
 
     if (this.state?.isRedisConfigured()) {
       const result = await this.state.hitRateLimit(
-        'rate_limit:login',
-        `ip:${ip}`,
+        'rate_limit',
+        `login:ip:${ip}`,
         limit,
         windowMs,
         now,
+        { workspaceId: DEFAULT_WORKSPACE_ID },
       );
       if (!result.allowed) {
         throw new HttpException(

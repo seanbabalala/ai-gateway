@@ -35,6 +35,84 @@ export interface StatsResponse {
   nodeDistribution: NodeDistribution[];
 }
 
+// ── Cluster / Shared State ──
+
+export type StateBackendType = "memory" | "redis";
+export type StateUnavailablePolicy = "fail_open" | "fail_closed";
+export type StateCategoryName =
+  | "rate_limit"
+  | "circuit_breaker"
+  | "cache_affinity"
+  | "momentum"
+  | "prompt_cache"
+  | "concurrency"
+  | "health_probe"
+  | "realtime_session";
+
+export interface StateCategoryRuntimeStatus {
+  name: StateCategoryName;
+  unavailable_policy: StateUnavailablePolicy;
+  ttl_seconds: number;
+  shared: boolean;
+}
+
+export interface StateRuntimeStatus {
+  backend: StateBackendType;
+  configured_backend: StateBackendType;
+  key_prefix: string;
+  redis_available: boolean;
+  unavailable_policy: StateUnavailablePolicy;
+  degraded: boolean;
+  last_error: string | null;
+  recent_errors: Array<{
+    category: StateCategoryName;
+    message: string;
+    at: string;
+  }>;
+  categories: Record<StateCategoryName, StateCategoryRuntimeStatus>;
+}
+
+export interface ClusterInstanceRecord {
+  instance_id: string;
+  status: "online" | "offline";
+  started_at: string;
+  last_seen_at: string;
+  host: string;
+  pid: number;
+  config_version: number;
+  config_loaded_at: string;
+  node_count: number;
+  node_ids: string[];
+  route_tiers: string[];
+}
+
+export interface ClusterStatusResponse {
+  enabled: boolean;
+  mode: "single_instance" | "redis_pubsub";
+  leader_election: false;
+  local_node_id: string;
+  redis: {
+    status: "disabled" | "connecting" | "ready" | "error";
+    url: string | null;
+    prefix: string;
+    last_error: string | null;
+  };
+  state: StateRuntimeStatus | null;
+  reload_broadcast: boolean;
+  heartbeat_interval_seconds: number;
+  heartbeat_ttl_seconds: number;
+  local_instance: ClusterInstanceRecord;
+  instances: ClusterInstanceRecord[];
+  instance_count: number;
+  channels: {
+    events: string | null;
+  };
+  last_heartbeat_at: string | null;
+  last_event_at: string | null;
+  last_inbound_reload_at: string | null;
+  last_outbound_reload_at: string | null;
+}
+
 // ── MCP Gateway Preview ──
 
 export interface McpToolSummary {

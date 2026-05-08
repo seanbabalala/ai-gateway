@@ -291,6 +291,7 @@ describe('RateLimitGuard', () => {
       2,
       60_000,
       expect.any(Number),
+      { workspaceId: 'default-workspace' },
     );
   });
 });

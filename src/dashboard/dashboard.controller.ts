@@ -135,6 +135,7 @@ import { GatewayApiKeyService } from "../auth/gateway-api-key.service";
 import { CreateTeamDto, UpdateTeamDto } from "../auth/dto/team.dto";
 import { TeamService } from "../auth/team.service";
 import { AgentProfileService } from "../agent-profiles/agent-profile.service";
+import { ClusterService } from "../cluster/cluster.service";
 import {
   CreateAgentProfileDto,
   RenderAgentProfileDto,
@@ -1543,6 +1544,7 @@ export class DashboardController {
     private readonly batchJobs: BatchJobStoreService,
     private readonly workspaces: WorkspaceService,
     private readonly workspaceContext: WorkspaceContextService,
+    private readonly cluster: ClusterService,
     @Optional()
     @Inject(RealtimeProxyService)
     private readonly realtime: RealtimeProxyService | undefined,
@@ -1702,6 +1704,19 @@ export class DashboardController {
       );
     }
     return this.memberships;
+  }
+
+  @Get("cluster")
+  @RequireDashboardRole("viewer")
+  @ApiOperation({
+    summary: "Get privacy-safe local cluster and shared state status",
+  })
+  @ApiOkResponse({
+    description:
+      "Local node id, shared state backend, Redis connectivity, recent state errors, and instance inventory without secrets or request payloads.",
+  })
+  async getClusterStatus() {
+    return this.cluster.getDashboardStatus();
   }
 
   /** Delete logs older than log_retention_days (default: 30) */

@@ -8,6 +8,7 @@ import {
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { AlertService } from '../alerts/alert.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import { StateBackendService } from '../state/state-backend.service';
 
 export type ActiveProbeStatus = 'disabled' | 'unknown' | 'healthy' | 'unhealthy';
 
@@ -44,6 +45,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     private readonly circuitBreaker: CircuitBreakerService,
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly secretResolver?: SecretReferenceResolverService,
+    @Optional() private readonly stateBackend?: StateBackendService,
   ) {}
 
   onModuleInit(): void {
@@ -178,6 +180,25 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
+  getClusterSummary(): {
+    enabled_nodes: number;
+    unhealthy_nodes: number;
+    last_checked_at: string | null;
+  } {
+    const statuses = Object.values(this.getAllStatuses());
+    const enabled = statuses.filter((status) => status.enabled);
+    const lastChecked = statuses
+      .map((status) => status.last_checked_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .pop() || null;
+    return {
+      enabled_nodes: enabled.length,
+      unhealthy_nodes: enabled.filter((status) => status.status === 'unhealthy').length,
+      last_checked_at: lastChecked,
+    };
+  }
+
   private async buildProbeRequest(
     node: NodeConfig,
     check: NormalizedHealthCheck,
@@ -294,6 +315,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
       consecutive_failures: 0,
     };
     this.statuses.set(node.id, snapshot);
+    this.persistProbeSummary(node, snapshot);
     for (const model of this.modelsForCircuit(node)) {
       this.circuitBreaker.recordProbeSuccess(node.id, model);
     }
@@ -334,6 +356,7 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
       consecutive_failures: (previous?.consecutive_failures ?? 0) + 1,
     };
     this.statuses.set(node.id, snapshot);
+    this.persistProbeSummary(node, snapshot);
     for (const model of this.modelsForCircuit(node)) {
       this.circuitBreaker.markUnavailable(node.id, model, reason);
     }
@@ -354,6 +377,30 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
       });
     }
     return snapshot;
+  }
+
+  private persistProbeSummary(
+    node: NodeConfig,
+    snapshot: ActiveHealthProbeSnapshot,
+  ): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    this.stateBackend
+      .setHashJson(
+        'health_probe',
+        'nodes',
+        node.id,
+        {
+          node_id: node.id,
+          status: snapshot.status,
+          last_checked_at: snapshot.last_checked_at,
+          last_success_at: snapshot.last_success_at,
+          latency_ms: snapshot.latency_ms,
+          consecutive_failures: snapshot.consecutive_failures,
+        },
+      )
+      .catch((err) =>
+        this.logger.warn(`Health probe state write skipped: ${(err as Error).message}`),
+      );
   }
 
   private modelsForCircuit(node: NodeConfig): Array<string | undefined> {

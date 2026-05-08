@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { NodeConfig, QueuePolicy } from '../config/gateway.config';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { StateBackendService } from '../state/state-backend.service';
 
 export interface ConcurrencyLease {
   readonly nodeId: string;
@@ -57,7 +58,10 @@ export class ConcurrencyLimiterService {
   private readonly logger = new Logger(ConcurrencyLimiterService.name);
   private readonly states = new Map<string, LimiterState>();
 
-  constructor(private readonly telemetry: TelemetryService) {
+  constructor(
+    private readonly telemetry: TelemetryService,
+    @Optional() private readonly stateBackend?: StateBackendService,
+  ) {
     this.registerMetrics();
   }
 
@@ -72,6 +76,7 @@ export class ConcurrencyLimiterService {
 
     if (state.active < settings.max) {
       state.active += 1;
+      this.publishClusterSnapshot();
       return this.createLease(key, node.id, model);
     }
 
@@ -117,6 +122,24 @@ export class ConcurrencyLimiterService {
     return nodes.map((node) => this.getNodeStats(node));
   }
 
+  publishClusterSnapshot(): void {
+    if (!this.stateBackend?.isRedisConfigured()) return;
+    const nodes = [...this.states.entries()].map(([node, state]) => ({
+      node,
+      active: state.active,
+      queued: state.queue.length,
+      max_concurrency: state.max,
+    }));
+    this.stateBackend
+      .setJson('concurrency', 'local-node-summary', {
+        updated_at: new Date().toISOString(),
+        nodes,
+      })
+      .catch((err) =>
+        this.logger.warn(`Concurrency state write skipped: ${(err as Error).message}`),
+      );
+  }
+
   private enqueueWaiter(
     key: string,
     nodeId: string,
@@ -147,6 +170,7 @@ export class ConcurrencyLimiterService {
       };
 
       state.queue.push(entry);
+      this.publishClusterSnapshot();
       this.logger.debug(
         `Queued request for ${nodeId}:${model}; active=${state.active}, queued=${state.queue.length}`,
       );
@@ -159,6 +183,7 @@ export class ConcurrencyLimiterService {
 
     state.active = Math.max(0, state.active - 1);
     this.drainQueue(key, state);
+    this.publishClusterSnapshot();
   }
 
   private drainQueue(key: string, state: LimiterState): void {
@@ -171,6 +196,7 @@ export class ConcurrencyLimiterService {
       state.active += 1;
       next.resolve(this.createLease(key, next.nodeId, next.model));
     }
+    this.publishClusterSnapshot();
   }
 
   private removeQueueEntry(key: string, entry: QueueEntry): void {
@@ -180,6 +206,7 @@ export class ConcurrencyLimiterService {
     const idx = state.queue.indexOf(entry);
     if (idx >= 0) {
       state.queue.splice(idx, 1);
+      this.publishClusterSnapshot();
     }
   }
 

@@ -49,6 +49,7 @@ interface SemanticCacheEntry {
   metadata: {
     source_format: string;
     model: string;
+    workspace_id: string | null;
     api_key_id: string | null;
     namespace_id: string | null;
     team_id: string | null;
@@ -482,6 +483,7 @@ export class PromptCacheService {
       max_tokens: canonical.max_tokens ?? null,
       request_context: {
         source_format: canonical.metadata.source_format,
+        workspace_id: canonical.metadata.workspace_id ?? null,
         api_key_id: canonical.metadata.api_key_id ?? null,
         api_key_name: canonical.metadata.api_key_name ?? null,
         session_key: canonical.metadata.session_key ?? null,
@@ -545,6 +547,7 @@ export class PromptCacheService {
     return {
       source_format: canonical.metadata.source_format,
       model: canonical.metadata.original_model || 'auto',
+      workspace_id: canonical.metadata.workspace_id ?? null,
       api_key_id: canonical.metadata.api_key_id ?? null,
       namespace_id: canonical.metadata.namespace_id ?? null,
       team_id: canonical.metadata.team_id ?? null,
@@ -558,6 +561,7 @@ export class PromptCacheService {
     return (
       scope.source_format === candidate.source_format &&
       scope.model === candidate.model &&
+      scope.workspace_id === candidate.workspace_id &&
       scope.api_key_id === candidate.api_key_id &&
       scope.namespace_id === candidate.namespace_id &&
       scope.team_id === candidate.team_id

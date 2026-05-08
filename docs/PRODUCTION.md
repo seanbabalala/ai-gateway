@@ -405,16 +405,37 @@ cluster:
   reload_broadcast: true
 ```
 
-Redis shared state can coordinate API key/IP rate limits, prompt-cache entries,
-circuit breaker status, and routing momentum across instances. `fail_open`
-keeps request traffic flowing when Redis is unavailable; `fail_closed` rejects
-rate-limited paths and treats circuits as unavailable until Redis recovers.
+Redis shared state can coordinate API key/IP rate limits, circuit breaker
+state, cache affinity/session route history, routing momentum, prompt-cache
+entries, concurrency summaries, active health probe summaries, and realtime
+session metadata across instances. Runtime keys are scoped as
+`<prefix>ws:<workspace-id>:<category>:<key>` so the default workspace upgrade
+path stays compatible with v2 isolation.
+
+`fail_open` keeps request traffic flowing when Redis is unavailable.
+`fail_closed` rejects rate-limited paths and treats strict categories as
+unavailable until Redis recovers. The global policy can be overridden per
+state category:
+
+```yaml
+state:
+  categories:
+    rate_limit:
+      unavailable_policy: fail_closed
+      ttl_seconds: 60
+    concurrency:
+      unavailable_policy: fail_closed
+      ttl_seconds: 120
+```
 
 When cluster mode is enabled, each instance writes a heartbeat record under the
 configured Redis prefix and publishes lifecycle events through Redis Pub/Sub.
 `GET /cluster/status` reports the local instance, peer inventory, Redis status,
 heartbeat timing, and reload broadcast metadata. In default single-instance
-memory mode, the endpoint returns `404`.
+memory mode, the endpoint returns `404`. Dashboard viewers can always read the
+privacy-safe local summary at `GET /api/dashboard/cluster`; it includes local
+node id, shared-state backend, Redis connectivity, recent state errors, and
+per-category TTL/policy metadata.
 
 There is no leader election. Every instance independently handles requests and should have the same local configuration, provider credentials, and plugin declarations.
 
@@ -429,8 +450,9 @@ Redis Pub/Sub does not carry provider keys, prompts, responses, raw headers, or 
 - Prefer `rediss://` or private network Redis; do not expose Redis publicly.
 - Use a dedicated prefix such as `siftgate:prod:` when Redis is shared with other workloads.
 - Set `heartbeat_ttl_seconds` higher than `heartbeat_interval_seconds`; the example uses a 3x TTL.
-- Redis outages are logged and shown in `/cluster/status`, but they do not block the main AI request path.
+- Redis outages are logged and shown in `/cluster/status` and Dashboard cluster state. Whether they block a path depends on the configured category policy.
 - The first implementation uses Redis `KEYS` for the small cluster inventory namespace; keep the prefix narrow.
+- Do not share a Redis prefix across environments. Use dedicated prefixes such as `siftgate:prod:` and `siftgate:staging:`.
 
 ## Security Notes
 

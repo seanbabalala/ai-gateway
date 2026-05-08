@@ -69,6 +69,7 @@ function makeRoutingServiceWithSplit(overrides: {
   };
 
   const momentum = overrides.momentum || {
+    scopedSessionKey: jest.fn((sessionKey?: string) => sessionKey),
     apply: jest.fn().mockImplementation((tier: Tier, _score: number, _key?: string) => ({
       tier,
       adjusted: false,

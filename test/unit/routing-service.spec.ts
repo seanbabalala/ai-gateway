@@ -92,6 +92,7 @@ function makeRoutingService(overrides: {
   };
 
   const momentum = overrides.momentum || {
+    scopedSessionKey: jest.fn((sessionKey?: string) => sessionKey),
     apply: jest.fn().mockImplementation((tier: Tier, _score: number, _key?: string) => ({
       tier,
       adjusted: false,
@@ -305,6 +306,7 @@ describe('RoutingService', () => {
 
   it('should use momentum-adjusted tier', () => {
     const momentum = {
+      scopedSessionKey: jest.fn((sessionKey?: string) => sessionKey),
       apply: jest.fn().mockReturnValue({ tier: 'standard', adjusted: true }),
     };
     const svc = makeRoutingService({ momentum });
