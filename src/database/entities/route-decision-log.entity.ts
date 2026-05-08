@@ -20,6 +20,8 @@ import {
 @Index(['agent_connector'])
 @Index(['agent_profile_id'])
 @Index(['agent_session_id'])
+@Index(['intelligence_optimizer_applied'])
+@Index(['quality_gate_status'])
 export class RouteDecisionLog {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -113,6 +115,18 @@ export class RouteDecisionLog {
 
   @Column({ type: 'varchar', nullable: true })
   agent_project!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  intelligence_optimizer_applied!: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  token_prediction_risk!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  quality_gate_status!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  async_eval_queued!: boolean;
 
   @Column({ type: 'text' })
   trace_json!: string;

@@ -828,6 +828,115 @@ describe("DashboardController — cache savings analytics", () => {
   });
 });
 
+describe("DashboardController — intelligence summary", () => {
+  it("summarizes optimizer, token prediction, async eval, and quality gate metadata", async () => {
+    const logs = [
+      {
+        timestamp: new Date(),
+        request_id: "req-1",
+        node_id: "openai",
+        model: "gpt-4o",
+        agent_virtual_model: "coding-auto",
+        agent_connector: "cursor",
+        intelligence_optimizer_applied: true,
+        intelligence_estimated_savings_usd: 0.0123456,
+        async_eval_queued: true,
+        token_prediction_risk: "near_limit",
+        quality_gate_status: "passed",
+      },
+      {
+        timestamp: new Date(),
+        request_id: "req-2",
+        node_id: "anthropic",
+        model: "claude-sonnet",
+        agent_virtual_model: null,
+        agent_connector: null,
+        intelligence_optimizer_applied: false,
+        intelligence_estimated_savings_usd: null,
+        async_eval_queued: false,
+        token_prediction_risk: "over_limit",
+        quality_gate_status: "failed",
+      },
+      {
+        timestamp: new Date(),
+        request_id: "req-3",
+        node_id: "openai",
+        model: "gpt-4o-mini",
+        agent_virtual_model: "coding-auto",
+        agent_connector: "cursor",
+        intelligence_optimizer_applied: true,
+        intelligence_estimated_savings_usd: 0.001,
+        async_eval_queued: false,
+        token_prediction_risk: "within_budget",
+        quality_gate_status: "skipped",
+      },
+    ];
+    const qb = mockQueryBuilder([logs, logs.length]);
+    qb.getMany.mockResolvedValue(logs);
+    const repo = mockRepo(qb);
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+
+    const result = await controller.getIntelligenceSummary(
+      "30d",
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(qb.where).toHaveBeenCalledWith(
+      "log.timestamp >= :since",
+      expect.objectContaining({ since: expect.any(Date) }),
+    );
+    expect(result.period).toBe("30d");
+    expect(result.summary).toEqual(
+      expect.objectContaining({
+        total_requests: 3,
+        optimizer_applied: 2,
+        optimizer_applied_rate: 0.6667,
+        estimated_savings_usd: 0.013346,
+        async_eval_queued: 1,
+        token_risk: {
+          near_limit: 1,
+          over_limit: 1,
+          within_budget: 1,
+        },
+        quality_gate: {
+          passed: 1,
+          failed: 1,
+          skipped: 1,
+        },
+      }),
+    );
+    expect(result.summary.privacy).toEqual(
+      expect.objectContaining({
+        prompt: false,
+        response: false,
+        raw_headers: false,
+        provider_keys: false,
+        tool_payloads: false,
+        storage: "metadata_only",
+      }),
+    );
+    expect(result.by_agent[0]).toEqual(
+      expect.objectContaining({
+        key: "coding-auto",
+        requests: 2,
+        optimizer_applied: 2,
+        near_or_over_budget: 1,
+      }),
+    );
+    expect(result.by_node).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "anthropic:claude-sonnet",
+          quality_gate_failed: 1,
+          near_or_over_budget: 1,
+        }),
+      ]),
+    );
+  });
+});
+
 describe("DashboardController — benchmark report", () => {
   it("should return a read-only benchmark report with filters", async () => {
     const benchmarkReports = {

@@ -10,6 +10,7 @@ import type {
   Modality,
 } from './modality';
 import type { PluginConfigEntry } from '../plugins/types';
+import type { SourceFormat, Tier } from '../canonical/canonical.types';
 
 export interface GatewayConfig {
   server: ServerConfig;
@@ -61,6 +62,9 @@ export interface GatewayConfig {
 
   /** Optional local evaluation framework metadata and sample-storage controls. */
   evaluation?: EvaluationConfig;
+
+  /** Optional v2 intelligence loop controls: cost optimizer, token prediction, async eval metadata, and quality gates. */
+  intelligence?: IntelligenceConfig;
 
   /** Optional semantic caching preview. Disabled by default and metadata-only unless explicitly configured. */
   semantic_cache?: SemanticCacheConfig;
@@ -250,7 +254,8 @@ export type AlertEventType =
   | 'circuit_open'
   | 'circuit_close'
   | 'error_spike'
-  | 'latency_spike';
+  | 'latency_spike'
+  | 'quality_gate_failed';
 
 export interface AlertsConfig {
   /** Master switch for local alert dispatch (default: false) */
@@ -902,6 +907,69 @@ export interface CostDowngradeFallbackConfig {
   enabled?: boolean;
   /** Estimated request cost threshold in USD. Required when enabled. */
   max_estimated_cost_usd?: number;
+}
+
+// ===== Intelligence Loop =====
+export type IntelligenceBudgetPolicy = 'observe' | 'reject' | 'downgrade';
+export type IntelligenceOptimizerAction = 'evidence_only' | 'optimize';
+export type IntelligenceOptimizerObjective = 'cost' | 'balanced' | 'latency' | 'quality';
+export type IntelligenceQualityGateAction = 'retry' | 'fallback' | 'alert';
+
+export interface IntelligenceConfig {
+  /** Real-time cost optimizer v1. Defaults to metadata-only evidence when enabled. */
+  cost_optimizer?: IntelligenceCostOptimizerConfig;
+  /** Pre-upstream token/cost risk prediction. Safe by default: observe only. */
+  token_prediction?: IntelligenceTokenPredictionConfig;
+  /** Async eval metadata queue. Never stores prompts/responses unless other explicit eval sample controls do. */
+  async_eval?: IntelligenceAsyncEvalConfig;
+  /** Opt-in quality gates for critical non-streaming routes. Disabled by default. */
+  quality_gate?: IntelligenceQualityGateConfig;
+}
+
+export interface IntelligenceCostOptimizerConfig {
+  enabled?: boolean;
+  action?: IntelligenceOptimizerAction;
+  objective?: IntelligenceOptimizerObjective;
+  history_window_hours?: number;
+  min_samples?: number;
+  min_savings_ratio?: number;
+  max_latency_penalty_ratio?: number;
+  max_quality_penalty?: number;
+  allow_quality_critical_downgrade?: boolean;
+}
+
+export interface IntelligenceTokenPredictionConfig {
+  enabled?: boolean;
+  budget_policy?: IntelligenceBudgetPolicy;
+  near_limit_ratio?: number;
+  allow_quality_critical_downgrade?: boolean;
+}
+
+export interface IntelligenceAsyncEvalConfig {
+  enabled?: boolean;
+  sample_rate?: number;
+  dimensions?: string[];
+  metadata_only?: boolean;
+  max_recent_jobs?: number;
+}
+
+export interface IntelligenceQualityGateConfig {
+  enabled?: boolean;
+  rules?: IntelligenceQualityGateRuleConfig[];
+}
+
+export interface IntelligenceQualityGateRuleConfig {
+  id: string;
+  enabled?: boolean;
+  source_formats?: SourceFormat[];
+  tiers?: Tier[];
+  models?: string[];
+  agent_virtual_models?: string[];
+  require_text?: boolean;
+  min_output_tokens?: number;
+  fail_on_stop_reasons?: string[];
+  max_latency_ms?: number;
+  actions?: IntelligenceQualityGateAction[];
 }
 
 /**

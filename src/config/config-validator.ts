@@ -76,12 +76,40 @@ const ALERT_EVENTS = new Set([
   'circuit_close',
   'error_spike',
   'latency_spike',
+  'quality_gate_failed',
 ]);
 const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
 const STATE_BACKENDS = new Set(['memory', 'redis']);
 const STATE_UNAVAILABLE_POLICIES = new Set(['fail_open', 'fail_closed']);
 const WORKSPACE_ROLES = new Set(['admin', 'operator', 'viewer']);
+const INTELLIGENCE_BUDGET_POLICIES = new Set(['observe', 'reject', 'downgrade']);
+const INTELLIGENCE_OPTIMIZER_ACTIONS = new Set(['evidence_only', 'optimize']);
+const INTELLIGENCE_OBJECTIVES = new Set(['cost', 'balanced', 'latency', 'quality']);
+const INTELLIGENCE_QUALITY_GATE_ACTIONS = new Set(['retry', 'fallback', 'alert']);
+const INTELLIGENCE_SOURCE_FORMATS = new Set([
+  'chat_completions',
+  'responses',
+  'messages',
+  'embeddings',
+  'rerank',
+  'image_generation',
+  'image_edit',
+  'image_variation',
+  'audio_transcription',
+  'audio_translation',
+  'audio_speech',
+  'video_generation',
+  'batch',
+]);
+const INTELLIGENCE_TIERS = new Set([
+  'simple',
+  'standard',
+  'complex',
+  'reasoning',
+  'direct',
+  'cached',
+]);
 const STATE_CATEGORIES = new Set([
   'rate_limit',
   'circuit_breaker',
@@ -261,6 +289,7 @@ export function validateConfigObject(
   validateMcpGateway(config.mcp, config.namespaces, issues);
   validateShadow(config.shadow, config.nodes, issues);
   validateEvaluation(config.evaluation, config.nodes, issues);
+  validateIntelligence(config.intelligence, issues);
   validateAlerts(config.alerts, issues);
   validateLogging(config.logging, issues);
   validateState(config.state, issues);
@@ -987,6 +1016,95 @@ function validateOptionalPositiveNumber(
   if (value === undefined) return;
   if (!isFiniteNumber(value) || value <= 0) {
     issues.push(issue('error', code, `${issuePath} must be a positive number.`, issuePath));
+  }
+}
+
+function validateOptionalBoolean(
+  value: unknown,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isBoolean(value)) {
+    issues.push(issue('error', code, `${issuePath} must be a boolean.`, issuePath));
+  }
+}
+
+function validateOptionalEnum(
+  value: unknown,
+  knownValues: Set<string>,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isNonEmptyString(value) || !knownValues.has(value)) {
+    issues.push(
+      issue(
+        'error',
+        code,
+        `${issuePath} must be one of: ${[...knownValues].join(', ')}.`,
+        issuePath,
+      ),
+    );
+  }
+}
+
+function validateOptionalEnumArray(
+  value: unknown,
+  knownValues: Set<string>,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(issue('error', code, `${issuePath} must be an array.`, issuePath));
+    return;
+  }
+  for (const [index, item] of value.entries()) {
+    if (!isNonEmptyString(item) || !knownValues.has(item)) {
+      issues.push(
+        issue(
+          'error',
+          code,
+          `${issuePath} entries must be one of: ${[...knownValues].join(', ')}.`,
+          `${issuePath}[${index}]`,
+        ),
+      );
+    }
+  }
+}
+
+function validateOptionalStringArray(
+  value: unknown,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || !value.every(isNonEmptyString)) {
+    issues.push(
+      issue(
+        'error',
+        code,
+        `${issuePath} must be an array of non-empty strings.`,
+        issuePath,
+      ),
+    );
+  }
+}
+
+function validateOptionalRatio(
+  value: unknown,
+  issuePath: string,
+  code: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (value === undefined) return;
+  if (!isFiniteNumber(value) || value < 0 || value > 1) {
+    issues.push(issue('error', code, `${issuePath} must be a number between 0 and 1.`, issuePath));
   }
 }
 
@@ -3070,6 +3188,168 @@ function validateEvaluation(
         'evaluation.store_samples',
       ),
     );
+  }
+}
+
+function validateIntelligence(
+  intelligence: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (intelligence === undefined) return;
+  if (!isRecord(intelligence)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_intelligence_config',
+        'intelligence must be an object.',
+        'intelligence',
+      ),
+    );
+    return;
+  }
+
+  validateIntelligenceCostOptimizer(intelligence.cost_optimizer, issues);
+  validateIntelligenceTokenPrediction(intelligence.token_prediction, issues);
+  validateIntelligenceAsyncEval(intelligence.async_eval, issues);
+  validateIntelligenceQualityGate(intelligence.quality_gate, issues);
+}
+
+function validateIntelligenceCostOptimizer(
+  optimizer: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (optimizer === undefined) return;
+  const basePath = 'intelligence.cost_optimizer';
+  if (!isRecord(optimizer)) {
+    issues.push(issue('error', 'invalid_intelligence_cost_optimizer', `${basePath} must be an object.`, basePath));
+    return;
+  }
+  validateOptionalBoolean(optimizer.enabled, `${basePath}.enabled`, 'invalid_intelligence_cost_optimizer', issues);
+  validateOptionalEnum(
+    optimizer.action,
+    INTELLIGENCE_OPTIMIZER_ACTIONS,
+    `${basePath}.action`,
+    'invalid_intelligence_cost_optimizer',
+    issues,
+  );
+  validateOptionalEnum(
+    optimizer.objective,
+    INTELLIGENCE_OBJECTIVES,
+    `${basePath}.objective`,
+    'invalid_intelligence_cost_optimizer',
+    issues,
+  );
+  validateOptionalPositiveNumber(optimizer.history_window_hours, `${basePath}.history_window_hours`, 'invalid_intelligence_cost_optimizer', issues);
+  validateOptionalPositiveNumber(optimizer.min_samples, `${basePath}.min_samples`, 'invalid_intelligence_cost_optimizer', issues);
+  validateOptionalRatio(optimizer.min_savings_ratio, `${basePath}.min_savings_ratio`, 'invalid_intelligence_cost_optimizer', issues);
+  validateOptionalRatio(optimizer.max_latency_penalty_ratio, `${basePath}.max_latency_penalty_ratio`, 'invalid_intelligence_cost_optimizer', issues);
+  validateOptionalRatio(optimizer.max_quality_penalty, `${basePath}.max_quality_penalty`, 'invalid_intelligence_cost_optimizer', issues);
+  validateOptionalBoolean(optimizer.allow_quality_critical_downgrade, `${basePath}.allow_quality_critical_downgrade`, 'invalid_intelligence_cost_optimizer', issues);
+}
+
+function validateIntelligenceTokenPrediction(
+  tokenPrediction: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (tokenPrediction === undefined) return;
+  const basePath = 'intelligence.token_prediction';
+  if (!isRecord(tokenPrediction)) {
+    issues.push(issue('error', 'invalid_intelligence_token_prediction', `${basePath} must be an object.`, basePath));
+    return;
+  }
+  validateOptionalBoolean(tokenPrediction.enabled, `${basePath}.enabled`, 'invalid_intelligence_token_prediction', issues);
+  validateOptionalEnum(
+    tokenPrediction.budget_policy,
+    INTELLIGENCE_BUDGET_POLICIES,
+    `${basePath}.budget_policy`,
+    'invalid_intelligence_token_prediction',
+    issues,
+  );
+  validateOptionalRatio(tokenPrediction.near_limit_ratio, `${basePath}.near_limit_ratio`, 'invalid_intelligence_token_prediction', issues);
+  validateOptionalBoolean(tokenPrediction.allow_quality_critical_downgrade, `${basePath}.allow_quality_critical_downgrade`, 'invalid_intelligence_token_prediction', issues);
+}
+
+function validateIntelligenceAsyncEval(
+  asyncEval: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (asyncEval === undefined) return;
+  const basePath = 'intelligence.async_eval';
+  if (!isRecord(asyncEval)) {
+    issues.push(issue('error', 'invalid_intelligence_async_eval', `${basePath} must be an object.`, basePath));
+    return;
+  }
+  validateOptionalBoolean(asyncEval.enabled, `${basePath}.enabled`, 'invalid_intelligence_async_eval', issues);
+  validateOptionalRatio(asyncEval.sample_rate, `${basePath}.sample_rate`, 'invalid_intelligence_async_eval', issues);
+  validateOptionalBoolean(asyncEval.metadata_only, `${basePath}.metadata_only`, 'invalid_intelligence_async_eval', issues);
+  validateOptionalPositiveNumber(asyncEval.max_recent_jobs, `${basePath}.max_recent_jobs`, 'invalid_intelligence_async_eval', issues);
+  if (
+    asyncEval.dimensions !== undefined &&
+    (!Array.isArray(asyncEval.dimensions) || !asyncEval.dimensions.every(isNonEmptyString))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_intelligence_async_eval',
+        'intelligence.async_eval.dimensions must be an array of non-empty strings.',
+        `${basePath}.dimensions`,
+      ),
+    );
+  }
+  if (asyncEval.metadata_only === false) {
+    issues.push(
+      issue(
+        'warning',
+        'intelligence_async_eval_content_storage',
+        'intelligence.async_eval.metadata_only=false can require content access; keep it true unless evaluation sample storage is explicitly approved.',
+        `${basePath}.metadata_only`,
+      ),
+    );
+  }
+}
+
+function validateIntelligenceQualityGate(
+  qualityGate: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (qualityGate === undefined) return;
+  const basePath = 'intelligence.quality_gate';
+  if (!isRecord(qualityGate)) {
+    issues.push(issue('error', 'invalid_intelligence_quality_gate', `${basePath} must be an object.`, basePath));
+    return;
+  }
+  validateOptionalBoolean(qualityGate.enabled, `${basePath}.enabled`, 'invalid_intelligence_quality_gate', issues);
+  if (qualityGate.rules === undefined) return;
+  if (!Array.isArray(qualityGate.rules)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_intelligence_quality_gate',
+        'intelligence.quality_gate.rules must be an array.',
+        `${basePath}.rules`,
+      ),
+    );
+    return;
+  }
+  for (const [index, rule] of qualityGate.rules.entries()) {
+    const rulePath = `${basePath}.rules[${index}]`;
+    if (!isRecord(rule)) {
+      issues.push(issue('error', 'invalid_intelligence_quality_gate_rule', `${rulePath} must be an object.`, rulePath));
+      continue;
+    }
+    if (!isNonEmptyString(rule.id)) {
+      issues.push(issue('error', 'invalid_intelligence_quality_gate_rule', `${rulePath}.id must be a non-empty string.`, `${rulePath}.id`));
+    }
+    validateOptionalBoolean(rule.enabled, `${rulePath}.enabled`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalEnumArray(rule.source_formats, INTELLIGENCE_SOURCE_FORMATS, `${rulePath}.source_formats`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalEnumArray(rule.tiers, INTELLIGENCE_TIERS, `${rulePath}.tiers`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalStringArray(rule.models, `${rulePath}.models`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalStringArray(rule.agent_virtual_models, `${rulePath}.agent_virtual_models`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalBoolean(rule.require_text, `${rulePath}.require_text`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalPositiveNumber(rule.min_output_tokens, `${rulePath}.min_output_tokens`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalPositiveNumber(rule.max_latency_ms, `${rulePath}.max_latency_ms`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalStringArray(rule.fail_on_stop_reasons, `${rulePath}.fail_on_stop_reasons`, 'invalid_intelligence_quality_gate_rule', issues);
+    validateOptionalEnumArray(rule.actions, INTELLIGENCE_QUALITY_GATE_ACTIONS, `${rulePath}.actions`, 'invalid_intelligence_quality_gate_rule', issues);
   }
 }
 

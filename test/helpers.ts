@@ -129,6 +129,36 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       store_responses: false,
       max_response_bytes: 65_536,
     },
+    intelligence: {
+      cost_optimizer: {
+        enabled: false,
+        action: 'evidence_only',
+        objective: 'balanced',
+        history_window_hours: 24,
+        min_samples: 5,
+        min_savings_ratio: 0.05,
+        max_latency_penalty_ratio: 0.5,
+        max_quality_penalty: 0.15,
+        allow_quality_critical_downgrade: false,
+      },
+      token_prediction: {
+        enabled: false,
+        budget_policy: 'observe',
+        near_limit_ratio: 0.9,
+        allow_quality_critical_downgrade: false,
+      },
+      async_eval: {
+        enabled: false,
+        sample_rate: 0,
+        dimensions: ['latency', 'toxicity', 'relevance', 'format'],
+        metadata_only: true,
+        max_recent_jobs: 200,
+      },
+      quality_gate: {
+        enabled: false,
+        rules: [],
+      },
+    },
     embeddingBatching: {
       enabled: false,
       window_ms: 10,

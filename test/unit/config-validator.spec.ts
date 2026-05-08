@@ -2629,6 +2629,106 @@ describe('config validator', () => {
     expect(codes(result.errors)).not.toContain('invalid_cache_affinity_config');
   });
 
+  it('accepts privacy-safe intelligence loop settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        intelligence: {
+          cost_optimizer: {
+            enabled: true,
+            action: 'evidence_only',
+            objective: 'balanced',
+            history_window_hours: 24,
+            min_samples: 5,
+            min_savings_ratio: 0.05,
+            max_latency_penalty_ratio: 0.5,
+            max_quality_penalty: 0.15,
+            allow_quality_critical_downgrade: false,
+          },
+          token_prediction: {
+            enabled: true,
+            budget_policy: 'downgrade',
+            near_limit_ratio: 0.9,
+            allow_quality_critical_downgrade: false,
+          },
+          async_eval: {
+            enabled: true,
+            sample_rate: 0.1,
+            dimensions: ['latency', 'toxicity', 'relevance', 'format'],
+            metadata_only: true,
+            max_recent_jobs: 200,
+          },
+          quality_gate: {
+            enabled: true,
+            rules: [
+              {
+                id: 'critical-coding',
+                tiers: ['complex', 'reasoning'],
+                agent_virtual_models: ['coding-deep', 'coding-security'],
+                require_text: true,
+                min_output_tokens: 16,
+                max_latency_ms: 30000,
+                fail_on_stop_reasons: ['max_tokens'],
+                actions: ['fallback', 'alert'],
+              },
+            ],
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_intelligence_config');
+    expect(codes(result.warnings)).not.toContain('intelligence_async_eval_content_storage');
+  });
+
+  it('rejects invalid intelligence loop settings and warns on content eval mode', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        intelligence: {
+          cost_optimizer: {
+            enabled: 'yes',
+            action: 'auto',
+            objective: 'cheap',
+            min_savings_ratio: 1.2,
+          },
+          token_prediction: {
+            budget_policy: 'block',
+            near_limit_ratio: -0.1,
+          },
+          async_eval: {
+            sample_rate: 2,
+            dimensions: ['latency', ''],
+            metadata_only: false,
+          },
+          quality_gate: {
+            enabled: true,
+            rules: [
+              {
+                id: '',
+                source_formats: ['unknown'],
+                tiers: ['gold'],
+                actions: ['page'],
+              },
+            ],
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_intelligence_cost_optimizer',
+        'invalid_intelligence_token_prediction',
+        'invalid_intelligence_async_eval',
+        'invalid_intelligence_quality_gate_rule',
+      ]),
+    );
+    expect(codes(result.warnings)).toContain('intelligence_async_eval_content_storage');
+  });
+
   it('rejects invalid routing.cache_affinity settings', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {

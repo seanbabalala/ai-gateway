@@ -49,6 +49,7 @@ import {
   AwsSecretsManagerConfig,
   GcpSecretManagerConfig,
   CatalogConfig,
+  IntelligenceConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -762,6 +763,60 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       vector_dimensions: semantic?.vector_dimensions ?? 256,
       store_responses: semantic?.store_responses ?? false,
       max_response_bytes: semantic?.max_response_bytes ?? 65_536,
+    };
+  }
+
+  /** Get v2 intelligence loop config with privacy-safe, opt-in defaults. */
+  get intelligence(): {
+    cost_optimizer: Required<NonNullable<IntelligenceConfig['cost_optimizer']>>;
+    token_prediction: Required<NonNullable<IntelligenceConfig['token_prediction']>>;
+    async_eval: Required<NonNullable<IntelligenceConfig['async_eval']>>;
+    quality_gate: {
+      enabled: boolean;
+      rules: NonNullable<IntelligenceConfig['quality_gate']>['rules'];
+    };
+  } {
+    const intelligence = this.config.intelligence;
+    return {
+      cost_optimizer: {
+        enabled: intelligence?.cost_optimizer?.enabled ?? false,
+        action: intelligence?.cost_optimizer?.action ?? 'evidence_only',
+        objective: intelligence?.cost_optimizer?.objective ?? 'balanced',
+        history_window_hours:
+          intelligence?.cost_optimizer?.history_window_hours ?? 24,
+        min_samples: intelligence?.cost_optimizer?.min_samples ?? 5,
+        min_savings_ratio:
+          intelligence?.cost_optimizer?.min_savings_ratio ?? 0.05,
+        max_latency_penalty_ratio:
+          intelligence?.cost_optimizer?.max_latency_penalty_ratio ?? 0.5,
+        max_quality_penalty:
+          intelligence?.cost_optimizer?.max_quality_penalty ?? 0.15,
+        allow_quality_critical_downgrade:
+          intelligence?.cost_optimizer?.allow_quality_critical_downgrade ?? false,
+      },
+      token_prediction: {
+        enabled: intelligence?.token_prediction?.enabled ?? false,
+        budget_policy: intelligence?.token_prediction?.budget_policy ?? 'observe',
+        near_limit_ratio: intelligence?.token_prediction?.near_limit_ratio ?? 0.9,
+        allow_quality_critical_downgrade:
+          intelligence?.token_prediction?.allow_quality_critical_downgrade ?? false,
+      },
+      async_eval: {
+        enabled: intelligence?.async_eval?.enabled ?? false,
+        sample_rate: intelligence?.async_eval?.sample_rate ?? 0,
+        dimensions: intelligence?.async_eval?.dimensions ?? [
+          'latency',
+          'toxicity',
+          'relevance',
+          'format',
+        ],
+        metadata_only: intelligence?.async_eval?.metadata_only ?? true,
+        max_recent_jobs: intelligence?.async_eval?.max_recent_jobs ?? 200,
+      },
+      quality_gate: {
+        enabled: intelligence?.quality_gate?.enabled ?? false,
+        rules: intelligence?.quality_gate?.rules ?? [],
+      },
     };
   }
 

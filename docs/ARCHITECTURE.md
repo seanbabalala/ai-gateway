@@ -44,7 +44,9 @@ Client Request
   -> Scoring
   -> Compatibility Profile Filter
   -> Router
+  -> Optional Intelligence Loop Preflight
   -> Provider Client
+  -> Optional Quality Gate
   -> Denormalizer
   -> Call Log
   -> Optional Shadow Traffic Mirror
@@ -138,6 +140,22 @@ v1.4 pricing source governance normalizes explicit config, catalog overrides, sy
 
 v1.3 adds Semantic Cache preview as a separate disabled-by-default layer. It computes a local hashed-vector embedding from canonical request text, stores embedding/hash/metadata by default, and records semantic match evidence in call logs and Route Decision Trace. Replayable response storage is off unless `semantic_cache.store_responses=true`; when off, semantic matches are advisory evidence and traffic still goes upstream.
 
+v2.2 adds the optional Intelligence Loop after normal route resolution and
+before the upstream call. Token Prediction estimates input/output/context token
+risk and cost risk against the active budget policy. The Cost Optimizer scores
+the selected target and fallbacks with model price, budget headroom, latency,
+cache probability, observed success/quality metadata, and coding/task intent.
+By default it records evidence only; route changes require explicit
+`intelligence.cost_optimizer.action=optimize`. Quality-critical coding and
+reasoning requests are not downgraded unless the operator explicitly allows it.
+
+After non-streaming upstream responses, the optional Quality Gate can evaluate
+metadata-safe checks such as empty text, minimum output tokens, stop reason,
+latency, tier, source format, and coding virtual model. It may retry or fallback
+only before response bytes are sent. Streaming requests record
+`streaming_no_post_start_retry` and never retry or fallback after bytes have
+started. Async Eval v1 queues metadata only by default.
+
 ### Reliability
 
 The data plane protects request flow with:
@@ -147,6 +165,7 @@ The data plane protects request flow with:
 - model-level circuit breakers
 - prompt cache
 - optional Redis shared state backend for circuit breakers, rate limits, prompt cache, and routing momentum
+- optional v2.2 Intelligence Loop for evidence-only cost optimization, token prediction, async eval metadata, and opt-in quality gates
 - optional MCP Gateway preview for local MCP server proxying behind Gateway API key auth, namespace allow-lists, and the same rate limiter
 - graceful shutdown
 - body size limits
@@ -176,6 +195,8 @@ The gateway records call logs with:
 - cache token fields
 - cache-aware route evidence: local prompt-cache lookup status, provider cache capability, observed provider cache-read hit rate, cache-adjusted estimated cost, and estimated savings
 - experiment group
+- Intelligence Loop metadata: optimizer applied flag, estimated cost/savings,
+  token prediction risk, quality gate status, and async eval queued flag
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
 
@@ -200,6 +221,12 @@ For explainable routing, the pipeline also writes a separate `route_decisions` r
 Multimodal requests add a privacy-safe evidence layer to the same trace. The top-level `modality_evidence` block records the requested modality, input/output type shape, file count, byte size, required capabilities, endpoint strategy, and which targets were filtered by capability or file-size limits. Each candidate target adds `capability_evidence` with supported modalities, matched/missing capabilities, endpoint status, max file size, pricing source, and catalog source. This gives Dashboard Route Explanation enough context to explain image/audio/video/rerank/embedding decisions without storing prompt text, response text, uploaded file bytes, raw headers, or provider keys.
 
 v1.4 adds `compatibility_evidence` to candidate targets. It records provider id, compatibility profile ids, endpoint/protocol strategy, passthrough fields, downgraded fields, unsupported fields, selected reason, and profile filter reason. It is designed for Dashboard Route Explanation and Logs detail, not for content capture; prompts, responses, raw headers, provider keys, media bytes, and video bytes remain excluded.
+
+v2.2 adds top-level `intelligence` evidence to route traces. It records token
+prediction estimates and budget risk, optimizer candidate scores/rejection
+reasons, quality gate events/actions, and async eval queue metadata. The trace
+does not store prompt text, response text, raw headers, provider keys, source
+code, diffs, tool payloads, media bytes, video bytes, or hidden reasoning text.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
