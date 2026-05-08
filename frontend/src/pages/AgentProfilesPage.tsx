@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  AlertTriangle,
   Bot,
   Check,
   Code2,
@@ -16,6 +17,7 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,11 +53,12 @@ import type {
 } from '@/types/api'
 
 type RoutingMode = 'smart' | 'direct'
+type AgentProfileConnectorChoice = AgentProfileConnector | ''
 
 interface AgentProfileFormState {
   name: string
   description: string
-  connector: AgentProfileConnector
+  connector: AgentProfileConnectorChoice
   status: AgentProfileStatus
   api_key_id: string
   namespace_id: string
@@ -103,6 +106,16 @@ const baseUrlModeLabelKeys: Record<AgentProfileBaseUrlMode, string> = {
   root: 'agents.baseUrlModes.root',
 }
 
+const connectorDescriptionKeys: Record<AgentProfileConnector, string> = {
+  codex: 'agents.connectorDescriptions.codex',
+  claude_code: 'agents.connectorDescriptions.claudeCode',
+  cherry_studio: 'agents.connectorDescriptions.cherryStudio',
+  hermes: 'agents.connectorDescriptions.hermes',
+  openclaw: 'agents.connectorDescriptions.openclaw',
+  generic_openai: 'agents.connectorDescriptions.genericOpenAI',
+  generic_anthropic: 'agents.connectorDescriptions.genericAnthropic',
+}
+
 const fieldLabelKeys: Record<string, string> = {
   base_url: 'agents.render.baseUrl',
   api_key: 'agents.fields.apiKey',
@@ -113,7 +126,7 @@ const fieldLabelKeys: Record<string, string> = {
 const emptyForm: AgentProfileFormState = {
   name: '',
   description: '',
-  connector: 'codex',
+  connector: '',
   status: 'active',
   api_key_id: '',
   namespace_id: '',
@@ -126,12 +139,31 @@ const emptyForm: AgentProfileFormState = {
   metadata: null,
 }
 
-function defaultSmartModel(connector: AgentProfileConnector) {
-  return anthropicConnectors.has(connector) ? 'claude-siftgate-auto' : 'auto'
+function isAgentProfileConnector(value: AgentProfileConnectorChoice): value is AgentProfileConnector {
+  return CONNECTORS.includes(value as AgentProfileConnector)
 }
 
-function defaultBaseUrlMode(connector: AgentProfileConnector): AgentProfileBaseUrlMode {
-  return anthropicConnectors.has(connector) ? 'anthropic_v1' : 'openai_v1'
+function defaultSmartModel(connector: AgentProfileConnectorChoice) {
+  return isAgentProfileConnector(connector) && anthropicConnectors.has(connector)
+    ? 'claude-siftgate-auto'
+    : 'auto'
+}
+
+function defaultBaseUrlMode(connector: AgentProfileConnectorChoice): AgentProfileBaseUrlMode {
+  return isAgentProfileConnector(connector) && anthropicConnectors.has(connector)
+    ? 'anthropic_v1'
+    : 'openai_v1'
+}
+
+function defaultBaseUrlExample(mode: AgentProfileBaseUrlMode) {
+  return mode === 'openai_v1' ? 'http://localhost:2099/v1' : 'http://localhost:2099'
+}
+
+function protocolKeyForConnector(connector: AgentProfileConnectorChoice) {
+  if (!connector) return 'agents.preset.protocolUnknown'
+  return anthropicConnectors.has(connector)
+    ? 'agents.preset.anthropicCompatible'
+    : 'agents.preset.openaiCompatible'
 }
 
 function routingModeFromProfile(profile: AgentProfile): RoutingMode {
@@ -176,6 +208,10 @@ function buildPayload(
   form: AgentProfileFormState,
   routingHint: Record<string, unknown> | null,
 ): CreateAgentProfileRequest {
+  if (!isAgentProfileConnector(form.connector)) {
+    throw new Error('agents.errors.connectorRequired')
+  }
+
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
@@ -193,6 +229,87 @@ function buildPayload(
       routing_mode: form.routing_mode,
     },
   }
+}
+
+function ConnectorPresetSummary({
+  connector,
+  baseUrlMode,
+  routingMode,
+  smartModelId,
+  defaultModel,
+}: {
+  connector: AgentProfileConnectorChoice
+  baseUrlMode: AgentProfileBaseUrlMode
+  routingMode: RoutingMode
+  smartModelId: string
+  defaultModel: string
+}) {
+  const { t } = useTranslation('agents')
+
+  if (!connector) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--inset-bg)] p-4 text-[12px] leading-5 text-[var(--foreground-dim)]">
+        {t('agents.preset.chooseConnector')}
+      </div>
+    )
+  }
+
+  const model = routingMode === 'smart' ? smartModelId : defaultModel
+  const facts = [
+    { label: t('agents.preset.client'), value: t(connectorLabelKeys[connector]) },
+    { label: t('agents.preset.protocol'), value: t(protocolKeyForConnector(connector)) },
+    { label: t('agents.preset.baseUrl'), value: defaultBaseUrlExample(baseUrlMode) },
+    { label: t('agents.preset.model'), value: model || defaultSmartModel(connector) },
+  ]
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--inset-bg)] p-4">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[13px] font-bold text-[var(--foreground)]">
+            {t('agents.preset.title')}
+          </div>
+          <div className="mt-1 break-words text-[12px] leading-5 text-[var(--foreground-dim)]">
+            {t('agents.preset.gatewayKeyOnly')}
+          </div>
+        </div>
+        <Badge variant="blue">{t(connectorLabelKeys[connector])}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {facts.map((fact) => (
+          <div key={fact.label} className="min-w-0 rounded-lg bg-[var(--background)] px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase text-[var(--foreground-dim)]">
+              {fact.label}
+            </div>
+            <div className="mt-0.5 break-all font-mono text-[12px] text-[var(--foreground)]">
+              {fact.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AgentWarning({
+  title,
+  description,
+  action,
+}: {
+  title: string
+  description: string
+  action?: ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-300">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="break-words text-[12px] font-semibold">{title}</div>
+        <div className="mt-1 break-words text-[12px] leading-5 opacity-90">{description}</div>
+        {action && <div className="mt-2">{action}</div>}
+      </div>
+    </div>
+  )
 }
 
 function renderedModel(profile: AgentProfile | null, rendered: AgentProfileRenderedConfig) {
@@ -284,6 +401,7 @@ function ProfileFormDialog({
   const { t: tCommon } = useTranslation('common')
   const [form, setForm] = useState<AgentProfileFormState>(initial)
   const [showRoutingHintError, setShowRoutingHintError] = useState(false)
+  const selectedConnector = isAgentProfileConnector(form.connector) ? form.connector : null
 
   useEffect(() => {
     if (open) {
@@ -293,10 +411,13 @@ function ProfileFormDialog({
   }, [open, initial])
 
   const connectorOptions = useMemo<SelectOption[]>(
-    () => CONNECTORS.map((connector) => ({
-      value: connector,
-      label: t(connectorLabelKeys[connector]),
-    })),
+    () => [
+      { value: '', label: t('agents.placeholders.connector') },
+      ...CONNECTORS.map((connector) => ({
+        value: connector,
+        label: t(connectorLabelKeys[connector]),
+      })),
+    ],
     [t],
   )
   const statusOptions = useMemo<SelectOption[]>(
@@ -340,10 +461,13 @@ function ProfileFormDialog({
     () => parseRoutingHint(form.routing_hint_text),
     [form.routing_hint_text],
   )
-  const canSubmit = form.name.trim().length > 0 && !parsedRoutingHint.error
+  const missingApiKey = form.status === 'active' && !form.api_key_id
+  const hasNoApiKeys = apiKeys.length === 0
+  const missingConnector = !selectedConnector
+  const canSubmit = form.name.trim().length > 0 && !parsedRoutingHint.error && !missingConnector && !missingApiKey
 
   const updateConnector = (connector: string) => {
-    const nextConnector = connector as AgentProfileConnector
+    const nextConnector = connector as AgentProfileConnectorChoice
     setForm((prev) => ({
       ...prev,
       connector: nextConnector,
@@ -357,6 +481,7 @@ function ProfileFormDialog({
       setShowRoutingHintError(true)
       return
     }
+    if (missingConnector || missingApiKey) return
     onSubmit(form, parsedRoutingHint.value)
   }
 
@@ -391,6 +516,11 @@ function ProfileFormDialog({
             <div className="grid min-w-0 gap-2">
               <FieldLabel>{t('agents.fields.connector')}</FieldLabel>
               <Select options={connectorOptions} value={form.connector} onChange={updateConnector} className="w-full" />
+              {selectedConnector && (
+                <div className="text-[12px] leading-5 text-[var(--foreground-dim)]">
+                  {t(connectorDescriptionKeys[selectedConnector])}
+                </div>
+              )}
             </div>
             <div className="grid min-w-0 gap-2">
               <FieldLabel>{t('agents.fields.status')}</FieldLabel>
@@ -409,6 +539,9 @@ function ProfileFormDialog({
                 onChange={(api_key_id) => setForm((prev) => ({ ...prev, api_key_id }))}
                 className="w-full"
               />
+              <div className="text-[12px] leading-5 text-[var(--foreground-dim)]">
+                {t('agents.help.apiKey')}
+              </div>
             </div>
             <div className="grid min-w-0 gap-2">
               <FieldLabel>{t('agents.fields.namespace')}</FieldLabel>
@@ -420,6 +553,44 @@ function ProfileFormDialog({
               />
             </div>
           </div>
+
+          <ConnectorPresetSummary
+            connector={form.connector}
+            baseUrlMode={form.base_url_mode}
+            routingMode={form.routing_mode}
+            smartModelId={form.smart_model_id}
+            defaultModel={form.default_model}
+          />
+
+          {missingConnector && (
+            <AgentWarning
+              title={t('agents.warnings.connectorRequired.title')}
+              description={t('agents.warnings.connectorRequired.description')}
+            />
+          )}
+
+          {hasNoApiKeys && (
+            <AgentWarning
+              title={t('agents.warnings.noApiKeys.title')}
+              description={t('agents.warnings.noApiKeys.description')}
+              action={
+                <Link
+                  to="/api-keys"
+                  onClick={onClose}
+                  className="inline-flex h-8 items-center rounded-lg bg-[var(--background)] px-3 text-[12px] font-semibold text-[var(--foreground)] shadow-[0_1px_2px_rgba(5,46,36,0.05)] transition-colors hover:bg-[var(--background-secondary)]"
+                >
+                  {t('agents.actions.createApiKey')}
+                </Link>
+              }
+            />
+          )}
+
+          {!hasNoApiKeys && missingApiKey && (
+            <AgentWarning
+              title={t('agents.warnings.apiKeyRequired.title')}
+              description={t('agents.warnings.apiKeyRequired.description')}
+            />
+          )}
 
           <div className="grid gap-2">
             <FieldLabel>{t('agents.fields.routingMode')}</FieldLabel>

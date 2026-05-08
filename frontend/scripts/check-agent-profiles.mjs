@@ -15,6 +15,7 @@ const requiredAgentKeys = [
   'agents.actions.delete',
   'agents.actions.render',
   'agents.actions.copy',
+  'agents.actions.createApiKey',
   'agents.fields.name',
   'agents.fields.description',
   'agents.fields.connector',
@@ -33,6 +34,13 @@ const requiredAgentKeys = [
   'agents.connectors.openclaw',
   'agents.connectors.genericOpenAI',
   'agents.connectors.genericAnthropic',
+  'agents.connectorDescriptions.codex',
+  'agents.connectorDescriptions.claudeCode',
+  'agents.connectorDescriptions.cherryStudio',
+  'agents.connectorDescriptions.hermes',
+  'agents.connectorDescriptions.openclaw',
+  'agents.connectorDescriptions.genericOpenAI',
+  'agents.connectorDescriptions.genericAnthropic',
   'agents.routing.smart',
   'agents.routing.direct',
   'agents.status.active',
@@ -48,10 +56,29 @@ const requiredAgentKeys = [
   'agents.render.model',
   'agents.render.snippets',
   'agents.errors.invalidRoutingHint',
+  'agents.errors.connectorRequired',
   'agents.fields.baseUrlMode',
+  'agents.help.apiKey',
+  'agents.placeholders.connector',
   'agents.privacy.smartRouter',
+  'agents.preset.anthropicCompatible',
+  'agents.preset.baseUrl',
+  'agents.preset.chooseConnector',
+  'agents.preset.client',
+  'agents.preset.gatewayKeyOnly',
+  'agents.preset.model',
+  'agents.preset.openaiCompatible',
+  'agents.preset.protocol',
+  'agents.preset.protocolUnknown',
+  'agents.preset.title',
   'agents.render.gatewayBaseUrl',
   'agents.render.gatewayKey',
+  'agents.warnings.apiKeyRequired.description',
+  'agents.warnings.apiKeyRequired.title',
+  'agents.warnings.connectorRequired.description',
+  'agents.warnings.connectorRequired.title',
+  'agents.warnings.noApiKeys.description',
+  'agents.warnings.noApiKeys.title',
 ]
 
 const connectorKeys = [
@@ -106,8 +133,10 @@ const allowedLiteralStrings = new Set([
   'api_key',
   'default_model',
   'http://localhost:2099',
+  'http://localhost:2099/v1',
   '=${rendered.smart_model_id}',
   '=${model}',
+  'agents.errors.connectorRequired',
 ])
 
 const allowedVisibleLiteralPatterns = [
@@ -180,14 +209,28 @@ for (const needle of [
   'McpServerPicker',
   'RenderPanel',
   'navigator.clipboard.writeText',
+  'ConnectorPresetSummary',
+  'AgentWarning',
   'agents.privacy.gatewayKey',
   'agents.privacy.providerKeys',
   'agents.privacy.noStoredSecrets',
   'agents.privacy.routingHints',
   'agents.privacy.smartRouter',
+  'agents.warnings.apiKeyRequired.title',
+  'agents.warnings.connectorRequired.title',
+  'agents.warnings.noApiKeys.title',
 ]) {
   assert(pageSource.includes(needle), `AgentProfilesPage missing ${needle}`)
 }
+
+assert(
+  pageSource.includes("{ value: '', label: t('agents.placeholders.connector') }"),
+  'Agent profile creation must force an explicit connector choice.',
+)
+assert(
+  pageSource.includes("const missingApiKey = form.status === 'active' && !form.api_key_id"),
+  'Agent profile creation must warn when an active profile has no Gateway API key.',
+)
 
 assert(
   !pageSource.includes('key_hash') && !pageSource.includes('plainKey'),
@@ -304,6 +347,8 @@ function isSuspiciousVisibleEnglish(value) {
   if (isUtilityClassList(trimmed)) return false
   if (allowedVisibleLiteralPatterns.some((pattern) => pattern.test(trimmed))) return false
   if (trimmed.includes('${')) return false
+  if (/[{}()=?:]/.test(trimmed)) return false
+  if (/^[,.)\]}]/.test(trimmed)) return false
   if (trimmed.includes('var(--')) return false
   if (trimmed.includes('[') || trimmed.includes(']')) return false
   if (trimmed.includes(':') && !/\s/.test(trimmed)) return false
