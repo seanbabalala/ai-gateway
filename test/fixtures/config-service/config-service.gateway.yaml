@@ -1,0 +1,71 @@
+server:
+  port: 2099
+  host: 0.0.0.0
+
+database:
+  type: sqlite
+  path: ./data/test-gateway.db
+
+auth:
+  api_keys: []
+
+nodes:
+  - id: openai
+    name: OpenAI
+    protocol: chat_completions
+    base_url: https://api.openai.com
+    endpoint: /v1/chat/completions
+    api_key: test-openai-key
+    models:
+      - gpt-4o
+      - gpt-4o-mini
+    timeout_ms: 60000
+    model_aliases:
+      gpt4: gpt-4o
+    model_prefixes:
+      - gpt
+
+  - id: ctrip-anthropic
+    name: Ctrip Anthropic
+    protocol: messages
+    base_url: https://api.anthropic.com
+    endpoint: /v1/messages
+    api_key: test-anthropic-key
+    auth_type: x-api-key
+    models:
+      - claude-opus-4-6-v1
+    timeout_ms: 120000
+    model_aliases:
+      claude-opus-4-6: claude-opus-4-6-v1
+    model_prefixes:
+      - claude
+    headers:
+      anthropic-version: "2023-06-01"
+
+routing:
+  tiers:
+    simple:
+      primary: { node: openai, model: gpt-4o-mini }
+      fallbacks: []
+    standard:
+      primary: { node: openai, model: gpt-4o }
+      fallbacks:
+        - { node: ctrip-anthropic, model: claude-opus-4-6-v1 }
+    complex:
+      primary: { node: ctrip-anthropic, model: claude-opus-4-6-v1 }
+      fallbacks:
+        - { node: openai, model: gpt-4o }
+  scoring:
+    simple_max: -0.1
+    standard_max: 0.08
+    complex_max: 0.35
+
+budget:
+  daily_token_limit: 1000000
+  daily_cost_limit: 25
+  alert_threshold: 0.8
+
+models_pricing:
+  gpt-4o: { input: 2.5, output: 10 }
+  gpt-4o-mini: { input: 0.15, output: 0.6 }
+  claude-opus-4-6-v1: { input: 15, output: 75 }

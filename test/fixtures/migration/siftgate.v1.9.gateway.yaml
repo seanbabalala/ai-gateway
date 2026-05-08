@@ -1,0 +1,89 @@
+server:
+  port: 2099
+  host: 0.0.0.0
+
+database:
+  type: sqlite
+  path: ./data/gateway.db
+
+dashboard:
+  password: local-admin-password
+
+auth:
+  api_keys:
+    - key: gw_fixture_key_one
+      name: engineering
+      namespace_id: dev
+      budget:
+        daily_token_limit: 100000
+        daily_cost_limit: 10
+    - key: gw_fixture_key_two
+      name: support
+
+local_teams:
+  - id: platform
+    name: Platform
+    daily_cost_limit: 50
+
+namespaces:
+  - id: dev
+    name: Development
+    budget:
+      daily_cost_limit: 25
+  - id: prod
+    name: Production
+
+nodes:
+  - id: openai
+    name: OpenAI
+    protocol: chat_completions
+    base_url: https://api.openai.com
+    endpoint: /v1/chat/completions
+    api_key: ${OPENAI_API_KEY:-fixture}
+    models:
+      - gpt-4o
+      - gpt-4o-mini
+  - id: anthropic
+    name: Anthropic
+    protocol: messages
+    base_url: https://api.anthropic.com
+    endpoint: /v1/messages
+    api_key: ${ANTHROPIC_API_KEY:-fixture}
+    models:
+      - claude-3-5-sonnet-latest
+
+routing:
+  tiers:
+    simple:
+      primary: { node: openai, model: gpt-4o-mini }
+      fallbacks: []
+    complex:
+      primary: { node: anthropic, model: claude-3-5-sonnet-latest }
+      fallbacks:
+        - { node: openai, model: gpt-4o }
+  domain_preferences:
+    coding:
+      - anthropic
+  retry:
+    max_attempts: 2
+  fallback_policy:
+    immediate_429: true
+  cache_affinity:
+    enabled: true
+
+budget:
+  daily_token_limit: 1000000
+  daily_cost_limit: 100
+  alert_threshold: 0.8
+
+mcp:
+  enabled: true
+  servers:
+    - id: filesystem
+      name: Filesystem
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+models_pricing:
+  gpt-4o: { input: 2.5, output: 10 }
+  gpt-4o-mini: { input: 0.15, output: 0.6 }

@@ -1377,8 +1377,11 @@ describe("DashboardController — catalog", () => {
       provider_status: "transport_only",
       default_visible: false,
       model_buckets: {
-        models: [],
-        embedding_models: [],
+        models: expect.arrayContaining([
+          "meta-llama/Llama-3.3-70B-Instruct",
+          "sentence-transformers/all-MiniLM-L6-v2",
+        ]),
+        embedding_models: ["sentence-transformers/all-MiniLM-L6-v2"],
         rerank_models: [],
         image_models: [],
         audio_models: [],

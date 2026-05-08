@@ -2,9 +2,9 @@
 
 SiftGate is a self-hosted AI traffic gateway for running multiple AI providers behind one local data plane. It gives applications OpenAI-compatible and provider-compatible ingress, then applies routing, fallback, budget, API key policy, observability, cache evidence, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v1.9.1 v2 Roadmap Baseline**.
+Current release: **v1.9.2 v1 to v2 Migration Dry Run**.
 
-Current development focus after v1.9.1: prepare the v2.x transition from smart gateway to AI infrastructure platform while preserving v1.9 gateway compatibility, local-first operation, and metadata-only privacy boundaries.
+Current development focus after v1.9.2: prepare the v2.x transition from smart gateway to AI infrastructure platform while preserving v1.9 gateway compatibility, local-first operation, and metadata-only privacy boundaries.
 
 ## Why SiftGate
 
@@ -52,6 +52,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v1.9 Highlights
 
+- v1.9.2 adds the read-only `siftgate migrate-v2 --dry-run` migration planner and [`docs/MIGRATION_V1_TO_V2.md`](docs/MIGRATION_V1_TO_V2.md), so operators can preview how v1.9 single-tenant config and metadata rows will map into the future v2 default organization/workspace before any schema change exists.
 - v1.9.1 adds the v2.x platform roadmap, execution prompts, release checklist, and a read-only release version alignment check so future releases have consistent scope, tests, metadata, tags, and GitHub release steps.
 - Agent Gateway Profiles: SiftGate now has a Dashboard **Agents** page for local connection profiles that render setup snippets for Codex, Claude Code, Cherry Studio, Hermes, OpenClaw, Generic OpenAI-compatible clients, and Generic Anthropic-compatible clients.
 - Connector-safe smart routing: OpenAI-compatible agents can use `model=auto`; Claude-style agents can use the profile-scoped `claude-siftgate-auto` virtual model, which maps to internal smart routing instead of direct Claude routing.
@@ -163,6 +164,7 @@ npm run validate:config
 | Architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Roadmap | [docs/GATEWAY_ROADMAP.md](docs/GATEWAY_ROADMAP.md) |
 | v2 Platform Roadmap | [docs/V2_PLATFORM_ROADMAP.md](docs/V2_PLATFORM_ROADMAP.md) |
+| v1 to v2 Migration | [docs/MIGRATION_V1_TO_V2.md](docs/MIGRATION_V1_TO_V2.md) |
 | Release Checklist | [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) |
 
 ## Development
