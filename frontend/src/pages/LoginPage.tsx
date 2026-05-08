@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Shield } from 'lucide-react'
@@ -9,11 +9,25 @@ import { Card, CardContent } from '@/components/ui/card'
 
 export function LoginPage() {
   const { t } = useTranslation('login')
-  const { login } = useAuth()
+  const { completeLogin, localLoginEnabled, login, oidc } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const token = hash.get('token')
+    const callbackError = hash.get('error')
+    if (token) {
+      completeLogin(token)
+      window.history.replaceState(null, '', '/')
+      navigate('/', { replace: true })
+    } else if (callbackError) {
+      setError(callbackError)
+      window.history.replaceState(null, '', '/login')
+    }
+  }, [completeLogin, navigate])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -21,13 +35,22 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      await login(password)
+      const invite = new URLSearchParams(window.location.search).get('invite')
+      await login(password, invite)
       navigate('/', { replace: true })
     } catch (err) {
       setError((err as Error).message || t('login.errorFallback'))
     } finally {
       setLoading(false)
     }
+  }
+
+  function startOidc() {
+    const params = new URLSearchParams(window.location.search)
+    const invite = params.get('invite')
+    const url = new URL('/api/auth/oidc/start', window.location.origin)
+    if (invite) url.searchParams.set('invite', invite)
+    window.location.href = url.toString()
   }
 
   return (
@@ -49,28 +72,38 @@ export function LoginPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
-              <Input
-                type="password"
-                placeholder={t('login.passwordPlaceholder')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoFocus
-                autoComplete="current-password"
-              />
-            </div>
+          <div className="flex flex-col gap-4">
+            {localLoginEnabled && (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <div>
+                  <Input
+                    type="password"
+                    placeholder={t('login.passwordPlaceholder')}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoFocus
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <Button type="submit" disabled={loading || !password}>
+                  {loading ? t('login.signingIn') : t('login.submit')}
+                </Button>
+              </form>
+            )}
+
+            {oidc.enabled && (
+              <Button type="button" variant={localLoginEnabled ? 'secondary' : 'default'} onClick={startOidc}>
+                {t('login.oidcSubmit')}
+              </Button>
+            )}
 
             {error && (
               <div className="rounded-lg bg-red-500/10 px-3 py-2 text-[13px] text-red-600 dark:text-red-400">
                 {error}
               </div>
             )}
-
-            <Button type="submit" disabled={loading || !password}>
-              {loading ? t('login.signingIn') : t('login.submit')}
-            </Button>
-          </form>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -1,8 +1,11 @@
-import { ShieldCheck, UsersRound } from 'lucide-react'
+import { ShieldCheck, Ticket, UsersRound } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import {
   Table,
@@ -16,7 +19,13 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { SkeletonTable } from '@/components/ui/skeleton'
 import { Tooltip } from '@/components/ui/tooltip'
-import { useUpdateWorkspaceMember, useWorkspaceMembers } from '@/hooks/use-members'
+import {
+  useCreateWorkspaceInvitation,
+  useRevokeWorkspaceInvitation,
+  useUpdateWorkspaceMember,
+  useWorkspaceInvitations,
+  useWorkspaceMembers,
+} from '@/hooks/use-members'
 import { hasWorkspaceRole, useWorkspaces } from '@/hooks/use-workspaces'
 import { formatDate } from '@/lib/utils'
 import type { WorkspaceRole } from '@/types/api'
@@ -32,7 +41,13 @@ export function MembersPage() {
   const { data: workspaceState } = useWorkspaces()
   const canAdmin = hasWorkspaceRole(workspaceState?.access, 'admin')
   const members = useWorkspaceMembers(canAdmin)
+  const invitations = useWorkspaceInvitations(canAdmin)
   const updateMember = useUpdateWorkspaceMember()
+  const createInvitation = useCreateWorkspaceInvitation()
+  const revokeInvitation = useRevokeWorkspaceInvitation()
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<WorkspaceRole>('viewer')
+  const [createdInvitePath, setCreatedInvitePath] = useState<string | null>(null)
 
   if (!canAdmin) {
     return (
@@ -56,6 +71,11 @@ export function MembersPage() {
 
   if (members.isError) {
     return <ErrorState error={members.error} onRetry={members.refetch} />
+  }
+
+  function inviteUrl(path: string | null | undefined): string {
+    if (!path) return ''
+    return `${window.location.origin}${path}`
   }
 
   return (
@@ -152,6 +172,118 @@ export function MembersPage() {
                     </TableCell>
                     <TableCell className="text-[12px] text-[var(--foreground-muted)]">
                       {formatDate(member.updated_at)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </CardStatic>
+
+      <CardStatic>
+        <CardHeader>
+          <CardTitle>{t('members.invites.title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <form
+            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_auto]"
+            onSubmit={(event) => {
+              event.preventDefault()
+              setCreatedInvitePath(null)
+              createInvitation.mutate(
+                {
+                  email: inviteEmail || undefined,
+                  role: inviteRole,
+                  expires_in_hours: 168,
+                },
+                {
+                  onSuccess: (result) => {
+                    setInviteEmail('')
+                    setInviteRole('viewer')
+                    setCreatedInvitePath(result.item.accept_path || null)
+                  },
+                },
+              )
+            }}
+          >
+            <Input
+              type="email"
+              placeholder={t('members.invites.emailPlaceholder')}
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+            />
+            <Select
+              value={inviteRole}
+              options={(['admin', 'operator', 'viewer'] as WorkspaceRole[]).map((role) => ({
+                value: role,
+                label: t(`rbac.roles.${role}`),
+              }))}
+              onChange={(role) => setInviteRole(role as WorkspaceRole)}
+            />
+            <Button type="submit" disabled={createInvitation.isPending}>
+              {createInvitation.isPending ? t('members.invites.creating') : t('members.invites.create')}
+            </Button>
+          </form>
+
+          {createdInvitePath && (
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
+              <div className="text-[12px] font-semibold text-[var(--foreground)]">{t('members.invites.created')}</div>
+              <div className="mt-1 break-all font-mono text-[11px] text-[var(--foreground-muted)]">
+                {inviteUrl(createdInvitePath)}
+              </div>
+            </div>
+          )}
+
+          {invitations.isLoading ? (
+            <SkeletonTable rows={3} cols={5} />
+          ) : invitations.data?.items.length === 0 ? (
+            <EmptyState
+              icon={Ticket}
+              title={t('members.invites.emptyTitle')}
+              description={t('members.invites.emptyDescription')}
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('members.invites.email')}</TableHead>
+                  <TableHead>{t('members.table.role')}</TableHead>
+                  <TableHead>{t('members.table.status')}</TableHead>
+                  <TableHead>{t('members.invites.expires')}</TableHead>
+                  <TableHead>{t('members.invites.action')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invitations.data?.items.map((invite) => (
+                  <TableRow key={invite.id}>
+                    <TableCell>
+                      <div className="font-semibold text-[var(--foreground)]">
+                        {invite.email || t('members.invites.anyEmail')}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[10px] text-[var(--foreground-dim)]">{invite.id}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={roleVariants[invite.role]}>{t(`rbac.roles.${invite.role}`)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={invite.status === 'pending' ? 'blue' : 'zinc'}>
+                        {t(`members.invites.status.${invite.status}`)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-[12px] text-[var(--foreground-muted)]">
+                      {formatDate(invite.expires_at)}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={invite.status !== 'pending' || revokeInvitation.isPending}
+                        onClick={() => revokeInvitation.mutate({ id: invite.id })}
+                      >
+                        {t('members.invites.revoke')}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

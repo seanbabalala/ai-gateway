@@ -124,6 +124,22 @@ auth:
 # If omitted, the dashboard is open to everyone (backwards-compatible).
 # dashboard:
 #   password: "my-secret-password"
+#   # Optional: stable Dashboard JWT secret. Required when OIDC is enabled
+#   # without a local password. Prefer an env or secret reference.
+#   session_secret: "${env:SIFTGATE_DASHBOARD_SESSION_SECRET}"
+#   # Optional generic OIDC login. Disabled by default and runs alongside
+#   # local password auth when both are configured.
+#   oidc:
+#     enabled: false
+#     issuer: "https://accounts.google.com"
+#     client_id: "${env:OIDC_CLIENT_ID}"
+#     client_secret: "${env:OIDC_CLIENT_SECRET}"
+#     redirect_uri: "https://siftgate.example.com/api/auth/oidc/callback"
+#     allowed_domains:
+#       - example.com
+#     default_role: viewer
+#     default_workspace_id: default-workspace
+#     scopes: [openid, email, profile]
 
 # Configuration hot reload (optional)
 # Dashboard reload and SIGHUP are always available. File watching is disabled

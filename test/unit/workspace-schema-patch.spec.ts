@@ -1,13 +1,23 @@
+import { existsSync, unlinkSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { CallLog, GatewayApiKey, Organization, Workspace, WorkspaceMembership } from '../../src/database/entities';
 import {
   applyWorkspaceSchemaPatches,
 } from '../../src/database/workspace-schema-patch.service';
 
+const testDbPaths: string[] = [];
+
 function makeDataSource(name: string): DataSource {
+  const database = join(
+    tmpdir(),
+    `siftgate-workspace-schema-patch-${process.pid}-${name}.sqlite`,
+  );
+  testDbPaths.push(database);
   return new DataSource({
     type: 'better-sqlite3',
-    database: `:memory:${name}`,
+    database,
     entities: [Organization, Workspace, WorkspaceMembership, GatewayApiKey, CallLog],
     synchronize: true,
     logging: false,
@@ -15,6 +25,16 @@ function makeDataSource(name: string): DataSource {
 }
 
 describe('Workspace schema patch', () => {
+  afterEach(() => {
+    for (const database of testDbPaths.splice(0)) {
+      for (const file of [database, `${database}-shm`, `${database}-wal`]) {
+        if (existsSync(file)) {
+          unlinkSync(file);
+        }
+      }
+    }
+  });
+
   it('bootstraps the default organization and workspace on a fresh SQLite install', async () => {
     const dataSource = makeDataSource('fresh');
     await dataSource.initialize();

@@ -59,6 +59,43 @@ resolution is the right fit.
   previews.
 - Keep `/health` on the load balancer health check path.
 
+## Dashboard Login, OIDC, And Invites
+
+v2.0.0-beta.1 adds optional generic OIDC login for the open-source Dashboard.
+It is disabled by default and does not replace local password login unless you
+choose to remove `dashboard.password`.
+
+Minimal OIDC shape:
+
+```yaml
+dashboard:
+  session_secret: "${env:SIFTGATE_DASHBOARD_SESSION_SECRET}"
+  oidc:
+    enabled: true
+    issuer: "https://accounts.google.com"
+    client_id: "${env:OIDC_CLIENT_ID}"
+    client_secret: "${env:OIDC_CLIENT_SECRET}"
+    redirect_uri: "https://siftgate.example.com/api/auth/oidc/callback"
+    allowed_domains:
+      - example.com
+    default_role: viewer
+    default_workspace_id: default-workspace
+```
+
+Provider notes:
+
+- Google: issuer `https://accounts.google.com`; configure the redirect URI in
+  the OAuth client.
+- GitHub: use an OIDC-capable enterprise or identity-provider integration that
+  exposes a standard issuer discovery document.
+- Azure AD / Entra ID: use the tenant issuer discovery URL for your directory
+  and register the callback URI in the app registration.
+
+Invitations are metadata-only. Admins create an invite from the Members page and
+copy the returned link. OSS does not send email by default. The database stores
+the invite token hash, role, workspace, expiry, and status; the plain token is
+returned once at creation.
+
 ## Kubernetes / Helm
 
 v0.9 adds OSS-only deployment assets for Kubernetes:

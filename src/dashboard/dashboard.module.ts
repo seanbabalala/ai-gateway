@@ -17,6 +17,7 @@ import {
   ProviderCompatibilityResult,
   RouteDecisionLog,
   ShadowTrafficResult,
+  WorkspaceInvitation,
 } from '../database/entities';
 import { ProviderCompatibilityService } from './provider-compatibility.service';
 import { CatalogModule } from '../catalog/catalog.module';
@@ -49,6 +50,7 @@ import { ClusterModule } from '../cluster/cluster.module';
       RouteDecisionLog,
       ShadowTrafficResult,
       ProviderCompatibilityResult,
+      WorkspaceInvitation,
     ]),
   ],
   controllers: [HealthController, DashboardController],

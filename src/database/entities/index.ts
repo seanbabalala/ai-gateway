@@ -5,6 +5,7 @@ export {
   WorkspaceMembership,
   WORKSPACE_MEMBERSHIP_ROLES,
 } from './workspace-membership.entity';
+export { WorkspaceInvitation } from './workspace-invitation.entity';
 export { BudgetRule } from './budget-rule.entity';
 export { NodeStatus } from './node-status.entity';
 export { GatewayApiKey } from './gateway-api-key.entity';
@@ -29,6 +30,7 @@ export type {
   WorkspaceMembershipRole,
   WorkspaceMembershipStatus,
 } from './workspace-membership.entity';
+export type { WorkspaceInvitationStatus } from './workspace-invitation.entity';
 export type { EvalExperimentStatus } from './eval-experiment-run.entity';
 export type {
   AgentProfileBaseUrlMode,

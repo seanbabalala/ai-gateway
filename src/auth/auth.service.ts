@@ -14,9 +14,17 @@ export class AuthService implements OnModuleInit {
     await this.ensurePasswordHashed();
   }
 
-  /** Whether dashboard auth is enabled (password is configured) */
+  /** Whether dashboard auth is enabled (password or OIDC is configured) */
   get isAuthRequired(): boolean {
+    return !!this.config.dashboardPasswordHash || this.isOidcEnabled;
+  }
+
+  get isLocalPasswordAuthEnabled(): boolean {
     return !!this.config.dashboardPasswordHash;
+  }
+
+  get isOidcEnabled(): boolean {
+    return this.config.dashboardOidc?.enabled ?? false;
   }
 
   /** Hash a plain-text password with bcrypt (10 rounds) */
@@ -30,9 +38,9 @@ export class AuthService implements OnModuleInit {
   }
 
   /** Generate a JWT token for the dashboard session (24h expiry) */
-  generateToken(): string {
+  generateToken(subject = 'dashboard', claims: Record<string, unknown> = {}): string {
     const secret = this.getJwtSecret();
-    return jwt.sign({ sub: 'dashboard' }, secret, {
+    return jwt.sign({ ...claims, sub: subject }, secret, {
       expiresIn: '24h',
       algorithm: 'HS256',
     });
@@ -57,8 +65,17 @@ export class AuthService implements OnModuleInit {
    * Changing the password automatically invalidates all existing tokens.
    */
   private getJwtSecret(): string {
+    const configuredSecret = this.config.dashboard?.session_secret;
+    if (configuredSecret && configuredSecret.trim()) {
+      return configuredSecret.trim();
+    }
     const hash = this.config.dashboardPasswordHash;
     if (!hash) {
+      if (this.isOidcEnabled) {
+        throw new Error(
+          'dashboard.session_secret is required when OIDC is enabled without a local dashboard password',
+        );
+      }
       throw new Error('No dashboard password configured');
     }
     return crypto

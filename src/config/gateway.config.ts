@@ -389,6 +389,31 @@ export type LogSinkConfig =
 // ===== Dashboard =====
 export interface DashboardConfig {
   password?: string;
+  /** Optional stable JWT secret for Dashboard sessions. May use ${env:SIFTGATE_DASHBOARD_SESSION_SECRET}. */
+  session_secret?: string;
+  /** Optional generic OIDC login. Disabled by default and runs alongside local password auth. */
+  oidc?: DashboardOidcConfig;
+}
+
+export interface DashboardOidcConfig {
+  /** Enable generic OIDC login for the local Dashboard. */
+  enabled?: boolean;
+  /** OIDC issuer URL. SiftGate discovers /.well-known/openid-configuration from this issuer. */
+  issuer?: string;
+  /** OIDC client id. */
+  client_id?: string;
+  /** Secret reference or literal for the OIDC client secret. Prefer ${env:OIDC_CLIENT_SECRET}. */
+  client_secret?: string;
+  /** Redirect URI registered with the identity provider. */
+  redirect_uri?: string;
+  /** Optional email-domain allow-list. Empty means any verified OIDC identity may use the default mapping. */
+  allowed_domains?: string[];
+  /** Role assigned to first-time OIDC users when no invite is used. Defaults to viewer. */
+  default_role?: 'admin' | 'operator' | 'viewer';
+  /** Workspace assigned to first-time OIDC users when no invite is used. Defaults to default-workspace. */
+  default_workspace_id?: string;
+  /** Optional scope override. Defaults to "openid email profile". */
+  scopes?: string[];
 }
 
 // ===== Server =====

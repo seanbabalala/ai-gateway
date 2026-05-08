@@ -77,6 +77,7 @@ import { DashboardGuard } from "../auth/dashboard.guard";
 import { DashboardRbacGuard } from "../auth/dashboard-rbac.guard";
 import { RequireDashboardRole } from "../auth/dashboard-rbac";
 import { WorkspaceMembershipService } from "../auth/workspace-membership.service";
+import { WorkspaceInvitationService } from "../auth/workspace-invitation.service";
 import type {
   WorkspaceMembershipRole,
   WorkspaceMembershipStatus,
@@ -152,6 +153,8 @@ import {
   GatewayApiKeyMutationResponseDto,
   WorkspaceMemberListResponseDto,
   WorkspaceMemberMutationResponseDto,
+  WorkspaceInvitationListResponseDto,
+  WorkspaceInvitationMutationResponseDto,
   SanitizedConfigResponseDto,
   WorkspaceStateResponseDto,
 } from "../openapi/openapi.dto";
@@ -1570,6 +1573,9 @@ export class DashboardController {
     @Optional()
     @Inject(WorkspaceMembershipService)
     private readonly memberships?: WorkspaceMembershipService,
+    @Optional()
+    @Inject(WorkspaceInvitationService)
+    private readonly invitations?: WorkspaceInvitationService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -1659,7 +1665,7 @@ export class DashboardController {
         this.workspaceContext.currentWorkspaceId(),
       ),
       roles: ["admin", "operator", "viewer"],
-      mode: "local_dashboard",
+      mode: this.config.dashboardOidc.enabled ? "local_dashboard_oidc" : "local_dashboard",
     };
   }
 
@@ -1696,6 +1702,96 @@ export class DashboardController {
     };
   }
 
+  @Get("members/invitations")
+  @RequireDashboardRole("admin")
+  @ApiTags("Workspace Members")
+  @ApiOperation({ summary: "List workspace invitations" })
+  @ApiOkResponse({ type: WorkspaceInvitationListResponseDto })
+  async getWorkspaceInvitations() {
+    return {
+      items: await this.workspaceInvitations().list(
+        this.workspaceContext.currentWorkspaceId(),
+      ),
+    };
+  }
+
+  @Post("members/invitations")
+  @RequireDashboardRole("admin")
+  @ApiTags("Workspace Members")
+  @ApiOperation({ summary: "Create workspace invitation metadata" })
+  @ApiOkResponse({ type: WorkspaceInvitationMutationResponseDto })
+  async createWorkspaceInvitation(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+    },
+    @Body()
+    body: {
+      email?: string;
+      role?: WorkspaceMembershipRole;
+      expires_in_hours?: number;
+    },
+  ) {
+    const state = await this.workspaces.getState(
+      this.workspaceContext.currentWorkspaceId(),
+    );
+    const created = await this.workspaceInvitations().create({
+      organizationId: state.active_workspace.organization_id,
+      workspaceId: state.active_workspace.id,
+      role: body?.role || "viewer",
+      email: body?.email,
+      expiresInHours: body?.expires_in_hours,
+      createdByUserId: req.dashboardUserId || "dashboard",
+    });
+    await this.configAudit.recordManagementEvent({
+      action: "workspace_invitation.create",
+      target: `workspace_invitation:${created.id}`,
+      actor: { type: "dashboard", id: req.dashboardUserId || "dashboard" },
+      afterSummary: {
+        role: created.role,
+        status: created.status,
+        workspace_id: created.workspace_id,
+        email: created.email ? "[set]" : null,
+        expires_at: created.expires_at,
+      },
+    });
+    return {
+      success: true,
+      message: "Workspace invitation created",
+      item: created,
+    };
+  }
+
+  @Delete("members/invitations/:id")
+  @RequireDashboardRole("admin")
+  @ApiTags("Workspace Members")
+  @ApiOperation({ summary: "Revoke a pending workspace invitation" })
+  @ApiOkResponse({ type: WorkspaceInvitationMutationResponseDto })
+  async revokeWorkspaceInvitation(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+    },
+    @Param("id") id: string,
+  ) {
+    const revoked = await this.workspaceInvitations().revoke(id);
+    await this.configAudit.recordManagementEvent({
+      action: "workspace_invitation.revoke",
+      target: `workspace_invitation:${id}`,
+      actor: { type: "dashboard", id: req.dashboardUserId || "dashboard" },
+      afterSummary: {
+        role: revoked.role,
+        status: revoked.status,
+        workspace_id: revoked.workspace_id,
+      },
+    });
+    return {
+      success: true,
+      message: "Workspace invitation revoked",
+      item: revoked,
+    };
+  }
+
   private workspaceMemberships(): WorkspaceMembershipService {
     if (!this.memberships) {
       throw new HttpException(
@@ -1704,6 +1800,16 @@ export class DashboardController {
       );
     }
     return this.memberships;
+  }
+
+  private workspaceInvitations(): WorkspaceInvitationService {
+    if (!this.invitations) {
+      throw new HttpException(
+        { success: false, message: "Workspace invitation service unavailable" },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return this.invitations;
   }
 
   @Get("cluster")

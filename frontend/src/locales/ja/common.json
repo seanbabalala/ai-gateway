@@ -93,5 +93,21 @@
   "members.status.active": "有効",
   "members.status.disabled": "無効",
   "members.empty.title": "メンバーがいません",
-  "members.empty.description": "既定のローカルダッシュボード管理者はワークスペース初期化時に自動作成されます。"
+  "members.empty.description": "既定のローカルダッシュボード管理者はワークスペース初期化時に自動作成されます。",
+  "members.invites.title": "招待",
+  "members.invites.emailPlaceholder": "メール（任意）",
+  "members.invites.create": "招待を作成",
+  "members.invites.creating": "作成中...",
+  "members.invites.created": "招待リンクを作成しました",
+  "members.invites.emptyTitle": "招待はありません",
+  "members.invites.emptyDescription": "ローカルまたはOIDCユーザー向けの招待リンクを作成します。OSSではメール送信は行いません。",
+  "members.invites.email": "メール",
+  "members.invites.anyEmail": "任意の確認済みID",
+  "members.invites.expires": "期限",
+  "members.invites.action": "操作",
+  "members.invites.revoke": "取り消し",
+  "members.invites.status.pending": "保留中",
+  "members.invites.status.accepted": "承認済み",
+  "members.invites.status.expired": "期限切れ",
+  "members.invites.status.revoked": "取消済み"
 }

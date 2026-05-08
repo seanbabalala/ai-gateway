@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPut } from '@/lib/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api'
 import type {
+  WorkspaceInvitationMutationResponse,
+  WorkspaceInvitationsResponse,
+  WorkspaceInvitationStatus,
   WorkspaceMemberMutationResponse,
   WorkspaceMembersResponse,
   WorkspaceMemberStatus,
@@ -12,6 +15,44 @@ export function useWorkspaceMembers(enabled = true) {
     queryKey: ['workspace-members'],
     queryFn: () => apiGet<WorkspaceMembersResponse>('/api/dashboard/members'),
     enabled,
+  })
+}
+
+export function useWorkspaceInvitations(enabled = true) {
+  return useQuery<WorkspaceInvitationsResponse>({
+    queryKey: ['workspace-invitations'],
+    queryFn: () => apiGet<WorkspaceInvitationsResponse>('/api/dashboard/members/invitations'),
+    enabled,
+  })
+}
+
+export function useCreateWorkspaceInvitation() {
+  const queryClient = useQueryClient()
+  return useMutation<
+    WorkspaceInvitationMutationResponse,
+    Error,
+    { email?: string; role: WorkspaceRole; expires_in_hours?: number }
+  >({
+    mutationFn: (body) =>
+      apiPost<WorkspaceInvitationMutationResponse>('/api/dashboard/members/invitations', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-invitations'] })
+    },
+  })
+}
+
+export function useRevokeWorkspaceInvitation() {
+  const queryClient = useQueryClient()
+  return useMutation<
+    WorkspaceInvitationMutationResponse,
+    Error,
+    { id: string; status?: WorkspaceInvitationStatus }
+  >({
+    mutationFn: ({ id }) =>
+      apiDelete<WorkspaceInvitationMutationResponse>(`/api/dashboard/members/invitations/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-invitations'] })
+    },
   })
 }
 

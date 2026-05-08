@@ -73,6 +73,17 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
   const config: any = {
     database: { type: 'sqlite', path: ':memory:' },
     auth: { api_keys: [], rate_limit: undefined },
+    dashboard: {},
+    dashboardOidc: {
+      enabled: false,
+      issuer: '',
+      client_id: '',
+      redirect_uri: '',
+      allowed_domains: [],
+      default_role: 'viewer',
+      default_workspace_id: 'default-workspace',
+      scopes: ['openid', 'email', 'profile'],
+    },
     dashboardPasswordHash: undefined,
     setDashboardPasswordHash: jest.fn(),
     nodes: [],

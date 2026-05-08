@@ -11,8 +11,16 @@ import { i18n } from '@/i18n'
 interface AuthContextValue {
   token: string | null
   authRequired: boolean
+  localLoginEnabled: boolean
+  oidc: {
+    enabled: boolean
+    issuer: string | null
+    client_id: string | null
+    scopes: string[]
+  }
   loading: boolean
-  login: (password: string) => Promise<void>
+  login: (password: string, invite?: string | null) => Promise<void>
+  completeLogin: (token: string) => void
   logout: () => void
 }
 
@@ -35,6 +43,13 @@ export function clearAuthToken(): void {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getAuthToken())
   const [authRequired, setAuthRequired] = useState(false)
+  const [localLoginEnabled, setLocalLoginEnabled] = useState(false)
+  const [oidc, setOidc] = useState<AuthContextValue['oidc']>({
+    enabled: false,
+    issuer: null,
+    client_id: null,
+    scopes: [],
+  })
   const [loading, setLoading] = useState(true)
 
   // Check auth status on mount
@@ -45,14 +60,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const res = await fetch('/api/auth/status')
         if (!res.ok) throw new Error(i18n.t('login:login.authStatusError'))
-        const data = (await res.json()) as { authRequired: boolean }
+        const data = (await res.json()) as {
+          authRequired: boolean
+          localLoginEnabled?: boolean
+          oidc?: AuthContextValue['oidc']
+        }
         if (!cancelled) {
           setAuthRequired(data.authRequired)
+          setLocalLoginEnabled(data.localLoginEnabled ?? data.authRequired)
+          setOidc(data.oidc ?? {
+            enabled: false,
+            issuer: null,
+            client_id: null,
+            scopes: [],
+          })
         }
       } catch {
         // If we can't reach the server, assume no auth required
         if (!cancelled) {
           setAuthRequired(false)
+          setLocalLoginEnabled(false)
+          setOidc({ enabled: false, issuer: null, client_id: null, scopes: [] })
         }
       } finally {
         if (!cancelled) {
@@ -65,11 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true }
   }, [])
 
-  const login = useCallback(async (password: string) => {
+  const login = useCallback(async (password: string, invite?: string | null) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, invite: invite || undefined }),
     })
 
     if (!res.ok) {
@@ -82,13 +110,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.token)
   }, [])
 
+  const completeLogin = useCallback((nextToken: string) => {
+    setAuthToken(nextToken)
+    setToken(nextToken)
+  }, [])
+
   const logout = useCallback(() => {
     clearAuthToken()
     setToken(null)
   }, [])
 
   return (
-    <AuthContext.Provider value={{ token, authRequired, loading, login, logout }}>
+    <AuthContext.Provider value={{ token, authRequired, localLoginEnabled, oidc, loading, login, completeLogin, logout }}>
       {children}
     </AuthContext.Provider>
   )

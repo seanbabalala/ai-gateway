@@ -20,6 +20,8 @@ describe('Auth (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.authRequired).toBe(false);
+    expect(res.body.localLoginEnabled).toBe(false);
+    expect(res.body.oidc.enabled).toBe(false);
   });
 
   it('POST /api/auth/login — no password configured → { token: "" }', async () => {
@@ -48,6 +50,13 @@ describe('Auth (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBeDefined();
+  });
+
+  it('GET /api/auth/oidc/start — OIDC disabled preserves local installs', async () => {
+    const res = await harness.agent.get('/api/auth/oidc/start');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.type).toBe('oidc_disabled');
   });
 
   it('consecutive login attempts → rate limited after threshold', async () => {

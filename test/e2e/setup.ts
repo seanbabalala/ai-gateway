@@ -14,9 +14,12 @@ import * as path from 'path';
 import * as request from 'supertest';
 import { createHash } from 'crypto';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { GatewayApiKey } from '../../src/database/entities/gateway-api-key.entity';
-import { CallLog } from '../../src/database/entities/call-log.entity';
-import { WorkspaceMembership } from '../../src/database/entities/workspace-membership.entity';
+import {
+  CallLog,
+  GatewayApiKey,
+  WorkspaceInvitation,
+  WorkspaceMembership,
+} from '../../src/database/entities';
 import { DEFAULT_WORKSPACE_ID } from '../../src/workspaces/workspace.constants';
 import type { Repository } from 'typeorm';
 
@@ -448,6 +451,7 @@ export interface E2EHarness {
   fetchMock: FetchMock;
   callLogRepo: Repository<CallLog>;
   membershipRepo: Repository<WorkspaceMembership>;
+  invitationRepo: Repository<WorkspaceInvitation>;
   close: () => Promise<void>;
 }
 
@@ -506,6 +510,9 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   const membershipRepo = app.get<Repository<WorkspaceMembership>>(
     getRepositoryToken(WorkspaceMembership),
   );
+  const invitationRepo = app.get<Repository<WorkspaceInvitation>>(
+    getRepositoryToken(WorkspaceInvitation),
+  );
   await apiKeyRepo.save([
     apiKeyRepo.create({
       name: 'test-default',
@@ -553,6 +560,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     fetchMock,
     callLogRepo,
     membershipRepo,
+    invitationRepo,
     close: async () => {
       fetchMock.restore();
       await app.close();

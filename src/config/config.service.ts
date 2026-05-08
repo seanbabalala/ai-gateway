@@ -33,6 +33,7 @@ import {
   DatabaseConfig,
   AuthConfig,
   DashboardConfig,
+  DashboardOidcConfig,
   FallbackPolicyConfig,
   CacheAffinityRoutingConfig,
   StateBackendConfig,
@@ -619,6 +620,23 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   get dashboard(): DashboardConfig | undefined {
     return this.config.dashboard;
+  }
+
+  get dashboardOidc(): Required<Omit<DashboardOidcConfig, 'client_secret'>> & {
+    client_secret?: string;
+  } {
+    const oidc = this.config.dashboard?.oidc;
+    return {
+      enabled: oidc?.enabled ?? false,
+      issuer: oidc?.issuer ?? '',
+      client_id: oidc?.client_id ?? '',
+      client_secret: oidc?.client_secret,
+      redirect_uri: oidc?.redirect_uri ?? '',
+      allowed_domains: oidc?.allowed_domains ?? [],
+      default_role: oidc?.default_role ?? 'viewer',
+      default_workspace_id: oidc?.default_workspace_id ?? 'default-workspace',
+      scopes: oidc?.scopes ?? ['openid', 'email', 'profile'],
+    };
   }
 
   get catalog(): CatalogConfig | undefined {

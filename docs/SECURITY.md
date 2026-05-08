@@ -29,6 +29,22 @@ Features that can store samples or replayable responses require explicit configu
 
 Gateway API keys are shown in full only once at creation or rotation time. Lists and details return masked values. Local teams, namespaces, budgets, rate limits, endpoint permissions, modality permissions, node permissions, and model permissions are enforced before provider forwarding.
 
+## Dashboard Login And OIDC
+
+Local Dashboard password login remains available for self-hosted installs.
+Generic OIDC login is optional and disabled unless `dashboard.oidc.enabled=true`.
+When OIDC is enabled without a local password, set `dashboard.session_secret`
+through an environment or external secret reference so Dashboard JWTs are stable
+across restarts and instances.
+
+Store OIDC client secrets as secret references such as
+`${env:OIDC_CLIENT_SECRET}`. Dashboard auth status only exposes whether OIDC is
+enabled plus issuer/client metadata; it never returns client secrets.
+
+Workspace invitations store only a SHA-256 hash of the invitation token. The
+plain token is returned once when the Admin creates the invite. OIDC login state
+stores only a nonce and invitation token hash, not the reusable invitation token.
+
 ## Reporting Vulnerabilities
 
 See the root [SECURITY.md](../SECURITY.md) for reporting instructions.

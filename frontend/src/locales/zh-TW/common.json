@@ -93,5 +93,21 @@
   "members.status.active": "啟用",
   "members.status.disabled": "停用",
   "members.empty.title": "尚無成員",
-  "members.empty.description": "預設本地控制台管理員會在工作區初始化時自動建立。"
+  "members.empty.description": "預設本地控制台管理員會在工作區初始化時自動建立。",
+  "members.invites.title": "邀請",
+  "members.invites.emailPlaceholder": "Email（選填）",
+  "members.invites.create": "建立邀請",
+  "members.invites.creating": "建立中...",
+  "members.invites.created": "邀請連結已建立",
+  "members.invites.emptyTitle": "尚無邀請",
+  "members.invites.emptyDescription": "為本地或 OIDC 使用者建立邀請連結。OSS 暫不寄送郵件。",
+  "members.invites.email": "Email",
+  "members.invites.anyEmail": "任意已驗證身分",
+  "members.invites.expires": "到期時間",
+  "members.invites.action": "操作",
+  "members.invites.revoke": "撤銷",
+  "members.invites.status.pending": "待接受",
+  "members.invites.status.accepted": "已接受",
+  "members.invites.status.expired": "已過期",
+  "members.invites.status.revoked": "已撤銷"
 }

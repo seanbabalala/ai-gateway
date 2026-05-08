@@ -6,6 +6,7 @@ import { mockConfigService } from '../helpers';
 function mockAuthService(overrides: Record<string, unknown> = {}): any {
   return {
     isAuthRequired: true,
+    isLocalPasswordAuthEnabled: true,
     verifyPassword: jest.fn().mockResolvedValue(true),
     generateToken: jest.fn().mockReturnValue('jwt-token-123'),
     config: { dashboardPasswordHash: '$2b$10$hash' },
@@ -27,6 +28,51 @@ describe('AuthController', () => {
       const result = await controller.login(makeReq(), { password: 'correct' });
       expect(result).toEqual({ token: 'jwt-token-123' });
       expect(authService.verifyPassword).toHaveBeenCalledWith('correct', '$2b$10$hash');
+    });
+
+    it('should accept a workspace invitation during local login', async () => {
+      const authService = mockAuthService();
+      const config = mockConfigService();
+      const invitations = {
+        acceptForUser: jest.fn(async () => ({
+          workspaceId: 'workspace-a',
+          organizationId: 'org-a',
+          role: 'operator',
+        })),
+      };
+      const memberships = {
+        ensureMembership: jest.fn(async () => ({})),
+      };
+      const controller = new AuthController(
+        authService,
+        config,
+        undefined,
+        undefined,
+        invitations as any,
+        memberships as any,
+      );
+
+      const result = await controller.login(makeReq(), {
+        password: 'correct',
+        invite: 'sg_inv_local',
+      });
+
+      expect(result).toEqual({ token: 'jwt-token-123' });
+      expect(invitations.acceptForUser).toHaveBeenCalledWith('sg_inv_local', 'dashboard');
+      expect(memberships.ensureMembership).toHaveBeenCalledWith({
+        userId: 'dashboard',
+        organizationId: 'org-a',
+        workspaceId: 'workspace-a',
+        role: 'operator',
+      });
+      expect(authService.generateToken).toHaveBeenCalledWith(
+        'dashboard',
+        expect.objectContaining({
+          auth_provider: 'local',
+          workspace_id: 'workspace-a',
+          role: 'operator',
+        }),
+      );
     });
 
     it('should throw UnauthorizedException for invalid password', async () => {
@@ -52,12 +98,35 @@ describe('AuthController', () => {
     });
 
     it('should return empty token when auth is not required', async () => {
-      const authService = mockAuthService({ isAuthRequired: false });
+      const authService = mockAuthService({
+        isAuthRequired: false,
+        isLocalPasswordAuthEnabled: false,
+      });
       const config = mockConfigService();
       const controller = new AuthController(authService, config);
 
       const result = await controller.login(makeReq(), {});
       expect(result).toEqual({ token: '' });
+    });
+
+    it('should reject local login when only OIDC auth is enabled', async () => {
+      const authService = mockAuthService({
+        isAuthRequired: true,
+        isLocalPasswordAuthEnabled: false,
+      });
+      const config = mockConfigService();
+      const controller = new AuthController(authService, config);
+
+      await expect(
+        controller.login(makeReq(), { password: 'anything' }),
+      ).rejects.toMatchObject({
+        response: {
+          error: {
+            type: 'local_login_disabled',
+          },
+        },
+        status: HttpStatus.NOT_FOUND,
+      });
     });
   });
 
@@ -67,15 +136,36 @@ describe('AuthController', () => {
       const config = mockConfigService();
       const controller = new AuthController(authService, config);
 
-      expect(controller.getStatus()).toEqual({ authRequired: true });
+      expect(controller.getStatus()).toEqual({
+        authRequired: true,
+        localLoginEnabled: true,
+        oidc: {
+          enabled: false,
+          issuer: null,
+          client_id: null,
+          scopes: [],
+        },
+      });
     });
 
     it('should return authRequired: false when no password', () => {
-      const authService = mockAuthService({ isAuthRequired: false });
+      const authService = mockAuthService({
+        isAuthRequired: false,
+        isLocalPasswordAuthEnabled: false,
+      });
       const config = mockConfigService();
       const controller = new AuthController(authService, config);
 
-      expect(controller.getStatus()).toEqual({ authRequired: false });
+      expect(controller.getStatus()).toEqual({
+        authRequired: false,
+        localLoginEnabled: false,
+        oidc: {
+          enabled: false,
+          issuer: null,
+          client_id: null,
+          scopes: [],
+        },
+      });
     });
   });
 
