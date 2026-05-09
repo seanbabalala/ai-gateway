@@ -17,6 +17,9 @@ import { mockConfigService } from "../helpers";
 import { TelemetryService } from "../../src/telemetry/telemetry.service";
 import { loadMergedCatalog } from "../../src/catalog/catalog.service";
 
+const MISSING_CATALOG_OVERRIDE = "/tmp/siftgate-missing-catalog.override.yaml";
+const MISSING_CATALOG_SYNC_CACHE = "/tmp/siftgate-missing-catalog-sync-cache.yaml";
+
 // ── Mock Query Builder Factory ──────────────────────────
 
 function mockQueryBuilder(
@@ -1614,7 +1617,8 @@ describe("DashboardController — catalog", () => {
   it("returns v1.8 provider catalog entries from the merged catalog API shape, including legacy rows behind show_legacy", () => {
     const loaded = loadMergedCatalog({
       cwd: process.cwd(),
-      overridePath: "/tmp/siftgate-missing-catalog.override.yaml",
+      overridePath: MISSING_CATALOG_OVERRIDE,
+      syncCachePath: MISSING_CATALOG_SYNC_CACHE,
       env: {},
     });
     const { controller } = makeDashboard({
@@ -1663,7 +1667,8 @@ describe("DashboardController — catalog", () => {
   it("shows active providers by default and reveals transport-only rows only with show_legacy", () => {
     const loaded = loadMergedCatalog({
       cwd: process.cwd(),
-      overridePath: "/tmp/siftgate-missing-catalog.override.yaml",
+      overridePath: MISSING_CATALOG_OVERRIDE,
+      syncCachePath: MISSING_CATALOG_SYNC_CACHE,
       env: {},
     });
     const { controller } = makeDashboard({
