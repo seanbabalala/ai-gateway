@@ -129,6 +129,9 @@ export interface RouteSelectionHints {
   semantic_cache_threshold?: number | null;
   semantic_cache_metadata_only?: boolean;
   semantic_cache_reason?: string | null;
+  semantic_intent?: string | null;
+  semantic_intent_confidence?: number | null;
+  semantic_capabilities?: string[];
   stream?: boolean;
   multipart?: boolean;
   workspace_id?: string | null;

@@ -140,6 +140,18 @@ v1.4 pricing source governance normalizes explicit config, catalog overrides, sy
 
 v1.3 adds Semantic Cache preview as a separate disabled-by-default layer. It computes a local hashed-vector embedding from canonical request text, stores embedding/hash/metadata by default, and records semantic match evidence in call logs and Route Decision Trace. Replayable response storage is off unless `semantic_cache.store_responses=true`; when off, semantic matches are advisory evidence and traffic still goes upstream.
 
+v2.7 promotes the semantic layer into the Semantic Platform. Semantic Cache v2
+keeps `memory` as the production-safe default backend while validating preview
+Redis/vector backend settings, isolates matches by workspace/API key/model by
+default, and requires a per-request storage header before replayable responses
+are retained when response storage is enabled. Prompt Registry adds
+workspace-scoped template versions and route-policy/A-B metadata while storing
+template hashes by default. Context Window Optimizer records token estimates,
+context ratios, and trim/summarize suggestions without mutating prompt content
+in v2.7. Intent Classification adds advisory task categories such as coding,
+security, reasoning, and analysis. Guardrails v2 records metadata-only input
+and output findings for PII, toxicity, and jailbreak signals.
+
 v2.2 adds the optional Intelligence Loop after normal route resolution and
 before the upstream call. Token Prediction estimates input/output/context token
 risk and cost risk against the active budget policy. The Cost Optimizer scores
@@ -239,6 +251,13 @@ prediction estimates and budget risk, optimizer candidate scores/rejection
 reasons, quality gate events/actions, and async eval queue metadata. The trace
 does not store prompt text, response text, raw headers, provider keys, source
 code, diffs, tool payloads, media bytes, video bytes, or hidden reasoning text.
+
+v2.7 adds top-level `semantic_platform` evidence to route traces. It records
+intent classification, context-window optimizer evidence, Prompt Registry
+binding metadata, and Guardrails v2 findings. The trace remains metadata-only:
+prompt text, response text, template body content, matched finding text, raw
+headers, provider keys, source code, diffs, tool payloads, media bytes, hidden
+reasoning text, and resolved secrets are excluded by default.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 

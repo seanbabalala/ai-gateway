@@ -321,6 +321,195 @@ describe('Dashboard (e2e)', () => {
     expect(res.headers['x-siftgate-privacy']).toBe('metadata-only');
   });
 
+  it('GET /api/dashboard/semantic-platform → returns metadata-only semantic controls and privacy contract', async () => {
+    const timestamp = Date.now();
+    await harness.promptTemplateRepo.save(
+      harness.promptTemplateRepo.create({
+        id: `pt-e2e-${timestamp}`,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        prompt_key: 'e2e-review',
+        version: 1,
+        name: 'E2E Review',
+        status: 'active',
+        template_content: null,
+        template_hash: 'b'.repeat(64),
+        variables_json: JSON.stringify(['diff']),
+        route_policy_id: 'policy-review',
+        ab_metadata_json: JSON.stringify({ arm: 'a' }),
+        metadata_json: null,
+        content_storage_enabled: false,
+      }),
+    );
+    await harness.routeDecisionRepo.save(
+      harness.routeDecisionRepo.create({
+        request_id: `semantic-e2e-${timestamp}`,
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.5,
+        route_mode: 'auto',
+        strategy: 'balanced',
+        selected_node_id: 'mock-openai',
+        selected_model: 'gpt-4o-mini',
+        candidate_count: 1,
+        filtered_count: 0,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        trace_json: JSON.stringify({
+          semantic_platform: {
+            intent: { category: 'coding' },
+            context_optimizer: { action: 'metadata_only' },
+            guardrails_v2: { findings: [{ kind: 'pii' }] },
+          },
+        }),
+      }),
+    );
+
+    const res = await harness.agent.get('/api/dashboard/semantic-platform?period=30d');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      version: 'v1',
+      workspace_id: DEFAULT_WORKSPACE_ID,
+      period: '30d',
+      config: {
+        enabled: true,
+        semantic_cache: {
+          enabled: true,
+          backend: 'memory',
+          isolation: 'workspace_api_key_model',
+          explicit_response_storage_opt_in: true,
+        },
+      },
+      prompt_registry: {
+        enabled: true,
+        stores_template_content: false,
+      },
+      context_optimizer: {
+        enabled: true,
+        content_persistence: false,
+      },
+      intent_classification: {
+        observed: { coding: expect.any(Number) },
+      },
+      guardrails_v2: {
+        metadata_only: true,
+        blocked_by_default: false,
+      },
+      privacy: {
+        metadata_only: true,
+        stores_prompts: false,
+        stores_responses: false,
+        stores_prompt_templates_by_default: false,
+        stores_raw_headers: false,
+        stores_provider_keys: false,
+        stores_tool_payloads: false,
+        stores_hidden_reasoning: false,
+      },
+    });
+    expect(res.body.prompt_registry.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          prompt_key: 'e2e-review',
+          content_available: false,
+          template_hash: 'b'.repeat(64),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(res.body)).not.toContain('mock-openai-key');
+    expect(JSON.stringify(res.body)).not.toContain('Check {{diff}}');
+  });
+
+  it('POST /api/dashboard/semantic-platform/prompt-templates → stores template hash only', async () => {
+    const res = await harness.agent
+      .post('/api/dashboard/semantic-platform/prompt-templates')
+      .send({
+        prompt_key: `route-review-${Date.now()}`,
+        name: 'Route Review',
+        template: 'Review {{diff}} and summarize risk.',
+        variables: ['diff'],
+        route_policy_id: 'coding-review',
+        ab_metadata: { arm: 'stable' },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      success: true,
+      item: {
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        version: 1,
+        content_storage_enabled: false,
+        content_available: false,
+        variables: ['diff'],
+        route_policy_id: 'coding-review',
+      },
+      privacy: {
+        metadata_only: true,
+        stores_prompt_templates_by_default: false,
+      },
+    });
+    expect(res.body.item.template_hash).toHaveLength(64);
+    expect(JSON.stringify(res.body)).not.toContain('Review {{diff}}');
+  });
+
+  it('route trace includes semantic platform evidence for prompt registry, intent, context, and guardrails', async () => {
+    const promptKey = `semantic-trace-${Date.now()}`;
+    await harness.agent
+      .post('/api/dashboard/semantic-platform/prompt-templates')
+      .send({
+        prompt_key: promptKey,
+        template: 'Classify {{diff}} safely.',
+        variables: ['diff'],
+      })
+      .expect(201);
+
+    const chatRes = await harness.agent
+      .post('/v1/chat/completions')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .set('x-siftgate-prompt-key', promptKey)
+      .send({
+        model: 'auto',
+        messages: [
+          {
+            role: 'user',
+            content: 'Review this TypeScript diff for CVE risk and email admin@example.com.',
+          },
+        ],
+      });
+
+    expect(chatRes.status).toBe(200);
+    const latest = await harness.routeDecisionRepo.findOneOrFail({
+      where: { workspace_id: DEFAULT_WORKSPACE_ID },
+      order: { id: 'DESC' },
+    });
+    const trace = JSON.parse(latest.trace_json!);
+
+    expect(trace.semantic_platform).toMatchObject({
+      intent: {
+        category: 'security',
+        route_hint: {
+          security_sensitive: true,
+        },
+      },
+      context_optimizer: {
+        enabled: true,
+        changed_content: false,
+      },
+      guardrails_v2: {
+        metadata_only: true,
+        findings: expect.arrayContaining([
+          expect.objectContaining({ kind: 'pii', metadata_only: true }),
+        ]),
+      },
+      prompt_registry: {
+        prompt_key: promptKey,
+        version: 1,
+        content_available: false,
+      },
+    });
+    expect(JSON.stringify(trace)).not.toContain('Classify {{diff}} safely');
+    expect(JSON.stringify(trace)).not.toContain('mock-openai-key');
+  });
+
   it('POST /v1/feedback → stores thumbs feedback metadata without content fields', async () => {
     const requestId = `feedback-e2e-${Date.now()}`;
     await harness.callLogRepo.save(

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import {
   ArrowLeft,
+  BrainCircuit,
   CheckCircle2,
   Filter,
   GitFork,
@@ -527,6 +528,117 @@ function IntelligenceEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
             </div>
             <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
               {asyncEval?.dimensions?.join(', ') || t('routeExplanation.values.none')}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
+function SemanticPlatformEvidencePanel({ trace }: { trace: RouteDecisionTrace }) {
+  const { t } = useTranslation('logs')
+  const semantic = trace.semantic_platform
+  if (!semantic) return null
+
+  const intent = semantic.intent
+  const context = semantic.context_optimizer
+  const guardrails = semantic.guardrails_v2
+  const prompt = semantic.prompt_registry
+
+  return (
+    <CardStatic>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <BrainCircuit className="h-4 w-4 text-[var(--accent)]" />
+          <CardTitle>{t('routeExplanation.sections.semanticPlatform')}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.semantic.intent')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={intent?.enabled ? 'blue' : 'zinc'}>
+                {t(`routeExplanation.semantic.intentCategory.${intent?.category || 'general'}`, {
+                  defaultValue: intent?.category || 'general',
+                })}
+              </Badge>
+              {typeof intent?.confidence === 'number' && (
+                <Badge variant="zinc">
+                  {t('routeExplanation.semantic.confidence', {
+                    value: formatPercent(intent.confidence * 100),
+                  })}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+              {intent?.signals?.slice(0, 4).join(', ') || t('routeExplanation.values.none')}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.semantic.context')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={context?.changed_content ? 'amber' : 'emerald'}>
+                {context?.changed_content
+                  ? t('routeExplanation.semantic.changed')
+                  : t('routeExplanation.semantic.unchanged')}
+              </Badge>
+              <Badge variant="zinc">
+                {t(`routeExplanation.semantic.contextAction.${context?.action || 'none'}`, {
+                  defaultValue: context?.action || 'none',
+                })}
+              </Badge>
+            </div>
+            <div className="mt-2 font-mono text-[10px] leading-4 text-[var(--foreground-dim)]">
+              {t('routeExplanation.semantic.contextTokens', {
+                value: context?.estimated_context_tokens?.toLocaleString() || '-',
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.semantic.promptRegistry')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={prompt?.template_hash ? 'emerald' : 'zinc'}>
+                {prompt?.prompt_key || t('routeExplanation.values.none')}
+              </Badge>
+              {prompt?.version && <Badge variant="blue">v{prompt.version}</Badge>}
+              <Badge variant={prompt?.content_available ? 'amber' : 'emerald'}>
+                {prompt?.content_available
+                  ? t('routeExplanation.semantic.contentAvailable')
+                  : t('routeExplanation.semantic.hashOnly')}
+              </Badge>
+            </div>
+            <div className="mt-2 truncate font-mono text-[10px] text-[var(--foreground-dim)]">
+              {prompt?.template_hash || t('routeExplanation.values.none')}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-[var(--inset-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-dim)]">
+              {t('routeExplanation.semantic.guardrails')}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant={guardrails?.findings?.length ? 'amber' : 'emerald'}>
+                {t('routeExplanation.semantic.findings', {
+                  count: guardrails?.findings?.length || 0,
+                })}
+              </Badge>
+              {guardrails?.metadata_only && (
+                <Badge variant="blue">{t('routeExplanation.semantic.metadataOnly')}</Badge>
+              )}
+            </div>
+            <div className="mt-2 text-[10px] leading-4 text-[var(--foreground-dim)]">
+              {guardrails?.findings?.slice(0, 3).map((finding) => finding.kind).join(', ') ||
+                t('routeExplanation.values.none')}
             </div>
           </div>
         </div>
@@ -1143,6 +1255,7 @@ function RouteDecisionDetail({ requestId }: { requestId: string }) {
           <CompatibilityEvidencePanel trace={trace} />
           <CacheEvidencePanel trace={trace} />
           <IntelligenceEvidencePanel trace={trace} />
+          <SemanticPlatformEvidencePanel trace={trace} />
 
           <CardStatic>
             <CardHeader>

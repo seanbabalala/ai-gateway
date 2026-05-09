@@ -91,7 +91,7 @@ This keeps semantic versioning clear:
 | v2.4.0 | Provider Ecosystem | Expand provider coverage through tested registry and compatibility workflows. |
 | v2.5.0 | Agent Platform Preview | Deepen A2A hub, tool registry, and lightweight orchestration without becoming an app builder. |
 | v2.6.0 | Cost and Chargeback | Add internal chargeback, anomaly detection, price-change alerts, and feedback metadata. |
-| v2.7.0 | Semantic Platform | Productionize semantic cache, prompt registry, context optimization, and intent classification. |
+| v2.7.0 | Semantic Platform | Released. Productionizes semantic cache, prompt registry, context optimization, intent classification, and Guardrails v2 metadata. |
 
 ## Non-Goals
 

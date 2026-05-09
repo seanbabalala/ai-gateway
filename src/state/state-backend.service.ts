@@ -605,6 +605,7 @@ function defaultCategoryPolicies(
     cache_affinity: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
     momentum: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
     prompt_cache: { unavailable_policy: 'fail_open', ttl_seconds: 300 },
+    semantic_cache: { unavailable_policy: 'fail_open', ttl_seconds: 3600 },
     concurrency: { unavailable_policy: unavailablePolicy, ttl_seconds: 120 },
     health_probe: { unavailable_policy: 'fail_open', ttl_seconds: 120 },
     realtime_session: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },

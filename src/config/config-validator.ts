@@ -111,12 +111,34 @@ const INTELLIGENCE_TIERS = new Set([
   'direct',
   'cached',
 ]);
+const SEMANTIC_CACHE_ISOLATION = new Set([
+  'workspace_api_key_model',
+  'workspace_model',
+  'workspace',
+]);
+const SEMANTIC_CONTEXT_STRATEGIES = new Set([
+  'metadata_only',
+  'trim',
+  'summarize',
+]);
+const SEMANTIC_INTENT_CATEGORIES = new Set([
+  'coding',
+  'task',
+  'security',
+  'reasoning',
+  'creative',
+  'multimodal',
+  'analysis',
+  'general',
+]);
+const GUARDRAILS_V2_ACTIONS = new Set(['observe', 'block', 'alert']);
 const STATE_CATEGORIES = new Set([
   'rate_limit',
   'circuit_breaker',
   'cache_affinity',
   'momentum',
   'prompt_cache',
+  'semantic_cache',
   'concurrency',
   'health_probe',
   'realtime_session',
@@ -285,6 +307,7 @@ export function validateConfigObject(
   validateBudget(config.budget, issues);
   validateCache(config.cache, issues);
   validateSemanticCache(config.semantic_cache, issues);
+  validateSemanticPlatform(config.semantic_platform, issues);
   validateEmbeddingBatching(config.embedding_batching, issues);
   validateRealtime(config.realtime, config.nodes, issues);
   validateMcpGateway(config.mcp, config.namespaces, issues);
@@ -3090,6 +3113,34 @@ function validateSemanticCache(
     );
   }
 
+  if (
+    semanticCache.isolation !== undefined &&
+    !SEMANTIC_CACHE_ISOLATION.has(String(semanticCache.isolation))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.isolation must be workspace_api_key_model, workspace_model, or workspace.',
+        'semantic_cache.isolation',
+      ),
+    );
+  }
+
+  if (
+    semanticCache.response_storage_requires_header !== undefined &&
+    !isBoolean(semanticCache.response_storage_requires_header)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_cache_config',
+        'semantic_cache.response_storage_requires_header must be a boolean.',
+        'semantic_cache.response_storage_requires_header',
+      ),
+    );
+  }
+
   if (semanticCache.store_responses === true) {
     issues.push(
       issue(
@@ -3099,6 +3150,199 @@ function validateSemanticCache(
         'semantic_cache.store_responses',
       ),
     );
+  }
+
+  if (
+    semanticCache.store_responses === true &&
+    semanticCache.response_storage_requires_header === false
+  ) {
+    issues.push(
+      issue(
+        'warning',
+        'semantic_cache_response_storage_header_disabled',
+        'semantic_cache response replay is enabled without a per-request opt-in header; avoid this for sensitive workspaces.',
+        'semantic_cache.response_storage_requires_header',
+      ),
+    );
+  }
+}
+
+function validateSemanticPlatform(
+  semanticPlatform: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (semanticPlatform === undefined) return;
+  if (!isRecord(semanticPlatform)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_semantic_platform_config',
+        'semantic_platform must be an object.',
+        'semantic_platform',
+      ),
+    );
+    return;
+  }
+
+  validateOptionalBoolean(
+    semanticPlatform.enabled,
+    'semantic_platform.enabled',
+    'invalid_semantic_platform_config',
+    issues,
+  );
+
+  validatePromptRegistryConfig(semanticPlatform.prompt_registry, issues);
+  validateContextOptimizerConfig(semanticPlatform.context_optimizer, issues);
+  validateIntentClassificationConfig(semanticPlatform.intent_classification, issues);
+  validateGuardrailsV2Config(semanticPlatform.guardrails_v2, issues);
+}
+
+function validatePromptRegistryConfig(
+  promptRegistry: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (promptRegistry === undefined) return;
+  if (!isRecord(promptRegistry)) {
+    issues.push(issue('error', 'invalid_semantic_platform_config', 'semantic_platform.prompt_registry must be an object.', 'semantic_platform.prompt_registry'));
+    return;
+  }
+  validateOptionalBoolean(promptRegistry.enabled, 'semantic_platform.prompt_registry.enabled', 'invalid_semantic_platform_config', issues);
+  validateOptionalBoolean(promptRegistry.store_template_content, 'semantic_platform.prompt_registry.store_template_content', 'invalid_semantic_platform_config', issues);
+  validateOptionalPositiveNumber(promptRegistry.max_versions_per_key, 'semantic_platform.prompt_registry.max_versions_per_key', 'invalid_semantic_platform_config', issues);
+  if (promptRegistry.store_template_content === true) {
+    issues.push(issue(
+      'warning',
+      'prompt_registry_content_storage_enabled',
+      'semantic_platform.prompt_registry.store_template_content=true stores template bodies; keep it disabled unless redaction and retention are documented.',
+      'semantic_platform.prompt_registry.store_template_content',
+    ));
+  }
+}
+
+function validateContextOptimizerConfig(
+  contextOptimizer: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (contextOptimizer === undefined) return;
+  if (!isRecord(contextOptimizer)) {
+    issues.push(issue('error', 'invalid_semantic_platform_config', 'semantic_platform.context_optimizer must be an object.', 'semantic_platform.context_optimizer'));
+    return;
+  }
+  validateOptionalBoolean(contextOptimizer.enabled, 'semantic_platform.context_optimizer.enabled', 'invalid_semantic_platform_config', issues);
+  if (
+    contextOptimizer.strategy !== undefined &&
+    !SEMANTIC_CONTEXT_STRATEGIES.has(String(contextOptimizer.strategy))
+  ) {
+    issues.push(issue(
+      'error',
+      'invalid_semantic_platform_config',
+      'semantic_platform.context_optimizer.strategy must be metadata_only, trim, or summarize.',
+      'semantic_platform.context_optimizer.strategy',
+    ));
+  }
+  if (
+    contextOptimizer.max_context_ratio !== undefined &&
+    (!isFiniteNumber(contextOptimizer.max_context_ratio) ||
+      contextOptimizer.max_context_ratio <= 0 ||
+      contextOptimizer.max_context_ratio > 1)
+  ) {
+    issues.push(issue(
+      'error',
+      'invalid_semantic_platform_config',
+      'semantic_platform.context_optimizer.max_context_ratio must be a number greater than 0 and at most 1.',
+      'semantic_platform.context_optimizer.max_context_ratio',
+    ));
+  }
+  validateOptionalBoolean(contextOptimizer.allow_content_mutation, 'semantic_platform.context_optimizer.allow_content_mutation', 'invalid_semantic_platform_config', issues);
+  if (
+    (contextOptimizer.strategy === 'trim' || contextOptimizer.strategy === 'summarize') &&
+    contextOptimizer.allow_content_mutation !== true
+  ) {
+    issues.push(issue(
+      'warning',
+      'context_optimizer_mutation_disabled',
+      'context optimizer trim/summarize strategies will record evidence only until allow_content_mutation=true is explicitly set.',
+      'semantic_platform.context_optimizer.allow_content_mutation',
+    ));
+  }
+}
+
+function validateIntentClassificationConfig(
+  intentClassification: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (intentClassification === undefined) return;
+  if (!isRecord(intentClassification)) {
+    issues.push(issue('error', 'invalid_semantic_platform_config', 'semantic_platform.intent_classification must be an object.', 'semantic_platform.intent_classification'));
+    return;
+  }
+  validateOptionalBoolean(intentClassification.enabled, 'semantic_platform.intent_classification.enabled', 'invalid_semantic_platform_config', issues);
+  if (intentClassification.categories !== undefined) {
+    if (!Array.isArray(intentClassification.categories)) {
+      issues.push(issue('error', 'invalid_semantic_platform_config', 'semantic_platform.intent_classification.categories must be an array.', 'semantic_platform.intent_classification.categories'));
+    } else {
+      for (const [index, category] of intentClassification.categories.entries()) {
+        if (!SEMANTIC_INTENT_CATEGORIES.has(String(category))) {
+          issues.push(issue(
+            'error',
+            'invalid_semantic_platform_config',
+            `semantic_platform.intent_classification.categories[${index}] is not supported.`,
+            `semantic_platform.intent_classification.categories[${index}]`,
+          ));
+        }
+      }
+    }
+  }
+  if (
+    intentClassification.min_confidence !== undefined &&
+    (!isFiniteNumber(intentClassification.min_confidence) ||
+      intentClassification.min_confidence < 0 ||
+      intentClassification.min_confidence > 1)
+  ) {
+    issues.push(issue(
+      'error',
+      'invalid_semantic_platform_config',
+      'semantic_platform.intent_classification.min_confidence must be a number between 0 and 1.',
+      'semantic_platform.intent_classification.min_confidence',
+    ));
+  }
+}
+
+function validateGuardrailsV2Config(
+  guardrails: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (guardrails === undefined) return;
+  if (!isRecord(guardrails)) {
+    issues.push(issue('error', 'invalid_semantic_platform_config', 'semantic_platform.guardrails_v2 must be an object.', 'semantic_platform.guardrails_v2'));
+    return;
+  }
+  validateOptionalBoolean(guardrails.enabled, 'semantic_platform.guardrails_v2.enabled', 'invalid_semantic_platform_config', issues);
+  validateOptionalBoolean(guardrails.metadata_only, 'semantic_platform.guardrails_v2.metadata_only', 'invalid_semantic_platform_config', issues);
+  validateGuardrailsV2Policy(guardrails.input, 'semantic_platform.guardrails_v2.input', issues);
+  validateGuardrailsV2Policy(guardrails.output, 'semantic_platform.guardrails_v2.output', issues);
+}
+
+function validateGuardrailsV2Policy(
+  policy: unknown,
+  pathPrefix: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (policy === undefined) return;
+  if (!isRecord(policy)) {
+    issues.push(issue('error', 'invalid_semantic_platform_config', `${pathPrefix} must be an object.`, pathPrefix));
+    return;
+  }
+  for (const field of ['enabled', 'pii', 'toxicity', 'jailbreak']) {
+    validateOptionalBoolean(policy[field], `${pathPrefix}.${field}`, 'invalid_semantic_platform_config', issues);
+  }
+  if (policy.action !== undefined && !GUARDRAILS_V2_ACTIONS.has(String(policy.action))) {
+    issues.push(issue(
+      'error',
+      'invalid_semantic_platform_config',
+      `${pathPrefix}.action must be observe, block, or alert.`,
+      `${pathPrefix}.action`,
+    ));
   }
 }
 

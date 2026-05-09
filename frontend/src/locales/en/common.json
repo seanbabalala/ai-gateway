@@ -112,5 +112,6 @@
   "members.invites.status.accepted": "accepted",
   "members.invites.status.expired": "expired",
   "members.invites.status.revoked": "revoked",
-  "nav.audit": "Audit Log"
+  "nav.audit": "Audit Log",
+  "nav.semanticPlatform": "Semantic Platform"
 }

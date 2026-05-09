@@ -128,6 +128,54 @@ export function mockConfigService(overrides: Record<string, unknown> = {}): any 
       vector_dimensions: 256,
       store_responses: false,
       max_response_bytes: 65_536,
+      isolation: 'workspace_api_key_model',
+      response_storage_requires_header: true,
+    },
+    semanticPlatform: {
+      enabled: false,
+      prompt_registry: {
+        enabled: false,
+        store_template_content: false,
+        max_versions_per_key: 20,
+      },
+      context_optimizer: {
+        enabled: false,
+        strategy: 'metadata_only',
+        max_context_ratio: 0.8,
+        allow_content_mutation: false,
+      },
+      intent_classification: {
+        enabled: false,
+        categories: [
+          'coding',
+          'task',
+          'security',
+          'reasoning',
+          'creative',
+          'multimodal',
+          'analysis',
+          'general',
+        ],
+        min_confidence: 0.5,
+      },
+      guardrails_v2: {
+        enabled: false,
+        metadata_only: true,
+        input: {
+          enabled: false,
+          pii: true,
+          toxicity: true,
+          jailbreak: true,
+          action: 'observe',
+        },
+        output: {
+          enabled: false,
+          pii: true,
+          toxicity: true,
+          jailbreak: true,
+          action: 'observe',
+        },
+      },
     },
     intelligence: {
       cost_optimizer: {

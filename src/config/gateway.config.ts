@@ -69,6 +69,9 @@ export interface GatewayConfig {
   /** Optional semantic caching preview. Disabled by default and metadata-only unless explicitly configured. */
   semantic_cache?: SemanticCacheConfig;
 
+  /** Optional v2.7 semantic platform controls: cache v2, prompt registry, context optimization, intent, and guardrails v2. */
+  semantic_platform?: SemanticPlatformConfig;
+
   /** Optional local config audit log and rollback history. */
   config_audit?: ConfigAuditConfig;
 
@@ -210,6 +213,7 @@ export type StateCategoryName =
   | 'cache_affinity'
   | 'momentum'
   | 'prompt_cache'
+  | 'semantic_cache'
   | 'concurrency'
   | 'health_probe'
   | 'realtime_session';
@@ -1108,6 +1112,71 @@ export interface SemanticCacheConfig {
   store_responses?: boolean;
   /** Maximum serialized response bytes when store_responses=true. Default 65536. */
   max_response_bytes?: number;
+  /** Optional explicit isolation level. Default: workspace_api_key_model. */
+  isolation?: 'workspace_api_key_model' | 'workspace_model' | 'workspace';
+  /** Require an explicit per-request opt-in header for response replay. Default true. */
+  response_storage_requires_header?: boolean;
+}
+
+// ===== Semantic Platform =====
+export type ContextOptimizerStrategy = 'metadata_only' | 'trim' | 'summarize';
+export type SemanticIntentCategory =
+  | 'coding'
+  | 'task'
+  | 'security'
+  | 'reasoning'
+  | 'creative'
+  | 'multimodal'
+  | 'analysis'
+  | 'general';
+
+export interface SemanticPlatformConfig {
+  enabled?: boolean;
+  prompt_registry?: PromptRegistryConfig;
+  context_optimizer?: ContextOptimizerConfig;
+  intent_classification?: IntentClassificationConfig;
+  guardrails_v2?: GuardrailsV2Config;
+}
+
+export interface PromptRegistryConfig {
+  /** Enable workspace-scoped prompt template metadata. Default false. */
+  enabled?: boolean;
+  /** Persist template body only by explicit opt-in. Default false stores hash+metadata only. */
+  store_template_content?: boolean;
+  /** Retained versions per prompt key. Default 20. */
+  max_versions_per_key?: number;
+}
+
+export interface ContextOptimizerConfig {
+  enabled?: boolean;
+  /** Default metadata-only keeps request text unchanged and records evidence only. */
+  strategy?: ContextOptimizerStrategy;
+  /** Trigger when estimated context exceeds this ratio of selected model context window. Default 0.8. */
+  max_context_ratio?: number;
+  /** Allow request mutation for trim/summarize strategies. Default false. */
+  allow_content_mutation?: boolean;
+}
+
+export interface IntentClassificationConfig {
+  enabled?: boolean;
+  categories?: SemanticIntentCategory[];
+  /** Minimum confidence before intent is used as route evidence. Default 0.5. */
+  min_confidence?: number;
+}
+
+export interface GuardrailsV2Config {
+  enabled?: boolean;
+  input?: GuardrailsV2PolicyConfig;
+  output?: GuardrailsV2PolicyConfig;
+  metadata_only?: boolean;
+}
+
+export interface GuardrailsV2PolicyConfig {
+  enabled?: boolean;
+  pii?: boolean;
+  toxicity?: boolean;
+  jailbreak?: boolean;
+  action?: 'observe' | 'block' | 'alert';
 }
 
 // ===== Evaluation Framework =====

@@ -61,6 +61,7 @@ const navGroups = [
       { to: '/routing', icon: GitFork, labelKey: 'nav.routing' },
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
       { to: '/cost-platform', icon: ReceiptText, labelKey: 'nav.costPlatform' },
+      { to: '/semantic-platform', icon: BrainCircuit, labelKey: 'nav.semanticPlatform' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
       { to: '/agents', icon: Bot, labelKey: 'nav.agents' },
       { to: '/agent-platform', icon: BrainCircuit, labelKey: 'nav.agentPlatform' },

@@ -25,6 +25,12 @@ response, provider price source governance, and thumbs feedback aggregation. It
 does not add payment collection, recharge balances, reseller ledgers, or
 content storage.
 
+v2.7 adds a **Semantic Platform** page for Semantic Cache v2, Prompt Registry,
+Context Window Optimizer evidence, Intent Classification, and Guardrails v2.
+It keeps the same metadata-only default: prompt text, response text, raw
+headers, provider keys, source code, diffs, tool payloads, media bytes, hidden
+reasoning text, and resolved secrets are not stored or returned by default.
+
 v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows the active workspace, reads `GET /api/dashboard/workspaces`, validates switches through `POST /api/dashboard/workspaces/switch`, stores the selected workspace in browser local storage, and sends `x-siftgate-workspace-id` on Dashboard API calls. Fresh and upgraded OSS installs start with `Default Organization` and `Default Workspace`; legacy v1.9 metadata maps to that default workspace.
 
 v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mapped to a workspace membership, the header shows an Admin / Operator / Viewer role badge, and Dashboard write APIs now enforce centralized role checks. Existing local installs bootstrap the `dashboard` identity as an Admin in the default workspace.
@@ -45,6 +51,7 @@ Dashboard APIs.
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Cost Platform | Internal chargeback reports, CSV/JSON exports, cost anomalies, provider price sync guardrails, and feedback aggregation |
+| Semantic Platform | Semantic cache status/invalidation, prompt template metadata, context optimizer evidence, intent counts, Guardrails v2 findings, and semantic privacy controls |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | Agents | Coding Agent Gateway profiles for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic, and compatible chatbot setup with redacted render snippets and metadata-only recent coding-agent sessions |
 | Members | Local workspace membership governance with Admin, Operator, and Viewer roles |
@@ -218,6 +225,30 @@ Feedback aggregation reads metadata recorded by `POST /v1/feedback`. The
 Dashboard displays thumbs up/down by model and node with route-weight evidence.
 It does not expose prompts, responses, source code, diffs, tool payloads, raw
 headers, provider keys, media bytes, or hidden reasoning text.
+
+## Semantic Platform
+
+The Semantic Platform page reads `GET /api/dashboard/semantic-platform` and
+combines disabled-by-default Semantic Cache v2, Prompt Registry, Context Window
+Optimizer, Intent Classification, and Guardrails v2 metadata.
+
+Operators can create prompt template versions through
+`POST /api/dashboard/semantic-platform/prompt-templates`, list template
+metadata through `GET /api/dashboard/semantic-platform/prompt-templates`, and
+invalidate active-workspace semantic cache entries through
+`POST /api/dashboard/semantic-platform/semantic-cache/invalidate`.
+
+Prompt Registry stores template hashes, variables, route policy ids, A/B
+metadata, and version status by default. Template body storage requires
+`semantic_platform.prompt_registry.store_template_content=true`. Semantic cache
+response replay requires both `semantic_cache.store_responses=true` and, by
+default, the per-request header `x-siftgate-semantic-store-response: true`.
+
+Route Explanation shows top-level `semantic_platform` evidence when present:
+intent category/confidence, context token ratio/action, prompt key/version/hash,
+and Guardrails v2 metadata-only findings. It does not expose prompt text,
+response text, raw headers, provider keys, source code, diffs, tool payloads,
+media bytes, hidden reasoning text, or resolved secrets by default.
 
 ## Playground Safety
 

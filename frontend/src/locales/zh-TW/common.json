@@ -112,5 +112,6 @@
   "members.invites.status.accepted": "已接受",
   "members.invites.status.expired": "已過期",
   "members.invites.status.revoked": "已撤銷",
-  "nav.audit": "稽核記錄"
+  "nav.audit": "稽核記錄",
+  "nav.semanticPlatform": "語義平台"
 }

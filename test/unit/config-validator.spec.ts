@@ -2768,6 +2768,110 @@ describe('config validator', () => {
     expect(codes(result.warnings)).not.toContain('intelligence_async_eval_content_storage');
   });
 
+  it('accepts privacy-safe semantic platform settings with preview backend warnings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        semantic_cache: {
+          enabled: true,
+          backend: 'redis',
+          similarity_threshold: 0.9,
+          ttl_seconds: 600,
+          max_entries: 250,
+          vector_dimensions: 128,
+          store_responses: false,
+          max_response_bytes: 65536,
+          isolation: 'workspace_api_key_model',
+          response_storage_requires_header: true,
+        },
+        semantic_platform: {
+          enabled: true,
+          prompt_registry: {
+            enabled: true,
+            store_template_content: false,
+            max_versions_per_key: 10,
+          },
+          context_optimizer: {
+            enabled: true,
+            strategy: 'metadata_only',
+            max_context_ratio: 0.8,
+            allow_content_mutation: false,
+          },
+          intent_classification: {
+            enabled: true,
+            categories: ['coding', 'task', 'security', 'reasoning', 'creative', 'multimodal', 'analysis', 'general'],
+            min_confidence: 0.4,
+          },
+          guardrails_v2: {
+            enabled: true,
+            metadata_only: true,
+            input: { enabled: true, pii: true, toxicity: true, jailbreak: true, action: 'observe' },
+            output: { enabled: true, pii: true, toxicity: true, jailbreak: true, action: 'observe' },
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_semantic_cache_config');
+    expect(codes(result.errors)).not.toContain('invalid_semantic_platform_config');
+    expect(codes(result.warnings)).toContain('semantic_cache_backend_preview');
+  });
+
+  it('rejects invalid semantic platform settings and warns on content storage', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        semantic_cache: {
+          enabled: 'yes',
+          backend: 'pinecone',
+          similarity_threshold: 2,
+          ttl_seconds: 0,
+          isolation: 'tenant',
+          response_storage_requires_header: 'no',
+          store_responses: true,
+        },
+        semantic_platform: {
+          enabled: 'yes',
+          prompt_registry: {
+            enabled: true,
+            store_template_content: true,
+            max_versions_per_key: 0,
+          },
+          context_optimizer: {
+            enabled: true,
+            strategy: 'trim',
+            max_context_ratio: 1.5,
+            allow_content_mutation: false,
+          },
+          intent_classification: {
+            categories: ['coding', 'unknown'],
+            min_confidence: -0.2,
+          },
+          guardrails_v2: {
+            metadata_only: 'yes',
+            input: { enabled: 'true', action: 'redact' },
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining([
+        'invalid_semantic_cache_config',
+        'invalid_semantic_platform_config',
+      ]),
+    );
+    expect(codes(result.warnings)).toEqual(
+      expect.arrayContaining([
+        'semantic_cache_response_storage_enabled',
+        'prompt_registry_content_storage_enabled',
+        'context_optimizer_mutation_disabled',
+      ]),
+    );
+  });
+
   it('rejects invalid intelligence loop settings and warns on content eval mode', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {

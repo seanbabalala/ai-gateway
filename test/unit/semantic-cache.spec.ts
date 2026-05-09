@@ -13,6 +13,8 @@ function makeService(overrides: Record<string, unknown> = {}): PromptCacheServic
         vector_dimensions: 128,
         store_responses: false,
         max_response_bytes: 65_536,
+        isolation: 'workspace_api_key_model',
+        response_storage_requires_header: true,
         ...overrides,
       },
     }),
@@ -54,9 +56,26 @@ describe('Semantic cache preview', () => {
     expect(result.score).toBeGreaterThanOrEqual(0.75);
   });
 
-  it('returns a cloned response only when response storage is explicitly enabled', () => {
+  it('keeps response replay disabled until the per-request opt-in header is present', () => {
     const service = makeService({ store_responses: true });
     const request = makeRequest('what is the daily budget status');
+    const response = makeCanonicalResponse({
+      content: [{ type: 'text', text: 'budget ok' }],
+    });
+
+    service.storeSemantic(request, response);
+    const result = service.lookupSemantic(makeRequest('what is daily budget status'));
+
+    expect(result.matched).toBe(true);
+    expect(result.hit).toBe(false);
+    expect(result.metadataOnly).toBe(true);
+    expect(result.response).toBeNull();
+  });
+
+  it('returns a cloned response only when response storage is explicitly enabled and opted in', () => {
+    const service = makeService({ store_responses: true });
+    const request = makeRequest('what is the daily budget status');
+    request.metadata.raw_headers['x-siftgate-semantic-store-response'] = 'true';
     const response = makeCanonicalResponse({
       content: [{ type: 'text', text: 'budget ok' }],
     });
@@ -89,5 +108,61 @@ describe('Semantic cache preview', () => {
 
     expect(result.hit).toBe(false);
     expect(result.matched).toBe(false);
+  });
+
+  it('honors workspace, model, and API key isolation modes', () => {
+    const request = makeRequest('summarize team usage', { originalModel: 'gpt-4o' });
+    request.metadata.workspace_id = 'workspace-a';
+    request.metadata.api_key_id = 'key-a';
+    request.metadata.raw_headers['x-siftgate-semantic-store-response'] = 'true';
+
+    const byKey = makeService({ store_responses: true });
+    byKey.storeSemantic(
+      request,
+      makeCanonicalResponse({ content: [{ type: 'text', text: 'workspace key a' }] }),
+    );
+
+    const differentKey = makeRequest('summarize team usage', { originalModel: 'gpt-4o' });
+    differentKey.metadata.workspace_id = 'workspace-a';
+    differentKey.metadata.api_key_id = 'key-b';
+    expect(byKey.lookupSemantic(differentKey).hit).toBe(false);
+
+    const byModel = makeService({ isolation: 'workspace_model', store_responses: true });
+    byModel.storeSemantic(
+      request,
+      makeCanonicalResponse({ content: [{ type: 'text', text: 'workspace model' }] }),
+    );
+    const sameWorkspaceDifferentKey = makeRequest('summarize team usage', { originalModel: 'gpt-4o' });
+    sameWorkspaceDifferentKey.metadata.workspace_id = 'workspace-a';
+    sameWorkspaceDifferentKey.metadata.api_key_id = 'key-b';
+    expect(byModel.lookupSemantic(sameWorkspaceDifferentKey).hit).toBe(true);
+
+    const differentModel = makeRequest('summarize team usage', { originalModel: 'claude-sonnet' });
+    differentModel.metadata.workspace_id = 'workspace-a';
+    differentModel.metadata.api_key_id = 'key-a';
+    expect(byModel.lookupSemantic(differentModel).hit).toBe(false);
+
+    const byWorkspace = makeService({ isolation: 'workspace', store_responses: true });
+    byWorkspace.storeSemantic(
+      request,
+      makeCanonicalResponse({ content: [{ type: 'text', text: 'workspace' }] }),
+    );
+    expect(byWorkspace.lookupSemantic(differentModel).hit).toBe(true);
+  });
+
+  it('invalidates only the selected workspace and treats legacy null as default workspace', () => {
+    const service = makeService({ store_responses: true, response_storage_requires_header: false });
+    const legacyDefault = makeRequest('default workspace report');
+    legacyDefault.metadata.workspace_id = null;
+    const otherWorkspace = makeRequest('other workspace report');
+    otherWorkspace.metadata.workspace_id = 'workspace-b';
+
+    service.storeSemantic(legacyDefault, makeCanonicalResponse());
+    service.storeSemantic(otherWorkspace, makeCanonicalResponse());
+
+    expect(service.getSemanticStats().entries).toBe(2);
+    expect(service.clearSemantic('default-workspace')).toBe(1);
+    expect(service.getSemanticStats().entries).toBe(1);
+    expect(service.lookupSemantic(otherWorkspace).matched).toBe(true);
   });
 });

@@ -112,5 +112,6 @@
   "members.invites.status.accepted": "aceptada",
   "members.invites.status.expired": "caducada",
   "members.invites.status.revoked": "revocada",
-  "nav.audit": "Auditoría"
+  "nav.audit": "Auditoría",
+  "nav.semanticPlatform": "Plataforma semántica"
 }

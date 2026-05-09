@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.6.0 Cost And Chargeback Platform**.
+Current release: **v2.7.0 Semantic Platform**.
 
-Current development focus after v2.6.0: preserve Platform Trust stability,
+Current development focus after v2.7.0: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -34,6 +34,10 @@ as minor releases.
   chargeback reports, CSV/JSON exports, cost anomaly alerts, provider price
   sync governance, and thumbs feedback aggregation without payments, recharge,
   reseller balances, public marketplaces, or prompt/response storage.
+- Semantic Platform: v2.7 adds Semantic Cache v2, Prompt Registry, Context
+  Window Optimizer evidence, Intent Classification, and Guardrails v2 with
+  metadata-only defaults and explicit opt-ins for replayable response or
+  template body storage.
 - Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
   redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
   Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
@@ -76,6 +80,25 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.7 Highlights
+
+- v2.7.0 makes the semantic layer production-grade without changing SiftGate's
+  default privacy boundary.
+- Semantic Cache v2 adds workspace/API-key/model isolation, TTL invalidation,
+  preview Redis/vector backend validation, and a per-request opt-in header
+  before replayable response storage is allowed.
+- Prompt Registry adds workspace-scoped template metadata, versioning,
+  variables, route policy binding, and A/B metadata while storing hashes only by
+  default.
+- Context Window Optimizer and Intent Classification record route evidence for
+  context pressure and task type without silently changing prompt content.
+- Guardrails v2 records metadata-only PII, toxicity, and jailbreak findings for
+  input/output policy surfaces.
+- The Dashboard **Semantic Platform** page and Route Explanation semantic panel
+  are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- See [`docs/SEMANTIC_PLATFORM.md`](docs/SEMANTIC_PLATFORM.md) and
+  [`docs/CACHING.md`](docs/CACHING.md).
 
 ## v2.6 Highlights
 
@@ -259,14 +282,16 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
 | Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples, Coding Agent Gateway profiles. |
 
-## After v2.3 Priorities
+## After v2.7 Priorities
 
 - Preserve Platform Trust behavior while adding deeper agent-platform and
   semantic-layer capabilities as minor releases.
 - Continue improving connector compatibility for common coding agents while
   preserving advisory-only routing hints and profile-scoped virtual models.
 - Deepen canonical coverage without adding runtime coupling: more safe freshness adapters or provider-availability overlays are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
-- Continue optional Redis semantic-cache backend and future Prompt Registry / Template work without regressing single-node memory/SQLite defaults.
+- Continue optional Redis/vector semantic-cache backends, prompt lifecycle
+  workflows, and guardrail policy depth without regressing single-node
+  memory/SQLite defaults.
 
 ## Configuration
 
@@ -282,6 +307,8 @@ Common settings:
 - `namespaces[]`: local isolation boundaries for teams/apps.
 - `cache`: deterministic prompt response cache.
 - `semantic_cache`: disabled-by-default semantic cache preview.
+- `semantic_platform`: disabled-by-default Semantic Cache v2 controls, Prompt
+  Registry, context optimizer, intent classification, and Guardrails v2.
 - `evaluation`: disabled-by-default local eval metadata and sample-storage controls.
 - `state`: optional Redis shared runtime state.
 - `database`: SQLite by default, PostgreSQL optional.
