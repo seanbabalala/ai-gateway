@@ -37,6 +37,7 @@ const ALL_ALERT_EVENTS: AlertEventType[] = [
   'error_spike',
   'latency_spike',
   'quality_gate_failed',
+  'cost_anomaly',
 ];
 
 @Injectable()

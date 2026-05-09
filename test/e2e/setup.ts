@@ -18,6 +18,8 @@ import {
   CallLog,
   GatewayApiKey,
   ManagementAuditEvent,
+  RouteDecisionLog,
+  RouteFeedback,
   WorkspaceInvitation,
   WorkspaceMembership,
 } from '../../src/database/entities';
@@ -451,6 +453,8 @@ export interface E2EHarness {
   agent: request.Agent;
   fetchMock: FetchMock;
   callLogRepo: Repository<CallLog>;
+  routeDecisionRepo: Repository<RouteDecisionLog>;
+  routeFeedbackRepo: Repository<RouteFeedback>;
   membershipRepo: Repository<WorkspaceMembership>;
   invitationRepo: Repository<WorkspaceInvitation>;
   managementAuditRepo: Repository<ManagementAuditEvent>;
@@ -509,6 +513,12 @@ export async function createE2EHarness(): Promise<E2EHarness> {
 
   const apiKeyRepo = app.get(getRepositoryToken(GatewayApiKey));
   const callLogRepo = app.get<Repository<CallLog>>(getRepositoryToken(CallLog));
+  const routeDecisionRepo = app.get<Repository<RouteDecisionLog>>(
+    getRepositoryToken(RouteDecisionLog),
+  );
+  const routeFeedbackRepo = app.get<Repository<RouteFeedback>>(
+    getRepositoryToken(RouteFeedback),
+  );
   const membershipRepo = app.get<Repository<WorkspaceMembership>>(
     getRepositoryToken(WorkspaceMembership),
   );
@@ -564,6 +574,8 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     agent,
     fetchMock,
     callLogRepo,
+    routeDecisionRepo,
+    routeFeedbackRepo,
     membershipRepo,
     invitationRepo,
     managementAuditRepo,

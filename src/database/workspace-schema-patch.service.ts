@@ -24,6 +24,7 @@ export const WORKSPACE_SCOPED_TABLES = [
   'agent_profiles',
   'call_logs',
   'route_decisions',
+  'route_feedback',
   'eval_datasets',
   'eval_experiment_runs',
   'eval_sample_results',

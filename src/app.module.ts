@@ -20,6 +20,7 @@ import { McpModule } from './mcp/mcp.module';
 import { BatchModule } from './batch/batch.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { IntelligenceModule } from './intelligence/intelligence.module';
+import { CostPlatformModule } from './cost-platform/cost-platform.module';
 import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.filter';
 
 @Module({
@@ -42,6 +43,7 @@ import { PublicGatewayExceptionFilter } from './http/public-gateway-exception.fi
     BatchModule,
     EvaluationModule,
     IntelligenceModule,
+    CostPlatformModule,
     PluginModule,
     AuthModule,
     IngestModule,

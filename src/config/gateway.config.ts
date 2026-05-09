@@ -255,7 +255,8 @@ export type AlertEventType =
   | 'circuit_close'
   | 'error_spike'
   | 'latency_spike'
-  | 'quality_gate_failed';
+  | 'quality_gate_failed'
+  | 'cost_anomaly';
 
 export interface AlertsConfig {
   /** Master switch for local alert dispatch (default: false) */

@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   FileSearch,
   BrainCircuit,
+  ReceiptText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -59,6 +60,7 @@ const navGroups = [
       { to: '/catalog', icon: Boxes, labelKey: 'nav.catalog' },
       { to: '/routing', icon: GitFork, labelKey: 'nav.routing' },
       { to: '/budget', icon: Wallet, labelKey: 'nav.budget' },
+      { to: '/cost-platform', icon: ReceiptText, labelKey: 'nav.costPlatform' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
       { to: '/agents', icon: Bot, labelKey: 'nav.agents' },
       { to: '/agent-platform', icon: BrainCircuit, labelKey: 'nav.agentPlatform' },

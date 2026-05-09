@@ -77,6 +77,7 @@ const ALERT_EVENTS = new Set([
   'error_spike',
   'latency_spike',
   'quality_gate_failed',
+  'cost_anomaly',
 ]);
 const LOG_SINK_TYPES = new Set(['file', 'webhook', 's3', 'elasticsearch']);
 const LOG_SINK_OVERFLOW_POLICIES = new Set(['drop_oldest', 'drop_newest']);
