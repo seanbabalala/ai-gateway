@@ -50,6 +50,7 @@ import {
   GcpSecretManagerConfig,
   CatalogConfig,
   IntelligenceConfig,
+  SemanticPlatformConfig,
 } from './gateway.config';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
@@ -763,6 +764,76 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       vector_dimensions: semantic?.vector_dimensions ?? 256,
       store_responses: semantic?.store_responses ?? false,
       max_response_bytes: semantic?.max_response_bytes ?? 65_536,
+      isolation: semantic?.isolation ?? 'workspace_api_key_model',
+      response_storage_requires_header:
+        semantic?.response_storage_requires_header ?? true,
+    };
+  }
+
+  /** Get v2.7 semantic platform config with metadata-only defaults. */
+  get semanticPlatform(): {
+    enabled: boolean;
+    prompt_registry: Required<NonNullable<SemanticPlatformConfig['prompt_registry']>>;
+    context_optimizer: Required<NonNullable<SemanticPlatformConfig['context_optimizer']>>;
+    intent_classification: {
+      enabled: boolean;
+      categories: NonNullable<NonNullable<SemanticPlatformConfig['intent_classification']>['categories']>;
+      min_confidence: number;
+    };
+    guardrails_v2: {
+      enabled: boolean;
+      metadata_only: boolean;
+      input: Required<NonNullable<NonNullable<SemanticPlatformConfig['guardrails_v2']>['input']>>;
+      output: Required<NonNullable<NonNullable<SemanticPlatformConfig['guardrails_v2']>['output']>>;
+    };
+  } {
+    const semantic = this.config.semantic_platform;
+    const guardrails = semantic?.guardrails_v2;
+    const defaultPolicy = {
+      enabled: false,
+      pii: true,
+      toxicity: true,
+      jailbreak: true,
+      action: 'observe' as const,
+    };
+    return {
+      enabled: semantic?.enabled ?? false,
+      prompt_registry: {
+        enabled: semantic?.prompt_registry?.enabled ?? false,
+        store_template_content:
+          semantic?.prompt_registry?.store_template_content ?? false,
+        max_versions_per_key:
+          semantic?.prompt_registry?.max_versions_per_key ?? 20,
+      },
+      context_optimizer: {
+        enabled: semantic?.context_optimizer?.enabled ?? false,
+        strategy: semantic?.context_optimizer?.strategy ?? 'metadata_only',
+        max_context_ratio:
+          semantic?.context_optimizer?.max_context_ratio ?? 0.8,
+        allow_content_mutation:
+          semantic?.context_optimizer?.allow_content_mutation ?? false,
+      },
+      intent_classification: {
+        enabled: semantic?.intent_classification?.enabled ?? false,
+        categories: semantic?.intent_classification?.categories ?? [
+          'coding',
+          'task',
+          'security',
+          'reasoning',
+          'creative',
+          'multimodal',
+          'analysis',
+          'general',
+        ],
+        min_confidence:
+          semantic?.intent_classification?.min_confidence ?? 0.5,
+      },
+      guardrails_v2: {
+        enabled: guardrails?.enabled ?? false,
+        metadata_only: guardrails?.metadata_only ?? true,
+        input: { ...defaultPolicy, ...(guardrails?.input || {}) },
+        output: { ...defaultPolicy, ...(guardrails?.output || {}) },
+      },
     };
   }
 
@@ -1082,6 +1153,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       cache_affinity: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
       momentum: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },
       prompt_cache: { unavailable_policy: 'fail_open', ttl_seconds: 300 },
+      semantic_cache: { unavailable_policy: 'fail_open', ttl_seconds: 3600 },
       concurrency: { unavailable_policy: unavailablePolicy, ttl_seconds: 120 },
       health_probe: { unavailable_policy: 'fail_open', ttl_seconds: 120 },
       realtime_session: { unavailable_policy: 'fail_open', ttl_seconds: 1800 },

@@ -973,22 +973,71 @@ models_pricing:
 #     enabled: false           # Opt-in stream cache + SSE replay (default: false)
 
 # ============================================================
-# Semantic Cache Preview — optional embedding-similarity cache
+# Semantic Cache v2 — optional embedding-similarity cache
 # ============================================================
-# Disabled by default. The first OSS preview uses a local memory hashed-vector
-# embedding for similarity metadata. It stores only embedding/hash/metadata by
-# default; replayable response bodies require explicit store_responses: true.
-# Keep namespace/API key/model isolation enabled through the gateway metadata.
+# Disabled by default. v2.7 keeps a local memory hashed-vector backend as the
+# production-safe default and reserves Redis/vector backends for preview use.
+# It stores only embedding/hash/metadata by default. Replayable response bodies
+# require store_responses: true and, by default, the per-request header
+# x-siftgate-semantic-store-response: true.
 # ============================================================
 # semantic_cache:
 #   enabled: false             # Master switch (default: false)
-#   backend: memory            # memory now; redis/vector reserved for later previews
+#   backend: memory            # memory default; redis/vector are preview backends
 #   similarity_threshold: 0.92 # Cosine threshold for a metadata match
 #   ttl_seconds: 3600          # Entry TTL
 #   max_entries: 500           # Local LRU cap
 #   vector_dimensions: 256     # Hashed-vector dimensions
 #   store_responses: false     # Privacy-safe default: no replay bodies
 #   max_response_bytes: 65536  # Cap when store_responses=true
+#   isolation: workspace_api_key_model
+#   response_storage_requires_header: true
+
+# ============================================================
+# Semantic Platform — optional v2.7 semantic control plane
+# ============================================================
+# Disabled by default. Enables metadata-only Prompt Registry, context-window
+# evidence, intent classification, and Guardrails v2 findings for routing and
+# Dashboard analytics. It does not store prompt/response content by default.
+# ============================================================
+# semantic_platform:
+#   enabled: false
+#   prompt_registry:
+#     enabled: false
+#     store_template_content: false
+#     max_versions_per_key: 20
+#   context_optimizer:
+#     enabled: false
+#     strategy: metadata_only   # metadata_only | trim | summarize
+#     max_context_ratio: 0.8
+#     allow_content_mutation: false
+#   intent_classification:
+#     enabled: false
+#     categories:
+#       - coding
+#       - task
+#       - security
+#       - reasoning
+#       - creative
+#       - multimodal
+#       - analysis
+#       - general
+#     min_confidence: 0.5
+#   guardrails_v2:
+#     enabled: false
+#     metadata_only: true
+#     input:
+#       enabled: false
+#       pii: true
+#       toxicity: true
+#       jailbreak: true
+#       action: observe         # observe | block | alert
+#     output:
+#       enabled: false
+#       pii: true
+#       toxicity: true
+#       jailbreak: true
+#       action: observe
 
 # ============================================================
 # Embedding Batching — optional /v1/embeddings request coalescing

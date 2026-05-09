@@ -87,6 +87,13 @@ endpoints do not add payments, recharge balances, reseller ledgers, public API
 marketplaces, prompt/response storage, source-code storage, tool payload
 storage, raw-header storage, or provider-key exposure.
 
+v2.7 adds Semantic Platform endpoints for Semantic Cache v2, Prompt Registry,
+Context Window Optimizer evidence, Intent Classification, and Guardrails v2.
+These endpoints are workspace-scoped and metadata-only by default. They do not
+store or return prompts, responses, raw provider headers, provider keys, media
+bytes, tool payloads, hidden reasoning text, or resolved secrets unless a
+separate documented content-storage opt-in is explicitly enabled.
+
 ### Structured Output
 
 Structured-output intent is preserved in the canonical request and forwarded to the selected provider when SiftGate has a safe protocol mapping.
@@ -381,6 +388,11 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/cost-platform` | Internal chargeback, anomaly, price-source, and feedback summary |
 | `GET` | `/api/dashboard/cost-platform/export` | Metadata-only chargeback CSV or JSON export |
 | `GET` | `/api/dashboard/intelligence/summary` | Metadata-only cost optimizer, token prediction, async eval, and quality gate summary |
+| `GET` | `/api/dashboard/semantic-platform` | Metadata-only Semantic Cache v2, Prompt Registry, context, intent, Guardrails v2, and privacy summary |
+| `GET` | `/api/dashboard/semantic-platform/prompt-templates` | List active-workspace prompt template metadata and hashes |
+| `POST` | `/api/dashboard/semantic-platform/prompt-templates` | Create a prompt template version for the active workspace |
+| `DELETE` | `/api/dashboard/semantic-platform/prompt-templates/:id` | Archive a prompt template version |
+| `POST` | `/api/dashboard/semantic-platform/semantic-cache/invalidate` | Invalidate Semantic Cache v2 entries for the active workspace or all workspaces |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
 | `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
@@ -707,7 +719,9 @@ routing changes, eval jobs, retries, fallbacks, or alerts by itself.
 
 ### Semantic Cache Preview
 
-`semantic_cache` is a disabled-by-default local preview. It uses a local hashed-vector embedding to compare request text and records only similarity metadata unless replayable response storage is explicitly enabled.
+`semantic_cache` is disabled by default. v2.7 keeps the local memory
+hashed-vector backend as the production-safe default and records only
+similarity metadata unless replayable response storage is explicitly enabled.
 
 ```yaml
 semantic_cache:
@@ -717,9 +731,44 @@ semantic_cache:
   ttl_seconds: 3600
   max_entries: 500
   store_responses: false
+  isolation: workspace_api_key_model
+  response_storage_requires_header: true
 ```
 
-When `store_responses: false`, a semantic match is evidence only and the gateway still calls upstream. When `store_responses: true`, a high-confidence match can return a cached response and call logs include `semantic_cache_hit=true` with `node_id=semantic_cache`. The cache is isolated by source format, requested model, API key, namespace, and local team metadata.
+When `store_responses: false`, a semantic match is evidence only and the
+gateway still calls upstream. When `store_responses: true`, a high-confidence
+match can return a cached response and call logs include
+`semantic_cache_hit=true` with `node_id=semantic_cache`. By default, response
+storage also requires `x-siftgate-semantic-store-response: true` on the request.
+The cache is isolated by workspace, source format, requested model, Gateway API
+key, namespace, and local team metadata.
+
+### Semantic Platform
+
+`GET /api/dashboard/semantic-platform` supports `period` and returns
+workspace-scoped semantic cache stats, prompt template summaries, context
+optimizer action counts, intent category counts, Guardrails v2 finding counts,
+and an explicit privacy block.
+
+Prompt Registry endpoints store template hashes and metadata by default.
+Template body storage requires
+`semantic_platform.prompt_registry.store_template_content=true`. Requests can
+bind a route trace to a template with `x-siftgate-prompt-key` and optional
+`x-siftgate-prompt-version`. The resulting `semantic_platform.prompt_registry`
+trace evidence includes key, version, template hash, variables, route policy,
+and A/B metadata, not rendered prompt content.
+
+Route Decision Trace responses may include top-level `semantic_platform`
+evidence with:
+
+- `intent`: category, confidence, signals, and advisory route hints
+- `context_optimizer`: token estimate, context ratio, strategy, action, and mutation state
+- `prompt_registry`: prompt key, version, hash, variables, route policy, and A/B metadata
+- `guardrails_v2`: metadata-only finding counts and policy shape
+
+These fields are metadata-only. They do not include prompt text, response text,
+tool payloads, raw headers, provider keys, source code, diffs, media bytes,
+hidden reasoning text, or resolved secrets.
 
 ### Evaluation Reports
 

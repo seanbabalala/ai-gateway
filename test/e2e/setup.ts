@@ -18,6 +18,7 @@ import {
   CallLog,
   GatewayApiKey,
   ManagementAuditEvent,
+  PromptTemplate,
   RouteDecisionLog,
   RouteFeedback,
   WorkspaceInvitation,
@@ -458,6 +459,7 @@ export interface E2EHarness {
   membershipRepo: Repository<WorkspaceMembership>;
   invitationRepo: Repository<WorkspaceInvitation>;
   managementAuditRepo: Repository<ManagementAuditEvent>;
+  promptTemplateRepo: Repository<PromptTemplate>;
   close: () => Promise<void>;
 }
 
@@ -528,6 +530,9 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   const managementAuditRepo = app.get<Repository<ManagementAuditEvent>>(
     getRepositoryToken(ManagementAuditEvent),
   );
+  const promptTemplateRepo = app.get<Repository<PromptTemplate>>(
+    getRepositoryToken(PromptTemplate),
+  );
   await apiKeyRepo.save([
     apiKeyRepo.create({
       name: 'test-default',
@@ -579,6 +584,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     membershipRepo,
     invitationRepo,
     managementAuditRepo,
+    promptTemplateRepo,
     close: async () => {
       fetchMock.restore();
       await app.close();

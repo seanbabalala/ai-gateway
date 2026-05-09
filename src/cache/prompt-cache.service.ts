@@ -23,6 +23,7 @@ import {
   CanonicalResponse,
 } from '../canonical/canonical.types';
 import { StateBackendService } from '../state/state-backend.service';
+import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 
 interface CacheEntry {
   response: CanonicalResponse;
@@ -76,6 +77,7 @@ export interface SemanticCacheLookupResult {
 export interface SemanticCacheStats {
   enabled: boolean;
   backend: string;
+  vectorBackend: string;
   entries: number;
   maxEntries: number;
   matches: number;
@@ -83,6 +85,10 @@ export interface SemanticCacheStats {
   misses: number;
   threshold: number;
   storeResponses: boolean;
+  ttlSeconds: number;
+  isolation: string;
+  responseStorageRequiresHeader: boolean;
+  invalidations: number;
 }
 
 @Injectable()
@@ -96,6 +102,7 @@ export class PromptCacheService {
   private semanticHits = 0;
   private semanticMatches = 0;
   private semanticMisses = 0;
+  private semanticInvalidations = 0;
 
   constructor(
     private readonly config: ConfigService,
@@ -423,8 +430,13 @@ export class PromptCacheService {
 
     const responseJson = JSON.stringify(response);
     const responseSizeBytes = Buffer.byteLength(responseJson, 'utf8');
+    const responseStorageOptedIn =
+      !cfg.response_storage_requires_header ||
+      truthyHeader(canonical.metadata.raw_headers?.['x-siftgate-semantic-store-response']);
     const canStoreResponse =
-      cfg.store_responses && responseSizeBytes <= cfg.max_response_bytes;
+      cfg.store_responses &&
+      responseStorageOptedIn &&
+      responseSizeBytes <= cfg.max_response_bytes;
     const key = this.semanticCacheKey(canonical);
     const entry: SemanticCacheEntry = {
       vector: this.buildSemanticVector(canonical),
@@ -451,6 +463,7 @@ export class PromptCacheService {
     return {
       enabled: cfg.enabled,
       backend: cfg.backend,
+      vectorBackend: cfg.backend,
       entries: this.semanticCache.size,
       maxEntries: cfg.max_entries,
       matches: this.semanticMatches,
@@ -458,7 +471,35 @@ export class PromptCacheService {
       misses: this.semanticMisses,
       threshold: cfg.similarity_threshold,
       storeResponses: cfg.store_responses,
+      ttlSeconds: cfg.ttl_seconds,
+      isolation: cfg.isolation,
+      responseStorageRequiresHeader: cfg.response_storage_requires_header,
+      invalidations: this.semanticInvalidations,
     };
+  }
+
+  clearSemantic(workspaceId?: string | null): number {
+    const before = this.semanticCache.size;
+    if (workspaceId === undefined) {
+      this.semanticCache.clear();
+    } else {
+      const normalized = normalizeWorkspaceId(workspaceId);
+      for (const [key, entry] of [...this.semanticCache.entries()]) {
+        if (normalizeWorkspaceId(entry.metadata.workspace_id) === normalized) {
+          this.semanticCache.delete(key);
+        }
+      }
+    }
+    const removed = before - this.semanticCache.size;
+    if (removed > 0) this.semanticInvalidations += 1;
+    if (workspaceId === undefined && this.stateBackend?.isRedisConfigured()) {
+      this.stateBackend
+        .clearNamespace('semantic_cache')
+        .catch((err) =>
+          this.logger.warn(`Shared semantic cache clear skipped: ${(err as Error).message}`),
+        );
+    }
+    return removed;
   }
 
   // ══════════════════════════════════════════════════════
@@ -548,9 +589,18 @@ export class PromptCacheService {
       source_format: canonical.metadata.source_format,
       model: canonical.metadata.original_model || 'auto',
       workspace_id: canonical.metadata.workspace_id ?? null,
-      api_key_id: canonical.metadata.api_key_id ?? null,
-      namespace_id: canonical.metadata.namespace_id ?? null,
-      team_id: canonical.metadata.team_id ?? null,
+      api_key_id:
+        this.config.semanticCache.isolation === 'workspace_api_key_model'
+          ? canonical.metadata.api_key_id ?? null
+          : null,
+      namespace_id:
+        this.config.semanticCache.isolation === 'workspace_api_key_model'
+          ? canonical.metadata.namespace_id ?? null
+          : null,
+      team_id:
+        this.config.semanticCache.isolation === 'workspace_api_key_model'
+          ? canonical.metadata.team_id ?? null
+          : null,
     };
   }
 
@@ -560,7 +610,9 @@ export class PromptCacheService {
   ): boolean {
     return (
       scope.source_format === candidate.source_format &&
-      scope.model === candidate.model &&
+      (this.config.semanticCache.isolation === 'workspace'
+        ? true
+        : scope.model === candidate.model) &&
       scope.workspace_id === candidate.workspace_id &&
       scope.api_key_id === candidate.api_key_id &&
       scope.namespace_id === candidate.namespace_id &&
@@ -641,4 +693,8 @@ export class PromptCacheService {
     this.cache.delete(key);
     this.totalSizeBytes -= entry.sizeBytes;
   }
+}
+
+function truthyHeader(value: string | undefined): boolean {
+  return typeof value === 'string' && ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }

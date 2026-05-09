@@ -112,5 +112,6 @@
   "members.invites.status.accepted": "รับแล้ว",
   "members.invites.status.expired": "หมดอายุ",
   "members.invites.status.revoked": "ยกเลิกแล้ว",
-  "nav.audit": "Audit Log"
+  "nav.audit": "Audit Log",
+  "nav.semanticPlatform": "Semantic Platform"
 }

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '../config/config.service';
 import { CallLogSchemaPatchService } from './call-log-schema-patch.service';
+import { PromptTemplateSchemaPatchService } from './prompt-template-schema-patch.service';
 import { RouteFeedbackSchemaPatchService } from './route-feedback-schema-patch.service';
 import { WorkspaceSchemaPatchService } from './workspace-schema-patch.service';
 import {
@@ -20,6 +21,7 @@ import {
   NodeStatus,
   Organization,
   ProviderCompatibilityResult,
+  PromptTemplate,
   RouteDecisionLog,
   RouteFeedback,
   ShadowTrafficResult,
@@ -57,6 +59,7 @@ import {
             RouteDecisionLog,
             RouteFeedback,
             ProviderCompatibilityResult,
+            PromptTemplate,
             BatchJob,
             EvalDataset,
             EvalExperimentRun,
@@ -102,6 +105,7 @@ import {
       ShadowTrafficResult,
       RouteDecisionLog,
       ProviderCompatibilityResult,
+      PromptTemplate,
       RouteFeedback,
       BatchJob,
       EvalDataset,
@@ -113,6 +117,7 @@ import {
   ],
   providers: [
     CallLogSchemaPatchService,
+    PromptTemplateSchemaPatchService,
     RouteFeedbackSchemaPatchService,
     WorkspaceSchemaPatchService,
     DatabaseHealthService,

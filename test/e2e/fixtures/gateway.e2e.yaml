@@ -194,3 +194,51 @@ realtime:
   idle_timeout_ms: 30000
   upstream_connect_timeout_ms: 1000
   max_session_ms: 60000
+semantic_cache:
+  enabled: true
+  backend: memory
+  similarity_threshold: 0.75
+  ttl_seconds: 3600
+  max_entries: 100
+  vector_dimensions: 128
+  store_responses: true
+  response_storage_requires_header: true
+  isolation: workspace_api_key_model
+semantic_platform:
+  enabled: true
+  prompt_registry:
+    enabled: true
+    store_template_content: false
+    max_versions_per_key: 20
+  context_optimizer:
+    enabled: true
+    strategy: metadata_only
+    max_context_ratio: 0.8
+    allow_content_mutation: false
+  intent_classification:
+    enabled: true
+    categories:
+      - coding
+      - task
+      - security
+      - reasoning
+      - creative
+      - multimodal
+      - analysis
+      - general
+    min_confidence: 0.3
+  guardrails_v2:
+    enabled: true
+    metadata_only: true
+    input:
+      enabled: true
+      pii: true
+      toxicity: true
+      jailbreak: true
+      action: observe
+    output:
+      enabled: true
+      pii: true
+      toxicity: true
+      jailbreak: true
+      action: observe

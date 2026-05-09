@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 2.7.0 - 2026-05-09
+
+### Added
+
+- Added the v2.7 Semantic Platform for the OSS data plane: Semantic Cache v2 controls, Prompt Registry metadata/versioning, Context Window Optimizer evidence, Intent Classification, and Guardrails v2 metadata.
+- Added `GET /api/dashboard/semantic-platform`, `GET/POST/DELETE /api/dashboard/semantic-platform/prompt-templates`, and `POST /api/dashboard/semantic-platform/semantic-cache/invalidate` for workspace-scoped semantic operations.
+- Added the `prompt_templates` metadata table with SQLite/PostgreSQL schema patching, workspace scoping, template hashes, variables, route policy binding, A/B metadata, and disabled-by-default template body storage.
+- Added top-level `semantic_platform` Route Decision Trace evidence for intent category/confidence, context-window pressure, Prompt Registry binding metadata, and Guardrails v2 findings.
+- Added the Dashboard **Semantic Platform** page with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`, plus static frontend checks for route, hook, API types, privacy copy, actions, and locale coverage.
+- Added `docs/SEMANTIC_PLATFORM.md` and updated API, Architecture, Caching, Dashboard, README, roadmap, and config example documentation for v2.7 operations.
+
+### Changed
+
+- Upgraded semantic cache behavior from preview copy to Semantic Cache v2 semantics with workspace/API-key/model isolation defaults, TTL invalidation, preview Redis/vector backend validation, and response replay gated by `x-siftgate-semantic-store-response` when response storage is enabled.
+- Updated release metadata to v2.7.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, release-version sync coverage, and benchmark script expectations.
+
+### Boundaries
+
+- v2.7.0 does not store prompts, responses, template bodies, raw provider headers, provider keys, Gateway API key plaintext, media bytes, tool payloads, hidden reasoning text, matched finding text, source code, diffs, or resolved secrets by default.
+- Context Window Optimizer records trim/summarize evidence in v2.7 but does not silently mutate prompt content.
+- Guardrails v2 records metadata-only findings by default and does not replace the official guardrails plugin for deeper local enforcement.
+
 ## 2.6.0 - 2026-05-09
 
 ### Added

@@ -221,6 +221,58 @@ export interface RouteDecisionIntelligenceEvidence {
   quality_gate?: RouteDecisionQualityGateEvidence;
 }
 
+export interface RouteDecisionSemanticPlatformEvidence {
+  intent?: {
+    enabled: boolean;
+    category: string;
+    confidence: number;
+    signals: string[];
+    route_hint: {
+      preferred_capabilities: string[];
+      quality_critical: boolean;
+      security_sensitive: boolean;
+    };
+  };
+  context_optimizer?: {
+    enabled: boolean;
+    strategy: string;
+    action: string;
+    mutation_allowed: boolean;
+    estimated_context_tokens: number;
+    max_context_tokens: number | null;
+    context_ratio: number | null;
+    threshold_ratio: number;
+    route_target: RouteTarget | null;
+    changed_content: false;
+    reason: string;
+  };
+  guardrails_v2?: {
+    enabled: boolean;
+    metadata_only: boolean;
+    findings: Array<{
+      surface: string;
+      kind: string;
+      action: string;
+      severity: string;
+      match_count: number;
+      metadata_only: true;
+    }>;
+    blocked: false;
+    reason: string;
+  };
+  prompt_registry?: {
+    enabled: boolean;
+    prompt_key: string | null;
+    version: number | null;
+    template_hash: string | null;
+    variables: string[];
+    route_policy_id: string | null;
+    ab_metadata: Record<string, unknown> | null;
+    content_available: false;
+    reason: string;
+  };
+}
+
 export interface RouteDecisionTrace {
   version: 1;
   request_id?: string;
@@ -291,6 +343,7 @@ export interface RouteDecisionTrace {
   };
   candidate_targets: RouteDecisionTraceCandidate[];
   filters: RouteDecisionTraceFilter[];
+  semantic_platform?: RouteDecisionSemanticPlatformEvidence;
   load_balancing: {
     strategy: EffectiveRoutingStrategy | 'direct' | 'embedding' | 'rerank' | 'media' | 'cache' | 'hook';
     source: 'primary_fallback' | 'targets' | 'split' | 'direct' | 'embedding' | 'rerank' | 'media' | 'cache' | 'hook';

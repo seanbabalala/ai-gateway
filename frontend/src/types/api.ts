@@ -522,6 +522,171 @@ export interface CostPlatformResponse {
   };
 }
 
+// ── Semantic Platform ──
+
+export interface SemanticPlatformPrivacyContract {
+  metadata_only: true;
+  stores_prompts: false;
+  stores_responses: false;
+  stores_prompt_templates_by_default: false;
+  stores_raw_headers: false;
+  stores_provider_keys: false;
+  stores_tool_payloads: false;
+  stores_media_bytes: false;
+  stores_hidden_reasoning: false;
+  semantic_cache_response_storage_opt_in: boolean;
+  prompt_registry_content_storage_opt_in: boolean;
+}
+
+export type SemanticIntentCategory =
+  | "coding"
+  | "task"
+  | "security"
+  | "reasoning"
+  | "creative"
+  | "multimodal"
+  | "analysis"
+  | "general";
+
+export type SemanticContextStrategy = "metadata_only" | "trim" | "summarize";
+
+export interface SemanticPlatformPromptTemplate {
+  id: string;
+  workspace_id: string;
+  prompt_key: string;
+  version: number;
+  name: string | null;
+  status: "active" | "archived";
+  template_hash: string;
+  variables: string[];
+  route_policy_id: string | null;
+  ab_metadata: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  content_storage_enabled: boolean;
+  content_available: false;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SemanticPlatformResponse {
+  version: "v1";
+  workspace_id: string;
+  generated_at: string;
+  period: string;
+  config: {
+    enabled: boolean;
+    semantic_cache: {
+      enabled: boolean;
+      backend: string;
+      isolation: string;
+      ttl_seconds: number;
+      threshold: number;
+      store_responses: boolean;
+      response_storage_requires_header: boolean;
+      explicit_response_storage_opt_in: boolean;
+    };
+    prompt_registry: {
+      enabled: boolean;
+      store_template_content: boolean;
+      max_versions_per_key: number;
+    };
+    context_optimizer: {
+      enabled: boolean;
+      strategy: SemanticContextStrategy;
+      max_context_ratio: number;
+      allow_content_mutation: boolean;
+    };
+    intent_classification: {
+      enabled: boolean;
+      categories: SemanticIntentCategory[];
+      min_confidence: number;
+    };
+    guardrails_v2: {
+      enabled: boolean;
+      metadata_only: boolean;
+      input: {
+        enabled: boolean;
+        pii: boolean;
+        toxicity: boolean;
+        jailbreak: boolean;
+        action: "observe" | "block" | "alert";
+      };
+      output: {
+        enabled: boolean;
+        pii: boolean;
+        toxicity: boolean;
+        jailbreak: boolean;
+        action: "observe" | "block" | "alert";
+      };
+    };
+  };
+  semantic_cache: {
+    enabled: boolean;
+    backend: string;
+    vectorBackend: string;
+    entries: number;
+    maxEntries: number;
+    matches: number;
+    hits: number;
+    misses: number;
+    threshold: number;
+    storeResponses: boolean;
+    ttlSeconds: number;
+    isolation: string;
+    responseStorageRequiresHeader: boolean;
+    invalidations: number;
+    workspace_isolated: boolean;
+    key_isolated: boolean;
+    model_isolated: boolean;
+    explicit_response_storage_opt_in: boolean;
+    recent_requests: number;
+    recent_hits: number;
+    recent_metadata_matches: number;
+  };
+  prompt_registry: {
+    enabled: boolean;
+    stores_template_content: boolean;
+    templates: SemanticPlatformPromptTemplate[];
+    total: number;
+    active: number;
+  };
+  context_optimizer: {
+    enabled: boolean;
+    strategy: SemanticContextStrategy;
+    mutation_allowed: boolean;
+    actions: Record<string, number>;
+    content_persistence: false;
+  };
+  intent_classification: {
+    enabled: boolean;
+    categories: SemanticIntentCategory[];
+    observed: Record<string, number>;
+  };
+  guardrails_v2: {
+    enabled: boolean;
+    metadata_only: boolean;
+    findings: Record<string, number>;
+    blocked_by_default: false;
+  };
+  privacy: SemanticPlatformPrivacyContract;
+}
+
+export interface CreateSemanticPromptTemplateRequest {
+  prompt_key: string;
+  name?: string | null;
+  template: string;
+  variables?: string[];
+  route_policy_id?: string | null;
+  ab_metadata?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateSemanticPromptTemplateResponse {
+  success: boolean;
+  item: SemanticPlatformPromptTemplate;
+  privacy: SemanticPlatformPrivacyContract;
+}
+
 // ── Logs ──
 
 export interface CallLog {
@@ -773,6 +938,58 @@ export interface RouteDecisionIntelligenceEvidence {
   quality_gate?: RouteDecisionQualityGateEvidence;
 }
 
+export interface RouteDecisionSemanticPlatformEvidence {
+  intent?: {
+    enabled: boolean;
+    category: string;
+    confidence: number;
+    signals: string[];
+    route_hint: {
+      preferred_capabilities: string[];
+      quality_critical: boolean;
+      security_sensitive: boolean;
+    };
+  };
+  context_optimizer?: {
+    enabled: boolean;
+    strategy: string;
+    action: string;
+    mutation_allowed: boolean;
+    estimated_context_tokens: number;
+    max_context_tokens: number | null;
+    context_ratio: number | null;
+    threshold_ratio: number;
+    route_target: RouteDecisionTarget | null;
+    changed_content: false;
+    reason: string;
+  };
+  guardrails_v2?: {
+    enabled: boolean;
+    metadata_only: boolean;
+    findings: Array<{
+      surface: string;
+      kind: string;
+      action: string;
+      severity: string;
+      match_count: number;
+      metadata_only: true;
+    }>;
+    blocked: false;
+    reason: string;
+  };
+  prompt_registry?: {
+    enabled: boolean;
+    prompt_key: string | null;
+    version: number | null;
+    template_hash: string | null;
+    variables: string[];
+    route_policy_id: string | null;
+    ab_metadata: Record<string, unknown> | null;
+    content_available: false;
+    reason: string;
+  };
+}
+
 export interface RouteDecisionTrace {
   version: 1;
   request_id?: string;
@@ -863,6 +1080,7 @@ export interface RouteDecisionTrace {
     reason: string;
   } | null;
   intelligence?: RouteDecisionIntelligenceEvidence;
+  semantic_platform?: RouteDecisionSemanticPlatformEvidence;
   final_selection: {
     node: string | null;
     model: string | null;

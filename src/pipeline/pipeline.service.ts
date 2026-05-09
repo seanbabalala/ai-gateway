@@ -75,12 +75,14 @@ import { EmbeddingBatchingService } from './embedding-batching.service';
 import { ShadowTrafficService } from '../shadow/shadow-traffic.service';
 import { AgentProfileService } from '../agent-profiles/agent-profile.service';
 import { IntelligenceLoopService } from '../intelligence/intelligence-loop.service';
+import { SemanticPlatformService } from '../semantic-platform/semantic-platform.service';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 import {
   RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionCacheEvidence,
   RouteDecisionCompatibilityEvidence,
+  RouteDecisionSemanticPlatformEvidence,
   RouteDecisionTrace,
   routeTargetKey,
 } from '../routing/route-decision-trace';
@@ -216,6 +218,7 @@ export class PipelineService {
     @Optional() private readonly shadowTraffic?: ShadowTrafficService,
     @Optional() private readonly agentProfiles?: AgentProfileService,
     @Optional() private readonly intelligenceLoop?: IntelligenceLoopService,
+    @Optional() private readonly semanticPlatform?: SemanticPlatformService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -3568,6 +3571,9 @@ export class PipelineService {
     const reasoningFields = this.resolveReasoningSelectionFields(canonical);
     const requestRouteHints = this.routeSelectionHintsForTrace(canonical);
     const agentRouteHints = this.agentRoutingHintsForTrace(canonical);
+    const semanticEvidence = this.semanticPlatform
+      ? await this.semanticPlatform.buildRouteEvidence(canonical)
+      : undefined;
 
     const routeDecision = this.telemetry.withSpanSync(
       'gateway.routing',
@@ -3597,17 +3603,23 @@ export class PipelineService {
             reasoning_effort: reasoningFields.reasoning_effort,
             reasoning_budget_tokens: reasoningFields.reasoning_budget_tokens,
             reasoning_strategy: reasoningFields.reasoning_strategy,
+            semantic_intent: semanticEvidence?.intent?.category,
+            semantic_intent_confidence: semanticEvidence?.intent?.confidence,
+            semantic_capabilities:
+              semanticEvidence?.intent?.route_hint.preferred_capabilities,
             required_capabilities: reasoningFields.requires_reasoning
               ? Array.from(
                   new Set([
                     ...((agentRouteHints.required_capabilities ||
                       requestRouteHints.required_capabilities ||
+                      semanticEvidence?.intent?.route_hint.preferred_capabilities ||
                       (scoringResult.modalityHints || ['text']).map(String)) as string[]),
                     'reasoning',
                   ]),
                 )
               : agentRouteHints.required_capabilities ||
-                requestRouteHints.required_capabilities,
+                requestRouteHints.required_capabilities ||
+                semanticEvidence?.intent?.route_hint.preferred_capabilities,
           },
         );
         span.setAttributes({
@@ -3648,6 +3660,7 @@ export class PipelineService {
         ...agentRouteHints,
         ...this.cacheSelectionHintsFromStore(store),
       },
+      semanticPlatform: semanticEvidence,
     });
     const routeTrace = this.applyTargetFilterToTrace(
       baseRouteTrace,
@@ -3664,7 +3677,39 @@ export class PipelineService {
       modalityHints: scoringResult.modalityHints,
       experimentGroup: routeDecision.experimentGroup,
       experimentGroupsByTarget: routeDecision.experimentGroupsByTarget || {},
-      routeTrace,
+      routeTrace: this.mergeSemanticPlatformTrace(routeTrace, semanticEvidence, constrainedRoute.primary),
+    };
+  }
+
+  private mergeSemanticPlatformTrace(
+    trace: RouteDecisionTrace,
+    evidence: RouteDecisionSemanticPlatformEvidence | undefined,
+    selectedTarget: RouteTarget,
+  ): RouteDecisionTrace {
+    const semanticPlatform = this.semanticPlatformEvidenceForTrace(
+      evidence || trace.semantic_platform,
+      selectedTarget,
+    );
+    if (!semanticPlatform) return trace;
+    return {
+      ...trace,
+      semantic_platform: semanticPlatform,
+    };
+  }
+
+  private semanticPlatformEvidenceForTrace(
+    evidence: RouteDecisionSemanticPlatformEvidence | undefined,
+    selectedTarget: RouteTarget,
+  ): RouteDecisionSemanticPlatformEvidence | undefined {
+    if (!evidence) return undefined;
+    return {
+      ...evidence,
+      context_optimizer: evidence.context_optimizer
+        ? {
+            ...evidence.context_optimizer,
+            route_target: evidence.context_optimizer.route_target || selectedTarget,
+          }
+        : undefined,
     };
   }
 
@@ -3681,6 +3726,7 @@ export class PipelineService {
     domainHint?: string | null;
     modalityHints?: string[];
     selectionHints?: Partial<RouteSelectionHints>;
+    semanticPlatform?: RouteDecisionSemanticPlatformEvidence;
   }): RouteDecisionTrace {
     const targets = [input.route.primary, ...input.route.fallbacks];
     const selectedKey = routeTargetKey(input.route.primary);
@@ -3772,6 +3818,10 @@ export class PipelineService {
         targets,
       ),
       cache_evidence: this.buildPipelineTraceCacheEvidence(traceSelectionHints, targets),
+      semantic_platform: this.semanticPlatformEvidenceForTrace(
+        input.semanticPlatform,
+        input.route.primary,
+      ),
       candidate_targets: targets.map((target, index) => {
         const capabilities =
           this.capabilityService.resolveModelRoutingCapabilities?.(

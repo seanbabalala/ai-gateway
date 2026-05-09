@@ -6,6 +6,7 @@ export type StateCategoryName =
   | 'cache_affinity'
   | 'momentum'
   | 'prompt_cache'
+  | 'semantic_cache'
   | 'concurrency'
   | 'health_probe'
   | 'realtime_session';
