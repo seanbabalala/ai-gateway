@@ -2,6 +2,12 @@
 
 This document defines the accounting invariants for SiftGate.
 
+v2.6.0 adds the Cost And Chargeback Platform on top of these invariants. It
+produces internal workspace/team/project/API-key chargeback summaries, exports,
+cost anomaly alerts, provider price-source status, and thumbs feedback
+aggregation. It does not add payments, prepaid balances, recharge, reseller
+ledgers, customer billing identities, or a public API marketplace.
+
 ## Identity
 
 - Provider API keys are upstream credentials. They are never client billing identity.
@@ -107,6 +113,24 @@ v1.4 uses one pricing resolver for routing, benchmark reports, catalog APIs, and
 Built-in catalog prices are local reference snapshots and usually marked `manual_review_required`; they are good enough to keep cost-aware routing and budget estimates from going blind, but operators should override them with verified local rates for production billing decisions. OpenRouter can sync prices into the local catalog cache or an override file. In v1.7, ZeroEval can also enrich known provider/model entries with third-party reference pricing metadata in the local sync cache, but that enrichment remains review-required and never outranks explicit operator config. Other providers still need docs review or local rate cards.
 
 If no explicit price and no usable catalog fallback exists, routing is still allowed and tokens are still logged. Cost is recorded as `0`, and diagnostics surface the missing pricing or catalog price source issue.
+
+## Chargeback And Feedback
+
+Chargeback reports read `call_logs` and `route_decisions` metadata only. They
+can group cost by workspace, team, project, Gateway API key, model, or node and
+export CSV/JSON for internal allocation. Exports never include prompts,
+responses, source code, diffs, tool payloads, raw headers, provider keys, media
+bytes, hidden reasoning text, or resolved secrets.
+
+`POST /v1/feedback` lets clients attach thumbs up/down metadata to a request id.
+The feedback row stores workspace id, request id, route decision id when
+available, Gateway API key id/name, team id, value, reason code, source, and
+route-weight evidence. It ignores content-bearing fields and does not
+automatically change routing weights in v2.6.0.
+
+Cost anomaly detection compares spend windows and emits metadata-only
+`cost_anomaly` alerts. Recommended policies may suggest optional downgrade, but
+automatic routing changes require explicit operator policy.
 
 ## Verification
 

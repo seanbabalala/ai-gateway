@@ -156,6 +156,15 @@ only before response bytes are sent. Streaming requests record
 `streaming_no_post_start_retry` and never retry or fallback after bytes have
 started. Async Eval v1 queues metadata only by default.
 
+v2.6 adds a Cost And Chargeback Platform on top of existing call logs, route
+decision traces, provider catalog pricing governance, alerting, and optional
+feedback metadata. It does not sit in the critical request path except for the
+lightweight `POST /v1/feedback` metadata endpoint. Chargeback reports, anomaly
+detection, price-source summaries, and feedback aggregation are Dashboard/API
+read paths over workspace-scoped metadata. Payments, recharge balances,
+reseller ledgers, public marketplaces, prompt/response storage, raw-header
+storage, provider-key exposure, and automatic price trust remain out of scope.
+
 ### Reliability
 
 The data plane protects request flow with:
@@ -199,6 +208,9 @@ The gateway records call logs with:
   token prediction risk, quality gate status, and async eval queued flag
 
 These logs power Dashboard pages, SSE updates, analytics, budgets, local webhook alert spike detection, namespace filters, and optional connected-gateway metadata upload.
+v2.6 also uses them for internal chargeback reports and cost anomaly detection.
+The new `route_feedback` table stores request id, workspace, key/team labels,
+thumbs value, reason code, and route-weight evidence only.
 
 The v1.1 Session View does not add content storage. It correlates existing metadata by `request_id`, `session_id`, and `trace_id`: `call_logs` provide the timeline backbone, `route_decisions` attach explainable-routing evidence, `shadow_traffic_results` attach asynchronous mirror outcomes, benchmark reports reuse the same log metrics, and the guardrails plugin can contribute recent in-memory finding metadata. Prompt text, response text, raw headers, provider keys, uploaded media, and video bytes stay out of this correlation layer.
 

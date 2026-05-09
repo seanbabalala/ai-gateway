@@ -186,6 +186,246 @@ describe('Dashboard (e2e)', () => {
     expect(JSON.stringify(res.body)).not.toContain('tool arguments');
   });
 
+  it('GET /api/dashboard/cost-platform → returns internal chargeback and privacy-safe governance metadata', async () => {
+    const timestamp = Date.now();
+    await harness.callLogRepo.save([
+      harness.callLogRepo.create({
+        request_id: `cost-e2e-a-${timestamp}`,
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o',
+        input_tokens: 120,
+        output_tokens: 40,
+        cost_usd: 1.25,
+        latency_ms: 220,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        api_key_id: 'key-e2e',
+        api_key_name: 'e2e-key',
+        team_id: 'team-platform',
+        agent_project: 'gateway',
+        intelligence_optimizer_applied: true,
+        intelligence_estimated_savings_usd: 0.15,
+      }),
+      harness.callLogRepo.create({
+        request_id: `cost-e2e-b-${timestamp}`,
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o-mini',
+        input_tokens: 80,
+        output_tokens: 20,
+        cost_usd: 0.5,
+        latency_ms: 180,
+        status_code: 500,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        api_key_id: 'key-e2e',
+        api_key_name: 'e2e-key',
+        team_id: 'team-platform',
+        agent_project: 'gateway',
+      }),
+    ]);
+
+    const res = await harness.agent.get('/api/dashboard/cost-platform?period=30d&group_by=team');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      version: 'v1',
+      workspace_id: DEFAULT_WORKSPACE_ID,
+      chargeback: {
+        summary: expect.objectContaining({
+          requests: expect.any(Number),
+          cost_usd: expect.any(Number),
+        }),
+        budget_period_close: expect.objectContaining({
+          invoice_ready: true,
+          payment_collection: false,
+          recharge_balance: false,
+        }),
+        invoice_summary: expect.objectContaining({
+          currency: 'USD',
+        }),
+      },
+      price_sync: {
+        guardrails: {
+          explicit_sources_only: true,
+          never_overwrite_operator_overrides_silently: true,
+          automatic_price_trust: false,
+        },
+      },
+      privacy: {
+        metadata_only: true,
+        stores_prompts: false,
+        stores_responses: false,
+        stores_source_code: false,
+        stores_diffs: false,
+        stores_tool_payloads: false,
+        stores_raw_headers: false,
+        stores_provider_keys: false,
+        stores_media_bytes: false,
+        stores_hidden_reasoning: false,
+        exports_content: false,
+      },
+      boundaries: {
+        payments: false,
+        recharge_balances: false,
+        reseller_marketplace: false,
+        public_api_marketplace: false,
+      },
+    });
+    expect(res.body.chargeback.groups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          group_by: 'team',
+          group_value: 'team-platform',
+          cost_usd: 1.75,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(res.body)).not.toContain('mock-openai-key');
+    expect(JSON.stringify(res.body)).not.toContain('Hello');
+  });
+
+  it('GET /api/dashboard/cost-platform/export → exports CSV chargeback rows', async () => {
+    const timestamp = Date.now();
+    await harness.callLogRepo.save(
+      harness.callLogRepo.create({
+        request_id: `cost-export-e2e-${timestamp}`,
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o-mini',
+        input_tokens: 12,
+        output_tokens: 3,
+        cost_usd: 0.123,
+        latency_ms: 100,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        api_key_id: 'key-export',
+        api_key_name: 'export-key',
+        team_id: 'team-export',
+        agent_project: 'gateway',
+      }),
+    );
+
+    const res = await harness.agent.get('/api/dashboard/cost-platform/export?period=30d&group_by=team&format=csv');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('group,label,requests');
+    expect(res.text).toContain('team-export');
+    expect(res.headers['x-siftgate-privacy']).toBe('metadata-only');
+  });
+
+  it('POST /v1/feedback → stores thumbs feedback metadata without content fields', async () => {
+    const requestId = `feedback-e2e-${Date.now()}`;
+    await harness.callLogRepo.save(
+      harness.callLogRepo.create({
+        request_id: requestId,
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o-mini',
+        input_tokens: 12,
+        output_tokens: 3,
+        cost_usd: 0.01,
+        latency_ms: 100,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        api_key_id: 'seed-key',
+        api_key_name: 'seed',
+        team_id: 'team-feedback',
+        agent_project: 'gateway',
+      }),
+    );
+    await harness.routeDecisionRepo.save(
+      harness.routeDecisionRepo.create({
+        request_id: requestId,
+        source_format: 'chat_completions',
+        tier: 'standard',
+        score: 0.5,
+        route_mode: 'auto',
+        strategy: 'balanced',
+        selected_node_id: 'mock-openai',
+        selected_model: 'gpt-4o-mini',
+        candidate_count: 2,
+        filtered_count: 0,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        api_key_id: 'seed-key',
+        api_key_name: 'seed',
+        intelligence_optimizer_applied: true,
+        trace_json: JSON.stringify({
+          candidate_targets: [
+            {
+              node: 'mock-openai',
+              model: 'gpt-4o-mini',
+              selected: true,
+              weight: 0.9,
+              scores: { cost: 0.95 },
+            },
+          ],
+          intelligence: {
+            optimizer: {
+              applied: true,
+              objective: 'balanced',
+              reason: 'cost efficient',
+            },
+          },
+        }),
+      }),
+    );
+
+    const res = await harness.agent
+      .post('/v1/feedback')
+      .set('Authorization', `Bearer ${API_KEY}`)
+      .send({
+        request_id: requestId,
+        value: 'down',
+        reason_code: 'wrong_tone',
+        prompt: 'should be ignored by DTO and never stored',
+        response: 'should be ignored by DTO and never stored',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      success: true,
+      request_id: requestId,
+      value: 'down',
+      metadata_only: true,
+      route_weight_evidence: {
+        metadata_only: true,
+        selected_node: 'mock-openai',
+        selected_model: 'gpt-4o-mini',
+        selected_weight: 0.9,
+      },
+      privacy: {
+        stores_prompts: false,
+        stores_responses: false,
+        stores_tool_payloads: false,
+        stores_raw_headers: false,
+        stores_provider_keys: false,
+      },
+    });
+
+    const stored = await harness.routeFeedbackRepo.findOneByOrFail({ request_id: requestId });
+    expect(stored).toMatchObject({
+      workspace_id: DEFAULT_WORKSPACE_ID,
+      request_id: requestId,
+      value: 'down',
+      reason_code: 'wrong_tone',
+      source: 'gateway_api',
+      api_key_name: 'test-default',
+      team_id: 'team-feedback',
+    });
+    expect(JSON.stringify(stored)).not.toContain('should be ignored');
+  });
+
   it('RBAC → Viewer can read but cannot write Dashboard resources', async () => {
     await harness.membershipRepo.update(
       { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },

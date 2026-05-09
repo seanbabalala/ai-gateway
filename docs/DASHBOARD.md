@@ -20,6 +20,11 @@ workspace-scoped Provider Health Dashboard that aggregates metadata-only
 availability, latency, error-rate, probe, circuit, compatibility, and pricing
 warning evidence.
 
+v2.6 adds a **Cost Platform** page for internal chargeback, cost anomaly
+response, provider price source governance, and thumbs feedback aggregation. It
+does not add payment collection, recharge balances, reseller ledgers, or
+content storage.
+
 v2.0.0-alpha.1 adds the Workspace Core foundation. The Dashboard header shows the active workspace, reads `GET /api/dashboard/workspaces`, validates switches through `POST /api/dashboard/workspaces/switch`, stores the selected workspace in browser local storage, and sends `x-siftgate-workspace-id` on Dashboard API calls. Fresh and upgraded OSS installs start with `Default Organization` and `Default Workspace`; legacy v1.9 metadata maps to that default workspace.
 
 v2.0.0-alpha.2 adds local Dashboard RBAC. The active Dashboard identity is mapped to a workspace membership, the header shows an Admin / Operator / Viewer role badge, and Dashboard write APIs now enforce centralized role checks. Existing local installs bootstrap the `dashboard` identity as an Admin in the default workspace.
@@ -39,6 +44,7 @@ Dashboard APIs.
 | Overview | First-run checklist, live calls, cost, cache savings, Intelligence Loop summary, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
+| Cost Platform | Internal chargeback reports, CSV/JSON exports, cost anomalies, provider price sync guardrails, and feedback aggregation |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | Agents | Coding Agent Gateway profiles for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic, and compatible chatbot setup with redacted render snippets and metadata-only recent coding-agent sessions |
 | Members | Local workspace membership governance with Admin, Operator, and Viewer roles |
@@ -187,6 +193,31 @@ Quality Gate actions are visible only as metadata. The Dashboard does not expose
 prompt text, response text, raw headers, provider keys, source code, diffs, tool
 payloads, media bytes, hidden reasoning text, or resolved secrets. Streaming
 requests are marked as skipped for post-start retry/fallback safety.
+
+## Cost Platform
+
+The Cost Platform page reads `GET /api/dashboard/cost-platform` and offers
+metadata-only CSV/JSON exports through
+`GET /api/dashboard/cost-platform/export`.
+
+Operators can group chargeback by workspace, team, project, Gateway API key,
+model, or node. The page shows period cost, request counts, estimated savings,
+success rate, budget period close status, and invoice-friendly internal line
+items. These summaries are for internal allocation only; provider invoices and
+operator rate cards remain authoritative.
+
+Cost anomaly cards compare the current half of the selected period against the
+previous half and surface warning or critical rate-of-change spikes. Automatic
+downgrade remains optional and is never applied silently.
+
+Provider price sync status shows explicit supported sources, freshness,
+review-required warnings, and operator override state. SiftGate does not
+auto-trust synced prices and does not silently overwrite operator overrides.
+
+Feedback aggregation reads metadata recorded by `POST /v1/feedback`. The
+Dashboard displays thumbs up/down by model and node with route-weight evidence.
+It does not expose prompts, responses, source code, diffs, tool payloads, raw
+headers, provider keys, media bytes, or hidden reasoning text.
 
 ## Playground Safety
 

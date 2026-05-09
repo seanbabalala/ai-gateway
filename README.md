@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.5.0 Agent Platform Preview**.
+Current release: **v2.6.0 Cost And Chargeback Platform**.
 
-Current development focus after v2.5.0: preserve Platform Trust stability,
+Current development focus after v2.6.0: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -30,6 +30,10 @@ as minor releases.
   Gateway counters, and recent agent trace spans without storing prompts,
   responses, source code, diffs, tool payloads, raw headers, provider keys,
   media bytes, hidden reasoning text, or resolved secrets by default.
+- Cost and chargeback platform: v2.6 adds internal workspace/team/project
+  chargeback reports, CSV/JSON exports, cost anomaly alerts, provider price
+  sync governance, and thumbs feedback aggregation without payments, recharge,
+  reseller balances, public marketplaces, or prompt/response storage.
 - Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
   redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
   Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
@@ -72,6 +76,24 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.6 Highlights
+
+- v2.6.0 turns cost analytics into an internal chargeback and anomaly response
+  platform while staying out of API resale, recharge, and payments.
+- Added `GET /api/dashboard/cost-platform` plus CSV/JSON export endpoints for
+  workspace-scoped chargeback summaries grouped by team, project, API key,
+  model, node, or workspace.
+- Added `POST /v1/feedback` for metadata-only thumbs feedback tied to a request
+  id and route-weight evidence. Prompts, responses, source code, diffs, tool
+  payloads, raw headers, provider keys, media bytes, and hidden reasoning text
+  are not accepted or persisted.
+- Added cost anomaly detection with metadata-only `cost_anomaly` webhook alerts
+  and optional downgrade recommendations that do not silently change routing.
+- Provider price sync is surfaced as source-governed status: explicit sources
+  only, no automatic trust, and no silent overwrite of operator overrides.
+- See [`docs/COST_CHARGEBACK_PLATFORM.md`](docs/COST_CHARGEBACK_PLATFORM.md)
+  and [`docs/BILLING_LOOP.md`](docs/BILLING_LOOP.md).
 
 ## v2.5 Highlights
 
@@ -277,6 +299,7 @@ npm run validate:config
 | Quickstart | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
 | API reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | Dashboard | [docs/DASHBOARD.md](docs/DASHBOARD.md) |
+| Cost And Chargeback Platform | [docs/COST_CHARGEBACK_PLATFORM.md](docs/COST_CHARGEBACK_PLATFORM.md) |
 | Coding Agent Gateway | [docs/CODING_AGENT_GATEWAY.md](docs/CODING_AGENT_GATEWAY.md) |
 | Agent Gateway Profiles | [docs/AGENT_GATEWAY.md](docs/AGENT_GATEWAY.md) |
 | Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |

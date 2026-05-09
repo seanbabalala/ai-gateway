@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 2.6.0 - 2026-05-09
+
+### Added
+
+- Added the v2.6 Cost And Chargeback Platform for the OSS data plane: workspace-scoped internal chargeback summaries, CSV/JSON exports, budget period close metadata, cost anomaly detection, provider price sync governance, and thumbs feedback aggregation.
+- Added `GET /api/dashboard/cost-platform` and `GET /api/dashboard/cost-platform/export` for metadata-only chargeback, anomaly, price-source, and feedback summaries grouped by workspace, team, project, API key, model, or node.
+- Added `POST /v1/feedback` for Gateway API key clients to submit thumbs up/down feedback against a request id, storing only route metadata, key/team labels, reason code, and route-weight evidence.
+- Added the `route_feedback` metadata table with SQLite/PostgreSQL schema patching, workspace scoping, and feedback aggregation by model/node.
+- Added the Dashboard **Cost Platform** page with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`, plus static frontend checks for route, hook, export, API types, privacy copy, and locale coverage.
+- Added `cost_anomaly` as a local webhook alert event type for metadata-only cost spike alerts.
+- Added `docs/COST_CHARGEBACK_PLATFORM.md` and updated API, Dashboard, Architecture, Billing Loop, and README docs with v2.6 boundaries and operations guidance.
+
+### Changed
+
+- Updated release metadata to v2.6.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, release-version sync coverage, and benchmark script expectations.
+
+### Boundaries
+
+- v2.6.0 does not add payments, prepaid balances, recharge flows, reseller ledgers, customer billing identities, public API marketplaces, automatic price trust, silent operator price override, or silent automatic route downgrade.
+- Cost Platform exports and feedback do not store prompts, responses, source code, diffs, tool inputs/outputs, raw provider headers, provider keys, Gateway API key plaintext, media bytes, hidden reasoning text, or resolved secrets by default.
+
 ## 2.5.0 - 2026-05-09
 
 ### Added

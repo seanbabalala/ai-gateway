@@ -52,6 +52,7 @@ Provider API keys are never client credentials. They stay in `gateway.config.yam
 | `GET` | `/v1/batches/:id/errors` | Batch error file content proxy; content is not persisted |
 | `WS` | `/v1/realtime` | Experimental OpenAI Realtime-style WebSocket pass-through, disabled by default |
 | `GET` | `/v1/models` | OpenAI-compatible model list, including gateway aliases |
+| `POST` | `/v1/feedback` | Metadata-only thumbs feedback for a gateway request id |
 
 All proxy endpoints require a Dashboard-generated Gateway API key. Use `model: "auto"` for smart routing, a real model id for direct routing, a configured alias, a node id, or a `node/model` prefix route when that key allows direct access. Dashboard-managed keys can also restrict endpoint families (`chat_completions`, `responses`, `messages`, `embeddings`, `rerank`, `images`, `audio`, `video`, `realtime`, `batch`, `models`) and modalities (`text`, `vision`, `embedding`, `rerank`, `image`, `audio`, `video`, `realtime`) before routing reaches an upstream provider.
 
@@ -79,6 +80,12 @@ metadata counters, recent agent trace spans, and an explicit privacy contract.
 It does not execute tools, run workflows, or store prompts, responses, source
 code, diffs, tool payloads, raw headers, provider keys, media bytes, hidden
 reasoning text, or resolved secrets.
+
+v2.6 adds Cost And Chargeback Platform endpoints for internal chargeback,
+anomaly response, provider price source governance, and thumbs feedback. These
+endpoints do not add payments, recharge balances, reseller ledgers, public API
+marketplaces, prompt/response storage, source-code storage, tool payload
+storage, raw-header storage, or provider-key exposure.
 
 ### Structured Output
 
@@ -371,6 +378,8 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/route-decisions` | Paginated explainable routing summaries |
 | `GET` | `/api/dashboard/route-decisions/:requestId` | Full route decision trace for one request |
 | `GET` | `/api/dashboard/analytics/cost` | Cost analytics by day, model, node, and tier |
+| `GET` | `/api/dashboard/cost-platform` | Internal chargeback, anomaly, price-source, and feedback summary |
+| `GET` | `/api/dashboard/cost-platform/export` | Metadata-only chargeback CSV or JSON export |
 | `GET` | `/api/dashboard/intelligence/summary` | Metadata-only cost optimizer, token prediction, async eval, and quality gate summary |
 | `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |

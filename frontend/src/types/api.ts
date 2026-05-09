@@ -359,6 +359,169 @@ export interface AgentPlatformResponse {
   };
 }
 
+// ── Cost And Chargeback Platform ──
+
+export interface CostPlatformPrivacyContract {
+  metadata_only: true;
+  stores_prompts: false;
+  stores_responses: false;
+  stores_source_code: false;
+  stores_diffs: false;
+  stores_tool_payloads: false;
+  stores_raw_headers: false;
+  stores_provider_keys: false;
+  stores_media_bytes: false;
+  stores_hidden_reasoning: false;
+  exports_content: false;
+}
+
+export interface CostPlatformUsageMetrics {
+  requests: number;
+  successful_requests: number;
+  failed_requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  estimated_savings_usd: number;
+  fallback_count: number;
+  optimizer_applied: number;
+  quality_gate_failed: number;
+  avg_latency_ms: number;
+  success_rate: number;
+}
+
+export type CostPlatformGroupBy = "workspace" | "team" | "project" | "api_key" | "model" | "node";
+
+export interface CostPlatformChargebackGroup extends CostPlatformUsageMetrics {
+  group_by: CostPlatformGroupBy;
+  group_value: string;
+  group_label: string;
+}
+
+export interface CostPlatformDailyTrend extends CostPlatformUsageMetrics {
+  date: string;
+}
+
+export interface CostPlatformInvoiceLineItem {
+  description: string;
+  quantity_requests: number;
+  total_tokens: number;
+  amount_usd: number;
+}
+
+export interface CostPlatformAnomaly {
+  id: string;
+  scope: CostPlatformGroupBy;
+  key: string;
+  severity: "warning" | "critical" | "info";
+  rule: string;
+  current_cost_usd: number;
+  baseline_cost_usd: number;
+  rate_of_change: number;
+  message: string;
+  recommended_policy: {
+    action: string;
+    automatic: boolean;
+    reason: string;
+  };
+}
+
+export interface CostPlatformPriceModelWarning {
+  node_id: string;
+  model: string;
+  source: string;
+  source_url: string | null;
+  used_from: string;
+  freshness: "fresh_or_configured" | "stale" | "missing";
+  review_required: boolean;
+  pricing_confidence: string | null;
+  operator_override: boolean;
+  auto_trusted: false;
+}
+
+export interface CostPlatformFeedbackRouteSummary {
+  key: string;
+  up: number;
+  down: number;
+  total: number;
+  positive_rate: number;
+}
+
+export interface CostPlatformResponse {
+  version: "v1";
+  workspace_id: string;
+  generated_at: string;
+  period: {
+    label: string;
+    days: number;
+    since: string;
+    until: string;
+  };
+  filters: {
+    group_by: CostPlatformGroupBy;
+    team_id: string | null;
+    project: string | null;
+    api_key_id: string | null;
+  };
+  chargeback: {
+    summary: CostPlatformUsageMetrics;
+    groups: CostPlatformChargebackGroup[];
+    daily_trend: CostPlatformDailyTrend[];
+    budget_period_close: {
+      period_label: string;
+      close_status: "ready" | "near_budget" | "over_budget";
+      requests: number;
+      cost_usd: number;
+      global_budget_limit_usd: number | null;
+      variance_usd: number | null;
+      invoice_ready: true;
+      payment_collection: false;
+      recharge_balance: false;
+    };
+    invoice_summary: {
+      currency: "USD";
+      line_items: CostPlatformInvoiceLineItem[];
+      disclaimer: string;
+    };
+  };
+  anomalies: CostPlatformAnomaly[];
+  price_sync: {
+    enabled: boolean;
+    scheduled: boolean;
+    write_to: string;
+    supported_sources: string[];
+    enabled_sources: string[];
+    providers: Array<Record<string, unknown>>;
+    configured_model_warnings: CostPlatformPriceModelWarning[];
+    guardrails: {
+      explicit_sources_only: true;
+      never_overwrite_operator_overrides_silently: true;
+      automatic_price_trust: false;
+    };
+  };
+  feedback: {
+    total: number;
+    thumbs_up: number;
+    thumbs_down: number;
+    positive_rate: number;
+    by_model: CostPlatformFeedbackRouteSummary[];
+    by_node: CostPlatformFeedbackRouteSummary[];
+    route_weight_evidence: {
+      available: boolean;
+      applied_to_routing: false;
+      privacy_safe_aggregation: true;
+    };
+  };
+  privacy: CostPlatformPrivacyContract;
+  boundaries: {
+    payments: false;
+    recharge_balances: false;
+    reseller_marketplace: false;
+    public_api_marketplace: false;
+  };
+}
+
 // ── Logs ──
 
 export interface CallLog {
