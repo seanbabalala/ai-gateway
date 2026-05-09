@@ -24,6 +24,7 @@ const PlaygroundPage = lazy(() => import('@/pages/PlaygroundPage').then((m) => (
 const SessionsPage = lazy(() => import('@/pages/SessionsPage').then((m) => ({ default: m.SessionsPage })))
 const McpGatewayPage = lazy(() => import('@/pages/McpGatewayPage').then((m) => ({ default: m.McpGatewayPage })))
 const AgentProfilesPage = lazy(() => import('@/pages/AgentProfilesPage').then((m) => ({ default: m.AgentProfilesPage })))
+const AgentPlatformPage = lazy(() => import('@/pages/AgentPlatformPage').then((m) => ({ default: m.AgentPlatformPage })))
 const MembersPage = lazy(() => import('@/pages/MembersPage').then((m) => ({ default: m.MembersPage })))
 
 function RouteFallback() {
@@ -71,6 +72,7 @@ export function App() {
         <Route path="/playground" element={page(<PlaygroundPage />)} />
         <Route path="/mcp" element={page(<McpGatewayPage />)} />
         <Route path="/agents" element={page(<AgentProfilesPage />)} />
+        <Route path="/agent-platform" element={page(<AgentPlatformPage />)} />
         <Route path="/members" element={page(<MembersPage />)} />
         <Route path="/audit" element={page(<ManagementAuditPage />)} />
         <Route path="/config-audit" element={page(<ConfigAuditPage />)} />

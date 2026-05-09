@@ -24,6 +24,7 @@
   "header.searchPlaceholder": "ログ、ノード、モデルを検索...",
   "language.label": "言語",
   "nav.agents": "エージェント",
+  "nav.agentPlatform": "エージェント基盤",
   "nav.analytics": "分析",
   "nav.apiKeys": "API Keys",
   "nav.budget": "予算",

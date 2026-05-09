@@ -143,6 +143,7 @@ import { GatewayApiKeyService } from "../auth/gateway-api-key.service";
 import { CreateTeamDto, UpdateTeamDto } from "../auth/dto/team.dto";
 import { TeamService } from "../auth/team.service";
 import { AgentProfileService } from "../agent-profiles/agent-profile.service";
+import { AgentPlatformService } from "../agent-platform/agent-platform.service";
 import { ClusterService } from "../cluster/cluster.service";
 import {
   CreateAgentProfileDto,
@@ -154,6 +155,7 @@ import {
   AgentProfileListResponseDto,
   AgentProfileMutationResponseDto,
   AgentProfileRenderResponseDto,
+  AgentPlatformResponseDto,
   ErrorEnvelopeDto,
   GatewayApiKeyCreatedResponseDto,
   GatewayApiKeyListResponseDto,
@@ -1546,6 +1548,7 @@ export class DashboardController {
     private readonly routingRecommendations: RoutingRecommendationService,
     private readonly gatewayApiKeys: GatewayApiKeyService,
     private readonly agentProfiles: AgentProfileService,
+    private readonly agentPlatform: AgentPlatformService,
     private readonly teams: TeamService,
     private readonly shadowTraffic: ShadowTrafficService,
     private readonly cacheSavings: CacheSavingsService,
@@ -1888,6 +1891,17 @@ export class DashboardController {
         },
       }
     );
+  }
+
+  @Get("agent-platform")
+  @RequireDashboardRole("viewer")
+  @ApiTags("Agent Platform")
+  @ApiOperation({
+    summary: "Get metadata-only Agent Platform preview status",
+  })
+  @ApiOkResponse({ type: AgentPlatformResponseDto })
+  async getAgentPlatform() {
+    return this.agentPlatform.getDashboardSummary();
   }
 
   // ══════════════════════════════════════════════════════

@@ -177,6 +177,188 @@ export interface McpGatewayResponse {
   };
 }
 
+// ── Agent Platform Preview ──
+
+export interface AgentPlatformPrivacyContract {
+  metadata_only: true;
+  stores_prompts: false;
+  stores_responses: false;
+  stores_source_code: false;
+  stores_diffs: false;
+  stores_tool_payloads: false;
+  stores_raw_headers: false;
+  stores_provider_keys: false;
+  stores_gateway_key_plaintext: false;
+  stores_media_bytes: false;
+  stores_hidden_reasoning: false;
+  stores_resolved_secrets: false;
+}
+
+export interface AgentPlatformAgent {
+  id: string;
+  name: string;
+  description: string | null;
+  connector: string;
+  status: string;
+  workspace_id: string;
+  api_key_id: string | null;
+  api_key_name: string | null;
+  api_key_status: string | null;
+  namespace_id: string | null;
+  namespace_name: string | null;
+  default_model: string;
+  smart_model_id: string;
+  virtual_model_aliases: string[];
+  routing_hint: Record<string, unknown> | null;
+  mcp_server_ids: string[];
+  tool_count: number;
+  permitted_tool_count: number;
+  route_policy: {
+    allow_auto: boolean | null;
+    allow_direct: boolean | null;
+    allowed_models: string[];
+    allowed_endpoints: string[];
+  };
+}
+
+export interface AgentPlatformA2aHub {
+  enabled: true;
+  mode: "workspace_registry";
+  routing: {
+    policy_enforced: true;
+    backend_selection: "agent_profile_gateway_key";
+    bypasses_gateway_policy: false;
+  };
+  agents: AgentPlatformAgent[];
+}
+
+export interface AgentPlatformTool {
+  name: string;
+  description: string | null;
+  has_input_schema: boolean;
+  permitted_profile_ids: string[];
+  blocked_profile_ids: string[];
+  permission: "permitted" | "blocked" | "unlinked";
+  policy_reasons: string[];
+}
+
+export interface AgentPlatformToolServer {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  transport: string;
+  endpoint: string;
+  allowed_namespaces: string[];
+  tags: string[];
+  linked_profile_ids: string[];
+  tools: AgentPlatformTool[];
+}
+
+export interface AgentPlatformToolRegistry {
+  enabled: boolean;
+  mode: "mcp_metadata_registry";
+  injection: {
+    metadata_only: true;
+    auto_injection_available: true;
+    stores_tool_payloads: false;
+  };
+  servers: AgentPlatformToolServer[];
+}
+
+export interface AgentPlatformWorkflow {
+  id: string;
+  name: string;
+  description: string;
+  status: "preview";
+  runtime_enabled: false;
+  profile_ids: string[];
+  steps: Array<{
+    id: string;
+    profile_id: string;
+    profile_name: string;
+    connector: string;
+    order: number;
+  }>;
+  edges: Array<{
+    from: string;
+    to: string;
+    type: "ordered";
+  }>;
+}
+
+export interface AgentPlatformWorkflowPreview {
+  preview: true;
+  runtime_enabled: false;
+  mode: "metadata_only";
+  promise: "preview_contract_only";
+  workflows: AgentPlatformWorkflow[];
+}
+
+export interface AgentPlatformMemoryGateway {
+  preview: true;
+  enabled: false;
+  content_storage_enabled: false;
+  metadata_state: {
+    session_ids_observed: number;
+    turn_ids_observed: number;
+    repo_labels_observed: number;
+    project_labels_observed: number;
+  };
+  retention: {
+    mode: "metadata_only";
+    content_requires_explicit_opt_in: true;
+    redaction_required: true;
+  };
+}
+
+export interface AgentPlatformSpan {
+  request_id: string;
+  timestamp: string;
+  connector: string | null;
+  profile_id: string | null;
+  profile_name: string | null;
+  session_id: string | null;
+  turn_id: string | null;
+  repo: string | null;
+  project: string | null;
+  route_decision_id: string;
+  fallback: boolean;
+  retry_count: number;
+  tokens: {
+    input: number;
+    output: number;
+    total: number;
+  };
+  cost_usd: number;
+  latency_ms: number;
+  status_code: number;
+}
+
+export interface AgentPlatformResponse {
+  version: "v1";
+  preview: true;
+  workspace_id: string;
+  generated_at: string;
+  a2a_hub: AgentPlatformA2aHub;
+  tool_registry: AgentPlatformToolRegistry;
+  workflow_preview: AgentPlatformWorkflowPreview;
+  memory_gateway: AgentPlatformMemoryGateway;
+  traces: {
+    metadata_only: true;
+    spans: AgentPlatformSpan[];
+  };
+  privacy: AgentPlatformPrivacyContract;
+  totals: {
+    agents: number;
+    active_agents: number;
+    tools: number;
+    permitted_tools: number;
+    workflows: number;
+    recent_spans: number;
+  };
+}
+
 // ── Logs ──
 
 export interface CallLog {

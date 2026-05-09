@@ -29,6 +29,7 @@ import { ProviderExtensibilityService } from './provider-extensibility.service';
 import { McpModule } from '../mcp/mcp.module';
 import { BatchModule } from '../batch/batch.module';
 import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
+import { AgentPlatformModule } from '../agent-platform/agent-platform.module';
 import { ClusterModule } from '../cluster/cluster.module';
 
 @Module({
@@ -44,6 +45,7 @@ import { ClusterModule } from '../cluster/cluster.module';
     McpModule,
     BatchModule,
     AgentProfilesModule,
+    AgentPlatformModule,
     ClusterModule,
     TypeOrmModule.forFeature([
       CallLog,

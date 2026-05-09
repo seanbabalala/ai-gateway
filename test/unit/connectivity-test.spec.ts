@@ -141,6 +141,20 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   const agentProfiles = {
     list: jest.fn().mockResolvedValue([]),
   } as any;
+  const agentPlatform = {
+    getDashboardSummary: jest.fn().mockResolvedValue({
+      version: 'v1',
+      preview: true,
+      workspace_id: 'default-workspace',
+      a2a_hub: { agents: [] },
+      tool_registry: { servers: [] },
+      workflow_preview: { runtime_enabled: false, workflows: [] },
+      memory_gateway: { content_storage_enabled: false },
+      traces: { metadata_only: true, spans: [] },
+      privacy: { metadata_only: true, stores_tool_payloads: false },
+      totals: {},
+    }),
+  } as any;
   const workspaces = {
     getState: jest.fn().mockResolvedValue({
       organization: { id: 'default-org', name: 'Default Organization' },
@@ -171,7 +185,7 @@ function makeDashboard(configOverrides: Record<string, any> = {}): DashboardCont
   return new DashboardController(
     config as any, capabilityService, routingService, circuitBreaker, concurrencyLimiter,
     activeHealth, budgetService, cacheService, logEventBus, new TelemetryService(), routingRecommendations,
-    gatewayApiKeys, agentProfiles, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, managementAudit, catalog, providerExtensibility, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
+    gatewayApiKeys, agentProfiles, agentPlatform, teams, shadowTraffic, cacheSavings, providerCompatibility, configAudit, managementAudit, catalog, providerExtensibility, batchJobs, workspaces, workspaceContext, cluster, undefined, dataSource, callLogRepo, routeDecisionRepo, shadowTrafficRepo,
   );
 }
 
