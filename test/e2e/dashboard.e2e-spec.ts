@@ -146,6 +146,46 @@ describe('Dashboard (e2e)', () => {
     });
   });
 
+  it('GET /api/dashboard/agent-platform → returns metadata-only Agent Platform preview state', async () => {
+    const res = await harness.agent.get('/api/dashboard/agent-platform');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        version: 'v1',
+        preview: true,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+      }),
+    );
+    expect(res.body.a2a_hub.routing).toMatchObject({
+      policy_enforced: true,
+      backend_selection: 'agent_profile_gateway_key',
+      bypasses_gateway_policy: false,
+    });
+    expect(res.body.workflow_preview).toMatchObject({
+      preview: true,
+      runtime_enabled: false,
+      mode: 'metadata_only',
+    });
+    expect(res.body.memory_gateway).toMatchObject({
+      preview: true,
+      enabled: false,
+      content_storage_enabled: false,
+    });
+    expect(res.body.privacy).toMatchObject({
+      metadata_only: true,
+      stores_prompts: false,
+      stores_responses: false,
+      stores_source_code: false,
+      stores_tool_payloads: false,
+      stores_raw_headers: false,
+      stores_provider_keys: false,
+      stores_resolved_secrets: false,
+    });
+    expect(JSON.stringify(res.body)).not.toContain('mock-openai-key');
+    expect(JSON.stringify(res.body)).not.toContain('tool arguments');
+  });
+
   it('RBAC → Viewer can read but cannot write Dashboard resources', async () => {
     await harness.membershipRepo.update(
       { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },

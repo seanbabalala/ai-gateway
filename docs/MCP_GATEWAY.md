@@ -99,3 +99,13 @@ The Dashboard MCP Gateway page reads `GET /api/dashboard/mcp` and shows:
 
 The page is read-only and cannot modify MCP server configuration or apply
 routing changes.
+
+## Agent Platform Integration
+
+v2.5 also surfaces MCP servers through the Dashboard Agent Platform preview at
+`GET /api/dashboard/agent-platform`. That view links MCP server/tool metadata to
+Agent Profiles through `mcp_server_ids` and shows whether the bound Gateway API
+key and MCP namespace policy permit each tool.
+
+The Agent Platform page is still read-only. It does not call tools from the
+browser, and it does not store tool arguments or tool results.

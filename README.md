@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.4.0 Provider Ecosystem Expansion**.
+Current release: **v2.5.0 Agent Platform Preview**.
 
-Current development focus after v2.4.0: preserve Platform Trust stability,
+Current development focus after v2.5.0: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -25,6 +25,11 @@ as minor releases.
   for DeepInfra, Nebius AI Studio, Novita AI, FriendliAI, Databricks Mosaic AI,
   and GitHub Models, plus offline provider registry manifest checks for
   community PRs.
+- Agent Platform preview: v2.5 adds a workspace-scoped A2A registry,
+  MCP-backed Tool Registry, preview-only workflow metadata, Conversation Memory
+  Gateway counters, and recent agent trace spans without storing prompts,
+  responses, source code, diffs, tool payloads, raw headers, provider keys,
+  media bytes, hidden reasoning text, or resolved secrets by default.
 - Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
   redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
   Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
@@ -67,6 +72,24 @@ curl http://localhost:2099/v1/chat/completions \
 ```
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+
+## v2.5 Highlights
+
+- v2.5.0 deepens the agent platform without turning SiftGate into a full app
+  builder. The new Dashboard **Agent Platform** page is a read-only, metadata
+  first control plane.
+- Added `GET /api/dashboard/agent-platform` for workspace-scoped A2A registry
+  rows, MCP-backed Tool Registry permission evidence, preview workflow metadata,
+  Conversation Memory Gateway counters, recent agent trace spans, and an
+  explicit privacy contract.
+- Tool permissions are derived from Agent Profile `mcp_server_ids`, Gateway API
+  key endpoint policy, MCP server namespace allow-lists, and active profile/key
+  state. Tool inputs and outputs are not stored.
+- Workflow metadata is marked preview-only with `runtime_enabled=false`; SiftGate
+  does not add a LangGraph/Dify-style workflow runtime in v2.5.
+- See [`docs/AGENT_PLATFORM_PREVIEW.md`](docs/AGENT_PLATFORM_PREVIEW.md),
+  [`docs/CODING_AGENT_GATEWAY.md`](docs/CODING_AGENT_GATEWAY.md), and
+  [`docs/MCP_GATEWAY.md`](docs/MCP_GATEWAY.md).
 
 ## v2.4 Highlights
 

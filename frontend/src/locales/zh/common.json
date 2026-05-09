@@ -24,6 +24,7 @@
   "header.searchPlaceholder": "搜索日志、节点、模型...",
   "language.label": "语言",
   "nav.agents": "智能体",
+  "nav.agentPlatform": "智能体平台",
   "nav.analytics": "分析",
   "nav.apiKeys": "API Keys",
   "nav.budget": "预算",

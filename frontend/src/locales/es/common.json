@@ -24,6 +24,7 @@
   "header.searchPlaceholder": "Buscar logs, nodes, modelos...",
   "language.label": "Idioma",
   "nav.agents": "Agentes",
+  "nav.agentPlatform": "Plataforma de agentes",
   "nav.analytics": "Analítica",
   "nav.apiKeys": "Claves API",
   "nav.budget": "Presupuesto",

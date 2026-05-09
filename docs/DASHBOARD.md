@@ -200,6 +200,20 @@ The MCP Gateway page reads `GET /api/dashboard/mcp`. It is read-only and only di
 
 The MCP preview stores server id/name, method, tool name, API key id/name, namespace, HTTP status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
 
+## Agent Platform Preview
+
+The Agent Platform page reads `GET /api/dashboard/agent-platform`. It combines
+workspace-scoped Agent Profiles, Gateway API key summaries, MCP server metadata,
+preview-only workflow metadata, Conversation Memory Gateway counters, and recent
+agent trace spans into one read-only control plane.
+
+The page does not execute MCP tools, create workflows, replay agent calls, or
+change routing policy. Workflow metadata is explicitly marked preview-only with
+`runtime_enabled=false`, and memory content storage is disabled by default.
+Prompts, responses, source code, diffs, tool payloads, raw headers, provider
+keys, media bytes, hidden reasoning text, and resolved secrets remain excluded
+from default storage.
+
 ## Batch Jobs
 
 The Batch Jobs page reads `GET /api/dashboard/batches` and stays read-only. It shows provider batch id, selected node/model hint, endpoint, input/output/error file ids, completion window, request counts, status, API key/namespace attribution, and sanitized error text. It does not show or persist batch input JSONL, provider output JSONL, raw headers, provider keys, or file bytes; result download routes proxy content on demand through `/v1/batches/:id/output` or `/v1/batches/:id/errors`.

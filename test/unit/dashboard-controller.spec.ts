@@ -223,6 +223,28 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     render: jest.fn(),
     ...overrides.agentProfiles,
   };
+  const agentPlatform = {
+    getDashboardSummary: jest.fn().mockResolvedValue({
+      version: "v1",
+      preview: true,
+      workspace_id: "default-workspace",
+      a2a_hub: { agents: [] },
+      tool_registry: { servers: [] },
+      workflow_preview: { runtime_enabled: false, workflows: [] },
+      memory_gateway: { content_storage_enabled: false },
+      traces: { metadata_only: true, spans: [] },
+      privacy: { metadata_only: true, stores_tool_payloads: false },
+      totals: {
+        agents: 0,
+        active_agents: 0,
+        tools: 0,
+        permitted_tools: 0,
+        workflows: 0,
+        recent_spans: 0,
+      },
+    }),
+    ...overrides.agentPlatform,
+  };
   const teams = {
     list: jest.fn().mockResolvedValue([]),
     getSummary: jest.fn(),
@@ -548,6 +570,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations as any,
     gatewayApiKeys as any,
     agentProfiles as any,
+    agentPlatform as any,
     teams as any,
     shadowTraffic as any,
     cacheSavings as any,
@@ -582,6 +605,7 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     cacheService,
     gatewayApiKeys,
     agentProfiles,
+    agentPlatform,
     teams,
     shadowTraffic,
     cacheSavings,

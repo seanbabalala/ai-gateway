@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 2.5.0 - 2026-05-09
+
+### Added
+
+- Added the v2.5 Agent Platform Preview for the OSS data plane: a workspace-scoped A2A registry, MCP-backed Tool Registry, preview-only workflow metadata, Conversation Memory Gateway metadata counters, recent agent trace spans, and an explicit privacy contract.
+- Added `GET /api/dashboard/agent-platform`, a read-only Dashboard endpoint that combines Agent Profiles, Gateway API key policy, MCP server/tool metadata, and call-log agent span metadata without executing tools or running workflows.
+- Added a Dashboard **Agent Platform** page with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`, plus static frontend checks for the route, hook, API types, privacy copy, and locale coverage.
+- Added `docs/AGENT_PLATFORM_PREVIEW.md` and updated API, Dashboard, Architecture, Coding Agent Gateway, MCP Gateway, and README docs with the v2.5 preview boundaries.
+
+### Changed
+
+- Updated release metadata to v2.5.0 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, release-version sync coverage, and benchmark script expectations.
+
+### Boundaries
+
+- v2.5.0 does not add a full workflow builder, DAG runtime, hosted tool marketplace, cloud dependency, or automatic tool execution from the Dashboard.
+- Agent Platform Preview does not store prompts, responses, source code, diffs, tool inputs, tool outputs, raw provider headers, provider keys, Gateway API key plaintext, media bytes, hidden reasoning text, or resolved secrets by default.
+- Agent and tool routing still goes through existing Gateway API key, workspace, namespace, endpoint/model/node, rate-limit, budget, MCP, and routing policy enforcement.
+
 ## 2.4.0 - 2026-05-09
 
 ### Added

@@ -72,6 +72,14 @@ evidence. Cost optimizer route changes require
 `intelligence.cost_optimizer.action=optimize`. Quality Gate retries/fallbacks
 run only before response bytes are sent and never after streaming has started.
 
+v2.5 adds `GET /api/dashboard/agent-platform`, a read-only Dashboard endpoint
+for the Agent Platform preview. It returns workspace-scoped A2A registry rows,
+MCP-backed Tool Registry metadata, preview-only workflow metadata, memory
+metadata counters, recent agent trace spans, and an explicit privacy contract.
+It does not execute tools, run workflows, or store prompts, responses, source
+code, diffs, tool payloads, raw headers, provider keys, media bytes, hidden
+reasoning text, or resolved secrets.
+
 ### Structured Output
 
 Structured-output intent is preserved in the canonical request and forwarded to the selected provider when SiftGate has a safe protocol mapping.

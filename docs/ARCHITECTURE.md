@@ -236,6 +236,22 @@ The v1.2 MCP Gateway preview is a small sidecar path beside the AI protocol pipe
 
 The preview does not implement an enterprise MCP marketplace, remote workspace registry, stdio process supervisor, or Cloud dependency. Dashboard reads `GET /api/dashboard/mcp` for local registry metadata, static tool names, recent call metadata, and error summaries. The local audit buffer is metadata-only: server, method, tool name, API key id/name, namespace, status, latency, byte size, and sanitized error type. MCP tool input/output, raw headers, provider keys, resolved secret values, media bytes, and marketplace content are not stored.
 
+## Agent Platform Preview
+
+The v2.5 Agent Platform preview is a read-only Dashboard control-plane module
+layered over Agent Profiles, Gateway API key summaries, MCP Gateway metadata,
+and call-log agent metadata. `AgentPlatformService` returns the
+`GET /api/dashboard/agent-platform` response for A2A registry rows, Tool
+Registry permission evidence, preview workflow metadata, Conversation Memory
+Gateway counters, recent trace spans, and the privacy contract.
+
+Runtime policy stays in the existing data plane. Agent calls still enter through
+Gateway API keys and `/v1/*` compatible endpoints; MCP calls still enter through
+`POST /mcp/:serverId` and the MCP guards. The preview does not run a workflow
+engine, execute tools from the browser, or store prompts, responses, source
+code, diffs, tool payloads, raw headers, provider keys, media bytes, hidden
+reasoning text, or resolved secrets by default.
+
 ## Batch API Proxy
 
 The v1.2 Batch API proxy follows the same metadata-only async pattern without running through the synchronous generation pipeline. `POST /v1/batches` resolves a provider node, enforces Gateway API key endpoint/node/model permissions, namespace scope, rate limits, and budget checks, then forwards the OpenAI-compatible create body to the upstream batch endpoint. It writes a `batch_jobs` row with request id, provider batch id, node, model hint, endpoint, file ids, request counts, status, timestamps, API key/namespace attribution, and sanitized error text. It stores metadata keys only, not metadata values. Status, cancel, output, and error-file routes look up `batch_jobs`, enforce the creating key/namespace boundary, and proxy provider file content without persisting input JSONL, output JSONL, raw headers, provider keys, or file bytes.

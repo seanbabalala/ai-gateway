@@ -1345,3 +1345,289 @@ export class AgentProfileRenderResponseDto extends ActionResponseDto {
   @ApiProperty({ type: AgentProfileRenderedConfigDto })
   item!: AgentProfileRenderedConfigDto;
 }
+
+export class AgentPlatformPrivacyDto {
+  @ApiProperty({ example: true })
+  metadata_only!: true;
+
+  @ApiProperty({ example: false })
+  stores_prompts!: false;
+
+  @ApiProperty({ example: false })
+  stores_responses!: false;
+
+  @ApiProperty({ example: false })
+  stores_source_code!: false;
+
+  @ApiProperty({ example: false })
+  stores_diffs!: false;
+
+  @ApiProperty({ example: false })
+  stores_tool_payloads!: false;
+
+  @ApiProperty({ example: false })
+  stores_raw_headers!: false;
+
+  @ApiProperty({ example: false })
+  stores_provider_keys!: false;
+
+  @ApiProperty({ example: false })
+  stores_gateway_key_plaintext!: false;
+
+  @ApiProperty({ example: false })
+  stores_media_bytes!: false;
+
+  @ApiProperty({ example: false })
+  stores_hidden_reasoning!: false;
+
+  @ApiProperty({ example: false })
+  stores_resolved_secrets!: false;
+}
+
+export class AgentPlatformAgentDto {
+  @ApiProperty({ example: 'profile_01h...' })
+  id!: string;
+
+  @ApiProperty({ example: 'PR review agent' })
+  name!: string;
+
+  @ApiProperty({ example: null, nullable: true })
+  description!: string | null;
+
+  @ApiProperty({ example: 'codex' })
+  connector!: string;
+
+  @ApiProperty({ enum: ['active', 'disabled'], example: 'active' })
+  status!: string;
+
+  @ApiProperty({ example: 'default-workspace' })
+  workspace_id!: string;
+
+  @ApiProperty({ example: 'key_01h...', nullable: true })
+  api_key_id!: string | null;
+
+  @ApiProperty({ example: 'engineering-agent-key', nullable: true })
+  api_key_name!: string | null;
+
+  @ApiProperty({ example: 'active', nullable: true })
+  api_key_status!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_id!: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  namespace_name!: string | null;
+
+  @ApiProperty({ example: 'auto' })
+  default_model!: string;
+
+  @ApiProperty({ example: 'coding-auto' })
+  smart_model_id!: string;
+
+  @ApiProperty({ type: [String], example: ['coding-auto', 'coding-fast'] })
+  virtual_model_aliases!: string[];
+
+  @ApiProperty({ type: 'object', additionalProperties: true, nullable: true })
+  routing_hint!: Record<string, unknown> | null;
+
+  @ApiProperty({ type: [String], example: ['local-tools'] })
+  mcp_server_ids!: string[];
+
+  @ApiProperty({ example: 3 })
+  tool_count!: number;
+
+  @ApiProperty({ example: 3 })
+  permitted_tool_count!: number;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      allow_auto: true,
+      allow_direct: false,
+      allowed_models: [],
+      allowed_endpoints: ['mcp'],
+    },
+  })
+  route_policy!: Record<string, unknown>;
+}
+
+export class AgentPlatformToolDto {
+  @ApiProperty({ example: 'search_docs' })
+  name!: string;
+
+  @ApiProperty({ example: 'Search local documentation', nullable: true })
+  description!: string | null;
+
+  @ApiProperty({ example: true })
+  has_input_schema!: boolean;
+
+  @ApiProperty({ type: [String], example: ['profile_01h...'] })
+  permitted_profile_ids!: string[];
+
+  @ApiProperty({ type: [String], example: [] })
+  blocked_profile_ids!: string[];
+
+  @ApiProperty({ enum: ['permitted', 'blocked', 'unlinked'], example: 'permitted' })
+  permission!: string;
+
+  @ApiProperty({ type: [String], example: ['gateway_key_and_namespace_policy_allow'] })
+  policy_reasons!: string[];
+}
+
+export class AgentPlatformToolServerDto {
+  @ApiProperty({ example: 'local-tools' })
+  id!: string;
+
+  @ApiProperty({ example: 'Local Tools' })
+  name!: string;
+
+  @ApiProperty({ example: null, nullable: true })
+  description!: string | null;
+
+  @ApiProperty({ example: true })
+  enabled!: boolean;
+
+  @ApiProperty({ example: 'http_json_rpc' })
+  transport!: string;
+
+  @ApiProperty({ example: 'http://mcp.local/rpc' })
+  endpoint!: string;
+
+  @ApiProperty({ type: [String], example: [] })
+  allowed_namespaces!: string[];
+
+  @ApiProperty({ type: [String], example: ['code'] })
+  tags!: string[];
+
+  @ApiProperty({ type: [String], example: ['profile_01h...'] })
+  linked_profile_ids!: string[];
+
+  @ApiProperty({ type: [AgentPlatformToolDto] })
+  tools!: AgentPlatformToolDto[];
+}
+
+export class AgentPlatformWorkflowDto {
+  @ApiProperty({ example: 'engineering-pr-review-preview' })
+  id!: string;
+
+  @ApiProperty({ example: 'Engineering PR Review Preview' })
+  name!: string;
+
+  @ApiProperty({ example: 'Preview-only ordered metadata for coding agent steps.' })
+  description!: string;
+
+  @ApiProperty({ enum: ['preview'], example: 'preview' })
+  status!: string;
+
+  @ApiProperty({ example: false })
+  runtime_enabled!: false;
+
+  @ApiProperty({ type: [String], example: ['profile_01h...'] })
+  profile_ids!: string[];
+
+  @ApiProperty({ type: [Object] })
+  steps!: Array<Record<string, unknown>>;
+
+  @ApiProperty({ type: [Object] })
+  edges!: Array<Record<string, unknown>>;
+}
+
+export class AgentPlatformSpanDto {
+  @ApiProperty({ example: 'req_123' })
+  request_id!: string;
+
+  @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
+  timestamp!: string;
+
+  @ApiProperty({ example: 'codex', nullable: true })
+  connector!: string | null;
+
+  @ApiProperty({ example: 'profile_01h...', nullable: true })
+  profile_id!: string | null;
+
+  @ApiProperty({ example: 'PR review agent', nullable: true })
+  profile_name!: string | null;
+
+  @ApiProperty({ example: 'session-1', nullable: true })
+  session_id!: string | null;
+
+  @ApiProperty({ example: 'turn-1', nullable: true })
+  turn_id!: string | null;
+
+  @ApiProperty({ example: 'frontend', nullable: true })
+  repo!: string | null;
+
+  @ApiProperty({ example: 'web', nullable: true })
+  project!: string | null;
+
+  @ApiProperty({ example: 'req_123' })
+  route_decision_id!: string;
+
+  @ApiProperty({ example: false })
+  fallback!: boolean;
+
+  @ApiProperty({ example: 0 })
+  retry_count!: number;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  tokens!: Record<string, number>;
+
+  @ApiProperty({ example: 0.001234 })
+  cost_usd!: number;
+
+  @ApiProperty({ example: 240 })
+  latency_ms!: number;
+
+  @ApiProperty({ example: 200 })
+  status_code!: number;
+}
+
+export class AgentPlatformResponseDto {
+  @ApiProperty({ example: 'v1' })
+  version!: string;
+
+  @ApiProperty({ example: true })
+  preview!: true;
+
+  @ApiProperty({ example: 'default-workspace' })
+  workspace_id!: string;
+
+  @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
+  generated_at!: string;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  a2a_hub!: Record<string, unknown>;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  tool_registry!: {
+    enabled: boolean;
+    mode: string;
+    injection: Record<string, unknown>;
+    servers: AgentPlatformToolServerDto[];
+  };
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  workflow_preview!: {
+    preview: true;
+    runtime_enabled: false;
+    mode: string;
+    promise: string;
+    workflows: AgentPlatformWorkflowDto[];
+  };
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  memory_gateway!: Record<string, unknown>;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  traces!: {
+    metadata_only: true;
+    spans: AgentPlatformSpanDto[];
+  };
+
+  @ApiProperty({ type: AgentPlatformPrivacyDto })
+  privacy!: AgentPlatformPrivacyDto;
+
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'number' } })
+  totals!: Record<string, number>;
+}

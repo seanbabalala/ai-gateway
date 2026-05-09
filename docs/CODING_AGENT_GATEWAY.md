@@ -26,6 +26,9 @@ raw provider headers, provider keys, or resolved secrets by default.
   repo/project tags supplied through allowlisted headers.
 - Dashboard session summaries and cost breakdowns by coding agent, repo, and
   project.
+- v2.5 Agent Platform preview: a read-only A2A registry, MCP-backed Tool
+  Registry, preview workflow metadata, memory metadata counters, and recent
+  agent trace spans in one Dashboard view.
 
 ## Connector Matrix
 

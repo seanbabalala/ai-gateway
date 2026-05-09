@@ -24,6 +24,7 @@
   "header.searchPlaceholder": "ค้นหา logs, nodes, models...",
   "language.label": "ภาษา",
   "nav.agents": "เอเจนต์",
+  "nav.agentPlatform": "แพลตฟอร์มเอเจนต์",
   "nav.analytics": "การวิเคราะห์",
   "nav.apiKeys": "API Keys",
   "nav.budget": "งบประมาณ",
