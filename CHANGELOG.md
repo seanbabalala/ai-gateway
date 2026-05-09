@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.7.1 - 2026-05-10
+
+### Changed
+
+- Reorganized the Dashboard sidebar into Monitor, Runtime, Intelligence, Agents & Tools, and Governance groups so observability, runtime configuration, intelligence surfaces, agent tooling, and administration follow a clearer operator workflow.
+- Added seven-locale Dashboard group labels for the new sidebar information architecture.
+- Updated release metadata to v2.7.1 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, release-version sync coverage, and benchmark script expectations.
+
+### Boundaries
+
+- v2.7.1 is a Dashboard polish and release-metadata patch only. It does not change gateway runtime behavior, public API compatibility, storage schemas, provider routing, or privacy defaults.
+
 ## 2.7.0 - 2026-05-09
 
 ### Added

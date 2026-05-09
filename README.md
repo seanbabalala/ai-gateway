@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.7.0 Semantic Platform**.
+Current release: **v2.7.1 Dashboard Sidebar Polish**.
 
-Current development focus after v2.7.0: preserve Platform Trust stability,
+Current development focus after v2.7.1: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -83,6 +83,9 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.7 Highlights
 
+- v2.7.1 reorganizes the Dashboard sidebar into Monitor, Runtime,
+  Intelligence, Agents & Tools, and Governance groups so v2 platform surfaces
+  follow the operator workflow more clearly.
 - v2.7.0 makes the semantic layer production-grade without changing SiftGate's
   default privacy boundary.
 - Semantic Cache v2 adds workspace/API-key/model isolation, TTL invalidation,
