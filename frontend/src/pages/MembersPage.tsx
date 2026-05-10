@@ -2,6 +2,7 @@ import { ShieldCheck, Ticket, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,11 @@ export function MembersPage() {
           icon={ShieldCheck}
           badge={<Badge variant="zinc">{t('rbac.roles.viewer')}</Badge>}
         />
+        <ConceptPanel
+          conceptId="membersRoles"
+          icon={ShieldCheck}
+          badgeKinds={['ossFixedRoles', 'runtimeSupported']}
+        />
         <CardStatic>
           <EmptyState
             icon={ShieldCheck}
@@ -89,6 +95,12 @@ export function MembersPage() {
             {t(`rbac.roles.${workspaceState?.access?.role || 'viewer'}`)}
           </Badge>
         }
+      />
+
+      <ConceptPanel
+        conceptId="membersRoles"
+        icon={ShieldCheck}
+        badgeKinds={['ossFixedRoles', 'runtimeSupported']}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

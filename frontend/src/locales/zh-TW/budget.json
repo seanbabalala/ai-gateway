@@ -1,6 +1,6 @@
 {
   "actions.reset": "重設",
-  "budget.description": "追蹤 token 用量、成本與預算限制",
+  "budget.description": "按全局、Policy Namespace、Team 和 Gateway API Key 作用域跟踪每日 token 与成本预算",
   "budget.title": "預算",
   "cache.hideDetail": "收起快取明細",
   "cache.note": "實際成本已包含 provider 快取折扣。",
@@ -8,7 +8,7 @@
   "cache.showDetail": "查看快取明細",
   "cache.withCache": "有快取：{{value}}",
   "cache.withoutCache": "無快取：{{value}}",
-  "filters.allGlobal": "全部（全域）",
+  "filters.allGlobal": "全部（全局作用域）",
   "filters.legacyYaml": "{{name}} · 舊版 YAML",
   "gauges.dailyCost": "每日成本",
   "gauges.dailyCostForKey": "每日成本（{{key}}）",
@@ -23,13 +23,13 @@
   "pricing.title": "模型定價（每 100 萬 tokens）",
   "rules.exceeded": "已超限",
   "rules.globalLabel": "全域",
-  "rules.globalLimits": "全域限制",
-  "rules.noPerKeyDescription": "此 key 沒有每日 token 或成本限制。全域限制仍會生效。",
+  "rules.globalLimits": "全局限制",
+  "rules.noPerKeyDescription": "此 key 未设置每日 token 或成本限制。Team、Policy Namespace 和全局限制仍会生效。",
   "rules.noPerKeyTitle": "無依 key 預算規則",
   "rules.perKeyLabel": "依 key",
   "rules.perKeyLimits": "依 Key 限制（{{key}}）",
   "rules.showingKey": "- 目前 key：{{key}}",
-  "rules.title": "預算規則",
+  "rules.title": "按作用域划分的预算规则",
   "rules.used": "已用 {{value}}",
   "rules.warning": "警告"
 }

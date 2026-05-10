@@ -1,6 +1,6 @@
 {
   "actions.reset": "リセット",
-  "budget.description": "token 使用量、コスト、予算上限を追跡します",
+  "budget.description": "Track daily token and cost budgets across global, Policy Namespace, Team, and Gateway API Key scopes",
   "budget.title": "予算",
   "cache.hideDetail": "キャッシュ詳細を隠す",
   "cache.note": "実コストには provider cache 割引が含まれます。",
@@ -8,7 +8,7 @@
   "cache.showDetail": "キャッシュ詳細を表示",
   "cache.withCache": "キャッシュあり: {{value}}",
   "cache.withoutCache": "キャッシュなし: {{value}}",
-  "filters.allGlobal": "すべて（グローバル）",
+  "filters.allGlobal": "All (global scope)",
   "filters.legacyYaml": "{{name}} · 旧 YAML",
   "gauges.dailyCost": "日次コスト",
   "gauges.dailyCostForKey": "日次コスト（{{key}}）",
@@ -23,13 +23,13 @@
   "pricing.title": "モデル価格（100 万 tokens あたり）",
   "rules.exceeded": "超過",
   "rules.globalLabel": "グローバル",
-  "rules.globalLimits": "グローバル上限",
-  "rules.noPerKeyDescription": "この key には日次 token またはコスト上限がありません。グローバル上限は引き続き適用されます。",
+  "rules.globalLimits": "Global Limits",
+  "rules.noPerKeyDescription": "This key has no daily token or cost limit. Team, Policy Namespace, and global limits still apply.",
   "rules.noPerKeyTitle": "key 別予算ルールなし",
   "rules.perKeyLabel": "key 別",
   "rules.perKeyLimits": "Key 別上限（{{key}}）",
   "rules.showingKey": "- 表示中の key: {{key}}",
-  "rules.title": "予算ルール",
+  "rules.title": "Budget Rules by Scope",
   "rules.used": "{{value}} 使用済み",
   "rules.warning": "警告"
 }

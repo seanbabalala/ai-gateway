@@ -1,6 +1,6 @@
 {
   "actions.reset": "재설정",
-  "budget.description": "토큰 사용량, 비용, 예산 한도를 추적합니다",
+  "budget.description": "Track daily token and cost budgets across global, Policy Namespace, Team, and Gateway API Key scopes",
   "budget.title": "예산",
   "cache.hideDetail": "캐시 상세 숨기기",
   "cache.note": "실제 비용에는 provider cache 할인 적용분이 포함됩니다.",
@@ -8,7 +8,7 @@
   "cache.showDetail": "캐시 상세 보기",
   "cache.withCache": "캐시 적용: {{value}}",
   "cache.withoutCache": "캐시 미적용: {{value}}",
-  "filters.allGlobal": "전체(Global)",
+  "filters.allGlobal": "All (global scope)",
   "filters.legacyYaml": "{{name}} · 레거시 YAML",
   "gauges.dailyCost": "일일 비용",
   "gauges.dailyCostForKey": "일일 비용({{key}})",
@@ -23,13 +23,13 @@
   "pricing.title": "모델 가격(토큰 100만 개 기준)",
   "rules.exceeded": "초과",
   "rules.globalLabel": "global",
-  "rules.globalLimits": "Global 한도",
-  "rules.noPerKeyDescription": "이 키에는 일일 토큰 또는 비용 한도가 없습니다. Global 한도는 계속 적용됩니다.",
+  "rules.globalLimits": "Global Limits",
+  "rules.noPerKeyDescription": "This key has no daily token or cost limit. Team, Policy Namespace, and global limits still apply.",
   "rules.noPerKeyTitle": "키별 예산 규칙 없음",
   "rules.perKeyLabel": "키별",
   "rules.perKeyLimits": "키별 한도({{key}})",
   "rules.showingKey": "- 표시 중인 키: {{key}}",
-  "rules.title": "예산 규칙",
+  "rules.title": "Budget Rules by Scope",
   "rules.used": "{{value}} 사용",
   "rules.warning": "경고"
 }

@@ -40,6 +40,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Badge } from '@/components/ui/badge'
@@ -304,6 +305,12 @@ export function DashboardPage() {
           />
         </div>
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="workspace"
+        icon={Building2}
+        badgeKinds={['runtimeSupported', 'ossFixedRoles']}
+      />
 
       <Card className="animate-fade-up overflow-hidden">
         <CardHeader>

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Activity, AlertTriangle, Network, RefreshCw, Server, ShieldCheck, Wrench } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -69,7 +70,7 @@ function ServerCard({ server }: { server: McpServerSummary }) {
           {server.allowed_namespaces.length > 0 ? (
             server.allowed_namespaces.map((namespace) => (
               <Badge key={namespace} variant="purple">
-                {namespace}
+                {t('mcp.server.policyNamespaceValue', { namespace })}
               </Badge>
             ))
           ) : (
@@ -158,7 +159,11 @@ function RecentCallsTable({ calls }: { calls: McpAuditEntry[] }) {
             <TableCell className="font-mono text-[12px]">{call.tool_name || '-'}</TableCell>
             <TableCell>
               <div className="text-[12px] text-[var(--foreground)]">{call.api_key_name || t('mcp.values.unknownKey')}</div>
-              <div className="text-[11px] text-[var(--foreground-dim)]">{call.namespace_id || t('mcp.values.noNamespace')}</div>
+              <div className="text-[11px] text-[var(--foreground-dim)]">
+                {call.namespace_id
+                  ? t('mcp.values.policyNamespaceValue', { namespace: call.namespace_id })
+                  : t('mcp.values.noNamespace')}
+              </div>
             </TableCell>
             <TableCell className="text-right">
               <Badge variant={call.success ? 'emerald' : 'red'}>{call.status_code}</Badge>
@@ -192,6 +197,12 @@ export function McpGatewayPage() {
           {t('mcp.actions.refresh')}
         </Button>
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="mcpToolGateway"
+        icon={Network}
+        badgeKinds={['runtimeSupported', 'configDriven', 'requiresConfig']}
+      />
 
       {mcp.isLoading && (
         <>

@@ -4,6 +4,12 @@ SiftGate v0.8 adds a local Provider / Model Catalog for the open-source Data Pla
 
 The important product rule is honesty: built-in provider/model/pricing data is a reference snapshot, not a billing authority. SiftGate can refresh OpenRouter model and pricing metadata from its public API, and v1.8 can overlay ZeroEval metadata onto canonical models, but many providers publish prices only in docs or vary prices by region, deployment, account, or private model name. Those entries remain marked for review until you import a local override.
 
+In v2.8.0-alpha.1 the Dashboard copy makes catalog visibility explicit. The
+Provider Catalog shows active canonical projections by default. Legacy,
+transport-only, deprecated, and review-required rows can still exist for
+compatibility or migration context, but they stay behind explicit visibility
+controls unless the operator configures them.
+
 ## Goals
 
 - Keep provider/model knowledge out of Dashboard form components.

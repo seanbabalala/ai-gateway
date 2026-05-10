@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { FlaskConical, Activity, DollarSign, Clock, CheckCircle, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
@@ -146,6 +147,12 @@ export function ExperimentPage() {
           </div>
         </div>
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="trafficExperiments"
+        icon={FlaskConical}
+        badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
 
       {/* Empty state */}
       {groups.length === 0 && (

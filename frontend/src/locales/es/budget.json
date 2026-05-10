@@ -1,6 +1,6 @@
 {
   "actions.reset": "Reiniciar",
-  "budget.description": "Sigue uso de tokens, costes y límites de presupuesto",
+  "budget.description": "Rastrea presupuestos diarios de tokens y costo en scopes global, Policy Namespace, Team y Gateway API Key",
   "budget.title": "Presupuesto",
   "cache.hideDetail": "Ocultar detalle de caché",
   "cache.note": "El coste real incluye descuentos de caché del provider.",
@@ -8,7 +8,7 @@
   "cache.showDetail": "Mostrar detalle de caché",
   "cache.withCache": "Con caché: {{value}}",
   "cache.withoutCache": "Sin caché: {{value}}",
-  "filters.allGlobal": "Todo (Global)",
+  "filters.allGlobal": "Todo (scope global)",
   "filters.legacyYaml": "{{name}} · YAML legacy",
   "gauges.dailyCost": "Coste diario",
   "gauges.dailyCostForKey": "Coste diario ({{key}})",
@@ -23,13 +23,13 @@
   "pricing.title": "Precio por modelo (por 1M tokens)",
   "rules.exceeded": "Excedido",
   "rules.globalLabel": "global",
-  "rules.globalLimits": "Límites globales",
-  "rules.noPerKeyDescription": "Esta clave no tiene límite diario de tokens ni de coste. Los límites globales siguen aplicando.",
+  "rules.globalLimits": "Global Limits",
+  "rules.noPerKeyDescription": "Este key no tiene límite diario de tokens o costo. Los límites de Team, Policy Namespace y global aún aplican.",
   "rules.noPerKeyTitle": "Sin reglas de presupuesto por clave",
   "rules.perKeyLabel": "por clave",
   "rules.perKeyLimits": "Límites por clave ({{key}})",
   "rules.showingKey": "- Mostrando clave: {{key}}",
-  "rules.title": "Reglas de presupuesto",
+  "rules.title": "Reglas de presupuesto por scope",
   "rules.used": "{{value}} usado",
   "rules.warning": "Aviso"
 }

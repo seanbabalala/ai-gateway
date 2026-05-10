@@ -15,6 +15,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { ConceptPanel } from "@/components/shared/ConceptPanel";
 import {
   CatalogCoveragePills,
   CatalogTrustPills,
@@ -504,6 +505,12 @@ export function ProviderCatalogPage() {
           {t("catalogPage.refresh")}
         </Button>
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="providerCatalog"
+        icon={Boxes}
+        badgeKinds={["readOnly", "configDriven", "requiresConfig"]}
+      />
 
       {catalog.isLoading && (
         <div className="grid gap-4 md:grid-cols-3">

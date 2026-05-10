@@ -2,7 +2,7 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.7.1 Dashboard Sidebar Polish**.
+Current release: **v2.8.0-alpha.1 Concept Clarity Foundation**.
 
 Current development focus after v2.7.1: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
@@ -12,7 +12,7 @@ as minor releases.
 
 - One gateway for Chat Completions, Responses, Anthropic Messages, Embeddings, Rerank, Images, Audio, Video preview, Realtime preview, MCP preview, and Batch proxy.
 - Explainable routing: every request can show why a node/model was selected or filtered.
-- Local governance: Gateway API keys, namespaces, local teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed nodes, and allowed models.
+- Local governance: Gateway API keys, Policy Namespaces, local teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed nodes, and allowed models.
 - Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
 - Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
 - Catalog-backed setup: Nodes, Add Node Wizard, Provider Catalog, and config validation use one merged provider catalog surface backed by canonical model projections instead of hardcoded provider/model lists.
@@ -34,7 +34,7 @@ as minor releases.
   chargeback reports, CSV/JSON exports, cost anomaly alerts, provider price
   sync governance, and thumbs feedback aggregation without payments, recharge,
   reseller balances, public marketplaces, or prompt/response storage.
-- Semantic Platform: v2.7 adds Semantic Cache v2, Prompt Registry, Context
+- Semantic Controls: v2.7 adds Semantic Cache v2, Prompt Registry, Context
   Window Optimizer evidence, Intent Classification, and Guardrails v2 with
   metadata-only defaults and explicit opt-ins for replayable response or
   template body storage.
@@ -81,6 +81,19 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
+## v2.8 Alpha Highlights
+
+- v2.8.0-alpha.1 makes confusing OSS concepts explain themselves in product:
+  Workspace, Policy Namespace, Semantic Controls, Traffic Experiments, Evals,
+  Shadow Traffic, MCP Tool Gateway, budget scopes, fixed OSS roles, and
+  Provider Catalog visibility now share clear Dashboard copy and status labels.
+- The release keeps behavior unchanged: no Workspace or Policy Namespace CRUD,
+  no schema changes, no routing changes, no budget changes, no MCP proxy
+  changes, no auth changes, and no provider projection changes.
+- Added [`docs/OSS_CONCEPTS.md`](docs/OSS_CONCEPTS.md) as the shared glossary
+  for Workspace vs Policy Namespace vs Team vs Gateway API Key vs Node vs
+  Provider.
+
 ## v2.7 Highlights
 
 - v2.7.1 reorganizes the Dashboard sidebar into Monitor, Runtime,
@@ -98,7 +111,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
   context pressure and task type without silently changing prompt content.
 - Guardrails v2 records metadata-only PII, toxicity, and jailbreak findings for
   input/output policy surfaces.
-- The Dashboard **Semantic Platform** page and Route Explanation semantic panel
+- The Dashboard **Semantic Controls** page and Route Explanation semantic panel
   are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
 - See [`docs/SEMANTIC_PLATFORM.md`](docs/SEMANTIC_PLATFORM.md) and
   [`docs/CACHING.md`](docs/CACHING.md).
