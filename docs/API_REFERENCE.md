@@ -405,7 +405,10 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `GET` | `/api/dashboard/budget` | Global, namespace, team, and per-key budget status |
 | `GET` | `/api/dashboard/budget/keys` | API keys with budget metadata |
 | `POST` | `/api/dashboard/budget/:id/reset` | Reset a budget rule by id |
-| `GET` | `/api/dashboard/namespaces` | Local namespace policies and budget summaries |
+| `GET` | `/api/dashboard/namespaces` | Local Policy Namespace policies, budget status, counts, and bound API key/team impact summaries |
+| `POST` | `/api/dashboard/namespaces` | Create a config-backed Policy Namespace; Admin role required |
+| `PUT` | `/api/dashboard/namespaces/:id` | Update a config-backed Policy Namespace; Admin role required |
+| `DELETE` | `/api/dashboard/namespaces/:id` | Delete a config-backed Policy Namespace after explicit impact acknowledgement when bound resources exist; Admin role required |
 | `GET` | `/api/dashboard/teams` | Local team policies, usage summaries, and OSS-only enterprise markers |
 | `GET` | `/api/dashboard/shadow` | Read-only shadow traffic status and sanitized recent results |
 | `GET` | `/api/dashboard/shadow/report` | Read-only primary vs shadow comparison report with success, latency, cost, token, fallback, confidence, and risk fields |
@@ -832,6 +835,26 @@ Create and update payloads support `allowed_nodes`, `allowed_models`, `allowed_e
 List responses include `status`, `last_used_at`, `key_prefix`, and a `today` summary with calls, cost, tokens, errors, and `error_rate`. OpenAPI examples redact plain Gateway API key values. Runtime create and rotate responses still return the plain key once so the operator can copy it into client configuration; after that, Dashboard APIs only return the masked prefix. Mutating API key operations write local config audit events with redacted summaries and never store the one-time secret.
 
 Local teams are OSS-only shared policy groups. They persist locally in SQLite/PostgreSQL, can be disabled, and can define namespace binding, allowed endpoints/modalities/nodes/models, daily token/cost budgets, and RPM limits. Bound keys fail closed when their team is disabled. SiftGate checks global, namespace, team, and key budgets and records `team_id` in call logs for usage summaries. Team APIs never return secrets and do not implement SSO, SCIM, enterprise workspaces, or org billing.
+
+## Policy Namespace Management
+
+Policy Namespace management is local and config-backed. The Dashboard APIs
+support `id`, `name`, `allowed_nodes`, `allowed_models`, `budget`, and
+`rate_limit` fields under the existing `namespaces` config section. They do not
+create tenants, Workspaces, org billing scopes, SSO identities, or secrets.
+
+`GET /api/dashboard/namespaces` returns each namespace with budget status,
+binding summaries for Dashboard-managed API keys, YAML-defined API keys, and
+local Teams, plus counts for total namespaces, budgeted namespaces, rate-limited
+namespaces, bound keys, and bound Teams.
+
+Create, update, and delete operations require Dashboard Admin access. SiftGate
+rewrites only the `namespaces` section, validates the full candidate gateway
+config, records a config audit event, and reloads through the rollback-safe
+config path. If a delete would affect bound API keys or Teams, the first request
+returns conflict with impact details; the caller must resubmit with
+`confirm_impact: true`. Backend config validation still controls whether the
+result is persisted.
 
 ## Secret Handling In The Spec
 

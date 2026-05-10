@@ -143,9 +143,15 @@ import {
 import { GatewayApiKeyService } from "../auth/gateway-api-key.service";
 import { CreateTeamDto, UpdateTeamDto } from "../auth/dto/team.dto";
 import { TeamService } from "../auth/team.service";
+import {
+  CreateNamespaceDto,
+  DeleteNamespaceDto,
+  UpdateNamespaceDto,
+} from "./dto/namespace.dto";
 import { AgentProfileService } from "../agent-profiles/agent-profile.service";
 import { AgentPlatformService } from "../agent-platform/agent-platform.service";
 import { ClusterService } from "../cluster/cluster.service";
+import type { NamespaceConfig } from "../config/gateway.config";
 import {
   CreateAgentProfileDto,
   RenderAgentProfileDto,
@@ -4046,10 +4052,10 @@ export class DashboardController {
 
   @Get("namespaces")
   @ApiOperation({
-    summary: "List local OSS namespaces and read-only policy summary",
+    summary: "List local OSS Policy Namespaces and binding impact",
   })
   @ApiOkResponse({
-    description: "Local namespace policies with budget status summaries.",
+    description: "Local Policy Namespace policies with budget status and bound API key/team summaries.",
   })
   async getNamespaces() {
     const namespaces = await Promise.all(
@@ -4068,12 +4074,28 @@ export class DashboardController {
             namespace.rate_limit?.requests_per_minute || null,
           budget: namespace.budget || null,
           budget_status: budget.map((item) => this.serializeBudgetStatus(item)),
+          bindings: await this.namespaceBindings(namespace.id),
         };
       }),
     );
 
     return {
       namespaces,
+      counts: {
+        total: namespaces.length,
+        with_budget: namespaces.filter((namespace) => namespace.budget).length,
+        with_rate_limit: namespaces.filter(
+          (namespace) => namespace.rate_limit_per_minute !== null,
+        ).length,
+        bound_api_keys: namespaces.reduce(
+          (sum, namespace) => sum + namespace.bindings.api_keys.length,
+          0,
+        ),
+        bound_teams: namespaces.reduce(
+          (sum, namespace) => sum + namespace.bindings.teams.length,
+          0,
+        ),
+      },
       mode: "local_only",
       enterprise_features: {
         workspace: false,
@@ -4082,6 +4104,152 @@ export class DashboardController {
         org_billing: false,
       },
     };
+  }
+
+  @Post("namespaces")
+  @RequireDashboardRole("admin")
+  @ApiTags("Policy Namespaces")
+  @ApiOperation({ summary: "Create a config-backed Policy Namespace" })
+  @ApiBody({ type: CreateNamespaceDto })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async createNamespace(@Body() body: CreateNamespaceDto) {
+    try {
+      const namespace = this.namespaceInput(body);
+      const result = await this.configAudit.trackChange(
+        {
+          action: "config.namespace.create",
+          target: `namespace:${namespace.id}`,
+          source: "dashboard",
+          actor: { type: "dashboard", id: "dashboard" },
+          metadata: this.namespaceMutationMetadata(namespace),
+        },
+        () => this.config.createNamespace(namespace),
+      );
+      this.activeHealth.refreshSchedules();
+      return {
+        success: true,
+        message: `Policy Namespace "${namespace.id}" created`,
+        item: await this.namespaceSummary(namespace.id),
+        reload: result,
+      };
+    } catch (err) {
+      throw new HttpException(
+        { success: false, message: (err as Error).message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Put("namespaces/:id")
+  @RequireDashboardRole("admin")
+  @ApiTags("Policy Namespaces")
+  @ApiOperation({ summary: "Update a config-backed Policy Namespace" })
+  @ApiParam({ name: "id", example: "team-a" })
+  @ApiBody({ type: UpdateNamespaceDto })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async updateNamespace(
+    @Param("id") id: string,
+    @Body() body: UpdateNamespaceDto,
+  ) {
+    const before = this.config.getNamespace(id);
+    if (!before) {
+      throw new HttpException(
+        { success: false, message: `Namespace "${id}" not found` },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    try {
+      const updates = this.namespaceUpdateInput(body);
+      const result = await this.configAudit.trackChange(
+        {
+          action: "config.namespace.update",
+          target: `namespace:${id}`,
+          source: "dashboard",
+          actor: { type: "dashboard", id: "dashboard" },
+          metadata: {
+            fields: Object.keys(body || {}),
+            before: this.namespaceAuditSummary(before),
+          },
+        },
+        () => this.config.updateNamespace(id, updates),
+      );
+      this.activeHealth.refreshSchedules();
+      return {
+        success: true,
+        message: `Policy Namespace "${id}" updated`,
+        item: await this.namespaceSummary(id),
+        reload: result,
+      };
+    } catch (err) {
+      throw new HttpException(
+        { success: false, message: (err as Error).message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Delete("namespaces/:id")
+  @RequireDashboardRole("admin")
+  @ApiTags("Policy Namespaces")
+  @ApiOperation({
+    summary: "Delete a config-backed Policy Namespace after explicit impact acknowledgement",
+  })
+  @ApiParam({ name: "id", example: "team-a" })
+  @ApiBody({ type: DeleteNamespaceDto, required: false })
+  @ApiOkResponse({ type: ActionResponseDto })
+  async deleteNamespace(
+    @Param("id") id: string,
+    @Body() body: DeleteNamespaceDto = {},
+  ) {
+    const before = this.config.getNamespace(id);
+    if (!before) {
+      throw new HttpException(
+        { success: false, message: `Namespace "${id}" not found` },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const impact = await this.namespaceBindings(id);
+    const impacted = impact.api_keys.length > 0 || impact.teams.length > 0;
+    if (impacted && body?.confirm_impact !== true) {
+      throw new HttpException(
+        {
+          success: false,
+          message:
+            "Policy Namespace is bound to API keys or teams. Resubmit with confirm_impact: true after reviewing impact.",
+          impact,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    try {
+      const result = await this.configAudit.trackChange(
+        {
+          action: "config.namespace.delete",
+          target: `namespace:${id}`,
+          source: "dashboard",
+          actor: { type: "dashboard", id: "dashboard" },
+          metadata: {
+            confirm_impact: body?.confirm_impact === true,
+            impact,
+          },
+        },
+        () => this.config.deleteNamespace(id),
+      );
+      this.activeHealth.refreshSchedules();
+      return {
+        success: true,
+        message: `Policy Namespace "${id}" deleted`,
+        impact,
+        reload: result,
+      };
+    } catch (err) {
+      throw new HttpException(
+        { success: false, message: (err as Error).message, impact },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Get("shadow")
@@ -4576,6 +4744,167 @@ export class DashboardController {
         workspace: false,
       },
       secret: "not_applicable",
+    };
+  }
+
+  private async namespaceSummary(id: string) {
+    const namespace = this.config.getNamespace(id);
+    if (!namespace) return null;
+    const budget = await this.budgetService.getStatus(null, null, namespace.id);
+    return {
+      ...this.namespaceAuditSummary(namespace),
+      rate_limit_per_minute:
+        namespace.rate_limit?.requests_per_minute || null,
+      budget_status: budget.map((item) => this.serializeBudgetStatus(item)),
+      bindings: await this.namespaceBindings(namespace.id),
+    };
+  }
+
+  private namespaceAuditSummary(namespace: NamespaceConfig) {
+    return {
+      id: namespace.id,
+      name: namespace.name || namespace.id,
+      allowed_nodes: namespace.allowed_nodes || [],
+      allowed_models: namespace.allowed_models || [],
+      budget: namespace.budget || null,
+      rate_limit: namespace.rate_limit || null,
+      mode: "config_backed",
+      workspace_scope: "local_policy_only",
+      secret: "not_applicable",
+    };
+  }
+
+  private namespaceMutationMetadata(namespace: NamespaceConfig) {
+    return {
+      allowed_nodes_count: namespace.allowed_nodes?.length || 0,
+      allowed_models_count: namespace.allowed_models?.length || 0,
+      has_budget: Boolean(namespace.budget),
+      has_rate_limit: Boolean(namespace.rate_limit?.requests_per_minute),
+    };
+  }
+
+  private namespaceInput(input: CreateNamespaceDto): NamespaceConfig {
+    return {
+      id: input.id,
+      name: this.emptyStringToUndefined(input.name),
+      allowed_nodes: this.cleanStringArray(input.allowed_nodes),
+      allowed_models: this.cleanStringArray(input.allowed_models),
+      budget: this.namespaceBudgetInput(input.budget),
+      rate_limit: this.namespaceRateLimitInput(input.rate_limit),
+    };
+  }
+
+  private namespaceUpdateInput(input: UpdateNamespaceDto): Partial<Omit<NamespaceConfig, "id">> {
+    const updates: Partial<Omit<NamespaceConfig, "id">> = {};
+    if (input.name !== undefined) updates.name = this.emptyStringToUndefined(input.name);
+    if (input.allowed_nodes !== undefined) {
+      updates.allowed_nodes = this.cleanStringArray(input.allowed_nodes);
+    }
+    if (input.allowed_models !== undefined) {
+      updates.allowed_models = this.cleanStringArray(input.allowed_models);
+    }
+    if (input.budget !== undefined) updates.budget = this.namespaceBudgetInput(input.budget);
+    if (input.rate_limit !== undefined) updates.rate_limit = this.namespaceRateLimitInput(input.rate_limit);
+    return updates;
+  }
+
+  private namespaceBudgetInput(
+    input: CreateNamespaceDto["budget"] | UpdateNamespaceDto["budget"],
+  ): NamespaceConfig["budget"] | undefined {
+    if (!input) return undefined;
+    const budget: NonNullable<NamespaceConfig["budget"]> = {};
+    if (input.daily_token_limit !== undefined && input.daily_token_limit !== null) {
+      budget.daily_token_limit = Number(input.daily_token_limit);
+    }
+    if (input.daily_cost_limit !== undefined && input.daily_cost_limit !== null) {
+      budget.daily_cost_limit = Number(input.daily_cost_limit);
+    }
+    if (input.alert_threshold !== undefined && input.alert_threshold !== null) {
+      budget.alert_threshold = Number(input.alert_threshold);
+    }
+    return Object.keys(budget).length > 0 ? budget : undefined;
+  }
+
+  private namespaceRateLimitInput(
+    input: CreateNamespaceDto["rate_limit"] | UpdateNamespaceDto["rate_limit"],
+  ): NamespaceConfig["rate_limit"] | undefined {
+    if (!input || input.requests_per_minute === undefined || input.requests_per_minute === null) {
+      return undefined;
+    }
+    return { requests_per_minute: Number(input.requests_per_minute) };
+  }
+
+  private cleanStringArray(values: string[] | undefined): string[] {
+    if (!Array.isArray(values)) return [];
+    return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
+  }
+
+  private emptyStringToUndefined(value: string | undefined): string | undefined {
+    const normalized = (value || "").trim();
+    return normalized || undefined;
+  }
+
+  private async namespaceBindings(namespaceId: string): Promise<{
+    api_keys: Array<{
+      id: string;
+      name: string;
+      status: string;
+      key_prefix: string;
+      team_id: string | null;
+      source: "dashboard" | "config";
+    }>;
+    teams: Array<{
+      id: string;
+      name: string;
+      status: string;
+    }>;
+    counts: {
+      api_keys: number;
+      teams: number;
+      total: number;
+    };
+  }> {
+    const [apiKeys, teams] = await Promise.all([
+      this.gatewayApiKeys.list(),
+      this.teams.list(),
+    ]);
+    const boundTeams = teams
+      .filter((team) => team.namespace_id === namespaceId)
+      .map((team) => ({
+        id: team.id,
+        name: team.name,
+        status: team.status,
+      }));
+    const boundTeamIds = new Set(boundTeams.map((team) => team.id));
+    const boundDashboardKeys = apiKeys
+      .filter((key) => key.namespace_id === namespaceId || (key.team_id && boundTeamIds.has(key.team_id)))
+      .map((key) => ({
+        id: key.id,
+        name: key.name,
+        status: key.status,
+        key_prefix: key.key_prefix,
+        team_id: key.team_id || null,
+        source: "dashboard" as const,
+      }));
+    const boundConfigKeys = (this.config.auth?.api_keys || [])
+      .filter((key) => key.namespace_id === namespaceId)
+      .map((key) => ({
+        id: key.name,
+        name: key.name,
+        status: "config",
+        key_prefix: "config-managed",
+        team_id: null,
+        source: "config" as const,
+      }));
+    const boundKeys = [...boundDashboardKeys, ...boundConfigKeys];
+    return {
+      api_keys: boundKeys,
+      teams: boundTeams,
+      counts: {
+        api_keys: boundKeys.length,
+        teams: boundTeams.length,
+        total: boundKeys.length + boundTeams.length,
+      },
     };
   }
 

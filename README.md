@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-alpha.3 Workspace Management**.
+Current release: **v2.8.0-beta.1 Policy Namespace Manager**.
 
-Current development focus after v2.8.0-alpha.3: preserve Platform Trust stability,
+Current development focus after v2.8.0-beta.1: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -81,8 +81,14 @@ curl http://localhost:2099/v1/chat/completions \
 
 You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
 
-## v2.8 Alpha Highlights
+## v2.8 Highlights
 
+- v2.8.0-beta.1 makes Policy Namespaces manageable from the OSS Dashboard.
+  Admins can create, edit, and delete config-backed namespaces with the existing
+  validation, config audit, rollback, and hot-reload path.
+- The Policy Namespaces page shows bound Gateway API keys and Teams before
+  deletion. Bound namespaces require explicit impact confirmation and backend
+  validation before SiftGate rewrites only the `namespaces` config section.
 - v2.8.0-alpha.3 closes the OSS Workspace management gap: Workspace Admins can
   create, switch, rename, disable, and reactivate local Workspaces from the
   Dashboard using the existing workspace data model.
@@ -103,9 +109,10 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
   Workspace, Policy Namespace, Semantic Controls, Traffic Experiments, Evals,
   Shadow Traffic, MCP Tool Gateway, budget scopes, fixed OSS roles, and
   Provider Catalog visibility now share clear Dashboard copy and status labels.
-- The release keeps behavior unchanged: no Workspace or Policy Namespace CRUD,
-  no schema changes, no routing changes, no budget changes, no MCP proxy
-  changes, no auth changes, and no provider projection changes.
+- The alpha.1 concept-clarity release kept behavior unchanged. Later v2.8
+  prereleases add real local Workspace and Policy Namespace management without
+  changing runtime routing, MCP proxying, provider projection, or privacy
+  storage defaults.
 - Added [`docs/OSS_CONCEPTS.md`](docs/OSS_CONCEPTS.md) as the shared glossary
   for Workspace vs Policy Namespace vs Team vs Gateway API Key vs Node vs
   Provider.
@@ -336,7 +343,8 @@ Common settings:
 - `nodes[]`: upstream providers, compatible proxies, local model servers, and model buckets.
 - `routing`: tiers, fallback chains, load balancing, optimization mode.
 - `auth.api_keys[]`: local Gateway API keys and permissions.
-- `namespaces[]`: local isolation boundaries for teams/apps.
+- `namespaces[]`: local Policy Namespace labels for node/model restrictions,
+  budgets, rate limits, API key/team binding, MCP allow-lists, and filters.
 - `cache`: deterministic prompt response cache.
 - `semantic_cache`: disabled-by-default semantic cache preview.
 - `semantic_platform`: disabled-by-default Semantic Cache v2 controls, Prompt

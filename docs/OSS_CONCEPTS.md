@@ -2,7 +2,7 @@
 
 SiftGate OSS uses a few platform concepts that sound similar but serve
 different jobs. This page is the product vocabulary used by the Dashboard and
-docs in v2.8.0-alpha.3.
+docs in v2.8.0-beta.1.
 
 ## Capability Status Language
 
@@ -43,6 +43,15 @@ Policy Namespace is not a Workspace, tenant, team, folder, or identity system.
 It does not create isolation by itself; it participates in policy checks with
 Gateway API keys, Teams, budgets, allowed nodes/models/endpoints, rate limits,
 and routing config.
+
+v2.8.0-beta.1 adds admin-only Dashboard management for config-backed Policy
+Namespaces. Admins can create, edit, and delete `namespaces` with id, name,
+allowed nodes, allowed models, budget, and rate-limit fields. SiftGate rewrites
+only the `namespaces` section, validates the full candidate config, records a
+config audit event, and hot-reloads through the existing rollback-safe path.
+Deleting a namespace that is bound to API keys or Teams requires explicit
+impact confirmation and still fails if backend validation rejects the resulting
+config.
 
 ## Team
 

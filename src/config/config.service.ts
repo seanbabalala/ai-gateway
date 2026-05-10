@@ -85,6 +85,7 @@ export interface ConfigChangeSummary {
   nodes_added: string[];
   nodes_removed: string[];
   nodes_changed: boolean;
+  namespaces_changed: boolean;
   routing_changed: boolean;
   budget_changed: boolean;
   pricing_changed: boolean;
@@ -579,6 +580,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       nodes_added: [...nextNodeIds].filter((id) => !previousNodeIds.has(id)),
       nodes_removed: [...previousNodeIds].filter((id) => !nextNodeIds.has(id)),
       nodes_changed: JSON.stringify(previous.nodes) !== JSON.stringify(next.nodes),
+      namespaces_changed: JSON.stringify(previous.namespaces || []) !== JSON.stringify(next.namespaces || []),
       routing_changed: JSON.stringify(previous.routing) !== JSON.stringify(next.routing),
       budget_changed: JSON.stringify(previous.budget) !== JSON.stringify(next.budget),
       pricing_changed: JSON.stringify(previous.models_pricing) !== JSON.stringify(next.models_pricing),
@@ -595,6 +597,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       nodes_added: [],
       nodes_removed: [],
       nodes_changed: false,
+      namespaces_changed: false,
       routing_changed: false,
       budget_changed: false,
       pricing_changed: false,
@@ -1045,6 +1048,39 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.namespaces.find((namespace) => namespace.id === namespaceId);
   }
 
+  createNamespace(namespace: NamespaceConfig): ConfigReloadResult {
+    const normalized = this.normalizeNamespaceForPersist(namespace, true);
+    if (this.getNamespace(normalized.id)) {
+      throw new Error(`Namespace with id "${normalized.id}" already exists`);
+    }
+    return this.replaceNamespaces([...this.namespaces, normalized]);
+  }
+
+  updateNamespace(
+    namespaceId: string,
+    updates: Partial<Omit<NamespaceConfig, 'id'>>,
+  ): ConfigReloadResult {
+    const id = this.normalizeNamespaceId(namespaceId);
+    const idx = this.namespaces.findIndex((namespace) => namespace.id === id);
+    if (idx === -1) {
+      throw new Error(`Namespace "${id}" not found`);
+    }
+    const next = this.namespaces.map((namespace, index) =>
+      index === idx
+        ? this.normalizeNamespaceForPersist({ ...namespace, ...updates, id }, false)
+        : namespace,
+    );
+    return this.replaceNamespaces(next);
+  }
+
+  deleteNamespace(namespaceId: string): ConfigReloadResult {
+    const id = this.normalizeNamespaceId(namespaceId);
+    if (!this.getNamespace(id)) {
+      throw new Error(`Namespace "${id}" not found`);
+    }
+    return this.replaceNamespaces(this.namespaces.filter((namespace) => namespace.id !== id));
+  }
+
   get shadowTraffic(): Required<Omit<ShadowTrafficConfig, 'target_node' | 'target_model' | 'compare'>> & {
     target_node?: string;
     target_model?: string;
@@ -1136,6 +1172,116 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   readRawConfigYaml(): string {
     return fs.readFileSync(this.configPath, 'utf8');
+  }
+
+  private replaceNamespaces(namespaces: NamespaceConfig[]): ConfigReloadResult {
+    const rawYaml = this.buildYamlWithNamespaces(namespaces);
+    this.validateCandidateConfigYaml(rawYaml);
+    const result = this.restoreFromYaml(rawYaml, {
+      source: 'dashboard',
+      throwOnError: false,
+    });
+    if (!result.success) {
+      throw new Error(result.error?.message || result.message);
+    }
+    return result;
+  }
+
+  private buildYamlWithNamespaces(namespaces: NamespaceConfig[]): string {
+    const parsed = yaml.load(this.readRawConfigYaml());
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid configuration: YAML root must be an object');
+    }
+    const next = parsed as GatewayConfig;
+    next.namespaces = namespaces.map((namespace) => this.normalizeNamespaceForPersist(namespace, false));
+    return yaml.dump(next, {
+      indent: 2,
+      lineWidth: 120,
+      noRefs: true,
+      sortKeys: false,
+    });
+  }
+
+  private validateCandidateConfigYaml(rawYaml: string): void {
+    const parsed = yaml.load(rawYaml);
+    const validator = require('./config-validator') as typeof import('./config-validator');
+    const result = validator.validateConfigObject(parsed, {
+      configPath: this.configPath,
+      env: process.env,
+    });
+    if (!result.ok) {
+      const message = result.errors
+        .slice(0, 5)
+        .map((item) => `${item.path ? `${item.path}: ` : ''}${item.message}`)
+        .join(' ');
+      throw new Error(message || 'Configuration validation failed');
+    }
+  }
+
+  private normalizeNamespaceForPersist(namespace: NamespaceConfig, creating: boolean): NamespaceConfig {
+    const normalized: NamespaceConfig = {
+      id: this.normalizeNamespaceId(namespace.id),
+    };
+    if (creating && this.namespaces.some((item) => item.id === normalized.id)) {
+      throw new Error(`Namespace with id "${normalized.id}" already exists`);
+    }
+    const name = this.normalizeOptionalString(namespace.name);
+    if (name) normalized.name = name;
+    const allowedNodes = this.normalizeStringArray(namespace.allowed_nodes);
+    if (allowedNodes.length > 0) normalized.allowed_nodes = allowedNodes;
+    const allowedModels = this.normalizeStringArray(namespace.allowed_models);
+    if (allowedModels.length > 0) normalized.allowed_models = allowedModels;
+    const budget = this.normalizeNamespaceBudget(namespace.budget);
+    if (budget) normalized.budget = budget;
+    const rateLimit = this.normalizeNamespaceRateLimit(namespace.rate_limit);
+    if (rateLimit) normalized.rate_limit = rateLimit;
+    return normalized;
+  }
+
+  private normalizeNamespaceId(id: string | undefined): string {
+    const normalized = (id || '').trim();
+    if (!normalized) {
+      throw new Error('Namespace id is required');
+    }
+    if (normalized.length > 80) {
+      throw new Error('Namespace id must be 80 characters or fewer');
+    }
+    return normalized;
+  }
+
+  private normalizeOptionalString(value: string | undefined): string | undefined {
+    const normalized = (value || '').trim();
+    return normalized || undefined;
+  }
+
+  private normalizeStringArray(values: string[] | undefined): string[] {
+    if (!Array.isArray(values)) return [];
+    return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
+  }
+
+  private normalizeNamespaceBudget(
+    budget: NamespaceConfig['budget'] | null | undefined,
+  ): NamespaceConfig['budget'] | undefined {
+    if (!budget) return undefined;
+    const normalized: NonNullable<NamespaceConfig['budget']> = {};
+    if (budget.daily_token_limit !== undefined) {
+      normalized.daily_token_limit = Number(budget.daily_token_limit);
+    }
+    if (budget.daily_cost_limit !== undefined) {
+      normalized.daily_cost_limit = Number(budget.daily_cost_limit);
+    }
+    if (budget.alert_threshold !== undefined) {
+      normalized.alert_threshold = Number(budget.alert_threshold);
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+
+  private normalizeNamespaceRateLimit(
+    rateLimit: NamespaceConfig['rate_limit'] | null | undefined,
+  ): NamespaceConfig['rate_limit'] | undefined {
+    if (!rateLimit) return undefined;
+    const rpm = rateLimit.requests_per_minute;
+    return rpm === undefined ? undefined : { requests_per_minute: Number(rpm) };
   }
 
   private normalizeRedisPrefix(prefix: string | undefined, fallback = 'siftgate:'): string {

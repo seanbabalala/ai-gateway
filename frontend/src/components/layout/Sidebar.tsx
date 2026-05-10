@@ -10,6 +10,7 @@ import {
   BarChart3,
   FlaskConical,
   KeyRound,
+  Layers3,
   GitCompareArrows,
   Zap,
   Activity,
@@ -81,6 +82,7 @@ const navGroups = [
     labelKey: 'nav.governance',
     items: [
       { to: '/workspaces', icon: Building2, labelKey: 'nav.workspaces' },
+      { to: '/namespaces', icon: Layers3, labelKey: 'nav.namespaces' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
       { to: '/members', icon: ShieldCheck, labelKey: 'nav.members' },
       { to: '/audit', icon: FileSearch, labelKey: 'nav.audit' },

@@ -89,10 +89,13 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   return handleResponse<T>(res)
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
+export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method: 'DELETE',
-    headers: { ...authHeaders() },
+    headers: body
+      ? { 'Content-Type': 'application/json', ...authHeaders() }
+      : { ...authHeaders() },
+    body: body ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
 }

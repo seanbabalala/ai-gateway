@@ -47,7 +47,21 @@ Policy behavior:
 - Unknown Policy Namespace references are rejected during config validation.
 - Call logs store `namespace_id`, and Dashboard stats/logs/cost/budget views can be filtered by Policy Namespace.
 
-The Dashboard endpoint `GET /api/dashboard/namespaces` returns local Policy Namespace policies plus budget status. It also reports enterprise-only features as disabled so the OSS/Cloud boundary is explicit.
+The Dashboard Policy Namespaces page manages the same config-backed
+`namespaces` records. Admins can create, edit, and delete id, name,
+`allowed_nodes`, `allowed_models`, `budget`, and `rate_limit` fields. Each
+mutation writes through the config audit/rollback path, validates the full
+candidate config, hot-reloads the gateway, and rewrites only the `namespaces`
+section so provider secrets and runtime secret references outside that section
+are not materialized by namespace edits.
+
+`GET /api/dashboard/namespaces` returns local Policy Namespace policies, budget
+status, summary counts, and current API key/Team bindings. `POST
+/api/dashboard/namespaces`, `PUT /api/dashboard/namespaces/:id`, and `DELETE
+/api/dashboard/namespaces/:id` require a Dashboard Admin role. Deleting a
+namespace with bound API keys or Teams returns conflict unless the caller
+resubmits with `confirm_impact: true`; backend validation still decides whether
+the delete is safe to persist.
 
 ## Shadow Traffic
 

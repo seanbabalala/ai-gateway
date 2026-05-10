@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 2.8.0-beta.1 - 2026-05-10
+
+### Added
+
+- Added admin-only Dashboard APIs to create, update, and delete config-backed Policy Namespaces with `id`, `name`, `allowed_nodes`, `allowed_models`, `budget`, and `rate_limit` fields.
+- Added the Dashboard Policy Namespaces page with seven-locale copy, concept guidance, summary counts, create/edit/delete flows, binding impact display, and admin-only controls.
+- Added Policy Namespace mutation audit coverage through the existing config audit path, including delete impact metadata for bound API keys and Teams.
+- Added tests for namespace config persistence, full candidate config validation, runtime secret-reference preservation, admin-only mutation metadata, binding summaries, and explicit delete impact confirmation.
+
+### Changed
+
+- Policy Namespace list responses now include budget status, binding summaries for Dashboard-managed API keys, YAML-defined API keys, local Teams, and aggregate counts.
+- Updated README, OSS concepts, Dashboard, API, and namespace/shadow docs to explain that Policy Namespaces are config-backed local policy labels, not Workspaces or tenants.
+- Updated release metadata to v2.8.0-beta.1 across the root package, Dashboard package, TypeScript client, Python package, Helm chart, Kubernetes base manifest, OpenAPI document metadata, README, package locks, and release-version sync coverage.
+
+### Boundaries
+
+- v2.8.0-beta.1 does not make Policy Namespaces tenants, Workspaces, orgs, SSO identities, SCIM groups, billing scopes beyond existing local policy behavior, or secret stores. It does not change routing behavior, configured node behavior, budget semantics, MCP proxying, provider projection, auth, or privacy storage defaults.
+
 ## 2.8.0-alpha.3 - 2026-05-10
 
 ### Added
