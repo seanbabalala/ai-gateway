@@ -25,7 +25,7 @@ response, provider price source governance, and thumbs feedback aggregation. It
 does not add payment collection, recharge balances, reseller ledgers, or
 content storage.
 
-v2.7 adds a **Semantic Platform** page for Semantic Cache v2, Prompt Registry,
+v2.7 adds a **Semantic Controls** page for Semantic Cache v2, Prompt Registry,
 Context Window Optimizer evidence, Intent Classification, and Guardrails v2.
 It keeps the same metadata-only default: prompt text, response text, raw
 headers, provider keys, source code, diffs, tool payloads, media bytes, hidden
@@ -43,6 +43,13 @@ creating a Gateway API key, running the first request, and opening logs,
 route evidence, and cost metadata. The checklist is read-only and uses existing
 Dashboard APIs.
 
+v2.8.0-alpha.1 adds shared concept language across the Dashboard. Workspace,
+Policy Namespace, Semantic Controls, Traffic Experiments, Evals, Shadow
+Traffic, MCP Tool Gateway, budget scopes, fixed OSS roles, and Provider Catalog
+visibility now use concise helper panels and capability labels such as
+Read-only, Config-driven, Preview, OSS fixed roles, Runtime-supported, and
+Requires config. See [OSS Concepts](OSS_CONCEPTS.md).
+
 ## Pages
 
 | Page | Purpose |
@@ -51,21 +58,21 @@ Dashboard APIs.
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Cost Platform | Internal chargeback reports, CSV/JSON exports, cost anomalies, provider price sync guardrails, and feedback aggregation |
-| Semantic Platform | Semantic cache status/invalidation, prompt template metadata, context optimizer evidence, intent counts, Guardrails v2 findings, and semantic privacy controls |
+| Semantic Controls | Semantic cache status/invalidation, prompt template metadata, context optimizer evidence, intent counts, Guardrails v2 findings, and semantic privacy controls |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | Agents | Coding Agent Gateway profiles for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic, and compatible chatbot setup with redacted render snippets and metadata-only recent coding-agent sessions |
 | Members | Local workspace membership governance with Admin, Operator, and Viewer roles |
-| MCP Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
+| MCP Tool Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
 | Nodes | Upstream node health, configured-upstream vs catalog-onboarding views, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
 | Provider Catalog | Merged provider projection with provider status, canonical/pricing coverage, compatibility profiles, enrichment metadata, recommended model defaults, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
 | Route Explanation | Privacy-safe route decision traces showing candidate targets, filters, cost/latency/context tradeoffs, Intelligence Loop evidence, multimodal evidence, compatibility evidence, and reasoning support |
 | Sessions | Metadata-only request timelines grouped by `agent_session_id`, `session_id`, or legacy `session_key`, with coding-agent connector/repo/project filters, model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
 | Logs | Request metadata, source format, route result, local/provider cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, per-request cache-savings evidence, and export-safe call details |
-| API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
-| Shadow | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
+| API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, Policy Namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
+| Shadow Traffic | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
-| Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/namespace scope, and sanitized errors without local file-content storage |
+| Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/Policy Namespace scope, and sanitized errors without local file-content storage |
 | Config Audit | Sanitized config versions, audit events, and validation-first rollback |
 | Audit Log | Workspace-scoped platform management audit events with redacted summaries, result filters, actor/resource filters, request ids, and hash-chain evidence |
 
@@ -179,7 +186,7 @@ metadata-only and aggregate request count, cost, latency, connector, repo label,
 project label, and Route Explanation links without storing source files, diffs,
 prompts, responses, or tool payloads.
 
-Routing hints are advisory. Gateway API key policies, namespaces, local teams, budgets, rate limits, allowed endpoints, allowed models, allowed nodes, allowed modalities, circuit state, and fallback rules remain authoritative.
+Routing hints are advisory. Gateway API key policies, Policy Namespaces, local teams, budgets, rate limits, allowed endpoints, allowed models, allowed nodes, allowed modalities, circuit state, and fallback rules remain authoritative.
 
 ## Intelligence Loop
 
@@ -226,9 +233,9 @@ Dashboard displays thumbs up/down by model and node with route-weight evidence.
 It does not expose prompts, responses, source code, diffs, tool payloads, raw
 headers, provider keys, media bytes, or hidden reasoning text.
 
-## Semantic Platform
+## Semantic Controls
 
-The Semantic Platform page reads `GET /api/dashboard/semantic-platform` and
+The Semantic Controls page reads `GET /api/dashboard/semantic-platform` and
 combines disabled-by-default Semantic Cache v2, Prompt Registry, Context Window
 Optimizer, Intent Classification, and Guardrails v2 metadata.
 
@@ -252,20 +259,20 @@ media bytes, hidden reasoning text, or resolved secrets by default.
 
 ## Playground Safety
 
-The Playground calls `POST /api/dashboard/playground/run` through the Dashboard session. It can apply a selected local Gateway API key by id, namespace restriction, model, endpoint, stream toggle, and routing hint, but the browser never receives the plaintext Gateway API key or any provider key.
+The Playground calls `POST /api/dashboard/playground/run` through the Dashboard session. It can apply a selected local Gateway API key by id, Policy Namespace restriction, model, endpoint, stream toggle, and routing hint, but the browser never receives the plaintext Gateway API key or any provider key.
 
 Default samples are intentionally tiny and synthetic. Realtime is a probe-only capability check; it does not open a WebSocket session. Playground request and response previews are returned to the current Dashboard view only. Normal call logs keep the same metadata as regular gateway traffic, including route decision ids when available, but Playground does not add a raw prompt/response/media store.
 
-## MCP Gateway Safety
+## MCP Tool Gateway Safety
 
-The MCP Gateway page reads `GET /api/dashboard/mcp`. It is read-only and only displays local config registry metadata plus recent in-memory audit metadata. It does not call tools from the browser and cannot modify MCP server config.
+The MCP Tool Gateway page reads `GET /api/dashboard/mcp`. It is read-only and only displays local config registry metadata plus recent in-memory audit metadata. It does not call tools from the browser and cannot modify MCP server config.
 
-The MCP preview stores server id/name, method, tool name, API key id/name, namespace, HTTP status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
+The MCP Tool Gateway preview stores server id/name, method, tool name, API key id/name, Policy Namespace, HTTP status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
 
 ## Agent Platform Preview
 
 The Agent Platform page reads `GET /api/dashboard/agent-platform`. It combines
-workspace-scoped Agent Profiles, Gateway API key summaries, MCP server metadata,
+workspace-scoped Agent Profiles, Gateway API key summaries, MCP Tool Gateway server metadata,
 preview-only workflow metadata, Conversation Memory Gateway counters, and recent
 agent trace spans into one read-only control plane.
 
@@ -278,7 +285,7 @@ from default storage.
 
 ## Batch Jobs
 
-The Batch Jobs page reads `GET /api/dashboard/batches` and stays read-only. It shows provider batch id, selected node/model hint, endpoint, input/output/error file ids, completion window, request counts, status, API key/namespace attribution, and sanitized error text. It does not show or persist batch input JSONL, provider output JSONL, raw headers, provider keys, or file bytes; result download routes proxy content on demand through `/v1/batches/:id/output` or `/v1/batches/:id/errors`.
+The Batch Jobs page reads `GET /api/dashboard/batches` and stays read-only. It shows provider batch id, selected node/model hint, endpoint, input/output/error file ids, completion window, request counts, status, API key/Policy Namespace attribution, and sanitized error text. It does not show or persist batch input JSONL, provider output JSONL, raw headers, provider keys, or file bytes; result download routes proxy content on demand through `/v1/batches/:id/output` or `/v1/batches/:id/errors`.
 
 ## Session Traceability
 

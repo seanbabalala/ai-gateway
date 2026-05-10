@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp, RotateCcw, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { Card, CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -324,6 +325,12 @@ export function BudgetPage() {
           className="w-44"
         />
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="budgetScopes"
+        icon={Wallet}
+        badgeKinds={['runtimeSupported', 'configDriven']}
+      />
 
       {/* Ring Gauges */}
       <div className="stagger-children grid grid-cols-1 md:grid-cols-2 gap-5">

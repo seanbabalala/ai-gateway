@@ -1,10 +1,13 @@
-# Semantic Platform
+# Semantic Controls
 
-SiftGate v2.7.0 makes the semantic layer production-grade without changing the
+SiftGate v2.7.0 makes Semantic Controls production-grade without changing the
 privacy default of the open-source data plane. Semantic Cache v2, Prompt
 Registry, Context Window Optimizer evidence, Intent Classification, and
 Guardrails v2 are opt-in control-plane features around the existing gateway
 pipeline.
+
+The Dashboard now uses the label **Semantic Controls** for this surface. The API
+route remains `/api/dashboard/semantic-platform` for compatibility.
 
 By default, SiftGate does not store prompts, responses, raw provider headers,
 provider keys, media bytes, tool payloads, hidden reasoning text, or resolved
@@ -166,7 +169,7 @@ findings and does not block requests by default.
 
 ## Dashboard And Route Evidence
 
-The Dashboard **Semantic Platform** page reads:
+The Dashboard **Semantic Controls** page reads:
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |

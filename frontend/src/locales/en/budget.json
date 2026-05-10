@@ -1,6 +1,6 @@
 {
   "actions.reset": "Reset",
-  "budget.description": "Track token usage, costs, and budget limits",
+  "budget.description": "Track daily token and cost budgets across global, Policy Namespace, Team, and Gateway API Key scopes",
   "budget.title": "Budget",
   "cache.hideDetail": "Hide cache detail",
   "cache.note": "Actual cost includes provider cache discounts.",
@@ -8,7 +8,7 @@
   "cache.showDetail": "Show cache detail",
   "cache.withCache": "With cache: {{value}}",
   "cache.withoutCache": "Without cache: {{value}}",
-  "filters.allGlobal": "All (Global)",
+  "filters.allGlobal": "All (global scope)",
   "filters.legacyYaml": "{{name}} · legacy YAML",
   "gauges.dailyCost": "Daily Cost",
   "gauges.dailyCostForKey": "Daily Cost ({{key}})",
@@ -24,12 +24,12 @@
   "rules.exceeded": "Exceeded",
   "rules.globalLabel": "global",
   "rules.globalLimits": "Global Limits",
-  "rules.noPerKeyDescription": "This key has no daily token or cost limit. Global limits still apply.",
+  "rules.noPerKeyDescription": "This key has no daily token or cost limit. Team, Policy Namespace, and global limits still apply.",
   "rules.noPerKeyTitle": "No per-key budget rules",
   "rules.perKeyLabel": "per-key",
   "rules.perKeyLimits": "Per-Key Limits ({{key}})",
   "rules.showingKey": "- Showing key: {{key}}",
-  "rules.title": "Budget Rules",
+  "rules.title": "Budget Rules by Scope",
   "rules.used": "{{value}} used",
   "rules.warning": "Warning"
 }

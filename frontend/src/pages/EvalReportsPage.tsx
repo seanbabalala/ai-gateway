@@ -11,6 +11,7 @@ import {
   Timer,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { Badge } from '@/components/ui/badge'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -362,6 +363,12 @@ export function EvalReportsPage() {
         description={t('evals.description')}
         icon={FlaskConical}
         badge={<Badge variant="gold">{t('evals.badge.readOnly')}</Badge>}
+      />
+
+      <ConceptPanel
+        conceptId="evals"
+        icon={Scale}
+        badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
       />
 
       <div className="grid gap-4 md:grid-cols-4">

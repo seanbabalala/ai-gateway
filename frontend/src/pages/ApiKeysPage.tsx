@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -1202,6 +1203,19 @@ export function ApiKeysPage() {
         </div>
       </PageHeader>
 
+      <div className="grid gap-4 xl:grid-cols-2">
+        <ConceptPanel
+          conceptId="apiKeys"
+          icon={KeyRound}
+          badgeKinds={['runtimeSupported', 'configDriven']}
+        />
+        <ConceptPanel
+          conceptId="policyNamespace"
+          icon={Layers3}
+          badgeKinds={['configDriven', 'requiresConfig']}
+        />
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <CardStatic>
           <CardContent className="pt-6">
@@ -1301,7 +1315,11 @@ export function ApiKeysPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex max-w-[360px] flex-wrap gap-1.5">
-                        {team.namespace_id && <Badge variant="blue">{team.namespace_name || team.namespace_id}</Badge>}
+                        {team.namespace_id && (
+                          <Badge variant="blue">
+                            {t('permissions.policyNamespaceValue', { namespace: team.namespace_name || team.namespace_id })}
+                          </Badge>
+                        )}
                         {team.allowed_nodes.length > 0 && <Badge variant="blue">{t('permissions.upstreams', { count: team.allowed_nodes.length })}</Badge>}
                         {team.allowed_models.length > 0 && <Badge variant="purple">{t('permissions.models', { count: team.allowed_models.length })}</Badge>}
                         {team.allowed_endpoints.length > 0 && <Badge variant="zinc">{t('permissions.endpoints', { count: team.allowed_endpoints.length })}</Badge>}
@@ -1436,7 +1454,11 @@ export function ApiKeysPage() {
                         {key.allow_auto ? <Badge variant="emerald">{t('permissions.auto')}</Badge> : <Badge variant="zinc">{t('permissions.noAuto')}</Badge>}
                         {key.allow_direct ? <Badge variant="amber">{t('permissions.direct')}</Badge> : <Badge variant="zinc">{t('permissions.noDirect')}</Badge>}
                         {key.team_id && <Badge variant="purple">{key.team_name || key.team_id}</Badge>}
-                        {key.namespace_id && <Badge variant="blue">{key.namespace_name || key.namespace_id}</Badge>}
+                        {key.namespace_id && (
+                          <Badge variant="blue">
+                            {t('permissions.policyNamespaceValue', { namespace: key.namespace_name || key.namespace_id })}
+                          </Badge>
+                        )}
                         {key.allowed_nodes.length > 0 && <Badge variant="blue">{t('permissions.upstreams', { count: key.allowed_nodes.length })}</Badge>}
                         {key.allowed_models.length > 0 && <Badge variant="purple">{t('permissions.models', { count: key.allowed_models.length })}</Badge>}
                         {key.allowed_endpoints.length > 0 && <Badge variant="zinc">{t('permissions.endpoints', { count: key.allowed_endpoints.length })}</Badge>}

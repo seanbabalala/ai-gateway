@@ -1,6 +1,6 @@
 # Evaluation Framework
 
-SiftGate v1.3 adds a local Evaluation Framework preview for comparing a primary route against a candidate route with the same OSS Data Plane that serves normal traffic. It is designed for production operators who want experiment reports without sending prompts, responses, provider keys, or raw headers to a hosted service.
+SiftGate v1.3 adds a local Evaluation Framework preview for comparing a primary route against a candidate route with the same OSS Data Plane that serves normal traffic. In the Dashboard this appears as **Eval Reports** to distinguish it from **Traffic Experiments**, which are read-only analytics for configured routing splits. Evals are designed for production operators who want comparison reports without sending prompts, responses, provider keys, or raw headers to a hosted service.
 
 ## What It Stores
 

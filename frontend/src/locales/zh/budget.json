@@ -1,6 +1,6 @@
 {
   "actions.reset": "重置",
-  "budget.description": "跟踪 token 用量、成本和预算限制",
+  "budget.description": "按全局、Policy Namespace、Team 和 Gateway API Key 作用域跟踪每日 token 与成本预算",
   "budget.title": "预算",
   "cache.hideDetail": "收起缓存明细",
   "cache.note": "实际成本已经包含 provider 缓存折扣。",
@@ -8,7 +8,7 @@
   "cache.showDetail": "查看缓存明细",
   "cache.withCache": "有缓存：{{value}}",
   "cache.withoutCache": "无缓存：{{value}}",
-  "filters.allGlobal": "全部（全局）",
+  "filters.allGlobal": "全部（全局作用域）",
   "filters.legacyYaml": "{{name}} · 旧版 YAML",
   "gauges.dailyCost": "每日成本",
   "gauges.dailyCostForKey": "每日成本（{{key}}）",
@@ -24,12 +24,12 @@
   "rules.exceeded": "已超限",
   "rules.globalLabel": "全局",
   "rules.globalLimits": "全局限制",
-  "rules.noPerKeyDescription": "此 key 没有每日 token 或成本限制。全局限制仍会生效。",
+  "rules.noPerKeyDescription": "此 key 未设置每日 token 或成本限制。Team、Policy Namespace 和全局限制仍会生效。",
   "rules.noPerKeyTitle": "无按 key 预算规则",
   "rules.perKeyLabel": "按 key",
   "rules.perKeyLimits": "按 Key 限制（{{key}}）",
   "rules.showingKey": "- 当前 key：{{key}}",
-  "rules.title": "预算规则",
+  "rules.title": "按作用域划分的预算规则",
   "rules.used": "已用 {{value}}",
   "rules.warning": "警告"
 }

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.0-alpha.1 - 2026-05-10
+
+### Added
+
+- Added shared Dashboard concept helper panels for Workspace, Policy Namespace, Gateway API Keys, Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, MCP Tool Gateway, budget scopes, fixed OSS member roles, and Provider Catalog visibility.
+- Added shared Dashboard capability/status language: Read-only, Config-driven, Preview, OSS fixed roles, Runtime-supported, and Requires config, with seven-locale copy for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
+- Added `docs/OSS_CONCEPTS.md` to explain Workspace vs Policy Namespace vs Team vs Gateway API Key vs Node vs Provider.
+
+### Changed
+
+- Renamed user-facing Dashboard copy from Semantic Platform to Semantic Controls, Experiments to Traffic Experiments, MCP Gateway to MCP Tool Gateway, and Namespace to Policy Namespace where it describes policy scope.
+- Clarified empty states and helper copy for config-driven surfaces so OSS users can tell when data requires existing routing, namespace, MCP, eval, shadow, provider, or budget configuration.
+- Updated Dashboard, namespace/shadow, MCP, semantic, eval, provider catalog, README, and release metadata for v2.8.0-alpha.1.
+
+### Boundaries
+
+- v2.8.0-alpha.1 is a product-clarity release only. It does not change runtime behavior, schemas, routing, budgets, MCP proxying, provider projection, auth, Workspace CRUD, Policy Namespace CRUD, or privacy defaults.
+
 ## 2.7.1 - 2026-05-10
 
 ### Changed

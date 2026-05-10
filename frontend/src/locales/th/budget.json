@@ -1,6 +1,6 @@
 {
   "actions.reset": "รีเซ็ต",
-  "budget.description": "ติดตามการใช้ tokens, costs และ budget limits",
+  "budget.description": "Track daily token and cost budgets across global, Policy Namespace, Team, and Gateway API Key scopes",
   "budget.title": "Budget",
   "cache.hideDetail": "ซ่อนรายละเอียดแคช",
   "cache.note": "ต้นทุนจริงรวมส่วนลดจาก provider cache แล้ว",
@@ -8,7 +8,7 @@
   "cache.showDetail": "ดูรายละเอียดแคช",
   "cache.withCache": "มีแคช: {{value}}",
   "cache.withoutCache": "ไม่มีแคช: {{value}}",
-  "filters.allGlobal": "ทั้งหมด (Global)",
+  "filters.allGlobal": "All (global scope)",
   "filters.legacyYaml": "{{name}} · legacy YAML",
   "gauges.dailyCost": "Daily Cost",
   "gauges.dailyCostForKey": "Daily Cost ({{key}})",
@@ -24,12 +24,12 @@
   "rules.exceeded": "เกินแล้ว",
   "rules.globalLabel": "global",
   "rules.globalLimits": "Global Limits",
-  "rules.noPerKeyDescription": "key นี้ไม่มี daily token หรือ cost limit ครับ Global limits ยังมีผลอยู่",
+  "rules.noPerKeyDescription": "This key has no daily token or cost limit. Team, Policy Namespace, and global limits still apply.",
   "rules.noPerKeyTitle": "ไม่มี per-key budget rules",
   "rules.perKeyLabel": "per-key",
   "rules.perKeyLimits": "Per-Key Limits ({{key}})",
   "rules.showingKey": "- แสดง key: {{key}}",
-  "rules.title": "Budget Rules",
+  "rules.title": "Budget Rules by Scope",
   "rules.used": "ใช้แล้ว {{value}}",
   "rules.warning": "คำเตือน"
 }

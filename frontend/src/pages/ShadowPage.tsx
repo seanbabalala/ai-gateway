@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -132,6 +133,12 @@ export function ShadowPage() {
       >
         <Badge variant="zinc">{t('shadow.readOnly')}</Badge>
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="shadowTraffic"
+        icon={GitCompareArrows}
+        badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <CardStatic>
@@ -302,7 +309,9 @@ export function ShadowPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-[11px] text-[var(--foreground-muted)]">
-                      {item.namespace_id || t('shadow.allNamespacesShort')}
+                      {item.namespace_id
+                        ? t('shadow.policyNamespaceValue', { namespace: item.namespace_id })
+                        : t('shadow.allNamespacesShort')}
                     </TableCell>
                     <TableCell className="text-[12px] text-[var(--foreground-muted)]">
                       {t(`shadow.kind.${item.kind}`, { defaultValue: item.kind })}

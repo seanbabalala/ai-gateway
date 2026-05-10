@@ -1,9 +1,12 @@
-# MCP Gateway Preview
+# MCP Tool Gateway Preview
 
-MCP Gateway is an experimental v1.2 preview for the MIT open-source Data Plane.
+MCP Tool Gateway is an experimental v1.2 preview for the MIT open-source Data Plane.
 It proxies locally registered MCP servers through SiftGate so agent/tool traffic
-can reuse Gateway API keys, endpoint permissions, namespace boundaries, rate
-limits, and Dashboard metadata visibility.
+can reuse Gateway API keys, endpoint permissions, Policy Namespace boundaries,
+rate limits, and Dashboard metadata visibility.
+
+MCP Tool Gateway is a tool-call proxy and governance surface. It is not model
+routing and it does not choose upstream LLM providers.
 
 It is intentionally local-only. It does not include an enterprise MCP
 marketplace, remote workspace registry, SSO/RBAC policy, or SiftGate Cloud
@@ -69,7 +72,7 @@ Gateway API keys can restrict MCP access with `allowed_endpoints`:
 - `mcp:<serverId>:<toolName>`: allow one tool call on one MCP server.
 
 If `mcp.servers[].allowed_namespaces` is set, the Gateway API key must be bound
-to one of those namespaces.
+to one of those Policy Namespaces.
 
 ## Privacy
 
@@ -79,7 +82,7 @@ The recent MCP audit buffer stores metadata only:
 - JSON-RPC method
 - tool name when method is `tools/call`
 - API key id/name
-- namespace id
+- Policy Namespace id
 - status code
 - latency
 - request byte size
@@ -90,7 +93,7 @@ secret values, media bytes, or marketplace metadata.
 
 ## Dashboard
 
-The Dashboard MCP Gateway page reads `GET /api/dashboard/mcp` and shows:
+The Dashboard MCP Tool Gateway page reads `GET /api/dashboard/mcp` and shows:
 
 - configured MCP servers
 - static tool metadata
@@ -105,7 +108,7 @@ routing changes.
 v2.5 also surfaces MCP servers through the Dashboard Agent Platform preview at
 `GET /api/dashboard/agent-platform`. That view links MCP server/tool metadata to
 Agent Profiles through `mcp_server_ids` and shows whether the bound Gateway API
-key and MCP namespace policy permit each tool.
+key and MCP Policy Namespace policy permit each tool.
 
 The Agent Platform page is still read-only. It does not call tools from the
 browser, and it does not store tool arguments or tool results.

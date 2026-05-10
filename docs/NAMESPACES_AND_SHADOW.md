@@ -1,15 +1,19 @@
-# Local Namespaces And Shadow Traffic
+# Policy Namespaces And Shadow Traffic
 
 SiftGate v0.5 adds two open-source Data Plane features that work without SiftGate Cloud:
 
-- Local namespaces for API key policy boundaries.
+- Policy Namespaces for API key policy boundaries.
 - Shadow traffic for safely mirroring sampled requests to a test node.
 
 These are intentionally local OSS features. They do not implement enterprise workspaces, SSO, SCIM, RBAC, or organization billing.
 
-## Local Namespaces
+## Policy Namespaces
 
-A namespace is a local policy label that can be attached to a Gateway API key. It can restrict which nodes/models the key may use and can define its own budget and rate limit.
+A Policy Namespace is a local policy label that can be attached to a Gateway API key or local Team. It can restrict which nodes/models the key may use and can define its own budget and rate limit.
+
+It is not a Workspace, tenant, Team, folder, or identity provider. Workspace is
+the Dashboard/RBAC/data scope; Policy Namespace is a routing-policy label inside
+that scope. See [OSS Concepts](OSS_CONCEPTS.md).
 
 ```yaml
 namespaces:
@@ -37,17 +41,17 @@ auth:
 
 Policy behavior:
 
-- Namespace `allowed_nodes` and `allowed_models` are intersected with API-key restrictions.
-- Namespace budgets are checked and recorded alongside global and API-key budgets.
-- Namespace rate limits apply when a key does not have a stricter key-specific rate limit.
-- Unknown namespace references are rejected during config validation.
-- Call logs store `namespace_id`, and Dashboard stats/logs/cost/budget views can be filtered by namespace.
+- Policy Namespace `allowed_nodes` and `allowed_models` are intersected with API-key restrictions.
+- Policy Namespace budgets are checked and recorded alongside global, Team, and API-key budgets.
+- Policy Namespace rate limits apply when a key does not have a stricter key-specific rate limit.
+- Unknown Policy Namespace references are rejected during config validation.
+- Call logs store `namespace_id`, and Dashboard stats/logs/cost/budget views can be filtered by Policy Namespace.
 
-The Dashboard endpoint `GET /api/dashboard/namespaces` returns local namespace policies plus budget status. It also reports enterprise-only features as disabled so the OSS/Cloud boundary is explicit.
+The Dashboard endpoint `GET /api/dashboard/namespaces` returns local Policy Namespace policies plus budget status. It also reports enterprise-only features as disabled so the OSS/Cloud boundary is explicit.
 
 ## Shadow Traffic
 
-Shadow traffic mirrors a sampled copy of successful primary requests to a configured test node/model. It is disabled by default and runs asynchronously, so it does not block or modify the primary response.
+Shadow traffic mirrors a sampled copy of successful primary requests to a configured test node/model. It is disabled by default and runs asynchronously, so it does not block, modify, or promote the primary response path.
 
 ```yaml
 shadow:
@@ -76,7 +80,7 @@ Safety defaults:
 
 When comparison storage is enabled, the config validator prints a warning because local prompt/response samples may still contain sensitive data after redaction.
 
-The Dashboard endpoint `GET /api/dashboard/shadow?namespace=<id>&limit=50` returns the sanitized shadow status and recent results. The Dashboard shadow page is read-only; it cannot apply routing changes or promote a shadow target.
+The Dashboard endpoint `GET /api/dashboard/shadow?namespace=<id>&limit=50` returns the sanitized shadow status and recent results. The Dashboard Shadow Traffic page is read-only; it cannot apply routing changes or promote a shadow target.
 
 ### Comparison report
 

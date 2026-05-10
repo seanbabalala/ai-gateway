@@ -12,6 +12,7 @@ import {
   Wand2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -419,6 +420,12 @@ export function SemanticPlatformPage() {
           {t('semanticPlatform.actions.refresh')}
         </Button>
       </PageHeader>
+
+      <ConceptPanel
+        conceptId="semanticControls"
+        icon={BrainCircuit}
+        badgeKinds={['configDriven', 'runtimeSupported', 'requiresConfig']}
+      />
 
       <PrivacyContract data={data} />
 

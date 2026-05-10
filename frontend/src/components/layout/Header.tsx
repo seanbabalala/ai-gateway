@@ -92,7 +92,7 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
               title={t('workspace.activeWorkspace')}
             >
               <Building2 className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">{t('workspace.workspace')}</span>
+              <span className="hidden lg:inline">{t('workspace.activeScope')}</span>
               <select
                 value={workspaceState.active_workspace.id}
                 aria-label={t('workspace.switchWorkspace')}
