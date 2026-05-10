@@ -27,19 +27,19 @@ function createTempConfig(config: Record<string, unknown>): string {
 
 function makeMinimalConfig(overrides: Record<string, unknown> = {}) {
   return {
-    server: { port: 3000 },
+    server: { port: 3000, host: '0.0.0.0' },
     database: { type: 'sqlite', path: ':memory:' },
     auth: { api_keys: [{ name: 'test', key: 'gw_sk_test' }] },
     nodes: [
       {
         id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
         base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
-        api_key: 'sk-test', models: ['gpt-4o', 'gpt-4o-mini'],
+        api_key: 'sk-test', models: ['gpt-4o', 'gpt-4o-mini'], timeout_ms: 60000,
       },
       {
         id: 'claude', name: 'Claude', protocol: 'messages',
         base_url: 'https://api.anthropic.com', endpoint: '/v1/messages',
-        api_key: 'sk-ant', models: ['claude-3-opus'],
+        api_key: 'sk-ant', models: ['claude-3-opus'], timeout_ms: 60000,
       },
     ],
     routing: {
@@ -67,6 +67,7 @@ function makeMinimalNodes(openAiApiKey: string) {
       endpoint: '/v1/chat/completions',
       api_key: openAiApiKey,
       models: ['gpt-4o', 'gpt-4o-mini'],
+      timeout_ms: 60000,
     },
     {
       id: 'claude',
@@ -76,6 +77,7 @@ function makeMinimalNodes(openAiApiKey: string) {
       endpoint: '/v1/messages',
       api_key: 'sk-ant',
       models: ['claude-3-opus'],
+      timeout_ms: 60000,
     },
   ];
 }
@@ -394,6 +396,109 @@ describe('ConfigService — deleteNode', () => {
     if (domainPrefs) {
       expect(domainPrefs.code).not.toContain('claude');
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Policy Namespace CRUD
+// ═══════════════════════════════════════════════════════════
+
+describe('ConfigService — policy namespace CRUD', () => {
+  it('creates, updates, and deletes config-backed namespaces with reload summaries', () => {
+    const { svc, configPath } = loadConfigService();
+
+    const created = svc.createNamespace({
+      id: ' team-alpha ',
+      name: 'Team Alpha',
+      allowed_nodes: ['openai', 'openai', ''],
+      allowed_models: ['gpt-4o-mini'],
+      budget: { daily_token_limit: 10000, daily_cost_limit: 3, alert_threshold: 0.75 },
+      rate_limit: { requests_per_minute: 120 },
+    });
+
+    expect(created.success).toBe(true);
+    expect(created.source).toBe('dashboard');
+    expect(created.changed.namespaces_changed).toBe(true);
+    expect(svc.getNamespace('team-alpha')).toMatchObject({
+      id: 'team-alpha',
+      name: 'Team Alpha',
+      allowed_nodes: ['openai'],
+      allowed_models: ['gpt-4o-mini'],
+      budget: { daily_token_limit: 10000, daily_cost_limit: 3, alert_threshold: 0.75 },
+      rate_limit: { requests_per_minute: 120 },
+    });
+
+    let persisted = yaml.load(fs.readFileSync(configPath, 'utf8')) as any;
+    expect(persisted.namespaces).toEqual([
+      expect.objectContaining({
+        id: 'team-alpha',
+        allowed_nodes: ['openai'],
+      }),
+    ]);
+
+    const updated = svc.updateNamespace('team-alpha', {
+      name: '',
+      allowed_nodes: [],
+      allowed_models: ['gpt-4o'],
+      budget: undefined,
+      rate_limit: { requests_per_minute: 30 },
+    });
+    expect(updated.changed.namespaces_changed).toBe(true);
+    expect(svc.getNamespace('team-alpha')).toMatchObject({
+      id: 'team-alpha',
+      allowed_models: ['gpt-4o'],
+      rate_limit: { requests_per_minute: 30 },
+    });
+    expect(svc.getNamespace('team-alpha')?.name).toBeUndefined();
+    expect(svc.getNamespace('team-alpha')?.allowed_nodes).toBeUndefined();
+    expect(svc.getNamespace('team-alpha')?.budget).toBeUndefined();
+
+    const deleted = svc.deleteNamespace('team-alpha');
+    expect(deleted.changed.namespaces_changed).toBe(true);
+    expect(svc.getNamespace('team-alpha')).toBeUndefined();
+    persisted = yaml.load(fs.readFileSync(configPath, 'utf8')) as any;
+    expect(persisted.namespaces).toEqual([]);
+  });
+
+  it('validates full candidate config before persisting namespace references', () => {
+    const { svc, configPath } = loadConfigService();
+    const before = fs.readFileSync(configPath, 'utf8');
+
+    expect(() =>
+      svc.createNamespace({
+        id: 'invalid-namespace',
+        allowed_nodes: ['missing-node'],
+      }),
+    ).toThrow('namespaces[0].allowed_nodes[0]');
+
+    expect(fs.readFileSync(configPath, 'utf8')).toBe(before);
+    expect(svc.getNamespace('invalid-namespace')).toBeUndefined();
+  });
+
+  it('preserves runtime secret references outside namespaces when writing YAML', () => {
+    const { svc, configPath } = loadConfigService({
+      nodes: makeMinimalNodes('${env:RUNTIME_ONLY_OPENAI_KEY}'),
+    });
+
+    svc.createNamespace({
+      id: 'secret-safe',
+      allowed_nodes: ['openai'],
+    });
+
+    const raw = fs.readFileSync(configPath, 'utf8');
+    expect(raw).toContain('${env:RUNTIME_ONLY_OPENAI_KEY}');
+    expect(raw).not.toContain('undefined');
+  });
+
+  it('rejects duplicate, missing, and unknown policy namespaces', () => {
+    const { svc } = loadConfigService({
+      namespaces: [{ id: 'team-alpha', name: 'Team Alpha' }],
+    });
+
+    expect(() => svc.createNamespace({ id: 'team-alpha' })).toThrow('already exists');
+    expect(() => svc.createNamespace({ id: '   ' })).toThrow('Namespace id is required');
+    expect(() => svc.updateNamespace('missing', { name: 'Missing' })).toThrow('not found');
+    expect(() => svc.deleteNamespace('missing')).toThrow('not found');
   });
 });
 

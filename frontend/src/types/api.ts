@@ -3700,10 +3700,18 @@ export interface NamespaceInfo {
     alert_threshold?: number;
   } | null;
   budget_status: BudgetRule[];
+  bindings: NamespaceBindings;
 }
 
 export interface NamespacesResponse {
   namespaces: NamespaceInfo[];
+  counts: {
+    total: number;
+    with_budget: number;
+    with_rate_limit: number;
+    bound_api_keys: number;
+    bound_teams: number;
+  };
   mode: "local_only";
   enterprise_features: {
     workspace: boolean;
@@ -3711,6 +3719,53 @@ export interface NamespacesResponse {
     scim: boolean;
     org_billing: boolean;
   };
+}
+
+export interface NamespaceBindings {
+  api_keys: Array<{
+    id: string;
+    name: string;
+    status: string;
+    key_prefix: string;
+    team_id: string | null;
+    source: "dashboard" | "config";
+  }>;
+  teams: Array<{
+    id: string;
+    name: string;
+    status: string;
+  }>;
+  counts: {
+    api_keys: number;
+    teams: number;
+    total: number;
+  };
+}
+
+export interface NamespaceBudgetRequest {
+  daily_token_limit?: number;
+  daily_cost_limit?: number;
+  alert_threshold?: number;
+}
+
+export interface NamespaceRateLimitRequest {
+  requests_per_minute?: number;
+}
+
+export interface CreateNamespaceRequest {
+  id: string;
+  name?: string;
+  allowed_nodes: string[];
+  allowed_models: string[];
+  budget?: NamespaceBudgetRequest | null;
+  rate_limit?: NamespaceRateLimitRequest | null;
+}
+
+export type UpdateNamespaceRequest = Partial<Omit<CreateNamespaceRequest, "id">>;
+
+export interface NamespaceMutationResponse extends ActionResponse {
+  item?: NamespaceInfo | null;
+  impact?: NamespaceBindings;
 }
 
 export interface ShadowTrafficStatus {

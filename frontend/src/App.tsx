@@ -29,6 +29,7 @@ const CostPlatformPage = lazy(() => import('@/pages/CostPlatformPage').then((m) 
 const SemanticPlatformPage = lazy(() => import('@/pages/SemanticPlatformPage').then((m) => ({ default: m.SemanticPlatformPage })))
 const MembersPage = lazy(() => import('@/pages/MembersPage').then((m) => ({ default: m.MembersPage })))
 const WorkspacesPage = lazy(() => import('@/pages/WorkspacesPage').then((m) => ({ default: m.WorkspacesPage })))
+const NamespacesPage = lazy(() => import('@/pages/NamespacesPage').then((m) => ({ default: m.NamespacesPage })))
 
 function RouteFallback() {
   return (
@@ -79,6 +80,7 @@ export function App() {
         <Route path="/cost-platform" element={page(<CostPlatformPage />)} />
         <Route path="/semantic-platform" element={page(<SemanticPlatformPage />)} />
         <Route path="/workspaces" element={page(<WorkspacesPage />)} />
+        <Route path="/namespaces" element={page(<NamespacesPage />)} />
         <Route path="/members" element={page(<MembersPage />)} />
         <Route path="/audit" element={page(<ManagementAuditPage />)} />
         <Route path="/config-audit" element={page(<ConfigAuditPage />)} />

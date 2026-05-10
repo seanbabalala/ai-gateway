@@ -12,6 +12,7 @@ import * as os from "os";
 import * as path from "path";
 import { DashboardController } from "../../src/dashboard/dashboard.controller";
 import { DashboardGuard } from "../../src/auth/dashboard.guard";
+import { DASHBOARD_REQUIRED_ROLE_KEY } from "../../src/auth/dashboard-rbac";
 import { CircuitState } from "../../src/routing/circuit-breaker.service";
 import { mockConfigService } from "../helpers";
 import { TelemetryService } from "../../src/telemetry/telemetry.service";
@@ -688,6 +689,10 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     routingRecommendations,
     catalog,
   };
+}
+
+function controllerMethod(name: keyof DashboardController): Function {
+  return DashboardController.prototype[name] as unknown as Function;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3821,12 +3826,72 @@ describe("DashboardController — api_key filtering on logs", () => {
 });
 
 describe("DashboardController — namespaces and shadow traffic", () => {
-  it("should return local namespaces with budget status", async () => {
-    const { controller, budgetService } = makeDashboard({
+  it("keeps Policy Namespace mutations admin-only", () => {
+    expect(
+      Reflect.getMetadata(
+        DASHBOARD_REQUIRED_ROLE_KEY,
+        controllerMethod("createNamespace"),
+      ),
+    ).toBe("admin");
+    expect(
+      Reflect.getMetadata(
+        DASHBOARD_REQUIRED_ROLE_KEY,
+        controllerMethod("updateNamespace"),
+      ),
+    ).toBe("admin");
+    expect(
+      Reflect.getMetadata(
+        DASHBOARD_REQUIRED_ROLE_KEY,
+        controllerMethod("deleteNamespace"),
+      ),
+    ).toBe("admin");
+  });
+
+  it("should return local namespaces with budget status and binding impact", async () => {
+    const { controller, budgetService, gatewayApiKeys, teams } = makeDashboard({
       config: {
         namespaces: [
           { id: "team-alpha", name: "Team Alpha", allowed_nodes: ["openai"] },
         ],
+        auth: {
+          api_keys: [
+            {
+              name: "config-key",
+              key: "gw_sk_dev_config",
+              namespace_id: "team-alpha",
+            },
+          ],
+        },
+      },
+      gatewayApiKeys: {
+        list: jest.fn().mockResolvedValue([
+          {
+            id: "key-1",
+            name: "Dashboard Key",
+            status: "active",
+            key_prefix: "gw_sk_live_1234",
+            namespace_id: "team-alpha",
+            team_id: null,
+          },
+          {
+            id: "key-2",
+            name: "Team Key",
+            status: "active",
+            key_prefix: "gw_sk_live_5678",
+            namespace_id: null,
+            team_id: "team-1",
+          },
+        ]),
+      },
+      teams: {
+        list: jest.fn().mockResolvedValue([
+          {
+            id: "team-1",
+            name: "Platform",
+            status: "active",
+            namespace_id: "team-alpha",
+          },
+        ]),
       },
       budgetService: {
         getStatus: jest.fn().mockResolvedValue([]),
@@ -3840,13 +3905,212 @@ describe("DashboardController — namespaces and shadow traffic", () => {
       expect.objectContaining({
         id: "team-alpha",
         allowed_nodes: ["openai"],
+        bindings: expect.objectContaining({
+          counts: { api_keys: 3, teams: 1, total: 4 },
+          api_keys: expect.arrayContaining([
+            expect.objectContaining({
+              id: "key-1",
+              source: "dashboard",
+            }),
+            expect.objectContaining({
+              id: "key-2",
+              source: "dashboard",
+            }),
+            expect.objectContaining({
+              id: "config-key",
+              source: "config",
+            }),
+          ]),
+          teams: [
+            {
+              id: "team-1",
+              name: "Platform",
+              status: "active",
+            },
+          ],
+        }),
       }),
     );
+    expect(result.counts).toEqual({
+      total: 1,
+      with_budget: 0,
+      with_rate_limit: 0,
+      bound_api_keys: 3,
+      bound_teams: 1,
+    });
     expect(budgetService.getStatus).toHaveBeenCalledWith(
       null,
       null,
       "team-alpha",
     );
+    expect(gatewayApiKeys.list).toHaveBeenCalled();
+    expect(teams.list).toHaveBeenCalled();
+  });
+
+  it("should create and update config-backed policy namespaces through audit tracking", async () => {
+    const reload = {
+      success: true,
+      message: "Configuration restored",
+      source: "dashboard",
+      current: { version: 2 },
+      previous: { version: 1 },
+      changed: { namespaces_changed: true },
+      rolled_back: false,
+    };
+    const config: any = {
+      namespaces: [] as any[],
+      createNamespace: jest.fn().mockImplementation((namespace: any) => {
+        config.namespaces = [namespace];
+        return reload;
+      }),
+      updateNamespace: jest.fn().mockImplementation((id: string, updates: any) => {
+        config.namespaces = config.namespaces.map((namespace: any) =>
+          namespace.id === id ? { ...namespace, ...updates } : namespace,
+        );
+        return reload;
+      }),
+      getNamespace: jest.fn((id?: string | null) =>
+        id ? config.namespaces.find((namespace: any) => namespace.id === id) : undefined,
+      ),
+    };
+    const { controller, configAudit, activeHealth } = makeDashboard({ config });
+
+    await expect(
+      controller.createNamespace({
+        id: "team-alpha",
+        name: "Team Alpha",
+        allowed_nodes: ["openai", "openai", ""],
+        allowed_models: ["gpt-4o"],
+        budget: { daily_token_limit: 1000 },
+        rate_limit: { requests_per_minute: 60 },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        message: 'Policy Namespace "team-alpha" created',
+        reload,
+      }),
+    );
+    expect(configAudit.trackChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "config.namespace.create",
+        target: "namespace:team-alpha",
+      }),
+      expect.any(Function),
+    );
+    expect(config.createNamespace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "team-alpha",
+        allowed_nodes: ["openai"],
+        budget: { daily_token_limit: 1000 },
+      }),
+    );
+
+    await expect(
+      controller.updateNamespace("team-alpha", {
+        name: "Team Alpha Updated",
+        allowed_nodes: [],
+        allowed_models: ["gpt-4o-mini"],
+        budget: null,
+        rate_limit: { requests_per_minute: 30 },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        message: 'Policy Namespace "team-alpha" updated',
+        reload,
+      }),
+    );
+    expect(configAudit.trackChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: "config.namespace.update",
+        target: "namespace:team-alpha",
+      }),
+      expect.any(Function),
+    );
+    expect(config.updateNamespace).toHaveBeenCalledWith("team-alpha", {
+      name: "Team Alpha Updated",
+      allowed_nodes: [],
+      allowed_models: ["gpt-4o-mini"],
+      budget: undefined,
+      rate_limit: { requests_per_minute: 30 },
+    });
+    expect(activeHealth.refreshSchedules).toHaveBeenCalledTimes(2);
+  });
+
+  it("should require explicit impact confirmation before deleting a bound namespace", async () => {
+    const config = {
+      namespaces: [{ id: "team-alpha", name: "Team Alpha" }],
+      auth: { api_keys: [] },
+      getNamespace: jest.fn((id?: string | null) =>
+        id === "team-alpha" ? { id: "team-alpha", name: "Team Alpha" } : undefined,
+      ),
+      deleteNamespace: jest.fn().mockReturnValue({
+        success: true,
+        message: "Configuration restored",
+        source: "dashboard",
+        current: { version: 2 },
+        previous: { version: 1 },
+        changed: { namespaces_changed: true },
+        rolled_back: false,
+      }),
+    };
+    const { controller, configAudit } = makeDashboard({
+      config,
+      gatewayApiKeys: {
+        list: jest.fn().mockResolvedValue([
+          {
+            id: "key-1",
+            name: "Production",
+            status: "active",
+            key_prefix: "gw_sk_live_1234",
+            namespace_id: "team-alpha",
+            team_id: null,
+          },
+        ]),
+      },
+    });
+
+    await expect(controller.deleteNamespace("team-alpha", {})).rejects.toThrow(HttpException);
+    expect(config.deleteNamespace).not.toHaveBeenCalled();
+    expect(configAudit.trackChange).not.toHaveBeenCalled();
+
+    await expect(
+      controller.deleteNamespace("team-alpha", { confirm_impact: true }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        message: 'Policy Namespace "team-alpha" deleted',
+        impact: expect.objectContaining({
+          counts: { api_keys: 1, teams: 0, total: 1 },
+        }),
+      }),
+    );
+    expect(configAudit.trackChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "config.namespace.delete",
+        target: "namespace:team-alpha",
+        metadata: expect.objectContaining({
+          confirm_impact: true,
+          impact: expect.objectContaining({
+            counts: { api_keys: 1, teams: 0, total: 1 },
+          }),
+        }),
+      }),
+      expect.any(Function),
+    );
+    expect(config.deleteNamespace).toHaveBeenCalledWith("team-alpha");
+  });
+
+  it("should return 404 for missing namespace mutations", async () => {
+    const { controller } = makeDashboard({
+      config: {
+        getNamespace: jest.fn().mockReturnValue(undefined),
+      },
+    });
+
+    await expect(controller.updateNamespace("missing", {})).rejects.toThrow(HttpException);
+    await expect(controller.deleteNamespace("missing", {})).rejects.toThrow(HttpException);
   });
 
   it("should return read-only shadow traffic status and recent rows", async () => {

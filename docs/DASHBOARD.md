@@ -57,6 +57,13 @@ Disabling a Workspace keeps its metadata and audit trail, does not delete or
 migrate default Workspace data, and prevents that Workspace from being selected
 until it is reactivated.
 
+v2.8.0-beta.1 adds a **Policy Namespaces** page for admin-only, config-backed
+namespace management. It keeps Policy Namespaces distinct from Workspaces:
+namespaces are local routing policy labels with allowed nodes/models, budgets,
+and rate limits. The page shows bound API keys and Teams, requires explicit
+impact confirmation before deleting bound namespaces, and writes through the
+existing config validation, audit, rollback, and hot-reload path.
+
 ## Pages
 
 | Page | Purpose |
@@ -78,6 +85,7 @@ until it is reactivated.
 | Logs | Request metadata, source format, route result, local/provider cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, per-request cache-savings evidence, and export-safe call details |
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, Policy Namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
 | Workspaces | Local Workspace create, switch, rename, disable, and reactivate for workspace Admins, preserving default workspace fallback and legacy metadata behavior |
+| Policy Namespaces | Local config-backed Policy Namespace create/edit/delete for Admins, with binding impact summaries, config validation, audit, rollback, and hot reload |
 | Shadow Traffic | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
 | Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/Policy Namespace scope, and sanitized errors without local file-content storage |
@@ -153,6 +161,13 @@ Role behavior:
 - Admin can manage members, Gateway API keys, local teams, budgets, workspace settings, destructive operations, node deletion, and config rollback.
 
 The Workspaces page reads `GET /api/dashboard/workspaces`, creates through `POST /api/dashboard/workspaces`, renames through `PUT /api/dashboard/workspaces/:id`, disables through `POST /api/dashboard/workspaces/:id/disable`, reactivates through `POST /api/dashboard/workspaces/:id/reactivate`, and switches through `POST /api/dashboard/workspaces/switch`. Workspace mutations require Admin in the target Workspace; switch requires an active membership in the target Workspace.
+
+The Policy Namespaces page reads `GET /api/dashboard/namespaces`, creates
+through `POST /api/dashboard/namespaces`, updates through `PUT
+/api/dashboard/namespaces/:id`, and deletes through `DELETE
+/api/dashboard/namespaces/:id`. Mutations require Admin. Delete requests that
+would affect bound API keys or Teams require explicit impact confirmation, and
+all namespace writes pass full config validation before the gateway reloads.
 
 The Members page reads `GET /api/dashboard/members` and updates roles through `PUT /api/dashboard/members/:id`. SiftGate prevents disabling or demoting the last active workspace Admin to avoid local lockout. RBAC responses expose only membership metadata and never include provider secrets, raw headers, prompts, responses, media bytes, tool payloads, hidden reasoning text, or resolved secrets.
 
