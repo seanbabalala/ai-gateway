@@ -84,6 +84,12 @@ for (const expected of [
   "compatibility_profiles",
   "ProviderCompatibilityProfile",
   "catalogPage.metrics.compatibilityProfiles",
+  "provider_visibility",
+  "CatalogProviderVisibilitySummary",
+  "catalogPage.metrics.activeProviders",
+  "catalogPage.metrics.transportOnly",
+  "catalogPage.detail.runtimeSupport",
+  "catalogPage.detail.hiddenReason",
 ]) {
   if (
     !page.includes(expected) &&
@@ -106,6 +112,7 @@ for (const expected of [
   "ProviderFamilyGroup",
   "ProviderDetailPanel",
   "model_buckets",
+  "hasCanonicalCoverage",
 ]) {
   if (!page.includes(expected)) {
     throw new Error(`Provider Catalog UX 2.0 marker missing: ${expected}`);

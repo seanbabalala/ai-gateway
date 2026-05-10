@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.0-alpha.2 - 2026-05-10
+
+### Added
+
+- Added Provider Catalog visibility summary counts for active catalog providers, transport-only presets, custom presets, deprecated/legacy rows, default-visible rows, hidden-by-default rows, and total presets.
+- Added Dashboard detail copy for runtime support, catalog confidence, pricing confidence, and hidden-by-default reasons so transport-only providers are understood as connectable node presets rather than unsupported providers.
+- Added catalog visibility coverage for current sync-cache behavior so active canonical projections stay counted separately from transport-only presets.
+
+### Changed
+
+- Replaced user-facing "Show legacy" Provider Catalog/Add Node wording with transport-only/hidden-presets wording while keeping the compatible `show_legacy` API query parameter.
+- Clarified Provider Catalog, Dashboard, API, and README docs that active catalog visibility is not total runtime provider support: transport-only presets remain configurable as nodes but stay hidden from the default model catalog when model/pricing truth is not trusted.
+- Updated release metadata for v2.8.0-alpha.2.
+
+### Boundaries
+
+- v2.8.0-alpha.2 is a product-clarity release only. It does not mark transport-only providers active, invent prices or models, change routing, alter configured node behavior, or change privacy defaults.
+
 ## 2.8.0-alpha.1 - 2026-05-10
 
 ### Added

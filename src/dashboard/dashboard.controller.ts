@@ -94,6 +94,7 @@ import { PluginRegistryService } from "../plugins/plugin-registry.service";
 import {
   assessCatalogPricing,
   CatalogService,
+  summarizeCatalogProviderVisibility,
 } from "../catalog/catalog.service";
 import { getCatalogRefreshSources } from "../catalog/catalog-refresh";
 import { buildCatalogSyncStatus } from "../catalog/catalog-sync";
@@ -4657,6 +4658,7 @@ export class DashboardController {
     return {
       source: "builtin_static",
       auto_update: syncStatus.scheduled,
+      provider_visibility: summarizeCatalogProviderVisibility(loaded.catalog),
       refresh_sources: getCatalogRefreshSources(),
       sync_status: syncStatus,
       providers: loaded.catalog.providers

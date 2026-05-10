@@ -54,6 +54,18 @@ export type CatalogProviderStatus =
   | 'legacy_alias'
   | 'custom';
 
+export interface CatalogProviderVisibilitySummary {
+  active: number;
+  transport_only: number;
+  custom: number;
+  deprecated_legacy: number;
+  deprecated: number;
+  legacy_alias: number;
+  default_visible: number;
+  hidden_by_default: number;
+  total: number;
+}
+
 export interface CatalogCacheMetadata {
   supports_cache: boolean;
   cache_type: ProviderCacheType;
