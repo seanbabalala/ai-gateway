@@ -10,6 +10,13 @@ transport-only, deprecated, and review-required rows can still exist for
 compatibility or migration context, but they stay behind explicit visibility
 controls unless the operator configures them.
 
+In v2.8.0-alpha.2 the Dashboard separates active catalog rows from connectable
+transport presets. The "active" count is intentionally the set whose
+model/pricing truth is trusted for the default model catalog. Transport-only
+providers still carry runtime connection metadata and can be configured as
+nodes; they are hidden by default only because SiftGate does not want stale or
+unverified model and pricing lists to look authoritative.
+
 ## Goals
 
 - Keep provider/model knowledge out of Dashboard form components.
@@ -62,6 +69,7 @@ Dashboard provider rows also include operator-facing fields derived from the mer
 | `limits` / `pricing_units` | Summaries for detail panels and validation UI. |
 | `recommended_model_buckets` / `latest_model_hints` / `recommended_models` | Backend-computed fresh defaults for Add Node, based on merged catalog metadata rather than frontend heuristics. |
 | `provider_status` / `default_visible` / `replacement_provider_id` | Explains whether a provider is active, transport-only, deprecated, legacy alias, or custom, and whether it belongs on the default onboarding path. |
+| `provider_visibility` | Response-level counts for active, transport-only, custom, deprecated/legacy, default-visible, hidden-by-default, and total provider presets. |
 | `canonical_model_coverage` / `pricing_coverage` | Read-only coverage summaries showing how much of the provider model view came from canonical projection and how much has usable price reference metadata. |
 | `enrichment_summary` | Lightweight provider-level summary of how many models were enriched, which sources were used, whether benchmark snippets exist, and the freshest enrichment timestamp. |
 
@@ -135,10 +143,15 @@ v1.8 makes provider lifecycle explicit so Dashboard and Add Node stop presenting
 | Status | Meaning | Default visibility |
 | --- | --- | --- |
 | `active` | Normal onboarding path; canonical/provider projection is strong enough for default operator presentation | Shown |
-| `transport_only` | Keep connection preset compatibility, but suppress stale static built-in model truth from the default onboarding path | Hidden unless `show_legacy` |
-| `deprecated` | Kept for config compatibility, but a replacement provider is preferred | Hidden unless `show_legacy` |
-| `legacy_alias` | Backward-compatibility alias only; not a standalone provider row for normal operator flow | Hidden unless `show_legacy` |
+| `transport_only` | Keep connection preset compatibility, but suppress stale static built-in model truth from the default onboarding path | Hidden until transport-only presets are shown |
+| `deprecated` | Kept for config compatibility, but a replacement provider is preferred | Hidden until hidden presets are shown |
+| `legacy_alias` | Backward-compatibility alias only; not a standalone provider row for normal operator flow | Hidden until hidden presets are shown |
 | `custom` | Operator-defined or generic compatible transport preset | Shown only where operator is explicitly creating/editing custom entries |
+
+`show_legacy=1` remains the compatible API query parameter for revealing
+transport-only, deprecated, and legacy-alias rows. User-facing Dashboard copy
+calls this "Show transport-only" because the most common hidden rows are
+connectable transport presets, not unsupported providers.
 
 ## v1.4 Provider Families And Types
 
@@ -193,7 +206,7 @@ v1.8 changes how default model suggestions are chosen:
 - The backend emits `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` from canonical projection so the wizard can default to fresher stable models with usable price metadata.
 - Preview, snapshot, and obviously stale dated variants are kept in the full model list but are not preferred as default buckets when fresher stable equivalents exist.
 - Default pricing rows are now seeded from the recommended models first, which makes the pricing editor useful immediately without flooding it with every model in the catalog.
-- Provider cards default to `active` providers only. `transport_only`, `deprecated`, and `legacy_alias` entries can still be inspected through explicit legacy toggles when the operator needs compatibility or migration context.
+- Provider cards default to `active` providers only. `transport_only`, `deprecated`, and `legacy_alias` entries can still be inspected through the explicit transport-only/hidden-presets control when the operator needs connection compatibility or migration context.
 
 ## CLI
 

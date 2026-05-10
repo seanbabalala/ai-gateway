@@ -80,7 +80,7 @@ Requires config. See [OSS Concepts](OSS_CONCEPTS.md).
 
 The Provider Catalog page is a read-only operations explorer for large provider catalogs. It uses `GET /api/dashboard/catalog/providers` and does not keep a separate provider/model list in React components.
 
-v1.4 adds summary cards, provider-family groups, collapsed provider lists, and filters for family, modality, provider type, price source status, compatibility profile, review-required state, stale pricing, and provider/model aliases. Provider rows show logo identity, modalities, primary endpoints, compatibility profile, price source status, last-updated metadata, manual-review state, model count, override state, and sync state when present.
+v1.4 adds summary cards, provider-family groups, collapsed provider lists, and filters for family, modality, provider type, price source status, compatibility profile, review-required state, stale pricing, and provider/model aliases. v2.8.0-alpha.2 makes the summary cards count active catalog rows separately from transport-only, custom, deprecated/legacy, and total provider presets so the default visible count is not mistaken for total runtime support. Provider rows show logo identity, modalities, primary endpoints, compatibility profile, price source status, last-updated metadata, manual-review state, model count, override state, and sync state when present.
 
 In v1.8, Provider Catalog detail also surfaces the normalized catalog truth in a constrained way: provider status, default visibility, canonical/pricing coverage, fresh default model groups, release date, max context, throughput, and a few high-value benchmark snippets when available. It stays focused on setup and governance rather than becoming a benchmark leaderboard.
 
@@ -92,7 +92,7 @@ v1.8 changes the defaulting behavior behind that same flow:
 
 - the wizard still has the full model list for search and manual edits
 - the default buckets now come from backend `recommended_model_buckets` derived from canonical projection
-- provider cards default to active providers only; transport-only, deprecated, and legacy rows stay behind an explicit legacy toggle
+- provider cards default to active providers only; transport-only, deprecated, and legacy rows stay behind an explicit transport-only/hidden-presets control
 - provider cards and model steps can show "latest recommended" style guidance, status badges, coverage signals, and trust copy
 - default pricing rows are seeded from recommended models first
 - trust copy clarifies that catalog enrichment pricing is a review-required default reference and explicit operator pricing still wins
@@ -104,7 +104,7 @@ In v1.8, the Nodes page no longer treats catalog onboarding and configured runti
 - `Catalog Onboarding` highlights active providers that are not configured yet and shows their canonical/pricing coverage plus recommended models
 - `Configured Upstreams` focuses on actual runtime nodes, then adds catalog match, status, and trust signals only when a clean provider mapping exists
 - operator-defined custom nodes remain editable without pretending they are canonical catalog rows
-- deprecated / transport-only / legacy provider rows are not promoted into the default onboarding path
+- deprecated / transport-only / legacy provider rows are not promoted into the default onboarding path, even though transport-only presets can still be configured as runtime nodes
 
 v2.3 adds a Provider Health Dashboard section on the Nodes page. It reads
 `GET /api/dashboard/provider-health` and shows configured provider availability,

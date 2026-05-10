@@ -12,7 +12,6 @@ import {
   Server,
   ShieldCheck,
   Tag,
-  WalletCards,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ConceptPanel } from "@/components/shared/ConceptPanel";
@@ -22,6 +21,7 @@ import {
   PricingTrustBadge,
   ProviderStatusBadge,
   RecommendedModelChips,
+  hasCanonicalCoverage,
   modelReleaseDate,
   modelThroughput,
   providerStatusValue,
@@ -441,6 +441,26 @@ export function ProviderCatalogPage() {
     ).length + allModels.filter((model) => model.overridden).length;
   const compatibilityProfileCount =
     catalog.data?.compatibility_profiles?.length || 0;
+  const providerVisibility = catalog.data?.provider_visibility;
+  const activeProviderCount =
+    providerVisibility?.active ??
+    providers.filter((provider) => providerStatusValue(provider) === "active")
+      .length;
+  const transportOnlyProviderCount =
+    providerVisibility?.transport_only ??
+    providers.filter(
+      (provider) => providerStatusValue(provider) === "transport_only",
+    ).length;
+  const customProviderCount =
+    providerVisibility?.custom ??
+    providers.filter((provider) => providerStatusValue(provider) === "custom")
+      .length;
+  const deprecatedLegacyProviderCount =
+    providerVisibility?.deprecated_legacy ??
+    providers.filter((provider) =>
+      ["deprecated", "legacy_alias"].includes(providerStatusValue(provider)),
+    ).length;
+  const totalProviderCount = providerVisibility?.total ?? providers.length;
 
   const groupedProviders = useMemo(
     () =>
@@ -535,46 +555,64 @@ export function ProviderCatalogPage() {
 
       {catalog.data && (
         <>
-          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
             <CatalogMetric
-              label={t("catalogPage.metrics.providers")}
-              value={providers.length}
+              label={t("catalogPage.metrics.activeProviders")}
+              value={activeProviderCount}
               icon={Boxes}
-            />
-            <CatalogMetric
-              label={t("catalogPage.metrics.models")}
-              value={allModels.length}
-              icon={Tag}
-            />
-            <CatalogMetric
-              label={t("catalogPage.metrics.families")}
-              value={new Set(providers.map(providerFamily)).size}
-              icon={Layers3}
-            />
-            <CatalogMetric
-              label={t("catalogPage.metrics.compatibilityProfiles")}
-              value={compatibilityProfileCount}
-              icon={ShieldCheck}
               tone="emerald"
             />
             <CatalogMetric
-              label={t("catalogPage.metrics.overrides")}
-              value={overriddenCount}
+              label={t("catalogPage.metrics.transportOnly")}
+              value={transportOnlyProviderCount}
+              icon={Server}
+              tone={transportOnlyProviderCount > 0 ? "emerald" : "zinc"}
+            />
+            <CatalogMetric
+              label={t("catalogPage.metrics.customProviders")}
+              value={customProviderCount}
               icon={Tag}
-              tone={overriddenCount > 0 ? "emerald" : "zinc"}
+              tone={customProviderCount > 0 ? "emerald" : "zinc"}
             />
             <CatalogMetric
-              label={t("catalogPage.metrics.review")}
-              value={reviewCount}
-              icon={WalletCards}
-              tone={reviewCount > 0 ? "amber" : "emerald"}
+              label={t("catalogPage.metrics.deprecatedLegacy")}
+              value={deprecatedLegacyProviderCount}
+              icon={Layers3}
+              tone={deprecatedLegacyProviderCount > 0 ? "amber" : "zinc"}
             />
             <CatalogMetric
-              label={t("catalogPage.metrics.stale")}
-              value={staleCount + noPricingCount}
-              icon={WalletCards}
-              tone={staleCount + noPricingCount > 0 ? "amber" : "emerald"}
+              label={t("catalogPage.metrics.totalProviders")}
+              value={totalProviderCount}
+              icon={ShieldCheck}
             />
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px] text-[var(--foreground-dim)]">
+            <Badge variant="zinc">
+              {t("catalogPage.metrics.modelCount", { count: allModels.length })}
+            </Badge>
+            <Badge variant="zinc">
+              {t("catalogPage.metrics.familyCount", {
+                count: new Set(providers.map(providerFamily)).size,
+              })}
+            </Badge>
+            <Badge variant="emerald">
+              {t("catalogPage.metrics.compatibilityProfiles", {
+                count: compatibilityProfileCount,
+              })}
+            </Badge>
+            <Badge variant={overriddenCount > 0 ? "emerald" : "zinc"}>
+              {t("catalogPage.metrics.overrideCount", {
+                count: overriddenCount,
+              })}
+            </Badge>
+            <Badge variant={reviewCount > 0 ? "amber" : "emerald"}>
+              {t("catalogPage.metrics.reviewCount", { count: reviewCount })}
+            </Badge>
+            <Badge variant={staleCount + noPricingCount > 0 ? "amber" : "emerald"}>
+              {t("catalogPage.metrics.missingReviewCount", {
+                count: staleCount + noPricingCount,
+              })}
+            </Badge>
           </div>
 
           {catalog.data.sync_status && (
@@ -1189,6 +1227,35 @@ function ProviderDetailPanel({
               { defaultValue: providerCompatibility(provider) },
             )}
           />
+          <KeyValue
+            label={t("catalogPage.detail.runtimeSupport")}
+            value={t(
+              providerStatus === "transport_only"
+                ? "catalogPage.detail.runtimeSupported"
+                : "catalogPage.detail.catalogRuntimeSupported",
+            )}
+          />
+          <KeyValue
+            label={t("catalogPage.detail.catalogConfidence")}
+            value={t(
+              hasCanonicalCoverage(provider)
+                ? "catalogPage.detail.catalogConfidenceProjected"
+                : "catalogPage.detail.catalogConfidenceTransport",
+            )}
+          />
+          <KeyValue
+            label={t("catalogPage.detail.pricingConfidence")}
+            value={t(`catalogPage.pricingTrust.${trustStatus}`)}
+          />
+          {!provider.default_visible && (
+            <KeyValue
+              label={t("catalogPage.detail.hiddenReason")}
+              value={
+                provider.status_reason ||
+                t("catalogPage.detail.hiddenReasonFallback")
+              }
+            />
+          )}
           <KeyValue
             label={t("catalogPage.detail.baseUrl")}
             value={provider.base_url}

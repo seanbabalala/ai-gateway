@@ -30,6 +30,7 @@ import {
   providerReplacementId,
   providerStatusReason,
   resolveProviderStatus,
+  shouldExposeProviderByDefault,
 } from './provider-projection';
 import type {
   CatalogCanonicalArchitecture,
@@ -49,6 +50,7 @@ import type {
   CatalogPricingDimension,
   CatalogPricingHygiene,
   CatalogProvider,
+  CatalogProviderVisibilitySummary,
   CatalogProviderStatus,
   CatalogSource,
   ProviderCatalog,
@@ -2213,6 +2215,44 @@ function modelFromOverride(
 
 export function flattenCatalogModels(catalog: ProviderCatalog): CatalogModel[] {
   return catalog.providers.flatMap((provider) => provider.models);
+}
+
+export function summarizeCatalogProviderVisibility(
+  catalog: ProviderCatalog,
+): CatalogProviderVisibilitySummary {
+  const summary: CatalogProviderVisibilitySummary = {
+    active: 0,
+    transport_only: 0,
+    custom: 0,
+    deprecated_legacy: 0,
+    deprecated: 0,
+    legacy_alias: 0,
+    default_visible: 0,
+    hidden_by_default: 0,
+    total: catalog.providers.length,
+  };
+
+  for (const provider of catalog.providers) {
+    const status = provider.status || 'active';
+    if (status === 'active') summary.active += 1;
+    else if (status === 'transport_only') summary.transport_only += 1;
+    else if (status === 'custom') summary.custom += 1;
+    else if (status === 'deprecated') {
+      summary.deprecated += 1;
+      summary.deprecated_legacy += 1;
+    } else if (status === 'legacy_alias') {
+      summary.legacy_alias += 1;
+      summary.deprecated_legacy += 1;
+    }
+
+    if (shouldExposeProviderByDefault(provider.status)) {
+      summary.default_visible += 1;
+    } else {
+      summary.hidden_by_default += 1;
+    }
+  }
+
+  return summary;
 }
 
 export function findCatalogModel(

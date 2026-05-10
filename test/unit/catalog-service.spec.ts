@@ -6,6 +6,7 @@ import {
   catalogModelToModelPricing,
   collectCatalogPricingHygieneIssues,
   loadMergedCatalog,
+  summarizeCatalogProviderVisibility,
   validateCatalogOverrideFile,
 } from '../../src/catalog/catalog.service';
 import { getCompatibilityProfile } from '../../src/catalog/compatibility-profiles';
@@ -398,6 +399,72 @@ describe('catalog service', () => {
       }),
     });
     expect(openai?.models.map((model) => model.id)).not.toContain('gpt-4o');
+  });
+
+  it('summarizes active catalog providers separately from transport-only presets with sync cache projections', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'siftgate-catalog-visibility-'));
+    const syncCachePath = path.join(cwd, '.siftgate/catalog-sync-cache.yaml');
+    fs.mkdirSync(path.dirname(syncCachePath), { recursive: true });
+    fs.writeFileSync(
+      syncCachePath,
+      [
+        'version: 1',
+        '_siftgate_internal:',
+        '  canonical_registry:',
+        '    version: 1',
+        '    primary_source: openrouter',
+        '    source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '    generated_at: 2026-05-06T00:00:00.000Z',
+        '    models:',
+        '      - canonical_id: openai/gpt-5.1-mini-20260506',
+        '        source_model_id: openai/gpt-5.1-mini',
+        '        source_provider_slug: openai',
+        '        display_name: GPT-5.1 Mini',
+        '        canonical_slug: openai/gpt-5.1-mini',
+        '        input_modalities: [text]',
+        '        output_modalities: [text]',
+        '        source_metadata:',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          synced_at: 2026-05-06T00:00:00.000Z',
+        '          dataset_role: canonical_primary',
+        '      - canonical_id: anthropic/claude-sonnet-4.6-20260506',
+        '        source_model_id: anthropic/claude-sonnet-4.6',
+        '        source_provider_slug: anthropic',
+        '        display_name: Claude Sonnet 4.6',
+        '        canonical_slug: anthropic/claude-sonnet-4.6',
+        '        input_modalities: [text]',
+        '        output_modalities: [text]',
+        '        source_metadata:',
+        '          source: openrouter-public-api',
+        '          source_url: https://openrouter.ai/api/v1/models?output_modalities=all',
+        '          synced_at: 2026-05-06T00:00:00.000Z',
+        '          dataset_role: canonical_primary',
+        'providers: {}',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadMergedCatalog({ cwd, env: {} });
+    const summary = summarizeCatalogProviderVisibility(result.catalog);
+
+    expect(result.syncCacheFound).toBe(true);
+    expect(summary.total).toBe(result.catalog.providers.length);
+    expect(summary.default_visible).toBe(summary.active);
+    expect(summary.hidden_by_default).toBe(
+      summary.transport_only + summary.custom + summary.deprecated_legacy,
+    );
+    expect(summary.active).toBeGreaterThan(0);
+    expect(summary.transport_only).toBeGreaterThan(0);
+    expect(summary.custom).toBeGreaterThan(0);
+    expect(result.catalog.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      status: 'active',
+    });
+    expect(result.catalog.providers.find((provider) => provider.id === 'deepinfra')).toMatchObject({
+      status: 'transport_only',
+      status_reason: expect.stringContaining('transport'),
+    });
   });
 
   it('preserves zeroeval overlay diagnostics from the managed sync cache internal materialization', () => {

@@ -2979,6 +2979,18 @@ export type CatalogProviderStatus =
   | "legacy_alias"
   | "custom";
 
+export interface CatalogProviderVisibilitySummary {
+  active: number;
+  transport_only: number;
+  custom: number;
+  deprecated_legacy: number;
+  deprecated: number;
+  legacy_alias: number;
+  default_visible: number;
+  hidden_by_default: number;
+  total: number;
+}
+
 export type CatalogCompatibilityProfile =
   | "native"
   | "openai-compatible"
@@ -3183,6 +3195,7 @@ export interface CatalogProvidersResponse {
     pricing: "live" | "docs_only" | "operator_required";
     notes: string;
   }>;
+  provider_visibility?: CatalogProviderVisibilitySummary;
   sync_status?: CatalogSyncStatus;
   override_file?: string;
   override_found?: boolean;

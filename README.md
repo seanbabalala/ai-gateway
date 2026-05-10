@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-alpha.1 Concept Clarity Foundation**.
+Current release: **v2.8.0-alpha.2 Provider Visibility Clarity**.
 
-Current development focus after v2.7.1: preserve Platform Trust stability,
+Current development focus after v2.8.0-alpha.2: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -83,6 +83,15 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.8 Alpha Highlights
 
+- v2.8.0-alpha.2 separates active Provider Catalog rows from connectable
+  transport-only presets. The Dashboard now shows counts for active,
+  transport-only, custom, deprecated/legacy, and total provider presets, and
+  detail panels explain runtime support, catalog confidence, pricing
+  confidence, and hidden-by-default reasons.
+- Transport-only providers are still configurable as nodes. They stay hidden
+  from the default model catalog when model or pricing truth is not trusted,
+  instead of being promoted as active catalog rows just to increase the visible
+  count.
 - v2.8.0-alpha.1 makes confusing OSS concepts explain themselves in product:
   Workspace, Policy Namespace, Semantic Controls, Traffic Experiments, Evals,
   Shadow Traffic, MCP Tool Gateway, budget scopes, fixed OSS roles, and
@@ -253,8 +262,8 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 - OpenRouter-first canonical model registry: SiftGate now materializes an internal canonical model dataset from OpenRouter's public models API, then uses that registry as the primary source for fresher model ids, context windows, supported parameters, architecture metadata, and reference pricing.
 - ZeroEval enrichment overlay: ZeroEval no longer depends on fragile built-in provider/model exact matches. It overlays lifecycle, throughput, benchmarks, multimodal/spec metadata, and review-required secondary pricing onto canonical models through a stricter matching system with confidence tracking and diagnostics.
-- Provider projection and legacy cleanup: the public merged provider catalog still stays one operator-facing surface, but provider model rows are now projected from canonical truth instead of letting stale built-in static model lists keep acting like primary truth. Legacy, deprecated, and transport-only presets stay compatible without misleading the default path.
-- Unified node UX: Nodes, Add Node, and Provider Catalog now show the same provider status, coverage, trust, and recommended-model signals. Add Node defaults come from canonical recommended buckets, default pricing rows prefill from those recommendations, and non-active providers are hidden unless the operator explicitly shows legacy presets.
+- Provider projection and visibility cleanup: the public merged provider catalog still stays one operator-facing surface, but provider model rows are now projected from canonical truth instead of letting stale built-in static model lists keep acting like primary truth. Legacy, deprecated, and transport-only presets stay compatible without misleading the default path.
+- Unified node UX: Nodes, Add Node, and Provider Catalog now show the same provider status, coverage, trust, and recommended-model signals. Add Node defaults come from canonical recommended buckets, default pricing rows prefill from those recommendations, and non-active providers are hidden unless the operator explicitly shows transport-only/hidden presets. Provider Catalog counts separate active catalog rows from connectable transport-only presets so the default visible count is not confused with total runtime support.
 
 ## v1.7 Highlights
 
