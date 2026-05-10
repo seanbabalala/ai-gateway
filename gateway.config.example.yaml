@@ -215,7 +215,7 @@ auth:
 #   pricing_confidence: high
 
 # ============================================================
-# MCP Gateway Preview — optional local MCP server proxy
+# MCP Tool Gateway — optional local MCP server proxy
 # ============================================================
 # Disabled by default. This is an OSS-local proxy, not an enterprise MCP
 # marketplace. Clients call POST /mcp/:serverId with a Gateway API key.
@@ -223,7 +223,7 @@ auth:
 # API key permissions can allow all MCP via allowed_endpoints: [mcp], one
 # server via [mcp:local-docs], or one tool via [mcp:local-docs:search_docs].
 # Audit data is metadata-only by default: server, method, tool name, API key,
-# namespace, status, latency, and byte size. Tool input/output, raw headers,
+# Policy Namespace, status, latency, and byte size. Tool input/output, raw headers,
 # provider keys, and resolved secret values are not stored.
 # ============================================================
 # mcp:
@@ -994,7 +994,7 @@ models_pricing:
 #   response_storage_requires_header: true
 
 # ============================================================
-# Semantic Platform — optional v2.7 semantic control plane
+# Semantic Controls — optional v2.7 semantic control plane
 # ============================================================
 # Disabled by default. Enables metadata-only Prompt Registry, context-window
 # evidence, intent classification, and Guardrails v2 findings for routing and

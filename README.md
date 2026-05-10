@@ -2,15 +2,15 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-rc.1 Onboarding Docs**.
+Current release: **v2.8.0 GA**.
 
-Current development focus after v2.8.0-rc.1: preserve Platform Trust stability,
-keep v2.8 focused on release-candidate closure and bug fixes, and avoid new
-runtime defaults before GA.
+Current development focus after v2.8.0: preserve Platform Trust stability,
+fix regressions quickly, and avoid changing runtime defaults outside explicit
+future release prompts.
 
 ## Why SiftGate
 
-- One gateway for Chat Completions, Responses, Anthropic Messages, Embeddings, Rerank, Images, Audio, Video preview, Realtime preview, MCP preview, and Batch proxy.
+- One gateway for Chat Completions, Responses, Anthropic Messages, Embeddings, Rerank, Images, Audio, Video preview, Realtime preview, MCP Tool Gateway preview, and Batch proxy.
 - Explainable routing: every request can show why a node/model was selected or filtered.
 - Local governance: Gateway API keys, Policy Namespaces, local teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed nodes, and allowed models.
 - Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
@@ -83,18 +83,19 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.8 Highlights
 
-- v2.8.0-rc.1 connects the clarified v2.8 concepts into first-run onboarding
-  and docs. The Dashboard setup path now covers Workspace, Provider Node,
-  Gateway API Key, optional Policy Namespace, daily Budget scope, first
-  request, evidence review, and advanced setup surfaces.
+- v2.8.0 GA ships the complete clarified OSS concept model with no new scope
+  beyond the alpha, beta, and rc hardening path. The Dashboard setup path now
+  covers Workspace, Provider Node, Gateway API Key, optional Policy Namespace,
+  daily Budget scope, first request, evidence review, and advanced setup
+  surfaces.
 - Dashboard concept panels now link to the matching OSS docs from Overview,
   Workspaces, Nodes, Provider Catalog, API Keys, Policy Namespaces, Budget,
   Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
   MCP Tool Gateway so self-hosters can configure the gateway end to end without
   guessing where a concept lives.
-- The rc.1 release is closure only: it does not add backend features, change
-  runtime defaults, introduce new terminology, or change privacy storage
-  behavior.
+- The GA release keeps the v2.8 privacy and runtime boundaries intact: no new
+  default prompt, response, raw header, provider key, tool payload, media byte,
+  hidden reasoning, or resolved secret storage is added.
 - v2.8.0-beta.3 makes advanced OSS surfaces setup-complete in product:
   Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
   MCP Tool Gateway now show setup state, safe YAML examples, and clearer
@@ -339,7 +340,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 | Category | Capabilities |
 | --- | --- |
-| Protocols | `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/rerank`, image/audio endpoints, async video preview, realtime preview, MCP preview, Batch proxy. |
+| Protocols | `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/rerank`, image/audio endpoints, async video preview, realtime preview, MCP Tool Gateway preview, Batch proxy. |
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
 | Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
 | Governance | Local Gateway API keys, Policy Namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |

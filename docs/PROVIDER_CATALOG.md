@@ -17,7 +17,7 @@ providers still carry runtime connection metadata and can be configured as
 nodes; they are hidden by default only because SiftGate does not want stale or
 unverified model and pricing lists to look authoritative.
 
-In v2.8.0-rc.1 the Overview first-run setup path links Provider Node setup to
+In v2.8.0 the Overview first-run setup path links Provider Node setup to
 this catalog guide. The path deliberately says **Provider Node** for the live
 runtime target and **Provider Catalog** for the read-only preset/model/pricing
 metadata. This keeps "how many providers are visible by default" separate from

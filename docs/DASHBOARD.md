@@ -79,7 +79,7 @@ keep advanced features disabled or metadata-only by default, and clearly
 separate live split analytics, controlled eval runs, asynchronous shadow
 mirroring, semantic metadata controls, and MCP tool-call proxying.
 
-v2.8.0-rc.1 connects those clarified concepts into the Overview first-run setup
+v2.8.0 connects those clarified concepts into the Overview first-run setup
 path and related docs links. The checklist now covers Workspace, Provider Node,
 Gateway API Key, optional Policy Namespace, daily Budget scope, first request,
 evidence review, and advanced setup surfaces. Optional items are clearly marked

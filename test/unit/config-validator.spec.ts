@@ -273,7 +273,7 @@ describe('config validator', () => {
     );
   });
 
-  it('accepts MCP Gateway preview registry config', () => {
+  it('accepts MCP Tool Gateway registry config', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {
         namespaces: [{ id: 'team-a', name: 'Team A' }],
@@ -306,7 +306,7 @@ describe('config validator', () => {
     expect(codes(result.errors)).not.toContain('invalid_mcp_config');
   });
 
-  it('validates MCP Gateway preview server references', () => {
+  it('validates MCP Tool Gateway server references', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {
         namespaces: [{ id: 'team-a', name: 'Team A' }],
