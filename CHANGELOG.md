@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.1 - 2026-05-10
+
+### Added
+
+- Added a public-facing SiftGate brand mark and wordmark based on a simple open-door and reflection motif, plus refreshed the Dashboard favicon.
+- Added a professional GitHub README storefront with badges, quickstart, concept table, privacy boundary, documentation map, and seven-language documentation entrypoints.
+- Added localized documentation entrypoints for `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`, and made `docs:check` require them.
+
+### Changed
+
+- Removed tracked internal planning and execution draft documents from the public repository surface.
+- Expanded repository hygiene rules so local agent notes, public skill prompts, local development specifications, runtime config, databases, and sync cache stay out of public commits.
+- Updated release metadata to v2.8.1 across package, lock, Dashboard, client, Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+
+### Boundaries
+
+- v2.8.1 is a public repository readiness patch only. It does not change runtime behavior, schemas, routing, budgets, provider behavior, auth, MCP proxying, or privacy storage defaults.
+
 ## 2.8.0 - 2026-05-10
 
 ### Added
@@ -347,7 +365,7 @@
 
 ### Fixed
 
-- Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so TokenFlux/OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
+- Restored OpenAI-style Responses cache accounting for providers that report cache hits under `usage.input_tokens_details.cached_tokens`, so OpenAI-compatible responses now propagate cached-token usage into gateway responses, streaming serializers, and `call_logs.cache_read_input_tokens` instead of silently dropping provider-side cache hits.
 - Moved the Dashboard theme bootstrap out of inline HTML so the production app stays compatible with Helmet's default content-security policy without console CSP errors.
 
 ### Boundaries
@@ -526,7 +544,7 @@
 
 - Added the v2.x platform roadmap for the OSS Data Plane, positioning SiftGate as an AI infrastructure platform for teams and agents while keeping the v2.0.0 Platform Trust scope separate from later minor-release capabilities.
 - Added a release checklist covering version sync files, required tests, seven-locale review, branch/PR/merge/tag/GitHub release steps, rollback discipline, and privacy review.
-- Added `docs/V2_EXECUTION_PROMPTS.md` as the prompt runbook for the v2.x release train.
+- Added release-discipline documentation for the v2.x release train.
 - Added a read-only `npm run release:check` command that verifies release version alignment across packages, OpenAPI metadata, Helm, Kubernetes, README, and changelog without pushing, tagging, or creating releases.
 
 ### Changed

@@ -12,7 +12,6 @@ import {
   KeyRound,
   Layers3,
   GitCompareArrows,
-  Zap,
   Activity,
   Gauge,
   Boxes,
@@ -155,9 +154,10 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
       {/* Logo */}
       <div className={cn('relative z-10 flex shrink-0 items-center gap-3 py-6', collapsed ? 'justify-center px-3' : 'px-6')}>
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[#c7f4dc]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-[0_14px_28px_rgba(0,0,0,0.18)] ring-1 ring-white/10"
+          aria-label="SiftGate"
         >
-          <Zap className="h-4.5 w-4.5" />
+          <img src="/favicon.svg" alt="" className="h-9 w-9" />
         </div>
         {!collapsed && (
           <div>

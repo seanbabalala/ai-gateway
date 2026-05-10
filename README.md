@@ -1,52 +1,63 @@
+<p align="center">
+  <img src="docs/assets/brand/siftgate-logo.svg" alt="SiftGate" width="420" />
+</p>
+
+<h3 align="center">Self-hosted AI traffic infrastructure for teams, agents, and multi-provider apps.</h3>
+
+<p align="center">
+  <a href="https://github.com/seanbabalala/ai-gateway/releases"><img alt="Release" src="https://img.shields.io/github/v/release/seanbabalala/ai-gateway?label=release"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-0f172a"></a>
+  <a href="docs/SECURITY.md"><img alt="Privacy default" src="https://img.shields.io/badge/privacy-metadata--only%20by%20default-38bdf8"></a>
+  <a href="docs/README.md"><img alt="Docs" src="https://img.shields.io/badge/docs-7%20languages-0f172a"></a>
+</p>
+
+<p align="center">
+  <a href="docs/i18n/en/README.md">English</a>
+  · <a href="docs/i18n/zh/README.md">简体中文</a>
+  · <a href="docs/i18n/zh-TW/README.md">繁體中文</a>
+  · <a href="docs/i18n/ja/README.md">日本語</a>
+  · <a href="docs/i18n/ko/README.md">한국어</a>
+  · <a href="docs/i18n/th/README.md">ไทย</a>
+  · <a href="docs/i18n/es/README.md">Español</a>
+</p>
+
 # SiftGate
 
-SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
+Current release: **v2.8.1**.
 
-Current release: **v2.8.0 GA**.
+SiftGate is an MIT open-source gateway that sits between your applications,
+agents, and upstream AI providers. It gives teams one governed ingress for
+OpenAI-compatible, Anthropic-compatible, Batch, Realtime preview, media, and MCP
+tool traffic while keeping runtime policy and sensitive data inside the
+self-hosted environment by default.
 
-Current development focus after v2.8.0: preserve Platform Trust stability,
-fix regressions quickly, and avoid changing runtime defaults outside explicit
-future release prompts.
+## Why Teams Use It
 
-## Why SiftGate
+- **One ingress for many providers:** route Chat Completions, Responses,
+  Messages, Embeddings, Rerank, Images, Audio, Video preview, Batch, Realtime
+  preview, and MCP Tool Gateway traffic through one local service.
+- **Explainable routing:** inspect why a node or model was selected, filtered,
+  retried, or skipped without storing prompt or response bodies by default.
+- **Local governance:** manage Workspaces, Gateway API keys, Policy Namespaces,
+  teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed
+  nodes, and allowed models.
+- **Provider setup without guesswork:** use Provider Catalog, Add Node Wizard,
+  transport-only visibility, provider health, pricing source status, and config
+  validation from one product surface.
+- **Agent-ready operations:** generate safe connector profiles for Cursor, Cline,
+  Roo Code, Continue, Codex, Claude Code, OpenCode, Cherry Studio, Hermes,
+  OpenClaw, and OpenAI/Anthropic-compatible clients.
+- **Production path when you need it:** start with memory state and SQLite, then
+  opt into Redis, PostgreSQL, Docker, Kubernetes, Helm, OIDC, log sinks, and
+  secret references.
 
-- One gateway for Chat Completions, Responses, Anthropic Messages, Embeddings, Rerank, Images, Audio, Video preview, Realtime preview, MCP Tool Gateway preview, and Batch proxy.
-- Explainable routing: every request can show why a node/model was selected or filtered.
-- Local governance: Gateway API keys, Policy Namespaces, local teams, budgets, rate limits, allowed endpoints, allowed modalities, allowed nodes, and allowed models.
-- Production defaults: single-node memory/SQLite works out of the box; Redis, PostgreSQL, Kubernetes, and Helm are optional.
-- Privacy-first operations: call logs, route traces, shadow reports, guardrails findings, batch jobs, video jobs, semantic cache, and eval reports are metadata-only by default.
-- Catalog-backed setup: Nodes, Add Node Wizard, Provider Catalog, and config validation use one merged provider catalog surface backed by canonical model projections instead of hardcoded provider/model lists.
-- Price source governance: cost-aware routing, benchmarks, Route Explanation, config validation, and catalog override workflows share one resolver with explicit user config taking priority over sync cache and built-in references.
-- Provider extensibility: custom provider templates, `custom-header` auth,
-  Provider SDK Generator beta output, community registry design, and the
-  Provider Health Dashboard expand ecosystem coverage without auto-trusting
-  generated adapters or community pricing.
-- Provider ecosystem expansion: v2.4 adds tested, source-governed catalog rows
-  for DeepInfra, Nebius AI Studio, Novita AI, FriendliAI, Databricks Mosaic AI,
-  and GitHub Models, plus offline provider registry manifest checks for
-  community PRs.
-- Agent Platform preview: v2.5 adds a workspace-scoped A2A registry,
-  MCP-backed Tool Registry, preview-only workflow metadata, Conversation Memory
-  Gateway counters, and recent agent trace spans without storing prompts,
-  responses, source code, diffs, tool payloads, raw headers, provider keys,
-  media bytes, hidden reasoning text, or resolved secrets by default.
-- Cost and chargeback platform: v2.6 adds internal workspace/team/project
-  chargeback reports, CSV/JSON exports, cost anomaly alerts, provider price
-  sync governance, and thumbs feedback aggregation without payments, recharge,
-  reseller balances, public marketplaces, or prompt/response storage.
-- Semantic Controls: v2.7 adds Semantic Cache v2, Prompt Registry, Context
-  Window Optimizer evidence, Intent Classification, and Guardrails v2 with
-  metadata-only defaults and explicit opt-ins for replayable response or
-  template body storage.
-- Coding-agent gateway: Dashboard-managed Coding Agent Gateway profiles render
-  redacted connector configs for Cursor, Cline, Roo Code, Continue, Codex,
-  Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic
-  Anthropic-compatible agents.
-- Intelligence Loop: optional cost optimizer evidence, token prediction,
-  async eval metadata, and opt-in quality gates make routing decisions easier
-  to trust without storing prompts, responses, raw headers, provider keys,
-  source code, diffs, tool payloads, media bytes, or hidden reasoning text by
-  default.
+## What It Is Not
+
+SiftGate is not an API resale platform, billing wallet, hosted prompt store,
+workflow engine, or mandatory SaaS control plane. Provider keys stay in your
+local config, environment variables, or secret references. Prompts, responses,
+raw provider headers, provider keys, tool payloads, media bytes, hidden
+reasoning, and resolved secrets are not stored by default.
 
 ## Quick Start
 
@@ -63,11 +74,12 @@ npm start
 
 Open:
 
-- Gateway: `http://localhost:2099`
-- OpenAPI: `http://localhost:2099/docs`
 - Dashboard: `http://localhost:2099/dashboard`
+- OpenAPI: `http://localhost:2099/docs`
+- Gateway: `http://localhost:2099`
 
-Add at least one upstream node in `gateway.config.yaml`, then point your app at SiftGate:
+Add one upstream node in `gateway.config.yaml`, create a Dashboard-managed
+Gateway API key, then send a request:
 
 ```bash
 curl http://localhost:2099/v1/chat/completions \
@@ -75,374 +87,106 @@ curl http://localhost:2099/v1/chat/completions \
   -H "authorization: Bearer ${SIFTGATE_API_KEY}" \
   -d '{
     "model": "auto",
-    "messages": [{"role": "user", "content": "Explain this in one sentence."}]
+    "messages": [{"role": "user", "content": "Explain SiftGate in one sentence."}]
   }'
 ```
 
-You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`.
+For a container-first path, use [Docker Quickstart](docs/DOCKER_QUICKSTART.md).
 
-## v2.8 Highlights
+## First-Run Checklist
 
-- v2.8.0 GA ships the complete clarified OSS concept model with no new scope
-  beyond the alpha, beta, and rc hardening path. The Dashboard setup path now
-  covers Workspace, Provider Node, Gateway API Key, optional Policy Namespace,
-  daily Budget scope, first request, evidence review, and advanced setup
-  surfaces.
-- Dashboard concept panels now link to the matching OSS docs from Overview,
-  Workspaces, Nodes, Provider Catalog, API Keys, Policy Namespaces, Budget,
-  Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
-  MCP Tool Gateway so self-hosters can configure the gateway end to end without
-  guessing where a concept lives.
-- The GA release keeps the v2.8 privacy and runtime boundaries intact: no new
-  default prompt, response, raw header, provider key, tool payload, media byte,
-  hidden reasoning, or resolved secret storage is added.
-- v2.8.0-beta.3 makes advanced OSS surfaces setup-complete in product:
-  Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
-  MCP Tool Gateway now show setup state, safe YAML examples, and clearer
-  boundaries between metadata controls, live split analytics, controlled evals,
-  asynchronous shadow mirroring, and tool-call proxy governance.
-- The beta.3 release keeps advanced features disabled or metadata-only by
-  default and does not add auto-promotion, workflow automation, routing changes,
-  or prompt/response/tool payload storage.
-- v2.8.0-beta.2 makes daily budget setup obvious across Global, Policy
-  Namespace, Team, and API Key scopes. The Budget page shows source of truth,
-  inherited or unset state, daily reset time, alert threshold, current usage,
-  and the unchanged blocking order from global to namespace to team to key.
-- Safe budget edits reuse existing supported paths: Policy Namespace config
-  updates, Team policy updates, and Dashboard-managed API Key policy updates.
-  Global budgets remain config-backed through `gateway.config.yaml`.
-- v2.8.0-beta.1 makes Policy Namespaces manageable from the OSS Dashboard.
-  Admins can create, edit, and delete config-backed namespaces with the existing
-  validation, config audit, rollback, and hot-reload path.
-- The Policy Namespaces page shows bound Gateway API keys and Teams before
-  deletion. Bound namespaces require explicit impact confirmation and backend
-  validation before SiftGate rewrites only the `namespaces` config section.
-- v2.8.0-alpha.3 closes the OSS Workspace management gap: Workspace Admins can
-  create, switch, rename, disable, and reactivate local Workspaces from the
-  Dashboard using the existing workspace data model.
-- Creating a Workspace grants the current Dashboard identity Admin in that
-  Workspace. Disabled Workspaces keep metadata and audit history, cannot be
-  selected until reactivated, and do not delete or migrate default Workspace
-  data.
-- v2.8.0-alpha.2 separates active Provider Catalog rows from connectable
-  transport-only presets. The Dashboard now shows counts for active,
-  transport-only, custom, deprecated/legacy, and total provider presets, and
-  detail panels explain runtime support, catalog confidence, pricing
-  confidence, and hidden-by-default reasons.
-- Transport-only providers are still configurable as nodes. They stay hidden
-  from the default model catalog when model or pricing truth is not trusted,
-  instead of being promoted as active catalog rows just to increase the visible
-  count.
-- v2.8.0-alpha.1 makes confusing OSS concepts explain themselves in product:
-  Workspace, Policy Namespace, Semantic Controls, Traffic Experiments, Evals,
-  Shadow Traffic, MCP Tool Gateway, budget scopes, fixed OSS roles, and
-  Provider Catalog visibility now share clear Dashboard copy and status labels.
-- The alpha.1 concept-clarity release kept behavior unchanged. Later v2.8
-  prereleases add real local Workspace and Policy Namespace management without
-  changing runtime routing, MCP proxying, provider projection, or privacy
-  storage defaults.
-- Added [`docs/OSS_CONCEPTS.md`](docs/OSS_CONCEPTS.md) as the shared glossary
-  for Workspace vs Policy Namespace vs Team vs Gateway API Key vs Node vs
-  Provider.
+The Dashboard starts with the shortest supported OSS path:
 
-## v2.7 Highlights
+1. Confirm or create the active Workspace.
+2. Add one Provider Node.
+3. Create a Gateway API Key for your client app or agent.
+4. Optionally bind the key to a Policy Namespace.
+5. Review daily Budget scope and source of truth.
+6. Send a first request from Playground or an SDK.
+7. Inspect Logs and Route Explanation evidence.
+8. Configure Semantic Controls, Traffic Experiments, Evals, Shadow Traffic, or
+   MCP Tool Gateway only when you need those advanced surfaces.
 
-- v2.7.1 reorganizes the Dashboard sidebar into Monitor, Runtime,
-  Intelligence, Agents & Tools, and Governance groups so v2 platform surfaces
-  follow the operator workflow more clearly.
-- v2.7.0 makes the semantic layer production-grade without changing SiftGate's
-  default privacy boundary.
-- Semantic Cache v2 adds workspace/API-key/model isolation, TTL invalidation,
-  preview Redis/vector backend validation, and a per-request opt-in header
-  before replayable response storage is allowed.
-- Prompt Registry adds workspace-scoped template metadata, versioning,
-  variables, route policy binding, and A/B metadata while storing hashes only by
-  default.
-- Context Window Optimizer and Intent Classification record route evidence for
-  context pressure and task type without silently changing prompt content.
-- Guardrails v2 records metadata-only PII, toxicity, and jailbreak findings for
-  input/output policy surfaces.
-- The Dashboard **Semantic Controls** page and Route Explanation semantic panel
-  are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
-- See [`docs/SEMANTIC_PLATFORM.md`](docs/SEMANTIC_PLATFORM.md) and
-  [`docs/CACHING.md`](docs/CACHING.md).
+## Core Concepts
 
-## v2.6 Highlights
-
-- v2.6.0 turns cost analytics into an internal chargeback and anomaly response
-  platform while staying out of API resale, recharge, and payments.
-- Added `GET /api/dashboard/cost-platform` plus CSV/JSON export endpoints for
-  workspace-scoped chargeback summaries grouped by team, project, API key,
-  model, node, or workspace.
-- Added `POST /v1/feedback` for metadata-only thumbs feedback tied to a request
-  id and route-weight evidence. Prompts, responses, source code, diffs, tool
-  payloads, raw headers, provider keys, media bytes, and hidden reasoning text
-  are not accepted or persisted.
-- Added cost anomaly detection with metadata-only `cost_anomaly` webhook alerts
-  and optional downgrade recommendations that do not silently change routing.
-- Provider price sync is surfaced as source-governed status: explicit sources
-  only, no automatic trust, and no silent overwrite of operator overrides.
-- See [`docs/COST_CHARGEBACK_PLATFORM.md`](docs/COST_CHARGEBACK_PLATFORM.md)
-  and [`docs/BILLING_LOOP.md`](docs/BILLING_LOOP.md).
-
-## v2.5 Highlights
-
-- v2.5.0 deepens the agent platform without turning SiftGate into a full app
-  builder. The new Dashboard **Agent Platform** page is a read-only, metadata
-  first control plane.
-- Added `GET /api/dashboard/agent-platform` for workspace-scoped A2A registry
-  rows, MCP-backed Tool Registry permission evidence, preview workflow metadata,
-  Conversation Memory Gateway counters, recent agent trace spans, and an
-  explicit privacy contract.
-- Tool permissions are derived from Agent Profile `mcp_server_ids`, Gateway API
-  key endpoint policy, MCP server namespace allow-lists, and active profile/key
-  state. Tool inputs and outputs are not stored.
-- Workflow metadata is marked preview-only with `runtime_enabled=false`; SiftGate
-  does not add a LangGraph/Dify-style workflow runtime in v2.5.
-- See [`docs/AGENT_PLATFORM_PREVIEW.md`](docs/AGENT_PLATFORM_PREVIEW.md),
-  [`docs/CODING_AGENT_GATEWAY.md`](docs/CODING_AGENT_GATEWAY.md), and
-  [`docs/MCP_GATEWAY.md`](docs/MCP_GATEWAY.md).
-
-## v2.4 Highlights
-
-- v2.4.0 starts the Provider Ecosystem Expansion series by using the v2.3
-  extensibility foundation instead of adding untested rows for count inflation.
-- Added built-in, review-required provider metadata for DeepInfra, Nebius AI
-  Studio, Novita AI, FriendliAI, Databricks Mosaic AI, and GitHub Models.
-- Each new provider includes compatibility profile evidence, model buckets,
-  source-governed pricing references, health/catalog identity, and Dashboard
-  logo identity.
-- Added `npm run provider-registry:check` with an offline manifest fixture so
-  community provider PRs can validate provider shape, source URLs, pricing
-  governance, and secret hygiene without provider network calls.
-- See [`docs/PROVIDER_CATALOG.md`](docs/PROVIDER_CATALOG.md) and
-  [`docs/PROVIDER_EXTENSIBILITY.md`](docs/PROVIDER_EXTENSIBILITY.md).
-
-## v2.3 Highlights
-
-- v2.3.0 adds Provider Extensibility for the OSS data plane: custom provider
-  templates, custom-header auth, Provider SDK Generator beta, community
-  registry design, and a workspace-scoped Provider Health Dashboard.
-- The Dashboard Add Node flow can configure providers that require a custom
-  auth header name and optional prefix while still keeping provider key values
-  in local config, env vars, or secret references.
-- Provider Health aggregates active probes, circuit state, call-log latency,
-  error rate, compatibility labels, and pricing-source warnings without raw
-  request/response content or provider keys.
-- Provider SDK Generator beta returns reviewable adapter, manifest, README, and
-  test skeleton files in the API response only. Generated adapters are not
-  written to disk or auto-trusted.
-- Community provider registry guidance now defines manifest shape, CI evidence,
-  compatibility proof, and pricing governance for sustainable provider growth.
-- See [`docs/PROVIDER_EXTENSIBILITY.md`](docs/PROVIDER_EXTENSIBILITY.md).
-
-## v2.2 Highlights
-
-- v2.2.0 adds the first Intelligence Loop for the OSS data plane: Real-time Cost
-  Optimizer v1, Token Prediction v1, Async Eval metadata, and disabled-by-default
-  Quality Gate v1.
-- Cost Optimizer starts in evidence-only mode and can apply route changes only
-  when `intelligence.cost_optimizer.action=optimize` is explicit. Quality-critical
-  coding/security/deep requests are protected from silent downgrade by default.
-- Token Prediction estimates input/output/context tokens and cost risk before
-  the upstream call. Reject or downgrade behavior happens only through explicit
-  workspace/config policy.
-- Quality Gate can retry, fallback, or alert for configured critical
-  non-streaming routes, and never retries or falls back after streaming bytes
-  have started.
-- Dashboard Overview and Route Explanation show optimizer evidence, token risk,
-  quality gate events, async eval metadata, and a workspace cost optimization
-  summary with seven-locale copy.
-- See [`docs/INTELLIGENCE_LOOP.md`](docs/INTELLIGENCE_LOOP.md).
-
-## v2.1 Highlights
-
-- v2.1.0 adds Coding Agent Gateway profiles for Cursor, Cline, Roo Code,
-  Continue, Codex, Claude Code, OpenCode, Generic OpenAI-compatible coding
-  agents, and Generic Anthropic-compatible coding agents.
-- Coding agents can use profile-scoped virtual model aliases:
-  `coding-auto`, `coding-fast`, `coding-deep`, and `coding-security`. The
-  aliases map to internal smart routing hints without forcing one provider and
-  still require Gateway API key `allow_auto`.
-- The Dashboard **Agents** page now shows metadata-only coding-agent sessions,
-  including connector, session, optional repo/project labels, token/cost/latency
-  summaries, fallback/retry evidence, and Route Explanation links.
-- Safe agent headers such as `x-siftgate-agent-session-id`,
-  `x-siftgate-agent-turn-id`, `x-siftgate-repo`, and `x-siftgate-project` are
-  sanitized and stored only as labels. SiftGate does not store source code,
-  prompts, responses, diffs, tool payloads, raw repository content, raw headers,
-  provider keys, or resolved secrets by default.
-- The v2.1 North Star demo is an Engineering PR Review Workspace where several
-  coding agents share one workspace-controlled gateway and operators inspect
-  cost, latency, fallback, and route explanations by connector/repo/project.
-
-## v2.0 Highlights
-
-- v2.0.0 GA ships the Platform Trust foundation: workspace isolation, local Dashboard RBAC, optional OIDC login and workspace invites, PostgreSQL production guidance, Redis shared-state cluster mode, management audit logs, upgrade guardrails, first-run onboarding, and public benchmark evidence.
-- v2.0.0 publishes the GA Platform Trust performance benchmark: a deterministic local `benchmark:platform` harness, JSON/Markdown reports, direct mock baselines, non-streaming and streaming proxy overhead, `model=auto` smart-routing overhead, Dashboard metadata read/write measurements, and optional PostgreSQL/Redis modes that are skipped unless explicitly configured.
-- v2.0.0-rc.1 completes the Platform Trust audit and upgrade hardening pass: workspace-scoped management audit events, denied-action evidence, a Dashboard Audit Log page, hash-chain fields, finalized migration dry-run export, and SQLite-to-PostgreSQL coverage for `management_audit_events`.
-- v2.0.0-beta.1 adds optional generic OIDC Dashboard login plus workspace invitation metadata: local password login remains supported, OIDC uses secret references for client secrets, Admins can create/revoke invite links, invitations can be accepted by local or OIDC identities, and seven-locale Dashboard copy covers login and invite flows.
-- v2.0.0-alpha.4 turns Redis shared state into coherent cluster mode for multi-instance data planes: workspace-scoped runtime keys, per-category TTL/fail policy, shared rate limits/circuit state/cache affinity/momentum/concurrency/health/realtime metadata, Dashboard cluster status, and updated Docker/Helm/Kubernetes guidance while keeping Redis optional.
-- v2.0.0-alpha.3 makes PostgreSQL the documented production path with pool/SSL configuration, fail-fast diagnostics, database-aware `/health`, database-only `/ready`, production examples, and RBAC membership migration coverage while keeping SQLite as the local default.
-- v2.0.0-alpha.2 adds local Dashboard RBAC for workspace governance: Admin, Operator, and Viewer memberships, centralized Dashboard permission guards, a Members page, role badges, permission-aware disabled controls, and seven-locale role copy.
-- v2.0.0-alpha.1 introduces the Workspace Core foundation: every OSS install now bootstraps a default organization and default workspace, legacy v1.9 resources map safely to that workspace, Dashboard APIs expose active workspace state, and the header selector sends `x-siftgate-workspace-id` for workspace-scoped views.
-
-## v1.9 Highlights
-
-- v1.9.2 adds the read-only `siftgate migrate-v2 --dry-run` migration planner and [`docs/MIGRATION_V1_TO_V2.md`](docs/MIGRATION_V1_TO_V2.md), so operators can preview how v1.9 single-tenant config and metadata rows will map into the future v2 default organization/workspace before any schema change exists.
-- v1.9.1 adds the v2.x platform roadmap, execution prompts, release checklist, and a read-only release version alignment check so future releases have consistent scope, tests, metadata, tags, and GitHub release steps.
-- Agent Gateway Profiles: SiftGate has a Dashboard **Agents** page for local
-  connection profiles that render setup snippets for coding agents and
-  compatible chatbot clients.
-- Connector-safe smart routing: OpenAI-compatible agents can use `model=auto`; Claude-style agents can use the profile-scoped `claude-siftgate-auto` virtual model, which maps to internal smart routing instead of direct Claude routing.
-- Gateway key boundary: agent and chatbot configs use only Dashboard-generated Gateway API keys. Provider API keys stay in Nodes, env vars, or secret references, and rendered snippets expose placeholders or masked metadata only.
-- Seven-language Dashboard support: the Agent Profiles page, navigation, forms, render panel, connector labels, privacy copy, and error states are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
-- Agent client UX polish: Cherry Studio smart-router-only setup now avoids leaking direct/provider model clutter into model pickers, direct routing uses model selectors instead of free-text-only entry, connector cards use real project logos, and Logs label total response time plus streaming/sync mode separately so long streamed replies are not mistaken for upstream latency.
-- Policy preservation: `allow_auto`, `allow_direct`, Policy Namespace bindings, budgets, rate limits, endpoint/model/node/modality restrictions, metadata-only logs, sessions, route explanations, and MCP `allowed_endpoints` still apply to all Agent Profile traffic.
-
-## v1.8 Highlights
-
-- OpenRouter-first canonical model registry: SiftGate now materializes an internal canonical model dataset from OpenRouter's public models API, then uses that registry as the primary source for fresher model ids, context windows, supported parameters, architecture metadata, and reference pricing.
-- ZeroEval enrichment overlay: ZeroEval no longer depends on fragile built-in provider/model exact matches. It overlays lifecycle, throughput, benchmarks, multimodal/spec metadata, and review-required secondary pricing onto canonical models through a stricter matching system with confidence tracking and diagnostics.
-- Provider projection and visibility cleanup: the public merged provider catalog still stays one operator-facing surface, but provider model rows are now projected from canonical truth instead of letting stale built-in static model lists keep acting like primary truth. Legacy, deprecated, and transport-only presets stay compatible without misleading the default path.
-- Unified node UX: Nodes, Add Node, and Provider Catalog now show the same provider status, coverage, trust, and recommended-model signals. Add Node defaults come from canonical recommended buckets, default pricing rows prefill from those recommendations, and non-active providers are hidden unless the operator explicitly shows transport-only/hidden presets. Provider Catalog counts separate active catalog rows from connectable transport-only presets so the default visible count is not confused with total runtime support.
-
-## v1.7 Highlights
-
-- ZeroEval-backed catalog enrichment introduced review-required third-party model metadata and default pricing references through the existing catalog sync cache instead of creating a second catalog.
-- Fresh model defaults for Add Node introduced backend-generated `recommended_model_buckets`, `latest_model_hints`, and `recommended_models` so default provider/model suggestions stopped depending on naive alphabetical ordering.
-- Default pricing prefill via merged catalog seeded Add Node pricing editors from merged catalog pricing metadata while keeping explicit node pricing, `models_pricing`, `catalog.override.yaml`, and sync-cache precedence unchanged.
-- Catalog enrichment metadata added lifecycle, specs, source metadata, and selected benchmark snippets to merged catalog and Dashboard API model rows.
-
-## v1.6 Highlights
-
-- Usage schema registry: compatibility profiles now declare official usage/cache field paths so non-streaming and streaming extraction can normalize provider cache tokens across OpenAI-compatible, Responses-compatible, Anthropic Messages, Gemini, DeepSeek, Cohere, and local runtime surfaces.
-- Provider cache-aware cost accounting: built-in pricing and canonical usage handling now preserve normal input, cache read, and cache creation token distinctions so actual cost and no-cache baseline cost stay comparable.
-- Cache Savings Dashboard: overview KPIs, Analytics, Logs, and Budget views now show provider-cache hit rate, savings, cost split, and no-cache baselines without exposing prompts, responses, raw headers, or provider keys.
-- Cache Session Affinity routing: when a session has recent confirmed provider cache hits on the same node/model, routing can bias toward that target within a safe TTL window and explain the decision in Route Explanation.
-
-## v1.5 Highlights
-
-- Required env fail-fast: legacy `${VAR}` references are now enforced during startup and config reload. `${VAR:-default}` still works for local defaults and CI-safe placeholders, while `${env:VAR}` and external secret backends stay runtime-resolved.
-- Runtime-safe reloads: dashboard reload, watcher reload, rollback restore, and `SIGHUP` now reject invalid configs atomically and keep the last known-good config in memory.
-- Public error contract hardening: gateway-generated public errors now go through one mapping layer so `message`, `type`, `request_id`, `x-siftgate-request-id`, and protocol-compatible OpenAI / Anthropic / Batch / MCP / Video envelopes stay aligned.
-
-## v1.4 Highlights
-
-| Area | What changed |
+| Concept | What it means |
 | --- | --- |
-| Provider Catalog 50+ | Built-in providers now cover foundation models, aggregators, cloud platforms, China providers, self-hosted/local runtimes, media, speech/audio, embedding, and rerank providers. |
-| Pricing Source Governance | Routing, benchmarks, config validation, CLI, and Dashboard views share one pricing resolver with source, freshness, confidence, and review-required evidence. |
-| Catalog Dashboard UX | Provider Catalog is now a filterable explorer with family/type/modality/compatibility/price-source filters, grouped rows, detail panels, and catalog-backed Add Node search. |
-| Compatibility Profiles | Providers and nodes can expose protocol/endpoint/streaming/multipart/async-job strategies, with routing and Route Explanation evidence for supported, downgraded, and unsupported fields. |
+| Workspace | Local operational boundary for Dashboard metadata, members, logs, keys, budgets, and audit events. |
+| Provider Node | A configured upstream account, deployment, proxy, or local model endpoint. |
+| Provider | Catalog metadata that helps users configure nodes. Active catalog rows are separate from transport-only presets. |
+| Gateway API Key | Client-facing key generated by SiftGate. It is different from provider API keys. |
+| Policy Namespace | Config-backed local policy label for allowed nodes/models, budgets, rate limits, API keys, teams, MCP allow-lists, and filters. |
+| Team | Local grouping for shared policy, budget, and usage attribution inside a Workspace. |
+| Budget Scope | Global, Policy Namespace, Team, or API Key daily limits with inherited or direct source-of-truth state. |
+| MCP Tool Gateway | Tool-call governance and proxying for MCP servers. It is not model routing. |
 
-## Core Features
+Read the full glossary in [OSS Concepts](docs/OSS_CONCEPTS.md).
 
-| Category | Capabilities |
-| --- | --- |
-| Protocols | `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/rerank`, image/audio endpoints, async video preview, realtime preview, MCP Tool Gateway preview, Batch proxy. |
-| Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
-| Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
-| Governance | Local Gateway API keys, Policy Namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
-| Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, custom provider templates, Provider SDK Generator beta, Provider Health Dashboard, pricing source governance, and catalog override/sync CLI. |
-| Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
-| Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
-| Developer UX | TypeScript client scaffold, Python SDK scaffold, Dashboard Playground, session trace view, agent framework examples, Coding Agent Gateway profiles. |
+## Architecture
 
-## After v2.7 Priorities
-
-- Preserve Platform Trust behavior while adding deeper agent-platform and
-  semantic-layer capabilities as minor releases.
-- Continue improving connector compatibility for common coding agents while
-  preserving advisory-only routing hints and profile-scoped virtual models.
-- Deepen canonical coverage without adding runtime coupling: more safe freshness adapters or provider-availability overlays are possible, but they must stay cache/override based and preserve operator-reviewed pricing governance.
-- Continue optional Redis/vector semantic-cache backends, prompt lifecycle
-  workflows, and guardrail policy depth without regressing single-node
-  memory/SQLite defaults.
-
-## Configuration
-
-The default path is `gateway.config.yaml`. Start from `gateway.config.example.yaml` and keep real provider keys out of git.
-
-In v1.5, legacy `${VAR}` references are treated as required config inputs: startup and reload fail fast if the variable is missing. Use `${VAR:-default}` when you intentionally want a local default, or `${env:VAR}` / Vault / AWS / GCP references when you want request-time secret resolution.
-
-Common settings:
-
-- `nodes[]`: upstream providers, compatible proxies, local model servers, and model buckets.
-- `routing`: tiers, fallback chains, load balancing, optimization mode.
-- `auth.api_keys[]`: local Gateway API keys and permissions.
-- `namespaces[]`: local Policy Namespace labels for node/model restrictions,
-  budgets, rate limits, API key/team binding, MCP allow-lists, and filters.
-- `cache`: deterministic prompt response cache.
-- `semantic_cache`: disabled-by-default semantic cache preview.
-- `semantic_platform`: disabled-by-default Semantic Cache v2 controls, Prompt
-  Registry, context optimizer, intent classification, and Guardrails v2.
-- `evaluation`: disabled-by-default local eval metadata and sample-storage controls.
-- `state`: optional Redis shared runtime state.
-- `database`: SQLite by default, PostgreSQL optional.
-
-Validate config before deploying:
-
-```bash
-npm run validate:config
+```text
+Apps, agents, SDKs
+        |
+        v
+SiftGate gateway and Dashboard
+        |
+        +-- policy, routing, budgets, audit, logs, route evidence
+        |
+        v
+Configured upstream providers, proxies, and local runtimes
 ```
+
+Default local storage uses memory state and SQLite. PostgreSQL, Redis, secret
+managers, log sinks, Kubernetes, Helm, and external control-plane integrations
+are optional.
 
 ## Documentation
 
-| Topic | Link |
-| --- | --- |
-| Quickstart | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
-| API reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
-| Dashboard | [docs/DASHBOARD.md](docs/DASHBOARD.md) |
-| Cost And Chargeback Platform | [docs/COST_CHARGEBACK_PLATFORM.md](docs/COST_CHARGEBACK_PLATFORM.md) |
-| Coding Agent Gateway | [docs/CODING_AGENT_GATEWAY.md](docs/CODING_AGENT_GATEWAY.md) |
-| Agent Gateway Profiles | [docs/AGENT_GATEWAY.md](docs/AGENT_GATEWAY.md) |
-| Production | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
-| Kubernetes / Helm | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
-| Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |
-| Provider Extensibility | [docs/PROVIDER_EXTENSIBILITY.md](docs/PROVIDER_EXTENSIBILITY.md) |
-| Adding Providers | [docs/ADDING_PROVIDERS.md](docs/ADDING_PROVIDERS.md) |
-| Provider Compatibility | [docs/PROVIDER_COMPATIBILITY.md](docs/PROVIDER_COMPATIBILITY.md) |
-| SDKs | [docs/SDKS.md](docs/SDKS.md) |
-| Playground | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) |
-| MCP Tool Gateway | [docs/MCP_GATEWAY.md](docs/MCP_GATEWAY.md) |
-| Batch API | [docs/BATCH_API.md](docs/BATCH_API.md) |
-| Caching | [docs/CACHING.md](docs/CACHING.md) |
-| Evaluation Framework | [docs/EVALUATION_FRAMEWORK.md](docs/EVALUATION_FRAMEWORK.md) |
-| Security | [docs/SECURITY.md](docs/SECURITY.md) |
-| Architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Roadmap | [docs/GATEWAY_ROADMAP.md](docs/GATEWAY_ROADMAP.md) |
-| v2 Platform Roadmap | [docs/V2_PLATFORM_ROADMAP.md](docs/V2_PLATFORM_ROADMAP.md) |
-| v1 to v2 Migration | [docs/MIGRATION_V1_TO_V2.md](docs/MIGRATION_V1_TO_V2.md) |
-| Release Checklist | [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) |
+Start here:
 
-## Development
+- [Documentation Home](docs/README.md)
+- [Quickstart](docs/QUICKSTART.md)
+- [Docker Quickstart](docs/DOCKER_QUICKSTART.md)
+- [Dashboard Guide](docs/DASHBOARD.md)
+- [Provider Catalog](docs/PROVIDER_CATALOG.md)
+- [OSS Concepts](docs/OSS_CONCEPTS.md)
+- [API Reference](docs/API_REFERENCE.md)
+- [Production Guide](docs/PRODUCTION.md)
+- [Security](docs/SECURITY.md)
+
+Localized documentation entrypoints:
+
+| Language | Link |
+| --- | --- |
+| English | [docs/i18n/en/README.md](docs/i18n/en/README.md) |
+| 简体中文 | [docs/i18n/zh/README.md](docs/i18n/zh/README.md) |
+| 繁體中文 | [docs/i18n/zh-TW/README.md](docs/i18n/zh-TW/README.md) |
+| 日本語 | [docs/i18n/ja/README.md](docs/i18n/ja/README.md) |
+| 한국어 | [docs/i18n/ko/README.md](docs/i18n/ko/README.md) |
+| ไทย | [docs/i18n/th/README.md](docs/i18n/th/README.md) |
+| Español | [docs/i18n/es/README.md](docs/i18n/es/README.md) |
+
+## Public Repository Hygiene
+
+The public repository tracks source, examples, docs, tests, and deployment
+manifests only. It intentionally ignores local runtime config, local databases,
+catalog sync cache, local agent notes, and private development prompts.
+
+Before opening a PR, run:
 
 ```bash
-npm run build
-npm test -- --runInBand
-npm run test:e2e
-npm run validate:k8s
 npm run docs:check
+npm run build
 cd frontend && npm test && npm run build
 ```
 
-Useful commands:
-
-```bash
-npm run catalog -- list
-npm run catalog -- sync zeroeval
-npm run validate:config
-npm run benchmark:upstream
-npm run release:check
-npm run test:python-sdk
-```
+Release branches should also run the broader test matrix listed in
+[Release Checklist](docs/RELEASE_CHECKLIST.md).
 
 ## Community
 
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Security policy: [SECURITY.md](SECURITY.md)
 - Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- Issues: use the templates under [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE)
-
-SiftGate is MIT licensed and designed so the open-source Data Plane remains useful on its own.
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- License: [MIT](LICENSE)

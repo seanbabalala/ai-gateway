@@ -11,6 +11,9 @@ const requiredFiles = [
   'CONTRIBUTING.md',
   'SECURITY.md',
   'CODE_OF_CONDUCT.md',
+  'docs/README.md',
+  'docs/assets/brand/siftgate-logo.svg',
+  'docs/assets/brand/siftgate-mark.svg',
   'docs/QUICKSTART.md',
   'docs/AGENT_GATEWAY.md',
   'docs/PRODUCTION.md',
@@ -27,10 +30,18 @@ const requiredFiles = [
   '.github/ISSUE_TEMPLATE/feature_request.yml',
   '.github/ISSUE_TEMPLATE/config_help.yml',
   '.github/PULL_REQUEST_TEMPLATE.md',
+  'docs/i18n/en/README.md',
+  'docs/i18n/zh/README.md',
+  'docs/i18n/zh-TW/README.md',
+  'docs/i18n/ja/README.md',
+  'docs/i18n/ko/README.md',
+  'docs/i18n/th/README.md',
+  'docs/i18n/es/README.md',
 ];
 
 const scanRoots = [
   'README.md',
+  'CHANGELOG.md',
   'CONTRIBUTING.md',
   'SECURITY.md',
   'CODE_OF_CONDUCT.md',
@@ -48,6 +59,10 @@ const forbiddenPatterns = [
   { name: 'AWS access key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
   { name: 'private key block', pattern: privateKeyBlockPattern },
   { name: 'bearer token literal', pattern: /\bBearer\s+[A-Za-z0-9._-]{24,}\b/ },
+  { name: 'local macOS home path', pattern: /\/Users\/[A-Za-z0-9._-]+/ },
+  { name: 'internal planning source', pattern: /\b(V2_EXECUTION_PROMPTS|OPEN_SOURCE_OPTIMIZATION_PLAN|PRODUCT_ROADMAP|GATEWAY_ROADMAP)\b/ },
+  { name: 'known internal provider label', pattern: /\b(ctrip|tokenflux)\b/i },
+  { name: 'private intranet planning phrase', pattern: /公司内网/ },
 ];
 
 const failures = [];
