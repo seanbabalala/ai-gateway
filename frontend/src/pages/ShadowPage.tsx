@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -82,6 +83,18 @@ function deltaVariant(value: number | null | undefined, positiveIsGood = false):
   return good ? 'emerald' : 'amber'
 }
 
+const SHADOW_SETUP_SNIPPET = `shadow:
+  enabled: true
+  sample_rate: 0.05
+  target_node: openai-staging
+  target_model: gpt-4o-mini
+  timeout_ms: 30000
+  max_recent_results: 100
+  compare:
+    store_prompts: false
+    store_responses: false
+    sample_max_chars: 4000`
+
 export function ShadowPage() {
   const { t } = useTranslation('dashboard')
   const [namespaceFilter, setNamespaceFilter] = useState('')
@@ -139,6 +152,41 @@ export function ShadowPage() {
         icon={GitCompareArrows}
         badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
       />
+
+      {status && (
+        <SetupGuidePanel
+          title={t('shadow.setup.title')}
+          description={t('shadow.setup.description')}
+          icon={GitCompareArrows}
+          statuses={[
+            {
+              label: t('shadow.setup.status.shadow'),
+              value: status.enabled ? t('shadow.enabled') : t('shadow.disabled'),
+              tone: status.enabled ? 'emerald' : 'zinc',
+            },
+            {
+              label: t('shadow.setup.status.target'),
+              value: status.target_node && status.target_model ? t('shadow.setup.status.configured') : t('shadow.setup.status.missing'),
+              tone: status.target_node && status.target_model ? 'emerald' : 'amber',
+            },
+            {
+              label: t('shadow.setup.status.samples'),
+              value: status.compare.store_prompts || status.compare.store_responses
+                ? t('shadow.setup.status.explicitStorage')
+                : t('shadow.setup.status.notStored'),
+              tone: status.compare.store_prompts || status.compare.store_responses ? 'amber' : 'emerald',
+            },
+          ]}
+          bullets={[
+            t('shadow.setup.bullets.asyncMirror'),
+            t('shadow.setup.bullets.notExperiment'),
+            t('shadow.setup.bullets.notEval'),
+            t('shadow.setup.bullets.noPromotion'),
+          ]}
+          snippetTitle={t('shadow.setup.snippetTitle')}
+          snippet={SHADOW_SETUP_SNIPPET}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <CardStatic>

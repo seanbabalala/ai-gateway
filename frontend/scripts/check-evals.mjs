@@ -19,6 +19,8 @@ assert(sidebar.includes("labelKey: 'nav.evals'"), 'Sidebar is missing Eval Repor
 assert(hook.includes('/api/dashboard/evals/reports'), 'Eval hook must call dashboard eval reports API.')
 assert(!hook.includes('apiPost') && !hook.includes('apiPut') && !hook.includes('apiDelete'), 'Eval hooks must stay read-only.')
 assert(page.includes('metadataOnly') && page.includes('sample_previews_stored'), 'Eval page must show privacy boundary state.')
+assert(page.includes('SetupGuidePanel') && page.includes('EVAL_SETUP_SNIPPET'), 'Eval page must show setup-state YAML guidance.')
+assert(page.includes('store_samples: false') && page.includes('controlledRuns'), 'Eval setup guidance must keep sample storage off by default and distinguish controlled runs.')
 assert(!page.includes('config/reload') && !page.includes('updateRouting'), 'Eval page must not mutate config or routing.')
 assert(types.includes('EvalReportsResponse') && types.includes('EvalReportDetailResponse'), 'Eval API types are missing.')
 assert(types.includes('prompt_response_stored') && types.includes('metadata_only'), 'Eval privacy types are missing.')
@@ -36,6 +38,10 @@ for (const locale of locales) {
     'evals.sections.reports',
     'evals.sections.comparison',
     'evals.privacy.metadataOnly',
+    'evals.setup.title',
+    'evals.setup.snippetTitle',
+    'evals.setup.bullets.notTrafficExperiments',
+    'evals.setup.bullets.noSamplesByDefault',
     'evals.privacy.samplesStored',
     'evals.samples.emptyDescription',
     'evals.samples.primaryShort',

@@ -13,6 +13,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
+import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -60,6 +61,16 @@ function statusLabel(status: EvalRunStatus, t: TFunction) {
 function winnerLabel(winner: EvalWinner, t: TFunction) {
   return t(`evals.winner.${winner || 'unknown'}`)
 }
+
+const EVAL_SETUP_SNIPPET = `evaluation:
+  enabled: true
+  store_samples: false
+  max_sample_chars: 500
+  retention_days: 30
+  judge_model: gpt-4o-mini
+
+# Run creation is an explicit local automation/API step.
+# Keep per-run store_samples false unless redacted previews are intentionally needed.`
 
 function TargetBlock({ label, target, t }: { label: string; target: EvalRunSummary['primary']; t: TFunction }) {
   return (
@@ -369,6 +380,37 @@ export function EvalReportsPage() {
         conceptId="evals"
         icon={Scale}
         badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
+
+      <SetupGuidePanel
+        title={t('evals.setup.title')}
+        description={t('evals.setup.description')}
+        icon={Beaker}
+        statuses={[
+          {
+            label: t('evals.setup.status.reports'),
+            value: data.totals.runs > 0 ? t('evals.setup.status.available') : t('evals.setup.status.waitingForRuns'),
+            tone: data.totals.runs > 0 ? 'emerald' : 'zinc',
+          },
+          {
+            label: t('evals.setup.status.storage'),
+            value: data.privacy.sample_previews_stored ? t('evals.privacy.samplesStored') : t('evals.privacy.metadataOnly'),
+            tone: data.privacy.sample_previews_stored ? 'amber' : 'emerald',
+          },
+          {
+            label: t('evals.setup.status.mode'),
+            value: t('evals.setup.status.controlledRuns'),
+            tone: 'blue',
+          },
+        ]}
+        bullets={[
+          t('evals.setup.bullets.primaryCandidateJudge'),
+          t('evals.setup.bullets.notTrafficExperiments'),
+          t('evals.setup.bullets.normalGatewayPath'),
+          t('evals.setup.bullets.noSamplesByDefault'),
+        ]}
+        snippetTitle={t('evals.setup.snippetTitle')}
+        snippet={EVAL_SETUP_SNIPPET}
       />
 
       <div className="grid gap-4 md:grid-cols-4">

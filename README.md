@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-beta.2 Budget Scope Settings**.
+Current release: **v2.8.0-beta.3 Advanced Setup Closure**.
 
-Current development focus after v2.8.0-beta.2: preserve Platform Trust stability,
+Current development focus after v2.8.0-beta.3: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -83,6 +83,14 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.8 Highlights
 
+- v2.8.0-beta.3 makes advanced OSS surfaces setup-complete in product:
+  Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
+  MCP Tool Gateway now show setup state, safe YAML examples, and clearer
+  boundaries between metadata controls, live split analytics, controlled evals,
+  asynchronous shadow mirroring, and tool-call proxy governance.
+- The beta.3 release keeps advanced features disabled or metadata-only by
+  default and does not add auto-promotion, workflow automation, routing changes,
+  or prompt/response/tool payload storage.
 - v2.8.0-beta.2 makes daily budget setup obvious across Global, Policy
   Namespace, Team, and API Key scopes. The Budget page shows source of truth,
   inherited or unset state, daily reset time, alert threshold, current usage,

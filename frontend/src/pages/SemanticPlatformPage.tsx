@@ -14,6 +14,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
+import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -369,6 +370,47 @@ function InlineMetric({ label, value, tone = 'default' }: { label: string; value
   )
 }
 
+const SEMANTIC_SETUP_SNIPPET = `semantic_cache:
+  enabled: true
+  backend: memory
+  similarity_threshold: 0.92
+  ttl_seconds: 3600
+  max_entries: 500
+  store_responses: false
+  isolation: workspace_api_key_model
+  response_storage_requires_header: true
+
+semantic_platform:
+  enabled: true
+  prompt_registry:
+    enabled: true
+    store_template_content: false
+    max_versions_per_key: 20
+  context_optimizer:
+    enabled: true
+    strategy: metadata_only
+    max_context_ratio: 0.8
+    allow_content_mutation: false
+  intent_classification:
+    enabled: true
+    categories: [coding, task, security, reasoning, creative, multimodal, analysis, general]
+    min_confidence: 0.5
+  guardrails_v2:
+    enabled: true
+    metadata_only: true
+    input:
+      enabled: true
+      pii: true
+      toxicity: true
+      jailbreak: true
+      action: observe
+    output:
+      enabled: true
+      pii: true
+      toxicity: true
+      jailbreak: true
+      action: observe`
+
 export function SemanticPlatformPage() {
   const { t } = useTranslation('dashboard')
   const [period, setPeriod] = useState('7d')
@@ -425,6 +467,39 @@ export function SemanticPlatformPage() {
         conceptId="semanticControls"
         icon={BrainCircuit}
         badgeKinds={['configDriven', 'runtimeSupported', 'requiresConfig']}
+      />
+
+      <SetupGuidePanel
+        title={t('semanticPlatform.setup.title')}
+        description={t('semanticPlatform.setup.description')}
+        icon={FileCode2}
+        statuses={[
+          {
+            label: t('semanticPlatform.setup.status.semanticPlatform'),
+            value: data.config.enabled ? t('semanticPlatform.status.enabled') : t('semanticPlatform.status.disabled'),
+            tone: data.config.enabled ? 'emerald' : 'zinc',
+          },
+          {
+            label: t('semanticPlatform.setup.status.semanticCache'),
+            value: data.config.semantic_cache.enabled ? t('semanticPlatform.status.enabled') : t('semanticPlatform.status.disabled'),
+            tone: data.config.semantic_cache.enabled ? 'emerald' : 'zinc',
+          },
+          {
+            label: t('semanticPlatform.setup.status.storage'),
+            value: data.privacy.semantic_cache_response_storage_opt_in || data.privacy.prompt_registry_content_storage_opt_in
+              ? t('semanticPlatform.setup.status.explicitOptIn')
+              : t('semanticPlatform.privacy.metadataOnly'),
+            tone: data.privacy.semantic_cache_response_storage_opt_in || data.privacy.prompt_registry_content_storage_opt_in ? 'amber' : 'emerald',
+          },
+        ]}
+        bullets={[
+          t('semanticPlatform.setup.bullets.metadataOnly'),
+          t('semanticPlatform.setup.bullets.noMutation'),
+          t('semanticPlatform.setup.bullets.routeEvidence'),
+          t('semanticPlatform.setup.bullets.contentOptIn'),
+        ]}
+        snippetTitle={t('semanticPlatform.setup.snippetTitle')}
+        snippet={SEMANTIC_SETUP_SNIPPET}
       />
 
       <PrivacyContract data={data} />

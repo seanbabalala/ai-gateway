@@ -163,5 +163,19 @@
   "benchmark.cacheAware.title": "캐시 인지 효과",
   "benchmark.cacheAware.subtitle": "local {{local}} hit · provider read {{provider}} hit",
   "benchmark.cacheAware.providerHitRate": "provider hit rate",
-  "benchmark.cacheAware.readTokenRatio": "read token ratio"
+  "benchmark.cacheAware.readTokenRatio": "read token ratio",
+  "experiments.setup.title": "설정 상태와 experiment 경계",
+  "experiments.setup.description": "Traffic Experiments는 routing tiers의 configured split traffic을 읽습니다. 이 page는 live traffic evidence만 보고하고 weights를 변경하지 않습니다.",
+  "experiments.setup.status.splits": "Splits",
+  "experiments.setup.status.configured": "구성됨",
+  "experiments.setup.status.notConfigured": "미구성",
+  "experiments.setup.status.mode": "Mode",
+  "experiments.setup.status.readOnlyAnalytics": "Read-only analytics",
+  "experiments.setup.status.decisioning": "Decisioning",
+  "experiments.setup.status.manualWeights": "Manual weights",
+  "experiments.setup.snippetTitle": "Routing split YAML",
+  "experiments.setup.bullets.liveSplit": "Traffic Experiments는 tier의 live routing split weights를 사용하며 split variants가 실제 requests를 받습니다.",
+  "experiments.setup.bullets.notEvals": "Evals는 controlled primary/candidate/judge runs이지 live split dashboards가 아닙니다.",
+  "experiments.setup.bullets.notShadow": "Shadow Traffic은 sampled copies를 mirror하며 primary traffic을 나누지 않습니다.",
+  "experiments.setup.bullets.noAutomation": "이 page는 winners를 자동 승격하거나 routing weights를 변경하지 않습니다."
 }

@@ -163,5 +163,19 @@
   "benchmark.cacheAware.title": "缓存感知效果",
   "benchmark.cacheAware.subtitle": "{{local}} 次本地命中 · {{provider}} 次 Provider 读命中",
   "benchmark.cacheAware.providerHitRate": "Provider 命中率",
-  "benchmark.cacheAware.readTokenRatio": "读缓存 token 比例"
+  "benchmark.cacheAware.readTokenRatio": "读缓存 token 比例",
+  "experiments.setup.title": "设置状态与实验边界",
+  "experiments.setup.description": "Traffic Experiments 从 routing tier 中读取已配置 split 流量；本页只报告实时证据，不修改权重。",
+  "experiments.setup.status.splits": "Splits",
+  "experiments.setup.status.configured": "已配置",
+  "experiments.setup.status.notConfigured": "未配置",
+  "experiments.setup.status.mode": "模式",
+  "experiments.setup.status.readOnlyAnalytics": "只读分析",
+  "experiments.setup.status.decisioning": "决策",
+  "experiments.setup.status.manualWeights": "手动权重",
+  "experiments.setup.snippetTitle": "Routing split YAML",
+  "experiments.setup.bullets.liveSplit": "Traffic Experiments 使用 tier 上的实时 routing split 权重；split variants 会接收真实请求。",
+  "experiments.setup.bullets.notEvals": "Evals 是受控 primary/candidate/judge 运行，不是实时 split dashboard。",
+  "experiments.setup.bullets.notShadow": "Shadow Traffic 镜像采样副本，不会拆分 primary traffic。",
+  "experiments.setup.bullets.noAutomation": "本页不会自动推广赢家，也不会修改 routing 权重。"
 }

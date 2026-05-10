@@ -163,5 +163,19 @@
   "benchmark.cacheAware.title": "Cache-aware impact",
   "benchmark.cacheAware.providerHitRate": "provider hit rate",
   "benchmark.cacheAware.readTokenRatio": "read-token ratio",
-  "benchmark.cacheAware.subtitle": "{{local}} local hits · {{provider}} provider read hits"
+  "benchmark.cacheAware.subtitle": "{{local}} local hits · {{provider}} provider read hits",
+  "experiments.setup.title": "Setup state and experiment boundary",
+  "experiments.setup.description": "Traffic Experiments read configured split traffic from routing tiers. This page reports live traffic evidence and never changes weights.",
+  "experiments.setup.status.splits": "Splits",
+  "experiments.setup.status.configured": "Configured",
+  "experiments.setup.status.notConfigured": "Not configured",
+  "experiments.setup.status.mode": "Mode",
+  "experiments.setup.status.readOnlyAnalytics": "Read-only analytics",
+  "experiments.setup.status.decisioning": "Decisioning",
+  "experiments.setup.status.manualWeights": "Manual weights",
+  "experiments.setup.snippetTitle": "Routing split YAML",
+  "experiments.setup.bullets.liveSplit": "Traffic Experiments use live routing split weights on a tier; split variants receive real requests.",
+  "experiments.setup.bullets.notEvals": "Evals are controlled primary/candidate/judge runs, not live split dashboards.",
+  "experiments.setup.bullets.notShadow": "Shadow Traffic mirrors sampled copies; it does not divide primary traffic.",
+  "experiments.setup.bullets.noAutomation": "This page does not auto-promote winners or change routing weights."
 }

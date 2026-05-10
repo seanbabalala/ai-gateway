@@ -23,6 +23,15 @@ evaluation:
   judge_model: gpt-4o-mini
 ```
 
+The Dashboard **Setup state and run boundary** panel keeps the setup path
+explicit:
+
+- Evals are controlled primary/candidate/judge runs.
+- Traffic Experiments are live split analytics from routing `split`
+  configuration.
+- Shadow Traffic is sampled asynchronous mirroring against a candidate target.
+- Eval reports do not promote winners or change routing weights.
+
 ## Dashboard APIs
 
 | Method | Endpoint | Purpose |

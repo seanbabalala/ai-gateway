@@ -8,6 +8,12 @@ rate limits, and Dashboard metadata visibility.
 MCP Tool Gateway is a tool-call proxy and governance surface. It is not model
 routing and it does not choose upstream LLM providers.
 
+The Dashboard **Setup state and tool proxy boundary** panel shows whether the
+gateway is enabled, which MCP path clients should call, and whether audit is in
+metadata-only mode. It also renders a copyable YAML example that combines
+`mcp.servers[]`, runtime secret references, `allowed_namespaces`, and Gateway
+API key `allowed_endpoints`.
+
 It is intentionally local-only. It does not include an enterprise MCP
 marketplace, remote workspace registry, SSO/RBAC policy, or SiftGate Cloud
 dependency.

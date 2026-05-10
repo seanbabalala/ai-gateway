@@ -163,5 +163,19 @@
   "benchmark.cacheAware.title": "キャッシュ考慮の効果",
   "benchmark.cacheAware.subtitle": "local {{local}} hit · provider read {{provider}} hit",
   "benchmark.cacheAware.providerHitRate": "provider hit rate",
-  "benchmark.cacheAware.readTokenRatio": "read token ratio"
+  "benchmark.cacheAware.readTokenRatio": "read token ratio",
+  "experiments.setup.title": "セットアップ状態と experiment 境界",
+  "experiments.setup.description": "Traffic Experiments は routing tiers の configured split traffic を読みます。この page は live traffic evidence を表示し、weights を変更しません。",
+  "experiments.setup.status.splits": "Splits",
+  "experiments.setup.status.configured": "Configured",
+  "experiments.setup.status.notConfigured": "Not configured",
+  "experiments.setup.status.mode": "Mode",
+  "experiments.setup.status.readOnlyAnalytics": "Read-only analytics",
+  "experiments.setup.status.decisioning": "Decisioning",
+  "experiments.setup.status.manualWeights": "Manual weights",
+  "experiments.setup.snippetTitle": "Routing split YAML",
+  "experiments.setup.bullets.liveSplit": "Traffic Experiments は tier 上の live routing split weights を使い、split variants は実リクエストを受けます。",
+  "experiments.setup.bullets.notEvals": "Evals は controlled primary/candidate/judge runs であり、live split dashboards ではありません。",
+  "experiments.setup.bullets.notShadow": "Shadow Traffic は sampled copies を mirror し、primary traffic を分割しません。",
+  "experiments.setup.bullets.noAutomation": "この page は winners の自動昇格や routing weights の変更を行いません。"
 }

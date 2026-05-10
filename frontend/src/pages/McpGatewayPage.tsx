@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, Network, RefreshCw, Server, ShieldCheck, Wrenc
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { MetricCard } from '@/components/shared/MetricCard'
+import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -127,6 +128,33 @@ function InlineMetric({ label, value, tone = 'default' }: { label: string; value
   )
 }
 
+const MCP_SETUP_SNIPPET = `mcp:
+  enabled: true
+  path: /mcp
+  max_recent_calls: 100
+  servers:
+    - id: local-docs
+      name: "Local Docs MCP"
+      url: "http://localhost:8787/mcp"
+      transport: http_json_rpc
+      timeout_ms: 30000
+      max_request_bytes: 1000000
+      allowed_namespaces: [team-a]
+      headers:
+        Authorization: "Bearer \${env:LOCAL_DOCS_MCP_TOKEN}"
+      tools:
+        - name: search_docs
+          description: "Search local product docs"
+          input_schema:
+            type: object
+
+auth:
+  api_keys:
+    - key: "\${SIFTGATE_AGENT_KEY}"
+      name: agent-tool-key
+      namespace_id: team-a
+      allowed_endpoints: [mcp:local-docs:search_docs]`
+
 function RecentCallsTable({ calls }: { calls: McpAuditEntry[] }) {
   const { t } = useTranslation('dashboard')
   if (calls.length === 0) {
@@ -227,6 +255,37 @@ export function McpGatewayPage() {
 
       {data && (
         <>
+          <SetupGuidePanel
+            title={t('mcp.setup.title')}
+            description={t('mcp.setup.description')}
+            icon={Wrench}
+            statuses={[
+              {
+                label: t('mcp.setup.status.gateway'),
+                value: data.enabled ? t('mcp.status.enabled') : t('mcp.status.disabled'),
+                tone: data.enabled ? 'emerald' : 'zinc',
+              },
+              {
+                label: t('mcp.setup.status.path'),
+                value: data.path || '/mcp',
+                tone: 'blue',
+              },
+              {
+                label: t('mcp.setup.status.audit'),
+                value: data.metadata_only ? t('mcp.setup.status.metadataOnly') : t('mcp.setup.status.reviewConfig'),
+                tone: data.metadata_only ? 'emerald' : 'amber',
+              },
+            ]}
+            bullets={[
+              t('mcp.setup.bullets.toolProxy'),
+              t('mcp.setup.bullets.notModelRouting'),
+              t('mcp.setup.bullets.endpointPermissions'),
+              t('mcp.setup.bullets.noPayloadStorage'),
+            ]}
+            snippetTitle={t('mcp.setup.snippetTitle')}
+            snippet={MCP_SETUP_SNIPPET}
+          />
+
           <div className="grid gap-4 md:grid-cols-4">
             <MetricCard
               label={t('mcp.metrics.servers')}
