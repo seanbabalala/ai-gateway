@@ -108,6 +108,14 @@ Local teams are open-source data-plane policy groups stored in SQLite/PostgreSQL
 
 Local namespaces are open-source data-plane policy labels. They can restrict allowed nodes/models and add namespace budgets/rate limits, but they are not Cloud workspaces and do not include enterprise SSO, SCIM, organization billing, or workspace RBAC. Key, team, and namespace restrictions are intersected before routing. The effective rate limit is the strictest configured key/team/namespace limit. Budget checks run across global, namespace, team, and key scopes before a request reaches an upstream provider.
 
+Budget ownership is deliberately explicit. Global daily token/cost limits come
+from `gateway.config.yaml`; namespace budgets come from config-backed Policy
+Namespaces; team budgets come from local Team policy rows; API Key budgets come
+from Dashboard-managed Gateway API key rows. If a namespace, team, or key has no
+direct budget rule, the request still inherits earlier scope checks in the same
+enforcement order. Manual resets zero counters only and do not change configured
+limits.
+
 Dashboard API key list responses expose only `key_prefix`, status, team/namespace labels, usage summary, and permission metadata. The full key is returned once on create or rotate, then discarded. API key and team mutations write local config audit events with redacted before/after summaries, including `secret: redacted` for keys and no secret-bearing fields for teams.
 
 ### Routing

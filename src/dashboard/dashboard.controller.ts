@@ -240,6 +240,36 @@ type DashboardPricingTrustStatus =
   | "review_required"
   | "missing";
 
+type BudgetScopeKind = "global" | "namespace" | "team" | "api_key";
+
+const BUDGET_SCOPE_ORDER: BudgetScopeKind[] = [
+  "global",
+  "namespace",
+  "team",
+  "api_key",
+];
+
+const BUDGET_SOURCE_OF_TRUTH: Record<BudgetScopeKind, string> = {
+  global: "global_config",
+  namespace: "policy_namespace_config",
+  team: "team_policy",
+  api_key: "api_key_policy",
+};
+
+const BUDGET_EDITABLE_VIA: Record<BudgetScopeKind, string> = {
+  global: "config_file",
+  namespace: "policy_namespace_api",
+  team: "team_api",
+  api_key: "api_key_api",
+};
+
+const BUDGET_SCOPE_LABEL: Record<BudgetScopeKind, string> = {
+  global: "Global",
+  namespace: "Policy Namespace",
+  team: "Team",
+  api_key: "Gateway API Key",
+};
+
 const DASHBOARD_PROVIDER_ALIAS_HINTS: Record<string, string[]> = {
   openai: ["gpt", "o-series", "dall-e", "openai api"],
   anthropic: ["claude"],
@@ -3940,8 +3970,8 @@ export class DashboardController {
     @Query("namespace") namespaceId?: string,
     @Query("team_id") teamId?: string,
   ) {
+    const globalStatus = await this.budgetService.getStatus();
     if (teamId) {
-      const globalStatus = await this.budgetService.getStatus();
       const teamStatus = await this.budgetService.getStatus(
         null,
         null,
@@ -3952,10 +3982,15 @@ export class DashboardController {
         rules: globalStatus.map((s) => this.serializeBudgetStatus(s)),
         teamRules: teamStatus.map((s) => this.serializeBudgetStatus(s)),
         teamId,
+        selectedScope: this.serializeBudgetSelectedScope(
+          "team",
+          teamStatus,
+          teamId,
+        ),
+        scopeChain: this.serializeBudgetScopeChain("team"),
       };
     }
     if (namespaceId) {
-      const globalStatus = await this.budgetService.getStatus();
       const namespaceStatus = await this.budgetService.getStatus(
         null,
         null,
@@ -3967,10 +4002,15 @@ export class DashboardController {
           this.serializeBudgetStatus(s),
         ),
         namespaceId,
+        selectedScope: this.serializeBudgetSelectedScope(
+          "namespace",
+          namespaceStatus,
+          namespaceId,
+        ),
+        scopeChain: this.serializeBudgetScopeChain("namespace"),
       };
     }
     if (apiKey || apiKeyId) {
-      const globalStatus = await this.budgetService.getStatus();
       const keyStatus = await this.budgetService.getStatus(
         apiKey || null,
         apiKeyId || null,
@@ -3980,19 +4020,30 @@ export class DashboardController {
         perKeyRules: keyStatus.map((s) => this.serializeBudgetStatus(s)),
         apiKeyName: keyStatus[0]?.apiKeyName || apiKey || null,
         apiKeyId: keyStatus[0]?.apiKeyId || apiKeyId || null,
+        selectedScope: this.serializeBudgetSelectedScope(
+          "api_key",
+          keyStatus,
+          keyStatus[0]?.apiKeyName || apiKey || apiKeyId || null,
+        ),
+        scopeChain: this.serializeBudgetScopeChain("api_key"),
       };
     }
     // Backward-compatible: no api_key → global rules only
-    const status = await this.budgetService.getStatus();
     return {
-      rules: status.map((s) => this.serializeBudgetStatus(s)),
+      rules: globalStatus.map((s) => this.serializeBudgetStatus(s)),
+      selectedScope: this.serializeBudgetSelectedScope(
+        "global",
+        globalStatus,
+        "global",
+      ),
+      scopeChain: this.serializeBudgetScopeChain("global"),
     };
   }
 
   private serializeBudgetStatus(s: {
     id: number;
     type: string;
-    scope: "global" | "api_key" | "namespace" | "team";
+    scope: BudgetScopeKind;
     apiKeyName: string | null;
     apiKeyId: string | null;
     namespaceId: string | null;
@@ -4000,15 +4051,26 @@ export class DashboardController {
     limit: number;
     current: number;
     percentage: number;
+    alertThreshold?: number;
     isExceeded: boolean;
     isAlert: boolean;
     periodStart: Date;
     resetAt: Date | null;
   }) {
+    const sourceOfTruth = BUDGET_SOURCE_OF_TRUTH[s.scope];
+    const blockingOrder = BUDGET_SCOPE_ORDER.indexOf(s.scope) + 1;
     return {
       id: s.id,
       type: s.type,
       scope: s.scope,
+      scopeLabel: BUDGET_SCOPE_LABEL[s.scope],
+      sourceOfTruth,
+      source: sourceOfTruth,
+      editableVia: BUDGET_EDITABLE_VIA[s.scope],
+      inherited: false,
+      unset: false,
+      blockingOrder,
+      blockingRuleScope: s.scope,
       apiKeyName: s.apiKeyName,
       apiKeyId: s.apiKeyId,
       namespaceId: s.namespaceId,
@@ -4016,11 +4078,52 @@ export class DashboardController {
       limit: s.limit,
       current: this.serializeBudgetCurrent(s.type, s.current),
       percentage: Number((s.percentage * 100).toFixed(1)),
+      alertThreshold: Number(((s.alertThreshold ?? 0.8) * 100).toFixed(1)),
       exceeded: s.isExceeded,
       alert: s.isAlert,
       periodStart: s.periodStart,
       resetAt: s.resetAt,
+      dailyResetAt: s.resetAt,
     };
+  }
+
+  private serializeBudgetSelectedScope(
+    scope: BudgetScopeKind,
+    rules: Array<{
+      resetAt: Date | null;
+      isExceeded: boolean;
+      alertThreshold?: number;
+    }>,
+    targetId: string | null,
+  ) {
+    return {
+      scope,
+      label: BUDGET_SCOPE_LABEL[scope],
+      targetId,
+      sourceOfTruth: BUDGET_SOURCE_OF_TRUTH[scope],
+      editableVia: BUDGET_EDITABLE_VIA[scope],
+      configured: rules.length > 0,
+      inherited: scope !== "global" && rules.length === 0,
+      unset: scope === "global" && rules.length === 0,
+      blockingOrder: BUDGET_SCOPE_ORDER.indexOf(scope) + 1,
+      blockingRuleScope: rules.some((rule) => rule.isExceeded) ? scope : null,
+      dailyResetAt: rules.find((rule) => rule.resetAt)?.resetAt ?? null,
+      alertThreshold: rules[0]?.alertThreshold !== undefined
+        ? Number((rules[0].alertThreshold * 100).toFixed(1))
+        : null,
+    };
+  }
+
+  private serializeBudgetScopeChain(selected: BudgetScopeKind) {
+    const selectedIndex = BUDGET_SCOPE_ORDER.indexOf(selected);
+    return BUDGET_SCOPE_ORDER.map((scope, index) => ({
+      scope,
+      label: BUDGET_SCOPE_LABEL[scope],
+      sourceOfTruth: BUDGET_SOURCE_OF_TRUTH[scope],
+      editableVia: BUDGET_EDITABLE_VIA[scope],
+      blockingOrder: index + 1,
+      activeForSelected: index <= selectedIndex,
+    }));
   }
 
   private serializeBudgetCurrent(type: string, current: number): number {

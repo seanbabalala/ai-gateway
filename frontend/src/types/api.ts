@@ -1299,21 +1299,65 @@ export interface SessionDetailResponse {
 export interface BudgetRule {
   id: number;
   type: string;
-  scope: "global" | "api_key" | "namespace";
+  scope: "global" | "api_key" | "namespace" | "team";
+  scopeLabel?: string;
+  sourceOfTruth?: "global_config" | "policy_namespace_config" | "team_policy" | "api_key_policy";
+  source?: string;
+  editableVia?: "config_file" | "policy_namespace_api" | "team_api" | "api_key_api";
+  inherited?: boolean;
+  unset?: boolean;
+  blockingOrder?: number;
+  blockingRuleScope?: "global" | "api_key" | "namespace" | "team" | null;
   apiKeyName: string | null;
   apiKeyId: string | null;
   namespaceId: string | null;
+  teamId?: string | null;
   limit: number;
   current: number;
   percentage: number;
+  alertThreshold?: number;
   exceeded: boolean;
   alert: boolean;
   periodStart: string;
   resetAt: string | null;
+  dailyResetAt?: string | null;
+}
+
+export interface BudgetSelectedScope {
+  scope: "global" | "api_key" | "namespace" | "team";
+  label: string;
+  targetId: string | null;
+  sourceOfTruth: "global_config" | "policy_namespace_config" | "team_policy" | "api_key_policy";
+  editableVia: "config_file" | "policy_namespace_api" | "team_api" | "api_key_api";
+  configured: boolean;
+  inherited: boolean;
+  unset: boolean;
+  blockingOrder: number;
+  blockingRuleScope: "global" | "api_key" | "namespace" | "team" | null;
+  dailyResetAt: string | null;
+  alertThreshold: number | null;
+}
+
+export interface BudgetScopeChainItem {
+  scope: "global" | "api_key" | "namespace" | "team";
+  label: string;
+  sourceOfTruth: string;
+  editableVia: string;
+  blockingOrder: number;
+  activeForSelected: boolean;
 }
 
 export interface BudgetResponse {
   rules: BudgetRule[];
+  namespaceRules?: BudgetRule[];
+  teamRules?: BudgetRule[];
+  perKeyRules?: BudgetRule[];
+  namespaceId?: string | null;
+  teamId?: string | null;
+  apiKeyName?: string | null;
+  apiKeyId?: string | null;
+  selectedScope?: BudgetSelectedScope;
+  scopeChain?: BudgetScopeChainItem[];
 }
 
 // ── Nodes ──
@@ -3408,14 +3452,7 @@ export interface ExperimentAnalyticsResponse {
   period: number;
 }
 
-// ── Per-Key Budget ──
-
-export interface BudgetPerKeyResponse {
-  rules: BudgetRule[];
-  perKeyRules: BudgetRule[];
-  apiKeyName: string | null;
-  apiKeyId: string | null;
-}
+// ── Budget Key Index ──
 
 export interface BudgetKeyItem {
   id: string;

@@ -771,6 +771,7 @@ describe('BudgetService', () => {
       expect(status[0].limit).toBe(100_000);
       expect(status[0].current).toBe(50_000);
       expect(status[0].percentage).toBeCloseTo(0.5);
+      expect(status[0].alertThreshold).toBe(0.8);
       expect(status[0].isExceeded).toBe(false);
       expect(status[0].isAlert).toBe(false);
     });

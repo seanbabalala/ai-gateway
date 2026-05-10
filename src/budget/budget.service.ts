@@ -33,6 +33,7 @@ export interface BudgetStatus {
   limit: number;
   current: number;
   percentage: number;
+  alertThreshold: number;
   isExceeded: boolean;
   isAlert: boolean;
   periodStart: Date;
@@ -467,6 +468,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       limit: r.limit_value,
       current: r.current_value,
       percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
+      alertThreshold: r.alert_threshold,
       isExceeded: r.current_value >= r.limit_value,
       isAlert: r.limit_value > 0 ? r.current_value / r.limit_value >= r.alert_threshold : false,
       periodStart: r.period_start,
@@ -696,6 +698,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         limit: r.limit_value,
         current: r.current_value,
         percentage: r.limit_value > 0 ? r.current_value / r.limit_value : 0,
+        alertThreshold: r.alert_threshold,
         isExceeded: r.current_value >= r.limit_value,
         isAlert: r.limit_value > 0 ? r.current_value / r.limit_value >= r.alert_threshold : false,
         periodStart: r.period_start,
