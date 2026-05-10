@@ -2,7 +2,7 @@
 
 SiftGate OSS uses a few platform concepts that sound similar but serve
 different jobs. This page is the product vocabulary used by the Dashboard and
-docs in v2.8.0-rc.1.
+docs in v2.8.0.
 
 ## Capability Status Language
 

@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## 2.8.0 - 2026-05-10
+
+### Added
+
+- Shipped the final v2.8 OSS concept model across the Dashboard, API docs, README, config examples, and release notes: Workspace, Policy Namespace, Provider Node, Gateway API Key, Budget scope, Semantic Controls, Traffic Experiments, Evals, Shadow Traffic, and MCP Tool Gateway.
+- Included the full v2.8 release train from alpha through RC: in-product concept clarity, Provider Catalog visibility counts, OSS Workspace management, config-backed Policy Namespace management, scoped budget setup, advanced setup panels, first-run onboarding, and cross-linked docs.
+- Prepared final GA release notes with highlights, upgrade notes, test evidence, privacy boundaries, and known limitations.
+
+### Changed
+
+- Updated release metadata to v2.8.0 across package, lock, Dashboard, client, Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+- Polished remaining config-example wording so the user-facing names are MCP Tool Gateway and Semantic Controls while compatibility routes and config keys remain unchanged.
+- Confirmed v2.8.0 GA does not add new scope after RC; it is hardening, regression-check, docs polish, test evidence, and final release packaging only.
+
+### Upgrade Notes
+
+- Existing `gateway.config.yaml` files remain compatible. Compatibility routes and config keys such as `/api/dashboard/semantic-platform`, `semantic_platform`, `mcp`, and `namespaces` are intentionally unchanged.
+- Operators can adopt the new Dashboard setup path without enabling advanced features. Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and MCP Tool Gateway stay disabled or metadata-only until configured.
+- Workspace, Policy Namespace, Budget, Team, API Key, Provider Node, and Provider Catalog behavior follows the v2.8 prerelease documentation and tests.
+
+### Test Evidence
+
+- GA validation passed: `npm run docs:check`, `npm run build`, `npm test -- --runInBand`, `npm run test:e2e`, `npm run validate:config`, `npm run validate:k8s`, `npm run test:sdk`, `npm run typecheck:sdk`, `npm run test:python-sdk`, `cd frontend && npm test && npm run build`, and `npm run release:check`.
+
+### Known Limitations
+
+- Provider Catalog visibility remains source-governed: transport-only providers are connectable as nodes but hidden from the default active catalog when model or pricing truth is not trusted.
+- SiftGate OSS fixed roles remain Admin, Operator, and Viewer; custom role systems, SSO, SCIM, cloud org billing, and enterprise tenant behavior are not part of v2.8.0.
+- Advanced features do not auto-promote experiment winners, run workflow automation, or store prompts, responses, raw provider headers, provider keys, tool payloads, media bytes, hidden reasoning, or resolved secrets by default.
+
+### Boundaries
+
+- v2.8.0 does not add new GA features, widen RC scope, change runtime defaults, or change privacy storage defaults.
+
 ## 2.8.0-rc.1 - 2026-05-10
 
 ### Added

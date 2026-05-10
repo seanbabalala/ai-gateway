@@ -16,7 +16,7 @@ pressure evidence, intent hints, or Guardrails v2 finding metadata.
 
 By default, SiftGate does not store prompts, responses, raw provider headers,
 provider keys, media bytes, tool payloads, hidden reasoning text, or resolved
-secrets. The semantic platform records hashes, counters, route evidence, and
+secrets. Semantic Controls record hashes, counters, route evidence, and
 finding metadata unless an operator explicitly enables a content-storage option
 and documents retention.
 

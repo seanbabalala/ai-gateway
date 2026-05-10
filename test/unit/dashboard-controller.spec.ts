@@ -1229,7 +1229,7 @@ describe("DashboardController — benchmark report", () => {
 });
 
 describe("DashboardController — guardrails status", () => {
-  it("should return metadata-only MCP Gateway preview status", () => {
+  it("should return metadata-only MCP Tool Gateway status", () => {
     const mcp = {
       getDashboardSummary: jest.fn().mockReturnValue({
         enabled: true,

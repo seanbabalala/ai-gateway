@@ -113,7 +113,7 @@ export interface ClusterStatusResponse {
   last_outbound_reload_at: string | null;
 }
 
-// ── MCP Gateway Preview ──
+// ── MCP Tool Gateway ──
 
 export interface McpToolSummary {
   name: string;
@@ -522,7 +522,7 @@ export interface CostPlatformResponse {
   };
 }
 
-// ── Semantic Platform ──
+// ── Semantic Controls ──
 
 export interface SemanticPlatformPrivacyContract {
   metadata_only: true;
