@@ -348,9 +348,9 @@ Gateway API keys can scope MCP access through `allowed_endpoints`:
 - `mcp:<serverId>`: allow one MCP server.
 - `mcp:<serverId>:<toolName>`: allow one tool call on one MCP server.
 
-If an MCP server declares `allowed_namespaces`, the Gateway API key must be bound to one of those namespaces.
+If an MCP server declares `allowed_namespaces`, the Gateway API key must be bound to one of those Policy Namespaces.
 
-MCP Gateway audit metadata does not store tool arguments or tool results. See [MCP Gateway](MCP_GATEWAY.md).
+MCP Tool Gateway audit metadata does not store tool arguments or tool results. See [MCP Tool Gateway](MCP_GATEWAY.md).
 
 ## Dashboard API
 

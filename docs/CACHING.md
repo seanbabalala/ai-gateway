@@ -56,9 +56,9 @@ Privacy defaults:
 When `store_responses: false`, a semantic match is evidence only and the gateway still calls upstream. When `store_responses: true`, a high-confidence semantic hit can return a replayable cached response.
 
 Operators can clear active-workspace semantic entries from the Dashboard
-Semantic Platform page or `POST /api/dashboard/semantic-platform/semantic-cache/invalidate`.
-See [Semantic Platform](SEMANTIC_PLATFORM.md) for v2.7 Prompt Registry,
-context, intent, and Guardrails v2 evidence.
+Semantic Controls page or `POST /api/dashboard/semantic-platform/semantic-cache/invalidate`.
+See [Semantic Controls](SEMANTIC_PLATFORM.md) for Prompt Registry, context,
+intent, and Guardrails v2 evidence.
 
 ## Route Explanation
 

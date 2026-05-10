@@ -36,15 +36,22 @@ Open:
 
 ## 4. Finish The First-Run Path
 
-The v2.0.0 Dashboard opens with a Platform Trust checklist:
+The v2.8 Dashboard opens with a first-run setup path:
 
-1. Confirm the active workspace.
-2. Add or verify one provider node.
-3. Create a Gateway API key.
-4. Send a first request from Playground or an OpenAI-compatible client.
-5. Open logs, route evidence, and cost metadata.
+1. Confirm or create the active Workspace.
+2. Add or verify one Provider Node.
+3. Create a Gateway API Key for client apps.
+4. Optionally add a Policy Namespace when keys or Teams need shared node, model, budget, or rate-limit policy.
+5. Review daily Budget scopes for Global, Policy Namespace, Team, and API Key.
+6. Send a first request from Playground or an OpenAI-compatible client.
+7. Open logs, route evidence, and cost metadata.
+8. Explore advanced setup for Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and MCP Tool Gateway only when you need those features.
 
-This checklist is read-only evidence. It does not store prompts, responses, raw
+Policy Namespace and advanced setup are optional. The required path is
+Workspace, Provider Node, Gateway API Key, Budget review, first request, and
+evidence review.
+
+This checklist is metadata-only. It does not store prompts, responses, raw
 headers, provider keys, media bytes, tool payloads, hidden reasoning, or
 resolved secrets.
 
@@ -72,5 +79,8 @@ Next reads:
 
 - [Production](PRODUCTION.md)
 - [Provider Catalog](PROVIDER_CATALOG.md)
+- [OSS Concepts](OSS_CONCEPTS.md)
 - [Dashboard](DASHBOARD.md)
+- [Policy Namespaces And Shadow Traffic](NAMESPACES_AND_SHADOW.md)
+- [MCP Tool Gateway](MCP_GATEWAY.md)
 - [Security](SECURITY.md)

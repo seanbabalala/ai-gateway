@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
@@ -467,6 +468,15 @@ export function SemanticPlatformPage() {
         conceptId="semanticControls"
         icon={BrainCircuit}
         badgeKinds={['configDriven', 'runtimeSupported', 'requiresConfig']}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t('semanticPlatform.docs.semantic'), href: repoDocsUrl('docs/SEMANTIC_PLATFORM.md') },
+          { label: t('semanticPlatform.docs.caching'), href: repoDocsUrl('docs/CACHING.md') },
+          { label: t('semanticPlatform.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#semantic-controls') },
+          { label: t('semanticPlatform.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+        ]}
       />
 
       <SetupGuidePanel

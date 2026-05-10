@@ -13,6 +13,7 @@ import {
 import { FlaskConical, Activity, DollarSign, Clock, CheckCircle, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -164,6 +165,15 @@ export function ExperimentPage() {
         conceptId="trafficExperiments"
         icon={FlaskConical}
         badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t('experiments.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
+          { label: t('experiments.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
+          { label: t('experiments.docs.evals'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
+          { label: t('experiments.docs.shadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
+        ]}
       />
 
       <SetupGuidePanel

@@ -291,9 +291,9 @@ Future releases that change persistent schema should ship explicit TypeORM
 migration files. Production operators should run those release migrations as a
 deployment step instead of leaving runtime schema synchronization enabled.
 
-## MCP Gateway Preview
+## MCP Tool Gateway
 
-The v1.2 MCP Gateway preview is disabled by default. Enable it only for MCP
+The MCP Tool Gateway is disabled by default. Enable it only for MCP
 servers you operate or explicitly trust:
 
 ```yaml

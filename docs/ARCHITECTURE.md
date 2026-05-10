@@ -38,7 +38,7 @@ Client Request
   -> Controller
   -> Normalizer
   -> API Key Guard
-  -> Local Namespace Policy
+  -> Local Policy Namespace
   -> Budget Check
   -> Prompt Cache Lookup
   -> Scoring
@@ -152,7 +152,7 @@ v1.4 pricing source governance normalizes explicit config, catalog overrides, sy
 
 v1.3 adds Semantic Cache preview as a separate disabled-by-default layer. It computes a local hashed-vector embedding from canonical request text, stores embedding/hash/metadata by default, and records semantic match evidence in call logs and Route Decision Trace. Replayable response storage is off unless `semantic_cache.store_responses=true`; when off, semantic matches are advisory evidence and traffic still goes upstream.
 
-v2.7 promotes the semantic layer into the Semantic Platform. Semantic Cache v2
+v2.7 promotes the semantic layer into Semantic Controls. Semantic Cache v2
 keeps `memory` as the production-safe default backend while validating preview
 Redis/vector backend settings, isolates matches by workspace/API key/model by
 default, and requires a per-request storage header before replayable responses
@@ -199,7 +199,7 @@ The data plane protects request flow with:
 - prompt cache
 - optional Redis shared state backend for circuit breakers, rate limits, prompt cache, and routing momentum
 - optional v2.2 Intelligence Loop for evidence-only cost optimization, token prediction, async eval metadata, and opt-in quality gates
-- optional MCP Gateway preview for local MCP server proxying behind Gateway API key auth, namespace allow-lists, and the same rate limiter
+- optional MCP Tool Gateway preview for local MCP server proxying behind Gateway API key auth, Policy Namespace allow-lists, and the same rate limiter
 - graceful shutdown
 - body size limits
 - dashboard health and node status
@@ -278,20 +278,20 @@ body storage, content mutation, and blocking behavior remain explicit opt-ins.
 
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
-## MCP Gateway Preview
+## MCP Tool Gateway
 
-The v1.2 MCP Gateway preview is a small sidecar path beside the AI protocol pipeline. `McpGatewayController` exposes `POST /mcp/:serverId`, reusing `ApiKeyGuard` and `RateLimitGuard`. `McpGatewayService` resolves the local `mcp.servers` registry, checks API key endpoint permissions and namespace allow-lists, resolves configured upstream headers through `SecretReferenceResolverService`, and forwards the JSON-RPC body to the upstream MCP HTTP endpoint.
+The MCP Tool Gateway is a small sidecar path beside the AI protocol pipeline. `McpGatewayController` exposes `POST /mcp/:serverId`, reusing `ApiKeyGuard` and `RateLimitGuard`. `McpGatewayService` resolves the local `mcp.servers` registry, checks API key endpoint permissions and Policy Namespace allow-lists, resolves configured upstream headers through `SecretReferenceResolverService`, and forwards the JSON-RPC body to the upstream MCP HTTP endpoint.
 
 The preview does not implement an enterprise MCP marketplace, remote workspace registry, stdio process supervisor, or Cloud dependency. Dashboard reads `GET /api/dashboard/mcp` for local registry metadata, static tool names, recent call metadata, and error summaries. The local audit buffer is metadata-only: server, method, tool name, API key id/name, namespace, status, latency, byte size, and sanitized error type. MCP tool input/output, raw headers, provider keys, resolved secret values, media bytes, and marketplace content are not stored.
 
-MCP Gateway is intentionally a tool-call proxy and governance path, not part of
-model routing. Model routing still lives in the main pipeline, node config,
-Gateway API key policy, and Policy Namespace restrictions.
+The MCP Tool Gateway is intentionally a tool-call proxy and governance path,
+not part of model routing. Model routing still lives in the main pipeline, node
+config, Gateway API key policy, and Policy Namespace restrictions.
 
 ## Agent Platform Preview
 
 The v2.5 Agent Platform preview is a read-only Dashboard control-plane module
-layered over Agent Profiles, Gateway API key summaries, MCP Gateway metadata,
+layered over Agent Profiles, Gateway API key summaries, MCP Tool Gateway metadata,
 and call-log agent metadata. `AgentPlatformService` returns the
 `GET /api/dashboard/agent-platform` response for A2A registry rows, Tool
 Registry permission evidence, preview workflow metadata, Conversation Memory

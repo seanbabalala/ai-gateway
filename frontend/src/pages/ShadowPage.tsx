@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
@@ -151,6 +152,15 @@ export function ShadowPage() {
         conceptId="shadowTraffic"
         icon={GitCompareArrows}
         badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t('shadow.docs.namespaceShadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
+          { label: t('shadow.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#shadow-traffic') },
+          { label: t('shadow.docs.evals'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
+          { label: t('shadow.docs.experiments'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
+        ]}
       />
 
       {status && (

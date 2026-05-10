@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -1215,6 +1216,15 @@ export function ApiKeysPage() {
           badgeKinds={['configDriven', 'requiresConfig']}
         />
       </div>
+
+      <DocsLinkGroup
+        links={[
+          { label: t('docs.apiKeys'), href: repoDocsUrl('docs/API_REFERENCE.md#gateway-api-key-management') },
+          { label: t('docs.policyNamespaces'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#policy-namespaces') },
+          { label: t('docs.budgets'), href: repoDocsUrl('docs/API_REFERENCE.md#budget-scope-settings') },
+          { label: t('docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+        ]}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <CardStatic>

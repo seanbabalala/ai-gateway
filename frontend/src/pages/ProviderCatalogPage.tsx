@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ConceptPanel } from "@/components/shared/ConceptPanel";
+import { DocsLinkGroup, repoDocsUrl } from "@/components/shared/DocsLinkGroup";
 import {
   CatalogCoveragePills,
   CatalogTrustPills,
@@ -530,6 +531,15 @@ export function ProviderCatalogPage() {
         conceptId="providerCatalog"
         icon={Boxes}
         badgeKinds={["readOnly", "configDriven", "requiresConfig"]}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t("catalogPage.docs.catalog"), href: repoDocsUrl("docs/PROVIDER_CATALOG.md") },
+          { label: t("catalogPage.docs.adding"), href: repoDocsUrl("docs/ADDING_PROVIDERS.md") },
+          { label: t("catalogPage.docs.extensibility"), href: repoDocsUrl("docs/PROVIDER_EXTENSIBILITY.md") },
+          { label: t("catalogPage.docs.concepts"), href: repoDocsUrl("docs/OSS_CONCEPTS.md") },
+        ]}
       />
 
       {catalog.isLoading && (
