@@ -35,6 +35,9 @@ CLOUD_DEVELOPMENT_PROMPTS.md
 
 # Local agent/browser artifacts
 .claude/
+CLAUDE.md
+public-skills/
+docs/DEVELOPMENT_SPECIFICATION.md
 .local-dev/
 .playwright-cli/
 output/

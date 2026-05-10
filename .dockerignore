@@ -24,6 +24,9 @@ gateway.config.yaml
 .docker-smoke
 test-results
 playwright-report
+CLAUDE.md
+public-skills
+docs/DEVELOPMENT_SPECIFICATION.md
 
 npm-debug.log*
 yarn-debug.log*

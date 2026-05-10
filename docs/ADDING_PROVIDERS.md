@@ -157,6 +157,5 @@ When a provider addition changes operator behavior, update:
 - `docs/PROVIDER_COMPATIBILITY.md`
 - `docs/API_REFERENCE.md` if response fields change
 - `docs/PROVIDER_EXTENSIBILITY.md` if custom template, generator, registry, or health behavior changes
-- `docs/GATEWAY_ROADMAP.md` if the addition changes release scope
+- `CHANGELOG.md` and release notes if the addition changes release scope
 - `gateway.config.example.yaml` only when a new config shape is introduced
-- `CHANGELOG.md`

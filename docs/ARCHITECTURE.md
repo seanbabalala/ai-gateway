@@ -478,7 +478,7 @@ The cloud control plane is the future paid product. It should manage:
 - router recommendations
 - optional Autopilot with guardrails
 
-See [Control Plane](./CONTROL_PLANE.md), [Product Roadmap](./PRODUCT_ROADMAP.md), and [Open Core](./OPEN_CORE.md) for the product boundary.
+See [Control Plane](./CONTROL_PLANE.md) and [Open Core](./OPEN_CORE.md) for the product boundary.
 
 ## Packaging
 

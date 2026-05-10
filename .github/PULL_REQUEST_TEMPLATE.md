@@ -14,3 +14,4 @@
 - [ ] Redis/PostgreSQL/Kubernetes/secret managers remain optional.
 - [ ] Dashboard copy is localized in all 7 supported languages when UI text changes.
 - [ ] Docs and examples use placeholders only.
+- [ ] Public docs links and localized docs entrypoints still pass `npm run docs:check`.

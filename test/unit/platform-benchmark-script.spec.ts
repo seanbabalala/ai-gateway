@@ -50,7 +50,7 @@ describe('benchmark-platform script', () => {
     expect(fromStdout).toEqual(fromFile);
     expect(fromFile).toMatchObject({
       report_schema: 'siftgate.platform_benchmark.v1',
-      release: 'v2.8.0',
+      release: 'v2.8.1',
       rc_measurement: false,
       methodology: {
         script: 'npm run benchmark:platform',
@@ -83,7 +83,7 @@ describe('benchmark-platform script', () => {
     expect(fromFile.comparisons.length).toBeGreaterThan(0);
 
     const markdown = fs.readFileSync(markdownOutput, 'utf8');
-    expect(markdown).toContain('SiftGate v2.8.0 Performance Report');
+    expect(markdown).toContain('SiftGate v2.8.1 Performance Report');
     expect(markdown).toContain('GA measurements');
   });
 });
