@@ -7,6 +7,12 @@ SiftGate v0.5 adds two open-source Data Plane features that work without SiftGat
 
 These are intentionally local OSS features. They do not implement enterprise workspaces, SSO, SCIM, RBAC, or organization billing.
 
+The v2.8 first-run setup path treats Policy Namespace as optional. You need one
+when a Gateway API Key or Team should share local policy such as allowed nodes,
+allowed models, budget, rate limit, MCP allow-list, or shadow/report filters.
+You do not need a Policy Namespace just to create a Workspace or send the first
+request.
+
 ## Policy Namespaces
 
 A Policy Namespace is a local policy label that can be attached to a Gateway API key or local Team. It can restrict which nodes/models the key may use and can define its own budget and rate limit.

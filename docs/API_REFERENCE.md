@@ -87,7 +87,7 @@ endpoints do not add payments, recharge balances, reseller ledgers, public API
 marketplaces, prompt/response storage, source-code storage, tool payload
 storage, raw-header storage, or provider-key exposure.
 
-v2.7 adds Semantic Platform endpoints for Semantic Cache v2, Prompt Registry,
+v2.7 adds Semantic Controls endpoints for Semantic Cache v2, Prompt Registry,
 Context Window Optimizer evidence, Intent Classification, and Guardrails v2.
 These endpoints are workspace-scoped and metadata-only by default. They do not
 store or return prompts, responses, raw provider headers, provider keys, media
@@ -395,7 +395,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/semantic-platform/semantic-cache/invalidate` | Invalidate Semantic Cache v2 entries for the active workspace or all workspaces |
 | `GET` | `/api/dashboard/analytics/experiment` | Read-only Traffic Experiment analytics from configured routing split variants |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
-| `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
+| `GET` | `/api/dashboard/mcp` | Metadata-only MCP Tool Gateway server registry, tools, recent calls, and error summary |
 | `GET` | `/api/dashboard/agent-profiles` | List local Agent Gateway profiles for the Dashboard **Agents** page |
 | `POST` | `/api/dashboard/agent-profiles` | Create a local Agent Gateway profile |
 | `PUT` | `/api/dashboard/agent-profiles/:id` | Update a local Agent Gateway profile |
@@ -486,18 +486,18 @@ and allowlisted safe headers such as `x-siftgate-agent-session-id`,
 `x-siftgate-agent-turn-id`, `x-siftgate-repo`, and `x-siftgate-project`; raw
 headers and repository content are not stored by default.
 
-### MCP Gateway Preview API
+### MCP Tool Gateway API
 
-MCP Gateway preview is disabled by default and uses local configuration only. It does not implement an enterprise MCP marketplace or hosted tool registry.
+MCP Tool Gateway preview is disabled by default and uses local configuration only. It does not implement an enterprise MCP marketplace or hosted tool registry.
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `POST` | `/mcp/:serverId` | Proxy one JSON-RPC MCP request or batch to a configured upstream MCP server |
 | `GET` | `/api/dashboard/mcp` | Read MCP registry, static tool metadata, recent call metadata, and error summaries |
 
-`POST /mcp/:serverId` requires `Authorization: Bearer <gateway-api-key>` and runs through the normal Gateway API key and rate-limit guards. API key endpoint restrictions may allow `mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`. If a server declares `allowed_namespaces`, the Gateway API key must be bound to one of those local namespaces.
+`POST /mcp/:serverId` requires `Authorization: Bearer <gateway-api-key>` and runs through the normal Gateway API key and rate-limit guards. API key endpoint restrictions may allow `mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`. If a server declares `allowed_namespaces`, the Gateway API key must be bound to one of those local Policy Namespaces.
 
-The Dashboard API is metadata-only. It returns server id/name, sanitized upstream endpoint without query strings, static tool names/descriptions, recent method/tool/status/latency/size entries, API key id/name, namespace id, and sanitized error type. Tool input, tool output, raw headers, provider keys, and resolved secret values are never returned or stored by the preview audit buffer.
+The Dashboard API is metadata-only. It returns server id/name, sanitized upstream endpoint without query strings, static tool names/descriptions, recent method/tool/status/latency/size entries, API key id/name, Policy Namespace id, and sanitized error type. Tool input, tool output, raw headers, provider keys, and resolved secret values are never returned or stored by the preview audit buffer.
 
 ### Provider Catalog API
 
@@ -756,9 +756,9 @@ match can return a cached response and call logs include
 `semantic_cache_hit=true` with `node_id=semantic_cache`. By default, response
 storage also requires `x-siftgate-semantic-store-response: true` on the request.
 The cache is isolated by workspace, source format, requested model, Gateway API
-key, namespace, and local team metadata.
+key, Policy Namespace, and local team metadata.
 
-### Semantic Platform
+### Semantic Controls
 
 `GET /api/dashboard/semantic-platform` supports `period` and returns
 workspace-scoped semantic cache stats, prompt template summaries, context
@@ -789,6 +789,9 @@ The Dashboard setup panel mirrors the safe config shape for
 `semantic_cache` and `semantic_platform`. It keeps response storage,
 template-body storage, content mutation, and Guardrails blocking visibly
 opt-in rather than enabling those behaviors from the browser.
+
+The API route keeps `/api/dashboard/semantic-platform` for compatibility, while
+Dashboard and docs use the product label **Semantic Controls**.
 
 ### Evaluation Reports
 

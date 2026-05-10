@@ -2,6 +2,7 @@ import { Building2, CheckCircle2, CircleOff, Pencil, Plus, RotateCcw } from 'luc
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -117,6 +118,14 @@ export function WorkspacesPage() {
         conceptId="workspaceManagement"
         icon={Building2}
         badgeKinds={['runtimeSupported', 'ossFixedRoles']}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t('workspaces.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md#workspace') },
+          { label: t('workspaces.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md#workspace-rbac') },
+          { label: t('workspaces.docs.migration'), href: repoDocsUrl('docs/MIGRATION_V1_TO_V2.md') },
+        ]}
       />
 
       <div className="grid gap-4 md:grid-cols-3">

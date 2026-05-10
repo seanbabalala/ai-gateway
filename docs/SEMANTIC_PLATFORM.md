@@ -9,6 +9,11 @@ pipeline.
 The Dashboard now uses the label **Semantic Controls** for this surface. The API
 route remains `/api/dashboard/semantic-platform` for compatibility.
 
+The v2.8 first-run setup path lists Semantic Controls under advanced setup.
+They are not required to send the first request. Enable them when you want
+metadata-only semantic cache evidence, prompt template metadata, context
+pressure evidence, intent hints, or Guardrails v2 finding metadata.
+
 By default, SiftGate does not store prompts, responses, raw provider headers,
 provider keys, media bytes, tool payloads, hidden reasoning text, or resolved
 secrets. The semantic platform records hashes, counters, route evidence, and

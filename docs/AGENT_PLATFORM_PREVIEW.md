@@ -1,7 +1,7 @@
 # Agent Platform Preview
 
 SiftGate v2.5.0 adds a metadata-first Agent Platform preview on top of the
-existing Coding Agent Gateway and MCP Gateway foundations. The goal is to help
+existing Coding Agent Gateway and MCP Tool Gateway foundations. The goal is to help
 operators see agent registry, tool access, workflow shape, memory metadata, and
 trace spans in one workspace-scoped control plane without turning SiftGate into
 a full app builder.
@@ -11,7 +11,7 @@ a full app builder.
 - **A2A hub v1**: workspace-scoped Agent Profiles are exposed as the local agent
   registry. Route policy still comes from the bound Gateway API key, workspace,
   namespace, model, endpoint, budget, and routing configuration.
-- **Tool Registry v1**: MCP Gateway servers and static tool metadata are
+- **Tool Registry v1**: MCP Tool Gateway servers and static tool metadata are
   summarized by `GET /api/dashboard/agent-platform`. Tool permission evidence is
   derived from profile `mcp_server_ids`, Gateway API key `allowed_endpoints`,
   MCP server `allowed_namespaces`, and profile/key status.

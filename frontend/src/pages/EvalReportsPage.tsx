@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
@@ -380,6 +381,15 @@ export function EvalReportsPage() {
         conceptId="evals"
         icon={Scale}
         badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t('evals.docs.framework'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
+          { label: t('evals.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#evaluation-reports') },
+          { label: t('evals.docs.experiments'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
+          { label: t('evals.docs.shadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
+        ]}
       />
 
       <SetupGuidePanel

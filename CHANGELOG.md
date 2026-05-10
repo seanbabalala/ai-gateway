@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.0-rc.1 - 2026-05-10
+
+### Added
+
+- Added an end-to-end first-run Dashboard checklist that guides OSS operators through Workspace, Provider Node, Gateway API Key, optional Policy Namespace, daily Budget scope, first request, evidence review, and advanced setup surfaces.
+- Added reusable Dashboard docs links from the Overview and affected concept pages to the matching OSS docs so each clarified v2.8 concept has an in-product path to configuration guidance.
+- Added a static onboarding check that verifies the setup path, docs links, privacy boundary copy, and seven-locale onboarding coverage.
+
+### Changed
+
+- Updated README, QUICKSTART, Dashboard, API Reference, Provider Catalog, Policy Namespace and Shadow Traffic, MCP Tool Gateway, Semantic Controls, Evaluation Framework, and OSS concept docs to close the v2.8 configuration loop.
+- Removed inconsistent pre-v2.8 wording from onboarding and related docs while keeping the agreed concept model: Workspace, Policy Namespace, Provider Node, Gateway API Key, Budget scope, Semantic Controls, Traffic Experiments, Evals, Shadow Traffic, and MCP Tool Gateway.
+- Updated release metadata to v2.8.0-rc.1 across package, lock, client, Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+
+### Boundaries
+
+- v2.8.0-rc.1 does not add backend features, change runtime defaults, introduce new terminology, or store prompts, responses, raw provider headers, provider keys, tool payloads, media bytes, hidden reasoning, or resolved secrets by default.
+
 ## 2.8.0-beta.3 - 2026-05-10
 
 ### Added

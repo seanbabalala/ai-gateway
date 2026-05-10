@@ -2,11 +2,11 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-beta.3 Advanced Setup Closure**.
+Current release: **v2.8.0-rc.1 Onboarding Docs**.
 
-Current development focus after v2.8.0-beta.3: preserve Platform Trust stability,
-keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
-as minor releases.
+Current development focus after v2.8.0-rc.1: preserve Platform Trust stability,
+keep v2.8 focused on release-candidate closure and bug fixes, and avoid new
+runtime defaults before GA.
 
 ## Why SiftGate
 
@@ -83,6 +83,18 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.8 Highlights
 
+- v2.8.0-rc.1 connects the clarified v2.8 concepts into first-run onboarding
+  and docs. The Dashboard setup path now covers Workspace, Provider Node,
+  Gateway API Key, optional Policy Namespace, daily Budget scope, first
+  request, evidence review, and advanced setup surfaces.
+- Dashboard concept panels now link to the matching OSS docs from Overview,
+  Workspaces, Nodes, Provider Catalog, API Keys, Policy Namespaces, Budget,
+  Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
+  MCP Tool Gateway so self-hosters can configure the gateway end to end without
+  guessing where a concept lives.
+- The rc.1 release is closure only: it does not add backend features, change
+  runtime defaults, introduce new terminology, or change privacy storage
+  behavior.
 - v2.8.0-beta.3 makes advanced OSS surfaces setup-complete in product:
   Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and
   MCP Tool Gateway now show setup state, safe YAML examples, and clearer
@@ -285,7 +297,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 - Gateway key boundary: agent and chatbot configs use only Dashboard-generated Gateway API keys. Provider API keys stay in Nodes, env vars, or secret references, and rendered snippets expose placeholders or masked metadata only.
 - Seven-language Dashboard support: the Agent Profiles page, navigation, forms, render panel, connector labels, privacy copy, and error states are localized across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es`.
 - Agent client UX polish: Cherry Studio smart-router-only setup now avoids leaking direct/provider model clutter into model pickers, direct routing uses model selectors instead of free-text-only entry, connector cards use real project logos, and Logs label total response time plus streaming/sync mode separately so long streamed replies are not mistaken for upstream latency.
-- Policy preservation: `allow_auto`, `allow_direct`, namespace bindings, budgets, rate limits, endpoint/model/node/modality restrictions, metadata-only logs, sessions, route explanations, and MCP `allowed_endpoints` still apply to all Agent Profile traffic.
+- Policy preservation: `allow_auto`, `allow_direct`, Policy Namespace bindings, budgets, rate limits, endpoint/model/node/modality restrictions, metadata-only logs, sessions, route explanations, and MCP `allowed_endpoints` still apply to all Agent Profile traffic.
 
 ## v1.8 Highlights
 
@@ -330,7 +342,7 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 | Protocols | `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/rerank`, image/audio endpoints, async video preview, realtime preview, MCP preview, Batch proxy. |
 | Routing | Complexity tiers, domain hints, multimodal capability filtering, cost/context optimization, cache-aware routing, reasoning-aware routing, fallback chains, circuit breakers. |
 | Explainability | Route Decision Trace, Route Explanation page, candidate filtering reasons, capability evidence, compatibility profile evidence, cache evidence, cost/latency/context tradeoffs. |
-| Governance | Local Gateway API keys, namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
+| Governance | Local Gateway API keys, Policy Namespaces, teams, budgets, rate limits, allowed endpoints/models/nodes/modalities, audit events, config rollback. |
 | Provider Ops | Provider Catalog with provider transport presets, OpenRouter-first canonical model registry, ZeroEval enrichment overlay, provider compatibility profiles and matrix, custom provider templates, Provider SDK Generator beta, Provider Health Dashboard, pricing source governance, and catalog override/sync CLI. |
 | Safety | Secret references, guardrails plugin, metadata-only logs, sanitized route traces, privacy-safe shadow reports, secure defaults for cache/eval storage. |
 | Deployment | Single-node memory/SQLite, Docker, Kubernetes manifests, Helm chart, optional Redis/PostgreSQL. |
@@ -392,7 +404,7 @@ npm run validate:config
 | Provider Compatibility | [docs/PROVIDER_COMPATIBILITY.md](docs/PROVIDER_COMPATIBILITY.md) |
 | SDKs | [docs/SDKS.md](docs/SDKS.md) |
 | Playground | [docs/PLAYGROUND.md](docs/PLAYGROUND.md) |
-| MCP Gateway | [docs/MCP_GATEWAY.md](docs/MCP_GATEWAY.md) |
+| MCP Tool Gateway | [docs/MCP_GATEWAY.md](docs/MCP_GATEWAY.md) |
 | Batch API | [docs/BATCH_API.md](docs/BATCH_API.md) |
 | Caching | [docs/CACHING.md](docs/CACHING.md) |
 | Evaluation Framework | [docs/EVALUATION_FRAMEWORK.md](docs/EVALUATION_FRAMEWORK.md) |

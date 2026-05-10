@@ -2,7 +2,7 @@
 
 SiftGate OSS uses a few platform concepts that sound similar but serve
 different jobs. This page is the product vocabulary used by the Dashboard and
-docs in v2.8.0-beta.1.
+docs in v2.8.0-rc.1.
 
 ## Capability Status Language
 
@@ -101,6 +101,22 @@ the operator configures them.
 | "Which client app is calling the gateway?" | Gateway API Key |
 | "Which upstream deployment can receive traffic?" | Node |
 | "Which provider preset/catalog metadata helps me create a node?" | Provider |
+
+## First-Run Setup Order
+
+For a fresh OSS install, follow this order:
+
+1. Workspace: choose the local Dashboard/RBAC/data scope.
+2. Provider Node: connect at least one upstream runtime target.
+3. Gateway API Key: issue a client credential for `/v1/*`.
+4. Budget scope: confirm the daily Global, Policy Namespace, Team, and API Key
+   source of truth.
+5. Policy Namespace: optional, only when keys or Teams need shared local
+   policy.
+6. First request: send traffic from Playground or an OpenAI-compatible client.
+7. Evidence: inspect Logs and Route Explanation.
+8. Advanced setup: enable Semantic Controls, Traffic Experiments, Eval Reports,
+   Shadow Traffic, or MCP Tool Gateway only when those specific jobs are needed.
 
 ## Privacy Boundary
 

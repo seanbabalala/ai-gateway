@@ -14,6 +14,12 @@ metadata-only mode. It also renders a copyable YAML example that combines
 `mcp.servers[]`, runtime secret references, `allowed_namespaces`, and Gateway
 API key `allowed_endpoints`.
 
+The v2.8 first-run setup path lists MCP Tool Gateway under advanced setup, not
+the required model-routing path. A basic gateway only needs a Workspace,
+Provider Node, Gateway API Key, Budget review, first request, and evidence
+review. Add MCP Tool Gateway when agent/tool clients need governed tool-call
+proxying through `/mcp/:serverId`.
+
 It is intentionally local-only. It does not include an enterprise MCP
 marketplace, remote workspace registry, SSO/RBAC policy, or SiftGate Cloud
 dependency.

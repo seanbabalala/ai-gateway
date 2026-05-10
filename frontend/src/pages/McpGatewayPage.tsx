@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Activity, AlertTriangle, Network, RefreshCw, Server, ShieldCheck, Wrench } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
@@ -230,6 +231,15 @@ export function McpGatewayPage() {
         conceptId="mcpToolGateway"
         icon={Network}
         badgeKinds={['runtimeSupported', 'configDriven', 'requiresConfig']}
+      />
+
+      <DocsLinkGroup
+        links={[
+          { label: t('mcp.docs.gateway'), href: repoDocsUrl('docs/MCP_GATEWAY.md') },
+          { label: t('mcp.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#mcp-tool-gateway-api') },
+          { label: t('mcp.docs.agent'), href: repoDocsUrl('docs/AGENT_GATEWAY.md') },
+          { label: t('mcp.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+        ]}
       />
 
       {mcp.isLoading && (

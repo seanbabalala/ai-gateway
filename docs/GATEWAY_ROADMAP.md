@@ -20,7 +20,7 @@
 | v0.9 | Operations + Trust | 已发布 — v0.9.3 承接 v0.7 backlog，并补齐 Provider Catalog、价格来源状态、Dashboard 体验小版本 | ✅ Released |
 | v1.0 | Extension Ecosystem | 已发布 — Provider Catalog 30+、Reasoning Effort、Guardrails webhook、API Key 管理完善 | ✅ Released |
 | v1.1 | Developer Experience | 已发布 — Python SDK、Dashboard Playground、Session/Trace View、Agent 集成示例 | ✅ Released |
-| v1.2 | Platform Capabilities | 已发布 — MCP Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
+| v1.2 | Platform Capabilities | 已发布 — MCP Tool Gateway、Batch API、Prompt Cache 智能路由、Model Pricing 自动同步 | ✅ Released |
 | v1.3 | Production Ready | 已发布 — v1.3.2 生产就绪 + Dashboard Sidebar 可滚动与提示修补 | ✅ Released |
 | v1.4 | Provider Ecosystem + Catalog Governance | 已发布 — v1.4.1 Public Contract Consistency Patch（基于 v1.4.0 Provider Catalog 50+、价格来源治理、Catalog Dashboard UX、Provider Compatibility Profiles） | ✅ Released |
 | v1.5 | Contract Hardening + Runtime Safety | 已发布 — required env fail-fast、统一 public error mapping、request-id / reload 安全收敛 | ✅ Released |
@@ -395,9 +395,9 @@
 
 ## v1.2 — Platform Capabilities（平台能力）
 
-**v1.2.0 发布状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 SiftGate 从多协议网关推进到更完整的平台能力层：MCP Gateway preview、OpenAI-compatible Batch API proxy、Prompt Cache 智能路由与 Model Pricing 自动同步。
+**v1.2.0 发布状态**：v1.2 基于已发布 v1.1.0，继续保持开源 Data Plane 单机 memory/SQLite 默认可用；Redis/Postgres/Cloud 仍为可选能力。本阶段把 SiftGate 从多协议网关推进到更完整的平台能力层：MCP Tool Gateway preview、OpenAI-compatible Batch API proxy、Prompt Cache 智能路由与 Model Pricing 自动同步。
 
-### P0：MCP Gateway Preview
+### P0：MCP Tool Gateway Preview
 
 - **状态**：✅ v1.2.0 已发布
 - **目标**：让 SiftGate 可以作为本地 MCP server 代理入口，用现有 Gateway API key、namespace、rate limit 和 Dashboard metadata 审计保护 agent/tool 调用路径
@@ -406,7 +406,7 @@
   - 新增 `POST /mcp/:serverId` JSON-RPC preview 代理，复用 `ApiKeyGuard` 和 `RateLimitGuard`
   - API key endpoint 权限支持 `mcp`、`mcp:<serverId>`、`mcp:<serverId>:<toolName>`，并与 server `allowed_namespaces` 交叉校验
   - 上游 headers 通过 `SecretReferenceResolverService` 解析，Dashboard 不展示 resolved secret
-  - 新增 `GET /api/dashboard/mcp` 和 Dashboard MCP Gateway 页面，展示 server、tool、recent calls、error summary
+  - 新增 `GET /api/dashboard/mcp` 和 Dashboard MCP Tool Gateway 页面，展示 server、tool、recent calls、error summary
   - 本地 audit 默认只保留 metadata：server、method、tool name、API key、namespace、status、latency、byte size、error type
   - 不保存 tool input/output 原文、raw headers、provider keys、resolved secret、media bytes 或 marketplace metadata
 

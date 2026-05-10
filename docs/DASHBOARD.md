@@ -58,8 +58,8 @@ migrate default Workspace data, and prevents that Workspace from being selected
 until it is reactivated.
 
 v2.8.0-beta.1 adds a **Policy Namespaces** page for admin-only, config-backed
-namespace management. It keeps Policy Namespaces distinct from Workspaces:
-namespaces are local routing policy labels with allowed nodes/models, budgets,
+Policy Namespace management. It keeps Policy Namespaces distinct from Workspaces:
+Policy Namespaces are local routing policy labels with allowed nodes/models, budgets,
 and rate limits. The page shows bound API keys and Teams, requires explicit
 impact confirmation before deleting bound namespaces, and writes through the
 existing config validation, audit, rollback, and hot-reload path.
@@ -69,7 +69,7 @@ truth. Operators can inspect Global, Policy Namespace, Team, and API Key
 budgets, see whether the selected scope is directly configured, inherited, or
 unset, and verify daily reset time, alert threshold, current usage, and the
 blocking order (`global -> namespace -> team -> key`). Safe edits reuse
-existing Namespace, Team, and API Key update paths; Global remains
+existing Policy Namespace, Team, and API Key update paths; Global remains
 config-backed through `gateway.config.yaml`.
 
 v2.8.0-beta.3 adds setup-complete panels and copyable YAML examples to
@@ -79,11 +79,18 @@ keep advanced features disabled or metadata-only by default, and clearly
 separate live split analytics, controlled eval runs, asynchronous shadow
 mirroring, semantic metadata controls, and MCP tool-call proxying.
 
+v2.8.0-rc.1 connects those clarified concepts into the Overview first-run setup
+path and related docs links. The checklist now covers Workspace, Provider Node,
+Gateway API Key, optional Policy Namespace, daily Budget scope, first request,
+evidence review, and advanced setup surfaces. Optional items are clearly marked
+so a fresh OSS install is not blocked when it does not need Policy Namespaces or
+advanced features yet.
+
 ## Pages
 
 | Page | Purpose |
 | --- | --- |
-| Overview | First-run checklist, live calls, cost, cache savings, Intelligence Loop summary, latency, budget, provider health, guardrails finding summary, and recent activity |
+| Overview | First-run setup path, related OSS docs, live calls, cost, cache savings, Intelligence Loop summary, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
 | Traffic Experiments | Read-only setup YAML and live A/B split analytics from routing `split` variants, without automatic winner promotion |
 | Budget | Scope-based Global, Policy Namespace, Team, and API Key budget source-of-truth, inherited/unset state, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
@@ -108,6 +115,28 @@ mirroring, semantic metadata controls, and MCP tool-call proxying.
 | Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/Policy Namespace scope, and sanitized errors without local file-content storage |
 | Config Audit | Sanitized config versions, audit events, and validation-first rollback |
 | Audit Log | Workspace-scoped platform management audit events with redacted summaries, result filters, actor/resource filters, request ids, and hash-chain evidence |
+
+## First-Run Setup Path
+
+The Overview setup card is the shortest supported OSS path from a fresh clone to
+a working gateway:
+
+1. Pick the active Workspace from **Workspaces**.
+2. Add one upstream Provider Node from **Nodes** or inspect active presets in
+   **Provider Catalog**.
+3. Create a Dashboard-managed Gateway API Key from **API Keys**.
+4. Optionally create a Policy Namespace when a key or Team needs shared policy.
+5. Review daily Budget scope and source of truth in **Budget**.
+6. Send a safe request from **Playground** or an OpenAI-compatible client.
+7. Open **Logs** and **Route Explain** evidence after traffic lands.
+8. Review advanced setup docs for Semantic Controls, Traffic Experiments, Eval
+   Reports, Shadow Traffic, and MCP Tool Gateway only when needed.
+
+The card is read-only and metadata-only. It links to Quickstart, OSS Concepts,
+Provider Catalog, Policy Namespace, Dashboard, and advanced setup docs. It does
+not create backend resources beyond the existing pages the operator opens, and
+it does not store prompts, responses, raw headers, provider keys, media bytes,
+tool payloads, hidden reasoning, or resolved secrets.
 
 ## Provider Catalog UX
 

@@ -26,6 +26,7 @@ import {
   LayoutDashboard,
   AlertTriangle,
   CheckCircle2,
+  Wallet,
   KeyRound,
   Server,
   BellRing,
@@ -33,14 +34,17 @@ import {
   TrendingDown,
   Network,
   Building2,
+  Layers3,
   PlayCircle,
   FileSearch,
   ArrowRight,
   Circle,
+  Settings2,
   Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +59,7 @@ import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useCacheStats, useClearCache } from '@/hooks/use-cache'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
+import { useBudget } from '@/hooks/use-budget'
 import { useConfig } from '@/hooks/use-config'
 import { useAlerts } from '@/hooks/use-alerts'
 import { useGuardrails } from '@/hooks/use-guardrails'
@@ -156,6 +161,7 @@ export function DashboardPage() {
   const clearCache = useClearCache()
   const { data: apiKeysData } = useApiKeys()
   const { data: namespacesData } = useNamespaces()
+  const { data: budgetData } = useBudget({ kind: 'global' })
   const { data: configData } = useConfig()
   const { data: alertsData } = useAlerts()
   const { data: guardrailsData } = useGuardrails()
@@ -221,9 +227,21 @@ export function DashboardPage() {
   const sharedCategoryCount = stateCategories.filter((category) => category.shared).length
   const configuredNodeCount = configData?.nodes.length ?? 0
   const apiKeyCount = apiKeysData?.items.length ?? 0
+  const policyNamespaceCount = namespacesData?.namespaces.length ?? 0
+  const budgetRuleCount = budgetData?.rules.filter((rule) => !rule.inherited && !rule.unset).length ?? 0
+  const hasBudgetConfig = Boolean(
+    (configData?.budget?.daily_token_limit ?? 0) > 0 ||
+    (configData?.budget?.daily_cost_limit ?? 0) > 0 ||
+    budgetRuleCount > 0,
+  )
   const hasRequests = total.calls > 0 || recentLogs.length > 0
   const hasEvidence = hasRequests && (tierDistribution.length > 0 || nodeDistribution.length > 0 || recentLogs.length > 0)
   const workspaceName = workspaceState?.active_workspace?.name || t('onboarding.values.pending')
+  const advancedFeatureCount = [
+    Object.values(configData?.routing?.tiers || {}).some((tier) => (tier.split || []).length > 0),
+    Boolean(configData?.shadow?.enabled),
+    Boolean(guardrailsData?.enabled),
+  ].filter(Boolean).length
   const firstRunSteps = [
     {
       key: 'workspace',
@@ -231,7 +249,7 @@ export function DashboardPage() {
       done: Boolean(workspaceState?.active_workspace),
       title: t('onboarding.steps.workspace.title'),
       description: t('onboarding.steps.workspace.description', { workspace: workspaceName }),
-      href: '/members',
+      href: '/workspaces',
       action: t('onboarding.actions.reviewWorkspace'),
     },
     {
@@ -253,6 +271,25 @@ export function DashboardPage() {
       action: t('onboarding.actions.createKey'),
     },
     {
+      key: 'namespace',
+      icon: Layers3,
+      done: true,
+      optional: true,
+      title: t('onboarding.steps.namespace.title'),
+      description: t('onboarding.steps.namespace.description', { count: policyNamespaceCount }),
+      href: '/namespaces',
+      action: t('onboarding.actions.reviewNamespaces'),
+    },
+    {
+      key: 'budget',
+      icon: Wallet,
+      done: hasBudgetConfig,
+      title: t('onboarding.steps.budget.title'),
+      description: t('onboarding.steps.budget.description'),
+      href: '/budget',
+      action: t('onboarding.actions.reviewBudget'),
+    },
+    {
       key: 'request',
       icon: PlayCircle,
       done: hasRequests,
@@ -270,8 +307,19 @@ export function DashboardPage() {
       href: '/logs',
       action: t('onboarding.actions.openEvidence'),
     },
+    {
+      key: 'advanced',
+      icon: Settings2,
+      done: true,
+      optional: true,
+      title: t('onboarding.steps.advanced.title'),
+      description: t('onboarding.steps.advanced.description', { count: advancedFeatureCount }),
+      href: '/semantic-platform',
+      action: t('onboarding.actions.reviewAdvanced'),
+    },
   ]
-  const completedFirstRunSteps = firstRunSteps.filter((step) => step.done).length
+  const requiredFirstRunSteps = firstRunSteps.filter((step) => !step.optional)
+  const completedFirstRunSteps = requiredFirstRunSteps.filter((step) => step.done).length
   const setupWarnings = [
     ...(apiKeysData && apiKeysData.items.length === 0
       ? [t('configHealth.missingApiKey')]
@@ -326,16 +374,16 @@ export function DashboardPage() {
                 </p>
               </div>
             </div>
-            <Badge variant={completedFirstRunSteps === firstRunSteps.length ? 'emerald' : 'amber'}>
+            <Badge variant={completedFirstRunSteps === requiredFirstRunSteps.length ? 'emerald' : 'amber'}>
               {t('onboarding.progress', {
                 completed: completedFirstRunSteps,
-                total: firstRunSteps.length,
+                total: requiredFirstRunSteps.length,
               })}
             </Badge>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-2 lg:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {firstRunSteps.map((step) => {
               const StepIcon = step.icon
               return (
@@ -362,7 +410,11 @@ export function DashboardPage() {
                         }
                       >
                         {step.done ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
-                        {step.done ? t('onboarding.status.done') : t('onboarding.status.todo')}
+                        {step.optional
+                          ? t('onboarding.status.optional')
+                          : step.done
+                            ? t('onboarding.status.done')
+                            : t('onboarding.status.todo')}
                       </span>
                     </div>
                     <div>
@@ -390,6 +442,17 @@ export function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      <DocsLinkGroup
+        links={[
+          { label: t('onboarding.docs.quickstart'), href: repoDocsUrl('docs/QUICKSTART.md') },
+          { label: t('onboarding.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+          { label: t('onboarding.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
+          { label: t('onboarding.docs.providers'), href: repoDocsUrl('docs/PROVIDER_CATALOG.md') },
+          { label: t('onboarding.docs.namespaces'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md') },
+          { label: t('onboarding.docs.advanced'), href: repoDocsUrl('docs/SEMANTIC_PLATFORM.md') },
+        ]}
+      />
 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card className="animate-fade-up overflow-hidden">
