@@ -23,6 +23,8 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
   const navigate = useNavigate()
   const [searchValue, setSearchValue] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const switchableWorkspaces =
+    workspaceState?.workspaces.filter((workspace) => workspace.status === 'active') || []
 
   // `/` keyboard shortcut to focus search
   useEffect(() => {
@@ -99,7 +101,7 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
                 onChange={(event) => void switchWorkspace(event.target.value)}
                 className="max-w-[160px] bg-transparent text-[11px] font-semibold text-[var(--foreground)] outline-none"
               >
-                {workspaceState.workspaces.map((workspace) => (
+                {switchableWorkspaces.map((workspace) => (
                   <option key={workspace.id} value={workspace.id}>
                     {workspace.name}
                   </option>

@@ -50,6 +50,13 @@ visibility now use concise helper panels and capability labels such as
 Read-only, Config-driven, Preview, OSS fixed roles, Runtime-supported, and
 Requires config. See [OSS Concepts](OSS_CONCEPTS.md).
 
+v2.8.0-alpha.3 makes OSS Workspace management real in the Dashboard. Workspace
+Admins can create, switch, rename, disable, and reactivate local Workspaces from
+the **Workspaces** page. The creator is granted Admin in the new Workspace.
+Disabling a Workspace keeps its metadata and audit trail, does not delete or
+migrate default Workspace data, and prevents that Workspace from being selected
+until it is reactivated.
+
 ## Pages
 
 | Page | Purpose |
@@ -70,6 +77,7 @@ Requires config. See [OSS Concepts](OSS_CONCEPTS.md).
 | Sessions | Metadata-only request timelines grouped by `agent_session_id`, `session_id`, or legacy `session_key`, with coding-agent connector/repo/project filters, model switches, fallback, errors, cost, latency, shadow, guardrails, and Route Explanation links |
 | Logs | Request metadata, source format, route result, local/provider cache outcome, compatibility summary, structured-output intent, reasoning intent, fallback reason, per-request cache-savings evidence, and export-safe call details |
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, Policy Namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
+| Workspaces | Local Workspace create, switch, rename, disable, and reactivate for workspace Admins, preserving default workspace fallback and legacy metadata behavior |
 | Shadow Traffic | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
 | Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/Policy Namespace scope, and sanitized errors without local file-content storage |
@@ -143,6 +151,8 @@ Role behavior:
 - Viewer can read Dashboard resources, analytics, logs, reports, and sanitized config metadata.
 - Operator can perform operational writes such as node tests/resets, routing updates, Agent Profile management, eval runs, batches, MCP operational views, cache clear, and safe config reloads.
 - Admin can manage members, Gateway API keys, local teams, budgets, workspace settings, destructive operations, node deletion, and config rollback.
+
+The Workspaces page reads `GET /api/dashboard/workspaces`, creates through `POST /api/dashboard/workspaces`, renames through `PUT /api/dashboard/workspaces/:id`, disables through `POST /api/dashboard/workspaces/:id/disable`, reactivates through `POST /api/dashboard/workspaces/:id/reactivate`, and switches through `POST /api/dashboard/workspaces/switch`. Workspace mutations require Admin in the target Workspace; switch requires an active membership in the target Workspace.
 
 The Members page reads `GET /api/dashboard/members` and updates roles through `PUT /api/dashboard/members/:id`. SiftGate prevents disabling or demoting the last active workspace Admin to avoid local lockout. RBAC responses expose only membership metadata and never include provider secrets, raw headers, prompts, responses, media bytes, tool payloads, hidden reasoning text, or resolved secrets.
 

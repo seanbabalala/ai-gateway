@@ -64,6 +64,14 @@ export class WorkspaceMembershipService {
     return rows.map((row) => this.toSummary(row));
   }
 
+  async listForUser(userId: string): Promise<WorkspaceMembershipSummary[]> {
+    const rows = await this.memberships.find({
+      where: { user_id: normalizeUserId(userId) },
+      order: { workspace_id: 'ASC', role: 'ASC', created_at: 'ASC' },
+    });
+    return rows.map((row) => this.toSummary(row));
+  }
+
   async update(
     id: string,
     input: UpdateWorkspaceMembershipInput,

@@ -2,7 +2,7 @@
 
 SiftGate OSS uses a few platform concepts that sound similar but serve
 different jobs. This page is the product vocabulary used by the Dashboard and
-docs in v2.8.0-alpha.1.
+docs in v2.8.0-alpha.3.
 
 ## Capability Status Language
 
@@ -23,8 +23,15 @@ metadata, and other local metadata.
 
 Fresh OSS installs bootstrap `Default Organization` and `Default Workspace`.
 The Dashboard can switch among workspaces returned by
-`GET /api/dashboard/workspaces`, but v2.8.0-alpha.1 does not add Workspace
-create/delete UI.
+`GET /api/dashboard/workspaces`. v2.8.0-alpha.3 adds admin-only local
+Workspace management: create, rename, disable, reactivate, and switch.
+Creating a Workspace grants the current Dashboard identity the Admin role in
+that Workspace.
+
+Disabling a Workspace is not deletion. SiftGate keeps the local metadata and
+audit history, does not migrate default Workspace data, and does not resolve a
+disabled Workspace for runtime Dashboard selection until an Admin reactivates
+it.
 
 ## Policy Namespace
 

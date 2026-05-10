@@ -1,30 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { apiGet, apiPost, getActiveWorkspaceId, setActiveWorkspaceId } from '@/lib/api'
-import type { WorkspaceAccess } from '@/types/api'
-
-export interface WorkspaceSummary {
-  id: string
-  organization_id: string
-  name: string
-  slug: string
-  status: string
-  is_default: boolean
-}
-
-export interface OrganizationSummary {
-  id: string
-  name: string
-  slug: string
-  status: string
-}
-
-export interface WorkspaceState {
-  organization: OrganizationSummary
-  active_workspace: WorkspaceSummary
-  default_workspace: WorkspaceSummary
-  workspaces: WorkspaceSummary[]
-  access?: WorkspaceAccess
-}
+import { apiGet, apiPost, apiPut, getActiveWorkspaceId, setActiveWorkspaceId } from '@/lib/api'
+import type { WorkspaceAccess, WorkspaceMutationResponse, WorkspaceState } from '@/types/api'
 
 export function useWorkspaces() {
   const [data, setData] = useState<WorkspaceState | null>(null)
@@ -59,7 +35,57 @@ export function useWorkspaces() {
     }))
   }, [])
 
-  return { data, isLoading, refresh, switchWorkspace }
+  const applyMutationResult = useCallback((result: WorkspaceMutationResponse) => {
+    setData(result.state)
+    setActiveWorkspaceId(result.state.active_workspace.id)
+    window.dispatchEvent(new CustomEvent('siftgate:workspace-change', {
+      detail: { workspaceId: result.state.active_workspace.id },
+    }))
+    return result
+  }, [])
+
+  const createWorkspace = useCallback(
+    async (body: { name: string; slug?: string }) => {
+      const result = await apiPost<WorkspaceMutationResponse>('/api/dashboard/workspaces', body)
+      return applyMutationResult(result)
+    },
+    [applyMutationResult],
+  )
+
+  const renameWorkspace = useCallback(
+    async (workspaceId: string, body: { name?: string; slug?: string }) => {
+      const result = await apiPut<WorkspaceMutationResponse>(`/api/dashboard/workspaces/${workspaceId}`, body)
+      return applyMutationResult(result)
+    },
+    [applyMutationResult],
+  )
+
+  const disableWorkspace = useCallback(
+    async (workspaceId: string) => {
+      const result = await apiPost<WorkspaceMutationResponse>(`/api/dashboard/workspaces/${workspaceId}/disable`)
+      return applyMutationResult(result)
+    },
+    [applyMutationResult],
+  )
+
+  const reactivateWorkspace = useCallback(
+    async (workspaceId: string) => {
+      const result = await apiPost<WorkspaceMutationResponse>(`/api/dashboard/workspaces/${workspaceId}/reactivate`)
+      return applyMutationResult(result)
+    },
+    [applyMutationResult],
+  )
+
+  return {
+    data,
+    isLoading,
+    refresh,
+    switchWorkspace,
+    createWorkspace,
+    renameWorkspace,
+    disableWorkspace,
+    reactivateWorkspace,
+  }
 }
 
 export function hasWorkspaceRole(

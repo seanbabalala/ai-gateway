@@ -95,6 +95,95 @@ describe('Dashboard (e2e)', () => {
     );
   });
 
+  it('workspace lifecycle → admin can create, switch, rename, disable, and reactivate', async () => {
+    const unique = Date.now();
+    const createRes = await harness.agent
+      .post('/api/dashboard/workspaces')
+      .send({ name: `E2E Workspace ${unique}` });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.item).toMatchObject({
+      organization_id: 'default-org',
+      name: `E2E Workspace ${unique}`,
+      slug: `e2e-workspace-${unique}`,
+      status: 'active',
+      is_default: false,
+    });
+    const workspaceId = createRes.body.item.id;
+    await expect(
+      harness.membershipRepo.findOneByOrFail({
+        user_id: 'dashboard',
+        workspace_id: workspaceId,
+      }),
+    ).resolves.toMatchObject({ role: 'admin', status: 'active' });
+
+    const switchRes = await harness.agent
+      .post('/api/dashboard/workspaces/switch')
+      .send({ workspace_id: workspaceId });
+    expect(switchRes.status).toBe(201);
+    expect(switchRes.body.state.active_workspace.id).toBe(workspaceId);
+    expect(switchRes.body.state.access.role).toBe('admin');
+
+    const renameRes = await harness.agent
+      .put(`/api/dashboard/workspaces/${workspaceId}`)
+      .set('x-siftgate-workspace-id', workspaceId)
+      .send({ name: `Renamed Workspace ${unique}`, slug: `renamed-${unique}` });
+    expect(renameRes.status).toBe(200);
+    expect(renameRes.body.item).toMatchObject({
+      id: workspaceId,
+      name: `Renamed Workspace ${unique}`,
+      slug: `renamed-${unique}`,
+    });
+
+    const disableRes = await harness.agent
+      .post(`/api/dashboard/workspaces/${workspaceId}/disable`)
+      .set('x-siftgate-workspace-id', workspaceId);
+    expect(disableRes.status).toBe(201);
+    expect(disableRes.body.item.status).toBe('disabled');
+
+    const disabledSwitchRes = await harness.agent
+      .post('/api/dashboard/workspaces/switch')
+      .send({ workspace_id: workspaceId });
+    expect(disabledSwitchRes.status).toBe(404);
+
+    const reactivateRes = await harness.agent
+      .post(`/api/dashboard/workspaces/${workspaceId}/reactivate`)
+      .set('x-siftgate-workspace-id', workspaceId);
+    expect(reactivateRes.status).toBe(201);
+    expect(reactivateRes.body.item.status).toBe('active');
+
+    const auditRes = await harness.agent
+      .get(`/api/dashboard/audit?resource_type=workspace&resource_id=${workspaceId}&limit=10`)
+      .set('x-siftgate-workspace-id', workspaceId);
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.data.map((event: any) => event.action)).toEqual(
+      expect.arrayContaining([
+        'workspace.create',
+        'workspace.rename',
+        'workspace.disable',
+        'workspace.reactivate',
+      ]),
+    );
+  });
+
+  it('workspace lifecycle → non-admin cannot mutate workspaces', async () => {
+    await harness.membershipRepo.update(
+      { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
+      { role: 'viewer' },
+    );
+    try {
+      const res = await harness.agent
+        .post('/api/dashboard/workspaces')
+        .send({ name: `Denied Workspace ${Date.now()}` });
+      expect(res.status).toBe(403);
+      expect(res.body.required_role).toBe('admin');
+    } finally {
+      await harness.membershipRepo.update(
+        { user_id: 'dashboard', workspace_id: DEFAULT_WORKSPACE_ID },
+        { role: 'admin' },
+      );
+    }
+  });
+
   it('GET /api/dashboard/audit → returns metadata-only management audit events with filters', async () => {
     const timestamp = Date.now();
     const created = await harness.managementAuditRepo.save(
@@ -831,6 +920,69 @@ describe('Dashboard (e2e)', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.some((log: any) => log.api_key_name === 'workspace-default')).toBe(true);
     expect(res.body.data.some((log: any) => log.api_key_name === 'workspace-other')).toBe(false);
+  });
+
+  it('GET /api/dashboard/logs — created workspace does not leak default workspace logs', async () => {
+    const unique = Date.now();
+    const workspace = await harness.workspaceRepo.save(
+      harness.workspaceRepo.create({
+        id: `ws-e2e-isolated-${unique}`,
+        organization_id: 'default-org',
+        name: `Isolated ${unique}`,
+        slug: `isolated-${unique}`,
+        status: 'active',
+        is_default: false,
+      }),
+    );
+    await harness.membershipRepo.save(
+      harness.membershipRepo.create({
+        user_id: 'dashboard',
+        organization_id: 'default-org',
+        workspace_id: workspace.id,
+        role: 'admin',
+        status: 'active',
+      }),
+    );
+    await harness.callLogRepo.save([
+      harness.callLogRepo.create({
+        request_id: `workspace-isolation-default-${unique}`,
+        source_format: 'chat_completions',
+        workspace_id: DEFAULT_WORKSPACE_ID,
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o',
+        input_tokens: 1,
+        output_tokens: 1,
+        cost_usd: 0,
+        latency_ms: 1,
+        status_code: 200,
+        api_key_name: 'workspace-isolation-default',
+      }),
+      harness.callLogRepo.create({
+        request_id: `workspace-isolation-created-${unique}`,
+        source_format: 'chat_completions',
+        workspace_id: workspace.id,
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o',
+        input_tokens: 1,
+        output_tokens: 1,
+        cost_usd: 0,
+        latency_ms: 1,
+        status_code: 200,
+        api_key_name: 'workspace-isolation-created',
+      }),
+    ]);
+
+    const res = await harness.agent
+      .get('/api/dashboard/logs?limit=50')
+      .set('x-siftgate-workspace-id', workspace.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.some((log: any) => log.api_key_name === 'workspace-isolation-created')).toBe(true);
+    expect(res.body.data.some((log: any) => log.api_key_name === 'workspace-isolation-default')).toBe(false);
   });
 
   // ══════════════════════════════════════════════════════

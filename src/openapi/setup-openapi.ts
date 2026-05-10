@@ -38,6 +38,7 @@ import {
   RerankRequestDto,
   ResponsesRequestDto,
   SanitizedConfigResponseDto,
+  WorkspaceMutationResponseDto,
 } from './openapi.dto';
 
 export function setupOpenApi(app: INestApplication): void {
@@ -46,7 +47,7 @@ export function setupOpenApi(app: INestApplication): void {
     .setDescription(
       'OpenAPI documentation for the MIT open-source SiftGate data plane, local dashboard API, and provider-compatible ingress endpoints.',
     )
-    .setVersion('2.8.0-alpha.2')
+    .setVersion('2.8.0-alpha.3')
     .addBearerAuth(
       {
         type: 'http',
@@ -106,6 +107,7 @@ export function setupOpenApi(app: INestApplication): void {
       RerankRequestDto,
       ResponsesRequestDto,
       SanitizedConfigResponseDto,
+      WorkspaceMutationResponseDto,
     ],
     operationIdFactory: (controllerKey, methodKey) =>
       `${controllerKey.replace(/Controller$/, '')}_${methodKey}`,

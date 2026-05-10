@@ -55,6 +55,48 @@ describe('WorkspaceMembershipService', () => {
     await expect(service.findActiveRole('viewer', 'default-workspace')).resolves.toBeNull();
   });
 
+  it('lists all workspace memberships for a Dashboard identity', async () => {
+    const service = new WorkspaceMembershipService(
+      makeRepo([
+        {
+          id: 'm1',
+          user_id: 'dashboard',
+          organization_id: 'default-org',
+          workspace_id: 'default-workspace',
+          role: 'admin',
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        } as WorkspaceMembership,
+        {
+          id: 'm2',
+          user_id: 'dashboard',
+          organization_id: 'default-org',
+          workspace_id: 'agents',
+          role: 'viewer',
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        } as WorkspaceMembership,
+        {
+          id: 'm3',
+          user_id: 'other',
+          organization_id: 'default-org',
+          workspace_id: 'agents',
+          role: 'admin',
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        } as WorkspaceMembership,
+      ]) as any,
+    );
+
+    await expect(service.listForUser('dashboard')).resolves.toEqual([
+      expect.objectContaining({ id: 'm1', workspace_id: 'default-workspace' }),
+      expect.objectContaining({ id: 'm2', workspace_id: 'agents' }),
+    ]);
+  });
+
   it('rejects invalid role updates', async () => {
     const service = new WorkspaceMembershipService(
       makeRepo([

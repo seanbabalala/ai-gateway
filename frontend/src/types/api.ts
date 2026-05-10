@@ -2486,6 +2486,7 @@ export interface ActionResponse {
 
 export type WorkspaceRole = "admin" | "operator" | "viewer";
 export type WorkspaceMemberStatus = "active" | "disabled";
+export type WorkspaceStatus = "active" | "disabled";
 
 export interface WorkspacePermissions {
   can_read: boolean;
@@ -2497,6 +2498,39 @@ export interface WorkspaceAccess {
   user_id: string;
   role: WorkspaceRole;
   permissions: WorkspacePermissions;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  status: WorkspaceStatus;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkspaceState {
+  organization: OrganizationSummary;
+  active_workspace: WorkspaceSummary;
+  default_workspace: WorkspaceSummary;
+  workspaces: WorkspaceSummary[];
+  access?: WorkspaceAccess;
+}
+
+export interface WorkspaceMutationResponse extends ActionResponse {
+  item: WorkspaceSummary;
+  state: WorkspaceState;
 }
 
 export interface WorkspaceMember {
