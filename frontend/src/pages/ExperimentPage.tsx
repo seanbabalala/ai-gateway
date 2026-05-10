@@ -13,6 +13,7 @@ import {
 import { FlaskConical, Activity, DollarSign, Clock, CheckCircle, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
@@ -31,6 +32,17 @@ const VARIANT_COLORS = [
   '#064B3A', '#4867E8', '#D9872F', '#7446C6', '#CC3C7E',
   '#189AA8', '#B86B2B', '#8B6AD6',
 ]
+
+const TRAFFIC_EXPERIMENT_SETUP_SNIPPET = `routing:
+  tiers:
+    standard:
+      primary: { node: openai, model: gpt-4o }
+      fallbacks:
+        - { node: anthropic, model: claude-sonnet-4-20250514 }
+      split:
+        - { name: control, node: openai, model: gpt-4o, weight: 70 }
+        - { name: challenger, node: anthropic, model: claude-sonnet-4-20250514, weight: 30 }
+# Split weights must sum to 100. Remove split to return the tier to normal routing.`
 
 export function ExperimentPage() {
   const { t } = useTranslation('analytics')
@@ -152,6 +164,39 @@ export function ExperimentPage() {
         conceptId="trafficExperiments"
         icon={FlaskConical}
         badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+      />
+
+      <SetupGuidePanel
+        title={t('experiments.setup.title')}
+        description={t('experiments.setup.description')}
+        icon={FlaskConical}
+        statuses={[
+          {
+            label: t('experiments.setup.status.splits'),
+            value: Object.keys(data.activeSplits).length > 0
+              ? t('experiments.setup.status.configured')
+              : t('experiments.setup.status.notConfigured'),
+            tone: Object.keys(data.activeSplits).length > 0 ? 'emerald' : 'zinc',
+          },
+          {
+            label: t('experiments.setup.status.mode'),
+            value: t('experiments.setup.status.readOnlyAnalytics'),
+            tone: 'blue',
+          },
+          {
+            label: t('experiments.setup.status.decisioning'),
+            value: t('experiments.setup.status.manualWeights'),
+            tone: 'zinc',
+          },
+        ]}
+        bullets={[
+          t('experiments.setup.bullets.liveSplit'),
+          t('experiments.setup.bullets.notEvals'),
+          t('experiments.setup.bullets.notShadow'),
+          t('experiments.setup.bullets.noAutomation'),
+        ]}
+        snippetTitle={t('experiments.setup.snippetTitle')}
+        snippet={TRAFFIC_EXPERIMENT_SETUP_SNIPPET}
       />
 
       {/* Empty state */}

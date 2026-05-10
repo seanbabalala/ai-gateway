@@ -72,19 +72,27 @@ blocking order (`global -> namespace -> team -> key`). Safe edits reuse
 existing Namespace, Team, and API Key update paths; Global remains
 config-backed through `gateway.config.yaml`.
 
+v2.8.0-beta.3 adds setup-complete panels and copyable YAML examples to
+**Semantic Controls**, **Traffic Experiments**, **Eval Reports**, **Shadow
+Traffic**, and **MCP Tool Gateway**. These panels explain current config state,
+keep advanced features disabled or metadata-only by default, and clearly
+separate live split analytics, controlled eval runs, asynchronous shadow
+mirroring, semantic metadata controls, and MCP tool-call proxying.
+
 ## Pages
 
 | Page | Purpose |
 | --- | --- |
 | Overview | First-run checklist, live calls, cost, cache savings, Intelligence Loop summary, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
+| Traffic Experiments | Read-only setup YAML and live A/B split analytics from routing `split` variants, without automatic winner promotion |
 | Budget | Scope-based Global, Policy Namespace, Team, and API Key budget source-of-truth, inherited/unset state, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Cost Platform | Internal chargeback reports, CSV/JSON exports, cost anomalies, provider price sync guardrails, and feedback aggregation |
-| Semantic Controls | Semantic cache status/invalidation, prompt template metadata, context optimizer evidence, intent counts, Guardrails v2 findings, and semantic privacy controls |
+| Semantic Controls | Semantic cache status/invalidation, prompt template metadata, setup YAML, context optimizer evidence, intent counts, Guardrails v2 findings, and semantic privacy controls |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |
 | Agents | Coding Agent Gateway profiles for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic, and compatible chatbot setup with redacted render snippets and metadata-only recent coding-agent sessions |
 | Members | Local workspace membership governance with Admin, Operator, and Viewer roles |
-| MCP Tool Gateway | Local MCP servers, static tool metadata, recent metadata-only calls, and error summaries |
+| MCP Tool Gateway | Local MCP servers, setup YAML, static tool metadata, recent metadata-only calls, and error summaries |
 | Nodes | Upstream node health, configured-upstream vs catalog-onboarding views, resolved compatibility profiles, compatibility matrix, active probes, realtime status, and Add Node wizard |
 | Provider Catalog | Merged provider projection with provider status, canonical/pricing coverage, compatibility profiles, enrichment metadata, recommended model defaults, price source status, scheduled sync status, refresh sources, modality coverage, and provider identity |
 | Routing | Tiers, fallback chains, load-balancing targets, adaptive recommendations, and local routing config edits |
@@ -94,7 +102,8 @@ config-backed through `gateway.config.yaml`.
 | API Keys | Local Gateway API key create/edit/disable/delete/rotate, one-time full-key copy, masked list values, Policy Namespace binding, endpoint/modality/node/model restrictions, budgets, rate limits, and usage summaries |
 | Workspaces | Local Workspace create, switch, rename, disable, and reactivate for workspace Admins, preserving default workspace fallback and legacy metadata behavior |
 | Policy Namespaces | Local config-backed Policy Namespace create/edit/delete for Admins, with binding impact summaries, config validation, audit, rollback, and hot reload |
-| Shadow Traffic | Read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
+| Eval Reports | Metadata-only setup guidance and primary/candidate/judge run reports, separate from live split analytics and shadow mirroring |
+| Shadow Traffic | Setup YAML plus read-only primary vs shadow reports with success, latency, cost, token, fallback, confidence, and risk evidence |
 | Benchmarks | Local call-log performance evidence with latency percentiles, status/source breakdowns, cost/token summaries, and methodology notes |
 | Batch Jobs | Read-only OpenAI-compatible Batch status, provider batch ids, file ids, request counts, API key/Policy Namespace scope, and sanitized errors without local file-content storage |
 | Config Audit | Sanitized config versions, audit events, and validation-first rollback |
@@ -272,6 +281,13 @@ The Semantic Controls page reads `GET /api/dashboard/semantic-platform` and
 combines disabled-by-default Semantic Cache v2, Prompt Registry, Context Window
 Optimizer, Intent Classification, and Guardrails v2 metadata.
 
+The setup panel renders a metadata-only YAML baseline for `semantic_cache` and
+`semantic_platform`. Its status badges show whether the control plane, semantic
+cache, and content-storage opt-ins are active. This is intentionally a setup
+guide: it does not enable features from the browser and it does not store
+prompts, responses, template bodies, raw headers, provider keys, tool payloads,
+media bytes, hidden reasoning, or resolved secrets by default.
+
 Operators can create prompt template versions through
 `POST /api/dashboard/semantic-platform/prompt-templates`, list template
 metadata through `GET /api/dashboard/semantic-platform/prompt-templates`, and
@@ -301,6 +317,11 @@ Default samples are intentionally tiny and synthetic. Realtime is a probe-only c
 The MCP Tool Gateway page reads `GET /api/dashboard/mcp`. It is read-only and only displays local config registry metadata plus recent in-memory audit metadata. It does not call tools from the browser and cannot modify MCP server config.
 
 The MCP Tool Gateway preview stores server id/name, method, tool name, API key id/name, Policy Namespace, HTTP status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
+
+The setup panel clarifies that MCP Tool Gateway governs tool-call proxying, not
+model routing. The copyable YAML example combines `mcp.servers[]`,
+`allowed_namespaces`, secret-reference headers, and API key `allowed_endpoints`
+such as `mcp:local-docs:search_docs`.
 
 ## Agent Platform Preview
 

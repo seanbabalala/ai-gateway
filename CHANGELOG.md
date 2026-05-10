@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.0-beta.3 - 2026-05-10
+
+### Added
+
+- Added shared Dashboard setup-state guidance with copyable YAML snippets for Semantic Controls, Traffic Experiments, Eval Reports, Shadow Traffic, and MCP Tool Gateway.
+- Added Traffic Experiments frontend checks and expanded Semantic, Eval, Shadow, and MCP checks to cover setup panels, safe YAML defaults, read-only behavior, and seven-locale copy.
+- Added docs that distinguish Semantic Controls metadata, live Traffic Experiments, controlled Eval runs, asynchronous Shadow Traffic, and MCP tool-call proxy governance.
+
+### Changed
+
+- Updated the five advanced Dashboard pages to show whether the related config is enabled, missing, metadata-only, or explicitly storing samples/content.
+- Updated README, Dashboard, API, Architecture, Semantic, Evaluation, Shadow, and MCP docs for setup-complete advanced surfaces.
+- Updated release metadata to v2.8.0-beta.3 across package, lock, client, Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+
+### Boundaries
+
+- v2.8.0-beta.3 does not enable advanced features by default, add auto-promotion, add workflow or experiment decision automation, change routing behavior, or store prompts, responses, raw provider headers, provider keys, tool payloads, media bytes, hidden reasoning, resolved secrets, eval samples, or shadow samples by default.
+
 ## 2.8.0-beta.2 - 2026-05-10
 
 ### Added

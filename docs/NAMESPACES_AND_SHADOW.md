@@ -115,6 +115,22 @@ APIs:
 
 Reports are decision support only. They do not apply routing changes, edit split weights, or promote shadow targets automatically.
 
+The Dashboard **Setup state and mirror boundary** panel summarizes whether
+shadow traffic is enabled, whether a target node/model is configured, and
+whether prompt/response samples are explicitly stored. Keep
+`compare.store_prompts=false` and `compare.store_responses=false` for the
+default metadata-only comparison mode.
+
+Shadow Traffic, Traffic Experiments, and Evals intentionally answer different
+questions:
+
+- Traffic Experiments split live primary traffic between configured routing
+  variants.
+- Evals run controlled primary/candidate/judge comparisons and report
+  metadata-only outcomes.
+- Shadow Traffic mirrors sampled successful requests after the primary path and
+  never changes routing by itself.
+
 ## Validation
 
 `npm run validate:config -- --config gateway.config.yaml` checks:

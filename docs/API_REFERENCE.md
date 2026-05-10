@@ -393,7 +393,7 @@ Dashboard routes are guarded by the dashboard auth layer when dashboard auth is 
 | `POST` | `/api/dashboard/semantic-platform/prompt-templates` | Create a prompt template version for the active workspace |
 | `DELETE` | `/api/dashboard/semantic-platform/prompt-templates/:id` | Archive a prompt template version |
 | `POST` | `/api/dashboard/semantic-platform/semantic-cache/invalidate` | Invalidate Semantic Cache v2 entries for the active workspace or all workspaces |
-| `GET` | `/api/dashboard/analytics/experiment` | A/B split analytics |
+| `GET` | `/api/dashboard/analytics/experiment` | Read-only Traffic Experiment analytics from configured routing split variants |
 | `POST` | `/api/dashboard/playground/run` | Run an operator-triggered safe Playground probe through the routed Data Plane path |
 | `GET` | `/api/dashboard/mcp` | Metadata-only MCP Gateway server registry, tools, recent calls, and error summary |
 | `GET` | `/api/dashboard/agent-profiles` | List local Agent Gateway profiles for the Dashboard **Agents** page |
@@ -720,6 +720,18 @@ quality-gate status counts, and grouped summaries by agent and node.
 The endpoint reads `call_logs` metadata only. It is read-only and never applies
 routing changes, eval jobs, retries, fallbacks, or alerts by itself.
 
+### Traffic Experiments
+
+`GET /api/dashboard/analytics/experiment` reads `routing.tiers.*.split`
+configuration and call-log experiment metadata. The Dashboard setup panel shows
+a copyable split YAML example and reports whether active split variants exist.
+
+Traffic Experiments are live split analytics: configured variants receive real
+primary traffic according to their weights. This is separate from Eval Reports
+controlled primary/candidate/judge runs and from Shadow Traffic asynchronous
+mirroring. The endpoint is read-only and does not auto-promote winners, update
+weights, or edit routing config.
+
 ### Semantic Cache Preview
 
 `semantic_cache` is disabled by default. v2.7 keeps the local memory
@@ -773,6 +785,11 @@ These fields are metadata-only. They do not include prompt text, response text,
 tool payloads, raw headers, provider keys, source code, diffs, media bytes,
 hidden reasoning text, or resolved secrets.
 
+The Dashboard setup panel mirrors the safe config shape for
+`semantic_cache` and `semantic_platform`. It keeps response storage,
+template-body storage, content mutation, and Guardrails blocking visibly
+opt-in rather than enabling those behaviors from the browser.
+
 ### Evaluation Reports
 
 The v1.3 Evaluation Framework preview stores local experiment metadata for primary-vs-candidate comparisons. LLM-as-judge calls are ordinary SiftGate requests through the normal routing pipeline; no hosted enterprise service is required.
@@ -788,6 +805,11 @@ The v1.3 Evaluation Framework preview stores local experiment metadata for prima
 `GET /api/dashboard/evals/reports/:id` adds per-sample metadata: sample hash, optional sample id, primary/candidate/judge request ids, status codes, latency, cost, fallback flags, judge score, judge label, sanitized reason summary, sanitized error type, and sanitized metadata.
 
 `POST /api/dashboard/evals/runs` is intended for local automation. The Dashboard page remains read-only. A run body contains dataset metadata, primary target, candidate target, optional judge config, samples, and optional `store_samples`. Prompt/response sample previews are persisted only when both `evaluation.store_samples: true` and request `store_samples: true` are set; previews are redacted and truncated. By default, evaluation tables do not store prompt text, response text, raw headers, provider keys, media bytes, video bytes, or rubric text.
+
+The Dashboard setup panel keeps Eval Reports separate from Traffic Experiments
+and Shadow Traffic. Evals are controlled comparison runs; the report endpoints
+do not create live traffic splits, mirror production traffic, promote winners,
+or update routing config.
 
 ### Dashboard Playground
 

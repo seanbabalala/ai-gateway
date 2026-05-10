@@ -140,6 +140,10 @@ For automatic routing, the scoring engine evaluates request complexity across 14
 
 The router then applies tier config, domain preferences, modality compatibility, Provider Compatibility Profile support, reasoning-support preference, cache-aware cost evidence, circuit breaker state, momentum, load-balancing strategy, fallbacks, and A/B split rules. Tiers can use legacy `primary/fallbacks` or the v0.2 `targets + strategy` schema; `split` keeps experiment precedence when configured.
 
+Dashboard Traffic Experiments are a read-only projection of those `split`
+rules and the call-log metadata they produce. They do not choose winners,
+rewrite weights, or promote variants automatically.
+
 v1.4 Provider Compatibility Profiles add a local metadata filter between coarse capability checks and provider forwarding. A profile describes protocol family, request/response style, endpoint strategy, streaming behavior, multipart behavior, async-job behavior, supported source formats, supported modalities, passthrough fields, downgraded fields, unsupported fields, and known limitations. Routing rejects or records downgrade evidence when a candidate cannot safely handle the requested source format, modality, streaming mode, multipart media body, video async job, or batch endpoint. Profiles are inferred from the Provider Catalog or explicit `nodes[].compatibility_profile`, and no provider network call is made during routing.
 
 v1.2 prompt-cache-aware routing keeps the existing local prompt-cache short-circuit intact. A local cache hit returns before upstream routing. For cache misses, `cost` and `balanced` optimization can consider provider prompt-cache/read-cache/write-cache capability, configured `cache_read_input` / `cache_creation_input` prices, and observed provider cache-read hit rate. Route traces expose only metadata evidence and never include prompt text, responses, raw headers, provider keys, or media/video bytes.
@@ -267,6 +271,11 @@ prompt text, response text, template body content, matched finding text, raw
 headers, provider keys, source code, diffs, tool payloads, media bytes, hidden
 reasoning text, and resolved secrets are excluded by default.
 
+The Dashboard setup surface for Semantic Controls mirrors this architecture:
+operators can see whether `semantic_platform` and `semantic_cache` are enabled,
+copy a metadata-only YAML baseline, and verify that response replay, template
+body storage, content mutation, and blocking behavior remain explicit opt-ins.
+
 The experimental v0.8 video preview uses an async job model. `POST /v1/videos/generations` is routed through the normal media pipeline, then writes a `video_jobs` row containing only request id, provider job id, node, model, Gateway API key/namespace attribution, status, timestamps, expiry, and sanitized error text. Status/content/cancel routes look up that local metadata, enforce the creating key/namespace boundary, and proxy to provider endpoints only when the node explicitly declares them. Prompts, source media, generated video bytes, raw headers, and provider keys are not persisted.
 
 ## MCP Gateway Preview
@@ -274,6 +283,10 @@ The experimental v0.8 video preview uses an async job model. `POST /v1/videos/ge
 The v1.2 MCP Gateway preview is a small sidecar path beside the AI protocol pipeline. `McpGatewayController` exposes `POST /mcp/:serverId`, reusing `ApiKeyGuard` and `RateLimitGuard`. `McpGatewayService` resolves the local `mcp.servers` registry, checks API key endpoint permissions and namespace allow-lists, resolves configured upstream headers through `SecretReferenceResolverService`, and forwards the JSON-RPC body to the upstream MCP HTTP endpoint.
 
 The preview does not implement an enterprise MCP marketplace, remote workspace registry, stdio process supervisor, or Cloud dependency. Dashboard reads `GET /api/dashboard/mcp` for local registry metadata, static tool names, recent call metadata, and error summaries. The local audit buffer is metadata-only: server, method, tool name, API key id/name, namespace, status, latency, byte size, and sanitized error type. MCP tool input/output, raw headers, provider keys, resolved secret values, media bytes, and marketplace content are not stored.
+
+MCP Gateway is intentionally a tool-call proxy and governance path, not part of
+model routing. Model routing still lives in the main pipeline, node config,
+Gateway API key policy, and Policy Namespace restrictions.
 
 ## Agent Platform Preview
 
@@ -340,6 +353,10 @@ The open-source data plane includes optional shadow traffic for sampled test-nod
 Shadow results are stored separately from `call_logs` and are read-only in the Dashboard. By default they store metadata only and do not store prompts, responses, raw headers, or provider keys. Operators must explicitly enable local comparison sample storage with `shadow.compare.store_prompts` or `shadow.compare.store_responses`; config validation warns when either is enabled.
 
 The v0.9 comparison report layer does not introduce a new decision-making path. It pairs shadow result rows with primary `call_logs` by `request_id` and computes success rate, p50/p95 latency, estimated shadow cost, potential savings, token delta, fallback delta, quality sample coverage, confidence, and risk notes. Shadow cost uses the local pricing configuration and is flagged when pricing is missing. Dashboard and API reports stay read-only: they can support a gray-release decision, but they never mutate routing config, promote a target, or replay media/video bytes.
+
+This separation is deliberate: Traffic Experiments split live primary traffic,
+Eval Reports compare controlled primary/candidate/judge runs, and Shadow
+Traffic mirrors sampled primary requests after the caller path.
 
 ## Local Webhook Alerts
 

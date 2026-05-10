@@ -68,6 +68,21 @@ Run:
 GATEWAY_CONFIG_PATH=gateway.config.example.yaml npm run validate:config
 ```
 
+The Dashboard **Setup state and safe config** panel shows the same boundary in
+product:
+
+- `semantic_platform.enabled` controls Prompt Registry, context evidence, intent
+  hints, and Guardrails v2 metadata.
+- `semantic_cache.enabled` controls similarity matching. Response replay remains
+  disabled while `semantic_cache.store_responses=false`.
+- Template bodies and cached responses are not stored unless the operator
+  explicitly enables the related storage option and reviews retention.
+
+This page is not an automatic prompt rewriting engine. `strategy:
+metadata_only` records context evidence only, and Semantic Controls attach
+metadata to route decisions so operators can inspect why the gateway routed a
+request.
+
 ## Semantic Cache v2
 
 Semantic Cache v2 is disabled by default. In the default `memory` backend,

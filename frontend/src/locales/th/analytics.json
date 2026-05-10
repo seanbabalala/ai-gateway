@@ -163,5 +163,19 @@
   "benchmark.cacheAware.title": "ผลของ cache-aware",
   "benchmark.cacheAware.subtitle": "local {{local}} hit · provider read {{provider}} hit",
   "benchmark.cacheAware.providerHitRate": "provider hit rate",
-  "benchmark.cacheAware.readTokenRatio": "read token ratio"
+  "benchmark.cacheAware.readTokenRatio": "read token ratio",
+  "experiments.setup.title": "สถานะการตั้งค่าและขอบเขต experiment",
+  "experiments.setup.description": "Traffic Experiments อ่าน configured split traffic จาก routing tiers หน้านี้รายงาน live traffic evidence และไม่เปลี่ยน weights",
+  "experiments.setup.status.splits": "Splits",
+  "experiments.setup.status.configured": "ตั้งค่าแล้ว",
+  "experiments.setup.status.notConfigured": "ยังไม่ตั้งค่า",
+  "experiments.setup.status.mode": "Mode",
+  "experiments.setup.status.readOnlyAnalytics": "Read-only analytics",
+  "experiments.setup.status.decisioning": "Decisioning",
+  "experiments.setup.status.manualWeights": "Manual weights",
+  "experiments.setup.snippetTitle": "Routing split YAML",
+  "experiments.setup.bullets.liveSplit": "Traffic Experiments ใช้ live routing split weights บน tier และ split variants รับ requests จริง",
+  "experiments.setup.bullets.notEvals": "Evals คือ controlled primary/candidate/judge runs ไม่ใช่ live split dashboards",
+  "experiments.setup.bullets.notShadow": "Shadow Traffic mirror sampled copies และไม่แบ่ง primary traffic",
+  "experiments.setup.bullets.noAutomation": "หน้านี้ไม่ auto-promote winners หรือเปลี่ยน routing weights"
 }

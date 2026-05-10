@@ -10,6 +10,9 @@ const checks = [
   ['src/components/layout/Sidebar.tsx', 'nav.mcp'],
   ['src/hooks/use-mcp.ts', '/api/dashboard/mcp'],
   ['src/pages/McpGatewayPage.tsx', 'mcp.privacy.description'],
+  ['src/pages/McpGatewayPage.tsx', 'SetupGuidePanel'],
+  ['src/pages/McpGatewayPage.tsx', 'MCP_SETUP_SNIPPET'],
+  ['src/pages/McpGatewayPage.tsx', 'allowed_endpoints: [mcp:local-docs:search_docs]'],
   ['src/pages/McpGatewayPage.tsx', 'recent_calls'],
   ['src/types/api.ts', 'McpGatewayResponse'],
   ['src/types/api.ts', 'McpAuditEntry'],
@@ -29,7 +32,18 @@ for (const locale of locales) {
   for (const key of ['nav.mcp']) {
     if (!common[key]) throw new Error(`${locale}/common.json missing ${key}`)
   }
-  for (const key of ['mcp.title', 'mcp.description', 'mcp.privacy.description', 'mcp.sections.recentCalls', 'mcp.table.tool', 'mcp.empty.serversTitle']) {
+  for (const key of [
+    'mcp.title',
+    'mcp.description',
+    'mcp.privacy.description',
+    'mcp.setup.title',
+    'mcp.setup.snippetTitle',
+    'mcp.setup.bullets.notModelRouting',
+    'mcp.setup.bullets.noPayloadStorage',
+    'mcp.sections.recentCalls',
+    'mcp.table.tool',
+    'mcp.empty.serversTitle',
+  ]) {
     if (!dashboard[key]) throw new Error(`${locale}/dashboard.json missing ${key}`)
   }
 }

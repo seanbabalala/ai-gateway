@@ -39,6 +39,9 @@ for (const field of [
 
 for (const key of [
   "t('shadow.readOnly')",
+  "t('shadow.setup.title')",
+  "t('shadow.setup.bullets.notExperiment')",
+  "t('shadow.setup.bullets.noPromotion')",
   "t('shadow.filters.title')",
   "t('shadow.report.title')",
   "t('shadow.privacyWarningTitle')",
@@ -52,6 +55,14 @@ for (const forbidden of ['apiPost', 'apiPut', 'apiDelete', 'updateRouting']) {
   if (page.includes(forbidden)) {
     throw new Error(`Shadow comparison report must stay read-only; found ${forbidden}.`)
   }
+}
+
+if (!page.includes('SetupGuidePanel') || !page.includes('SHADOW_SETUP_SNIPPET')) {
+  throw new Error('Shadow page must include setup-state YAML guidance.')
+}
+
+if (!page.includes('store_prompts: false') || !page.includes('store_responses: false')) {
+  throw new Error('Shadow setup snippet must keep prompt and response sample storage off by default.')
 }
 
 console.log('Open-source Dashboard shadow comparison validated: hooks, report fields, localized copy, and read-only page are present.')
