@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 160" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">SiftGate logo</title>
-  <desc id="desc">SiftGate wordmark with an open door and reflected doorway mark.</desc>
-  <rect x="16" y="16" width="128" height="128" rx="28" fill="#0F172A"/>
-  <path d="M55 47h39v63H55z" stroke="#E5E7EB" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M94 47l22 11v43l-22 9z" fill="#0F172A" stroke="#38BDF8" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M105 77h.1" stroke="#E5E7EB" stroke-width="6" stroke-linecap="round"/>
-  <path d="M63 117h41" stroke="#E5E7EB" stroke-width="5" stroke-linecap="round"/>
-  <path d="M71 126h25" stroke="#38BDF8" stroke-width="4" stroke-linecap="round" opacity=".75"/>
-  <path d="M78 135h12" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" opacity=".45"/>
-  <text x="176" y="99" fill="#0F172A" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="760" letter-spacing="0">SiftGate</text>
-  <path d="M180 119h276" stroke="#38BDF8" stroke-width="5" stroke-linecap="round"/>
+  <desc id="desc">SiftGate wordmark with a minimal black open door on a white background and a soft reflected doorway mark.</desc>
+  <rect x="16" y="16" width="128" height="128" rx="28" fill="#FFFFFF" stroke="#E6EFEA" stroke-width="2"/>
+  <path d="M55 46h37v61H55z" stroke="#111111" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M92 46l23 10v43l-23 8z" fill="#FFFFFF" stroke="#111111" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M104 76h.1" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+  <path d="M61 117h49" stroke="#111111" stroke-width="5" stroke-linecap="round" opacity=".34"/>
+  <path d="M69 127h33" stroke="#111111" stroke-width="4" stroke-linecap="round" opacity=".18"/>
+  <path d="M77 136h17" stroke="#111111" stroke-width="3" stroke-linecap="round" opacity=".1"/>
+  <text x="176" y="99" fill="#062F25" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="760" letter-spacing="0">SiftGate</text>
+  <path d="M180 119h276" stroke="#22D7A8" stroke-width="5" stroke-linecap="round"/>
 </svg>

@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">SiftGate mark</title>
-  <desc id="desc">A simple open door with a reflected doorway shape below.</desc>
-  <rect width="128" height="128" rx="28" fill="#0F172A"/>
-  <path d="M39 31h39v63H39z" stroke="#E5E7EB" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M78 31l22 11v43L78 94z" fill="#0F172A" stroke="#38BDF8" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M89 61h.1" stroke="#E5E7EB" stroke-width="6" stroke-linecap="round"/>
-  <path d="M47 101h41" stroke="#E5E7EB" stroke-width="5" stroke-linecap="round"/>
-  <path d="M55 110h25" stroke="#38BDF8" stroke-width="4" stroke-linecap="round" opacity=".75"/>
-  <path d="M62 119h12" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" opacity=".45"/>
+  <desc id="desc">A minimal black open door on a white background with a soft reflected doorway below.</desc>
+  <rect x="1" y="1" width="126" height="126" rx="26" fill="#FFFFFF" stroke="#E6EFEA" stroke-width="2"/>
+  <path d="M39 30h37v61H39z" stroke="#111111" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M76 30l23 10v43L76 91z" fill="#FFFFFF" stroke="#111111" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M88 60h.1" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+  <path d="M45 101h49" stroke="#111111" stroke-width="5" stroke-linecap="round" opacity=".34"/>
+  <path d="M53 111h33" stroke="#111111" stroke-width="4" stroke-linecap="round" opacity=".18"/>
+  <path d="M61 120h17" stroke="#111111" stroke-width="3" stroke-linecap="round" opacity=".1"/>
 </svg>
