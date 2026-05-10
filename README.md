@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-beta.1 Policy Namespace Manager**.
+Current release: **v2.8.0-beta.2 Budget Scope Settings**.
 
-Current development focus after v2.8.0-beta.1: preserve Platform Trust stability,
+Current development focus after v2.8.0-beta.2: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -83,6 +83,13 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.8 Highlights
 
+- v2.8.0-beta.2 makes daily budget setup obvious across Global, Policy
+  Namespace, Team, and API Key scopes. The Budget page shows source of truth,
+  inherited or unset state, daily reset time, alert threshold, current usage,
+  and the unchanged blocking order from global to namespace to team to key.
+- Safe budget edits reuse existing supported paths: Policy Namespace config
+  updates, Team policy updates, and Dashboard-managed API Key policy updates.
+  Global budgets remain config-backed through `gateway.config.yaml`.
 - v2.8.0-beta.1 makes Policy Namespaces manageable from the OSS Dashboard.
   Admins can create, edit, and delete config-backed namespaces with the existing
   validation, config audit, rollback, and hot-reload path.

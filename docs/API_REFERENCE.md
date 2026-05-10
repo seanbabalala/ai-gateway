@@ -836,6 +836,31 @@ List responses include `status`, `last_used_at`, `key_prefix`, and a `today` sum
 
 Local teams are OSS-only shared policy groups. They persist locally in SQLite/PostgreSQL, can be disabled, and can define namespace binding, allowed endpoints/modalities/nodes/models, daily token/cost budgets, and RPM limits. Bound keys fail closed when their team is disabled. SiftGate checks global, namespace, team, and key budgets and records `team_id` in call logs for usage summaries. Team APIs never return secrets and do not implement SSO, SCIM, enterprise workspaces, or org billing.
 
+## Budget Scope Settings
+
+`GET /api/dashboard/budget` accepts optional `namespace`, `team_id`,
+`api_key`, or `api_key_id` query parameters. Responses remain backward
+compatible with `rules` for global rules and now include explanatory metadata:
+`selectedScope`, `scopeChain`, `sourceOfTruth`, `editableVia`,
+`alertThreshold`, `dailyResetAt`, and `blockingOrder`. Selected namespace,
+team, and key views return `namespaceRules`, `teamRules`, or `perKeyRules`
+respectively. Empty selected-scope rule arrays mean the scope is inherited
+rather than a missing runtime feature.
+
+Budget sources are intentionally separate:
+
+| Scope | Source of truth | Dashboard edit path |
+| --- | --- | --- |
+| Global | `budget` in `gateway.config.yaml` | Config file + reload |
+| Policy Namespace | `namespaces[].budget` | Policy Namespace update API |
+| Team | local Team policy columns | Team update API |
+| API Key | Dashboard-managed Gateway API key policy columns | API Key update API |
+
+SiftGate enforcement order is unchanged: global budgets are checked first,
+then Policy Namespace, then Team, then API Key. Manual reset still uses
+`POST /api/dashboard/budget/:id/reset` and only resets the selected budget rule
+counter; it does not alter configured limits or daily reset semantics.
+
 ## Policy Namespace Management
 
 Policy Namespace management is local and config-backed. The Dashboard APIs

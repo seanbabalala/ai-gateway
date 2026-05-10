@@ -1,15 +1,34 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronUp, RotateCcw, Wallet } from 'lucide-react'
+import {
+  CircleDollarSign,
+  Clock3,
+  Edit3,
+  KeyRound,
+  Layers3,
+  RotateCcw,
+  ShieldAlert,
+  Users,
+  Wallet,
+} from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
-import { Card, CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
-import { SkeletonCard, SkeletonTable } from '@/components/ui/skeleton'
+import { CardStatic, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { SkeletonCard, SkeletonTable } from '@/components/ui/skeleton'
 import {
   Table,
   TableHeader,
@@ -18,113 +37,109 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
-import { useBudget, useBudgetKeys, type BudgetScope } from '@/hooks/use-budget'
+import {
+  budgetScopeKey,
+  parseBudgetScopeKey,
+  useBudget,
+  useBudgetKeys,
+  type BudgetScope,
+} from '@/hooks/use-budget'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useCacheSavings } from '@/hooks/use-cache-savings'
 import { useConfig } from '@/hooks/use-config'
-import { useResetBudget } from '@/hooks/use-mutations'
+import { useNamespaces, useUpdateNamespace } from '@/hooks/use-namespaces'
+import { useTeams } from '@/hooks/use-teams'
+import {
+  useResetBudget,
+  useUpdateGatewayApiKey,
+  useUpdateTeam,
+} from '@/hooks/use-mutations'
 import { hasWorkspaceRole, useWorkspaces } from '@/hooks/use-workspaces'
-import { useThemeColors } from '@/lib/theme'
 import { formatNumber, formatCost, formatPercent, cn } from '@/lib/utils'
-import type { BudgetRule, BudgetPerKeyResponse } from '@/types/api'
+import type {
+  BudgetResponse,
+  BudgetRule,
+  GatewayApiKey,
+  LocalTeam,
+  NamespaceInfo,
+} from '@/types/api'
 
-// SVG Ring Gauge Component — cinematic styling
-function RingGauge({
-  label,
-  value,
-  max,
-  format,
-  color,
-  gaugeBg,
-  gaugeText,
-  gaugeSubtext,
-  opacity = 1,
-}: {
+type ScopeKind = 'global' | 'namespace' | 'team' | 'api_key'
+type EditableScopeKind = Exclude<ScopeKind, 'global'>
+
+interface ScopeOption {
+  key: string
+  scope: BudgetScope & { kind: ScopeKind }
   label: string
-  value: number
-  max: number
-  format: (n: number) => string
-  color: string
-  gaugeBg: string
-  gaugeText: string
-  gaugeSubtext: string
-  opacity?: number
-}) {
-  const percentage = max > 0 ? Math.min((value / max) * 100, 100) : 0
-  const radius = 70
-  const circumference = 2 * Math.PI * radius
-  const strokeDashoffset = circumference - (percentage / 100) * circumference
+  description: string
+  owner?: NamespaceInfo | LocalTeam | GatewayApiKey
+  legacyName?: string
+}
 
-  // Dynamic color based on percentage
-  const gaugeColor =
-    percentage >= 90
-      ? '#E55B50'
-      : percentage >= 80
-        ? '#F0B429'
-        : color
+interface BudgetEditState {
+  scope: EditableScopeKind
+  id: string
+  title: string
+  daily_token_limit: string
+  daily_cost_limit: string
+  alert_threshold: string
+}
 
-  return (
-    <div className="flex flex-col items-center" style={{ opacity }}>
-      <svg width="180" height="180" viewBox="0 0 180 180">
-        {/* Subtle glow behind the arc */}
-        <defs>
-          <filter id={`glow-${label}`} x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
-        {/* Background circle */}
-        <circle
-          cx="90"
-          cy="90"
-          r={radius}
-          fill="none"
-          stroke={gaugeBg}
-          strokeWidth="10"
-          opacity="0.6"
-        />
-        {/* Progress arc */}
-        <circle
-          cx="90"
-          cy="90"
-          r={radius}
-          fill="none"
-          stroke={gaugeColor}
-          strokeWidth="10"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          transform="rotate(-90 90 90)"
-          className="transition-all duration-700 ease-out"
-          filter={`url(#glow-${label})`}
-        />
-        {/* Center text */}
-        <text
-          x="90"
-          y="82"
-          textAnchor="middle"
-          fill={gaugeText}
-          fontSize="26"
-          fontFamily="Plus Jakarta Sans, sans-serif"
-          fontWeight="700"
-          letterSpacing="0"
-        >
-          {formatPercent(percentage)}
-        </text>
-        <text
-          x="90"
-          y="104"
-          textAnchor="middle"
-          fill={gaugeSubtext}
-          fontSize="10"
-          fontFamily="IBM Plex Mono, monospace"
-        >
-          {format(value)} / {format(max)}
-        </text>
-      </svg>
-      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--foreground-dim)]">{label}</div>
-    </div>
-  )
+function numberOrNull(value: string): number | null {
+  if (!value.trim()) return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function numberOrUndefined(value: string): number | undefined {
+  if (!value.trim()) return undefined
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+function activeRules(data?: BudgetResponse): BudgetRule[] {
+  if (!data) return []
+  return data.namespaceRules || data.teamRules || data.perKeyRules || data.rules || []
+}
+
+function scopeIcon(scope: ScopeKind) {
+  if (scope === 'namespace') return Layers3
+  if (scope === 'team') return Users
+  if (scope === 'api_key') return KeyRound
+  return Wallet
+}
+
+function ruleValue(rule: BudgetRule, value: number): string {
+  return rule.type.includes('cost') ? formatCost(value) : formatNumber(value)
+}
+
+function typeLabel(rule: BudgetRule, t: ReturnType<typeof useTranslation>['t']): string {
+  return rule.type === 'daily_cost' ? t('types.dailyCost') : t('types.dailyTokens')
+}
+
+function resetLabel(value?: string | null): string {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(value))
+}
+
+function sourceLabel(source: string | undefined, t: ReturnType<typeof useTranslation>['t']): string {
+  if (source === 'global_config') return t('source.globalConfig')
+  if (source === 'policy_namespace_config') return t('source.namespaceConfig')
+  if (source === 'team_policy') return t('source.teamPolicy')
+  if (source === 'api_key_policy') return t('source.apiKeyPolicy')
+  return t('source.unknown')
+}
+
+function editViaLabel(editableVia: string | undefined, t: ReturnType<typeof useTranslation>['t']): string {
+  if (editableVia === 'config_file') return t('editVia.configFile')
+  if (editableVia === 'policy_namespace_api') return t('editVia.namespace')
+  if (editableVia === 'team_api') return t('editVia.team')
+  if (editableVia === 'api_key_api') return t('editVia.apiKey')
+  return t('editVia.unknown')
 }
 
 function progressColor(pct: number): string {
@@ -134,182 +149,544 @@ function progressColor(pct: number): string {
   return 'bg-emerald-500'
 }
 
-function progressGlow(pct: number): string {
-  if (pct >= 90) return 'shadow-[0_0_12px_rgba(229,91,80,0.4)]'
-  if (pct >= 80) return 'shadow-[0_0_12px_rgba(240,180,41,0.3)]'
-  if (pct >= 50) return 'shadow-[0_0_12px_rgba(2,132,199,0.3)]'
-  return 'shadow-[0_0_12px_rgba(45,134,89,0.3)]'
+function BudgetMetricCard({
+  title,
+  rule,
+  fallback,
+}: {
+  title: string
+  rule?: BudgetRule
+  fallback: string
+}) {
+  const pct = rule?.percentage ?? 0
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+            {title}
+          </div>
+          <div className="mt-2 text-[22px] font-bold text-[var(--foreground)]">
+            {rule ? ruleValue(rule, rule.current) : fallback}
+          </div>
+        </div>
+        <div className="font-mono text-[12px] text-[var(--foreground-muted)]">
+          {rule ? formatPercent(pct) : '-'}
+        </div>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--progress-track)]">
+        <div
+          className={cn('h-full rounded-full transition-all duration-700', progressColor(pct))}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+      <div className="mt-2 text-[11px] text-[var(--foreground-dim)]">
+        {rule ? `${ruleValue(rule, rule.current)} / ${ruleValue(rule, rule.limit)}` : fallback}
+      </div>
+    </div>
+  )
 }
 
-function BudgetRulesSection({
+function ScopeSourceCard({
+  option,
+  data,
   rules,
-  label,
+  onEdit,
+  canAdmin,
+}: {
+  option: ScopeOption
+  data: BudgetResponse
+  rules: BudgetRule[]
+  onEdit: () => void
+  canAdmin: boolean
+}) {
+  const { t } = useTranslation('budget')
+  const Icon = scopeIcon(option.scope.kind)
+  const selected = data.selectedScope
+  const configured = selected?.configured ?? rules.length > 0
+  const dailyReset = selected?.dailyResetAt || rules[0]?.resetAt || null
+  const alertThreshold = selected?.alertThreshold ?? rules[0]?.alertThreshold ?? null
+  const editable = option.scope.kind !== 'global' && Boolean(option.owner)
+
+  return (
+    <CardStatic>
+      <CardHeader className="flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle>{t('scopeSource.title')}</CardTitle>
+          <div className="mt-2 text-[12px] leading-5 text-[var(--foreground-dim)]">
+            {t('scopeSource.description')}
+          </div>
+        </div>
+        <div className="rounded-lg bg-[var(--accent)]/10 p-2 text-[var(--accent)]">
+          <Icon className="h-5 w-5" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-5">
+          <InfoTile label={t('scopeSource.scope')} value={option.label} />
+          <InfoTile
+            label={t('scopeSource.source')}
+            value={sourceLabel(selected?.sourceOfTruth || rules[0]?.sourceOfTruth, t)}
+          />
+          <InfoTile
+            label={t('scopeSource.status')}
+            value={configured ? t('status.configured') : option.scope.kind === 'global' ? t('status.unset') : t('status.inherited')}
+          />
+          <InfoTile
+            label={t('scopeSource.dailyReset')}
+            value={resetLabel(dailyReset)}
+          />
+          <InfoTile
+            label={t('scopeSource.alertThreshold')}
+            value={alertThreshold === null ? '-' : formatPercent(alertThreshold)}
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--inset-bg)] p-3">
+          <div className="text-[12px] leading-5 text-[var(--foreground-muted)]">
+            {editable
+              ? t('scopeSource.editable', { target: editViaLabel(selected?.editableVia || rules[0]?.editableVia, t) })
+              : option.scope.kind === 'global'
+                ? t('scopeSource.globalReadOnly')
+                : t('scopeSource.externalReadOnly')}
+          </div>
+          {editable ? (
+            <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+              <Button size="sm" onClick={onEdit} disabled={!canAdmin}>
+                <Edit3 className="h-3.5 w-3.5" />
+                {t('actions.editScope')}
+              </Button>
+            </PermissionTooltip>
+          ) : (
+            <Badge variant="zinc">{t('status.configDriven')}</Badge>
+          )}
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+        {label}
+      </div>
+      <div className="mt-1 min-h-5 break-words text-[13px] font-semibold text-[var(--foreground)]">
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function EnforcementChain({ data }: { data: BudgetResponse }) {
+  const { t } = useTranslation('budget')
+  const chain = data.scopeChain || []
+  return (
+    <CardStatic>
+      <CardHeader>
+        <CardTitle>{t('chain.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-4">
+          {chain.map((item) => (
+            <div
+              key={item.scope}
+              className={cn(
+                'rounded-lg border p-3',
+                item.activeForSelected
+                  ? 'border-[var(--accent)]/20 bg-[var(--accent)]/8'
+                  : 'border-[var(--border)] bg-[var(--background-secondary)] opacity-60',
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant={item.activeForSelected ? 'gold' : 'zinc'}>
+                  {t('chain.step', { value: item.blockingOrder })}
+                </Badge>
+                <ShieldAlert className="h-4 w-4 text-[var(--foreground-dim)]" />
+              </div>
+              <div className="mt-3 text-[13px] font-bold text-[var(--foreground)]">
+                {t(`scopeKinds.${item.scope}`)}
+              </div>
+              <div className="mt-1 text-[11px] leading-5 text-[var(--foreground-dim)]">
+                {item.scope === 'global'
+                  ? t('chain.always')
+                  : item.scope === data.selectedScope?.scope
+                    ? t('chain.selected')
+                    : t('chain.conditional')}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </CardStatic>
+  )
+}
+
+function BudgetRulesTable({
+  rules,
   resetBudget,
   canAdmin,
 }: {
   rules: BudgetRule[]
-  label: string
   resetBudget: ReturnType<typeof useResetBudget>
   canAdmin: boolean
 }) {
   const { t } = useTranslation('budget')
+  if (rules.length === 0) {
+    return (
+      <EmptyState
+        icon={Wallet}
+        title={t('rules.noScopeTitle')}
+        description={t('rules.noScopeDescription')}
+        className="py-8"
+      />
+    )
+  }
+
   return (
-    <div className="space-y-4">
-      {rules.map((rule) => (
-        <div
-          key={`${label}-${rule.id}`}
-          className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-4"
-        >
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-semibold text-[var(--foreground)] capitalize">
-                {rule.type.replace(/_/g, ' ')}
-              </span>
-              {label && (
-                <span className="rounded-lg bg-[var(--accent)]/10 px-2 py-0.5 text-[9px] font-bold text-[var(--accent)] uppercase tracking-wider">
-                  {label}
-                </span>
-              )}
-              {rule.exceeded && (
-                <span className="rounded-lg bg-red-500/10 px-2 py-0.5 text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">
-                  {t('rules.exceeded')}
-                </span>
-              )}
-              {rule.alert && !rule.exceeded && (
-                <span className="rounded-lg bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                  {t('rules.warning')}
-                </span>
-              )}
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('rules.table.rule')}</TableHead>
+          <TableHead>{t('rules.table.source')}</TableHead>
+          <TableHead>{t('rules.table.usage')}</TableHead>
+          <TableHead>{t('rules.table.alert')}</TableHead>
+          <TableHead>{t('rules.table.reset')}</TableHead>
+          <TableHead className="text-right">{t('rules.table.actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rules.map((rule) => (
+          <TableRow key={rule.id}>
+            <TableCell>
+              <div className="font-semibold text-[var(--foreground)]">{typeLabel(rule, t)}</div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                <Badge variant={rule.exceeded ? 'red' : rule.alert ? 'amber' : 'emerald'}>
+                  {rule.exceeded ? t('rules.exceeded') : rule.alert ? t('rules.warning') : t('status.withinLimit')}
+                </Badge>
+                <Badge variant="zinc">{t('chain.step', { value: rule.blockingOrder || '-' })}</Badge>
+              </div>
+            </TableCell>
+            <TableCell className="text-[12px] text-[var(--foreground-muted)]">
+              {sourceLabel(rule.sourceOfTruth, t)}
+            </TableCell>
+            <TableCell>
+              <div className="font-mono text-[12px] text-[var(--foreground)]">
+                {ruleValue(rule, rule.current)} / {ruleValue(rule, rule.limit)}
+              </div>
+              <div className="mt-2 h-2 w-40 max-w-full overflow-hidden rounded-full bg-[var(--progress-track)]">
+                <div
+                  className={cn('h-full rounded-full transition-all duration-700', progressColor(rule.percentage))}
+                  style={{ width: `${Math.min(rule.percentage, 100)}%` }}
+                />
+              </div>
+            </TableCell>
+            <TableCell className="font-mono text-[12px] text-[var(--foreground-muted)]">
+              {rule.alertThreshold === undefined ? '-' : formatPercent(rule.alertThreshold)}
+            </TableCell>
+            <TableCell className="text-[12px] text-[var(--foreground-muted)]">
+              {resetLabel(rule.resetAt)}
+            </TableCell>
+            <TableCell className="text-right">
+              <PermissionTooltip allowed={canAdmin} requiredRole="admin">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => resetBudget.mutate(rule.id)}
+                  disabled={resetBudget.isPending || !rule.id || !canAdmin}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t('actions.reset')}
+                </Button>
+              </PermissionTooltip>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function BudgetEditDialog({
+  state,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  state: BudgetEditState | null
+  onClose: () => void
+  onSubmit: (next: BudgetEditState) => void
+  pending: boolean
+}) {
+  const { t } = useTranslation('budget')
+  const [form, setForm] = useState<BudgetEditState | null>(state)
+
+  useEffect(() => {
+    setForm(state)
+  }, [state])
+
+  if (!form) return null
+
+  return (
+    <Dialog open={!!state} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{t('edit.title', { scope: form.title })}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--inset-bg)] p-3 text-[12px] leading-5 text-[var(--foreground-dim)]">
+            {t(`edit.notes.${form.scope}`)}
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                {t('edit.dailyTokens')}
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={form.daily_token_limit}
+                onChange={(event) => setForm((prev) => prev ? { ...prev, daily_token_limit: event.target.value } : prev)}
+                placeholder={t('edit.unset')}
+              />
             </div>
-            <PermissionTooltip allowed={canAdmin} requiredRole="admin">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => resetBudget.mutate(rule.id)}
-                disabled={resetBudget.isPending || !rule.id || !canAdmin}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {t('actions.reset')}
-              </Button>
-            </PermissionTooltip>
-          </div>
-
-          <div className="flex items-center justify-between font-mono text-[10px] text-[var(--foreground-dim)] mb-2">
-            <span>
-              {rule.type.includes('cost')
-                ? formatCost(rule.current)
-                : formatNumber(rule.current)}
-            </span>
-            <span>
-              {rule.type.includes('cost')
-                ? formatCost(rule.limit)
-                : formatNumber(rule.limit)}
-            </span>
-          </div>
-
-          {/* Progress bar */}
-          <div className="h-2 rounded-full bg-[var(--progress-track)] overflow-hidden">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-700 ease-out',
-                progressColor(rule.percentage),
-                progressGlow(rule.percentage)
-              )}
-              style={{ width: `${Math.min(rule.percentage, 100)}%` }}
-            />
-          </div>
-
-          <div className="mt-1.5 text-right font-mono text-[10px] text-[var(--foreground-dim)]">
-            {t('rules.used', { value: formatPercent(rule.percentage) })}
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                {t('edit.dailyCost')}
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.daily_cost_limit}
+                onChange={(event) => setForm((prev) => prev ? { ...prev, daily_cost_limit: event.target.value } : prev)}
+                placeholder={t('edit.unset')}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+                {t('edit.alertThreshold')}
+              </label>
+              <Input
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value={form.alert_threshold}
+                disabled={form.scope !== 'namespace'}
+                onChange={(event) => setForm((prev) => prev ? { ...prev, alert_threshold: event.target.value } : prev)}
+                placeholder={form.scope === 'namespace' ? '0.8' : t('edit.globalAlert')}
+              />
+            </div>
           </div>
         </div>
-      ))}
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t('actions.cancel')}</Button>
+          <Button onClick={() => onSubmit(form)} disabled={pending}>
+            {t('actions.save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 export function BudgetPage() {
   const { t } = useTranslation('budget')
-  const [selectedKey, setSelectedKey] = useState('')
-  const [showCacheDetail, setShowCacheDetail] = useState(false)
   const { data: budgetKeysData } = useBudgetKeys()
   const { data: apiKeysData } = useApiKeys()
-  const selectedScope = useMemo<BudgetScope | undefined>(() => {
-    if (!selectedKey) return undefined
-    if (selectedKey.startsWith('id:')) return { id: selectedKey.slice(3) }
-    if (selectedKey.startsWith('name:')) return { name: selectedKey.slice(5) }
-    return { name: selectedKey }
-  }, [selectedKey])
-  const { data: budgetData, isLoading: budgetLoading, isError, error, refetch } = useBudget(selectedScope)
-  const { data: cacheSavings } = useCacheSavings(
-    '1d',
-    'node',
-    selectedScope?.id
-      ? { id: selectedScope.id }
-      : selectedScope?.name
-        ? { name: selectedScope.name }
-        : undefined,
-  )
+  const { data: namespacesData } = useNamespaces()
+  const { data: teamsData } = useTeams()
   const { data: config, isLoading: configLoading } = useConfig()
-  const resetBudget = useResetBudget()
   const { data: workspaceState } = useWorkspaces()
   const canAdmin = hasWorkspaceRole(workspaceState?.access, 'admin')
-  const colors = useThemeColors()
+  const resetBudget = useResetBudget()
+  const updateNamespace = useUpdateNamespace()
+  const updateTeam = useUpdateTeam()
+  const updateKey = useUpdateGatewayApiKey()
+  const [selectedKey, setSelectedKey] = useState('global:global')
+  const [editing, setEditing] = useState<BudgetEditState | null>(null)
+  const selectedScope = useMemo(() => parseBudgetScopeKey(selectedKey), [selectedKey])
+  const { data: budgetData, isLoading: budgetLoading, isError, error, refetch } = useBudget(selectedScope)
+  const { data: cacheSavings } = useCacheSavings('1d', 'node', {
+    id: selectedScope.kind === 'api_key' ? selectedScope.id : undefined,
+    name: selectedScope.kind === 'api_key' ? selectedScope.name : undefined,
+    namespaceId: selectedScope.kind === 'namespace' ? selectedScope.id || selectedScope.name : undefined,
+    teamId: selectedScope.kind === 'team' ? selectedScope.id : undefined,
+  })
 
-  const keyOptions = useMemo(() => {
-    const generatedById = new Map<string, { id: string; name: string; key_prefix?: string | null }>()
+  const scopeOptions = useMemo<ScopeOption[]>(() => {
+    const options: ScopeOption[] = [
+      {
+        key: 'global:global',
+        scope: { kind: 'global' },
+        label: t('scopeOptions.global'),
+        description: t('scopeDescriptions.global'),
+      },
+    ]
+
+    for (const namespace of namespacesData?.namespaces || []) {
+      options.push({
+        key: budgetScopeKey({ kind: 'namespace', id: namespace.id }),
+        scope: { kind: 'namespace', id: namespace.id },
+        label: `${namespace.name || namespace.id} · ${t('scopeKinds.namespace')}`,
+        description: t('scopeDescriptions.namespace'),
+        owner: namespace,
+      })
+    }
+
+    for (const team of teamsData?.teams || []) {
+      options.push({
+        key: budgetScopeKey({ kind: 'team', id: team.id }),
+        scope: { kind: 'team', id: team.id },
+        label: `${team.name} · ${t('scopeKinds.team')}`,
+        description: t('scopeDescriptions.team'),
+        owner: team,
+      })
+    }
+
+    const generatedById = new Map<string, GatewayApiKey>()
     for (const item of budgetKeysData?.items || []) {
-      generatedById.set(item.id, item)
+      generatedById.set(item.id, item as GatewayApiKey)
     }
     for (const item of apiKeysData?.items || []) {
       generatedById.set(item.id, item)
     }
-
     const generatedNames = new Set(Array.from(generatedById.values()).map((item) => item.name))
-    const legacyNames = (budgetKeysData?.keys || [])
-      .filter((name) => !generatedNames.has(name))
-      .sort((a, b) => a.localeCompare(b))
+    for (const key of Array.from(generatedById.values()).sort((a, b) => a.name.localeCompare(b.name))) {
+      options.push({
+        key: budgetScopeKey({ kind: 'api_key', id: key.id }),
+        scope: { kind: 'api_key', id: key.id },
+        label: `${key.name} · ${key.key_prefix || key.id.slice(0, 8)}`,
+        description: t('scopeDescriptions.apiKey'),
+        owner: key,
+      })
+    }
+    for (const name of (budgetKeysData?.keys || []).filter((name) => !generatedNames.has(name)).sort()) {
+      options.push({
+        key: `api_key_name:${name}`,
+        scope: { kind: 'api_key', name },
+        label: t('filters.legacyYaml', { name }),
+        description: t('scopeDescriptions.apiKey'),
+        legacyName: name,
+      })
+    }
+    return options
+  }, [apiKeysData?.items, budgetKeysData?.items, budgetKeysData?.keys, namespacesData?.namespaces, teamsData?.teams, t])
 
-    return [
-      { value: '', label: t('filters.allGlobal') },
-      ...Array.from(generatedById.values())
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((item) => ({
-          value: `id:${item.id}`,
-          label: `${item.name} · ${item.key_prefix || item.id.slice(0, 8)}`,
-        })),
-      ...legacyNames.map((name) => ({ value: `name:${name}`, label: t('filters.legacyYaml', { name }) })),
-    ]
-  }, [apiKeysData?.items, budgetKeysData?.items, budgetKeysData?.keys])
+  const selectedOption = scopeOptions.find((option) => option.key === selectedKey) || scopeOptions[0]
 
-  const selectedLabel = keyOptions.find((opt) => opt.value === selectedKey)?.label || selectedKey
-  const selectedName = selectedLabel.split(' · ')[0]
+  useEffect(() => {
+    if (!scopeOptions.some((option) => option.key === selectedKey)) {
+      setSelectedKey('global:global')
+    }
+  }, [scopeOptions, selectedKey])
 
   if (isError) {
     return <ErrorState error={error} onRetry={refetch} />
   }
 
-  if (budgetLoading || configLoading || !budgetData) {
+  if (budgetLoading || configLoading || !budgetData || !selectedOption) {
     return (
       <div className="space-y-6">
         <PageHeader title={t('budget.title')} description={t('budget.description')} />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <SkeletonCard className="h-64" />
-          <SkeletonCard className="h-64" />
+        <SkeletonCard className="h-40" />
+        <div className="grid gap-5 md:grid-cols-2">
+          <SkeletonCard className="h-36" />
+          <SkeletonCard className="h-36" />
         </div>
-        <SkeletonCard className="h-48" />
+        <SkeletonTable rows={4} />
       </div>
     )
   }
 
-  const isPerKeyView = Boolean(selectedKey && 'perKeyRules' in budgetData)
-  const globalRules = budgetData.rules
-  const perKeyRules = isPerKeyView ? (budgetData as BudgetPerKeyResponse).perKeyRules : []
+  const rules = activeRules(budgetData)
+  const tokenRule = rules.find((rule) => rule.type === 'daily_tokens')
+  const costRule = rules.find((rule) => rule.type === 'daily_cost')
+  const isMutating = updateNamespace.isPending || updateTeam.isPending || updateKey.isPending
 
-  const tokenRule = globalRules.find((r) => r.type === 'daily_tokens')
-  const costRule = globalRules.find((r) => r.type === 'daily_cost')
-  const perKeyTokenRule = perKeyRules.find((r: BudgetRule) => r.type === 'daily_tokens')
-  const perKeyCostRule = perKeyRules.find((r: BudgetRule) => r.type === 'daily_cost')
+  const openEdit = () => {
+    if (selectedOption.scope.kind === 'global') return
+    const owner = selectedOption.owner
+    if (!owner) return
+    if (selectedOption.scope.kind === 'namespace') {
+      const namespace = owner as NamespaceInfo
+      setEditing({
+        scope: 'namespace',
+        id: namespace.id,
+        title: namespace.name || namespace.id,
+        daily_token_limit: namespace.budget?.daily_token_limit?.toString() || '',
+        daily_cost_limit: namespace.budget?.daily_cost_limit?.toString() || '',
+        alert_threshold: namespace.budget?.alert_threshold?.toString() || '',
+      })
+      return
+    }
+    if (selectedOption.scope.kind === 'team') {
+      const team = owner as LocalTeam
+      setEditing({
+        scope: 'team',
+        id: team.id,
+        title: team.name,
+        daily_token_limit: team.daily_token_limit?.toString() || '',
+        daily_cost_limit: team.daily_cost_limit?.toString() || '',
+        alert_threshold: '',
+      })
+      return
+    }
+    if (selectedOption.scope.kind === 'api_key' && owner) {
+      const key = owner as GatewayApiKey
+      setEditing({
+        scope: 'api_key',
+        id: key.id,
+        title: key.name,
+        daily_token_limit: key.daily_token_limit?.toString() || '',
+        daily_cost_limit: key.daily_cost_limit?.toString() || '',
+        alert_threshold: '',
+      })
+    }
+  }
+
+  const submitEdit = (next: BudgetEditState) => {
+    if (next.scope === 'namespace') {
+      updateNamespace.mutate(
+        {
+          id: next.id,
+          data: {
+            budget: {
+              daily_token_limit: numberOrUndefined(next.daily_token_limit),
+              daily_cost_limit: numberOrUndefined(next.daily_cost_limit),
+              alert_threshold: numberOrUndefined(next.alert_threshold),
+            },
+          },
+        },
+        { onSuccess: () => setEditing(null) },
+      )
+      return
+    }
+    if (next.scope === 'team') {
+      updateTeam.mutate(
+        {
+          id: next.id,
+          data: {
+            daily_token_limit: numberOrNull(next.daily_token_limit),
+            daily_cost_limit: numberOrNull(next.daily_cost_limit),
+          },
+        },
+        { onSuccess: () => setEditing(null) },
+      )
+      return
+    }
+    updateKey.mutate(
+      {
+        id: next.id,
+        data: {
+          daily_token_limit: numberOrNull(next.daily_token_limit),
+          daily_cost_limit: numberOrNull(next.daily_cost_limit),
+        },
+      },
+      { onSuccess: () => setEditing(null) },
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -319,10 +696,10 @@ export function BudgetPage() {
         icon={Wallet}
       >
         <Select
-          options={keyOptions}
+          options={scopeOptions.map((option) => ({ value: option.key, label: option.label }))}
           value={selectedKey}
-          onChange={(v) => setSelectedKey(v)}
-          className="w-44"
+          onChange={setSelectedKey}
+          className="w-72 max-w-full"
         />
       </PageHeader>
 
@@ -332,111 +709,67 @@ export function BudgetPage() {
         badgeKinds={['runtimeSupported', 'configDriven']}
       />
 
-      {/* Ring Gauges */}
-      <div className="stagger-children grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Card className="animate-fade-up flex flex-col items-center justify-center py-10 gap-4">
-          {isPerKeyView && perKeyTokenRule ? (
-            <>
-              <RingGauge
-                label={t('gauges.dailyTokensForKey', { key: selectedName })}
-                value={perKeyTokenRule.current}
-                max={perKeyTokenRule.limit}
-                format={formatNumber}
-                color="#064B3A"
-                gaugeBg={colors.gaugeBg}
-                gaugeText={colors.gaugeText}
-                gaugeSubtext={colors.gaugeSubtext}
-              />
-              {tokenRule && (
-                <div className="text-[10px] font-mono text-[var(--foreground-dim)]">
-                  {t('gauges.globalUsage', {
-                    current: formatNumber(tokenRule.current),
-                    limit: formatNumber(tokenRule.limit),
-                    percentage: formatPercent(tokenRule.percentage),
-                  })}
-                </div>
-              )}
-            </>
-          ) : tokenRule ? (
-            <RingGauge
-              label={t('gauges.dailyTokens')}
-              value={tokenRule.current}
-              max={tokenRule.limit}
-              format={formatNumber}
-              color="#064B3A"
-              gaugeBg={colors.gaugeBg}
-              gaugeText={colors.gaugeText}
-              gaugeSubtext={colors.gaugeSubtext}
-            />
-          ) : (
-            <div className="text-sm text-[var(--foreground-dim)]">{t('gauges.noTokenRule')}</div>
-          )}
-        </Card>
-        <Card className="animate-fade-up flex flex-col items-center justify-center py-10 gap-4">
-          {isPerKeyView && perKeyCostRule ? (
-            <>
-              <RingGauge
-                label={t('gauges.dailyCostForKey', { key: selectedName })}
-                value={perKeyCostRule.current}
-                max={perKeyCostRule.limit}
-                format={formatCost}
-                color="#7C3AED"
-                gaugeBg={colors.gaugeBg}
-                gaugeText={colors.gaugeText}
-                gaugeSubtext={colors.gaugeSubtext}
-              />
-              {costRule && (
-                <div className="text-[10px] font-mono text-[var(--foreground-dim)]">
-                  {t('gauges.globalUsage', {
-                    current: formatCost(costRule.current),
-                    limit: formatCost(costRule.limit),
-                    percentage: formatPercent(costRule.percentage),
-                  })}
-                </div>
-              )}
-            </>
-          ) : costRule ? (
-            <RingGauge
-              label={t('gauges.dailyCost')}
-              value={costRule.current}
-              max={costRule.limit}
-              format={formatCost}
-              color="#7C3AED"
-              gaugeBg={colors.gaugeBg}
-              gaugeText={colors.gaugeText}
-              gaugeSubtext={colors.gaugeSubtext}
-            />
-          ) : (
-            <div className="text-sm text-[var(--foreground-dim)]">{t('gauges.noCostRule')}</div>
-          )}
-          <div className="w-full max-w-sm rounded-xl border border-emerald-500/12 bg-emerald-500/5 px-4 py-3">
-            <div className="text-[11px] font-medium text-[var(--foreground-dim)]">
-              {t('cache.note')}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowCacheDetail((value) => !value)}
-              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:text-emerald-600 dark:text-emerald-300 dark:hover:text-emerald-200"
-            >
-              {showCacheDetail ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              {showCacheDetail ? t('cache.hideDetail') : t('cache.showDetail')}
-            </button>
-            {showCacheDetail && (
-              <div className="mt-2 space-y-1 font-mono text-[11px] text-[var(--foreground-muted)]">
-                <div>{t('cache.withoutCache', { value: formatCost(cacheSavings?.summary.hypothetical_no_cache_cost_usd || 0) })}</div>
-                <div>{t('cache.withCache', { value: formatCost(cacheSavings?.summary.actual_cost_usd || 0) })}</div>
-                <div className="text-emerald-700 dark:text-emerald-300">
-                  {t('cache.saved', { value: formatCost(cacheSavings?.summary.savings_usd || 0) })}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
+      <ScopeSourceCard
+        option={selectedOption}
+        data={budgetData}
+        rules={rules}
+        onEdit={openEdit}
+        canAdmin={canAdmin}
+      />
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <BudgetMetricCard title={t('metrics.tokens')} rule={tokenRule} fallback={t('status.inherited')} />
+        <BudgetMetricCard title={t('metrics.cost')} rule={costRule} fallback={t('status.inherited')} />
       </div>
 
-      {/* Model Pricing Table */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
+        <EnforcementChain data={budgetData} />
+        <CardStatic>
+          <CardHeader>
+            <CardTitle>{t('cache.title')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              <InfoTile
+                label={t('cache.withoutCacheLabel')}
+                value={formatCost(cacheSavings?.summary.hypothetical_no_cache_cost_usd || 0)}
+              />
+              <InfoTile
+                label={t('cache.withCacheLabel')}
+                value={formatCost(cacheSavings?.summary.actual_cost_usd || 0)}
+              />
+              <div className="rounded-lg border border-emerald-500/12 bg-emerald-500/5 p-3">
+                <div className="flex items-center gap-2 text-[13px] font-bold text-emerald-700 dark:text-emerald-300">
+                  <CircleDollarSign className="h-4 w-4" />
+                  {t('cache.saved', { value: formatCost(cacheSavings?.summary.savings_usd || 0) })}
+                </div>
+                <div className="mt-1 text-[11px] leading-5 text-[var(--foreground-dim)]">
+                  {t('cache.note')}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </CardStatic>
+      </div>
+
+      <CardStatic>
+        <CardHeader className="flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle>{t('rules.title')}</CardTitle>
+            <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--foreground-dim)]">
+              <Clock3 className="h-3.5 w-3.5" />
+              {t('rules.resetHint', { value: resetLabel(budgetData.selectedScope?.dailyResetAt || rules[0]?.resetAt) })}
+            </div>
+          </div>
+          <Badge variant="zinc">{selectedOption.description}</Badge>
+        </CardHeader>
+        <CardContent>
+          <BudgetRulesTable rules={rules} resetBudget={resetBudget} canAdmin={canAdmin} />
+        </CardContent>
+      </CardStatic>
+
       {config?.models_pricing && (
-        <CardStatic className="animate-fade-up" style={{ animationDelay: '160ms' }}>
+        <CardStatic>
           <CardHeader>
             <CardTitle>{t('pricing.title')}</CardTitle>
           </CardHeader>
@@ -450,63 +783,31 @@ export function BudgetPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.entries(config.models_pricing).map(
-                  ([model, pricing]) => (
-                    <TableRow key={model}>
-                      <TableCell className="font-mono text-[11px] font-medium text-[var(--foreground)]">
-                        {model}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
-                        ${pricing.input.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
-                        ${pricing.output.toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                )}
+                {Object.entries(config.models_pricing).map(([model, pricing]) => (
+                  <TableRow key={model}>
+                    <TableCell className="font-mono text-[11px] font-medium text-[var(--foreground)]">
+                      {model}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      ${pricing.input.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[11px] text-[var(--foreground-muted)]">
+                      ${pricing.output.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>
         </CardStatic>
       )}
 
-      {/* Budget Rules */}
-      <CardStatic className="animate-fade-up" style={{ animationDelay: '240ms' }}>
-        <CardHeader>
-          <CardTitle>
-            {t('rules.title')}
-            {isPerKeyView && (
-              <span className="ml-2 text-xs font-normal text-[var(--foreground-dim)]">
-                {t('rules.showingKey', { key: selectedLabel })}
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isPerKeyView && perKeyRules.length === 0 && (
-            <EmptyState
-              icon={Wallet}
-              title={t('rules.noPerKeyTitle')}
-              description={t('rules.noPerKeyDescription')}
-              className="py-8"
-            />
-          )}
-          {isPerKeyView && perKeyRules.length > 0 && (
-            <>
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
-                {t('rules.perKeyLimits', { key: selectedLabel })}
-              </div>
-              <BudgetRulesSection rules={perKeyRules} label={t('rules.perKeyLabel')} resetBudget={resetBudget} canAdmin={canAdmin} />
-              <div className="my-4 border-t border-[var(--border)]" />
-              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-dim)]">
-                {t('rules.globalLimits')}
-              </div>
-            </>
-          )}
-          <BudgetRulesSection rules={globalRules} label={isPerKeyView ? t('rules.globalLabel') : ''} resetBudget={resetBudget} canAdmin={canAdmin} />
-        </CardContent>
-      </CardStatic>
+      <BudgetEditDialog
+        state={editing}
+        onClose={() => setEditing(null)}
+        onSubmit={submitEdit}
+        pending={isMutating}
+      />
     </div>
   )
 }

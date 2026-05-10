@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.0-beta.2 - 2026-05-10
+
+### Added
+
+- Added budget source-of-truth metadata to Dashboard budget responses, including selected scope, scope chain, source, safe edit path, alert threshold, daily reset time, and blocking order.
+- Added a scope-based Budget page for Global, Policy Namespace, Team, Dashboard-managed API Key, and legacy YAML key views with inherited/unset states, current usage, manual reset, model pricing, and provider-cache savings context.
+- Added safe Budget page edit flows that reuse existing Policy Namespace, Team, and Dashboard-managed API Key update paths without adding billing or changing global config mutation behavior.
+- Added budget scope frontend checks and unit coverage for response metadata, namespace source-of-truth, team inherited state, and alert threshold propagation.
+
+### Changed
+
+- Updated Dashboard, API, Architecture, and README docs to explain Global vs Policy Namespace vs Team vs API Key budget ownership, daily reset behavior, and unchanged enforcement order.
+- Updated seven Dashboard budget locales and release metadata to v2.8.0-beta.2 across package, lock, client, Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+
+### Boundaries
+
+- v2.8.0-beta.2 does not add billing, resale, recharge, invoices, customer balances, new financial data storage, or new privacy storage defaults. It does not change budget enforcement semantics, routing, provider behavior, configured node behavior, or manual reset semantics.
+
 ## 2.8.0-beta.1 - 2026-05-10
 
 ### Added

@@ -64,13 +64,21 @@ and rate limits. The page shows bound API keys and Teams, requires explicit
 impact confirmation before deleting bound namespaces, and writes through the
 existing config validation, audit, rollback, and hot-reload path.
 
+v2.8.0-beta.2 redesigns the **Budget** page around budget scope and source of
+truth. Operators can inspect Global, Policy Namespace, Team, and API Key
+budgets, see whether the selected scope is directly configured, inherited, or
+unset, and verify daily reset time, alert threshold, current usage, and the
+blocking order (`global -> namespace -> team -> key`). Safe edits reuse
+existing Namespace, Team, and API Key update paths; Global remains
+config-backed through `gateway.config.yaml`.
+
 ## Pages
 
 | Page | Purpose |
 | --- | --- |
 | Overview | First-run checklist, live calls, cost, cache savings, Intelligence Loop summary, latency, budget, provider health, guardrails finding summary, and recent activity |
 | Analytics | Daily cost trends, provider/model breakdowns, provider-cache savings trends, hit-rate rankings, and cost-mix visualization |
-| Budget | Global/per-key budget gauges, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
+| Budget | Scope-based Global, Policy Namespace, Team, and API Key budget source-of-truth, inherited/unset state, reset actions, model pricing, and actual-vs-no-cache cost comparison details |
 | Cost Platform | Internal chargeback reports, CSV/JSON exports, cost anomalies, provider price sync guardrails, and feedback aggregation |
 | Semantic Controls | Semantic cache status/invalidation, prompt template metadata, context optimizer evidence, intent counts, Guardrails v2 findings, and semantic privacy controls |
 | Playground | Operator-triggered safe probes for chat, responses, messages, embeddings, rerank, images, audio, video, and realtime capability checks |

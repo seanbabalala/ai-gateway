@@ -2852,13 +2852,21 @@ describe("DashboardController — budget", () => {
           .fn()
           .mockResolvedValue([
             {
+              id: 1,
               type: "tokens",
+              scope: "global",
+              apiKeyName: null,
+              apiKeyId: null,
+              namespaceId: null,
+              teamId: null,
               current: 500,
               limit: 1000,
               percentage: 0.5,
+              alertThreshold: 0.75,
               isExceeded: false,
               isAlert: false,
               periodStart: new Date(),
+              resetAt: new Date(),
             },
           ]),
         resetRule: jest.fn(),
@@ -2866,7 +2874,32 @@ describe("DashboardController — budget", () => {
     });
     const result = await controller.getBudget();
     expect(result.rules).toHaveLength(1);
-    expect(result.rules[0].percentage).toBe(50);
+    expect(result.rules[0]).toMatchObject({
+      percentage: 50,
+      alertThreshold: 75,
+      sourceOfTruth: "global_config",
+      editableVia: "config_file",
+      blockingOrder: 1,
+      dailyResetAt: expect.any(Date),
+    });
+    expect((result as any).selectedScope).toMatchObject({
+      scope: "global",
+      sourceOfTruth: "global_config",
+      configured: true,
+      inherited: false,
+    });
+    expect((result as any).scopeChain).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scope: "global",
+          activeForSelected: true,
+        }),
+        expect.objectContaining({
+          scope: "api_key",
+          activeForSelected: false,
+        }),
+      ]),
+    );
   });
 
   it("should reset a budget rule", async () => {
@@ -3508,6 +3541,91 @@ describe("DashboardController — per-key budget", () => {
       name: "production",
       daily_token_limit: 10000,
     });
+  });
+
+  it("should return namespace budget source metadata and inherited state", async () => {
+    const getStatus = jest
+      .fn()
+      .mockImplementation(
+        (
+          _keyName?: string | null,
+          _keyId?: string | null,
+          namespaceId?: string | null,
+        ) => {
+          if (namespaceId === "team-alpha") {
+            return Promise.resolve([
+              {
+                id: 9,
+                type: "daily_cost",
+                scope: "namespace",
+                apiKeyName: null,
+                apiKeyId: null,
+                namespaceId: "team-alpha",
+                teamId: null,
+                current: 1,
+                limit: 2,
+                percentage: 0.5,
+                alertThreshold: 0.7,
+                isExceeded: false,
+                isAlert: false,
+                periodStart: new Date(),
+                resetAt: new Date(),
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+    const { controller } = makeDashboard({
+      budgetService: {
+        getStatus,
+        resetRule: jest.fn(),
+        getKeysWithBudgets: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await controller.getBudget(undefined, undefined, "team-alpha");
+    expect(getStatus).toHaveBeenCalledWith(null, null, "team-alpha");
+    expect((result as any).namespaceRules[0]).toMatchObject({
+      sourceOfTruth: "policy_namespace_config",
+      editableVia: "policy_namespace_api",
+      alertThreshold: 70,
+      blockingOrder: 2,
+    });
+    expect((result as any).selectedScope).toMatchObject({
+      scope: "namespace",
+      configured: true,
+      inherited: false,
+    });
+  });
+
+  it("should mark team budget response as inherited when no team rule is configured", async () => {
+    const getStatus = jest.fn().mockResolvedValue([]);
+    const { controller } = makeDashboard({
+      budgetService: {
+        getStatus,
+        resetRule: jest.fn(),
+        getKeysWithBudgets: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await controller.getBudget(undefined, undefined, undefined, "team_123");
+    expect(getStatus).toHaveBeenCalledWith(null, null, null, "team_123");
+    expect((result as any).teamRules).toEqual([]);
+    expect((result as any).selectedScope).toMatchObject({
+      scope: "team",
+      configured: false,
+      inherited: true,
+      editableVia: "team_api",
+    });
+    expect((result as any).scopeChain).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scope: "global", activeForSelected: true }),
+        expect.objectContaining({ scope: "namespace", activeForSelected: true }),
+        expect.objectContaining({ scope: "team", activeForSelected: true }),
+        expect.objectContaining({ scope: "api_key", activeForSelected: false }),
+      ]),
+    );
   });
 });
 
