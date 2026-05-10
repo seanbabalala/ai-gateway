@@ -2,9 +2,9 @@
 
 SiftGate is the open-source AI infrastructure platform for teams running agents and AI applications across multiple providers. It gives applications OpenAI-compatible and provider-compatible ingress, then applies workspace isolation, RBAC, routing, fallback, budget, API key policy, observability, cache evidence, audit, and Dashboard operations before forwarding traffic upstream.
 
-Current release: **v2.8.0-alpha.2 Provider Visibility Clarity**.
+Current release: **v2.8.0-alpha.3 Workspace Management**.
 
-Current development focus after v2.8.0-alpha.2: preserve Platform Trust stability,
+Current development focus after v2.8.0-alpha.3: preserve Platform Trust stability,
 keep v2.0.x for hotfixes only, and ship new non-breaking platform capabilities
 as minor releases.
 
@@ -83,6 +83,13 @@ You can also keep the OpenAI SDK and set `baseURL` to `http://localhost:2099/v1`
 
 ## v2.8 Alpha Highlights
 
+- v2.8.0-alpha.3 closes the OSS Workspace management gap: Workspace Admins can
+  create, switch, rename, disable, and reactivate local Workspaces from the
+  Dashboard using the existing workspace data model.
+- Creating a Workspace grants the current Dashboard identity Admin in that
+  Workspace. Disabled Workspaces keep metadata and audit history, cannot be
+  selected until reactivated, and do not delete or migrate default Workspace
+  data.
 - v2.8.0-alpha.2 separates active Provider Catalog rows from connectable
   transport-only presets. The Dashboard now shows counts for active,
   transport-only, custom, deprecated/legacy, and total provider presets, and

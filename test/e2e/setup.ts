@@ -21,6 +21,7 @@ import {
   PromptTemplate,
   RouteDecisionLog,
   RouteFeedback,
+  Workspace,
   WorkspaceInvitation,
   WorkspaceMembership,
 } from '../../src/database/entities';
@@ -456,6 +457,7 @@ export interface E2EHarness {
   callLogRepo: Repository<CallLog>;
   routeDecisionRepo: Repository<RouteDecisionLog>;
   routeFeedbackRepo: Repository<RouteFeedback>;
+  workspaceRepo: Repository<Workspace>;
   membershipRepo: Repository<WorkspaceMembership>;
   invitationRepo: Repository<WorkspaceInvitation>;
   managementAuditRepo: Repository<ManagementAuditEvent>;
@@ -521,6 +523,9 @@ export async function createE2EHarness(): Promise<E2EHarness> {
   const routeFeedbackRepo = app.get<Repository<RouteFeedback>>(
     getRepositoryToken(RouteFeedback),
   );
+  const workspaceRepo = app.get<Repository<Workspace>>(
+    getRepositoryToken(Workspace),
+  );
   const membershipRepo = app.get<Repository<WorkspaceMembership>>(
     getRepositoryToken(WorkspaceMembership),
   );
@@ -581,6 +586,7 @@ export async function createE2EHarness(): Promise<E2EHarness> {
     callLogRepo,
     routeDecisionRepo,
     routeFeedbackRepo,
+    workspaceRepo,
     membershipRepo,
     invitationRepo,
     managementAuditRepo,

@@ -539,7 +539,63 @@ function makeDashboard(overrides: Record<string, any> = {}) {
       status: "active",
       is_default: true,
     }),
+    createWorkspace: jest.fn().mockResolvedValue({
+      id: "ws_test",
+      organization_id: "default-org",
+      name: "Test Workspace",
+      slug: "test-workspace",
+      status: "active",
+      is_default: false,
+    }),
+    renameWorkspace: jest.fn().mockResolvedValue({
+      id: "ws_test",
+      organization_id: "default-org",
+      name: "Renamed Workspace",
+      slug: "renamed-workspace",
+      status: "active",
+      is_default: false,
+    }),
+    setWorkspaceStatus: jest.fn().mockImplementation((id: string, status: string) =>
+      Promise.resolve({
+        id,
+        organization_id: "default-org",
+        name: "Test Workspace",
+        slug: "test-workspace",
+        status,
+        is_default: false,
+      }),
+    ),
     ...overrides.workspaces,
+  };
+  const memberships = {
+    list: jest.fn().mockResolvedValue([]),
+    listForUser: jest.fn().mockResolvedValue([
+      {
+        id: "membership-default-dashboard-admin",
+        user_id: "dashboard",
+        organization_id: "default-org",
+        workspace_id: "default-workspace",
+        role: "admin",
+        status: "active",
+      },
+    ]),
+    findActiveRole: jest.fn().mockResolvedValue("admin"),
+    ensureMembership: jest.fn().mockResolvedValue({
+      id: "membership-test",
+      user_id: "dashboard",
+      organization_id: "default-org",
+      workspace_id: "ws_test",
+      role: "admin",
+      status: "active",
+    }),
+    update: jest.fn(),
+    ...overrides.memberships,
+  };
+  const invitations = {
+    list: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    revoke: jest.fn(),
+    ...overrides.invitations,
   };
   const workspaceContext = {
     currentWorkspaceId: jest.fn(() => "default-workspace"),
@@ -595,6 +651,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     overrides.benchmarkReports as any,
     overrides.plugins as any,
     overrides.mcp as any,
+    memberships as any,
+    invitations as any,
   );
 
   return {
@@ -617,6 +675,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     managementAudit,
     batchJobs,
     workspaces,
+    memberships,
+    invitations,
     workspaceContext,
     cluster,
     providerExtensibility,
@@ -720,6 +780,162 @@ describe("DashboardController — cluster status", () => {
 
     await expect(controller.getClusterStatus()).resolves.toBe(clusterStatus);
     expect(cluster.getDashboardStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DashboardController — workspaces", () => {
+  it("returns only workspaces accessible to the current Dashboard identity", async () => {
+    const workspaces = {
+      getState: jest.fn().mockResolvedValue({
+        organization: { id: "default-org", name: "Default Organization" },
+        active_workspace: { id: "default-workspace" },
+        default_workspace: { id: "default-workspace" },
+        workspaces: [{ id: "default-workspace" }, { id: "agents" }],
+      }),
+    };
+    const { controller, memberships } = makeDashboard({
+      workspaces,
+      memberships: {
+        listForUser: jest.fn().mockResolvedValue([
+          {
+            user_id: "dashboard",
+            workspace_id: "default-workspace",
+            role: "admin",
+            status: "active",
+          },
+          {
+            user_id: "dashboard",
+            workspace_id: "agents",
+            role: "viewer",
+            status: "active",
+          },
+          {
+            user_id: "dashboard",
+            workspace_id: "disabled-membership",
+            role: "admin",
+            status: "disabled",
+          },
+        ]),
+        findActiveRole: jest.fn().mockResolvedValue("admin"),
+      },
+    });
+
+    await expect(
+      controller.getWorkspaces({
+        dashboardUserId: "dashboard",
+        dashboardRole: "admin",
+        workspaceId: "default-workspace",
+      } as any),
+    ).resolves.toMatchObject({
+      access: { user_id: "dashboard", role: "admin" },
+    });
+
+    expect(memberships.listForUser).toHaveBeenCalledWith("dashboard");
+    expect(workspaces.getState).toHaveBeenCalledWith("default-workspace", {
+      includeDisabled: true,
+      workspaceIds: ["default-workspace", "agents"],
+    });
+  });
+
+  it("creates a workspace and grants the creator admin membership", async () => {
+    const created = {
+      id: "ws_agents",
+      organization_id: "default-org",
+      name: "Agent Ops",
+      slug: "agent-ops",
+      status: "active",
+      is_default: false,
+    };
+    const { controller, workspaces, memberships, managementAudit } = makeDashboard({
+      workspaces: {
+        createWorkspace: jest.fn().mockResolvedValue(created),
+        getState: jest.fn().mockResolvedValue({
+          organization: { id: "default-org" },
+          active_workspace: created,
+          default_workspace: { id: "default-workspace" },
+          workspaces: [{ id: "default-workspace" }, created],
+        }),
+      },
+      memberships: {
+        listForUser: jest.fn().mockResolvedValue([
+          {
+            user_id: "dashboard",
+            workspace_id: "default-workspace",
+            role: "admin",
+            status: "active",
+          },
+          {
+            user_id: "dashboard",
+            workspace_id: "ws_agents",
+            role: "admin",
+            status: "active",
+          },
+        ]),
+        findActiveRole: jest.fn().mockResolvedValue("admin"),
+        ensureMembership: jest.fn().mockResolvedValue({
+          user_id: "dashboard",
+          workspace_id: "ws_agents",
+          role: "admin",
+          status: "active",
+        }),
+      },
+    });
+
+    await expect(
+      controller.createWorkspace({ dashboardUserId: "dashboard" } as any, {
+        name: "Agent Ops",
+      }),
+    ).resolves.toMatchObject({
+      success: true,
+      item: created,
+      state: { active_workspace: created },
+    });
+
+    expect(workspaces.createWorkspace).toHaveBeenCalledWith({
+      name: "Agent Ops",
+      slug: undefined,
+    });
+    expect(memberships.ensureMembership).toHaveBeenCalledWith({
+      userId: "dashboard",
+      organizationId: "default-org",
+      workspaceId: "ws_agents",
+      role: "admin",
+    });
+    expect(managementAudit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "workspace.create",
+        resourceType: "workspace",
+        resourceId: "ws_agents",
+        workspaceId: "ws_agents",
+      }),
+    );
+  });
+
+  it("rejects switching to a workspace without active membership", async () => {
+    const { controller } = makeDashboard({
+      workspaces: {
+        requireWorkspace: jest.fn().mockResolvedValue({
+          id: "private-workspace",
+          organization_id: "default-org",
+          name: "Private",
+          slug: "private",
+          status: "active",
+          is_default: false,
+        }),
+      },
+      memberships: {
+        listForUser: jest.fn().mockResolvedValue([]),
+        findActiveRole: jest.fn().mockResolvedValue(null),
+      },
+    });
+
+    await expect(
+      controller.switchWorkspace({ dashboardUserId: "dashboard" } as any, {
+        workspace_id: "private-workspace",
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+    });
   });
 });
 

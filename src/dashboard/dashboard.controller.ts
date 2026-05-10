@@ -168,6 +168,7 @@ import {
   WorkspaceInvitationMutationResponseDto,
   SanitizedConfigResponseDto,
   WorkspaceStateResponseDto,
+  WorkspaceMutationResponseDto,
 } from "../openapi/openapi.dto";
 
 const DASHBOARD_PROTOCOLS = [
@@ -1603,17 +1604,27 @@ export class DashboardController {
     req: Request & {
       dashboardUserId?: string;
       dashboardRole?: WorkspaceMembershipRole;
+      workspaceId?: string;
     },
   ) {
+    const userId = req.dashboardUserId || "dashboard";
+    const accessibleWorkspaceIds = await this.accessibleWorkspaceIdsForUser(userId);
+    const currentRole = req.workspaceId
+      ? await this.workspaceMemberships().findActiveRole(userId, req.workspaceId)
+      : req.dashboardRole;
     const state = await this.workspaces.getState(
       this.workspaceContext.currentWorkspaceId(),
+      {
+        includeDisabled: currentRole === "admin",
+        workspaceIds: accessibleWorkspaceIds,
+      },
     );
     return {
       ...state,
       access: {
-        user_id: req.dashboardUserId || "dashboard",
-        role: req.dashboardRole || "viewer",
-        permissions: this.dashboardPermissions(req.dashboardRole || "viewer"),
+        user_id: userId,
+        role: currentRole || "viewer",
+        permissions: this.dashboardPermissions(currentRole || "viewer"),
       },
     };
   }
@@ -1640,19 +1651,199 @@ export class DashboardController {
     },
     @Body() body: { workspace_id?: string },
   ) {
+    const userId = req.dashboardUserId || "dashboard";
     const workspace = await this.workspaces.requireWorkspace(body?.workspace_id);
-    const state = await this.workspaces.getState(workspace.id);
+    const targetRole = await this.workspaceMemberships().findActiveRole(
+      userId,
+      workspace.id,
+    );
+    if (!targetRole) {
+      throw new HttpException(
+        {
+          error: {
+            message: "Requires viewer role for this workspace.",
+            type: "dashboard_permission_denied",
+            code: "workspace_role_required",
+          },
+          required_role: "viewer",
+          current_role: null,
+          workspace_id: workspace.id,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
     return {
       success: true,
       active_workspace: workspace,
-      state: {
-        ...state,
-        access: {
-          user_id: req.dashboardUserId || "dashboard",
-          role: req.dashboardRole || "viewer",
-          permissions: this.dashboardPermissions(req.dashboardRole || "viewer"),
-        },
+      state: await this.workspaceStateForDashboard(userId, targetRole, workspace.id),
+    };
+  }
+
+  @Post("workspaces")
+  @RequireDashboardRole("admin")
+  @ApiOperation({ summary: "Create a local OSS workspace" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", example: "Production Agents" },
+        slug: { type: "string", example: "production-agents" },
       },
+      required: ["name"],
+    },
+  })
+  @ApiOkResponse({ type: WorkspaceMutationResponseDto })
+  async createWorkspace(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+    },
+    @Body() body: { name?: string; slug?: string },
+  ) {
+    const created = await this.workspaces.createWorkspace({
+      name: body?.name || "",
+      slug: body?.slug,
+    });
+    await this.workspaceMemberships().ensureMembership({
+      userId: req.dashboardUserId || "dashboard",
+      organizationId: created.organization_id,
+      workspaceId: created.id,
+      role: "admin",
+    });
+    await this.recordWorkspaceMutationAudit({
+      action: "workspace.create",
+      actorId: req.dashboardUserId || "dashboard",
+      workspace: created,
+      afterSummary: created,
+    });
+    return {
+      success: true,
+      message: "Workspace created",
+      item: created,
+      state: await this.workspaceStateForDashboard(
+        req.dashboardUserId || "dashboard",
+        "admin",
+        created.id,
+      ),
+    };
+  }
+
+  @Put("workspaces/:id")
+  @RequireDashboardRole("admin")
+  @ApiOperation({ summary: "Rename a local OSS workspace" })
+  @ApiParam({ name: "id", example: "default-workspace" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", example: "Production Agents" },
+        slug: { type: "string", example: "production-agents" },
+      },
+    },
+  })
+  @ApiOkResponse({ type: WorkspaceMutationResponseDto })
+  async renameWorkspace(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+    },
+    @Param("id") id: string,
+    @Body() body: { name?: string; slug?: string },
+  ) {
+    const existing = await this.requireWorkspaceAdminTarget(
+      id,
+      req.dashboardUserId || "dashboard",
+    );
+    const updated = await this.workspaces.renameWorkspace(id, body || {});
+    await this.recordWorkspaceMutationAudit({
+      action: "workspace.rename",
+      actorId: req.dashboardUserId || "dashboard",
+      workspace: updated,
+      beforeSummary: existing,
+      afterSummary: updated,
+    });
+    return {
+      success: true,
+      message: "Workspace updated",
+      item: updated,
+      state: await this.workspaceStateForDashboard(
+        req.dashboardUserId || "dashboard",
+        "admin",
+        updated.id,
+      ),
+    };
+  }
+
+  @Post("workspaces/:id/disable")
+  @RequireDashboardRole("admin")
+  @ApiOperation({ summary: "Disable a local OSS workspace" })
+  @ApiParam({ name: "id", example: "ws_6f4a..." })
+  @ApiOkResponse({ type: WorkspaceMutationResponseDto })
+  async disableWorkspace(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+    },
+    @Param("id") id: string,
+  ) {
+    const existing = await this.requireWorkspaceAdminTarget(
+      id,
+      req.dashboardUserId || "dashboard",
+    );
+    const updated = await this.workspaces.setWorkspaceStatus(id, "disabled");
+    await this.recordWorkspaceMutationAudit({
+      action: "workspace.disable",
+      actorId: req.dashboardUserId || "dashboard",
+      workspace: updated,
+      beforeSummary: existing,
+      afterSummary: updated,
+    });
+    return {
+      success: true,
+      message: "Workspace disabled",
+      item: updated,
+      state: await this.workspaceStateForDashboard(
+        req.dashboardUserId || "dashboard",
+        "admin",
+        undefined,
+      ),
+    };
+  }
+
+  @Post("workspaces/:id/reactivate")
+  @RequireDashboardRole("admin")
+  @ApiOperation({ summary: "Reactivate a local OSS workspace" })
+  @ApiParam({ name: "id", example: "ws_6f4a..." })
+  @ApiOkResponse({ type: WorkspaceMutationResponseDto })
+  async reactivateWorkspace(
+    @Req()
+    req: Request & {
+      dashboardUserId?: string;
+    },
+    @Param("id") id: string,
+  ) {
+    const existing = await this.requireWorkspaceAdminTarget(
+      id,
+      req.dashboardUserId || "dashboard",
+      true,
+    );
+    const updated = await this.workspaces.setWorkspaceStatus(id, "active");
+    await this.recordWorkspaceMutationAudit({
+      action: "workspace.reactivate",
+      actorId: req.dashboardUserId || "dashboard",
+      workspace: updated,
+      beforeSummary: existing,
+      afterSummary: updated,
+    });
+    return {
+      success: true,
+      message: "Workspace reactivated",
+      item: updated,
+      state: await this.workspaceStateForDashboard(
+        req.dashboardUserId || "dashboard",
+        "admin",
+        updated.id,
+      ),
     };
   }
 
@@ -1666,6 +1857,114 @@ export class DashboardController {
       can_operate: role === "operator" || role === "admin",
       can_admin: role === "admin",
     };
+  }
+
+  private async workspaceStateForDashboard(
+    userId: string,
+    role: WorkspaceMembershipRole,
+    activeWorkspaceId?: string | null,
+  ) {
+    const accessibleWorkspaceIds = await this.accessibleWorkspaceIdsForUser(userId);
+    const state = await this.workspaces.getState(activeWorkspaceId, {
+      includeDisabled: role === "admin",
+      workspaceIds: accessibleWorkspaceIds,
+    });
+    const actualRole =
+      (await this.workspaceMemberships().findActiveRole(
+        userId,
+        state.active_workspace.id,
+      )) || role;
+    return {
+      ...state,
+      access: {
+        user_id: userId,
+        role: actualRole,
+        permissions: this.dashboardPermissions(actualRole),
+      },
+    };
+  }
+
+  private async accessibleWorkspaceIdsForUser(userId: string): Promise<string[]> {
+    const memberships = await this.workspaceMemberships().listForUser(userId);
+    return memberships
+      .filter(
+        (membership) =>
+          membership.user_id === userId &&
+          membership.status === "active",
+      )
+      .map((membership) => membership.workspace_id);
+  }
+
+  private async requireWorkspaceAdminTarget(
+    id: string,
+    userId: string,
+    allowDisabled = false,
+  ) {
+    const state = await this.workspaces.getState(id, { includeDisabled: true });
+    const workspace = state.workspaces.find((item) => item.id === id);
+    if (!workspace) {
+      throw new HttpException(
+        { success: false, message: `Workspace not found: ${id}` },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    const role =
+      workspace.status === "disabled" && allowDisabled
+        ? (await this.workspaceMemberships().listForUser(userId)).find(
+            (membership) =>
+              membership.workspace_id === workspace.id &&
+              membership.role === "admin" &&
+              membership.status === "active",
+          )?.role || null
+        : await this.workspaceMemberships().findActiveRole(userId, workspace.id);
+    if (role !== "admin") {
+      throw new HttpException(
+        {
+          error: {
+            message: "Requires admin role for this workspace.",
+            type: "dashboard_permission_denied",
+            code: "workspace_role_required",
+          },
+          required_role: "admin",
+          current_role: role,
+          workspace_id: workspace.id,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return workspace;
+  }
+
+  private async recordWorkspaceMutationAudit(input: {
+    action: string;
+    actorId: string;
+    workspace: {
+      id: string;
+      organization_id: string;
+      name: string;
+      slug: string;
+      status: string;
+      is_default: boolean;
+    };
+    beforeSummary?: unknown;
+    afterSummary?: unknown;
+  }) {
+    await this.managementAudit.record({
+      action: input.action,
+      resourceType: "workspace",
+      resourceId: input.workspace.id,
+      organizationId: input.workspace.organization_id,
+      workspaceId: input.workspace.id,
+      actor: { type: "dashboard", id: input.actorId },
+      beforeSummary: input.beforeSummary,
+      afterSummary: input.afterSummary,
+      metadata: {
+        workspace_id: input.workspace.id,
+        slug: input.workspace.slug,
+        status: input.workspace.status,
+        is_default: input.workspace.is_default,
+      },
+    });
   }
 
   @Get("members")

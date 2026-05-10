@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 2.8.0-alpha.3 - 2026-05-10
+
+### Added
+
+- Added admin-only Dashboard Workspace lifecycle APIs to create, rename, disable, reactivate, and switch local OSS workspaces while preserving default workspace fallback behavior.
+- Added the Dashboard Workspaces page with seven-locale copy for workspace list, create, switch, rename, disable, reactivate, admin-only denial state, and concept guidance.
+- Added workspace lifecycle audit events for `workspace.create`, `workspace.rename`, `workspace.disable`, and `workspace.reactivate`.
+- Added tests for workspace creation, creator admin membership, switching, disabled workspace fallback, RBAC denial, and cross-workspace log isolation.
+
+### Changed
+
+- Workspace state now exposes workspaces accessible to the current Dashboard identity and keeps disabled workspaces visible only for Admin management.
+- Updated Workspace concept documentation, Dashboard docs, README highlights, and release metadata for v2.8.0-alpha.3.
+
+### Boundaries
+
+- v2.8.0-alpha.3 does not add cloud orgs, SSO, SCIM, organization billing, custom enterprise tenant behavior, destructive workspace deletion, default workspace data migration, or new privacy storage defaults.
+
 ## 2.8.0-alpha.2 - 2026-05-10
 
 ### Added

@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, IsNull, Repository } from 'typeorm';
-import { Organization, Workspace } from '../database/entities';
+import { randomUUID } from 'crypto';
+import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
+import { Organization, Workspace, type WorkspaceStatus } from '../database/entities';
 import {
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_ORGANIZATION_NAME,
@@ -43,6 +49,21 @@ export interface WorkspaceState {
   };
 }
 
+export interface ListWorkspacesOptions {
+  includeDisabled?: boolean;
+  workspaceIds?: string[] | null;
+}
+
+export interface CreateWorkspaceInput {
+  name: string;
+  slug?: string | null;
+}
+
+export interface RenameWorkspaceInput {
+  name?: string | null;
+  slug?: string | null;
+}
+
 @Injectable()
 export class WorkspaceService {
   constructor(
@@ -52,21 +73,33 @@ export class WorkspaceService {
     private readonly workspaces: Repository<Workspace>,
   ) {}
 
-  async getState(activeWorkspaceId?: string | null): Promise<WorkspaceState> {
+  async getState(
+    activeWorkspaceId?: string | null,
+    options: ListWorkspacesOptions = {},
+  ): Promise<WorkspaceState> {
     const organization = await this.getDefaultOrganization();
-    const allWorkspaces = await this.listWorkspaces();
+    const allWorkspaces = await this.listWorkspaces(options);
+    const activeId = await this.resolveWorkspaceId(activeWorkspaceId);
     const defaultWorkspace =
       allWorkspaces.find((workspace) => workspace.is_default) ||
+      (await this.findWorkspace(DEFAULT_WORKSPACE_ID).then((workspace) =>
+        workspace ? this.toWorkspaceSummary(workspace) : null,
+      )) ||
       this.defaultWorkspaceSummary();
-    const activeId = await this.resolveWorkspaceId(activeWorkspaceId);
     const activeWorkspace =
       allWorkspaces.find((workspace) => workspace.id === activeId) ||
       defaultWorkspace;
+    const workspaces =
+      allWorkspaces.length > 0
+        ? allWorkspaces
+        : options.workspaceIds
+          ? []
+          : [defaultWorkspace];
     return {
       organization,
       active_workspace: activeWorkspace,
       default_workspace: defaultWorkspace,
-      workspaces: allWorkspaces.length > 0 ? allWorkspaces : [defaultWorkspace],
+      workspaces,
       fallback: {
         legacy_resources_map_to_default_workspace: true,
         default_organization_id: DEFAULT_ORGANIZATION_ID,
@@ -97,16 +130,92 @@ export class WorkspaceService {
     return this.toWorkspaceSummary(found);
   }
 
-  async listWorkspaces(): Promise<WorkspaceSummary[]> {
+  async listWorkspaces(
+    options: ListWorkspacesOptions = {},
+  ): Promise<WorkspaceSummary[]> {
+    const workspaceIds = normalizeWorkspaceIds(options.workspaceIds);
+    if (workspaceIds && workspaceIds.length === 0) return [];
+
+    const statusWhere = options.includeDisabled
+      ? [{}]
+      : [{ status: 'active' }, { status: IsNull() }];
     const rows = await this.workspaces.find({
-      where: [
-        { status: 'active' },
-        { status: IsNull() },
-      ] as FindOptionsWhere<Workspace>[],
+      where: statusWhere.map((entry) => ({
+        ...entry,
+        ...(workspaceIds ? { id: In(workspaceIds) } : {}),
+      })) as FindOptionsWhere<Workspace>[],
       order: { is_default: 'DESC', created_at: 'ASC' },
     });
-    if (rows.length === 0) return [this.defaultWorkspaceSummary()];
+    if (rows.length === 0 && !workspaceIds) return [this.defaultWorkspaceSummary()];
     return rows.map((row) => this.toWorkspaceSummary(row));
+  }
+
+  async createWorkspace(input: CreateWorkspaceInput): Promise<WorkspaceSummary> {
+    const organization = await this.ensureDefaultOrganization();
+    const name = normalizeName(input.name);
+    const slug = normalizeSlug(input.slug || name);
+    await this.assertSlugAvailable(organization.id, slug);
+
+    const created = await this.workspaces.save(
+      this.workspaces.create({
+        id: `ws_${randomUUID()}`,
+        organization_id: organization.id,
+        name,
+        slug,
+        status: 'active',
+        is_default: false,
+      }),
+    );
+    return this.toWorkspaceSummary(created);
+  }
+
+  async renameWorkspace(
+    id: string,
+    input: RenameWorkspaceInput,
+  ): Promise<WorkspaceSummary> {
+    const workspace = await this.findWorkspace(id);
+    if (!workspace) {
+      throw new NotFoundException(`Workspace not found: ${id}`);
+    }
+
+    const nextName =
+      input.name === undefined || input.name === null
+        ? workspace.name
+        : normalizeName(input.name);
+    const nextSlug =
+      input.slug === undefined || input.slug === null
+        ? workspace.slug
+        : normalizeSlug(input.slug);
+
+    if (nextSlug !== workspace.slug) {
+      await this.assertSlugAvailable(
+        workspace.organization_id,
+        nextSlug,
+        workspace.id,
+      );
+    }
+
+    workspace.name = nextName;
+    workspace.slug = nextSlug;
+    return this.toWorkspaceSummary(await this.workspaces.save(workspace));
+  }
+
+  async setWorkspaceStatus(
+    id: string,
+    status: WorkspaceStatus,
+  ): Promise<WorkspaceSummary> {
+    if (status !== 'active' && status !== 'disabled') {
+      throw new BadRequestException(`Invalid workspace status: ${status}`);
+    }
+    const workspace = await this.findWorkspace(id);
+    if (!workspace) {
+      throw new NotFoundException(`Workspace not found: ${id}`);
+    }
+    if (workspace.is_default && status === 'disabled') {
+      throw new BadRequestException('Default workspace cannot be disabled.');
+    }
+    workspace.status = status;
+    return this.toWorkspaceSummary(await this.workspaces.save(workspace));
   }
 
   private async getDefaultOrganization(): Promise<OrganizationSummary> {
@@ -120,6 +229,25 @@ export class WorkspaceService {
     return row ? this.toOrganizationSummary(row) : this.defaultOrganizationSummary();
   }
 
+  private async ensureDefaultOrganization(): Promise<Organization> {
+    const existing =
+      (await this.organizations.findOne({
+        where: { id: DEFAULT_ORGANIZATION_ID },
+      })) ||
+      (await this.organizations.findOne({
+        where: { slug: DEFAULT_ORGANIZATION_SLUG },
+      }));
+    if (existing) return existing;
+    return this.organizations.save(
+      this.organizations.create({
+        id: DEFAULT_ORGANIZATION_ID,
+        name: DEFAULT_ORGANIZATION_NAME,
+        slug: DEFAULT_ORGANIZATION_SLUG,
+        status: 'active',
+      }),
+    );
+  }
+
   private async findActiveWorkspace(id: string): Promise<Workspace | null> {
     return this.workspaces.findOne({
       where: [
@@ -127,6 +255,25 @@ export class WorkspaceService {
         { id, status: IsNull() },
       ] as FindOptionsWhere<Workspace>[],
     });
+  }
+
+  private async findWorkspace(id: string): Promise<Workspace | null> {
+    const workspaceId = normalizeId(id);
+    if (!workspaceId) return null;
+    return this.workspaces.findOne({ where: { id: workspaceId } });
+  }
+
+  private async assertSlugAvailable(
+    organizationId: string,
+    slug: string,
+    currentWorkspaceId?: string,
+  ): Promise<void> {
+    const existing = await this.workspaces.findOne({
+      where: { organization_id: organizationId, slug },
+    });
+    if (existing && existing.id !== currentWorkspaceId) {
+      throw new ConflictException(`Workspace slug already exists: ${slug}`);
+    }
   }
 
   private toOrganizationSummary(row: Organization): OrganizationSummary {
@@ -183,4 +330,34 @@ export class WorkspaceService {
 function normalizeId(value: string | null | undefined): string | null {
   const normalized = (value || '').trim();
   return normalized || null;
+}
+
+function normalizeName(value: string | null | undefined): string {
+  const normalized = (value || '').trim().replace(/\s+/g, ' ');
+  if (!normalized) {
+    throw new BadRequestException('Workspace name is required.');
+  }
+  if (normalized.length > 120) {
+    throw new BadRequestException('Workspace name must be 120 characters or fewer.');
+  }
+  return normalized;
+}
+
+function normalizeSlug(value: string | null | undefined): string {
+  const normalized = (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+    .replace(/-+$/g, '');
+  if (!normalized) {
+    throw new BadRequestException('Workspace slug is required.');
+  }
+  return normalized;
+}
+
+function normalizeWorkspaceIds(value: string[] | null | undefined): string[] | null {
+  if (!value) return null;
+  return Array.from(new Set(value.map((item) => normalizeId(item)).filter(Boolean))) as string[];
 }

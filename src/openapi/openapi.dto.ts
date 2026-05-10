@@ -123,6 +123,14 @@ export class WorkspaceStateResponseDto {
   };
 }
 
+export class WorkspaceMutationResponseDto extends ActionResponseDto {
+  @ApiProperty({ type: WorkspaceSummaryDto })
+  item!: WorkspaceSummaryDto;
+
+  @ApiProperty({ type: WorkspaceStateResponseDto })
+  state!: WorkspaceStateResponseDto;
+}
+
 export class WorkspaceMemberDto {
   @ApiProperty({ example: 'membership-default-dashboard-admin' })
   id!: string;

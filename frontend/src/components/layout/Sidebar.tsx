@@ -15,6 +15,7 @@ import {
   Activity,
   Gauge,
   Boxes,
+  Building2,
   X,
   FileClock,
   SquareTerminal,
@@ -79,6 +80,7 @@ const navGroups = [
   {
     labelKey: 'nav.governance',
     items: [
+      { to: '/workspaces', icon: Building2, labelKey: 'nav.workspaces' },
       { to: '/api-keys', icon: KeyRound, labelKey: 'nav.apiKeys' },
       { to: '/members', icon: ShieldCheck, labelKey: 'nav.members' },
       { to: '/audit', icon: FileSearch, labelKey: 'nav.audit' },
