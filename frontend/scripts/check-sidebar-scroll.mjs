@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const source = fs.readFileSync('src/components/layout/Sidebar.tsx', 'utf8')
+const app = fs.readFileSync('src/App.tsx', 'utf8')
 const css = fs.readFileSync('src/index.css', 'utf8')
 const locales = ['en', 'zh', 'zh-TW', 'ja', 'ko', 'th', 'es']
 
@@ -35,12 +36,49 @@ const checks = [
     message: 'Sidebar scroll hint must have subtle animated styling.',
   },
   {
+    ok:
+      app.includes('<Route path="/dashboard" element={page(<DashboardPage />)} />') &&
+      source.includes("if (to === '/') return pathname === '/' || pathname === '/dashboard'") &&
+      source.includes('pathname === to || pathname.startsWith(`${to}/`)'),
+    message: 'Sidebar active state must support /dashboard and avoid broad prefix matches.',
+  },
+  {
     ok: locales.every((locale) => {
       const localePath = path.join('src', 'locales', locale, 'common.json')
       const data = JSON.parse(fs.readFileSync(localePath, 'utf8'))
       return typeof data['sidebar.scrollHint'] === 'string' && data['sidebar.scrollHint'].length > 0
     }),
     message: 'Sidebar scroll hint copy must be localized in all Dashboard languages.',
+  },
+  {
+    ok: locales.every((locale) => {
+      const readLocale = (file) => JSON.parse(fs.readFileSync(path.join('src', 'locales', locale, file), 'utf8'))
+      const common = readLocale('common.json')
+      const dashboard = readLocale('dashboard.json')
+      const nodes = readLocale('nodes.json')
+      const routing = readLocale('routing.json')
+      const apiKeys = readLocale('apiKeys.json')
+      const logs = readLocale('logs.json')
+      const analytics = readLocale('analytics.json')
+      const budget = readLocale('budget.json')
+      const agents = readLocale('agents.json')
+
+      return [
+        common['nav.dashboard'] === dashboard['dashboard.title'],
+        common['nav.logs'] === logs['logs.title'],
+        common['nav.analytics'] === analytics['analytics.title'],
+        common['nav.nodes'] === nodes['nodes.title'],
+        common['nav.catalog'] === nodes['catalogPage.title'],
+        common['nav.routing'] === routing['routing.title'],
+        common['nav.playground'] === dashboard['playground.title'],
+        common['nav.budget'] === budget['budget.title'],
+        common['nav.costPlatform'] === dashboard['costPlatform.title'],
+        common['nav.agents'] === agents['agents.title'],
+        common['nav.agentPlatform'] === dashboard['agentPlatform.title'],
+        common['nav.apiKeys'] === apiKeys['apiKeys.title'],
+      ].every(Boolean)
+    }),
+    message: 'Sidebar navigation labels must match page headers in every locale.',
   },
 ]
 

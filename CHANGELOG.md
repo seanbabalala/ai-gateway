@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- Added reusable Dashboard guidance sections that collapse by setup completion, remember manual visibility, and keep help entry points available without permanently occupying each page.
+- Added stronger Dashboard i18n quality gates for seven-locale key parity, hardcoded visible English copy, onboarding/sidebar/checklist coverage, and full translated-value fallback detection with a narrow technical-literal allowlist.
+
+### Changed
+
+- Updated v2.8.1 Dashboard checklist behavior so incomplete setup stays expanded, completed setup defaults to collapsed, and each checklist item points to a concrete next action.
+- Reworked key Dashboard page copy across `en`, `zh`, `zh-TW`, `ja`, `ko`, `th`, and `es` to reduce vague explanations, align navigation/page names, and avoid untranslated English fallback.
+- Hardened Provider Catalog responsive layout so filters, badges, action buttons, detail metadata, and key/value rows remain readable across desktop, narrow, and multilingual widths.
+- Added `/dashboard` as a Dashboard route alias and tightened sidebar active-state matching so navigation highlights remain precise.
+
 ## 2.8.1 - 2026-05-10
 
 ### Added

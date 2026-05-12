@@ -27,6 +27,14 @@ for (const snippet of [
   "href: '/logs'",
   "href: '/semantic-platform'",
   'requiredFirstRunSteps',
+  'isFirstRunComplete',
+  'onboardingCollapsed',
+  'ONBOARDING_VISIBILITY_STORAGE_KEY',
+  'readOnboardingVisibilityPreference',
+  'writeOnboardingVisibilityPreference(nextVisibility)',
+  "useState<OnboardingVisibility | null>(() => readOnboardingVisibilityPreference())",
+  'onboarding.actions.showChecklist',
+  'onboarding.actions.hideChecklist',
   'onboarding.status.optional',
   'onboarding.docs.quickstart',
   'docs/OSS_CONCEPTS.md',
@@ -51,6 +59,8 @@ const dashboardKeys = [
   'onboarding.actions.reviewAdvanced',
   'onboarding.actions.reviewBudget',
   'onboarding.actions.reviewNamespaces',
+  'onboarding.actions.hideChecklist',
+  'onboarding.actions.showChecklist',
   'onboarding.docs.quickstart',
   'onboarding.docs.concepts',
   'onboarding.docs.dashboard',
@@ -58,6 +68,8 @@ const dashboardKeys = [
   'onboarding.docs.namespaces',
   'onboarding.docs.advanced',
   'onboarding.status.optional',
+  'onboarding.summary.complete',
+  'onboarding.summary.next',
   'onboarding.steps.namespace.title',
   'onboarding.steps.namespace.description',
   'onboarding.steps.budget.title',
@@ -75,6 +87,15 @@ const commonKeys = [
   'workspaces.docs.concepts',
   'namespaces.docs.namespaceShadow',
 ]
+const localizedPrivacyTerms = {
+  en: ['prompts', 'responses', 'resolved secrets'],
+  zh: ['提示词', '响应', '解析后的密钥'],
+  'zh-TW': ['提示詞', '回應', '解析後的密鑰'],
+  ja: ['プロンプト', '応答', 'シークレット'],
+  ko: ['프롬프트', '응답', '비밀'],
+  th: ['พรอมป์', 'คำตอบ', 'ความลับที่ถูกคลี่ออก'],
+  es: ['instrucciones', 'respuestas', 'secretos resueltos'],
+}
 
 for (const locale of locales) {
   const dashboard = JSON.parse(read(`src/locales/${locale}/dashboard.json`))
@@ -99,12 +120,12 @@ for (const locale of locales) {
     assert(readPath(apiKeys, key), `${locale}/apiKeys.json missing ${key}`)
   }
 
-  assert(
-    dashboard['onboarding.privacy']?.includes('prompt') &&
-      dashboard['onboarding.privacy']?.includes('response') &&
-      dashboard['onboarding.privacy']?.includes('resolved secrets'),
-    `${locale}/dashboard.json onboarding privacy must keep the storage boundary explicit.`,
-  )
+  for (const term of localizedPrivacyTerms[locale]) {
+    assert(
+      dashboard['onboarding.privacy']?.includes(term),
+      `${locale}/dashboard.json onboarding privacy must keep localized storage boundary term ${term}.`,
+    )
+  }
 }
 
 console.log('Dashboard onboarding checks passed: end-to-end setup path, docs links, privacy copy, and 7-language locale keys are present.')

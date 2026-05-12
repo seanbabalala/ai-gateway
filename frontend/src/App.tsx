@@ -60,6 +60,7 @@ export function App() {
         }
       >
         <Route path="/" element={page(<DashboardPage />)} />
+        <Route path="/dashboard" element={page(<DashboardPage />)} />
         <Route path="/logs" element={page(<LogsPage />)} />
         <Route path="/nodes" element={page(<NodesPage />)} />
         <Route path="/catalog" element={page(<ProviderCatalogPage />)} />

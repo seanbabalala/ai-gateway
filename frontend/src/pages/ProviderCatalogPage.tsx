@@ -16,6 +16,7 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ConceptPanel } from "@/components/shared/ConceptPanel";
 import { DocsLinkGroup, repoDocsUrl } from "@/components/shared/DocsLinkGroup";
+import { GuidanceSection } from "@/components/shared/GuidanceSection";
 import {
   CatalogCoveragePills,
   CatalogTrustPills,
@@ -506,6 +507,7 @@ export function ProviderCatalogPage() {
         <Button
           variant={showLegacyProviders ? "secondary" : "outline"}
           size="sm"
+          className="max-w-full whitespace-normal text-left leading-4"
           onClick={() => setShowLegacyProviders((current) => !current)}
         >
           {t(
@@ -517,6 +519,7 @@ export function ProviderCatalogPage() {
         <Button
           variant="outline"
           size="sm"
+          className="max-w-full whitespace-normal text-left leading-4"
           onClick={() => catalog.refetch()}
           disabled={catalog.isFetching}
         >
@@ -527,20 +530,22 @@ export function ProviderCatalogPage() {
         </Button>
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="providerCatalog"
-        icon={Boxes}
-        badgeKinds={["readOnly", "configDriven", "requiresConfig"]}
-      />
+      <GuidanceSection storageKey="provider-catalog" complete={providers.length > 0}>
+        <ConceptPanel
+          conceptId="providerCatalog"
+          icon={Boxes}
+          badgeKinds={["readOnly", "configDriven", "requiresConfig"]}
+        />
 
-      <DocsLinkGroup
-        links={[
-          { label: t("catalogPage.docs.catalog"), href: repoDocsUrl("docs/PROVIDER_CATALOG.md") },
-          { label: t("catalogPage.docs.adding"), href: repoDocsUrl("docs/ADDING_PROVIDERS.md") },
-          { label: t("catalogPage.docs.extensibility"), href: repoDocsUrl("docs/PROVIDER_EXTENSIBILITY.md") },
-          { label: t("catalogPage.docs.concepts"), href: repoDocsUrl("docs/OSS_CONCEPTS.md") },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t("catalogPage.docs.catalog"), href: repoDocsUrl("docs/PROVIDER_CATALOG.md") },
+            { label: t("catalogPage.docs.adding"), href: repoDocsUrl("docs/ADDING_PROVIDERS.md") },
+            { label: t("catalogPage.docs.extensibility"), href: repoDocsUrl("docs/PROVIDER_EXTENSIBILITY.md") },
+            { label: t("catalogPage.docs.concepts"), href: repoDocsUrl("docs/OSS_CONCEPTS.md") },
+          ]}
+        />
+      </GuidanceSection>
 
       {catalog.isLoading && (
         <div className="grid gap-4 md:grid-cols-3">
@@ -685,7 +690,7 @@ export function ProviderCatalogPage() {
                   icon={Boxes}
                 />
               ) : (
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
                   <div className="space-y-3">
                     {groupedProviders.map((group) => (
                       <ProviderFamilyGroup
@@ -722,13 +727,13 @@ function CatalogFilters({
   return (
     <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
       <div className="flex flex-col gap-2 lg:flex-row">
-        <div className="relative min-w-[240px] flex-1">
+        <div className="relative min-w-0 flex-1 lg:min-w-[240px]">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--foreground-dim)]" />
           <Input
             value={explorer.query}
             onChange={(event) => explorer.setQuery(event.target.value)}
             placeholder={t("catalogPage.search")}
-            className="pl-9"
+          className="pl-9"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -743,7 +748,7 @@ function CatalogFilters({
           ))}
         </div>
       </div>
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid gap-3 2xl:grid-cols-2">
         <FilterGroup icon={Layers3} label={t("catalogPage.filters.family")}>
           <FilterButton
             active={explorer.family === "all"}
@@ -859,9 +864,9 @@ function FilterGroup({
 }) {
   return (
     <div className="min-w-0">
-      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+      <div className="mb-2 flex min-w-0 items-start gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
         <Icon className="h-3.5 w-3.5" />
-        {label}
+        <span className="min-w-0 leading-4 [overflow-wrap:anywhere]">{label}</span>
       </div>
       <div className="flex flex-wrap gap-1.5">{children}</div>
     </div>
@@ -882,13 +887,13 @@ function FilterButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "max-w-full rounded-md px-2.5 py-1.5 text-[11px] font-bold transition-all",
+        "max-w-full rounded-md px-2.5 py-1.5 text-left text-[11px] font-bold leading-4 transition-all",
         active
           ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
           : "bg-[var(--background-tertiary)]/70 text-[var(--foreground-dim)] hover:text-[var(--foreground)]",
       )}
     >
-      <span className="block truncate">{children}</span>
+      <span className="block min-w-0 whitespace-normal [overflow-wrap:anywhere]">{children}</span>
     </button>
   );
 }
@@ -998,13 +1003,13 @@ function ProviderRow({
       <div className="flex min-w-0 flex-wrap gap-1.5">
         <Badge
           variant={providerType(provider) === "custom" ? "purple" : "zinc"}
-          className="max-w-[120px] truncate whitespace-nowrap"
+          className="max-w-full whitespace-normal leading-4 [overflow-wrap:anywhere]"
         >
           {t(`catalogPage.providerTypes.${providerType(provider)}`)}
         </Badge>
         <Badge
           variant="blue"
-          className="max-w-[150px] truncate whitespace-nowrap"
+          className="max-w-full whitespace-normal leading-4 [overflow-wrap:anywhere]"
         >
           {t(`catalogPage.compatibility.${providerCompatibility(provider)}`, {
             defaultValue: providerCompatibility(provider),
@@ -1024,7 +1029,7 @@ function ProviderRow({
           <PricingTrustBadge status={trustStatus} dense />
           <Badge
             variant={sourceVariant(provider.pricing?.source)}
-            className="max-w-[150px] truncate whitespace-nowrap"
+            className="max-w-full whitespace-normal leading-4 [overflow-wrap:anywhere]"
           >
             {t(`catalogPage.sources.${sourceLabel(provider.pricing?.source)}`, {
               source: provider.pricing?.source || "-",
@@ -1040,7 +1045,7 @@ function ProviderRow({
           {recommendedPreview.length > 0 && (
             <span>{t("catalogSignals.recommendedPreview")}</span>
           )}
-          <span className="truncate">
+          <span className="min-w-0 [overflow-wrap:anywhere]">
             {endpoints.length > 0
               ? endpoints.join(", ")
               : t("catalogPage.row.noEndpoint")}
@@ -1101,7 +1106,7 @@ function ProviderDetailPanel({
   const providerStatus = providerStatusValue(provider);
 
   return (
-    <aside className="h-fit rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] xl:sticky xl:top-4">
+    <aside className="h-fit min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] xl:sticky xl:top-4">
       <div className="border-b border-[var(--border)] px-4 py-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
@@ -1163,7 +1168,7 @@ function ProviderDetailPanel({
 
       <div className="space-y-4 px-4 py-4">
         <DetailSection title={t("catalogPage.detail.catalogTruth")}>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             <KeyValue
               label={t("catalogPage.detail.providerStatus")}
               value={t(`catalogPage.providerStatus.${providerStatus}`, {
@@ -1378,7 +1383,7 @@ function ProviderDetailPanel({
                         )}
                       </div>
 
-                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div className="mt-3 grid gap-2">
                         <KeyValue
                           label={t("catalogPage.detail.releaseDate")}
                           value={modelReleaseDate(model)}
@@ -1546,7 +1551,7 @@ function DetailSection({
 }) {
   return (
     <section>
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] leading-4 text-[var(--foreground-dim)] [overflow-wrap:anywhere]">
         {title}
       </div>
       {children}
@@ -1601,13 +1606,13 @@ function KeyValue({
   mono?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-start justify-between gap-3 rounded-md bg-[var(--background)] px-2.5 py-2">
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--foreground-dim)]">
+    <div className="grid min-w-0 gap-1.5 rounded-md bg-[var(--background)] px-2.5 py-2 sm:grid-cols-[minmax(7.5rem,0.72fr)_minmax(0,1fr)] sm:gap-3">
+      <span className="min-w-0 text-[10px] font-bold uppercase leading-4 tracking-[0.08em] text-[var(--foreground-dim)] [overflow-wrap:anywhere]">
         {label}
       </span>
       <span
         className={cn(
-          "min-w-0 break-words text-right text-[11px] font-semibold text-[var(--foreground-muted)]",
+          "min-w-0 whitespace-normal text-left text-[11px] font-semibold leading-5 text-[var(--foreground-muted)] [overflow-wrap:anywhere] sm:text-right",
           mono && "font-mono",
         )}
       >
@@ -1734,7 +1739,7 @@ function CatalogSyncStatusCard({ status }: { status: CatalogSyncStatus }) {
                   </div>
                   <Badge
                     variant={syncStatusVariant(provider.status)}
-                    className="shrink-0 whitespace-nowrap"
+                    className="max-w-[12rem] shrink-0 whitespace-normal leading-4 [overflow-wrap:anywhere]"
                   >
                     {t(`catalogPage.sync.status.${provider.status}`)}
                   </Badge>
@@ -1762,11 +1767,11 @@ function CatalogSyncStatusCard({ status }: { status: CatalogSyncStatus }) {
 
 function SyncFact({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+    <div className="min-w-0">
+      <div className="text-[10px] font-bold uppercase leading-4 tracking-[0.12em] text-[var(--foreground-dim)] [overflow-wrap:anywhere]">
         {label}
       </div>
-      <div className="mt-1 truncate font-mono text-[12px] font-semibold text-[var(--foreground)]">
+      <div className="mt-1 min-w-0 font-mono text-[12px] font-semibold leading-5 text-[var(--foreground)] [overflow-wrap:anywhere]">
         {value}
       </div>
     </div>
@@ -1788,7 +1793,7 @@ function CatalogMetric({
     <Card>
       <CardContent className="flex items-center justify-between gap-3 pt-5">
         <div className="min-w-0">
-          <div className="truncate text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground-dim)]">
+          <div className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[var(--foreground-dim)] [overflow-wrap:anywhere]">
             {label}
           </div>
           <div className="mt-2 text-2xl font-extrabold text-[var(--foreground)]">
@@ -1851,14 +1856,14 @@ function CatalogRefreshSources({
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5 lg:justify-end">
-          <Badge variant="emerald" className="whitespace-nowrap">
+          <Badge variant="emerald" className="max-w-full whitespace-normal leading-4 [overflow-wrap:anywhere]">
             {automaticCount} {t("catalogPage.refreshSources.automatic")}
           </Badge>
-          <Badge variant="blue" className="whitespace-nowrap">
+          <Badge variant="blue" className="max-w-full whitespace-normal leading-4 [overflow-wrap:anywhere]">
             {docsReviewCount}{" "}
             {t("catalogPage.refreshSources.modes.docs_review")}
           </Badge>
-          <Badge variant="amber" className="whitespace-nowrap">
+          <Badge variant="amber" className="max-w-full whitespace-normal leading-4 [overflow-wrap:anywhere]">
             {localCount} {t("catalogPage.refreshSources.modes.operator_local")}
           </Badge>
         </div>
@@ -1881,7 +1886,7 @@ function CatalogRefreshSources({
                 </div>
                 <Badge
                   variant={refreshSourceVariant(source)}
-                  className="shrink-0 whitespace-nowrap"
+                  className="max-w-[12rem] shrink-0 whitespace-normal leading-4 [overflow-wrap:anywhere]"
                 >
                   {source.automatic
                     ? t("catalogPage.refreshSources.automatic")

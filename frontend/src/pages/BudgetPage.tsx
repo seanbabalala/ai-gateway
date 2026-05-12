@@ -14,6 +14,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -704,20 +705,22 @@ export function BudgetPage() {
         />
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="budgetScopes"
-        icon={Wallet}
-        badgeKinds={['runtimeSupported', 'configDriven']}
-      />
+      <GuidanceSection storageKey="budget-scopes" complete={rules.length > 0}>
+        <ConceptPanel
+          conceptId="budgetScopes"
+          icon={Wallet}
+          badgeKinds={['runtimeSupported', 'configDriven']}
+        />
 
-      <DocsLinkGroup
-        links={[
-          { label: t('budget.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#budget-scope-settings') },
-          { label: t('budget.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
-          { label: t('budget.docs.billing'), href: repoDocsUrl('docs/BILLING_LOOP.md') },
-          { label: t('budget.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t('budget.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#budget-scope-settings') },
+            { label: t('budget.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
+            { label: t('budget.docs.billing'), href: repoDocsUrl('docs/BILLING_LOOP.md') },
+            { label: t('budget.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+          ]}
+        />
+      </GuidanceSection>
 
       <ScopeSourceCard
         option={selectedOption}

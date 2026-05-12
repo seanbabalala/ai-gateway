@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -97,11 +98,13 @@ export function MembersPage() {
         }
       />
 
-      <ConceptPanel
-        conceptId="membersRoles"
-        icon={ShieldCheck}
-        badgeKinds={['ossFixedRoles', 'runtimeSupported']}
-      />
+      <GuidanceSection storageKey="members" complete={(members.data?.items.length || 0) > 0}>
+        <ConceptPanel
+          conceptId="membersRoles"
+          icon={ShieldCheck}
+          badgeKinds={['ossFixedRoles', 'runtimeSupported']}
+        />
+      </GuidanceSection>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {(['admin', 'operator', 'viewer'] as WorkspaceRole[]).map((role) => {

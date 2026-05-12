@@ -90,6 +90,11 @@ const navGroups = [
   },
 ]
 
+function isNavItemActive(pathname: string, to: string) {
+  if (to === '/') return pathname === '/' || pathname === '/dashboard'
+  return pathname === to || pathname.startsWith(`${to}/`)
+}
+
 interface SidebarProps {
   collapsed?: boolean
   isMobile?: boolean
@@ -199,10 +204,7 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const label = t(item.labelKey)
-                  const isActive =
-                    item.to === '/'
-                      ? location.pathname === '/'
-                      : location.pathname.startsWith(item.to)
+                  const isActive = isNavItemActive(location.pathname, item.to)
 
                   const link = (
                     <NavLink

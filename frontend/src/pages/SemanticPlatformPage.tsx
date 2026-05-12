@@ -14,6 +14,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
@@ -464,53 +465,55 @@ export function SemanticPlatformPage() {
         </Button>
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="semanticControls"
-        icon={BrainCircuit}
-        badgeKinds={['configDriven', 'runtimeSupported', 'requiresConfig']}
-      />
+      <GuidanceSection storageKey="semantic-platform" complete={data.config.enabled || data.config.semantic_cache.enabled}>
+        <ConceptPanel
+          conceptId="semanticControls"
+          icon={BrainCircuit}
+          badgeKinds={['configDriven', 'runtimeSupported', 'requiresConfig']}
+        />
 
-      <DocsLinkGroup
-        links={[
-          { label: t('semanticPlatform.docs.semantic'), href: repoDocsUrl('docs/SEMANTIC_PLATFORM.md') },
-          { label: t('semanticPlatform.docs.caching'), href: repoDocsUrl('docs/CACHING.md') },
-          { label: t('semanticPlatform.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#semantic-controls') },
-          { label: t('semanticPlatform.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t('semanticPlatform.docs.semantic'), href: repoDocsUrl('docs/SEMANTIC_PLATFORM.md') },
+            { label: t('semanticPlatform.docs.caching'), href: repoDocsUrl('docs/CACHING.md') },
+            { label: t('semanticPlatform.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#semantic-controls') },
+            { label: t('semanticPlatform.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+          ]}
+        />
 
-      <SetupGuidePanel
-        title={t('semanticPlatform.setup.title')}
-        description={t('semanticPlatform.setup.description')}
-        icon={FileCode2}
-        statuses={[
-          {
-            label: t('semanticPlatform.setup.status.semanticPlatform'),
-            value: data.config.enabled ? t('semanticPlatform.status.enabled') : t('semanticPlatform.status.disabled'),
-            tone: data.config.enabled ? 'emerald' : 'zinc',
-          },
-          {
-            label: t('semanticPlatform.setup.status.semanticCache'),
-            value: data.config.semantic_cache.enabled ? t('semanticPlatform.status.enabled') : t('semanticPlatform.status.disabled'),
-            tone: data.config.semantic_cache.enabled ? 'emerald' : 'zinc',
-          },
-          {
-            label: t('semanticPlatform.setup.status.storage'),
-            value: data.privacy.semantic_cache_response_storage_opt_in || data.privacy.prompt_registry_content_storage_opt_in
-              ? t('semanticPlatform.setup.status.explicitOptIn')
-              : t('semanticPlatform.privacy.metadataOnly'),
-            tone: data.privacy.semantic_cache_response_storage_opt_in || data.privacy.prompt_registry_content_storage_opt_in ? 'amber' : 'emerald',
-          },
-        ]}
-        bullets={[
-          t('semanticPlatform.setup.bullets.metadataOnly'),
-          t('semanticPlatform.setup.bullets.noMutation'),
-          t('semanticPlatform.setup.bullets.routeEvidence'),
-          t('semanticPlatform.setup.bullets.contentOptIn'),
-        ]}
-        snippetTitle={t('semanticPlatform.setup.snippetTitle')}
-        snippet={SEMANTIC_SETUP_SNIPPET}
-      />
+        <SetupGuidePanel
+          title={t('semanticPlatform.setup.title')}
+          description={t('semanticPlatform.setup.description')}
+          icon={FileCode2}
+          statuses={[
+            {
+              label: t('semanticPlatform.setup.status.semanticPlatform'),
+              value: data.config.enabled ? t('semanticPlatform.status.enabled') : t('semanticPlatform.status.disabled'),
+              tone: data.config.enabled ? 'emerald' : 'zinc',
+            },
+            {
+              label: t('semanticPlatform.setup.status.semanticCache'),
+              value: data.config.semantic_cache.enabled ? t('semanticPlatform.status.enabled') : t('semanticPlatform.status.disabled'),
+              tone: data.config.semantic_cache.enabled ? 'emerald' : 'zinc',
+            },
+            {
+              label: t('semanticPlatform.setup.status.storage'),
+              value: data.privacy.semantic_cache_response_storage_opt_in || data.privacy.prompt_registry_content_storage_opt_in
+                ? t('semanticPlatform.setup.status.explicitOptIn')
+                : t('semanticPlatform.privacy.metadataOnly'),
+              tone: data.privacy.semantic_cache_response_storage_opt_in || data.privacy.prompt_registry_content_storage_opt_in ? 'amber' : 'emerald',
+            },
+          ]}
+          bullets={[
+            t('semanticPlatform.setup.bullets.metadataOnly'),
+            t('semanticPlatform.setup.bullets.noMutation'),
+            t('semanticPlatform.setup.bullets.routeEvidence'),
+            t('semanticPlatform.setup.bullets.contentOptIn'),
+          ]}
+          snippetTitle={t('semanticPlatform.setup.snippetTitle')}
+          snippet={SEMANTIC_SETUP_SNIPPET}
+        />
+      </GuidanceSection>
 
       <PrivacyContract data={data} />
 

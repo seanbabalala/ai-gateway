@@ -14,6 +14,7 @@ import { FlaskConical, Activity, DollarSign, Clock, CheckCircle, Zap } from 'luc
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -161,53 +162,55 @@ export function ExperimentPage() {
         </div>
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="trafficExperiments"
-        icon={FlaskConical}
-        badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
-      />
+      <GuidanceSection storageKey="traffic-experiments" complete={Object.keys(data.activeSplits).length > 0}>
+        <ConceptPanel
+          conceptId="trafficExperiments"
+          icon={FlaskConical}
+          badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+        />
 
-      <DocsLinkGroup
-        links={[
-          { label: t('experiments.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
-          { label: t('experiments.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
-          { label: t('experiments.docs.evals'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
-          { label: t('experiments.docs.shadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t('experiments.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
+            { label: t('experiments.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
+            { label: t('experiments.docs.evals'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
+            { label: t('experiments.docs.shadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
+          ]}
+        />
 
-      <SetupGuidePanel
-        title={t('experiments.setup.title')}
-        description={t('experiments.setup.description')}
-        icon={FlaskConical}
-        statuses={[
-          {
-            label: t('experiments.setup.status.splits'),
-            value: Object.keys(data.activeSplits).length > 0
-              ? t('experiments.setup.status.configured')
-              : t('experiments.setup.status.notConfigured'),
-            tone: Object.keys(data.activeSplits).length > 0 ? 'emerald' : 'zinc',
-          },
-          {
-            label: t('experiments.setup.status.mode'),
-            value: t('experiments.setup.status.readOnlyAnalytics'),
-            tone: 'blue',
-          },
-          {
-            label: t('experiments.setup.status.decisioning'),
-            value: t('experiments.setup.status.manualWeights'),
-            tone: 'zinc',
-          },
-        ]}
-        bullets={[
-          t('experiments.setup.bullets.liveSplit'),
-          t('experiments.setup.bullets.notEvals'),
-          t('experiments.setup.bullets.notShadow'),
-          t('experiments.setup.bullets.noAutomation'),
-        ]}
-        snippetTitle={t('experiments.setup.snippetTitle')}
-        snippet={TRAFFIC_EXPERIMENT_SETUP_SNIPPET}
-      />
+        <SetupGuidePanel
+          title={t('experiments.setup.title')}
+          description={t('experiments.setup.description')}
+          icon={FlaskConical}
+          statuses={[
+            {
+              label: t('experiments.setup.status.splits'),
+              value: Object.keys(data.activeSplits).length > 0
+                ? t('experiments.setup.status.configured')
+                : t('experiments.setup.status.notConfigured'),
+              tone: Object.keys(data.activeSplits).length > 0 ? 'emerald' : 'zinc',
+            },
+            {
+              label: t('experiments.setup.status.mode'),
+              value: t('experiments.setup.status.readOnlyAnalytics'),
+              tone: 'blue',
+            },
+            {
+              label: t('experiments.setup.status.decisioning'),
+              value: t('experiments.setup.status.manualWeights'),
+              tone: 'zinc',
+            },
+          ]}
+          bullets={[
+            t('experiments.setup.bullets.liveSplit'),
+            t('experiments.setup.bullets.notEvals'),
+            t('experiments.setup.bullets.notShadow'),
+            t('experiments.setup.bullets.noAutomation'),
+          ]}
+          snippetTitle={t('experiments.setup.snippetTitle')}
+          snippet={TRAFFIC_EXPERIMENT_SETUP_SNIPPET}
+        />
+      </GuidanceSection>
 
       {/* Empty state */}
       {groups.length === 0 && (

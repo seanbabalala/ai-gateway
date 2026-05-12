@@ -13,6 +13,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
@@ -377,51 +378,53 @@ export function EvalReportsPage() {
         badge={<Badge variant="gold">{t('evals.badge.readOnly')}</Badge>}
       />
 
-      <ConceptPanel
-        conceptId="evals"
-        icon={Scale}
-        badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
-      />
+      <GuidanceSection storageKey="eval-reports" complete={data.totals.runs > 0}>
+        <ConceptPanel
+          conceptId="evals"
+          icon={Scale}
+          badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
+        />
 
-      <DocsLinkGroup
-        links={[
-          { label: t('evals.docs.framework'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
-          { label: t('evals.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#evaluation-reports') },
-          { label: t('evals.docs.experiments'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
-          { label: t('evals.docs.shadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t('evals.docs.framework'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
+            { label: t('evals.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#evaluation-reports') },
+            { label: t('evals.docs.experiments'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
+            { label: t('evals.docs.shadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
+          ]}
+        />
 
-      <SetupGuidePanel
-        title={t('evals.setup.title')}
-        description={t('evals.setup.description')}
-        icon={Beaker}
-        statuses={[
-          {
-            label: t('evals.setup.status.reports'),
-            value: data.totals.runs > 0 ? t('evals.setup.status.available') : t('evals.setup.status.waitingForRuns'),
-            tone: data.totals.runs > 0 ? 'emerald' : 'zinc',
-          },
-          {
-            label: t('evals.setup.status.storage'),
-            value: data.privacy.sample_previews_stored ? t('evals.privacy.samplesStored') : t('evals.privacy.metadataOnly'),
-            tone: data.privacy.sample_previews_stored ? 'amber' : 'emerald',
-          },
-          {
-            label: t('evals.setup.status.mode'),
-            value: t('evals.setup.status.controlledRuns'),
-            tone: 'blue',
-          },
-        ]}
-        bullets={[
-          t('evals.setup.bullets.primaryCandidateJudge'),
-          t('evals.setup.bullets.notTrafficExperiments'),
-          t('evals.setup.bullets.normalGatewayPath'),
-          t('evals.setup.bullets.noSamplesByDefault'),
-        ]}
-        snippetTitle={t('evals.setup.snippetTitle')}
-        snippet={EVAL_SETUP_SNIPPET}
-      />
+        <SetupGuidePanel
+          title={t('evals.setup.title')}
+          description={t('evals.setup.description')}
+          icon={Beaker}
+          statuses={[
+            {
+              label: t('evals.setup.status.reports'),
+              value: data.totals.runs > 0 ? t('evals.setup.status.available') : t('evals.setup.status.waitingForRuns'),
+              tone: data.totals.runs > 0 ? 'emerald' : 'zinc',
+            },
+            {
+              label: t('evals.setup.status.storage'),
+              value: data.privacy.sample_previews_stored ? t('evals.privacy.samplesStored') : t('evals.privacy.metadataOnly'),
+              tone: data.privacy.sample_previews_stored ? 'amber' : 'emerald',
+            },
+            {
+              label: t('evals.setup.status.mode'),
+              value: t('evals.setup.status.controlledRuns'),
+              tone: 'blue',
+            },
+          ]}
+          bullets={[
+            t('evals.setup.bullets.primaryCandidateJudge'),
+            t('evals.setup.bullets.notTrafficExperiments'),
+            t('evals.setup.bullets.normalGatewayPath'),
+            t('evals.setup.bullets.noSamplesByDefault'),
+          ]}
+          snippetTitle={t('evals.setup.snippetTitle')}
+          snippet={EVAL_SETUP_SNIPPET}
+        />
+      </GuidanceSection>
 
       <div className="grid gap-4 md:grid-cols-4">
         <MetricCard label={t('evals.metrics.runs')} value={formatNumber(data.totals.runs)} icon={FlaskConical} />

@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, Network, RefreshCw, Server, ShieldCheck, Wrenc
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { Badge } from '@/components/ui/badge'
@@ -227,44 +228,23 @@ export function McpGatewayPage() {
         </Button>
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="mcpToolGateway"
-        icon={Network}
-        badgeKinds={['runtimeSupported', 'configDriven', 'requiresConfig']}
-      />
-
-      <DocsLinkGroup
-        links={[
-          { label: t('mcp.docs.gateway'), href: repoDocsUrl('docs/MCP_GATEWAY.md') },
-          { label: t('mcp.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#mcp-tool-gateway-api') },
-          { label: t('mcp.docs.agent'), href: repoDocsUrl('docs/AGENT_GATEWAY.md') },
-          { label: t('mcp.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
-        ]}
-      />
-
-      {mcp.isLoading && (
-        <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
-          <SkeletonTable rows={6} />
-        </>
-      )}
-
-      {mcp.isError && (
-        <ErrorState
-          error={mcp.error instanceof Error ? mcp.error : new Error(t('mcp.error'))}
-          onRetry={() => {
-            void mcp.refetch()
-          }}
+      <GuidanceSection storageKey="mcp-gateway" complete={Boolean(data?.enabled)}>
+        <ConceptPanel
+          conceptId="mcpToolGateway"
+          icon={Network}
+          badgeKinds={['runtimeSupported', 'configDriven', 'requiresConfig']}
         />
-      )}
 
-      {data && (
-        <>
+        <DocsLinkGroup
+          links={[
+            { label: t('mcp.docs.gateway'), href: repoDocsUrl('docs/MCP_GATEWAY.md') },
+            { label: t('mcp.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#mcp-tool-gateway-api') },
+            { label: t('mcp.docs.agent'), href: repoDocsUrl('docs/AGENT_GATEWAY.md') },
+            { label: t('mcp.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+          ]}
+        />
+
+        {data && (
           <SetupGuidePanel
             title={t('mcp.setup.title')}
             description={t('mcp.setup.description')}
@@ -295,7 +275,32 @@ export function McpGatewayPage() {
             snippetTitle={t('mcp.setup.snippetTitle')}
             snippet={MCP_SETUP_SNIPPET}
           />
+        )}
+      </GuidanceSection>
 
+      {mcp.isLoading && (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <SkeletonTable rows={6} />
+        </>
+      )}
+
+      {mcp.isError && (
+        <ErrorState
+          error={mcp.error instanceof Error ? mcp.error : new Error(t('mcp.error'))}
+          onRetry={() => {
+            void mcp.refetch()
+          }}
+        />
+      )}
+
+      {data && (
+        <>
           <div className="grid gap-4 md:grid-cols-4">
             <MetricCard
               label={t('mcp.metrics.servers')}

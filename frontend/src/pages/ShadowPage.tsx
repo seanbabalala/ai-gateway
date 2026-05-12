@@ -13,6 +13,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { SetupGuidePanel } from '@/components/shared/SetupGuidePanel'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
@@ -148,55 +149,60 @@ export function ShadowPage() {
         <Badge variant="zinc">{t('shadow.readOnly')}</Badge>
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="shadowTraffic"
-        icon={GitCompareArrows}
-        badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
-      />
-
-      <DocsLinkGroup
-        links={[
-          { label: t('shadow.docs.namespaceShadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
-          { label: t('shadow.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#shadow-traffic') },
-          { label: t('shadow.docs.evals'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
-          { label: t('shadow.docs.experiments'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
-        ]}
-      />
-
-      {status && (
-        <SetupGuidePanel
-          title={t('shadow.setup.title')}
-          description={t('shadow.setup.description')}
+      <GuidanceSection
+        storageKey="shadow-traffic"
+        complete={Boolean(status?.enabled && status.target_node && status.target_model)}
+      >
+        <ConceptPanel
+          conceptId="shadowTraffic"
           icon={GitCompareArrows}
-          statuses={[
-            {
-              label: t('shadow.setup.status.shadow'),
-              value: status.enabled ? t('shadow.enabled') : t('shadow.disabled'),
-              tone: status.enabled ? 'emerald' : 'zinc',
-            },
-            {
-              label: t('shadow.setup.status.target'),
-              value: status.target_node && status.target_model ? t('shadow.setup.status.configured') : t('shadow.setup.status.missing'),
-              tone: status.target_node && status.target_model ? 'emerald' : 'amber',
-            },
-            {
-              label: t('shadow.setup.status.samples'),
-              value: status.compare.store_prompts || status.compare.store_responses
-                ? t('shadow.setup.status.explicitStorage')
-                : t('shadow.setup.status.notStored'),
-              tone: status.compare.store_prompts || status.compare.store_responses ? 'amber' : 'emerald',
-            },
-          ]}
-          bullets={[
-            t('shadow.setup.bullets.asyncMirror'),
-            t('shadow.setup.bullets.notExperiment'),
-            t('shadow.setup.bullets.notEval'),
-            t('shadow.setup.bullets.noPromotion'),
-          ]}
-          snippetTitle={t('shadow.setup.snippetTitle')}
-          snippet={SHADOW_SETUP_SNIPPET}
+          badgeKinds={['readOnly', 'configDriven', 'requiresConfig']}
         />
-      )}
+
+        <DocsLinkGroup
+          links={[
+            { label: t('shadow.docs.namespaceShadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#shadow-traffic') },
+            { label: t('shadow.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#shadow-traffic') },
+            { label: t('shadow.docs.evals'), href: repoDocsUrl('docs/EVALUATION_FRAMEWORK.md') },
+            { label: t('shadow.docs.experiments'), href: repoDocsUrl('docs/API_REFERENCE.md#traffic-experiments') },
+          ]}
+        />
+
+        {status && (
+          <SetupGuidePanel
+            title={t('shadow.setup.title')}
+            description={t('shadow.setup.description')}
+            icon={GitCompareArrows}
+            statuses={[
+              {
+                label: t('shadow.setup.status.shadow'),
+                value: status.enabled ? t('shadow.enabled') : t('shadow.disabled'),
+                tone: status.enabled ? 'emerald' : 'zinc',
+              },
+              {
+                label: t('shadow.setup.status.target'),
+                value: status.target_node && status.target_model ? t('shadow.setup.status.configured') : t('shadow.setup.status.missing'),
+                tone: status.target_node && status.target_model ? 'emerald' : 'amber',
+              },
+              {
+                label: t('shadow.setup.status.samples'),
+                value: status.compare.store_prompts || status.compare.store_responses
+                  ? t('shadow.setup.status.explicitStorage')
+                  : t('shadow.setup.status.notStored'),
+                tone: status.compare.store_prompts || status.compare.store_responses ? 'amber' : 'emerald',
+              },
+            ]}
+            bullets={[
+              t('shadow.setup.bullets.asyncMirror'),
+              t('shadow.setup.bullets.notExperiment'),
+              t('shadow.setup.bullets.notEval'),
+              t('shadow.setup.bullets.noPromotion'),
+            ]}
+            snippetTitle={t('shadow.setup.snippetTitle')}
+            snippet={SHADOW_SETUP_SNIPPET}
+          />
+        )}
+      </GuidanceSection>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <CardStatic>

@@ -29,6 +29,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import {
   CatalogCoveragePills,
@@ -418,14 +419,16 @@ export function NodesPage() {
         </div>
       </div>
 
-      <DocsLinkGroup
-        links={[
-          { label: t('nodes.docs.providerCatalog'), href: repoDocsUrl('docs/PROVIDER_CATALOG.md#dashboard-add-node-wizard') },
-          { label: t('nodes.docs.addingProviders'), href: repoDocsUrl('docs/ADDING_PROVIDERS.md') },
-          { label: t('nodes.docs.compatibility'), href: repoDocsUrl('docs/PROVIDER_COMPATIBILITY.md') },
-          { label: t('nodes.docs.quickstart'), href: repoDocsUrl('docs/QUICKSTART.md') },
-        ]}
-      />
+      <GuidanceSection storageKey="nodes" complete={nodesData.nodes.length > 0}>
+        <DocsLinkGroup
+          links={[
+            { label: t('nodes.docs.providerCatalog'), href: repoDocsUrl('docs/PROVIDER_CATALOG.md#dashboard-add-node-wizard') },
+            { label: t('nodes.docs.addingProviders'), href: repoDocsUrl('docs/ADDING_PROVIDERS.md') },
+            { label: t('nodes.docs.compatibility'), href: repoDocsUrl('docs/PROVIDER_COMPATIBILITY.md') },
+            { label: t('nodes.docs.quickstart'), href: repoDocsUrl('docs/QUICKSTART.md') },
+          ]}
+        />
+      </GuidanceSection>
 
       {diagnostics.length > 0 && (
         <div className="rounded-lg bg-amber-500/10 px-4 py-3 text-amber-800 dark:text-amber-300">

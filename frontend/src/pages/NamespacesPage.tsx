@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { Badge } from '@/components/ui/badge'
@@ -402,27 +403,29 @@ export function NamespacesPage() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ConceptPanel
-          conceptId="policyNamespace"
-          icon={Layers3}
-          badgeKinds={['configDriven', 'runtimeSupported']}
-        />
-        <ConceptPanel
-          conceptId="workspace"
-          icon={Building2}
-          badgeKinds={['runtimeSupported', 'ossFixedRoles']}
-        />
-      </div>
+      <GuidanceSection storageKey="policy-namespaces" complete={counts.total > 0}>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ConceptPanel
+            conceptId="policyNamespace"
+            icon={Layers3}
+            badgeKinds={['configDriven', 'runtimeSupported']}
+          />
+          <ConceptPanel
+            conceptId="workspace"
+            icon={Building2}
+            badgeKinds={['runtimeSupported', 'ossFixedRoles']}
+          />
+        </div>
 
-      <DocsLinkGroup
-        links={[
-          { label: t('namespaces.docs.namespaceShadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md') },
-          { label: t('namespaces.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
-          { label: t('namespaces.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#policy-namespace-management') },
-          { label: t('namespaces.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t('namespaces.docs.namespaceShadow'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md') },
+            { label: t('namespaces.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+            { label: t('namespaces.docs.api'), href: repoDocsUrl('docs/API_REFERENCE.md#policy-namespace-management') },
+            { label: t('namespaces.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
+          ]}
+        />
+      </GuidanceSection>
 
       <div className="grid gap-4 md:grid-cols-5">
         <MetricCard label={t('namespaces.metrics.total')} value={counts.total} />

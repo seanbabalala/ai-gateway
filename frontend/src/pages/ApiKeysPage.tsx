@@ -20,6 +20,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { PermissionTooltip } from '@/components/shared/PermissionTooltip'
 import { CardStatic, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -1204,27 +1205,29 @@ export function ApiKeysPage() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ConceptPanel
-          conceptId="apiKeys"
-          icon={KeyRound}
-          badgeKinds={['runtimeSupported', 'configDriven']}
-        />
-        <ConceptPanel
-          conceptId="policyNamespace"
-          icon={Layers3}
-          badgeKinds={['configDriven', 'requiresConfig']}
-        />
-      </div>
+      <GuidanceSection storageKey="api-keys" complete={totals.active > 0}>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ConceptPanel
+            conceptId="apiKeys"
+            icon={KeyRound}
+            badgeKinds={['runtimeSupported', 'configDriven']}
+          />
+          <ConceptPanel
+            conceptId="policyNamespace"
+            icon={Layers3}
+            badgeKinds={['configDriven', 'requiresConfig']}
+          />
+        </div>
 
-      <DocsLinkGroup
-        links={[
-          { label: t('docs.apiKeys'), href: repoDocsUrl('docs/API_REFERENCE.md#gateway-api-key-management') },
-          { label: t('docs.policyNamespaces'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#policy-namespaces') },
-          { label: t('docs.budgets'), href: repoDocsUrl('docs/API_REFERENCE.md#budget-scope-settings') },
-          { label: t('docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
-        ]}
-      />
+        <DocsLinkGroup
+          links={[
+            { label: t('docs.apiKeys'), href: repoDocsUrl('docs/API_REFERENCE.md#gateway-api-key-management') },
+            { label: t('docs.policyNamespaces'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md#policy-namespaces') },
+            { label: t('docs.budgets'), href: repoDocsUrl('docs/API_REFERENCE.md#budget-scope-settings') },
+            { label: t('docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+          ]}
+        />
+      </GuidanceSection>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <CardStatic>

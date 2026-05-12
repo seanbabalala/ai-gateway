@@ -41,13 +41,17 @@ import {
   Circle,
   Settings2,
   Sparkles,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ConceptPanel } from '@/components/shared/ConceptPanel'
 import { DocsLinkGroup, repoDocsUrl } from '@/components/shared/DocsLinkGroup'
+import { GuidanceSection } from '@/components/shared/GuidanceSection'
 import { MetricCard } from '@/components/shared/MetricCard'
 import { TierBadge } from '@/components/shared/TierBadge'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { SkeletonCard, SkeletonChart, Skeleton } from '@/components/ui/skeleton'
@@ -91,6 +95,27 @@ type ChartTooltipPayload = {
   name?: string | number
   value?: number | string
   payload?: Record<string, unknown>
+}
+
+type OnboardingVisibility = 'expanded' | 'collapsed'
+
+const ONBOARDING_VISIBILITY_STORAGE_KEY = 'siftgate.dashboard.onboardingVisibility'
+
+function readOnboardingVisibilityPreference(): OnboardingVisibility | null {
+  try {
+    const value = window.localStorage.getItem(ONBOARDING_VISIBILITY_STORAGE_KEY)
+    return value === 'expanded' || value === 'collapsed' ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeOnboardingVisibilityPreference(value: OnboardingVisibility) {
+  try {
+    window.localStorage.setItem(ONBOARDING_VISIBILITY_STORAGE_KEY, value)
+  } catch {
+    // Hardened browsers can disable localStorage; the computed default still works.
+  }
 }
 
 function SignalTooltip({
@@ -152,6 +177,8 @@ export function DashboardPage() {
   const [namespaceFilter, setNamespaceFilter] = useState('')
   const [activeTier, setActiveTier] = useState<string | null>(null)
   const [activeNode, setActiveNode] = useState<string | null>(null)
+  const [onboardingVisibilityPreference, setOnboardingVisibilityPreference] =
+    useState<OnboardingVisibility | null>(() => readOnboardingVisibilityPreference())
   const { data: stats, isLoading, isError, error, refetch } = useStats({
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
@@ -320,6 +347,17 @@ export function DashboardPage() {
   ]
   const requiredFirstRunSteps = firstRunSteps.filter((step) => !step.optional)
   const completedFirstRunSteps = requiredFirstRunSteps.filter((step) => step.done).length
+  const isFirstRunComplete = completedFirstRunSteps === requiredFirstRunSteps.length
+  const nextFirstRunStep = requiredFirstRunSteps.find((step) => !step.done)
+  const onboardingCollapsed =
+    onboardingVisibilityPreference === null
+      ? isFirstRunComplete
+      : onboardingVisibilityPreference === 'collapsed'
+  const toggleOnboarding = () => {
+    const nextVisibility: OnboardingVisibility = onboardingCollapsed ? 'expanded' : 'collapsed'
+    setOnboardingVisibilityPreference(nextVisibility)
+    writeOnboardingVisibilityPreference(nextVisibility)
+  }
   const setupWarnings = [
     ...(apiKeysData && apiKeysData.items.length === 0
       ? [t('configHealth.missingApiKey')]
@@ -354,14 +392,27 @@ export function DashboardPage() {
         </div>
       </PageHeader>
 
-      <ConceptPanel
-        conceptId="workspace"
-        icon={Building2}
-        badgeKinds={['runtimeSupported', 'ossFixedRoles']}
-      />
+      <GuidanceSection storageKey="dashboard-overview" complete={isFirstRunComplete}>
+        <ConceptPanel
+          conceptId="workspace"
+          icon={Building2}
+          badgeKinds={['runtimeSupported', 'ossFixedRoles']}
+        />
+
+        <DocsLinkGroup
+          links={[
+            { label: t('onboarding.docs.quickstart'), href: repoDocsUrl('docs/QUICKSTART.md') },
+            { label: t('onboarding.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
+            { label: t('onboarding.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
+            { label: t('onboarding.docs.providers'), href: repoDocsUrl('docs/PROVIDER_CATALOG.md') },
+            { label: t('onboarding.docs.namespaces'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md') },
+            { label: t('onboarding.docs.advanced'), href: repoDocsUrl('docs/SEMANTIC_PLATFORM.md') },
+          ]}
+        />
+      </GuidanceSection>
 
       <Card className="animate-fade-up overflow-hidden">
-        <CardHeader>
+        <CardHeader className={onboardingCollapsed ? 'pb-5' : undefined}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]">
@@ -370,89 +421,116 @@ export function DashboardPage() {
               <div className="min-w-0">
                 <CardTitle>{t('onboarding.title')}</CardTitle>
                 <p className="mt-1 max-w-3xl text-[12px] font-medium leading-5 text-[var(--foreground-dim)]">
-                  {t('onboarding.description')}
+                  {onboardingCollapsed && isFirstRunComplete
+                    ? t('onboarding.summary.complete')
+                    : onboardingCollapsed && nextFirstRunStep
+                      ? t('onboarding.summary.next', { step: nextFirstRunStep.title })
+                      : t('onboarding.description')}
                 </p>
               </div>
             </div>
-            <Badge variant={completedFirstRunSteps === requiredFirstRunSteps.length ? 'emerald' : 'amber'}>
-              {t('onboarding.progress', {
-                completed: completedFirstRunSteps,
-                total: requiredFirstRunSteps.length,
-              })}
-            </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={isFirstRunComplete ? 'emerald' : 'amber'}>
+                {t('onboarding.progress', {
+                  completed: completedFirstRunSteps,
+                  total: requiredFirstRunSteps.length,
+                })}
+              </Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={toggleOnboarding}
+                aria-expanded={!onboardingCollapsed}
+                className="h-8 px-2.5"
+              >
+                {onboardingCollapsed ? (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+                <span>
+                  {onboardingCollapsed
+                    ? t('onboarding.actions.showChecklist')
+                    : t('onboarding.actions.hideChecklist')}
+                </span>
+              </Button>
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {firstRunSteps.map((step) => {
-              const StepIcon = step.icon
-              return (
-                <div
-                  key={step.key}
-                  className="flex min-h-[148px] flex-col justify-between rounded-lg bg-[var(--background-tertiary)] px-3.5 py-3"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
+        <AnimatePresence initial={false}>
+          {!onboardingCollapsed && (
+            <motion.div
+              key="onboarding-checklist"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              className="overflow-hidden"
+            >
+              <CardContent>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {firstRunSteps.map((step) => {
+                    const StepIcon = step.icon
+                    return (
                       <div
-                        className={
-                          step.done
-                            ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                            : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--background-secondary)] text-[var(--foreground-dim)]'
-                        }
+                        key={step.key}
+                        className="flex min-h-[148px] flex-col justify-between rounded-lg bg-[var(--background-tertiary)] px-3.5 py-3"
                       >
-                        <StepIcon className="h-4 w-4" />
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div
+                              className={
+                                step.done
+                                  ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                  : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--background-secondary)] text-[var(--foreground-dim)]'
+                              }
+                            >
+                              <StepIcon className="h-4 w-4" />
+                            </div>
+                            <span
+                              className={
+                                step.done
+                                  ? 'inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300'
+                                  : 'inline-flex items-center gap-1 rounded-md bg-[var(--background-secondary)] px-2 py-1 text-[10px] font-bold text-[var(--foreground-dim)]'
+                              }
+                            >
+                              {step.done ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                              {step.optional
+                                ? t('onboarding.status.optional')
+                                : step.done
+                                  ? t('onboarding.status.done')
+                                  : t('onboarding.status.todo')}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-[13px] font-extrabold leading-5 text-[var(--foreground)]">
+                              {step.title}
+                            </div>
+                            <div className="mt-1 text-[11px] font-medium leading-5 text-[var(--foreground-dim)]">
+                              {step.description}
+                            </div>
+                          </div>
+                        </div>
+                        <Link
+                          to={step.href}
+                          className="mt-4 inline-flex items-center justify-between gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2 text-[11px] font-bold text-[var(--foreground-muted)] transition-all hover:-translate-y-0.5 hover:text-[var(--foreground)] hover:shadow-[0_12px_28px_rgba(5,46,36,0.08)]"
+                        >
+                          <span className="min-w-0 truncate">{step.action}</span>
+                          <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                        </Link>
                       </div>
-                      <span
-                        className={
-                          step.done
-                            ? 'inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300'
-                            : 'inline-flex items-center gap-1 rounded-md bg-[var(--background-secondary)] px-2 py-1 text-[10px] font-bold text-[var(--foreground-dim)]'
-                        }
-                      >
-                        {step.done ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
-                        {step.optional
-                          ? t('onboarding.status.optional')
-                          : step.done
-                            ? t('onboarding.status.done')
-                            : t('onboarding.status.todo')}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-extrabold leading-5 text-[var(--foreground)]">
-                        {step.title}
-                      </div>
-                      <div className="mt-1 text-[11px] font-medium leading-5 text-[var(--foreground-dim)]">
-                        {step.description}
-                      </div>
-                    </div>
-                  </div>
-                  <Link
-                    to={step.href}
-                    className="mt-4 inline-flex items-center justify-between gap-2 rounded-lg bg-[var(--background-secondary)] px-3 py-2 text-[11px] font-bold text-[var(--foreground-muted)] transition-all hover:-translate-y-0.5 hover:text-[var(--foreground)] hover:shadow-[0_12px_28px_rgba(5,46,36,0.08)]"
-                  >
-                    <span className="min-w-0 truncate">{step.action}</span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0" />
-                  </Link>
+                    )
+                  })}
                 </div>
-              )
-            })}
-          </div>
-          <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2 text-[11px] font-medium leading-5 text-[var(--foreground-dim)]">
-            {t('onboarding.privacy')}
-          </div>
-        </CardContent>
+                <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2 text-[11px] font-medium leading-5 text-[var(--foreground-dim)]">
+                  {t('onboarding.privacy')}
+                </div>
+              </CardContent>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Card>
-
-      <DocsLinkGroup
-        links={[
-          { label: t('onboarding.docs.quickstart'), href: repoDocsUrl('docs/QUICKSTART.md') },
-          { label: t('onboarding.docs.concepts'), href: repoDocsUrl('docs/OSS_CONCEPTS.md') },
-          { label: t('onboarding.docs.dashboard'), href: repoDocsUrl('docs/DASHBOARD.md') },
-          { label: t('onboarding.docs.providers'), href: repoDocsUrl('docs/PROVIDER_CATALOG.md') },
-          { label: t('onboarding.docs.namespaces'), href: repoDocsUrl('docs/NAMESPACES_AND_SHADOW.md') },
-          { label: t('onboarding.docs.advanced'), href: repoDocsUrl('docs/SEMANTIC_PLATFORM.md') },
-        ]}
-      />
 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card className="animate-fade-up overflow-hidden">
