@@ -864,6 +864,23 @@ export class ProviderClientService {
   private sanitizeNativeMessagesRequest(
     body: Record<string, unknown>,
   ): Record<string, unknown> {
+    const sanitizeContentField = (value: unknown): string | unknown[] => {
+      if (typeof value === 'string') {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        const blocks = sanitizeBlocks(value) as unknown[];
+        return blocks.length > 0 ? blocks : '';
+      }
+      if (value === null || value === undefined) {
+        return '';
+      }
+      if (typeof value === 'object') {
+        return JSON.stringify(value);
+      }
+      return String(value);
+    };
+
     const sanitizeBlocks = (value: unknown): unknown => {
       if (!Array.isArray(value)) {
         return value;
@@ -871,15 +888,37 @@ export class ProviderClientService {
 
       const sanitized: unknown[] = [];
       for (const block of value) {
-        if (!block || typeof block !== 'object') {
-          sanitized.push(block);
+        if (block === null || block === undefined) {
+          continue;
+        }
+
+        if (typeof block === 'string') {
+          if (block.length > 0) {
+            sanitized.push({ type: 'text', text: block });
+          }
+          continue;
+        }
+
+        if (typeof block !== 'object') {
+          sanitized.push({ type: 'text', text: String(block) });
           continue;
         }
 
         const typedBlock = block as Record<string, unknown>;
+        if (typeof typedBlock.type !== 'string' || typedBlock.type.length === 0) {
+          sanitized.push({ type: 'text', text: JSON.stringify(typedBlock) });
+          continue;
+        }
+
         if (typedBlock.type === 'text') {
-          if (typeof typedBlock.text !== 'string' || typedBlock.text.length > 0) {
+          if (typeof typedBlock.text === 'string' && typedBlock.text.length > 0) {
             sanitized.push(block);
+          } else if (
+            typedBlock.text !== null &&
+            typedBlock.text !== undefined &&
+            typeof typedBlock.text !== 'string'
+          ) {
+            sanitized.push({ ...typedBlock, text: String(typedBlock.text) });
           }
           continue;
         }
@@ -891,6 +930,14 @@ export class ProviderClientService {
           continue;
         }
 
+        if (Object.prototype.hasOwnProperty.call(typedBlock, 'content')) {
+          sanitized.push({
+            ...typedBlock,
+            content: sanitizeContentField(typedBlock.content),
+          });
+          continue;
+        }
+
         sanitized.push(block);
       }
 
@@ -898,19 +945,22 @@ export class ProviderClientService {
     };
 
     if (Array.isArray(body.messages)) {
-      body.messages = (body.messages as unknown[]).map((message) => {
+      body.messages = (body.messages as unknown[]).flatMap((message) => {
         if (!message || typeof message !== 'object') {
-          return message;
+          return [];
         }
 
         const typedMessage = { ...(message as Record<string, unknown>) };
-        typedMessage.content = sanitizeBlocks(typedMessage.content);
-        return typedMessage;
+        if (typedMessage.role !== 'user' && typedMessage.role !== 'assistant') {
+          return [];
+        }
+        typedMessage.content = sanitizeContentField(typedMessage.content);
+        return [typedMessage];
       });
     }
 
-    if (Array.isArray(body.system)) {
-      body.system = sanitizeBlocks(body.system);
+    if (body.system !== undefined) {
+      body.system = sanitizeContentField(body.system);
     }
 
     return body;

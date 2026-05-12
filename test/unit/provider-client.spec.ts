@@ -359,6 +359,123 @@ describe('ProviderClientService', () => {
       expect(body.messages[0].content).toEqual([{ type: 'text', text: 'hello' }]);
     });
 
+    it('should coerce invalid native content fields to Anthropic-compatible values', () => {
+      const svc = makeService();
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: true,
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: true,
+            messages: [
+              { role: 'assistant', content: null },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: 'toolu_1',
+                    content: null,
+                  },
+                  {
+                    type: 'tool_result',
+                    tool_use_id: 'toolu_2',
+                    content: { ok: true },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.messages[0].content).toBe('');
+      expect(body.messages[1].content[0].content).toBe('');
+      expect(body.messages[1].content[1].content).toBe('{"ok":true}');
+    });
+
+    it('should normalize invalid native content blocks after compaction', () => {
+      const svc = makeService();
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: true,
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: true,
+            system: [{}, null, 'system note'],
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  null,
+                  'plain text',
+                  7,
+                  {},
+                  { type: 'text', text: null },
+                  { type: 'text', text: 123 },
+                  { type: 'thinking', thinking: 'hidden', signature: 'sig' },
+                ],
+              },
+              {
+                role: 'assistant',
+                content: [{ type: 'thinking', thinking: 'hidden', signature: 'sig' }],
+              },
+            ],
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.system).toEqual([
+        { type: 'text', text: '{}' },
+        { type: 'text', text: 'system note' },
+      ]);
+      expect(body.messages[0].content).toEqual([
+        { type: 'text', text: 'plain text' },
+        { type: 'text', text: '7' },
+        { type: 'text', text: '{}' },
+        { type: 'text', text: '123' },
+      ]);
+      expect(body.messages[1].content).toBe('');
+    });
+
+    it('should drop invalid native messages before passthrough', () => {
+      const svc = makeService();
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: true,
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: true,
+            messages: [
+              null,
+              { role: 'system', content: 'bad role' },
+              { role: 'user', content: 'keep' },
+            ],
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.messages).toEqual([{ role: 'user', content: 'keep' }]);
+    });
+
     it('should preserve native Anthropic structured-output output_config in passthrough', () => {
       const schema = {
         type: 'object',

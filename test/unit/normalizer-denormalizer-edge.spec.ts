@@ -445,6 +445,55 @@ describe('MessagesNormalizer — edge cases', () => {
     expect(blocks[0].type).toBe('text');
     expect(blocks[0].text).toContain('unknown_type');
   });
+
+  it('should tolerate malformed content blocks from compacted desktop history', () => {
+    const body = {
+      model: 'claude-3-opus',
+      max_tokens: 1024,
+      system: [{ type: 'text', text: 'keep' }, null, {}],
+      messages: [
+        null,
+        {
+          role: 'user',
+          content: [
+            null,
+            'plain text',
+            7,
+            {},
+            { type: 'text', text: null },
+            { type: 'text', text: 123 },
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_1',
+              content: [null, 'tool text', {}],
+            },
+          ],
+        },
+      ],
+      stream: false,
+    };
+
+    const result = normalizer.normalize(body, headers);
+
+    expect(result.messages[0]).toEqual({ role: 'system', content: 'keep' });
+    expect(result.messages[1]).toEqual({ role: 'user', content: '' });
+    const blocks = result.messages[2].content as any[];
+    expect(blocks).toEqual([
+      { type: 'text', text: 'plain text' },
+      { type: 'text', text: '7' },
+      { type: 'text', text: '{}' },
+      { type: 'text', text: '' },
+      { type: 'text', text: '123' },
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_1',
+        content: [
+          { type: 'text', text: 'tool text' },
+          { type: 'text', text: '{}' },
+        ],
+      },
+    ]);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════

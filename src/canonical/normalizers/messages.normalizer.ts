@@ -79,9 +79,13 @@ export class MessagesNormalizer implements Normalizer {
     if (Array.isArray(system)) {
       const text = system
         .filter(
-          (s) => (s as Record<string, unknown>).type === 'text',
+          (s) =>
+            s &&
+            typeof s === 'object' &&
+            (s as Record<string, unknown>).type === 'text',
         )
-        .map((s) => (s as Record<string, unknown>).text as string)
+        .map((s) => String((s as Record<string, unknown>).text || ''))
+        .filter(Boolean)
         .join('\n');
 
       if (text) {
@@ -94,6 +98,12 @@ export class MessagesNormalizer implements Normalizer {
 
   private normalizeMessages(messages: unknown[]): CanonicalMessage[] {
     return messages.map((msg) => {
+      if (!msg || typeof msg !== 'object') {
+        return {
+          role: 'user',
+          content: String(msg || ''),
+        };
+      }
       const m = msg as Record<string, unknown>;
       const role = this.mapRole(m.role as string);
 
@@ -110,14 +120,24 @@ export class MessagesNormalizer implements Normalizer {
     if (typeof content === 'string') return content;
     if (!Array.isArray(content)) return String(content || '');
 
-    return content.map((block) => {
+    return content.flatMap<CanonicalContentBlock>((block) => {
+      if (block === null || block === undefined) return [];
+      if (typeof block === 'string') {
+        return block ? [{ type: 'text', text: block } satisfies TextBlock] : [];
+      }
+      if (typeof block !== 'object') {
+        return [{ type: 'text', text: String(block) } satisfies TextBlock];
+      }
       const b = block as Record<string, unknown>;
+      if (typeof b.type !== 'string' || b.type.length === 0) {
+        return { type: 'text', text: JSON.stringify(b) } satisfies TextBlock;
+      }
 
       switch (b.type) {
         case 'text':
           return {
             type: 'text',
-            text: (b.text as string) || '',
+            text: typeof b.text === 'string' ? b.text : String(b.text || ''),
           } satisfies TextBlock;
 
         case 'image': {
@@ -162,10 +182,23 @@ export class MessagesNormalizer implements Normalizer {
     if (typeof content === 'string') return content;
     if (!Array.isArray(content)) return String(content || '');
 
-    return content.map((block) => {
+    return content.flatMap<CanonicalContentBlock>((block) => {
+      if (block === null || block === undefined) return [];
+      if (typeof block === 'string') {
+        return block ? [{ type: 'text', text: block } satisfies TextBlock] : [];
+      }
+      if (typeof block !== 'object') {
+        return [{ type: 'text', text: String(block) } satisfies TextBlock];
+      }
       const b = block as Record<string, unknown>;
+      if (typeof b.type !== 'string' || b.type.length === 0) {
+        return { type: 'text', text: JSON.stringify(b) } satisfies TextBlock;
+      }
       if (b.type === 'text') {
-        return { type: 'text', text: (b.text as string) || '' } satisfies TextBlock;
+        return {
+          type: 'text',
+          text: typeof b.text === 'string' ? b.text : String(b.text || ''),
+        } satisfies TextBlock;
       }
       if (b.type === 'image') {
         const source = b.source as Record<string, unknown>;
