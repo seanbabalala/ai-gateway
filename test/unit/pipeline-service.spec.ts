@@ -349,6 +349,50 @@ describe('PipelineService — direct routing', () => {
     expect(mocks.scoringService.score).not.toHaveBeenCalled();
   });
 
+  it('allows direct public model aliases when permissions list the upstream model', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        nodes: [
+          {
+            id: 'anthropic-ada',
+            name: 'Anthropic via Ada',
+            protocol: 'messages',
+            models: ['claude-opus-4-7-ada'],
+            model_aliases: {},
+            upstream_model_aliases: {
+              'claude-opus-4-7-ada': 'claude-opus-4-7',
+            },
+          },
+        ],
+        resolveModel: jest.fn().mockReturnValue({
+          nodeId: 'anthropic-ada',
+          model: 'claude-opus-4-7-ada',
+        }),
+      },
+    });
+    const request = makeRequest('Hello', {
+      originalModel: 'claude-opus-4-7-ada',
+    });
+    request.metadata.api_key_permissions = {
+      allow_auto: true,
+      allow_direct: true,
+      allowed_nodes: [],
+      allowed_models: ['claude-opus-4-7'],
+      allowed_endpoints: [],
+      allowed_modalities: [],
+    };
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.providerClient.forward).toHaveBeenCalledWith(
+      request,
+      'anthropic-ada',
+      'claude-opus-4-7-ada',
+      expect.objectContaining({ tier: 'direct', is_fallback: false }),
+    );
+  });
+
   it('should fall through to auto routing for unknown models', async () => {
     const { pipeline, mocks } = makePipeline();
     const request = makeRequest('Hello', { originalModel: 'unknown-model-xyz' });

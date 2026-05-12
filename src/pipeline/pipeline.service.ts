@@ -5036,9 +5036,21 @@ export class PipelineService {
     const nodeAllowed =
       permissions.allowed_nodes.length === 0 ||
       permissions.allowed_nodes.includes(nodeId);
+    const node = this.config.getNode(nodeId);
+    const upstreamModel = node?.upstream_model_aliases?.[model];
+    const configuredAliases = Object.entries(node?.model_aliases || {})
+      .filter(([, target]) => target === model)
+      .map(([alias]) => alias);
+    const modelPermissionCandidates = [
+      model,
+      ...(upstreamModel ? [upstreamModel] : []),
+      ...configuredAliases,
+    ];
     const modelAllowed =
       permissions.allowed_models.length === 0 ||
-      permissions.allowed_models.includes(model);
+      modelPermissionCandidates.some((candidate) =>
+        permissions.allowed_models.includes(candidate),
+      );
 
     return nodeAllowed && modelAllowed;
   }

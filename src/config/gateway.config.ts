@@ -686,6 +686,17 @@ export interface NodeConfig {
   /** Optional prefix added before api_key when auth_type=custom-header, for example "Bearer". */
   auth_header_prefix?: string;
   models: string[];
+  /**
+   * Optional mapping from SiftGate-facing model IDs to upstream provider model IDs.
+   * Use this when the public route name must be unique or client-compatible, but
+   * the provider expects a different model value in the forwarded request body.
+   *
+   * Example:
+   *   models: ["claude-opus-4-7-ada"]
+   *   upstream_model_aliases:
+   *     claude-opus-4-7-ada: claude-opus-4-7
+   */
+  upstream_model_aliases?: Record<string, string>;
   /** Optional OpenAI-compatible embeddings endpoint path (default: /v1/embeddings). */
   embeddings_endpoint?: string;
   /** Embedding-capable model IDs exposed by this node. */

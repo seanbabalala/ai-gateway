@@ -1466,6 +1466,7 @@ export interface NodeInfo {
   model_capabilities?: Record<string, ModelCapabilityInfo>;
   tags: string[];
   aliases: Record<string, string>;
+  upstream_model_aliases?: Record<string, string>;
   model_prefixes: string[];
   circuit: CircuitBreaker;
   modelCircuits: Record<string, CircuitBreaker>;
@@ -2667,6 +2668,7 @@ export interface CreateNodeRequest {
   modalities?: string[];
   tags?: string[];
   model_aliases?: Record<string, string>;
+  upstream_model_aliases?: Record<string, string>;
   model_prefixes?: string[];
   headers?: Record<string, string>;
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>;
@@ -2716,6 +2718,7 @@ export interface UpdateNodeRequest {
   modalities?: string[];
   tags?: string[];
   model_aliases?: Record<string, string>;
+  upstream_model_aliases?: Record<string, string>;
   model_prefixes?: string[];
   headers?: Record<string, string>;
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>;

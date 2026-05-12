@@ -14,6 +14,27 @@
 - Hardened Provider Catalog responsive layout so filters, badges, action buttons, detail metadata, and key/value rows remain readable across desktop, narrow, and multilingual widths.
 - Added `/dashboard` as a Dashboard route alias and tightened sidebar active-state matching so navigation highlights remain precise.
 
+## 2.8.2 - 2026-05-12
+
+### Added
+
+- Added `nodes[].upstream_model_aliases` so SiftGate can expose Claude-compatible public model IDs to Claude Code/Desktop while forwarding the real upstream model ID to the provider.
+- Added config validation, OpenAPI/Dashboard DTO coverage, frontend API typing, and example config documentation for upstream model alias mappings.
+
+### Changed
+
+- Updated direct-route permission checks and `/v1/models` discovery so API keys can match either the public SiftGate model ID or the mapped upstream model ID.
+- Stripped Anthropic native `thinking` and `redacted_thinking` blocks from passthrough message payloads before forwarding them upstream.
+- Updated release metadata to v2.8.2 across package, lock, Dashboard, client, Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+
+### Test Evidence
+
+- Validation passed for focused alias and passthrough coverage: `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/pipeline-service.spec.ts test/unit/config-validator.spec.ts`.
+
+### Boundaries
+
+- v2.8.2 is a backward-compatible provider routing compatibility patch. It does not change storage schemas, routing defaults, privacy defaults, budget semantics, or the public OpenAI-compatible API shape.
+
 ## 2.8.1 - 2026-05-10
 
 ### Added

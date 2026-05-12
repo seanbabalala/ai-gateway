@@ -1681,6 +1681,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     id: string;
     node: string;
     nodeName: string;
+    upstreamModel?: string;
     aliases: string[];
     isAlias: boolean;
   }[] {
@@ -1688,6 +1689,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       id: string;
       node: string;
       nodeName: string;
+      upstreamModel?: string;
       aliases: string[];
       isAlias: boolean;
     }[] = [];
@@ -1719,6 +1721,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
           id: modelId,
           node: node.id,
           nodeName: node.name,
+          upstreamModel: node.upstream_model_aliases?.[modelId],
           aliases,
           isAlias: false,
         });

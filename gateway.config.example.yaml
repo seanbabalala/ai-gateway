@@ -540,7 +540,12 @@ nodes:
     endpoint: "/v1/messages"
     api_key: "${ANTHROPIC_API_KEY}"
     auth_type: x-api-key # Anthropic uses x-api-key header
-    models: ["claude-sonnet-4-20250514"]
+    # Expose a Claude-compatible public name while sending the provider's
+    # real model id upstream. This is useful for Claude Code/Desktop or other
+    # clients that validate Anthropic-shaped model names.
+    models: ["claude-sonnet-4-20250514", "claude-sonnet-4-20250514-ada"]
+    upstream_model_aliases:
+      claude-sonnet-4-20250514-ada: claude-sonnet-4-20250514
     timeout_ms: 120000
     max_context_tokens: 200000
     structured_output: false

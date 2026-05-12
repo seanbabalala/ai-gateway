@@ -1413,6 +1413,7 @@ function validateNodes(
     }
 
     validateNodeAliases(node, basePath, issues);
+    validateNodeUpstreamModelAliases(node, basePath, issues);
     validateNodeConnection(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
     validateNodeCompatibilityProfileShape(node, basePath, issues);
@@ -1427,6 +1428,66 @@ function validateNodes(
       );
     }
   });
+}
+
+function validateNodeUpstreamModelAliases(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.upstream_model_aliases === undefined) return;
+
+  if (!isRecord(node.upstream_model_aliases)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_upstream_model_aliases',
+        'nodes[].upstream_model_aliases must be an object.',
+        `${basePath}.upstream_model_aliases`,
+      ),
+    );
+    return;
+  }
+
+  const models = new Set(
+    Array.isArray(node.models) ? node.models.filter(isNonEmptyString) : [],
+  );
+
+  for (const [publicModel, upstreamModel] of Object.entries(
+    node.upstream_model_aliases,
+  )) {
+    const aliasPath = `${basePath}.upstream_model_aliases.${publicModel}`;
+    if (!isNonEmptyString(publicModel)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_upstream_model_alias',
+          'Upstream model alias keys must be non-empty.',
+          aliasPath,
+        ),
+      );
+    }
+    if (!isNonEmptyString(upstreamModel)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_upstream_model_alias_target',
+          'Upstream model alias targets must be non-empty strings.',
+          aliasPath,
+        ),
+      );
+    }
+    if (models.size > 0 && !models.has(publicModel)) {
+      issues.push(
+        issue(
+          'warning',
+          'upstream_model_alias_not_listed',
+          `Upstream model alias "${publicModel}" is not listed under this node's models.`,
+          aliasPath,
+        ),
+      );
+    }
+  }
 }
 
 function validateNodeCompatibilityProfileShape(
