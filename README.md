@@ -23,7 +23,7 @@
 
 # SiftGate
 
-Current release: **v2.8.2**.
+Current release: **v2.8.3**.
 
 SiftGate is an MIT open-source gateway that sits between your applications,
 agents, and upstream AI providers. It gives teams one governed ingress for

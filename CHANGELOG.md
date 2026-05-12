@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 2.8.3 - 2026-05-12
+
+### Fixed
+
+- Hardened Anthropic native message passthrough against malformed desktop history payloads by dropping invalid messages, coercing invalid content fields, and stripping empty or unsupported blocks before forwarding upstream.
+- Made message normalization tolerate compacted request history that contains null, primitive, or missing-type content blocks without preserving malformed provider payload nodes.
+
+### Test Evidence
+
+- Added focused coverage for malformed native content fields, compacted desktop history blocks, invalid native messages, and normalizer edge cases.
+
+### Boundaries
+
+- v2.8.3 is a compatibility bugfix only. It does not change routing defaults, storage schemas, authentication, budget behavior, provider alias semantics, or Dashboard UX.
+
 ### Added
 
 - Added reusable Dashboard guidance sections that collapse by setup completion, remember manual visibility, and keep help entry points available without permanently occupying each page.
