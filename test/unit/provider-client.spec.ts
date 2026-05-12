@@ -321,6 +321,44 @@ describe('ProviderClientService', () => {
       expect(body.messages[0].content[0].type).toBe('tool_use');
     });
 
+    it('should strip thinking blocks in native passthrough', () => {
+      const svc = makeService();
+      const canonical = {
+        messages: [{ role: 'user' as const, content: 'Hi' }],
+        stream: true,
+        metadata: {
+          source_format: 'messages' as const,
+          original_model: 'claude-3-opus',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-3-opus',
+            stream: true,
+            messages: [
+              {
+                role: 'assistant',
+                content: [
+                  {
+                    type: 'thinking',
+                    thinking: 'short prior thought',
+                    signature: 'sig_123',
+                  },
+                  {
+                    type: 'redacted_thinking',
+                    data: 'opaque',
+                  },
+                  { type: 'text', text: 'hello' },
+                ],
+              },
+            ],
+          },
+        },
+      };
+
+      const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
+
+      expect(body.messages[0].content).toEqual([{ type: 'text', text: 'hello' }]);
+    });
+
     it('should preserve native Anthropic structured-output output_config in passthrough', () => {
       const schema = {
         type: 'object',
@@ -554,6 +592,37 @@ describe('ProviderClientService', () => {
       const result = await svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta);
       expect(result.id).toBe('chatcmpl-test');
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello!' });
+    });
+
+    it('should send the upstream model when a public route model is aliased', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl-alias',
+          model: 'claude-opus-4-7',
+          choices: [{ message: { content: 'Hello!' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        models: ['claude-opus-4-7-ada'],
+        upstream_model_aliases: {
+          'claude-opus-4-7-ada': 'claude-opus-4-7',
+        },
+      });
+      const result = await svc.forward(
+        makeCanonical(),
+        'openai',
+        'claude-opus-4-7-ada',
+        routingMeta,
+      );
+
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(JSON.parse(opts.body as string).model).toBe('claude-opus-4-7');
+      expect(result.model).toBe('claude-opus-4-7');
     });
 
     it('should resolve DeepSeek cache usage through the usage schema registry', async () => {
@@ -1145,6 +1214,38 @@ describe('ProviderClientService', () => {
       }
       expect(events.length).toBeGreaterThanOrEqual(3);
       expect(events[0].type).toBe('start');
+    });
+
+    it('should send the upstream model for aliased streaming routes', async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        models: ['claude-opus-4-7-ada'],
+        upstream_model_aliases: {
+          'claude-opus-4-7-ada': 'claude-opus-4-7',
+        },
+      });
+      for await (const _event of svc.forwardStream(
+        makeCanonical({ stream: true }),
+        'openai',
+        'claude-opus-4-7-ada',
+      )) {
+        // drain stream
+      }
+
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(JSON.parse(opts.body as string).model).toBe('claude-opus-4-7');
     });
 
     it('should stream through a configured dispatcher', async () => {

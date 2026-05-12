@@ -106,7 +106,8 @@ export class ProviderClientService {
         if (!node) throw new Error(`Node not found: ${nodeId}`);
 
         const startTime = Date.now();
-        const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
+        const upstreamModel = this.resolveUpstreamModel(node, targetModel);
+        const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
         (requestBody as Record<string, unknown>).stream = false;
 
         const response = await this.sendRequest(
@@ -343,7 +344,8 @@ export class ProviderClientService {
     const node = this.config.getNode(nodeId);
     if (!node) throw new Error(`Node not found: ${nodeId}`);
 
-    const requestBody = this.denormalizeRequest(canonical, node.protocol, targetModel);
+    const upstreamModel = this.resolveUpstreamModel(node, targetModel);
+    const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
     (requestBody as Record<string, unknown>).stream = true;
 
     const response = await this.sendRequest(
@@ -696,6 +698,10 @@ export class ProviderClientService {
     }
   }
 
+  private resolveUpstreamModel(node: NodeConfig, targetModel: string): string {
+    return node.upstream_model_aliases?.[targetModel] || targetModel;
+  }
+
   private buildEmbeddingsRequest(
     canonical: CanonicalEmbeddingRequest,
     targetModel: string,
@@ -863,18 +869,32 @@ export class ProviderClientService {
         return value;
       }
 
-      return value.filter((block) => {
+      const sanitized: unknown[] = [];
+      for (const block of value) {
         if (!block || typeof block !== 'object') {
-          return true;
+          sanitized.push(block);
+          continue;
         }
 
         const typedBlock = block as Record<string, unknown>;
-        if (typedBlock.type !== 'text') {
-          return true;
+        if (typedBlock.type === 'text') {
+          if (typeof typedBlock.text !== 'string' || typedBlock.text.length > 0) {
+            sanitized.push(block);
+          }
+          continue;
         }
 
-        return typeof typedBlock.text !== 'string' || typedBlock.text.length > 0;
-      });
+        if (
+          typedBlock.type === 'thinking' ||
+          typedBlock.type === 'redacted_thinking'
+        ) {
+          continue;
+        }
+
+        sanitized.push(block);
+      }
+
+      return sanitized;
     };
 
     if (Array.isArray(body.messages)) {

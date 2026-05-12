@@ -268,6 +268,16 @@ export class CreateNodeDto {
   @IsObject()
   model_aliases?: Record<string, string>;
 
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { 'claude-opus-4-7-ada': 'claude-opus-4-7' },
+    description: 'Map public SiftGate model ids to the actual upstream provider model sent in the request body.',
+  })
+  @IsOptional()
+  @IsObject()
+  upstream_model_aliases?: Record<string, string>;
+
   @ApiPropertyOptional({ type: [String], example: ['gpt'] })
   @IsOptional()
   @IsArray()
@@ -626,6 +636,16 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsObject()
   model_aliases?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { 'claude-opus-4-7-ada': 'claude-opus-4-7' },
+    description: 'Map public SiftGate model ids to the actual upstream provider model sent in the request body.',
+  })
+  @IsOptional()
+  @IsObject()
+  upstream_model_aliases?: Record<string, string>;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt'] })
   @IsOptional()

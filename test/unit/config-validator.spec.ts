@@ -2564,6 +2564,74 @@ describe('config validator', () => {
     expect(codes(invalid.warnings)).toContain('custom_auth_header_ignored');
   });
 
+  it('validates upstream model aliases on public node model ids', () => {
+    const valid = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        nodes: [
+          {
+            id: 'anthropic-ada',
+            name: 'Anthropic via Ada',
+            protocol: 'messages',
+            base_url: 'https://api.anthropic.com',
+            endpoint: '/v1/messages',
+            api_key: '${OPENAI_API_KEY:-test}',
+            auth_type: 'x-api-key',
+            models: ['claude-opus-4-7-ada'],
+            upstream_model_aliases: {
+              'claude-opus-4-7-ada': 'claude-opus-4-7',
+            },
+            timeout_ms: 60000,
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: {
+                node: 'anthropic-ada',
+                model: 'claude-opus-4-7-ada',
+              },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        models_pricing: {
+          'claude-opus-4-7-ada': { input: 15, output: 75 },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(valid.ok).toBe(true);
+    expect(codes(valid.errors)).not.toContain('invalid_upstream_model_aliases');
+    expect(codes(valid.warnings)).not.toContain('upstream_model_alias_not_listed');
+
+    const invalid = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        nodes: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            protocol: 'chat_completions',
+            base_url: 'https://api.openai.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o-mini'],
+            upstream_model_aliases: {
+              'claude-opus-4-7-ada': 42,
+            },
+            timeout_ms: 60000,
+          },
+        ],
+      }),
+      { env: {} },
+    );
+
+    expect(invalid.ok).toBe(false);
+    expect(codes(invalid.errors)).toContain('invalid_upstream_model_alias_target');
+    expect(codes(invalid.warnings)).toContain('upstream_model_alias_not_listed');
+  });
+
   it('validates local namespaces, API key bindings, and shadow traffic config', () => {
     const result = validateConfigObject(
       {

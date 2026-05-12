@@ -955,6 +955,14 @@ export class SanitizedNodeConfigDto {
   @ApiProperty({ type: [String], example: ['gpt-4o', 'gpt-4o-mini'] })
   models!: string[];
 
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { 'claude-opus-4-7-ada': 'claude-opus-4-7' },
+    description: 'Public model id to upstream provider model mapping.',
+  })
+  upstream_model_aliases?: Record<string, string>;
+
   @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
   embedding_models?: string[];
 

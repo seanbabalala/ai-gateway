@@ -5795,6 +5795,7 @@ export class DashboardController {
         model_capabilities: modelCapabilities,
         tags: node.tags || [],
         aliases: node.model_aliases || {},
+        upstream_model_aliases: node.upstream_model_aliases || {},
         model_prefixes: node.model_prefixes || [],
         circuit: {
           state: cbStatus.state,
@@ -6249,6 +6250,7 @@ export class DashboardController {
             modalities: dto.modalities as Modality[] | undefined,
             tags: dto.tags,
             model_aliases: dto.model_aliases,
+            upstream_model_aliases: dto.upstream_model_aliases,
             model_prefixes: dto.model_prefixes,
             headers: dto.headers,
             auth_type: dto.auth_type,

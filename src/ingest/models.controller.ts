@@ -60,6 +60,9 @@ export class ModelsController {
       const modelAllowed =
         !gatewayKey?.allowed_models.length ||
         gatewayKey.allowed_models.includes(model.id) ||
+        (model.upstreamModel
+          ? gatewayKey.allowed_models.includes(model.upstreamModel)
+          : false) ||
         model.aliases.some((alias) => gatewayKey.allowed_models.includes(alias));
       return nodeAllowed && modelAllowed;
     }) : [];
@@ -93,6 +96,7 @@ export class ModelsController {
         created: 0,
         owned_by: m.node,
         node_name: m.nodeName,
+        ...(m.upstreamModel ? { upstream_model: m.upstreamModel } : {}),
         aliases: hasAgentProfile ? [] : m.aliases,
       })),
       // Alias entries (so clients can discover shortcuts)
