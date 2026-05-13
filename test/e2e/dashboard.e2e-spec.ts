@@ -59,6 +59,60 @@ describe('Dashboard (e2e)', () => {
     expect(res.body.pagination.limit).toBe(5);
   });
 
+  it('GET /api/dashboard/logs?period=15m → filters recent logs and returns client source', async () => {
+    const timestamp = Date.now();
+    await harness.callLogRepo.save([
+      harness.callLogRepo.create({
+        request_id: `logs-period-new-${timestamp}`,
+        source_format: 'chat_completions',
+        client_source: 'curl',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o-mini',
+        input_tokens: 1,
+        output_tokens: 1,
+        cost_usd: 0,
+        latency_ms: 10,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+      }),
+      harness.callLogRepo.create({
+        request_id: `logs-period-old-${timestamp}`,
+        timestamp: new Date(Date.now() - 60 * 60_000),
+        source_format: 'chat_completions',
+        client_source: 'postman',
+        tier: 'standard',
+        score: 0.5,
+        node_id: 'mock-openai',
+        model: 'gpt-4o-mini',
+        input_tokens: 1,
+        output_tokens: 1,
+        cost_usd: 0,
+        latency_ms: 10,
+        status_code: 200,
+        workspace_id: DEFAULT_WORKSPACE_ID,
+      }),
+    ]);
+
+    const res = await harness.agent.get('/api/dashboard/logs?period=15m&limit=50');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          request_id: `logs-period-new-${timestamp}`,
+          client_source: 'curl',
+        }),
+      ]),
+    );
+    expect(res.body.data).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ request_id: `logs-period-old-${timestamp}` }),
+      ]),
+    );
+  });
+
   it('GET /api/dashboard/workspaces → returns default organization and workspace', async () => {
     const res = await harness.agent.get('/api/dashboard/workspaces');
 

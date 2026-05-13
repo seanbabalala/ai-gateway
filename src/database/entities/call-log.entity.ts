@@ -15,6 +15,7 @@ import {
 @Index(['trace_id'])
 @Index(['experiment_group'])
 @Index(['workspace_id'])
+@Index(['client_source'])
 @Index(['api_key_name'])
 @Index(['api_key_id'])
 @Index(['namespace_id'])
@@ -39,6 +40,9 @@ export class CallLog {
 
   @Column({ type: 'varchar' })
   source_format!: string; // chat_completions | responses | messages | embeddings | rerank | image_* | audio_* | video_*
+
+  @Column({ type: 'varchar', nullable: true })
+  client_source!: string | null;
 
   @Column({ type: 'varchar' })
   tier!: string; // simple | standard | complex | reasoning

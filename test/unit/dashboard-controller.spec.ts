@@ -2811,6 +2811,7 @@ describe("DashboardController — exportLogs", () => {
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
     await controller.exportLogs(
       "json",
+      "7d",
       7,
       undefined,
       undefined,
@@ -2832,11 +2833,11 @@ describe("DashboardController — exportLogs", () => {
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const res: any = { setHeader: jest.fn(), send: jest.fn() };
-    await controller.exportLogs("csv", 7, undefined, undefined, undefined, res);
+    await controller.exportLogs("csv", "7d", 7, undefined, undefined, undefined, res);
 
     expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "text/csv");
     const csv = res.send.mock.calls[0][0] as string;
-    expect(csv).toContain("timestamp,request_id");
+    expect(csv).toContain("timestamp,request_id,client_source");
   });
 });
 

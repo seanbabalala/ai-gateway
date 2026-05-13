@@ -188,6 +188,7 @@ export interface CanonicalRequestMetadata {
   session_key?: string;
   trace_id?: string;
   raw_headers: Record<string, string>;
+  client_source?: string;
   raw_body?: unknown;
   media?: CanonicalMediaMetadata;
   workspace_id?: string | null;

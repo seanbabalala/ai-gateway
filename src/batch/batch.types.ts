@@ -12,6 +12,7 @@ export interface BatchRequestContext {
   startedAt: number;
   session_id?: string;
   trace_id?: string;
+  client_source?: string;
 }
 
 export interface BatchProxyResponse {

@@ -5,6 +5,7 @@ const CALL_LOGS_TABLE = 'call_logs';
 const ROUTE_DECISIONS_TABLE = 'route_decisions';
 const COST_WITHOUT_CACHE_COLUMN = 'cost_without_cache_usd';
 const STREAM_COLUMN = 'stream';
+const CLIENT_SOURCE_COLUMNS = ['client_source'] as const;
 const AGENT_METADATA_COLUMNS = [
   'agent_connector',
   'agent_profile_id',
@@ -67,6 +68,13 @@ export async function applyCallLogSchemaPatches(
   if (await applyCallLogStreamSchemaPatch(dataSource)) {
     applied.push(STREAM_COLUMN);
   }
+  applied.push(
+    ...(await applyMetadataTextColumnPatches(
+      dataSource,
+      CALL_LOGS_TABLE,
+      CLIENT_SOURCE_COLUMNS,
+    )),
+  );
   applied.push(
     ...(await applyMetadataTextColumnPatches(
       dataSource,
@@ -237,6 +245,13 @@ export async function hasCallLogStreamColumn(
 ): Promise<boolean> {
   if (!supportsSchemaPatch(dataSource)) return false;
   return hasTableColumnInternal(dataSource, CALL_LOGS_TABLE, STREAM_COLUMN);
+}
+
+export async function hasCallLogClientSourceColumn(
+  dataSource: DataSource,
+): Promise<boolean> {
+  if (!supportsSchemaPatch(dataSource)) return false;
+  return hasTableColumnInternal(dataSource, CALL_LOGS_TABLE, 'client_source');
 }
 
 export async function hasCallLogAgentMetadataColumn(

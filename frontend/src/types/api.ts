@@ -694,6 +694,7 @@ export interface CallLog {
   request_id: string;
   timestamp: string;
   source_format: string;
+  client_source?: string | null;
   tier: string;
   score: number;
   node_id: string;

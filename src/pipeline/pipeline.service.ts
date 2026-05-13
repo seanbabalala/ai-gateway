@@ -5619,6 +5619,10 @@ export class PipelineService {
       const log = this.callLogRepo.create({
         request_id: params.requestId,
         source_format: params.canonical.metadata.source_format,
+        client_source:
+          params.canonical.metadata.agent_connector ||
+          params.canonical.metadata.client_source ||
+          null,
         workspace_id: this.workspaceIdForCanonical(params.canonical),
         tier: params.tier, score: params.score,
         node_id: params.nodeId, model: params.model,

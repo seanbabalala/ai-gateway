@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route, Database } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route, Database, Terminal, Monitor, Code2 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { TierBadge } from '@/components/shared/TierBadge'
@@ -39,7 +39,7 @@ import { getAuthToken } from '@/contexts/AuthContext'
 import type { CallLog } from '@/types/api'
 
 const LIMIT = 20
-const TABLE_COLUMNS = 12
+const TABLE_COLUMNS = 13
 
 function formatBytes(value?: number | null) {
   if (value === null || value === undefined) return null
@@ -84,6 +84,31 @@ function SourceBadge({ sourceFormat }: { sourceFormat: string }) {
   return (
     <Badge variant="blue" className="max-w-[150px] truncate whitespace-nowrap">
       {sourceFormatLabel(sourceFormat, t)}
+    </Badge>
+  )
+}
+
+function clientSourceIcon(source?: string | null) {
+  if (!source) return Monitor
+  if (['curl', 'postman', 'insomnia', 'python_http', 'node_http', 'http_client'].includes(source)) {
+    return Terminal
+  }
+  if (['claude_code', 'codex', 'cherry_studio', 'hermes', 'openclaw', 'cursor', 'cline'].includes(source)) {
+    return Code2
+  }
+  return Monitor
+}
+
+function ClientSourceBadge({ source }: { source?: string | null }) {
+  const { t } = useTranslation('logs')
+  const Icon = clientSourceIcon(source)
+  const label = source
+    ? t(`clientSource.${source}`, { defaultValue: source.replaceAll('_', ' ') })
+    : t('clientSource.unknown')
+  return (
+    <Badge variant={source ? 'zinc' : 'default'} className="max-w-[150px] gap-1 truncate whitespace-nowrap">
+      <Icon className="h-3 w-3 shrink-0" />
+      <span className="truncate">{label}</span>
     </Badge>
   )
 }
@@ -186,6 +211,16 @@ function LogDetailRow({
             <span className="text-[var(--foreground-dim)]">{t('detail.sourceFormat')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
               {sourceFormatLabel(log.source_format, t)}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.clientSource')}: </span>
+            <span className="font-mono text-[var(--foreground-muted)]">
+              {log.client_source
+                ? t(`clientSource.${log.client_source}`, {
+                    defaultValue: log.client_source.replaceAll('_', ' '),
+                  })
+                : t('clientSource.unknown')}
             </span>
           </div>
           <div>
@@ -424,7 +459,7 @@ export function LogsPage() {
   const [namespaceFilter, setNamespaceFilter] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [exportFormat, setExportFormat] = useState('csv')
-  const [exportDays, setExportDays] = useState('7')
+  const [timeRange, setTimeRange] = useState('7d')
 
   const { data: apiKeysData } = useApiKeys()
   const { data: namespacesData } = useNamespaces()
@@ -450,10 +485,15 @@ export function LogsPage() {
     { value: 'csv', label: t('export.csv') },
     { value: 'json', label: t('export.json') },
   ]
-  const exportDaysOptions = [
-    { value: '7', label: t('export.days', { count: 7 }) },
-    { value: '30', label: t('export.days', { count: 30 }) },
-    { value: '90', label: t('export.days', { count: 90 }) },
+  const timeRangeOptions = [
+    { value: '15m', label: t('timeRange.15m') },
+    { value: '30m', label: t('timeRange.30m') },
+    { value: '1h', label: t('timeRange.1h') },
+    { value: '6h', label: t('timeRange.6h') },
+    { value: 'today', label: t('timeRange.today') },
+    { value: '7d', label: t('timeRange.7d') },
+    { value: '30d', label: t('timeRange.30d') },
+    { value: '90d', label: t('timeRange.90d') },
   ]
   const apiKeyOptions = [
     { value: '', label: t('filters.allApiKeys') },
@@ -473,6 +513,7 @@ export function LogsPage() {
     status: statusFilter || undefined,
     api_key_id: apiKeyFilter || undefined,
     namespace: namespaceFilter || undefined,
+    period: timeRange,
   })
 
   const { newCount, clearNewCount } = useSSELogs(100)
@@ -482,9 +523,14 @@ export function LogsPage() {
     refetch()
   }
 
+  const handleTimeRangeChange = (value: string) => {
+    setTimeRange(value)
+    setPage(1)
+  }
+
   const handleExport = () => {
     const token = getAuthToken()
-    const params = new URLSearchParams({ format: exportFormat, days: exportDays })
+    const params = new URLSearchParams({ format: exportFormat, period: timeRange })
     if (apiKeyFilter) params.set('api_key_id', apiKeyFilter)
     if (namespaceFilter) params.set('namespace', namespaceFilter)
     const url = `/api/dashboard/logs/export?${params.toString()}`
@@ -496,7 +542,7 @@ export function LogsPage() {
       .then((blob) => {
         const a = document.createElement('a')
         a.href = URL.createObjectURL(blob)
-        a.download = `logs-${exportDays}d.${exportFormat}`
+        a.download = `logs-${timeRange}.${exportFormat}`
         a.click()
         URL.revokeObjectURL(a.href)
       })
@@ -512,10 +558,10 @@ export function LogsPage() {
       >
         <div className="flex items-center gap-2">
           <Select
-            options={exportDaysOptions}
-            value={exportDays}
-            onChange={(v) => setExportDays(v)}
-            className="w-24 h-8 text-[11px]"
+            options={timeRangeOptions}
+            value={timeRange}
+            onChange={handleTimeRangeChange}
+            className="h-8 w-28 text-[11px]"
           />
           <Select
             options={exportFormatOptions}
@@ -612,6 +658,7 @@ export function LogsPage() {
                   <TableHead className="w-8" />
                   <TableHead>{t('table.time')}</TableHead>
                   <TableHead>{t('table.source')}</TableHead>
+                  <TableHead>{t('table.clientSource')}</TableHead>
                   <TableHead>{t('table.routeResult')}</TableHead>
                   <TableHead>{t('table.upstream')}</TableHead>
                   <TableHead>{t('table.upstreamProtocol')}</TableHead>
@@ -644,6 +691,9 @@ export function LogsPage() {
                       </TableCell>
                       <TableCell>
                         <SourceBadge sourceFormat={log.source_format} />
+                      </TableCell>
+                      <TableCell>
+                        <ClientSourceBadge source={log.client_source} />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">

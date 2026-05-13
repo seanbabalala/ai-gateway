@@ -6,6 +6,7 @@ import {
   applyAgentMetadataSchemaPatches,
   hasCallLogCostWithoutCacheColumn,
   hasCallLogAgentMetadataColumn,
+  hasCallLogClientSourceColumn,
   hasRouteDecisionAgentMetadataColumn,
   hasCallLogStreamColumn,
   revertCallLogCostWithoutCacheSchemaPatch,
@@ -138,6 +139,7 @@ describe('CallLog schema patch', () => {
     expect(applied).toEqual(expect.arrayContaining([
       'cost_without_cache_usd',
       'stream',
+      'client_source',
       'agent_connector',
       'route_decisions.agent_connector',
       'intelligence_optimizer_applied',
@@ -151,6 +153,9 @@ describe('CallLog schema patch', () => {
     );
     expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN stream boolean NOT NULL DEFAULT 0',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN client_source varchar',
     );
     expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN intelligence_optimizer_applied boolean NOT NULL DEFAULT 0',
@@ -189,6 +194,18 @@ describe('CallLog schema patch', () => {
     expect(query).toHaveBeenCalledWith(
       'ALTER TABLE route_decisions ADD COLUMN IF NOT EXISTS agent_connector varchar NULL',
     );
+  });
+
+  it('detects existing call log client source column', async () => {
+    const dataSource = {
+      options: { type: 'better-sqlite3' },
+      query: jest
+        .fn()
+        .mockResolvedValueOnce([{ name: 'call_logs' }])
+        .mockResolvedValueOnce([{ name: 'client_source' }]),
+    } as any;
+
+    await expect(hasCallLogClientSourceColumn(dataSource)).resolves.toBe(true);
   });
 
   it('reverts the schema patch for both PostgreSQL and SQLite drivers', async () => {

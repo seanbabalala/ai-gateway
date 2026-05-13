@@ -53,6 +53,7 @@ export class BatchApiProxyService {
       startedAt: Date.now(),
       session_id: identity.session_id,
       trace_id: identity.trace_id,
+      client_source: identity.client_source,
     };
   }
 
@@ -468,6 +469,7 @@ export class BatchApiProxyService {
     const log = this.callLogs.create({
       request_id: input.context.requestId,
       source_format: 'batch',
+      client_source: input.context.client_source || null,
       tier: 'direct',
       score: 0,
       node_id: input.target.nodeId,

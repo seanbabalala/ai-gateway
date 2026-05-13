@@ -207,6 +207,27 @@ describe('ChatCompletionsNormalizer', () => {
     expect(result.metadata.session_key).toBe('sess_abc123');
   });
 
+  it('should normalize privacy-safe client source from user-agent', () => {
+    const result = normalizer.normalize(
+      { model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }], stream: false },
+      { ...headers, 'user-agent': 'curl/8.4.0' },
+    );
+    expect(result.metadata.client_source).toBe('curl');
+    expect(result.metadata.raw_headers['user-agent']).toBe('curl/8.4.0');
+  });
+
+  it('should recognize Claude Code without storing raw client headers in call logs', () => {
+    const result = normalizer.normalize(
+      { model: 'claude-sonnet-4-20250514', messages: [{ role: 'user', content: 'Hi' }], stream: false },
+      {
+        ...headers,
+        'user-agent': 'Claude-Code/1.0',
+        'anthropic-beta': 'claude-code-20250219',
+      },
+    );
+    expect(result.metadata.client_source).toBe('claude_code');
+  });
+
   it('should extract trace id from direct trace headers', () => {
     const result = normalizer.normalize(
       { model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }], stream: false },

@@ -1869,6 +1869,32 @@ describe('PipelineService — call logging', () => {
     expect(Object.values(metricInput)).not.toContain('key_secret_123');
   });
 
+  it('should persist normalized client source in call logs', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.client_source = 'curl';
+    request.metadata.raw_headers = { 'user-agent': 'curl/8.4.0' };
+
+    await pipeline.process(request);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.client_source).toBe('curl');
+    expect(savedLog).not.toHaveProperty('raw_headers');
+    expect(JSON.stringify(savedLog)).not.toContain('curl/8.4.0');
+  });
+
+  it('should prefer agent connector over generic user-agent source', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.metadata.client_source = 'http_client';
+    request.metadata.agent_connector = 'claude_code';
+
+    await pipeline.process(request);
+
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.client_source).toBe('claude_code');
+  });
+
   it('should mark fallback responses in business metrics', async () => {
     const telemetry = new TelemetryService();
     jest.spyOn(telemetry, 'recordCallMetrics');

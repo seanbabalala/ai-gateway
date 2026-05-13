@@ -3694,6 +3694,7 @@ export class DashboardController {
   @ApiQuery({ name: "api_key", required: false })
   @ApiQuery({ name: "api_key_id", required: false })
   @ApiQuery({ name: "namespace", required: false })
+  @ApiQuery({ name: "period", required: false, example: "7d" })
   @ApiOkResponse({
     description: "Paginated call logs and pagination metadata.",
   })
@@ -3706,12 +3707,15 @@ export class DashboardController {
     @Query("api_key") apiKey?: string,
     @Query("api_key_id") apiKeyId?: string,
     @Query("namespace") namespaceId?: string,
+    @Query("period") period?: string,
   ) {
     const qb = this.callLogRepo
       .createQueryBuilder("log")
       .orderBy("log.timestamp", "DESC")
       .addOrderBy("log.id", "DESC");
 
+    const since = this.logSinceFromPeriod(period);
+    if (since) qb.andWhere("log.timestamp >= :since", { since });
     if (tier) qb.andWhere("log.tier = :tier", { tier });
     if (node) qb.andWhere("log.node_id = :node", { node });
     if (status)
@@ -3811,6 +3815,7 @@ export class DashboardController {
   @Get("logs/export")
   @ApiOperation({ summary: "Export call logs as CSV or JSON" })
   @ApiQuery({ name: "format", required: false, enum: ["csv", "json"] })
+  @ApiQuery({ name: "period", required: false, example: "7d" })
   @ApiQuery({ name: "days", required: false, example: 7 })
   @ApiQuery({ name: "api_key", required: false })
   @ApiQuery({ name: "api_key_id", required: false })
@@ -3818,6 +3823,7 @@ export class DashboardController {
   @ApiOkResponse({ description: "A CSV or JSON file download." })
   async exportLogs(
     @Query("format") format: string = "csv",
+    @Query("period") period: string | undefined,
     @Query("days", new DefaultValuePipe(7), ParseIntPipe) days: number,
     @Query("api_key") apiKey: string | undefined,
     @Query("api_key_id") apiKeyId: string | undefined,
@@ -3825,7 +3831,10 @@ export class DashboardController {
     @Res() res: Response,
   ) {
     const safeDays = Math.min(Math.max(days, 1), 365);
-    const since = new Date(Date.now() - safeDays * 86_400_000);
+    const exportPeriod = this.normalizeLogPeriod(period) || `${safeDays}d`;
+    const since =
+      this.logSinceFromPeriod(exportPeriod) ||
+      new Date(Date.now() - safeDays * 86_400_000);
 
     const qb = this.callLogRepo
       .createQueryBuilder("log")
@@ -3838,7 +3847,7 @@ export class DashboardController {
       res.setHeader("Content-Type", "application/json");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="logs-${safeDays}d.json"`,
+        `attachment; filename="logs-${exportPeriod}.json"`,
       );
       res.send(JSON.stringify(logs, null, 2));
       return;
@@ -3848,6 +3857,7 @@ export class DashboardController {
     const headers = [
       "timestamp",
       "request_id",
+      "client_source",
       "tier",
       "score",
       "node_id",
@@ -3910,9 +3920,33 @@ export class DashboardController {
     res.setHeader("Content-Type", "text/csv");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="logs-${safeDays}d.csv"`,
+      `attachment; filename="logs-${exportPeriod}.csv"`,
     );
     res.send(csvRows.join("\n"));
+  }
+
+  private normalizeLogPeriod(period: string | undefined): string | null {
+    const normalized = (period || "").trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized === "today") return "today";
+    if (/^\d+[mhd]$/.test(normalized)) return normalized;
+    return null;
+  }
+
+  private logSinceFromPeriod(period: string | undefined): Date | null {
+    const normalized = this.normalizeLogPeriod(period);
+    if (!normalized) return null;
+    if (normalized === "today") {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      return start;
+    }
+
+    const amount = Number(normalized.slice(0, -1));
+    const unit = normalized.slice(-1);
+    const multiplier =
+      unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : 86_400_000;
+    return new Date(Date.now() - amount * multiplier);
   }
 
   // ══════════════════════════════════════════════════════
