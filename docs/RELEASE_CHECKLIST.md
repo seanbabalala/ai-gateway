@@ -44,6 +44,19 @@ npm run release:check
 
 The check must be read-only. It should fail if version metadata is misaligned.
 
+## Required CI Signals
+
+Every pull request should get non-Docker CI signal from `.github/workflows/ci.yml`:
+
+- backend docs, build, unit tests, e2e tests, config validation, Kubernetes
+  validation, release metadata, provider registry, and production dependency
+  audit
+- frontend checks and build
+- TypeScript SDK build, tests, typecheck, and Python SDK tests
+
+Docker smoke remains a separate workflow because it depends on a working Docker
+daemon and is useful as a container-path complement, not the only quality gate.
+
 ## Required Tests
 
 Choose the full set that matches the release scope. For v2 platform releases,
