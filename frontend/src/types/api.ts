@@ -1468,6 +1468,7 @@ export interface NodeInfo {
   tags: string[];
   aliases: Record<string, string>;
   upstream_model_aliases?: Record<string, string>;
+  request_compatibility?: NodeRequestCompatibility;
   model_prefixes: string[];
   circuit: CircuitBreaker;
   modelCircuits: Record<string, CircuitBreaker>;
@@ -1492,6 +1493,10 @@ export interface ModelCapabilityInfo {
   dimensions?: number | number[];
   pricing?: ModelPricing;
   quality_score?: number;
+}
+
+export interface NodeRequestCompatibility {
+  messages_tool_result_content?: "native" | "string";
 }
 
 export type ConfigDiagnosticCode =
@@ -2670,6 +2675,7 @@ export interface CreateNodeRequest {
   tags?: string[];
   model_aliases?: Record<string, string>;
   upstream_model_aliases?: Record<string, string>;
+  request_compatibility?: NodeRequestCompatibility;
   model_prefixes?: string[];
   headers?: Record<string, string>;
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>;
@@ -2720,6 +2726,7 @@ export interface UpdateNodeRequest {
   tags?: string[];
   model_aliases?: Record<string, string>;
   upstream_model_aliases?: Record<string, string>;
+  request_compatibility?: NodeRequestCompatibility;
   model_prefixes?: string[];
   headers?: Record<string, string>;
   model_capabilities?: Record<string, Partial<ModelCapabilityInfo>>;

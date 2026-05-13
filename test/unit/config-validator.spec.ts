@@ -395,6 +395,92 @@ describe('config validator', () => {
     expect(codes(result.warnings)).toContain('experimental_http2_connection_pool');
   });
 
+  it('validates node request compatibility overrides', () => {
+    const valid = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'anthropic-compatible',
+            name: 'Anthropic compatible',
+            protocol: 'messages',
+            base_url: 'https://anthropic-compatible.example.com',
+            endpoint: '/v1/messages',
+            api_key: '${ANTHROPIC_API_KEY:-test}',
+            models: ['claude-opus-4-7'],
+            timeout_ms: 60000,
+            request_compatibility: {
+              messages_tool_result_content: 'string',
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'anthropic-compatible', model: 'claude-opus-4-7' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'claude-opus-4-7': { input: 5, output: 25 } },
+      },
+      { env: {} },
+    );
+
+    expect(valid.ok).toBe(true);
+    expect(codes(valid.errors)).not.toContain('invalid_node_request_compatibility_mode');
+
+    const invalid = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'anthropic-compatible',
+            name: 'Anthropic compatible',
+            protocol: 'messages',
+            base_url: 'https://anthropic-compatible.example.com',
+            endpoint: '/v1/messages',
+            api_key: '${ANTHROPIC_API_KEY:-test}',
+            models: ['claude-opus-4-7'],
+            timeout_ms: 60000,
+            request_compatibility: {
+              messages_tool_result_content: 'json',
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'anthropic-compatible', model: 'claude-opus-4-7' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'claude-opus-4-7': { input: 5, output: 25 } },
+      },
+      { env: {} },
+    );
+
+    expect(invalid.ok).toBe(false);
+    expect(codes(invalid.errors)).toContain('invalid_node_request_compatibility_mode');
+  });
+
   it('validates optional batch endpoint paths', () => {
     const result = validateConfigObject(
       {

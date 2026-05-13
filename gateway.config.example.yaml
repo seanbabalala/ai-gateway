@@ -548,6 +548,10 @@ nodes:
     models: ["claude-sonnet-4-20250514", "claude-sonnet-4-20250514-ada"]
     upstream_model_aliases:
       claude-sonnet-4-20250514-ada: claude-sonnet-4-20250514
+    # Optional compatibility override for Anthropic-compatible gateways that
+    # reject content-block arrays inside tool_result.content.
+    # request_compatibility:
+    #   messages_tool_result_content: string  # native | string
     timeout_ms: 120000
     max_context_tokens: 200000
     structured_output: false

@@ -109,6 +109,7 @@ export class ProviderClientService {
         const startTime = Date.now();
         const upstreamModel = this.resolveUpstreamModel(node, targetModel);
         const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
+        this.applyNodeRequestCompatibility(node, requestBody);
         (requestBody as Record<string, unknown>).stream = false;
 
         const response = await this.sendRequest(
@@ -347,6 +348,7 @@ export class ProviderClientService {
 
     const upstreamModel = this.resolveUpstreamModel(node, targetModel);
     const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
+    this.applyNodeRequestCompatibility(node, requestBody);
     (requestBody as Record<string, unknown>).stream = true;
 
     const response = await this.sendRequest(
@@ -701,6 +703,72 @@ export class ProviderClientService {
 
   private resolveUpstreamModel(node: NodeConfig, targetModel: string): string {
     return node.upstream_model_aliases?.[targetModel] || targetModel;
+  }
+
+  private applyNodeRequestCompatibility(
+    node: NodeConfig,
+    requestBody: Record<string, unknown>,
+  ): void {
+    if (
+      node.protocol !== 'messages' ||
+      node.request_compatibility?.messages_tool_result_content !== 'string'
+    ) {
+      return;
+    }
+
+    this.stringifyToolResultContent(requestBody.messages);
+  }
+
+  private stringifyToolResultContent(value: unknown): void {
+    if (!Array.isArray(value)) return;
+
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue;
+      const record = item as Record<string, unknown>;
+
+      if (record.type === 'tool_result' && Array.isArray(record.content)) {
+        record.content = this.contentBlocksToText(record.content);
+        continue;
+      }
+
+      if (Array.isArray(record.content)) {
+        this.stringifyToolResultContent(record.content);
+      }
+    }
+  }
+
+  private contentBlocksToText(blocks: unknown[]): string {
+    return blocks
+      .map((block) => this.contentBlockToText(block))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  private contentBlockToText(block: unknown): string {
+    if (block === null || block === undefined) return '';
+    if (typeof block === 'string') return block;
+    if (typeof block !== 'object') return String(block);
+
+    const record = block as Record<string, unknown>;
+    if (record.type === 'text') {
+      return typeof record.text === 'string' ? record.text : String(record.text ?? '');
+    }
+    if (record.type === 'image') {
+      const source =
+        record.source && typeof record.source === 'object'
+          ? (record.source as Record<string, unknown>)
+          : {};
+      const mediaType =
+        typeof source.media_type === 'string' ? source.media_type : 'image';
+      return `[${mediaType}]`;
+    }
+    if (Array.isArray(record.content)) {
+      return this.contentBlocksToText(record.content);
+    }
+    if (typeof record.content === 'string') {
+      return record.content;
+    }
+    return JSON.stringify(record);
   }
 
   private buildEmbeddingsRequest(

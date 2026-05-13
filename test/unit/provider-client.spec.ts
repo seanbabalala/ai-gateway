@@ -742,6 +742,125 @@ describe('ProviderClientService', () => {
       expect(result.model).toBe('claude-opus-4-7');
     });
 
+    it('should stringify Anthropic tool result content blocks when the node requests compatibility mode', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'msg_compat',
+          model: 'claude-opus-4-7',
+          content: [{ type: 'text', text: 'OK' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        protocol: 'messages',
+        base_url: 'https://anthropic-compatible.example.com',
+        endpoint: '/v1/messages',
+        models: ['claude-opus-4-7'],
+        request_compatibility: {
+          messages_tool_result_content: 'string',
+        },
+      });
+      await svc.forward(
+        makeCanonical({
+          stream: false,
+          metadata: {
+            source_format: 'messages',
+            raw_headers: {},
+            raw_body: {
+              model: 'claude-opus-4-7',
+              stream: false,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'tool_result',
+                      tool_use_id: 'toolu_1',
+                      content: [{ type: 'text', text: 'ok' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+        'anthropic-compatible',
+        'claude-opus-4-7',
+        routingMeta,
+      );
+
+      const [, opts] = fetchMock.mock.calls[0];
+      const body = JSON.parse(opts.body as string);
+      expect(body.messages[0].content[0]).toEqual({
+        type: 'tool_result',
+        tool_use_id: 'toolu_1',
+        content: 'ok',
+      });
+    });
+
+    it('should keep native Anthropic tool result content blocks by default', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'msg_native',
+          model: 'claude-opus-4-7',
+          content: [{ type: 'text', text: 'OK' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        protocol: 'messages',
+        base_url: 'https://api.anthropic.com',
+        endpoint: '/v1/messages',
+        models: ['claude-opus-4-7'],
+      });
+      await svc.forward(
+        makeCanonical({
+          stream: false,
+          metadata: {
+            source_format: 'messages',
+            raw_headers: {},
+            raw_body: {
+              model: 'claude-opus-4-7',
+              stream: false,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'tool_result',
+                      tool_use_id: 'toolu_1',
+                      content: [{ type: 'text', text: 'ok' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+        'anthropic',
+        'claude-opus-4-7',
+        routingMeta,
+      );
+
+      const [, opts] = fetchMock.mock.calls[0];
+      const body = JSON.parse(opts.body as string);
+      expect(body.messages[0].content[0]).toEqual({
+        type: 'tool_result',
+        tool_use_id: 'toolu_1',
+        content: [{ type: 'text', text: 'ok' }],
+      });
+    });
+
     it('should resolve DeepSeek cache usage through the usage schema registry', async () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,

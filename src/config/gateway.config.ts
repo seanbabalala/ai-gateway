@@ -675,6 +675,14 @@ export interface NodeConnectionConfig {
   http2?: boolean;
 }
 
+export interface NodeRequestCompatibilityConfig {
+  /**
+   * Some Anthropic-compatible upstreams only accept string content inside
+   * tool_result blocks. The default "native" keeps Anthropic content blocks.
+   */
+  messages_tool_result_content?: 'native' | 'string';
+}
+
 export interface NodeConfig {
   id: string;
   name: string;
@@ -755,6 +763,8 @@ export interface NodeConfig {
   health_check?: NodeHealthCheckConfig;
   /** Optional per-node upstream HTTP connection pooling and timeout controls. */
   connection?: NodeConnectionConfig;
+  /** Optional per-node request shape compatibility overrides. */
+  request_compatibility?: NodeRequestCompatibilityConfig;
   /** Node-level default context window used when a model-specific value is omitted. */
   max_context_tokens?: number;
   /** Node-level default structured-output support flag. */

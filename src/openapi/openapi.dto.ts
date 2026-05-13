@@ -963,6 +963,22 @@ export class SanitizedNodeConfigDto {
   })
   upstream_model_aliases?: Record<string, string>;
 
+  @ApiPropertyOptional({
+    type: 'object',
+    properties: {
+      messages_tool_result_content: {
+        type: 'string',
+        enum: ['native', 'string'],
+      },
+    },
+    additionalProperties: false,
+    example: { messages_tool_result_content: 'string' },
+    description: 'Optional request-shape compatibility overrides for upstream providers.',
+  })
+  request_compatibility?: {
+    messages_tool_result_content?: 'native' | 'string';
+  };
+
   @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })
   embedding_models?: string[];
 

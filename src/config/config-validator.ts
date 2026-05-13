@@ -1428,6 +1428,7 @@ function validateNodes(
     validateNodeAliases(node, basePath, issues);
     validateNodeUpstreamModelAliases(node, basePath, issues);
     validateNodeConnection(node, basePath, issues);
+    validateNodeRequestCompatibility(node, basePath, issues);
     validateNodeRoutingCapabilities(node, basePath, issues);
     validateNodeCompatibilityProfileShape(node, basePath, issues);
     if (!options.skipLegacyCatalogDiagnostics) {
@@ -1554,6 +1555,42 @@ function addCatalogDiagnostics(
         diagnostic.code,
         diagnostic.message,
         diagnostic.path,
+      ),
+    );
+  }
+}
+
+function validateNodeRequestCompatibility(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.request_compatibility === undefined) return;
+  if (!isRecord(node.request_compatibility)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_request_compatibility',
+        'nodes[].request_compatibility must be an object when set.',
+        `${basePath}.request_compatibility`,
+      ),
+    );
+    return;
+  }
+
+  const compatibility = node.request_compatibility;
+  const mode = compatibility.messages_tool_result_content;
+  if (
+    mode !== undefined &&
+    mode !== 'native' &&
+    mode !== 'string'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_request_compatibility_mode',
+        'nodes[].request_compatibility.messages_tool_result_content must be "native" or "string".',
+        `${basePath}.request_compatibility.messages_tool_result_content`,
       ),
     );
   }
