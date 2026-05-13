@@ -974,6 +974,20 @@ export class ProviderClientService {
         }
 
         const typedBlock = block as Record<string, unknown>;
+        if (
+          typedBlock.tool_use &&
+          typeof typedBlock.tool_use === 'object' &&
+          !Array.isArray(typedBlock.tool_use)
+        ) {
+          sanitized.push({
+            ...typedBlock,
+            tool_use: this.normalizeToolUseBlock(
+              typedBlock.tool_use as Record<string, unknown>,
+            ),
+          });
+          continue;
+        }
+
         if (typeof typedBlock.type !== 'string' || typedBlock.type.length === 0) {
           sanitized.push({ type: 'text', text: JSON.stringify(typedBlock) });
           continue;
@@ -1000,10 +1014,7 @@ export class ProviderClientService {
         }
 
         if (typedBlock.type === 'tool_use') {
-          sanitized.push({
-            ...typedBlock,
-            input: this.normalizeToolUseInput(typedBlock.input),
-          });
+          sanitized.push(this.normalizeToolUseBlock(typedBlock));
           continue;
         }
 
@@ -1059,6 +1070,15 @@ export class ProviderClientService {
       return { value: input };
     }
     return {};
+  }
+
+  private normalizeToolUseBlock(
+    block: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      ...block,
+      input: this.normalizeToolUseInput(block.input),
+    };
   }
 
   private extractNativeMessageHeaders(
