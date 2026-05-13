@@ -14,9 +14,9 @@ export class AuthService implements OnModuleInit {
     await this.ensurePasswordHashed();
   }
 
-  /** Whether dashboard auth is enabled (password or OIDC is configured) */
+  /** Whether dashboard auth is required. Secure by default unless explicitly disabled. */
   get isAuthRequired(): boolean {
-    return !!this.config.dashboardPasswordHash || this.isOidcEnabled;
+    return this.config.dashboard?.auth_required !== false;
   }
 
   get isLocalPasswordAuthEnabled(): boolean {
@@ -91,8 +91,32 @@ export class AuthService implements OnModuleInit {
   async ensurePasswordHashed(): Promise<void> {
     const password = this.config.dashboardPasswordHash;
     if (!password) {
-      this.logger.log(
-        'No dashboard password configured — dashboard is open',
+      if (!this.isAuthRequired) {
+        this.logger.warn(
+          'Dashboard authentication is explicitly disabled by dashboard.auth_required=false.',
+        );
+        return;
+      }
+      if (this.isOidcEnabled) {
+        this.logger.log('Dashboard local password is disabled; OIDC authentication is enabled.');
+        return;
+      }
+
+      const generatedPassword = this.generateInitialPassword();
+      const hash = await this.hashPassword(generatedPassword);
+      try {
+        this.config.setDashboardPasswordHash(hash);
+      } catch (err) {
+        throw new Error(
+          `Dashboard authentication is required by default, but no dashboard.password is configured and SiftGate could not persist a generated password: ${(err as Error).message}. ` +
+            'Set dashboard.password, enable OIDC, or explicitly set dashboard.auth_required=false for trusted local development.',
+        );
+      }
+      this.logger.warn(
+        `Generated initial Dashboard password: ${generatedPassword}`,
+      );
+      this.logger.warn(
+        'Store this password now; only its bcrypt hash was written back to gateway.config.yaml.',
       );
       return;
     }
@@ -108,5 +132,9 @@ export class AuthService implements OnModuleInit {
     const hash = await this.hashPassword(password);
     this.config.setDashboardPasswordHash(hash);
     this.logger.log('Dashboard password hashed and saved to config');
+  }
+
+  private generateInitialPassword(): string {
+    return crypto.randomBytes(24).toString('base64url');
   }
 }

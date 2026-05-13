@@ -5,8 +5,17 @@ describe('AuthService', () => {
   // ── isAuthRequired ───────────────────────────────────────
 
   describe('isAuthRequired', () => {
-    it('should return false when no password is configured', () => {
+    it('should return true when no password is configured', () => {
       const config = mockConfigService({ dashboardPasswordHash: undefined });
+      const svc = new AuthService(config);
+      expect(svc.isAuthRequired).toBe(true);
+    });
+
+    it('should return false when dashboard auth is explicitly disabled', () => {
+      const config = mockConfigService({
+        dashboard: { auth_required: false },
+        dashboardPasswordHash: undefined,
+      });
       const svc = new AuthService(config);
       expect(svc.isAuthRequired).toBe(false);
     });
@@ -80,8 +89,21 @@ describe('AuthService', () => {
   // ── ensurePasswordHashed ─────────────────────────────────
 
   describe('ensurePasswordHashed', () => {
-    it('should do nothing when no password is set', async () => {
+    it('should generate and persist an initial password when no auth is configured', async () => {
       const config = mockConfigService({ dashboardPasswordHash: undefined });
+      const svc = new AuthService(config);
+
+      await svc.ensurePasswordHashed();
+      expect(config.setDashboardPasswordHash).toHaveBeenCalledTimes(1);
+      const savedHash = config.setDashboardPasswordHash.mock.calls[0][0];
+      expect(savedHash).toMatch(/^\$2[ab]\$/);
+    });
+
+    it('should do nothing when dashboard auth is explicitly disabled', async () => {
+      const config = mockConfigService({
+        dashboard: { auth_required: false },
+        dashboardPasswordHash: undefined,
+      });
       const svc = new AuthService(config);
 
       await svc.ensurePasswordHashed();

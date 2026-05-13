@@ -359,6 +359,19 @@ function validateDashboard(
     );
     return;
   }
+  if (
+    dashboard.auth_required !== undefined &&
+    typeof dashboard.auth_required !== 'boolean'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_dashboard_auth_required',
+        'dashboard.auth_required must be a boolean.',
+        'dashboard.auth_required',
+      ),
+    );
+  }
   if (dashboard.oidc !== undefined) {
     validateDashboardOidc(dashboard.oidc, dashboard, issues);
   }

@@ -36,6 +36,14 @@ Open the Dashboard:
 http://localhost:2099
 ```
 
+The Compose file publishes SiftGate on host localhost only. On first startup,
+SiftGate generates an initial Dashboard password, logs it once, hashes it, and
+writes the hash back to `gateway.config.yaml`. Read it with:
+
+```bash
+docker compose logs siftgate | grep 'Generated initial Dashboard password'
+```
+
 ## 3. Verify Health
 
 ```bash
@@ -159,8 +167,9 @@ The compose file mounts:
 - `./data` to `/app/data`
 
 The config file is mounted writable so Dashboard edits and first-start dashboard
-password hashing can persist. If you prefer read-only config in production,
-pre-hash the dashboard password and manage config changes outside the Dashboard.
+password generation/hashing can persist. If you prefer read-only config in
+production, pre-hash the dashboard password and manage config changes outside
+the Dashboard.
 
 ## Troubleshooting
 

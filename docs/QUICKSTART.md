@@ -32,6 +32,9 @@ npm run build
 npm start
 ```
 
+On first startup, SiftGate generates an initial Dashboard password, logs it
+once, and stores only its bcrypt hash in `gateway.config.yaml`.
+
 Open:
 
 - Dashboard: `http://localhost:2099/dashboard`

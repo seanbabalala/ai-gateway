@@ -30,10 +30,10 @@ async function bootstrap() {
   }
 
   // Configurable CORS
-  const corsConfig = config.server.cors ?? { origin: true };
+  const corsConfig = config.server.cors ?? { origin: false, credentials: false };
   app.enableCors({
     origin: corsConfig.origin,
-    credentials: corsConfig.credentials ?? true,
+    credentials: corsConfig.credentials ?? false,
   });
 
   // Body size limit

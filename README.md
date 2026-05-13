@@ -75,6 +75,8 @@ npm start
 SiftGate loads `.env` automatically for local startup. The example provider
 nodes use runtime secret references such as `${env:OPENAI_API_KEY}`, so the
 Dashboard can start before provider keys are filled in.
+On first startup, SiftGate generates an initial Dashboard password, logs it
+once, and stores only its bcrypt hash in `gateway.config.yaml`.
 
 Open:
 

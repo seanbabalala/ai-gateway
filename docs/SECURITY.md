@@ -34,6 +34,12 @@ Gateway API keys are shown in full only once at creation or rotation time. Lists
 
 ## Dashboard Login And OIDC
 
+Dashboard authentication is required by default. When neither local password nor
+OIDC is configured, SiftGate generates an initial local Dashboard password on
+first startup, logs it once, hashes it with bcrypt, and persists only the hash
+to `gateway.config.yaml`. Set `dashboard.auth_required=false` only for trusted
+local development environments.
+
 Local Dashboard password login remains available for self-hosted installs.
 Generic OIDC login is optional and disabled unless `dashboard.oidc.enabled=true`.
 When OIDC is enabled without a local password, set `dashboard.session_secret`

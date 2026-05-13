@@ -15,7 +15,7 @@ services:
     container_name: siftgate
     restart: unless-stopped
     ports:
-      - "2099:2099"
+      - "127.0.0.1:2099:2099"
     volumes:
       # Mount your config file. Keep it writable so dashboard edits and
       # first-start dashboard password hashing can be persisted.
@@ -24,6 +24,10 @@ services:
       - ./data:/app/data
     env_file:
       - .env
+    environment:
+      # The host port above is localhost-only; the process still needs to bind
+      # inside the container so Docker can forward traffic to it.
+      SIFTGATE_HOST: 0.0.0.0
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2099/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

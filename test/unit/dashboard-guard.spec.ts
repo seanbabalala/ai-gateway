@@ -21,7 +21,7 @@ function makeContext(
 }
 
 describe('DashboardGuard', () => {
-  it('should allow all requests when no password is configured', () => {
+  it('should allow all requests when dashboard auth is explicitly disabled', () => {
     const auth = makeAuthService({ isAuthRequired: false });
     const guard = new DashboardGuard(auth);
     expect(guard.canActivate(makeContext())).toBe(true);

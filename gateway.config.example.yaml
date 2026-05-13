@@ -33,14 +33,14 @@
 
 server:
   port: 2099
-  host: 0.0.0.0
+  host: "${SIFTGATE_HOST:-127.0.0.1}"
   # helmet: true                 # Security headers via helmet (default: true)
   # body_limit: '1mb'            # Max request body size (default: '1mb')
   # trust_proxy: false           # Set to true when behind a reverse proxy
   # shutdown_timeout_ms: 5000    # Graceful shutdown timeout (default: 5000)
   # cors:
-  #   origin: true               # true = all origins, or ["https://example.com"]
-  #   credentials: true
+  #   origin: false              # false = same-origin only; use ["https://example.com"] for browser clients
+  #   credentials: false
 
 database:
   type: sqlite
@@ -116,14 +116,15 @@ auth:
 #       name: team-a-service
 #       namespace_id: team-a
 
-# Dashboard authentication (optional)
-# If set, the dashboard UI requires a password to access.
-# On first startup the plain-text password is auto-hashed with bcrypt
-# and the hash is written back to this file.
+# Dashboard authentication (secure by default)
+# If password/OIDC is omitted, SiftGate generates an initial Dashboard password
+# at first startup, logs it once, hashes it with bcrypt, and writes the hash
+# back to this file.
+# Set dashboard.auth_required=false only for trusted local/dev environments.
 # For read-only mounts such as Kubernetes ConfigMaps, precompute a bcrypt hash
 # and pass it through an environment variable instead.
-# If omitted, the dashboard is open to everyone (backwards-compatible).
 # dashboard:
+#   auth_required: true
 #   password: "my-secret-password"
 #   # Optional: stable Dashboard JWT secret. Required when OIDC is enabled
 #   # without a local password. Prefer an env or secret reference.

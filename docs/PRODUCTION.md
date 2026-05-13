@@ -49,6 +49,9 @@ resolution is the right fit.
   and reload time. Use `${VAR:-default}` for explicit fallbacks or `${env:VAR}`
   runtime secret references when you want SecretReferenceResolver caching and
   consistent Dashboard redaction.
+- Keep Dashboard authentication enabled. Configure `dashboard.password` or OIDC
+  explicitly for production; generated first-start passwords are intended for
+  local bootstrap, not long-term operations.
 - Use PostgreSQL for durable call logs and generated Gateway API key records
   when SQLite is not enough for production traffic.
 - Manage client credentials from the OSS Dashboard API Keys page. It supports local namespace binding, endpoint/modality/node/model restrictions, per-key budgets, per-key rate limits, disable/delete/rotate, masked display, one-time copy on create/rotate, and audit events without requiring Cloud workspace/RBAC.

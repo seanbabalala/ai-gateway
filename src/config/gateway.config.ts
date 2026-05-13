@@ -398,6 +398,8 @@ export type LogSinkConfig =
 
 // ===== Dashboard =====
 export interface DashboardConfig {
+  /** Set false only for trusted local/dev networks. Default: true. */
+  auth_required?: boolean;
   password?: string;
   /** Optional stable JWT secret for Dashboard sessions. May use ${env:SIFTGATE_DASHBOARD_SESSION_SECRET}. */
   session_secret?: string;
@@ -428,14 +430,14 @@ export interface DashboardOidcConfig {
 
 // ===== Server =====
 export interface CorsConfig {
-  origin: boolean | string | string[];  // true = all origins, string[] = whitelist
-  credentials?: boolean;                // default: true
+  origin: boolean | string | string[];  // false = same-origin only, true = all origins, string[] = whitelist
+  credentials?: boolean;                // default: false
 }
 
 export interface ServerConfig {
   port: number;
   host: string;
-  cors?: CorsConfig;              // default: { origin: true }
+  cors?: CorsConfig;              // default: { origin: false, credentials: false }
   trust_proxy?: boolean | string; // default: false
   body_limit?: string;            // default: '1mb'
   shutdown_timeout_ms?: number;   // default: 5000
