@@ -120,6 +120,13 @@ Public positioning references: [Manifest](https://github.com/mnfst/manifest),
 [One API](https://github.com/songquanpeng/one-api), and
 [New API](https://github.com/QuantumNous/new-api).
 
+<p align="center">
+  <img src="docs/assets/comparison/competitive-matrix.svg" alt="SiftGate competitive matrix" width="100%" />
+</p>
+
+<details>
+<summary><strong>Open the text matrix</strong></summary>
+
 <table>
   <thead>
     <tr>
@@ -196,6 +203,8 @@ Public positioning references: [Manifest](https://github.com/mnfst/manifest),
     </tr>
   </tbody>
 </table>
+
+</details>
 
 ### Prior Art And Acknowledgements
 

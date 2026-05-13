@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" role="img" aria-labelledby="title desc">
+  <title id="title">SiftGate competitive matrix</title>
+  <desc id="desc">A visual comparison of SiftGate, Manifest, One API, and New API across product center, routing, agent governance, operations, privacy, and production readiness.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#031b18"/>
+      <stop offset="0.48" stop-color="#061f2b"/>
+      <stop offset="1" stop-color="#102215"/>
+    </linearGradient>
+    <linearGradient id="sift" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#31f6b5"/>
+      <stop offset="0.5" stop-color="#18c6e8"/>
+      <stop offset="1" stop-color="#a5f56a"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#31f6b5" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#31f6b5" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#31f6b5" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.1 0 0 0 0 0.95 0 0 0 0 0.72 0 0 0 0.45 0"/>
+      <feBlend in="SourceGraphic" mode="screen"/>
+    </filter>
+    <style>
+      .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .tiny { font-size: 16px; letter-spacing: 0.02em; }
+      .small { font-size: 18px; }
+      .body { font-size: 20px; }
+      .label { font-size: 22px; font-weight: 700; }
+      .h2 { font-size: 28px; font-weight: 800; }
+      .h1 { font-size: 44px; font-weight: 900; letter-spacing: 0; }
+      .muted { fill: #9db7b2; }
+      .soft { fill: #cbe2df; }
+      .white { fill: #f6fffd; }
+      .green { fill: #31f6b5; }
+      .aqua { fill: #7be7ff; }
+      .card { fill: rgba(255,255,255,0.055); stroke: rgba(197,255,236,0.16); stroke-width: 1.4; }
+      .cardStrong { fill: rgba(17,58,50,0.84); stroke: #31f6b5; stroke-width: 2.2; }
+      .row { fill: rgba(255,255,255,0.038); stroke: rgba(197,255,236,0.10); stroke-width: 1; }
+      .chip { fill: rgba(49,246,181,0.13); stroke: rgba(49,246,181,0.45); stroke-width: 1; }
+      .chipBlue { fill: rgba(123,231,255,0.11); stroke: rgba(123,231,255,0.35); stroke-width: 1; }
+      .scoreBg { fill: rgba(255,255,255,0.08); }
+      .scoreOn { fill: #31f6b5; }
+      .scoreMid { fill: #7be7ff; }
+      .scoreLow { fill: #5d7672; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="860" fill="url(#bg)"/>
+  <circle cx="1078" cy="92" r="170" fill="#31f6b5" opacity="0.08" filter="url(#softGlow)"/>
+  <circle cx="158" cy="760" r="210" fill="#18c6e8" opacity="0.07" filter="url(#softGlow)"/>
+  <path d="M70 134 C280 42, 490 58, 642 136 S1018 210, 1216 80" fill="none" stroke="url(#line)" stroke-width="2" opacity="0.75"/>
+
+  <text x="72" y="82" class="sans tiny green">OPEN SOURCE AI GATEWAY LANDSCAPE</text>
+  <text x="72" y="132" class="sans h1 white">SiftGate vs. common gateway patterns</text>
+  <text x="72" y="170" class="sans body soft">A self-hosted AI traffic data plane compared with cost-first routing and API distribution platforms.</text>
+
+  <g transform="translate(72 214)" filter="url(#shadow)">
+    <rect x="0" y="0" width="358" height="170" rx="22" class="cardStrong"/>
+    <text x="28" y="43" class="sans h2 white">SiftGate</text>
+    <text x="28" y="75" class="sans small green">AI traffic data plane</text>
+    <text x="28" y="112" class="sans small soft">Policy, routing, evidence, agents,</text>
+    <text x="28" y="139" class="sans small soft">MCP, budgets, privacy, production ops</text>
+    <rect x="248" y="26" width="82" height="36" rx="18" fill="url(#sift)" opacity="0.95"/>
+    <text x="289" y="50" text-anchor="middle" class="sans small" fill="#04241e" font-weight="800">FULL</text>
+  </g>
+
+  <g transform="translate(464 214)" filter="url(#shadow)">
+    <rect x="0" y="0" width="226" height="170" rx="22" class="card"/>
+    <text x="24" y="43" class="sans h2 white">Manifest</text>
+    <text x="24" y="75" class="sans small aqua">Smart router</text>
+    <text x="24" y="112" class="sans small soft">Cost-aware model</text>
+    <text x="24" y="139" class="sans small soft">selection for agents</text>
+  </g>
+
+  <g transform="translate(724 214)" filter="url(#shadow)">
+    <rect x="0" y="0" width="226" height="170" rx="22" class="card"/>
+    <text x="24" y="43" class="sans h2 white">One API</text>
+    <text x="24" y="75" class="sans small aqua">API manager</text>
+    <text x="24" y="112" class="sans small soft">Users, tokens,</text>
+    <text x="24" y="139" class="sans small soft">channels, quotas</text>
+  </g>
+
+  <g transform="translate(984 214)" filter="url(#shadow)">
+    <rect x="0" y="0" width="226" height="170" rx="22" class="card"/>
+    <text x="24" y="43" class="sans h2 white">New API</text>
+    <text x="24" y="75" class="sans small aqua">Model hub</text>
+    <text x="24" y="112" class="sans small soft">Aggregation, billing,</text>
+    <text x="24" y="139" class="sans small soft">format conversion</text>
+  </g>
+
+  <g transform="translate(72 424)">
+    <text x="0" y="0" class="sans tiny muted">COMPARISON SCORECARD</text>
+
+    <g transform="translate(0 24)">
+      <rect x="0" y="0" width="1138" height="54" rx="15" class="row"/>
+      <text x="24" y="34" class="sans label white">Provider-compatible ingress</text>
+      <g transform="translate(428 15)">
+        <rect width="132" height="24" rx="12" class="chip"/><text x="66" y="17" text-anchor="middle" class="sans tiny green">BROAD</text>
+      </g>
+      <g transform="translate(628 15)">
+        <rect width="118" height="24" rx="12" class="chipBlue"/><text x="59" y="17" text-anchor="middle" class="sans tiny aqua">FOCUSED</text>
+      </g>
+      <g transform="translate(810 15)">
+        <rect width="160" height="24" rx="12" class="chipBlue"/><text x="80" y="17" text-anchor="middle" class="sans tiny aqua">CHANNEL BASED</text>
+      </g>
+      <g transform="translate(1000 15)">
+        <rect width="112" height="24" rx="12" class="chipBlue"/><text x="56" y="17" text-anchor="middle" class="sans tiny aqua">BROAD</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 88)">
+      <rect x="0" y="0" width="1138" height="54" rx="15" class="row"/>
+      <text x="24" y="34" class="sans label white">Agent and MCP governance</text>
+      <g transform="translate(428 15)">
+        <rect width="132" height="24" rx="12" class="chip"/><text x="66" y="17" text-anchor="middle" class="sans tiny green">BUILT IN</text>
+      </g>
+      <g transform="translate(628 15)">
+        <rect width="118" height="24" rx="12" class="chipBlue"/><text x="59" y="17" text-anchor="middle" class="sans tiny aqua">AGENTS</text>
+      </g>
+      <g transform="translate(810 15)">
+        <rect width="160" height="24" rx="12" class="chipBlue"/><text x="80" y="17" text-anchor="middle" class="sans tiny aqua">GENERIC API</text>
+      </g>
+      <g transform="translate(1000 15)">
+        <rect width="112" height="24" rx="12" class="chipBlue"/><text x="56" y="17" text-anchor="middle" class="sans tiny aqua">APPS</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 152)">
+      <rect x="0" y="0" width="1138" height="54" rx="15" class="row"/>
+      <text x="24" y="34" class="sans label white">Routing intelligence</text>
+      <g transform="translate(428 15)">
+        <rect width="132" height="24" rx="12" class="chip"/><text x="66" y="17" text-anchor="middle" class="sans tiny green">EXPLAINABLE</text>
+      </g>
+      <g transform="translate(628 15)">
+        <rect width="118" height="24" rx="12" class="chipBlue"/><text x="59" y="17" text-anchor="middle" class="sans tiny aqua">COST FIRST</text>
+      </g>
+      <g transform="translate(810 15)">
+        <rect width="160" height="24" rx="12" class="chipBlue"/><text x="80" y="17" text-anchor="middle" class="sans tiny aqua">CHANNEL FIRST</text>
+      </g>
+      <g transform="translate(1000 15)">
+        <rect width="112" height="24" rx="12" class="chipBlue"/><text x="56" y="17" text-anchor="middle" class="sans tiny aqua">FAILOVER</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 216)">
+      <rect x="0" y="0" width="1138" height="54" rx="15" class="row"/>
+      <text x="24" y="34" class="sans label white">Policy and budget hierarchy</text>
+      <g transform="translate(428 15)">
+        <rect width="132" height="24" rx="12" class="chip"/><text x="66" y="17" text-anchor="middle" class="sans tiny green">TEAM OWNED</text>
+      </g>
+      <g transform="translate(628 15)">
+        <rect width="118" height="24" rx="12" class="chipBlue"/><text x="59" y="17" text-anchor="middle" class="sans tiny aqua">LIMITS</text>
+      </g>
+      <g transform="translate(810 15)">
+        <rect width="160" height="24" rx="12" class="chipBlue"/><text x="80" y="17" text-anchor="middle" class="sans tiny aqua">QUOTA</text>
+      </g>
+      <g transform="translate(1000 15)">
+        <rect width="112" height="24" rx="12" class="chipBlue"/><text x="56" y="17" text-anchor="middle" class="sans tiny aqua">BILLING</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 280)">
+      <rect x="0" y="0" width="1138" height="54" rx="15" class="row"/>
+      <text x="24" y="34" class="sans label white">Operations evidence</text>
+      <g transform="translate(428 15)">
+        <rect width="132" height="24" rx="12" class="chip"/><text x="66" y="17" text-anchor="middle" class="sans tiny green">FIRST CLASS</text>
+      </g>
+      <g transform="translate(628 15)">
+        <rect width="118" height="24" rx="12" class="chipBlue"/><text x="59" y="17" text-anchor="middle" class="sans tiny aqua">USAGE</text>
+      </g>
+      <g transform="translate(810 15)">
+        <rect width="160" height="24" rx="12" class="chipBlue"/><text x="80" y="17" text-anchor="middle" class="sans tiny aqua">ADMIN LOGS</text>
+      </g>
+      <g transform="translate(1000 15)">
+        <rect width="112" height="24" rx="12" class="chipBlue"/><text x="56" y="17" text-anchor="middle" class="sans tiny aqua">DASHBOARD</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 344)">
+      <rect x="0" y="0" width="1138" height="54" rx="15" class="row"/>
+      <text x="24" y="34" class="sans label white">Production readiness</text>
+      <g transform="translate(428 15)">
+        <rect width="132" height="24" rx="12" class="chip"/><text x="66" y="17" text-anchor="middle" class="sans tiny green">INFRA READY</text>
+      </g>
+      <g transform="translate(628 15)">
+        <rect width="118" height="24" rx="12" class="chipBlue"/><text x="59" y="17" text-anchor="middle" class="sans tiny aqua">DOCKER</text>
+      </g>
+      <g transform="translate(810 15)">
+        <rect width="160" height="24" rx="12" class="chipBlue"/><text x="80" y="17" text-anchor="middle" class="sans tiny aqua">SIMPLE DEPLOY</text>
+      </g>
+      <g transform="translate(1000 15)">
+        <rect width="112" height="24" rx="12" class="chipBlue"/><text x="56" y="17" text-anchor="middle" class="sans tiny aqua">ADMIN UI</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(72 812)">
+    <text x="0" y="0" class="sans tiny muted">Acknowledgement: SiftGate builds on ideas made visible by the open-source AI gateway ecosystem, including Manifest, One API, New API, and LiteLLM.</text>
+  </g>
+</svg>
