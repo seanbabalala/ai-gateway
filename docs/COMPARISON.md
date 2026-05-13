@@ -14,6 +14,20 @@ Public positioning references:
 | New API | [github.com/QuantumNous/new-api](https://github.com/QuantumNous/new-api) |
 | LiteLLM Proxy | [docs.litellm.ai](https://docs.litellm.ai/) |
 
+## Prior Art And Acknowledgements
+
+SiftGate is built in conversation with a broader open-source AI gateway
+ecosystem. Manifest helped make cost-aware intelligent model routing for agents
+and applications feel practical. One API and New API made multi-provider API
+aggregation, channel management, quota workflows, and self-hosted admin
+operations accessible to many operators. LiteLLM helped normalize the idea that
+teams should not be locked into one provider SDK or model API.
+
+SiftGate takes a different path: a self-hosted AI traffic data plane focused on
+BYOK governance, explainable routing, agent and MCP controls, privacy-safe
+metadata, and production operations. We are grateful for the public work these
+projects contributed to the ecosystem.
+
 ## Positioning Summary
 
 | Product | Best At | SiftGate Difference |

@@ -197,6 +197,19 @@ Public positioning references: [Manifest](https://github.com/mnfst/manifest),
   </tbody>
 </table>
 
+### Prior Art And Acknowledgements
+
+SiftGate is built in conversation with a broader open-source AI gateway
+ecosystem. Manifest helped make cost-aware intelligent model routing for agents
+and applications feel practical. One API and New API made multi-provider API
+aggregation, channel management, quota workflows, and self-hosted admin
+operations accessible to many operators.
+
+SiftGate takes a different path: a self-hosted AI traffic data plane focused on
+BYOK governance, explainable routing, agent and MCP controls, privacy-safe
+metadata, and production operations. We are grateful for the public work these
+projects contributed to the ecosystem.
+
 Read the fuller comparison in [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Request Flow
