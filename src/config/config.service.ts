@@ -1393,24 +1393,37 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     model: string,
     nodeId?: string,
   ): T {
-    if (!this.shouldInferAnthropicPromptCachePricing(model, nodeId)) {
-      return pricing;
-    }
-
     const cacheReadPrice =
       pricing.cache_read_input ?? pricing.cache_read_per_1m_tokens;
     const cacheCreationPrice =
       pricing.cache_creation_input ?? pricing.cache_write_per_1m_tokens;
-    if (cacheReadPrice !== undefined && cacheCreationPrice !== undefined) {
-      return pricing;
+
+    if (this.shouldInferAnthropicPromptCachePricing(model, nodeId)) {
+      if (cacheReadPrice !== undefined && cacheCreationPrice !== undefined) {
+        return pricing;
+      }
+
+      return {
+        ...pricing,
+        cache_read_input: cacheReadPrice ?? roundCurrency(pricing.input * 0.1),
+        cache_creation_input:
+          cacheCreationPrice ?? roundCurrency(pricing.input * 1.25),
+      };
     }
 
-    return {
-      ...pricing,
-      cache_read_input: cacheReadPrice ?? roundCurrency(pricing.input * 0.1),
-      cache_creation_input:
-        cacheCreationPrice ?? roundCurrency(pricing.input * 1.25),
-    };
+    if (
+      this.shouldInferOpenAiPromptCachePricing(model, nodeId) &&
+      cacheReadPrice === undefined
+    ) {
+      return {
+        ...pricing,
+        cache_read_input: roundCurrency(
+          pricing.input * this.openAiCacheReadDiscount(model, nodeId),
+        ),
+      };
+    }
+
+    return pricing;
   }
 
   private shouldInferAnthropicPromptCachePricing(
@@ -1438,6 +1451,40 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       node.upstream_model_aliases?.[model] || '',
     );
     return upstreamModel.startsWith('claude-');
+  }
+
+  private shouldInferOpenAiPromptCachePricing(
+    model: string,
+    nodeId?: string,
+  ): boolean {
+    const normalizedModel = normalizePricingIdentity(model);
+    const looksLikeOpenAiModel =
+      normalizedModel.startsWith('gpt-') ||
+      normalizedModel.startsWith('o1') ||
+      normalizedModel.startsWith('o3') ||
+      normalizedModel.startsWith('o4');
+
+    if (!nodeId) return looksLikeOpenAiModel;
+    const node = this.getNode(nodeId);
+    if (!node) return looksLikeOpenAiModel;
+
+    const profiles = Array.isArray(node.compatibility_profile)
+      ? node.compatibility_profile
+      : node.compatibility_profile
+        ? [node.compatibility_profile]
+        : [];
+    if (profiles.some((profile) => `${profile}`.includes('openai'))) {
+      return true;
+    }
+
+    const upstreamModel = normalizePricingIdentity(
+      node.upstream_model_aliases?.[model] || '',
+    );
+    return looksLikeOpenAiModel || upstreamModel.startsWith('gpt-');
+  }
+
+  private openAiCacheReadDiscount(_model: string, _nodeId?: string): number {
+    return 0.1;
   }
 
   private getCatalogPricingFallback(

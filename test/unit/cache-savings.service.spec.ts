@@ -39,6 +39,13 @@ describe('CacheSavingsService', () => {
             cache_creation_input: 6.25,
           };
         }
+        if (model === 'gpt-5.5') {
+          return {
+            input: 5,
+            output: 15,
+            cache_read_input: 0.5,
+          };
+        }
         return undefined;
       }),
     };
@@ -224,6 +231,39 @@ describe('CacheSavingsService', () => {
     expect(result.summary.actual_cost_usd).toBeCloseTo(0.035258, 6);
     expect(result.summary.hypothetical_no_cache_cost_usd).toBeCloseTo(0.27115, 6);
     expect(result.summary.savings_usd).toBeCloseTo(0.235892, 6);
+  });
+
+  it('recomputes OpenAI-compatible provider cache savings from cached input tokens', async () => {
+    const rows = [
+      {
+        request_id: 'req_openai_compatible_cache',
+        timestamp: new Date('2026-05-06T01:00:00Z'),
+        node_id: 'custom-openai',
+        model: 'gpt-5.5',
+        input_tokens: 52_755,
+        output_tokens: 295,
+        cache_read_input_tokens: 52_493,
+        cache_creation_input_tokens: 0,
+        cost_usd: 0.2682,
+        cost_without_cache_usd: 0.2682,
+      },
+    ];
+    const { service } = makeService(rows);
+
+    const result = await service.getSummary('1d', 'model');
+
+    expect(result.summary).toMatchObject({
+      total_input_tokens: 52_755,
+      total_output_tokens: 295,
+      total_cache_read_tokens: 52_493,
+      total_normal_input_tokens: 262,
+      actual_cost_usd: 0.031981,
+      hypothetical_no_cache_cost_usd: 0.2682,
+      savings_usd: 0.236219,
+      normal_input_cost_usd: 0.00131,
+      cache_read_cost_usd: 0.026246,
+      output_cost_usd: 0.004425,
+    });
   });
 
   it('supports api_key grouping and returns zeroed trends when there is no data', async () => {

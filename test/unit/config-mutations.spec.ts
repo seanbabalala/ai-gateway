@@ -633,6 +633,74 @@ describe('ConfigService — model pricing', () => {
     });
   });
 
+  it('infers OpenAI-compatible cached-input pricing for custom Responses node pricing', () => {
+    const { svc } = loadConfigService({
+      nodes: [
+        ...makeMinimalNodes('sk-test'),
+        {
+          id: 'custom-openai',
+          name: 'Custom OpenAI',
+          protocol: 'responses',
+          base_url: 'https://example.test/openai',
+          endpoint: '/v1/responses',
+          api_key: 'sk-test',
+          models: ['gpt-5-custom'],
+          timeout_ms: 60000,
+          compatibility_profile: ['openai_responses_compatible'],
+          model_capabilities: {
+            'gpt-5-custom': {
+              modalities: ['text'],
+              pricing: { input: 5, output: 15 },
+            },
+          },
+        },
+      ],
+      models_pricing: {},
+    });
+
+    expect(svc.getModelPricing('gpt-5-custom', 'custom-openai')).toMatchObject({
+      input: 5,
+      output: 15,
+      cache_read_input: 0.5,
+      pricing_used_from: 'node_model_config',
+    });
+    expect(
+      svc.getModelPricing('gpt-5-custom', 'custom-openai')?.cache_creation_input,
+    ).toBeUndefined();
+  });
+
+  it('does not override explicit OpenAI-compatible cached-input pricing', () => {
+    const { svc } = loadConfigService({
+      nodes: [
+        ...makeMinimalNodes('sk-test'),
+        {
+          id: 'custom-openai',
+          name: 'Custom OpenAI',
+          protocol: 'responses',
+          base_url: 'https://example.test/openai',
+          endpoint: '/v1/responses',
+          api_key: 'sk-test',
+          models: ['gpt-5-custom'],
+          timeout_ms: 60000,
+          compatibility_profile: ['openai_responses_compatible'],
+          model_capabilities: {
+            'gpt-5-custom': {
+              modalities: ['text'],
+              pricing: { input: 5, output: 15, cache_read_input: 1.25 },
+            },
+          },
+        },
+      ],
+      models_pricing: {},
+    });
+
+    expect(svc.getModelPricing('gpt-5-custom', 'custom-openai')).toMatchObject({
+      input: 5,
+      output: 15,
+      cache_read_input: 1.25,
+    });
+  });
+
   it('should throw when deleting non-existent pricing', () => {
     const { svc } = loadConfigService();
     expect(() => svc.deleteModelPricing('nonexistent')).toThrow('not found');
