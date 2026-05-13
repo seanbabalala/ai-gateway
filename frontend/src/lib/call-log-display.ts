@@ -29,9 +29,38 @@ export function isProviderCacheLog(
 export function providerCacheSavingsUsd(
   log: Pick<CallLog, 'cost_usd' | 'cost_without_cache_usd'>,
 ): number {
-  const withoutCache = Number(log.cost_without_cache_usd || 0)
-  const actual = Number(log.cost_usd || 0)
-  return Math.max(0, withoutCache - actual)
+  return providerCacheCostBreakdown(log).savedCostUsd
+}
+
+export function providerCacheCostBreakdown(
+  log: Pick<CallLog, 'cost_usd' | 'cost_without_cache_usd'> &
+    Partial<
+      Pick<
+        CallLog,
+        'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'
+      >
+    >,
+) {
+  const actualCostUsd = Number(log.cost_usd || 0)
+  const withoutCacheCostUsd = Number(log.cost_without_cache_usd || 0)
+  const cacheReadTokens = Number(log.cache_read_input_tokens || 0)
+  const cacheCreationTokens = Number(log.cache_creation_input_tokens || 0)
+  const cachedInputTokens = cacheReadTokens + cacheCreationTokens
+  const inputTokens = Number(log.input_tokens || 0)
+  const savedCostUsd = Math.max(0, withoutCacheCostUsd - actualCostUsd)
+
+  return {
+    actualCostUsd,
+    withoutCacheCostUsd,
+    savedCostUsd,
+    cacheReadTokens,
+    cacheCreationTokens,
+    cachedInputTokens,
+    cachedInputRatio: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
+    hasProviderCacheTokens: cachedInputTokens > 0,
+    hasSavingsEstimate: savedCostUsd > 0,
+    hasNoCacheEstimate: withoutCacheCostUsd > 0,
+  }
 }
 
 export function visibleTierDistribution(items: TierDistribution[]): TierDistribution[] {

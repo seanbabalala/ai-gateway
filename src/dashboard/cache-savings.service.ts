@@ -213,8 +213,18 @@ export class CacheSavingsService {
           pricing,
         )
       : 0;
+    const storedCostUsd = toNumber(row.cost_usd);
+    const shouldUseComputedCacheCost =
+      pricing !== undefined &&
+      (cacheReadTokens > 0 || cacheCreationTokens > 0) &&
+      actualCostFromPricing > 0 &&
+      (storedCostUsd <= 0 || actualCostFromPricing < storedCostUsd);
     const actualCostUsd = toCurrency(
-      hasPositiveNumber(row.cost_usd) ? row.cost_usd : actualCostFromPricing,
+      shouldUseComputedCacheCost
+        ? actualCostFromPricing
+        : hasPositiveNumber(row.cost_usd)
+          ? row.cost_usd
+          : actualCostFromPricing,
     );
 
     const hypotheticalFromPricing = pricing

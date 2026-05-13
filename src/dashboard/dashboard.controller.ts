@@ -728,6 +728,10 @@ function dashboardProviderHomepage(provider: CatalogProvider): string | null {
   }
 }
 
+function roundLogCost(value: number): number {
+  return Number(value.toFixed(10));
+}
+
 function dashboardProviderDocsUrl(provider: CatalogProvider): string | null {
   return provider.pricing?.source_url || dashboardProviderHomepage(provider);
 }
@@ -3731,7 +3735,7 @@ export class DashboardController {
       .getManyAndCount();
 
     return {
-      data: logs,
+      data: logs.map((log) => this.enrichCallLogCostEstimates(log)),
       pagination: {
         page: safePage,
         limit: safeLimit,
@@ -3841,7 +3845,9 @@ export class DashboardController {
       .where("log.timestamp >= :since", { since })
       .orderBy("log.timestamp", "DESC");
     this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
-    const logs = await qb.getMany();
+    const logs = (await qb.getMany()).map((log) =>
+      this.enrichCallLogCostEstimates(log),
+    );
 
     if (format === "json") {
       res.setHeader("Content-Type", "application/json");
@@ -3923,6 +3929,54 @@ export class DashboardController {
       `attachment; filename="logs-${exportPeriod}.csv"`,
     );
     res.send(csvRows.join("\n"));
+  }
+
+  private enrichCallLogCostEstimates(log: CallLog): CallLog {
+    const cacheReadTokens = Number(log.cache_read_input_tokens || 0);
+    const cacheCreationTokens = Number(log.cache_creation_input_tokens || 0);
+    if (cacheReadTokens <= 0 && cacheCreationTokens <= 0) return log;
+
+    const pricing = this.config.getModelPricing(log.model, log.node_id);
+    if (!pricing) return log;
+
+    const inputTokens = Number(log.input_tokens || 0);
+    const outputTokens = Number(log.output_tokens || 0);
+    const normalInputTokens = Math.max(
+      0,
+      inputTokens - cacheReadTokens - cacheCreationTokens,
+    );
+    const cacheReadPrice =
+      pricing.cache_read_input ??
+      pricing.cache_read_per_1m_tokens ??
+      pricing.input;
+    const cacheCreationPrice =
+      pricing.cache_creation_input ??
+      pricing.cache_write_per_1m_tokens ??
+      pricing.input;
+    const actualCost = roundLogCost(
+      (normalInputTokens / 1_000_000) * pricing.input +
+        (cacheReadTokens / 1_000_000) * cacheReadPrice +
+        (cacheCreationTokens / 1_000_000) * cacheCreationPrice +
+        (outputTokens / 1_000_000) * pricing.output,
+    );
+    const noCacheCost = roundLogCost(
+      (inputTokens / 1_000_000) * pricing.input +
+        (outputTokens / 1_000_000) * pricing.output,
+    );
+    const storedCost = Number(log.cost_usd || 0);
+
+    if (
+      actualCost <= 0 ||
+      (storedCost > 0 && storedCost <= actualCost && log.cost_without_cache_usd)
+    ) {
+      return log;
+    }
+
+    return {
+      ...log,
+      cost_usd: actualCost,
+      cost_without_cache_usd: log.cost_without_cache_usd ?? noCacheCost,
+    };
   }
 
   private normalizeLogPeriod(period: string | undefined): string | null {

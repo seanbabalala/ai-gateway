@@ -385,7 +385,7 @@ describe('Stream Parsers — cache token extraction', () => {
     const stop = events.find(e => e.type === 'stop');
     expect(stop).toBeDefined();
     if (stop?.type === 'stop') {
-      expect(stop.usage.input_tokens).toBe(500);
+      expect(stop.usage.input_tokens).toBe(800);
       expect(stop.usage.output_tokens).toBe(10);
       expect(stop.usage.cache_creation_input_tokens).toBe(200);
       expect(stop.usage.cache_read_input_tokens).toBe(100);

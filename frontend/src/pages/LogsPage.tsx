@@ -30,9 +30,9 @@ import { useNodes } from '@/hooks/use-nodes'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
 import {
   isPromptCacheLog,
+  providerCacheCostBreakdown,
   isProviderCacheLog,
   isSemanticCacheLog,
-  providerCacheSavingsUsd,
   sourceFormatLabel,
 } from '@/lib/call-log-display'
 import { getAuthToken } from '@/contexts/AuthContext'
@@ -62,14 +62,23 @@ function LogRouteBadge({ log }: { log: CallLog }) {
 function ProviderCacheBadge({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
   if (!isProviderCacheLog(log)) return null
+  const cacheCost = providerCacheCostBreakdown(log)
 
   return (
     <Tooltip
-      content={t('cache.tooltip', {
-        cached: formatTokens(log.cache_read_input_tokens || 0),
-        total: formatTokens(log.input_tokens || 0),
-        saved: formatCost(providerCacheSavingsUsd(log)),
-      })}
+      content={
+        cacheCost.hasSavingsEstimate
+          ? t('cache.tooltip', {
+              cached: formatTokens(cacheCost.cachedInputTokens),
+              total: formatTokens(log.input_tokens || 0),
+              saved: formatCost(cacheCost.savedCostUsd),
+            })
+          : t('cache.tooltipUnpriced', {
+              defaultValue: '{{cached}} / {{total}} tokens cached; configure cache pricing to estimate savings',
+              cached: formatTokens(cacheCost.cachedInputTokens),
+              total: formatTokens(log.input_tokens || 0),
+            })
+      }
     >
       <Badge variant="emerald" className="gap-1">
         <Database className="h-3 w-3" />
@@ -195,6 +204,9 @@ function LogDetailRow({
   const mediaByteSize = formatBytes(log.media_byte_size)
   const isSemanticCache = isSemanticCacheLog(log)
   const isCache = isPromptCacheLog(log) || isSemanticCache
+  const isProviderCache = isProviderCacheLog(log)
+  const cacheCost = providerCacheCostBreakdown(log)
+  const cachedInputPercent = `${(cacheCost.cachedInputRatio * 100).toFixed(1)}%`
   const hasFallbackEvidence = log.is_fallback || Boolean(log.fallback_reason)
   const hasStructuredOutputEvidence =
     log.structured_output_requested ||
@@ -418,18 +430,51 @@ function LogDetailRow({
                 <span className="text-[var(--foreground-dim)]">{t('cache.creationTokens')}: </span>
                 <span className="font-mono text-[var(--foreground-muted)]">{log.cache_creation_input_tokens ?? 0}</span>
               </div>
-              {isProviderCacheLog(log) && (
+              {isProviderCache && (
                 <>
+                  <div>
+                    <span className="text-[var(--foreground-dim)]">
+                      {t('cache.cachedTokens', { defaultValue: 'cached tokens' })}:{' '}
+                    </span>
+                    <span className="font-mono text-[var(--foreground-muted)]">
+                      {t('cache.cachedTokensValue', {
+                        defaultValue: '{{cached}} / {{total}} ({{percent}})',
+                        cached: formatTokens(cacheCost.cachedInputTokens),
+                        total: formatTokens(log.input_tokens || 0),
+                        percent: cachedInputPercent,
+                      })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[var(--foreground-dim)]">
+                      {t('cache.actualCost', { defaultValue: 'actual cost' })}:{' '}
+                    </span>
+                    <span className="font-mono text-[var(--foreground-muted)]">
+                      {formatCost(cacheCost.actualCostUsd)}
+                    </span>
+                  </div>
                   <div>
                     <span className="text-[var(--foreground-dim)]">{t('cache.withoutCacheCost')}: </span>
                     <span className="font-mono text-[var(--foreground-muted)]">
-                      {formatCost(log.cost_without_cache_usd || 0)}
+                      {cacheCost.hasNoCacheEstimate
+                        ? formatCost(cacheCost.withoutCacheCostUsd)
+                        : t('common.na')}
                     </span>
                   </div>
                   <div>
                     <span className="text-[var(--foreground-dim)]">{t('cache.savedCost')}: </span>
-                    <span className="font-mono text-emerald-700 dark:text-emerald-300">
-                      {formatCost(providerCacheSavingsUsd(log))}
+                    <span
+                      className={
+                        cacheCost.hasSavingsEstimate
+                          ? 'font-mono text-emerald-700 dark:text-emerald-300'
+                          : 'font-mono text-amber-700 dark:text-amber-300'
+                      }
+                    >
+                      {cacheCost.hasSavingsEstimate
+                        ? formatCost(cacheCost.savedCostUsd)
+                        : t('cache.savingsUnpriced', {
+                            defaultValue: 'cache pricing not configured',
+                          })}
                     </span>
                   </div>
                 </>

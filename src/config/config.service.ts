@@ -1365,24 +1365,79 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     if (nodeId) {
       const nodePricing = this.getNode(nodeId)?.model_capabilities?.[model]?.pricing;
       if (nodePricing) {
-        return {
+        return this.withImplicitCachePricing({
           ...nodePricing,
           source: nodePricing.source || 'config:model_capabilities',
           pricing_used_from: 'node_model_config',
           currency: nodePricing.currency || 'USD',
-        };
+        }, model, nodeId);
       }
     }
     const configuredPricing = this.config.models_pricing[model];
     if (configuredPricing) {
-      return {
+      return this.withImplicitCachePricing({
         ...configuredPricing,
         source: configuredPricing.source || 'config:models_pricing',
         pricing_used_from: 'gateway_config',
         currency: configuredPricing.currency || 'USD',
-      };
+      }, model, nodeId);
     }
-    return this.getCatalogPricingFallback(model, nodeId);
+    const fallback = this.getCatalogPricingFallback(model, nodeId);
+    return fallback
+      ? this.withImplicitCachePricing(fallback, model, nodeId)
+      : undefined;
+  }
+
+  private withImplicitCachePricing<T extends ModelPricing>(
+    pricing: T,
+    model: string,
+    nodeId?: string,
+  ): T {
+    if (!this.shouldInferAnthropicPromptCachePricing(model, nodeId)) {
+      return pricing;
+    }
+
+    const cacheReadPrice =
+      pricing.cache_read_input ?? pricing.cache_read_per_1m_tokens;
+    const cacheCreationPrice =
+      pricing.cache_creation_input ?? pricing.cache_write_per_1m_tokens;
+    if (cacheReadPrice !== undefined && cacheCreationPrice !== undefined) {
+      return pricing;
+    }
+
+    return {
+      ...pricing,
+      cache_read_input: cacheReadPrice ?? roundCurrency(pricing.input * 0.1),
+      cache_creation_input:
+        cacheCreationPrice ?? roundCurrency(pricing.input * 1.25),
+    };
+  }
+
+  private shouldInferAnthropicPromptCachePricing(
+    model: string,
+    nodeId?: string,
+  ): boolean {
+    const normalizedModel = normalizePricingIdentity(model);
+    if (normalizedModel.startsWith('claude-')) return true;
+
+    if (!nodeId) return false;
+    const node = this.getNode(nodeId);
+    if (!node) return false;
+
+    const profiles = Array.isArray(node.compatibility_profile)
+      ? node.compatibility_profile
+      : node.compatibility_profile
+        ? [node.compatibility_profile]
+        : [];
+    if (profiles.some((profile) => `${profile}`.includes('anthropic'))) {
+      return true;
+    }
+    if (node.protocol === 'messages') return true;
+
+    const upstreamModel = normalizePricingIdentity(
+      node.upstream_model_aliases?.[model] || '',
+    );
+    return upstreamModel.startsWith('claude-');
   }
 
   private getCatalogPricingFallback(
@@ -2072,4 +2127,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       throw new Error(`Tier "${tierName}" ${label}: node "${target.node}" not found`);
     }
   }
+}
+
+function normalizePricingIdentity(value: string): string {
+  return `${value || ''}`.trim().toLowerCase();
+}
+
+function roundCurrency(value: number): number {
+  return Number(value.toFixed(6));
 }

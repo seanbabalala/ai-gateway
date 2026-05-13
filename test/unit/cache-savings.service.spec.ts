@@ -31,6 +31,14 @@ describe('CacheSavingsService', () => {
             cache_creation_input: 2.5,
           };
         }
+        if (model === 'claude-custom') {
+          return {
+            input: 5,
+            output: 25,
+            cache_read_input: 0.5,
+            cache_creation_input: 6.25,
+          };
+        }
         return undefined;
       }),
     };
@@ -192,6 +200,30 @@ describe('CacheSavingsService', () => {
       hypothetical_no_cache_cost_usd: 0.0026,
       savings_usd: 0.0003,
     });
+  });
+
+  it('recomputes provider cache savings for old rows logged before cache pricing was configured', async () => {
+    const rows = [
+      {
+        request_id: 'req_old_cache_pricing',
+        timestamp: new Date('2026-05-06T01:00:00Z'),
+        node_id: 'custom-claude',
+        model: 'claude-custom',
+        input_tokens: 52_755,
+        output_tokens: 295,
+        cache_read_input_tokens: 52_493,
+        cache_creation_input_tokens: 261,
+        cost_usd: 0.27115,
+        cost_without_cache_usd: 0.27115,
+      },
+    ];
+    const { service } = makeService(rows);
+
+    const result = await service.getSummary('1d', 'model');
+
+    expect(result.summary.actual_cost_usd).toBeCloseTo(0.035258, 6);
+    expect(result.summary.hypothetical_no_cache_cost_usd).toBeCloseTo(0.27115, 6);
+    expect(result.summary.savings_usd).toBeCloseTo(0.235892, 6);
   });
 
   it('supports api_key grouping and returns zeroed trends when there is no data', async () => {

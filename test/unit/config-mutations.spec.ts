@@ -600,6 +600,39 @@ describe('ConfigService — model pricing', () => {
     });
   });
 
+  it('infers Anthropic prompt-cache prices for custom Claude-compatible node pricing', () => {
+    const { svc } = loadConfigService({
+      nodes: [
+        ...makeMinimalNodes('sk-test'),
+        {
+          id: 'custom-claude',
+          name: 'Custom Claude',
+          protocol: 'messages',
+          base_url: 'https://example.test/anthropic',
+          endpoint: '/v1/messages',
+          api_key: 'sk-test',
+          models: ['claude-opus-custom'],
+          timeout_ms: 60000,
+          model_capabilities: {
+            'claude-opus-custom': {
+              modalities: ['text'],
+              pricing: { input: 5, output: 25 },
+            },
+          },
+        },
+      ],
+      models_pricing: {},
+    });
+
+    expect(svc.getModelPricing('claude-opus-custom', 'custom-claude')).toMatchObject({
+      input: 5,
+      output: 25,
+      cache_read_input: 0.5,
+      cache_creation_input: 6.25,
+      pricing_used_from: 'node_model_config',
+    });
+  });
+
   it('should throw when deleting non-existent pricing', () => {
     const { svc } = loadConfigService();
     expect(() => svc.deleteModelPricing('nonexistent')).toThrow('not found');
