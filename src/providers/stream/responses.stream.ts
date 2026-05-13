@@ -27,6 +27,8 @@ import {
 export class ResponsesStreamParser {
   private buffer = '';
   private currentEvent = '';
+  private readonly startedFunctionCalls = new Set<string>();
+  private readonly functionCallsWithArgumentDeltas = new Set<string>();
 
   constructor(private readonly usageSchema?: UsageSchema) {}
 
@@ -93,12 +95,24 @@ export class ResponsesStreamParser {
         break;
       }
 
+      case 'response.output_item.added': {
+        const item = (data.item || {}) as Record<string, unknown>;
+        if (item.type === 'function_call') {
+          yield* this.emitFunctionCallStart(item);
+        }
+        break;
+      }
+
       case 'response.function_call_arguments.delta': {
+        const callId = (data.call_id as string) || (data.item_id as string) || '';
+        if (callId) {
+          this.functionCallsWithArgumentDeltas.add(callId);
+        }
         yield {
           type: 'delta',
           content: {
             type: 'tool_use',
-            id: (data.call_id as string) || (data.item_id as string) || '',
+            id: callId,
             name: data.name as string | undefined,
             input_delta: (data.delta as string) || undefined,
           },
@@ -108,6 +122,28 @@ export class ResponsesStreamParser {
 
       case 'response.function_call_arguments.done': {
         // Final function call arguments — we've already streamed the deltas
+        break;
+      }
+
+      case 'response.output_item.done': {
+        const item = (data.item || {}) as Record<string, unknown>;
+        if (item.type === 'function_call') {
+          const callId = this.functionCallId(item);
+          if (!this.startedFunctionCalls.has(callId)) {
+            yield* this.emitFunctionCallStart(item);
+          }
+          const args = item.arguments as string | undefined;
+          if (args && !this.functionCallsWithArgumentDeltas.has(callId)) {
+            yield {
+              type: 'delta',
+              content: {
+                type: 'tool_use',
+                id: callId,
+                input_delta: args,
+              },
+            };
+          }
+        }
         break;
       }
 
@@ -122,8 +158,6 @@ export class ResponsesStreamParser {
         break;
       }
 
-      case 'response.output_item.added':
-      case 'response.output_item.done':
       case 'response.output_text.done':
       case 'response.content_part.added':
       case 'response.content_part.done':
@@ -153,6 +187,26 @@ export class ResponsesStreamParser {
         // Unknown event types — skip silently
         break;
     }
+  }
+
+  private *emitFunctionCallStart(
+    item: Record<string, unknown>,
+  ): Generator<CanonicalStreamEvent> {
+    const callId = this.functionCallId(item);
+    if (!callId || this.startedFunctionCalls.has(callId)) return;
+    this.startedFunctionCalls.add(callId);
+    yield {
+      type: 'delta',
+      content: {
+        type: 'tool_use',
+        id: callId,
+        name: item.name as string | undefined,
+      },
+    };
+  }
+
+  private functionCallId(item: Record<string, unknown>): string {
+    return (item.call_id as string) || (item.id as string) || '';
   }
 
   private mapStatus(status: string): string {
