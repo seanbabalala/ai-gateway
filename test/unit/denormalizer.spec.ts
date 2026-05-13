@@ -89,6 +89,13 @@ describe('ChatCompletionsDenormalizer', () => {
       expect(result.tool_choice).toBe('auto');
     });
 
+    it('should request usage for streamed chat upstreams', () => {
+      const canonical = makeCanonicalRequest({ stream: true });
+      const result = denorm.denormalize(canonical, 'gpt-4');
+
+      expect(result.stream_options).toEqual({ include_usage: true });
+    });
+
     it('should denormalize assistant message with tool_use blocks', () => {
       const canonical = makeCanonicalRequest({
         messages: [

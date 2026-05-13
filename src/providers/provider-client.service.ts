@@ -751,7 +751,6 @@ export class ProviderClientService {
       'seed',
       'service_tier',
       'store',
-      'stream_options',
       'top_logprobs',
       'user',
       'web_search_options',
@@ -759,6 +758,10 @@ export class ProviderClientService {
       if (requestBody[field] === undefined && rawBody[field] !== undefined) {
         requestBody[field] = this.cloneJson(rawBody[field]);
       }
+    }
+
+    if (rawBody.stream_options !== undefined) {
+      requestBody.stream_options = this.cloneJson(rawBody.stream_options);
     }
   }
 

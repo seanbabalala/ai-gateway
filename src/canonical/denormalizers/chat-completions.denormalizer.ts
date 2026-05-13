@@ -30,6 +30,10 @@ export class ChatCompletionsDenormalizer implements RequestDenormalizer {
       stream: canonical.stream,
     };
 
+    if (canonical.stream) {
+      body.stream_options = { include_usage: true };
+    }
+
     if (canonical.tools && canonical.tools.length > 0) {
       body.tools = canonical.tools.map((tool) => ({
         type: 'function',

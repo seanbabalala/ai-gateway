@@ -2515,6 +2515,7 @@ export class PipelineService {
 
     const ensureStreamHeaders = () => {
       if (headersFlushed) return;
+      res.status(200);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -5360,6 +5361,7 @@ export class PipelineService {
     requestId?: string,
   ): void {
     const serializer = this.createSerializer(sourceFormat);
+    res.status(200);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');

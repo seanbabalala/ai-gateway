@@ -2159,6 +2159,7 @@ describe('PipelineService — processStream', () => {
     await pipeline.processStream(request, res);
 
     // Should set SSE headers
+    expect(res.status).toHaveBeenCalledWith(200);
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     expect(res.flushHeaders).toHaveBeenCalled();
     // Should write start + delta + stop events
@@ -2222,6 +2223,7 @@ describe('PipelineService — processStream', () => {
 
     await pipeline.processStream(request, res);
 
+    expect(res.status).toHaveBeenCalledWith(200);
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     expect(res.write).toHaveBeenCalled();
     expect(res.end).toHaveBeenCalled();

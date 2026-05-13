@@ -687,6 +687,32 @@ describe('ProviderClientService', () => {
       expect(body.logprobs).toBe(true);
       expect(body.top_logprobs).toBe(2);
     });
+
+    it('should preserve explicit Chat stream_options over gateway usage defaults', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'chat_completions',
+          original_model: 'gpt-4o',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'Hi' }],
+            stream: true,
+            stream_options: { include_usage: false },
+          },
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'chat_completions',
+        'gpt-4o',
+      );
+
+      expect(body.stream_options).toEqual({ include_usage: false });
+    });
   });
 
   // ── Header extraction ──────────────────────────────────
