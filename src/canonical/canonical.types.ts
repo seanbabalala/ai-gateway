@@ -12,6 +12,7 @@ export type CanonicalRole = 'system' | 'user' | 'assistant' | 'tool';
 export interface TextBlock {
   type: 'text';
   text: string;
+  cache_control?: Record<string, unknown>;
 }
 
 export interface ImageBlock {
@@ -21,6 +22,7 @@ export interface ImageBlock {
     media_type: string;
     data: string;
   };
+  cache_control?: Record<string, unknown>;
 }
 
 export interface ToolUseBlock {
@@ -28,12 +30,14 @@ export interface ToolUseBlock {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  cache_control?: Record<string, unknown>;
 }
 
 export interface ToolResultBlock {
   type: 'tool_result';
   tool_use_id: string;
   content: string | CanonicalContentBlock[];
+  cache_control?: Record<string, unknown>;
 }
 
 export type CanonicalContentBlock =
@@ -53,6 +57,7 @@ export interface CanonicalTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>; // JSON Schema
+  cache_control?: Record<string, unknown>;
 }
 
 // ===== Tool Choice =====

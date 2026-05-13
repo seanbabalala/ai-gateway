@@ -4275,12 +4275,14 @@ export class PipelineService {
     const providerReadCache = Boolean(
       capabilities.read_cache ||
       capabilities.prompt_cache ||
-      pricing?.cache_read_input !== undefined,
+      pricing?.cache_read_input !== undefined ||
+      pricing?.cache_read_per_1m_tokens !== undefined,
     );
     const providerWriteCache = Boolean(
       capabilities.write_cache ||
       capabilities.prompt_cache ||
-      pricing?.cache_creation_input !== undefined,
+      pricing?.cache_creation_input !== undefined ||
+      pricing?.cache_write_per_1m_tokens !== undefined,
     );
     const providerPromptCache = Boolean(
       capabilities.prompt_cache ||
@@ -4296,13 +4298,18 @@ export class PipelineService {
         : null;
     const supportsDiscountedRead =
       providerReadCache &&
-      pricing?.cache_read_input !== undefined &&
-      pricing.cache_read_input < pricing.input;
+      (pricing?.cache_read_input !== undefined ||
+        pricing?.cache_read_per_1m_tokens !== undefined) &&
+      (pricing.cache_read_input ?? pricing.cache_read_per_1m_tokens ?? pricing.input) <
+        pricing.input;
     const priorHitRate = supportsDiscountedRead && localEligible ? 0.05 : supportsDiscountedRead ? 0.02 : 0;
     const adjustedCost =
       pricing && baseCost !== null && supportsDiscountedRead
         ? (inputTokens / 1_000_000) *
-            (priorHitRate * (pricing.cache_read_input as number) +
+            (priorHitRate *
+              (pricing.cache_read_input ??
+                pricing.cache_read_per_1m_tokens ??
+                pricing.input) +
               (1 - priorHitRate) * pricing.input) +
           (outputTokens / 1_000_000) * pricing.output
         : baseCost;
@@ -4333,8 +4340,10 @@ export class PipelineService {
       observed_cache_read_tokens: 0,
       observed_cache_creation_tokens: 0,
       input_price_per_mtok: pricing?.input ?? null,
-      cache_read_price_per_mtok: pricing?.cache_read_input ?? null,
-      cache_write_price_per_mtok: pricing?.cache_creation_input ?? null,
+      cache_read_price_per_mtok:
+        pricing?.cache_read_input ?? pricing?.cache_read_per_1m_tokens ?? null,
+      cache_write_price_per_mtok:
+        pricing?.cache_creation_input ?? pricing?.cache_write_per_1m_tokens ?? null,
       estimated_base_cost_usd:
         baseCost === null ? null : Number(baseCost.toFixed(6)),
       estimated_cache_adjusted_cost_usd:
@@ -5552,10 +5561,18 @@ export class PipelineService {
     const cacheCreate = usage.cache_creation_input_tokens || 0;
     const cacheRead = usage.cache_read_input_tokens || 0;
     const normalInput = Math.max(0, usage.input_tokens - cacheCreate - cacheRead);
+    const cacheCreatePrice =
+      pricing.cache_creation_input ??
+      pricing.cache_write_per_1m_tokens ??
+      pricing.input;
+    const cacheReadPrice =
+      pricing.cache_read_input ??
+      pricing.cache_read_per_1m_tokens ??
+      pricing.input;
     return (
       (normalInput / 1_000_000) * pricing.input +
-      (cacheCreate / 1_000_000) * (pricing.cache_creation_input ?? pricing.input) +
-      (cacheRead / 1_000_000) * (pricing.cache_read_input ?? pricing.input) +
+      (cacheCreate / 1_000_000) * cacheCreatePrice +
+      (cacheRead / 1_000_000) * cacheReadPrice +
       (usage.output_tokens / 1_000_000) * pricing.output
     );
   }

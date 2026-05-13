@@ -33,14 +33,7 @@ export class MessagesDenormalizer implements RequestDenormalizer {
       (m) => m.role === 'system',
     );
     if (systemMessages.length > 0) {
-      const systemText = systemMessages
-        .map((m) =>
-          typeof m.content === 'string'
-            ? m.content
-            : this.blocksToText(m.content),
-        )
-        .join('\n');
-      body.system = systemText;
+      body.system = this.denormalizeSystem(systemMessages);
     }
 
     // Non-system messages → messages array
@@ -56,6 +49,7 @@ export class MessagesDenormalizer implements RequestDenormalizer {
         name: tool.name,
         description: tool.description,
         input_schema: tool.parameters,
+        ...(tool.cache_control ? { cache_control: tool.cache_control } : {}),
       }));
     }
 
@@ -180,13 +174,39 @@ export class MessagesDenormalizer implements RequestDenormalizer {
     return result;
   }
 
+  private denormalizeSystem(messages: CanonicalMessage[]): string | Record<string, unknown>[] {
+    const hasBlockSystem = messages.some((message) => Array.isArray(message.content));
+    if (!hasBlockSystem) {
+      return messages
+        .map((message) => String(message.content || ''))
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    const blocks: Record<string, unknown>[] = [];
+    for (const message of messages) {
+      if (typeof message.content === 'string') {
+        if (message.content) {
+          blocks.push({ type: 'text', text: message.content });
+        }
+        continue;
+      }
+      blocks.push(...this.denormalizeContentBlocks(message.content));
+    }
+    return blocks;
+  }
+
   private denormalizeContentBlocks(
     blocks: CanonicalContentBlock[],
   ): Record<string, unknown>[] {
     return blocks.map((block) => {
       switch (block.type) {
         case 'text':
-          return { type: 'text', text: block.text };
+          return {
+            type: 'text',
+            text: block.text,
+            ...(block.cache_control ? { cache_control: block.cache_control } : {}),
+          };
 
         case 'image':
           return {
@@ -196,6 +216,7 @@ export class MessagesDenormalizer implements RequestDenormalizer {
               media_type: block.source.media_type,
               data: block.source.data,
             },
+            ...(block.cache_control ? { cache_control: block.cache_control } : {}),
           };
 
         case 'tool_use':
@@ -204,6 +225,7 @@ export class MessagesDenormalizer implements RequestDenormalizer {
             id: block.id,
             name: block.name,
             input: block.input,
+            ...(block.cache_control ? { cache_control: block.cache_control } : {}),
           };
 
         case 'tool_result':
@@ -216,6 +238,7 @@ export class MessagesDenormalizer implements RequestDenormalizer {
                 : this.denormalizeContentBlocks(
                     block.content as CanonicalContentBlock[],
                   ),
+            ...(block.cache_control ? { cache_control: block.cache_control } : {}),
           };
 
         default:
@@ -273,6 +296,12 @@ export class MessagesDenormalizer implements RequestDenormalizer {
       usage: {
         input_tokens: canonical.usage.input_tokens,
         output_tokens: canonical.usage.output_tokens,
+        ...(canonical.usage.cache_creation_input_tokens
+          ? { cache_creation_input_tokens: canonical.usage.cache_creation_input_tokens }
+          : {}),
+        ...(canonical.usage.cache_read_input_tokens
+          ? { cache_read_input_tokens: canonical.usage.cache_read_input_tokens }
+          : {}),
       },
     };
   }

@@ -195,6 +195,18 @@ function LogDetailRow({
   const mediaByteSize = formatBytes(log.media_byte_size)
   const isSemanticCache = isSemanticCacheLog(log)
   const isCache = isPromptCacheLog(log) || isSemanticCache
+  const hasFallbackEvidence = log.is_fallback || Boolean(log.fallback_reason)
+  const hasStructuredOutputEvidence =
+    log.structured_output_requested ||
+    Boolean(log.structured_output_type) ||
+    Boolean(log.structured_output_strategy) ||
+    log.structured_output_supported === false
+  const hasReasoningEvidence =
+    log.reasoning_requested ||
+    Boolean(log.reasoning_effort) ||
+    Boolean(log.reasoning_strategy) ||
+    (log.reasoning_budget_tokens !== null && log.reasoning_budget_tokens !== undefined) ||
+    log.reasoning_supported === false
   return (
     <TableRow>
       <TableCell colSpan={TABLE_COLUMNS} className="bg-[var(--inset-bg)] px-6 py-4">
@@ -267,60 +279,74 @@ function LogDetailRow({
           </div>
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.namespace')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">{log.namespace_id ?? t('common.na')}</span>
+            <span className="font-mono text-[var(--foreground-muted)]">{log.namespace_id ?? 'default'}</span>
           </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.sessionKey')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">{log.session_key ?? t('common.na')}</span>
-          </div>
+          {log.session_key && (
+            <div>
+              <span className="text-[var(--foreground-dim)]">{t('detail.sessionKey')}: </span>
+              <span className="font-mono text-[var(--foreground-muted)]">{log.session_key}</span>
+            </div>
+          )}
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.fallback')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">{log.is_fallback ? t('common.yes') : t('common.no')}</span>
           </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.fallbackReason')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">{log.fallback_reason ?? t('common.na')}</span>
-          </div>
+          {hasFallbackEvidence && (
+            <div>
+              <span className="text-[var(--foreground-dim)]">{t('detail.fallbackReason')}: </span>
+              <span className="font-mono text-[var(--foreground-muted)]">{log.fallback_reason ?? t('common.na')}</span>
+            </div>
+          )}
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutput')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_requested ? t('common.yes') : t('common.no')}</span>
           </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputType')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_type ?? t('common.na')}</span>
-          </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputStrategy')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">
-              {log.structured_output_strategy ?? t('common.na')}
-              {log.structured_output_supported === false ? ` / ${t('detail.unsupported')}` : ''}
-            </span>
-          </div>
+          {hasStructuredOutputEvidence && (
+            <>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputType')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">{log.structured_output_type ?? t('common.na')}</span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.structuredOutputStrategy')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {log.structured_output_strategy ?? t('common.na')}
+                  {log.structured_output_supported === false ? ` / ${t('detail.unsupported')}` : ''}
+                </span>
+              </div>
+            </>
+          )}
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.reasoning')}: </span>
             <span className="font-mono text-[var(--foreground-muted)]">
               {log.reasoning_requested ? t('common.yes') : t('common.no')}
             </span>
           </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.reasoningEffort')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">
-              {log.reasoning_effort ?? t('common.na')}
-            </span>
-          </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.reasoningStrategy')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">
-              {log.reasoning_strategy ?? t('common.na')}
-              {log.reasoning_supported === false ? ` / ${t('detail.unsupported')}` : ''}
-            </span>
-          </div>
-          <div>
-            <span className="text-[var(--foreground-dim)]">{t('detail.reasoningBudget')}: </span>
-            <span className="font-mono text-[var(--foreground-muted)]">
-              {log.reasoning_budget_tokens?.toLocaleString() ?? t('common.na')}
-            </span>
-          </div>
+          {hasReasoningEvidence && (
+            <>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.reasoningEffort')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {log.reasoning_effort ?? t('common.na')}
+                </span>
+              </div>
+              <div>
+                <span className="text-[var(--foreground-dim)]">{t('detail.reasoningStrategy')}: </span>
+                <span className="font-mono text-[var(--foreground-muted)]">
+                  {log.reasoning_strategy ?? t('common.na')}
+                  {log.reasoning_supported === false ? ` / ${t('detail.unsupported')}` : ''}
+                </span>
+              </div>
+              {log.reasoning_budget_tokens !== null && log.reasoning_budget_tokens !== undefined && (
+                <div>
+                  <span className="text-[var(--foreground-dim)]">{t('detail.reasoningBudget')}: </span>
+                  <span className="font-mono text-[var(--foreground-muted)]">
+                    {log.reasoning_budget_tokens.toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
           {log.reasoning_reason && (
             <div>
               <span className="text-[var(--foreground-dim)]">{t('detail.reasoningReason')}: </span>

@@ -3,7 +3,10 @@ import {
   getCompatibilityProfile,
   resolveNodeUsageSchema,
 } from '../../src/catalog/compatibility-profiles';
-import { extractUsageBySchema } from '../../src/providers/usage-schema-resolver';
+import {
+  extractUsageByKnownFields,
+  extractUsageBySchema,
+} from '../../src/providers/usage-schema-resolver';
 
 describe('usage schema registry', () => {
   it('extracts Gemini OpenAI-compatible cache fields from the registry-selected schema', () => {
@@ -109,6 +112,41 @@ describe('usage schema registry', () => {
       output_tokens: 393,
       cache_creation_input_tokens: 188086,
       cache_read_input_tokens: 0,
+    });
+  });
+
+  it('extracts Anthropic-compatible camelCase cache counters without a declared schema', () => {
+    const usage = extractUsageByKnownFields({
+      usage: {
+        inputTokens: 21,
+        outputTokens: 393,
+        cacheCreationInputTokens: 188086,
+        cacheReadInputTokens: 12000,
+      },
+    });
+
+    expect(usage).toEqual({
+      input_tokens: 200107,
+      output_tokens: 393,
+      cache_creation_input_tokens: 188086,
+      cache_read_input_tokens: 12000,
+    });
+  });
+
+  it('extracts cache reads from OpenAI-compatible nested token details without double-counting input', () => {
+    const usage = extractUsageByKnownFields({
+      usage: {
+        input_tokens: 4000,
+        output_tokens: 200,
+        input_tokens_details: { cached_tokens: 3000 },
+      },
+    });
+
+    expect(usage).toEqual({
+      input_tokens: 4000,
+      output_tokens: 200,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 3000,
     });
   });
 

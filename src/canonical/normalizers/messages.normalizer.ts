@@ -77,19 +77,33 @@ export class MessagesNormalizer implements Normalizer {
 
     // Array of system content blocks: [{ type: "text", text: "..." }]
     if (Array.isArray(system)) {
-      const text = system
-        .filter(
-          (s) =>
-            s &&
-            typeof s === 'object' &&
-            (s as Record<string, unknown>).type === 'text',
-        )
-        .map((s) => String((s as Record<string, unknown>).text || ''))
-        .filter(Boolean)
-        .join('\n');
+      const hasCacheControl = system.some(
+        (entry) =>
+          entry &&
+          typeof entry === 'object' &&
+          !Array.isArray(entry) &&
+          Boolean((entry as Record<string, unknown>).cache_control),
+      );
+      if (!hasCacheControl) {
+        const text = system
+          .filter(
+            (s) =>
+              s &&
+              typeof s === 'object' &&
+              (s as Record<string, unknown>).type === 'text',
+          )
+          .map((s) => String((s as Record<string, unknown>).text || ''))
+          .filter(Boolean)
+          .join('\n');
 
-      if (text) {
-        return [{ role: 'system', content: text }];
+        if (text) {
+          return [{ role: 'system', content: text }];
+        }
+      }
+
+      const content = this.normalizeContent(system);
+      if (Array.isArray(content) && content.length > 0) {
+        return [{ role: 'system', content }];
       }
     }
 
@@ -135,37 +149,37 @@ export class MessagesNormalizer implements Normalizer {
 
       switch (b.type) {
         case 'text':
-          return {
+          return this.withCacheControl({
             type: 'text',
             text: typeof b.text === 'string' ? b.text : String(b.text || ''),
-          } satisfies TextBlock;
+          } satisfies TextBlock, b);
 
         case 'image': {
           const source = b.source as Record<string, unknown>;
-          return {
+          return this.withCacheControl({
             type: 'image',
             source: {
               type: (source.type as 'base64' | 'url') || 'base64',
               media_type: (source.media_type as string) || 'image/unknown',
               data: (source.data as string) || '',
             },
-          } satisfies ImageBlock;
+          } satisfies ImageBlock, b);
         }
 
         case 'tool_use':
-          return {
+          return this.withCacheControl({
             type: 'tool_use',
             id: (b.id as string) || '',
             name: (b.name as string) || '',
             input: (b.input as Record<string, unknown>) || {},
-          } satisfies ToolUseBlock;
+          } satisfies ToolUseBlock, b);
 
         case 'tool_result':
-          return {
+          return this.withCacheControl({
             type: 'tool_result',
             tool_use_id: (b.tool_use_id as string) || '',
             content: this.normalizeToolResultContent(b.content),
-          } satisfies ToolResultBlock;
+          } satisfies ToolResultBlock, b);
 
         default:
           return {
@@ -195,21 +209,21 @@ export class MessagesNormalizer implements Normalizer {
         return { type: 'text', text: JSON.stringify(b) } satisfies TextBlock;
       }
       if (b.type === 'text') {
-        return {
+        return this.withCacheControl({
           type: 'text',
           text: typeof b.text === 'string' ? b.text : String(b.text || ''),
-        } satisfies TextBlock;
+        } satisfies TextBlock, b);
       }
       if (b.type === 'image') {
         const source = b.source as Record<string, unknown>;
-        return {
+        return this.withCacheControl({
           type: 'image',
           source: {
             type: (source.type as 'base64' | 'url') || 'base64',
             media_type: (source.media_type as string) || 'image/unknown',
             data: (source.data as string) || '',
           },
-        } satisfies ImageBlock;
+        } satisfies ImageBlock, b);
       }
       return { type: 'text', text: JSON.stringify(b) } satisfies TextBlock;
     });
@@ -227,6 +241,7 @@ export class MessagesNormalizer implements Normalizer {
         name: (t.name as string) || '',
         description: (t.description as string) || '',
         parameters: (t.input_schema as Record<string, unknown>) || {},
+        ...this.cacheControlFragment(t),
       };
     });
   }
@@ -261,5 +276,22 @@ export class MessagesNormalizer implements Normalizer {
   private mapRole(role: string): 'user' | 'assistant' {
     // Anthropic only supports user and assistant in messages array
     return role === 'assistant' ? 'assistant' : 'user';
+  }
+
+  private withCacheControl<T extends Record<string, unknown>>(
+    block: T,
+    source: Record<string, unknown>,
+  ): T {
+    return Object.assign(block, this.cacheControlFragment(source));
+  }
+
+  private cacheControlFragment(
+    source: Record<string, unknown>,
+  ): { cache_control?: Record<string, unknown> } {
+    const cacheControl = source.cache_control;
+    if (!cacheControl || typeof cacheControl !== 'object' || Array.isArray(cacheControl)) {
+      return {};
+    }
+    return { cache_control: { ...(cacheControl as Record<string, unknown>) } };
   }
 }

@@ -31,6 +31,7 @@ import { UpstreamConnectionPoolService } from './upstream-connection-pool.servic
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import {
   extractUsageBySchema,
+  extractUsageByKnownFields,
   UsageSchema,
 } from './usage-schema-resolver';
 import type { Dispatcher } from 'undici';
@@ -1402,20 +1403,29 @@ export class ProviderClientService {
     usageSchema: UsageSchema | undefined,
     fallbackUsage: TokenUsage,
   ): TokenUsage {
-    if (!usageSchema) {
-      return fallbackUsage;
-    }
-
-    const schemaUsage = extractUsageBySchema(body, usageSchema);
+    const schemaUsage = usageSchema
+      ? extractUsageBySchema(body, usageSchema)
+      : { input_tokens: 0, output_tokens: 0 };
+    const knownUsage = extractUsageByKnownFields(body);
     return {
-      input_tokens: schemaUsage.input_tokens || fallbackUsage.input_tokens || 0,
-      output_tokens: schemaUsage.output_tokens || fallbackUsage.output_tokens || 0,
+      input_tokens:
+        schemaUsage.input_tokens ||
+        knownUsage.input_tokens ||
+        fallbackUsage.input_tokens ||
+        0,
+      output_tokens:
+        schemaUsage.output_tokens ||
+        knownUsage.output_tokens ||
+        fallbackUsage.output_tokens ||
+        0,
       cache_creation_input_tokens:
         schemaUsage.cache_creation_input_tokens ||
+        knownUsage.cache_creation_input_tokens ||
         fallbackUsage.cache_creation_input_tokens ||
         0,
       cache_read_input_tokens:
         schemaUsage.cache_read_input_tokens ||
+        knownUsage.cache_read_input_tokens ||
         fallbackUsage.cache_read_input_tokens ||
         0,
     };

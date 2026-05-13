@@ -867,6 +867,47 @@ describe('MessagesNormalizer', () => {
 
     expect(result.metadata.raw_body).toEqual(body);
   });
+
+  it('should preserve Anthropic cache_control on system, content, and tools', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'claude-opus-4-7',
+        system: [
+          {
+            type: 'text',
+            text: 'long system prompt',
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'hello',
+                cache_control: { type: 'ephemeral', ttl: '1h' },
+              },
+            ],
+          },
+        ],
+        tools: [
+          {
+            name: 'lookup',
+            input_schema: { type: 'object' },
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+      },
+      {},
+    );
+
+    const systemContent = result.messages[0].content as any[];
+    const userContent = result.messages[1].content as any[];
+    expect(systemContent[0].cache_control).toEqual({ type: 'ephemeral' });
+    expect(userContent[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+    expect(result.tools?.[0].cache_control).toEqual({ type: 'ephemeral' });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════

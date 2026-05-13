@@ -1,6 +1,7 @@
 import { CanonicalStreamEvent } from '../../canonical/canonical.types';
 import {
   extractUsageBySchema,
+  extractUsageByKnownFields,
   UsageSchema,
 } from '../usage-schema-resolver';
 
@@ -157,8 +158,14 @@ export class MessagesStreamParser {
             input_tokens:
               this.inputTokens || resolvedUsage.input_tokens || 0,
             output_tokens: resolvedUsage.output_tokens || 0,
-            cache_creation_input_tokens: this.cacheCreationInputTokens || 0,
-            cache_read_input_tokens: this.cacheReadInputTokens || 0,
+            cache_creation_input_tokens:
+              this.cacheCreationInputTokens ||
+              resolvedUsage.cache_creation_input_tokens ||
+              0,
+            cache_read_input_tokens:
+              this.cacheReadInputTokens ||
+              resolvedUsage.cache_read_input_tokens ||
+              0,
           },
         };
         break;
@@ -199,20 +206,29 @@ export class MessagesStreamParser {
       cache_read_input_tokens: (usage.cache_read_input_tokens as number) || 0,
     };
 
-    if (!this.usageSchema) {
-      return fallbackUsage;
-    }
-
-    const schemaUsage = extractUsageBySchema(data, this.usageSchema);
+    const schemaUsage = this.usageSchema
+      ? extractUsageBySchema(data, this.usageSchema)
+      : { input_tokens: 0, output_tokens: 0 };
+    const knownUsage = extractUsageByKnownFields(data);
     return {
-      input_tokens: schemaUsage.input_tokens || fallbackUsage.input_tokens || 0,
-      output_tokens: schemaUsage.output_tokens || fallbackUsage.output_tokens || 0,
+      input_tokens:
+        schemaUsage.input_tokens ||
+        knownUsage.input_tokens ||
+        fallbackUsage.input_tokens ||
+        0,
+      output_tokens:
+        schemaUsage.output_tokens ||
+        knownUsage.output_tokens ||
+        fallbackUsage.output_tokens ||
+        0,
       cache_creation_input_tokens:
         schemaUsage.cache_creation_input_tokens ||
+        knownUsage.cache_creation_input_tokens ||
         fallbackUsage.cache_creation_input_tokens ||
         0,
       cache_read_input_tokens:
         schemaUsage.cache_read_input_tokens ||
+        knownUsage.cache_read_input_tokens ||
         fallbackUsage.cache_read_input_tokens ||
         0,
     };

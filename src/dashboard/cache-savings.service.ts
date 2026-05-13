@@ -261,11 +261,16 @@ export class CacheSavingsService {
         (normalInputTokens / 1_000_000) * pricing.input,
       ),
       cacheReadCostUsd: toCurrency(
-        (cacheReadTokens / 1_000_000) * (pricing.cache_read_input ?? pricing.input),
+        (cacheReadTokens / 1_000_000) *
+          (pricing.cache_read_input ??
+            pricing.cache_read_per_1m_tokens ??
+            pricing.input),
       ),
       cacheCreationCostUsd: toCurrency(
         (cacheCreationTokens / 1_000_000) *
-          (pricing.cache_creation_input ?? pricing.input),
+          (pricing.cache_creation_input ??
+            pricing.cache_write_per_1m_tokens ??
+            pricing.input),
       ),
       outputCostUsd: toCurrency(
         (outputTokens / 1_000_000) * pricing.output,
@@ -417,12 +422,18 @@ function calculateCacheAwareCost(
       usage.cache_read_input_tokens -
       usage.cache_creation_input_tokens,
   );
+  const cacheReadPrice =
+    pricing.cache_read_input ??
+    pricing.cache_read_per_1m_tokens ??
+    pricing.input;
+  const cacheCreationPrice =
+    pricing.cache_creation_input ??
+    pricing.cache_write_per_1m_tokens ??
+    pricing.input;
   return (
     (regularInput / 1_000_000) * pricing.input +
-    (usage.cache_read_input_tokens / 1_000_000) *
-      (pricing.cache_read_input ?? pricing.input) +
-    (usage.cache_creation_input_tokens / 1_000_000) *
-      (pricing.cache_creation_input ?? pricing.input) +
+    (usage.cache_read_input_tokens / 1_000_000) * cacheReadPrice +
+    (usage.cache_creation_input_tokens / 1_000_000) * cacheCreationPrice +
     (usage.output_tokens / 1_000_000) * pricing.output
   );
 }

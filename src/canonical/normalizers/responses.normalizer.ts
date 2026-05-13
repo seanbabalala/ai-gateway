@@ -174,10 +174,12 @@ export class ResponsesNormalizer implements Normalizer {
         case 'input_text':
         case 'text':
         case 'output_text':
-          blocks.push({
-            type: 'text',
-            text: (p.text as string) || '',
-          } satisfies TextBlock);
+          blocks.push(
+            this.withCacheControl({
+              type: 'text',
+              text: (p.text as string) || '',
+            } satisfies TextBlock, p),
+          );
           break;
 
         case 'input_image': {
@@ -192,6 +194,7 @@ export class ResponsesNormalizer implements Normalizer {
             id: (p.call_id as string) || (p.id as string) || '',
             name: (p.name as string) || '',
             input: this.safeParseJson(p.arguments as string),
+            ...this.cacheControlFragment(p),
           } satisfies ToolUseBlock);
           break;
 
@@ -200,15 +203,18 @@ export class ResponsesNormalizer implements Normalizer {
             type: 'tool_result',
             tool_use_id: (p.call_id as string) || '',
             content: (p.output as string) || '',
+            ...this.cacheControlFragment(p),
           } satisfies ToolResultBlock);
           break;
 
         default:
           if (p.text) {
-            blocks.push({
-              type: 'text',
-              text: p.text as string,
-            } satisfies TextBlock);
+            blocks.push(
+              this.withCacheControl({
+                type: 'text',
+                text: p.text as string,
+              } satisfies TextBlock, p),
+            );
           }
           break;
       }
@@ -228,17 +234,17 @@ export class ResponsesNormalizer implements Normalizer {
     if (url.startsWith('data:')) {
       const match = url.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
-        return {
+        return this.withCacheControl({
           type: 'image',
           source: { type: 'base64', media_type: match[1], data: match[2] },
-        };
+        } satisfies ImageBlock, item);
       }
     }
 
-    return {
+    return this.withCacheControl({
       type: 'image',
       source: { type: 'url', media_type: 'image/unknown', data: url },
-    };
+    } satisfies ImageBlock, item);
   }
 
   private normalizeTools(
@@ -257,6 +263,7 @@ export class ResponsesNormalizer implements Normalizer {
           name: (t.name as string) || '',
           description: (t.description as string) || '',
           parameters: (t.parameters as Record<string, unknown>) || {},
+          ...this.cacheControlFragment(t),
         });
       }
       // Skip non-function tools (web_search, file_search, etc. — not supported)
@@ -315,5 +322,22 @@ export class ResponsesNormalizer implements Normalizer {
     } catch {
       return { _raw: str };
     }
+  }
+
+  private withCacheControl<T extends Record<string, unknown>>(
+    block: T,
+    source: Record<string, unknown>,
+  ): T {
+    return Object.assign(block, this.cacheControlFragment(source));
+  }
+
+  private cacheControlFragment(
+    source: Record<string, unknown>,
+  ): { cache_control?: Record<string, unknown> } {
+    const cacheControl = source.cache_control;
+    if (!cacheControl || typeof cacheControl !== 'object' || Array.isArray(cacheControl)) {
+      return {};
+    }
+    return { cache_control: { ...(cacheControl as Record<string, unknown>) } };
   }
 }

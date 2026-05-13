@@ -160,7 +160,10 @@ export class ChatCompletionsNormalizer implements Normalizer {
         const p = part as Record<string, unknown>;
 
         if (p.type === 'text') {
-          return { type: 'text', text: p.text as string } satisfies TextBlock;
+          return this.withCacheControl(
+            { type: 'text', text: p.text as string } satisfies TextBlock,
+            p,
+          );
         }
 
         if (p.type === 'image_url') {
@@ -173,21 +176,21 @@ export class ChatCompletionsNormalizer implements Normalizer {
               /^data:([^;]+);base64,(.+)$/,
             );
             if (match) {
-              return {
+              return this.withCacheControl({
                 type: 'image',
                 source: {
                   type: 'base64',
                   media_type: match[1],
                   data: match[2],
                 },
-              } satisfies ImageBlock;
+              } satisfies ImageBlock, p);
             }
           }
 
-          return {
+          return this.withCacheControl({
             type: 'image',
             source: { type: 'url', media_type: 'image/unknown', data: url },
-          } satisfies ImageBlock;
+          } satisfies ImageBlock, p);
         }
 
         // Fallback: treat unknown as text
@@ -216,6 +219,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
           name: (fn.name as string) || '',
           description: (fn.description as string) || '',
           parameters: (fn.parameters as Record<string, unknown>) || {},
+          ...this.cacheControlFragment(t),
         };
       }
 
@@ -224,6 +228,7 @@ export class ChatCompletionsNormalizer implements Normalizer {
         name: (t.name as string) || '',
         description: (t.description as string) || '',
         parameters: (t.parameters as Record<string, unknown>) || {},
+        ...this.cacheControlFragment(t),
       };
     });
   }
@@ -298,5 +303,22 @@ export class ChatCompletionsNormalizer implements Normalizer {
     } catch {
       return { _raw: str };
     }
+  }
+
+  private withCacheControl<T extends Record<string, unknown>>(
+    block: T,
+    source: Record<string, unknown>,
+  ): T {
+    return Object.assign(block, this.cacheControlFragment(source));
+  }
+
+  private cacheControlFragment(
+    source: Record<string, unknown>,
+  ): { cache_control?: Record<string, unknown> } {
+    const cacheControl = source.cache_control;
+    if (!cacheControl || typeof cacheControl !== 'object' || Array.isArray(cacheControl)) {
+      return {};
+    }
+    return { cache_control: { ...(cacheControl as Record<string, unknown>) } };
   }
 }

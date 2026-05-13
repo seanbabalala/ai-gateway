@@ -471,7 +471,7 @@ describe('MessagesDenormalizer', () => {
       expect(result.max_tokens).toBe(4096);
     });
 
-    it('should convert tool_result to user message with tool_result block', () => {
+  it('should convert tool_result to user message with tool_result block', () => {
       const canonical = makeCanonicalRequest({
         messages: [
           {
@@ -642,5 +642,61 @@ describe('MessagesDenormalizer', () => {
       expect((result.content as any[])[0].id).toBe('toolu_1');
       expect(result.stop_reason).toBe('tool_use');
     });
+  });
+
+  it('should forward cache_control for Anthropic system, message blocks, and tools', () => {
+    const result = denorm.denormalize(
+      {
+        messages: [
+          {
+            role: 'system',
+            content: [
+              {
+                type: 'text',
+                text: 'long system prompt',
+                cache_control: { type: 'ephemeral' },
+              },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'hello',
+                cache_control: { type: 'ephemeral', ttl: '1h' },
+              },
+            ],
+          },
+        ],
+        tools: [
+          {
+            name: 'lookup',
+            description: '',
+            parameters: { type: 'object' },
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        stream: false,
+        metadata: {
+          source_format: 'messages',
+          raw_headers: {},
+        },
+      } as any,
+      'claude-opus-4-7',
+    );
+
+    expect(result.system).toEqual([
+      {
+        type: 'text',
+        text: 'long system prompt',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+    expect((result.messages as any[])[0].content[0].cache_control).toEqual({
+      type: 'ephemeral',
+      ttl: '1h',
+    });
+    expect((result.tools as any[])[0].cache_control).toEqual({ type: 'ephemeral' });
   });
 });
