@@ -72,14 +72,18 @@ npm run build
 npm start
 ```
 
+SiftGate loads `.env` automatically for local startup. The example provider
+nodes use runtime secret references such as `${env:OPENAI_API_KEY}`, so the
+Dashboard can start before provider keys are filled in.
+
 Open:
 
 - Dashboard: `http://localhost:2099/dashboard`
 - OpenAPI: `http://localhost:2099/docs`
 - Gateway: `http://localhost:2099`
 
-Add one upstream node in `gateway.config.yaml`, create a Dashboard-managed
-Gateway API key, then send a request:
+Add or verify one upstream node in `gateway.config.yaml`, create a
+Dashboard-managed Gateway API key, then send a request:
 
 ```bash
 curl http://localhost:2099/v1/chat/completions \

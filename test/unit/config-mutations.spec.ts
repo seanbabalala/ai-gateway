@@ -99,8 +99,11 @@ afterEach(() => {
   delete process.env.REQUIRED_OPENAI_KEY;
   delete process.env.RELOAD_OPENAI_KEY;
   delete process.env.SIGHUP_OPENAI_KEY;
+  delete process.env.LOCAL_DOTENV_OPENAI_KEY;
+  delete process.env.PERSIST_OPENAI_KEY;
   delete process.env.RUNTIME_ONLY_OPENAI_KEY;
   delete process.env.OPENAI_WITH_DEFAULT;
+  delete process.env.SIFTGATE_ENV_FILE;
 });
 
 describe('ConfigService — required env interpolation', () => {
@@ -132,6 +135,33 @@ describe('ConfigService — required env interpolation', () => {
     });
 
     expect(svc.getNode('openai')?.api_key).toBe('${env:RUNTIME_ONLY_OPENAI_KEY}');
+  });
+
+  it('loads a local .env file before resolving required ${VAR} references', () => {
+    const previousCwd = process.cwd();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-env-test-'));
+    const configPath = path.join(tmpDir, 'gateway.config.yaml');
+    const envPath = path.join(tmpDir, '.env');
+    fs.writeFileSync(envPath, 'LOCAL_DOTENV_OPENAI_KEY=sk-from-local-env\n', 'utf8');
+    fs.writeFileSync(
+      configPath,
+      yaml.dump(
+        makeMinimalConfig({
+          nodes: makeMinimalNodes('${LOCAL_DOTENV_OPENAI_KEY}'),
+        }),
+      ),
+      'utf8',
+    );
+
+    process.env.GATEWAY_CONFIG_PATH = configPath;
+
+    try {
+      process.chdir(tmpDir);
+      const svc = new ConfigService();
+      expect(svc.getNode('openai')?.api_key).toBe('sk-from-local-env');
+    } finally {
+      process.chdir(previousCwd);
+    }
   });
 });
 
@@ -488,6 +518,24 @@ describe('ConfigService — policy namespace CRUD', () => {
     const raw = fs.readFileSync(configPath, 'utf8');
     expect(raw).toContain('${env:RUNTIME_ONLY_OPENAI_KEY}');
     expect(raw).not.toContain('undefined');
+  });
+
+  it('preserves legacy startup secret references when writing unrelated YAML changes', () => {
+    process.env.PERSIST_OPENAI_KEY = 'sk-real-provider-secret';
+    const { svc, configPath } = loadConfigService({
+      nodes: makeMinimalNodes('${PERSIST_OPENAI_KEY}'),
+    });
+
+    expect(svc.getNode('openai')?.api_key).toBe('sk-real-provider-secret');
+
+    svc.createNamespace({
+      id: 'legacy-secret-safe',
+      allowed_nodes: ['openai'],
+    });
+
+    const raw = fs.readFileSync(configPath, 'utf8');
+    expect(raw).toContain('${PERSIST_OPENAI_KEY}');
+    expect(raw).not.toContain('sk-real-provider-secret');
   });
 
   it('rejects duplicate, missing, and unknown policy namespaces', () => {

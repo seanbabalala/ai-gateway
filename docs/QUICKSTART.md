@@ -18,8 +18,12 @@ cp gateway.config.example.yaml gateway.config.yaml
 cp .env.example .env
 ```
 
-Edit `gateway.config.yaml` and add one upstream node. Use environment references such as `${env:OPENAI_API_KEY}` or `${OPENAI_API_KEY}` instead of committing secrets.
-From v1.5 onward, `${OPENAI_API_KEY}` style references are required at startup and reload time. Use `${OPENAI_API_KEY:-dummy}` only when you intentionally want a fallback value.
+SiftGate loads `.env` automatically for local startup. Edit `gateway.config.yaml`
+and add or verify one upstream node. Prefer runtime secret references such as
+`${env:OPENAI_API_KEY}` instead of committing secrets. Legacy
+`${OPENAI_API_KEY}` startup interpolation still works, but it is required at
+startup and reload time; use `${OPENAI_API_KEY:-dummy}` only when you
+intentionally want a fallback value.
 
 ## 3. Build And Run
 

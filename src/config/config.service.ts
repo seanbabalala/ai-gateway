@@ -55,7 +55,8 @@ import {
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
-import { isTypedSecretReferenceExpression } from './secret-references';
+import { containsSecretReference, isTypedSecretReferenceExpression } from './secret-references';
+import { loadLocalEnvFiles } from './local-env';
 import type { ProviderCatalog } from '../catalog/catalog.types';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
@@ -115,6 +116,11 @@ export interface ConfigReloadOptions {
   throwOnError?: boolean;
 }
 
+interface LoadedConfig {
+  resolved: GatewayConfig;
+  original: GatewayConfig;
+}
+
 export class MissingRequiredEnvVarError extends Error {
   constructor(
     public readonly envName: string,
@@ -149,10 +155,13 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
   private watcherDebounceTimer?: NodeJS.Timeout;
   private watcherDebounceMs = 0;
   private catalogPricingCache?: { configVersion: number; catalog: ProviderCatalog };
+  private originalConfigForPersistence?: GatewayConfig;
+  private resolvedConfigForPersistence?: GatewayConfig;
 
   constructor() {
     // Load eagerly in constructor so config is available during module initialization
     // (e.g. TypeORM's forRootAsync factory needs database config before onModuleInit)
+    loadLocalEnvFiles();
     this.loadConfig();
   }
 
@@ -188,7 +197,8 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private loadConfigFromDisk(): GatewayConfig {
+  private loadConfigFromDisk(): LoadedConfig {
+    loadLocalEnvFiles({ configPath: this.configPath });
     if (!fs.existsSync(this.configPath)) {
       throw new Error(`Configuration file not found: ${this.configPath}`);
     }
@@ -196,12 +206,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.loadConfigFromYaml(raw);
   }
 
-  private loadConfigFromYaml(raw: string): GatewayConfig {
+  private loadConfigFromYaml(raw: string): LoadedConfig {
     const parsed = yaml.load(raw) as GatewayConfig;
     const resolved = this.resolveEnvVars(parsed) as GatewayConfig;
     this.normalizeConfig(resolved);
     this.validateConfigShape(resolved);
-    return resolved;
+    return { resolved, original: parsed };
   }
 
   /**
@@ -328,8 +338,10 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private commitConfig(config: GatewayConfig): void {
-    this.config = config;
+  private commitConfig(loaded: LoadedConfig): void {
+    this.config = loaded.resolved;
+    this.originalConfigForPersistence = this.cloneConfig(loaded.original);
+    this.resolvedConfigForPersistence = this.cloneConfig(loaded.resolved);
     this.configVersion += 1;
     this.loadedAt = new Date();
     this.warnAboutNodeModelResolutionConflicts();
@@ -344,7 +356,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const nextConfig = this.loadConfigFromDisk();
-      const changed = this.describeChanges(previousConfig, nextConfig);
+      const changed = this.describeChanges(previousConfig, nextConfig.resolved);
       this.commitConfig(nextConfig);
       const current = this.getSnapshot();
       const result: ConfigReloadResult = {
@@ -401,7 +413,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const nextConfig = this.loadConfigFromYaml(rawYaml);
-      const changed = this.describeChanges(previousConfig, nextConfig);
+      const changed = this.describeChanges(previousConfig, nextConfig.resolved);
       fs.writeFileSync(this.configPath, rawYaml, 'utf8');
       this.commitConfig(nextConfig);
       const current = this.getSnapshot();
@@ -1735,23 +1747,94 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Write the current in-memory config back to the YAML file.
-   * We re-read the raw file first to preserve any env-var placeholders,
-   * then patch the nodes / models_pricing sections and write back.
-   *
-   * NOTE: For simplicity, we dump the full config. Environment variable
-   * references (${VAR}) will be replaced with their resolved values.
-   * This is intentional — once a value is edited via the dashboard,
-   * the literal value is persisted.
+   * Startup-time ${VAR} references are resolved in memory, so we overlay the
+   * last loaded raw references when the user did not edit that value.
    */
   private saveConfig(): void {
-    const yamlStr = yaml.dump(this.config, {
+    const configToPersist = this.prepareConfigForPersistence();
+    const yamlStr = yaml.dump(configToPersist, {
       indent: 2,
       lineWidth: 120,
       noRefs: true,
       sortKeys: false,
     });
     fs.writeFileSync(this.configPath, yamlStr, 'utf8');
+    this.originalConfigForPersistence = this.cloneConfig(configToPersist);
+    this.resolvedConfigForPersistence = this.cloneConfig(this.config);
     this.logger.log(`Configuration saved to ${this.configPath}`);
+  }
+
+  private prepareConfigForPersistence(): GatewayConfig {
+    return this.preserveUneditedSecretReferences(
+      this.config,
+      this.originalConfigForPersistence,
+      this.resolvedConfigForPersistence,
+    ) as GatewayConfig;
+  }
+
+  private preserveUneditedSecretReferences(
+    current: unknown,
+    original: unknown,
+    resolved: unknown,
+  ): unknown {
+    if (
+      typeof current === 'string' &&
+      typeof original === 'string' &&
+      typeof resolved === 'string' &&
+      containsSecretReference(original) &&
+      current === resolved
+    ) {
+      return original;
+    }
+
+    if (Array.isArray(current)) {
+      const originalArray = Array.isArray(original) ? original : [];
+      const resolvedArray = Array.isArray(resolved) ? resolved : [];
+      return current.map((item, index) => {
+        const itemId = this.objectId(item);
+        const originalItem = itemId
+          ? originalArray.find((candidate) => this.objectId(candidate) === itemId)
+          : originalArray[index];
+        const resolvedItem = itemId
+          ? resolvedArray.find((candidate) => this.objectId(candidate) === itemId)
+          : resolvedArray[index];
+        return this.preserveUneditedSecretReferences(item, originalItem, resolvedItem);
+      });
+    }
+
+    if (current !== null && typeof current === 'object') {
+      const originalObject = this.asRecord(original);
+      const resolvedObject = this.asRecord(resolved);
+      const output: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(current)) {
+        output[key] = this.preserveUneditedSecretReferences(
+          value,
+          originalObject?.[key],
+          resolvedObject?.[key],
+        );
+      }
+      return output;
+    }
+
+    return current;
+  }
+
+  private objectId(value: unknown): string | undefined {
+    if (value !== null && typeof value === 'object') {
+      const id = (value as Record<string, unknown>).id;
+      return typeof id === 'string' ? id : undefined;
+    }
+    return undefined;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private cloneConfig<T>(config: T): T {
+    return yaml.load(yaml.dump(config, { noRefs: true })) as T;
   }
 
   // ===== Node CRUD =====

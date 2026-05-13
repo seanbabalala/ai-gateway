@@ -1,4 +1,5 @@
-import './telemetry/instrumentation'; // OTel SDK — must be first import
+import './config/register-local-env';
+import './telemetry/instrumentation'; // OTel SDK — must run before NestJS imports
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { join } from 'path';

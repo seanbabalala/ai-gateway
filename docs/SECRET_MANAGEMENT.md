@@ -5,6 +5,9 @@ Plane. The default single-node setup still works with `.env` and
 `gateway.config.yaml`; Vault, AWS Secrets Manager, and GCP Secret Manager are
 disabled until explicitly configured.
 
+Local `.env` files are loaded automatically before `gateway.config.yaml` is
+parsed. Existing shell environment variables win over values from `.env`.
+
 ## Supported References
 
 ```yaml
@@ -22,10 +25,11 @@ api_key: "${OPENAI_API_KEY:-dummy-for-ci}"
 ```
 
 Use `${env:...}` when you want the value resolved at request time with the
-SecretReferenceResolver cache. Use legacy `${VAR}` when startup-time expansion
-is enough and the environment variable is guaranteed to exist. From v1.5.0
-onward, `${VAR}` is treated as required during startup and reload; only
-`${VAR:-default}` keeps fallback semantics.
+SecretReferenceResolver cache. It is the recommended form for provider keys
+because Dashboard config saves preserve the reference. Use legacy `${VAR}` when
+startup-time expansion is enough and the environment variable is guaranteed to
+exist. From v1.5.0 onward, `${VAR}` is treated as required during startup and
+reload; only `${VAR:-default}` keeps fallback semantics.
 
 ## Where References Work
 

@@ -5,13 +5,14 @@
 #   cp gateway.config.example.yaml gateway.config.yaml
 #
 # Environment variables can be referenced as:
-#   ${VAR}            — required, fails if not set
-#   ${VAR:-default}   — optional, uses default if not set
+#   ${env:VAR}        — runtime secret reference, safe for dashboard edits
+#   ${VAR}            — startup interpolation, required and resolved in memory
+#   ${VAR:-default}   — startup interpolation with an explicit fallback
 #
 # v1.5.0 migration note:
 #   legacy ${VAR} references are now enforced during startup and reload.
-#   If you are upgrading from v1.4.x, populate every required env before
-#   rollout or switch intentional placeholders to ${VAR:-default}.
+#   Prefer ${env:VAR} for provider keys so Dashboard saves keep references
+#   instead of resolved secret values.
 #
 # v1.6.0 note:
 #   provider-side cache accounting and cache-affinity routing can now use
@@ -251,8 +252,8 @@ auth:
 # Secret Manager References (optional)
 # ============================================================
 # Default behavior keeps local env references enabled and external backends
-# disabled. Use ${env:OPENAI_API_KEY} in provider api_key fields when you want
-# runtime resolution instead of startup-time ${OPENAI_API_KEY} interpolation.
+# disabled. Use ${env:OPENAI_API_KEY} in provider api_key fields so local
+# Dashboard edits never write resolved provider secrets back to YAML.
 #
 # Supported reference locations:
 #   - nodes[].api_key
@@ -409,9 +410,9 @@ nodes:
     batch_status_endpoint: "/v1/batches/:id"
     batch_cancel_endpoint: "/v1/batches/:id/cancel"
     batch_result_endpoint: "/v1/files/:id/content"
-    # Startup interpolation: api_key: "${OPENAI_API_KEY}"
-    # Runtime secret reference: api_key: "${env:OPENAI_API_KEY}"
-    api_key: "${OPENAI_API_KEY}"
+    # Preferred: runtime secret reference resolved only when requests need it.
+    # Legacy startup interpolation still works: api_key: "${OPENAI_API_KEY}"
+    api_key: "${env:OPENAI_API_KEY}"
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     # rerank_models: ["rerank-english-v3"]
@@ -538,7 +539,7 @@ nodes:
     protocol: messages
     base_url: "https://api.anthropic.com"
     endpoint: "/v1/messages"
-    api_key: "${ANTHROPIC_API_KEY}"
+    api_key: "${env:ANTHROPIC_API_KEY}"
     auth_type: x-api-key # Anthropic uses x-api-key header
     # Expose a Claude-compatible public name while sending the provider's
     # real model id upstream. This is useful for Claude Code/Desktop or other
