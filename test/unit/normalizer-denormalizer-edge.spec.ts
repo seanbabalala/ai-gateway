@@ -939,6 +939,7 @@ describe('MessagesDenormalizer — additional edge cases', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('ResponsesDenormalizer — additional edge cases', () => {
+  const normalizer = new ResponsesNormalizer();
   const denorm = new ResponsesDenormalizer();
 
   it('should JSON.stringify unknown content block type in denormalizeContent', () => {
@@ -1017,6 +1018,46 @@ describe('ResponsesDenormalizer — additional edge cases', () => {
     expect(input[0].type).toBe('function_call_output');
     expect(input[0].call_id).toBe('call_1');
     expect(input[0].output).toBe('Result text');
+  });
+
+  it('should preserve Responses function_call before its function_call_output', () => {
+    const canonical = normalizer.normalize(
+      {
+        model: 'gpt-4.1',
+        input: [
+          {
+            type: 'function_call',
+            call_id: 'call_1',
+            name: 'shell',
+            arguments: '{"command":"pwd"}',
+          },
+          {
+            type: 'function_call_output',
+            call_id: 'call_1',
+            output: '/Users/sean/Desktop/ai-gateway',
+          },
+        ],
+        stream: true,
+      },
+      headers,
+    );
+
+    const result = denorm.denormalize(canonical, 'gpt-4.1');
+    const input = result.input as any[];
+
+    expect(input).toEqual([
+      {
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'shell',
+        arguments: '{"command":"pwd"}',
+      },
+      {
+        type: 'function_call_output',
+        call_id: 'call_1',
+        output: '/Users/sean/Desktop/ai-gateway',
+      },
+    ]);
   });
 
   it('should handle response with only function calls (no text)', () => {

@@ -27,6 +27,10 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
       stream: canonical.stream,
     };
 
+    if (canonical.metadata.previous_response_id) {
+      body.previous_response_id = canonical.metadata.previous_response_id;
+    }
+
     // Extract system message as instructions
     const systemMsg = canonical.messages.find((m) => m.role === 'system');
     if (systemMsg) {

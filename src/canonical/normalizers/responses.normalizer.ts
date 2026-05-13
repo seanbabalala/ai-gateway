@@ -25,7 +25,7 @@ import { normalizeRequestIdentityHeaders } from './request-metadata';
  *   instructions                      → system message
  *   tools[].type === "function"       → CanonicalTool
  *   tool_choice                       → CanonicalToolChoice
- *   previous_response_id              → out of scope (MVP)
+ *   previous_response_id              → metadata.previous_response_id
  */
 export class ResponsesNormalizer implements Normalizer {
   normalize(body: unknown, headers: Record<string, string>): CanonicalRequest {
@@ -60,6 +60,10 @@ export class ResponsesNormalizer implements Normalizer {
       metadata: {
         source_format: 'responses',
         original_model: req.model as string | undefined,
+        previous_response_id:
+          typeof req.previous_response_id === 'string'
+            ? req.previous_response_id
+            : undefined,
         ...normalizeRequestIdentityHeaders(headers),
         raw_headers: headers,
         raw_body: req,
@@ -114,6 +118,22 @@ export class ResponsesNormalizer implements Normalizer {
         case 'item_reference': {
           // previous_response_id related — out of scope
           // Skip silently
+          break;
+        }
+
+        case 'function_call': {
+          messages.push({
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: (it.call_id as string) || (it.id as string) || '',
+                name: (it.name as string) || '',
+                input: this.safeParseJson(it.arguments as string),
+                ...this.cacheControlFragment(it),
+              } satisfies ToolUseBlock,
+            ],
+          });
           break;
         }
 

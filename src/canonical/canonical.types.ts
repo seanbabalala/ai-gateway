@@ -189,6 +189,7 @@ export interface CanonicalReasoningIntent {
 export interface CanonicalRequestMetadata {
   source_format: SourceFormat;
   original_model?: string;
+  previous_response_id?: string;
   session_id?: string;
   session_key?: string;
   trace_id?: string;

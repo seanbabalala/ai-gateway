@@ -324,6 +324,21 @@ describe('ResponsesDenormalizer', () => {
       expect(input[0].output).toBe('22°C');
     });
 
+    it('should preserve previous_response_id for Responses upstream requests', () => {
+      const canonical = makeCanonicalRequest({
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-4.1',
+          previous_response_id: 'resp_previous',
+          raw_headers: {},
+        },
+      });
+
+      const result = denorm.denormalize(canonical, 'gpt-4.1');
+
+      expect(result.previous_response_id).toBe('resp_previous');
+    });
+
     it('should map Chat response_format json_schema to Responses text.format', () => {
       const schema = {
         type: 'object',

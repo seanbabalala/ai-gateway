@@ -466,6 +466,47 @@ describe('ResponsesNormalizer', () => {
     expect(blocks[0].content).toBe('22°C');
   });
 
+  it('should normalize top-level function_call items', () => {
+    const body = {
+      model: 'gpt-4.1',
+      input: [
+        {
+          type: 'function_call',
+          call_id: 'call_1',
+          name: 'get_weather',
+          arguments: '{"city":"Shanghai"}',
+        },
+      ],
+      stream: false,
+    };
+
+    const result = normalizer.normalize(body, headers);
+
+    expect(result.messages[0].role).toBe('assistant');
+    const blocks = result.messages[0].content as any[];
+    expect(blocks[0]).toEqual({
+      type: 'tool_use',
+      id: 'call_1',
+      name: 'get_weather',
+      input: { city: 'Shanghai' },
+    });
+  });
+
+  it('should preserve previous_response_id in metadata', () => {
+    const body = {
+      model: 'gpt-4.1',
+      previous_response_id: 'resp_previous',
+      input: [
+        { type: 'function_call_output', call_id: 'call_1', output: '22°C' },
+      ],
+      stream: false,
+    };
+
+    const result = normalizer.normalize(body, headers);
+
+    expect(result.metadata.previous_response_id).toBe('resp_previous');
+  });
+
   it('should handle max_output_tokens', () => {
     const body = {
       model: 'gpt-4.1',
