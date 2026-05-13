@@ -17,7 +17,7 @@ interface HeaderProps {
 }
 
 const headerControlClass =
-  'flex h-11 items-center whitespace-nowrap rounded-lg bg-[var(--background-secondary)] shadow-[0_1px_2px_rgba(5,46,36,0.05)]'
+  'flex h-9 items-center whitespace-nowrap rounded-lg bg-[var(--background-secondary)] shadow-[0_1px_2px_rgba(5,46,36,0.05)]'
 
 export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
   const { t } = useTranslation('common')
@@ -94,7 +94,7 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
         {workspaceState && (
           <div className="flex items-center gap-2">
             <label
-              className={cn(headerControlClass, 'gap-2 px-3.5 text-[11px] font-medium text-[var(--foreground-dim)]')}
+              className={cn(headerControlClass, 'gap-2 px-3 text-[11px] font-medium text-[var(--foreground-dim)]')}
               title={t('workspace.activeWorkspace')}
             >
               <Building2 className="h-3.5 w-3.5" />
@@ -115,7 +115,7 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
             <Tooltip content={t(`rbac.roleDescriptions.${workspaceState.access?.role || 'viewer'}`)} side="bottom">
               <Badge
                 variant={workspaceState.access?.role === 'admin' ? 'emerald' : workspaceState.access?.role === 'operator' ? 'blue' : 'zinc'}
-                className="h-11 gap-1.5 rounded-lg px-3"
+                className="h-9 gap-1.5 rounded-lg px-2.5"
               >
                 <ShieldCheck className="h-3 w-3" />
                 {t(`rbac.roles.${workspaceState.access?.role || 'viewer'}`)}
@@ -126,13 +126,13 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
 
         {/* Notification bell replaced with "Coming soon" tooltip */}
         <Tooltip content={t('header.notificationsComingSoon')} side="bottom">
-          <div className={cn(headerControlClass, 'relative w-11 justify-center text-[var(--foreground-dim)] transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--foreground-muted)] hover:shadow-[0_14px_30px_rgba(5,46,36,0.09)] cursor-default opacity-60')}>
+          <div className={cn(headerControlClass, 'relative w-9 justify-center text-[var(--foreground-dim)] transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--foreground-muted)] hover:shadow-[0_14px_30px_rgba(5,46,36,0.09)] cursor-default opacity-60')}>
             <Bell className="h-4 w-4" />
           </div>
         </Tooltip>
 
         {/* Gateway status pill */}
-        <div className={cn(headerControlClass, 'hidden gap-2 px-3.5 sm:flex')}>
+        <div className={cn(headerControlClass, 'hidden gap-2 px-3 sm:flex')}>
           <StatusDot
             status={
               health?.status === 'healthy'
@@ -160,7 +160,7 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
           <button
             onClick={logout}
             title={t('action.signOut')}
-            className={cn(headerControlClass, 'gap-1.5 px-3.5 text-[11px] font-medium text-[var(--foreground-dim)] transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--foreground)] hover:shadow-[0_14px_30px_rgba(5,46,36,0.09)] cursor-pointer')}
+            className={cn(headerControlClass, 'gap-1.5 px-3 text-[11px] font-medium text-[var(--foreground-dim)] transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--foreground)] hover:shadow-[0_14px_30px_rgba(5,46,36,0.09)] cursor-pointer')}
           >
             <LogOut className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('action.signOut')}</span>
