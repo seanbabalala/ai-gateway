@@ -692,13 +692,99 @@ export class ProviderClientService {
     switch (protocol) {
       case 'chat_completions':
         return this.chatDenorm.denormalize(canonical, targetModel);
-      case 'responses':
-        return this.respDenorm.denormalize(canonical, targetModel);
+      case 'responses': {
+        const requestBody = this.respDenorm.denormalize(canonical, targetModel);
+        this.applyNativeResponsesPassthrough(canonical, requestBody);
+        return requestBody;
+      }
       case 'messages':
         return this.msgDenorm.denormalize(canonical, targetModel);
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
     }
+  }
+
+  private applyNativeResponsesPassthrough(
+    canonical: CanonicalRequest,
+    requestBody: Record<string, unknown>,
+  ): void {
+    if (canonical.metadata.source_format !== 'responses') return;
+    const rawBody =
+      canonical.metadata.raw_body &&
+      typeof canonical.metadata.raw_body === 'object' &&
+      !Array.isArray(canonical.metadata.raw_body)
+        ? (canonical.metadata.raw_body as Record<string, unknown>)
+        : {};
+
+    this.mergeNativeResponsesTools(rawBody.tools, requestBody);
+
+    if (canonical.tool_choice === undefined && rawBody.tool_choice !== undefined) {
+      requestBody.tool_choice = this.cloneJson(rawBody.tool_choice);
+    }
+
+    for (const field of [
+      'background',
+      'include',
+      'parallel_tool_calls',
+      'service_tier',
+      'store',
+      'truncation',
+      'user',
+    ]) {
+      if (requestBody[field] === undefined && rawBody[field] !== undefined) {
+        requestBody[field] = this.cloneJson(rawBody[field]);
+      }
+    }
+  }
+
+  private mergeNativeResponsesTools(
+    rawTools: unknown,
+    requestBody: Record<string, unknown>,
+  ): void {
+    if (!Array.isArray(rawTools)) return;
+    const existingTools = Array.isArray(requestBody.tools)
+      ? ([...requestBody.tools] as Record<string, unknown>[])
+      : [];
+    const existingFunctions = new Map<string, Record<string, unknown>>();
+    for (const tool of existingTools) {
+      if (tool?.type === 'function' && typeof tool.name === 'string') {
+        existingFunctions.set(tool.name, tool);
+      }
+    }
+
+    const merged: Record<string, unknown>[] = [];
+    const usedFunctions = new Set<string>();
+    for (const rawTool of rawTools) {
+      if (!rawTool || typeof rawTool !== 'object' || Array.isArray(rawTool)) {
+        continue;
+      }
+      const tool = rawTool as Record<string, unknown>;
+      if (tool.type === 'function') {
+        const name = typeof tool.name === 'string' ? tool.name : '';
+        const normalized = existingFunctions.get(name);
+        if (normalized) {
+          merged.push(normalized);
+          usedFunctions.add(name);
+        }
+        continue;
+      }
+      merged.push(this.cloneJson(tool) as Record<string, unknown>);
+    }
+
+    for (const tool of existingTools) {
+      if (tool?.type !== 'function') continue;
+      const name = typeof tool.name === 'string' ? tool.name : '';
+      if (!usedFunctions.has(name)) merged.push(tool);
+    }
+
+    if (merged.length > 0) {
+      requestBody.tools = merged;
+    }
+  }
+
+  private cloneJson(value: unknown): unknown {
+    if (value === undefined) return undefined;
+    return JSON.parse(JSON.stringify(value));
   }
 
   private resolveUpstreamModel(node: NodeConfig, targetModel: string): string {

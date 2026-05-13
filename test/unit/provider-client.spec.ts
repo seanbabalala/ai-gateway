@@ -564,6 +564,89 @@ describe('ProviderClientService', () => {
     });
   });
 
+  describe('denormalizeRequest — native responses passthrough', () => {
+    it('should preserve built-in Responses tools such as web_search_preview', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.5-2026-04-24',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.5-2026-04-24',
+            stream: true,
+            input: 'Search the web',
+            tools: [
+              { type: 'web_search_preview', search_context_size: 'low' },
+              {
+                type: 'function',
+                name: 'lookup',
+                description: 'Lookup local data',
+                parameters: { type: 'object' },
+              },
+            ],
+            tool_choice: 'auto',
+            include: ['web_search_call.action.sources'],
+            parallel_tool_calls: true,
+          },
+        },
+        tools: [
+          {
+            name: 'lookup',
+            description: 'Lookup local data',
+            parameters: { type: 'object' },
+          },
+        ],
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'responses',
+        'gpt-5.5-2026-04-24',
+      );
+
+      expect(body.tools).toEqual([
+        { type: 'web_search_preview', search_context_size: 'low' },
+        {
+          type: 'function',
+          name: 'lookup',
+          description: 'Lookup local data',
+          parameters: { type: 'object' },
+        },
+      ]);
+      expect(body.tool_choice).toBe('auto');
+      expect(body.include).toEqual(['web_search_call.action.sources']);
+      expect(body.parallel_tool_calls).toBe(true);
+    });
+
+    it('should preserve non-function Responses tool_choice objects', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.5-2026-04-24',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.5-2026-04-24',
+            input: 'Search the web',
+            tools: [{ type: 'web_search_preview' }],
+            tool_choice: { type: 'web_search_preview' },
+          },
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'responses',
+        'gpt-5.5-2026-04-24',
+      );
+
+      expect(body.tools).toEqual([{ type: 'web_search_preview' }]);
+      expect(body.tool_choice).toEqual({ type: 'web_search_preview' });
+    });
+  });
+
   // ── Header extraction ──────────────────────────────────
 
   describe('extractNativeMessageHeaders', () => {
