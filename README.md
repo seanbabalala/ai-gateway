@@ -111,33 +111,91 @@ plane is optional; AI requests do not need to pass through a hosted service.
 
 ## Competitive Matrix
 
-SiftGate is not trying to be only a cheap model router or only an API resale
-panel. It is designed as an AI traffic data plane: provider-compatible ingress,
-policy, routing, budget control, agent governance, route evidence, and
-production operations in one self-hosted system.
+SiftGate is not only a cheap model router and not only an API resale panel. It
+is an AI traffic data plane: provider-compatible ingress, policy, routing,
+budget control, agent governance, route evidence, and production operations in
+one self-hosted system.
 
 Public positioning references: [Manifest](https://github.com/mnfst/manifest),
 [One API](https://github.com/songquanpeng/one-api), and
 [New API](https://github.com/QuantumNous/new-api).
 
-| Capability | SiftGate | Manifest | One API | New API |
-| --- | --- | --- | --- | --- |
-| Primary product stance | Self-hosted AI traffic data plane for teams, agents, and multi-provider production operations | Smart model router for agents and apps, with cost reduction as the headline | LLM API management and key redistribution system | AI model hub for aggregation, distribution, format conversion, and billing |
-| Best fit | Teams that need BYOK governance, routing, observability, budgets, agents, MCP, and production controls in one gateway | Personal or agent-heavy workflows that want cheap automatic routing quickly | Multi-provider API distribution with users, tokens, channels, and quota management | Larger aggregation/distribution deployments that need UI, channel management, billing, and protocol conversion |
-| OpenAI-compatible ingress | Yes | Yes | Yes | Yes |
-| Anthropic Messages-compatible ingress | Yes | Not primary | Partial / adapter-dependent | Yes |
-| OpenAI Responses support | Yes | Not primary | Not primary | Version/provider dependent |
-| Realtime, Batch, Images, Audio, Video | Yes, with explicit endpoint families and preview flags where appropriate | Limited / not primary | Provider/channel dependent | Broad protocol coverage; exact endpoint coverage depends on deployment/version |
-| MCP Tool Gateway | Built in: Gateway API key auth, namespace allow-lists, rate limits, metadata-only calls | Not primary | Not primary | Skills/app integrations exist; MCP gatewaying is not the core surface |
-| Coding-agent governance | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic profiles with virtual smart models | Strong agent focus, optimized for cost-aware routing | Generic API token/channel model | AI editor skills and app integrations, plus token/model management |
-| Smart routing | Complexity scoring, compatibility profiles, cache-aware cost routing, circuit state, fallback chains, split rules, route traces | Core strength: local scoring and cheapest-capable-model routing | Channel priority/weight/load balancing | Channel weighting, failover, and protocol conversion |
-| Explainable route evidence | First-class Route Explanation with selected/rejected candidates, policy filters, cost, latency, compatibility, reasoning, fallback, and cache evidence | Cost and model metadata focus | Basic logs/quota/channel evidence | Logs, dashboards, quota and channel evidence |
-| Policy hierarchy | Workspace -> API key -> Team -> Policy Namespace -> endpoint/modality/node/model restrictions | Budgets, limits, agents, providers | Users, tokens, channels, quotas | Users, groups, tokens, channels, quotas, billing |
-| Budget model | Global, Policy Namespace, Team, and API Key daily token/cost scopes with explicit source-of-truth handling | Spend limits and tracking | Quota and token accounting | Granular billing, recharge/subscription-style quota controls |
-| Provider catalog governance | 50+ provider metadata, compatibility profiles, active vs transport-only visibility, price-source status, override precedence, config validation | 500+ model-oriented routing catalog | Provider/channel management | Provider/channel management and model assets |
-| Privacy default | Metadata-only by default; no prompt/response/raw header/provider key/tool payload/media/source/diff storage by default | Public docs state prompt/response are not stored by default | Deployment/operator dependent | Deployment/operator dependent |
-| Production path | SQLite local default, PostgreSQL production path, optional Redis shared state, Docker, Kubernetes, Helm, OIDC, secret references, log sinks, OpenTelemetry | Docker-focused self-hosting plus cloud option | Single binary and Docker-ready | Docker, database options, admin UI, multi-tenant operations |
-| Public repo differentiation | AI traffic governance and observability layer, not a resale wallet or simple router | Excellent cost-first routing story | Mature distribution/key management pattern | Feature-rich distribution and billing hub |
+<table>
+  <thead>
+    <tr>
+      <th width="19%">Dimension</th>
+      <th width="27%" align="center">SiftGate</th>
+      <th width="18%" align="center">Manifest</th>
+      <th width="18%" align="center">One API</th>
+      <th width="18%" align="center">New API</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Product center</strong><br><sub>What the project is built around</sub></td>
+      <td align="center"><strong>AI traffic data plane</strong><br><sub>Policy, routing, evidence, agents, MCP, production ops</sub></td>
+      <td align="center"><strong>Smart router</strong><br><sub>Cost-aware model selection for agents and apps</sub></td>
+      <td align="center"><strong>API manager</strong><br><sub>Users, tokens, channels, quota, redistribution</sub></td>
+      <td align="center"><strong>Model hub</strong><br><sub>Aggregation, distribution, conversion, billing</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Best fit</strong><br><sub>The job it is strongest for</sub></td>
+      <td align="center"><strong>Platform teams</strong><br><sub>BYOK governance across apps, agents, providers, budgets</sub></td>
+      <td align="center"><strong>Agent builders</strong><br><sub>Fast path to cheaper capable models</sub></td>
+      <td align="center"><strong>API distributors</strong><br><sub>Central token and channel administration</sub></td>
+      <td align="center"><strong>Aggregation operators</strong><br><sub>UI, channels, billing, model distribution</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Protocol surface</strong><br><sub>Ingress beyond basic Chat</sub></td>
+      <td align="center"><strong>Broad</strong><br><sub>Chat, Responses, Messages, Embeddings, Rerank, Images, Audio, Video preview, Batch, Realtime preview</sub></td>
+      <td align="center"><strong>Focused</strong><br><sub>OpenAI-compatible routing first</sub></td>
+      <td align="center"><strong>Channel dependent</strong><br><sub>Coverage follows configured providers and adapters</sub></td>
+      <td align="center"><strong>Broad</strong><br><sub>Coverage depends on deployment, version, and provider</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Agent governance</strong><br><sub>Coding agents and tool calls</sub></td>
+      <td align="center"><strong>Built in</strong><br><sub>Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, virtual smart models, MCP Tool Gateway</sub></td>
+      <td align="center"><strong>Strong agent focus</strong><br><sub>Optimized for agent/app model routing</sub></td>
+      <td align="center"><strong>Generic API layer</strong><br><sub>Token and channel model</sub></td>
+      <td align="center"><strong>App integrations</strong><br><sub>Editor skills and token/model management</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Routing intelligence</strong><br><sub>How traffic decisions are made</sub></td>
+      <td align="center"><strong>Explainable</strong><br><sub>Complexity scoring, compatibility profiles, cache-aware cost, circuits, fallbacks, split rules, route traces</sub></td>
+      <td align="center"><strong>Cost-first</strong><br><sub>Cheapest capable model selection</sub></td>
+      <td align="center"><strong>Channel-first</strong><br><sub>Priority, weight, load balancing</sub></td>
+      <td align="center"><strong>Channel-first</strong><br><sub>Weighting, failover, protocol conversion</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Governance model</strong><br><sub>Policy and budget hierarchy</sub></td>
+      <td align="center"><strong>Team-owned policy</strong><br><sub>Workspace, API key, Team, Policy Namespace, endpoint, modality, node, model, global/team/key budgets</sub></td>
+      <td align="center"><strong>Usage controls</strong><br><sub>Budgets, limits, providers, agents</sub></td>
+      <td align="center"><strong>Quota controls</strong><br><sub>Users, tokens, channels, quotas</sub></td>
+      <td align="center"><strong>Billing controls</strong><br><sub>Users, groups, tokens, channels, quota, recharge/subscription workflows</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Operations evidence</strong><br><sub>What operators can inspect</sub></td>
+      <td align="center"><strong>First-class</strong><br><sub>Route Explanation, logs, sessions, audit, provider health, cost platform, semantic controls, config rollback</sub></td>
+      <td align="center"><strong>Model/cost focused</strong><br><sub>Routing and usage evidence</sub></td>
+      <td align="center"><strong>Admin focused</strong><br><sub>Channel, user, quota, log evidence</sub></td>
+      <td align="center"><strong>Admin focused</strong><br><sub>Dashboard, logs, quota, channel evidence</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Privacy default</strong><br><sub>Content retention posture</sub></td>
+      <td align="center"><strong>Metadata-only by default</strong><br><sub>No prompt, response, raw header, provider key, tool payload, media, source, diff, hidden reasoning, or resolved secret storage by default</sub></td>
+      <td align="center"><strong>Metadata-first</strong><br><sub>Public docs state prompts and responses are not stored by default</sub></td>
+      <td align="center"><strong>Operator dependent</strong><br><sub>Depends on deployment and retention choices</sub></td>
+      <td align="center"><strong>Operator dependent</strong><br><sub>Depends on deployment and retention choices</sub></td>
+    </tr>
+    <tr>
+      <td><strong>Production path</strong><br><sub>How it grows past local use</sub></td>
+      <td align="center"><strong>Infrastructure-ready</strong><br><sub>SQLite local, PostgreSQL production, optional Redis, Docker, Kubernetes, Helm, OIDC, secret references, log sinks, OpenTelemetry</sub></td>
+      <td align="center"><strong>Docker-first</strong><br><sub>Self-hosting plus cloud option</sub></td>
+      <td align="center"><strong>Simple deploy</strong><br><sub>Single binary and Docker-ready</sub></td>
+      <td align="center"><strong>Admin platform</strong><br><sub>Docker, database options, admin UI, multi-tenant operations</sub></td>
+    </tr>
+  </tbody>
+</table>
 
 Read the fuller comparison in [docs/COMPARISON.md](docs/COMPARISON.md).
 
