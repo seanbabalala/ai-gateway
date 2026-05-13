@@ -274,6 +274,20 @@ describe('ResponsesStreamParser', () => {
     }
   });
 
+  it('should parse OpenAI wrapped response.created → start event', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(parser,
+      'event: response.created\n' +
+      'data: {"type":"response.created","response":{"id":"resp_wrapped","model":"gpt-5.5","status":"in_progress"}}\n\n',
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('start');
+    if (events[0].type === 'start') {
+      expect(events[0].id).toBe('resp_wrapped');
+      expect(events[0].model).toBe('gpt-5.5');
+    }
+  });
+
   it('should parse response.output_text.delta → text delta', () => {
     const parser = new ResponsesStreamParser();
     const events = collect(parser,
@@ -318,6 +332,22 @@ describe('ResponsesStreamParser', () => {
       expect(events[0].stop_reason).toBe('end_turn');
       expect(events[0].usage.input_tokens).toBe(20);
       expect(events[0].usage.output_tokens).toBe(10);
+    }
+  });
+
+  it('should parse OpenAI wrapped response.completed → stop event with usage', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(parser,
+      'event: response.completed\n' +
+      'data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":20,"output_tokens":10,"input_tokens_details":{"cached_tokens":5}}}}\n\n',
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('stop');
+    if (events[0].type === 'stop') {
+      expect(events[0].stop_reason).toBe('end_turn');
+      expect(events[0].usage.input_tokens).toBe(20);
+      expect(events[0].usage.output_tokens).toBe(10);
+      expect(events[0].usage.cache_read_input_tokens).toBe(5);
     }
   });
 

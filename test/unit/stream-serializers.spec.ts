@@ -136,6 +136,18 @@ describe('ResponsesStreamSerializer', () => {
     expect(result).toContain('event: response.in_progress');
     expect(result).toContain('event: response.output_item.added');
     expect(result).toContain('event: response.content_part.added');
+    const payloads = result
+      .split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => JSON.parse(line.replace('data: ', '')));
+    expect(payloads.map((payload) => payload.type)).toEqual([
+      'response.created',
+      'response.in_progress',
+      'response.output_item.added',
+      'response.content_part.added',
+    ]);
+    expect(payloads[0].response.id).toBe('test-id-123');
+    expect(payloads[0].response.model).toBe('gpt-4o');
   });
 
   it('should serialize text delta as response.output_text.delta', () => {
@@ -144,6 +156,8 @@ describe('ResponsesStreamSerializer', () => {
     expect(result).toContain('event: response.output_text.delta');
     const line = result.split('\n').find((l) => l.startsWith('data: '));
     const data = JSON.parse(line!.replace('data: ', ''));
+    expect(data.type).toBe('response.output_text.delta');
+    expect(data.item_id).toBe('msg_test-id-123');
     expect(data.delta).toBe('Hello ');
   });
 
@@ -153,6 +167,7 @@ describe('ResponsesStreamSerializer', () => {
     expect(result).toContain('event: response.output_item.added');
     const lines = result.split('\n').filter((l) => l.startsWith('data: '));
     const data = JSON.parse(lines[0].replace('data: ', ''));
+    expect(data.type).toBe('response.output_item.added');
     expect(data.item.type).toBe('function_call');
     expect(data.item.name).toBe('search');
   });
@@ -163,6 +178,13 @@ describe('ResponsesStreamSerializer', () => {
     expect(result).toContain('event: response.completed');
     expect(result).toContain('event: response.output_text.done');
     expect(result).toContain('event: response.output_item.done');
+    const allLines = result.split('\n');
+    const completedIdx = allLines.findIndex((l) => l.includes('event: response.completed'));
+    const data = JSON.parse(allLines[completedIdx + 1].replace('data: ', ''));
+    expect(data.type).toBe('response.completed');
+    expect(data.response.status).toBe('completed');
+    expect(data.response.usage.input_tokens).toBe(10);
+    expect(data.response.usage.output_tokens).toBe(5);
   });
 
   it('should serialize error event', () => {
@@ -170,6 +192,7 @@ describe('ResponsesStreamSerializer', () => {
     expect(result).toContain('event: error');
     const line = result.split('\n').find((l) => l.startsWith('data: '));
     const data = JSON.parse(line!.replace('data: ', ''));
+    expect(data.type).toBe('error');
     expect(data.message).toBe('Something broke');
   });
 
@@ -297,15 +320,14 @@ describe('Stream Serializers — cache token passthrough', () => {
       stop_reason: 'end_turn',
       usage: { input_tokens: 800, output_tokens: 100, cache_read_input_tokens: 400 },
     });
-    const completedLine = result.split('\n').find((l) => l.startsWith('data: ') && l.includes('response.completed'));
-    // Actually, the event name is on a separate line
     const allLines = result.split('\n');
     const completedIdx = allLines.findIndex((l) => l.includes('response.completed'));
     const dataLine = allLines[completedIdx + 1];
     const data = JSON.parse(dataLine.replace('data: ', ''));
-    expect(data.usage.input_tokens_details).toEqual({ cached_tokens: 400 });
-    expect(data.usage.prompt_tokens_details).toEqual({ cached_tokens: 400 });
-    expect(data.usage.input_token_details).toEqual({ cached_tokens: 400 });
+    expect(data.type).toBe('response.completed');
+    expect(data.response.usage.input_tokens_details).toEqual({ cached_tokens: 400 });
+    expect(data.response.usage.prompt_tokens_details).toEqual({ cached_tokens: 400 });
+    expect(data.response.usage.input_token_details).toEqual({ cached_tokens: 400 });
   });
 
   it('Messages serializer should include cache tokens in message_delta usage', () => {

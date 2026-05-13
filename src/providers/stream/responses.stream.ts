@@ -53,7 +53,10 @@ export class ResponsesStreamParser {
 
         try {
           const parsed = JSON.parse(data);
-          yield* this.processEvent(this.currentEvent, parsed);
+          const eventType =
+            this.currentEvent ||
+            (typeof parsed?.type === 'string' ? parsed.type : '');
+          yield* this.processEvent(eventType, parsed);
         } catch {
           // Skip unparseable
         }
@@ -67,12 +70,14 @@ export class ResponsesStreamParser {
     eventType: string,
     data: Record<string, unknown>,
   ): Generator<CanonicalStreamEvent> {
+    const response = this.unwrapResponse(data);
+
     switch (eventType) {
       case 'response.created': {
         yield {
           type: 'start',
-          id: (data.id as string) || '',
-          model: (data.model as string) || '',
+          id: (response.id as string) || (data.id as string) || '',
+          model: (response.model as string) || (data.model as string) || '',
         };
         break;
       }
@@ -109,7 +114,9 @@ export class ResponsesStreamParser {
       case 'response.completed': {
         yield {
           type: 'stop',
-          stop_reason: this.mapStatus(data.status as string),
+          stop_reason: this.mapStatus(
+            (response.status as string) || (data.status as string),
+          ),
           usage: this.resolveUsage(data),
         };
         break;
@@ -125,11 +132,18 @@ export class ResponsesStreamParser {
         break;
 
       case 'error': {
+        const error = (data.error || {}) as Record<string, unknown>;
         yield {
           type: 'error',
           error: {
-            message: (data.message as string) || 'Unknown stream error',
-            code: (data.code as string) || undefined,
+            message:
+              (error.message as string) ||
+              (data.message as string) ||
+              'Unknown stream error',
+            code:
+              (error.code as string) ||
+              (data.code as string) ||
+              undefined,
           },
         };
         break;
@@ -148,7 +162,11 @@ export class ResponsesStreamParser {
   }
 
   private resolveUsage(data: Record<string, unknown>) {
-    const usage = (data.usage || {}) as Record<string, unknown>;
+    const response = this.unwrapResponse(data);
+    const usage = (response.usage || data.usage || {}) as Record<
+      string,
+      unknown
+    >;
     const inputTokensDetails = (usage.input_tokens_details || {}) as Record<
       string,
       unknown
@@ -171,10 +189,11 @@ export class ResponsesStreamParser {
           0),
     };
 
+    const schemaSource = Object.keys(response).length > 0 ? response : data;
     const schemaUsage = this.usageSchema
-      ? extractUsageBySchema(data, this.usageSchema)
+      ? extractUsageBySchema(schemaSource, this.usageSchema)
       : { input_tokens: 0, output_tokens: 0 };
-    const knownUsage = extractUsageByKnownFields(data);
+    const knownUsage = extractUsageByKnownFields(schemaSource);
     return {
       input_tokens:
         schemaUsage.input_tokens ||
@@ -197,5 +216,9 @@ export class ResponsesStreamParser {
         fallbackUsage.cache_read_input_tokens ||
         0,
     };
+  }
+
+  private unwrapResponse(data: Record<string, unknown>): Record<string, unknown> {
+    return (data.response || {}) as Record<string, unknown>;
   }
 }

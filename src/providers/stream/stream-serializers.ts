@@ -1,4 +1,7 @@
-import { CanonicalStreamEvent } from '../../canonical/canonical.types';
+import {
+  CanonicalStreamEvent,
+  TokenUsage,
+} from '../../canonical/canonical.types';
 
 /**
  * Serializes CanonicalStreamEvent → SSE text for each client protocol.
@@ -140,40 +143,66 @@ export class ResponsesStreamSerializer {
   private id = '';
   private model = '';
   private outputIndex = 0;
+  private sequenceNumber = 0;
+  private messageItemId = '';
+  private accumulatedText = '';
+  private functionCallId = '';
+  private functionCallName = '';
+  private functionArguments = '';
 
   serialize(event: CanonicalStreamEvent): string {
     switch (event.type) {
       case 'start': {
         this.id = event.id || `resp_${Date.now()}`;
         this.model = event.model;
+        this.outputIndex = 0;
+        this.sequenceNumber = 0;
+        this.messageItemId = `msg_${this.id}`;
+        this.accumulatedText = '';
+        this.functionCallId = '';
+        this.functionCallName = '';
+        this.functionArguments = '';
         let result = '';
         result += this.sseEvent('response.created', {
-          id: this.id,
-          object: 'response',
-          model: this.model,
-          status: 'in_progress',
-          output: [],
+          type: 'response.created',
+          sequence_number: this.nextSequenceNumber(),
+          response: {
+            id: this.id,
+            object: 'response',
+            model: this.model,
+            status: 'in_progress',
+            output: [],
+          },
         });
         result += this.sseEvent('response.in_progress', {
-          id: this.id,
-          object: 'response',
-          model: this.model,
-          status: 'in_progress',
+          type: 'response.in_progress',
+          sequence_number: this.nextSequenceNumber(),
+          response: {
+            id: this.id,
+            object: 'response',
+            model: this.model,
+            status: 'in_progress',
+          },
         });
         // Add output item
         result += this.sseEvent('response.output_item.added', {
+          type: 'response.output_item.added',
           output_index: this.outputIndex,
+          sequence_number: this.nextSequenceNumber(),
           item: {
             type: 'message',
-            id: `msg_${this.id}`,
+            id: this.messageItemId,
             role: 'assistant',
             content: [],
             status: 'in_progress',
           },
         });
         result += this.sseEvent('response.content_part.added', {
+          type: 'response.content_part.added',
           output_index: this.outputIndex,
+          item_id: this.messageItemId,
           content_index: 0,
+          sequence_number: this.nextSequenceNumber(),
           part: { type: 'output_text', text: '', annotations: [] },
         });
         return result;
@@ -181,10 +210,15 @@ export class ResponsesStreamSerializer {
 
       case 'delta': {
         if (event.content.type === 'text') {
+          this.accumulatedText += event.content.text;
           return this.sseEvent('response.output_text.delta', {
-            output_index: this.outputIndex,
+            type: 'response.output_text.delta',
+            output_index: 0,
+            item_id: this.messageItemId,
             content_index: 0,
             delta: event.content.text,
+            logprobs: [],
+            sequence_number: this.nextSequenceNumber(),
           });
         }
 
@@ -192,23 +226,34 @@ export class ResponsesStreamSerializer {
           if (event.content.name) {
             // New function call
             this.outputIndex++;
+            this.functionCallId = event.content.id || `call_${this.outputIndex}`;
+            this.functionCallName = event.content.name;
+            this.functionArguments = '';
             return this.sseEvent('response.output_item.added', {
+              type: 'response.output_item.added',
               output_index: this.outputIndex,
+              sequence_number: this.nextSequenceNumber(),
               item: {
                 type: 'function_call',
-                call_id: event.content.id,
-                name: event.content.name,
+                id: `fc_${this.functionCallId}`,
+                call_id: this.functionCallId,
+                name: this.functionCallName,
                 arguments: '',
                 status: 'in_progress',
               },
             });
           }
           if (event.content.input_delta) {
+            this.functionArguments += event.content.input_delta;
             return this.sseEvent(
               'response.function_call_arguments.delta',
               {
+                type: 'response.function_call_arguments.delta',
                 output_index: this.outputIndex,
+                item_id: this.functionCallId ? `fc_${this.functionCallId}` : undefined,
+                call_id: this.functionCallId || undefined,
                 delta: event.content.input_delta,
+                sequence_number: this.nextSequenceNumber(),
               },
             );
           }
@@ -219,37 +264,107 @@ export class ResponsesStreamSerializer {
       case 'stop': {
         let result = '';
         result += this.sseEvent('response.output_text.done', {
+          type: 'response.output_text.done',
           output_index: 0,
+          item_id: this.messageItemId,
           content_index: 0,
-          text: '', // Full text not available in stream
+          text: this.accumulatedText,
+          logprobs: [],
+          sequence_number: this.nextSequenceNumber(),
+        });
+        result += this.sseEvent('response.content_part.done', {
+          type: 'response.content_part.done',
+          output_index: 0,
+          item_id: this.messageItemId,
+          content_index: 0,
+          part: {
+            type: 'output_text',
+            text: this.accumulatedText,
+            annotations: [],
+            logprobs: [],
+          },
+          sequence_number: this.nextSequenceNumber(),
         });
         result += this.sseEvent('response.output_item.done', {
+          type: 'response.output_item.done',
           output_index: 0,
-          item: { type: 'message', status: 'completed' },
+          sequence_number: this.nextSequenceNumber(),
+          item: {
+            type: 'message',
+            id: this.messageItemId,
+            role: 'assistant',
+            status: 'completed',
+            content: [
+              {
+                type: 'output_text',
+                text: this.accumulatedText,
+                annotations: [],
+                logprobs: [],
+              },
+            ],
+          },
         });
+        if (this.functionCallId) {
+          result += this.sseEvent('response.function_call_arguments.done', {
+            type: 'response.function_call_arguments.done',
+            output_index: this.outputIndex,
+            item_id: `fc_${this.functionCallId}`,
+            call_id: this.functionCallId,
+            arguments: this.functionArguments,
+            sequence_number: this.nextSequenceNumber(),
+          });
+          result += this.sseEvent('response.output_item.done', {
+            type: 'response.output_item.done',
+            output_index: this.outputIndex,
+            sequence_number: this.nextSequenceNumber(),
+            item: {
+              type: 'function_call',
+              id: `fc_${this.functionCallId}`,
+              call_id: this.functionCallId,
+              name: this.functionCallName,
+              arguments: this.functionArguments,
+              status: 'completed',
+            },
+          });
+        }
+        const usage = this.responsesUsage(event.usage);
         result += this.sseEvent('response.completed', {
-          id: this.id,
-          object: 'response',
-          model: this.model,
-          status: 'completed',
-          usage: {
-            input_tokens: event.usage.input_tokens,
-            output_tokens: event.usage.output_tokens,
-            total_tokens:
-              event.usage.input_tokens + event.usage.output_tokens,
-            ...(event.usage.cache_read_input_tokens
-              ? {
-                  input_tokens_details: {
-                    cached_tokens: event.usage.cache_read_input_tokens,
+          type: 'response.completed',
+          sequence_number: this.nextSequenceNumber(),
+          response: {
+            id: this.id,
+            object: 'response',
+            model: this.model,
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                id: this.messageItemId,
+                role: 'assistant',
+                status: 'completed',
+                content: [
+                  {
+                    type: 'output_text',
+                    text: this.accumulatedText,
+                    annotations: [],
+                    logprobs: [],
                   },
-                  prompt_tokens_details: {
-                    cached_tokens: event.usage.cache_read_input_tokens,
-                  },
-                  input_token_details: {
-                    cached_tokens: event.usage.cache_read_input_tokens,
-                  },
-                }
-              : {}),
+                ],
+              },
+              ...(this.functionCallId
+                ? [
+                    {
+                      type: 'function_call',
+                      id: `fc_${this.functionCallId}`,
+                      call_id: this.functionCallId,
+                      name: this.functionCallName,
+                      arguments: this.functionArguments,
+                      status: 'completed',
+                    },
+                  ]
+                : []),
+            ],
+            usage,
           },
         });
         return result;
@@ -257,11 +372,43 @@ export class ResponsesStreamSerializer {
 
       case 'error': {
         return this.sseEvent('error', {
+          type: 'error',
+          error: {
+            message: event.error.message,
+            code: event.error.code || null,
+          },
           message: event.error.message,
           code: event.error.code || null,
+          sequence_number: this.nextSequenceNumber(),
         });
       }
     }
+  }
+
+  private responsesUsage(usage: TokenUsage) {
+    return {
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      total_tokens:
+        usage.input_tokens + usage.output_tokens,
+      ...(usage.cache_read_input_tokens
+        ? {
+            input_tokens_details: {
+              cached_tokens: usage.cache_read_input_tokens,
+            },
+            prompt_tokens_details: {
+              cached_tokens: usage.cache_read_input_tokens,
+            },
+            input_token_details: {
+              cached_tokens: usage.cache_read_input_tokens,
+            },
+          }
+        : {}),
+    };
+  }
+
+  private nextSequenceNumber(): number {
+    return this.sequenceNumber++;
   }
 
   private sseEvent(event: string, data: unknown): string {
