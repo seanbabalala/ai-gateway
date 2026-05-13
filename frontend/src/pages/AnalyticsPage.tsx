@@ -13,6 +13,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  Legend,
 } from 'recharts'
 import {
   DollarSign,
@@ -62,6 +63,14 @@ const CACHE_STACK_COLORS = {
   read: '#10B981',
   write: '#F59E0B',
   output: '#475569',
+}
+
+function compactChartLabel(value: string, max = 22) {
+  if (!value) return ''
+  if (value.length <= max) return value
+  const head = Math.max(8, Math.floor((max - 3) * 0.58))
+  const tail = Math.max(5, max - 3 - head)
+  return `${value.slice(0, head)}...${value.slice(-tail)}`
 }
 
 export function AnalyticsPage() {
@@ -584,7 +593,7 @@ export function AnalyticsPage() {
                       <BarChart
                         data={providerCacheByNode.groups.slice(0, 6)}
                         layout="vertical"
-                        margin={{ left: 10, right: 10 }}
+                        margin={{ top: 4, right: 18, left: 4, bottom: 4 }}
                       >
                         <CartesianGrid horizontal={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
                         <XAxis
@@ -597,7 +606,8 @@ export function AnalyticsPage() {
                         <YAxis
                           type="category"
                           dataKey="group_label"
-                          width={96}
+                          width={132}
+                          tickFormatter={(value: string) => compactChartLabel(value, 18)}
                           tick={{ fill: colors.chartAxisTick, fontSize: 11, fontFamily: 'IBM Plex Mono' }}
                           axisLine={false}
                           tickLine={false}
@@ -610,7 +620,7 @@ export function AnalyticsPage() {
                             return [value, name]
                           }}
                         />
-                        <Bar dataKey="savings_usd" radius={[0, 8, 8, 0]}>
+                        <Bar dataKey="savings_usd" radius={[0, 6, 6, 0]} barSize={22}>
                           {providerCacheByNode.groups.slice(0, 6).map((entry) => (
                             <Cell key={entry.group_value} fill={getNodeColor(entry.group_value)} />
                           ))}
@@ -629,7 +639,7 @@ export function AnalyticsPage() {
                       <BarChart
                         data={providerCacheByModel.groups.slice(0, 6)}
                         layout="vertical"
-                        margin={{ left: 10, right: 10 }}
+                        margin={{ top: 4, right: 18, left: 4, bottom: 4 }}
                       >
                         <CartesianGrid horizontal={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
                         <XAxis
@@ -642,7 +652,8 @@ export function AnalyticsPage() {
                         <YAxis
                           type="category"
                           dataKey="group_label"
-                          width={120}
+                          width={160}
+                          tickFormatter={(value: string) => compactChartLabel(value, 22)}
                           tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                           axisLine={false}
                           tickLine={false}
@@ -655,7 +666,7 @@ export function AnalyticsPage() {
                             return [value, name]
                           }}
                         />
-                        <Bar dataKey="savings_usd" radius={[0, 8, 8, 0]}>
+                        <Bar dataKey="savings_usd" radius={[0, 6, 6, 0]} barSize={22}>
                           {providerCacheByModel.groups.slice(0, 6).map((entry, index) => (
                             <Cell
                               key={entry.group_value}
@@ -674,21 +685,46 @@ export function AnalyticsPage() {
                   <CardTitle>{t('cache.costMix.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={providerCacheByNode.groups.slice(0, 6)}>
-                      <CartesianGrid vertical={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart
+                      data={providerCacheByNode.groups.slice(0, 6)}
+                      layout="vertical"
+                      margin={{ top: 4, right: 24, left: 4, bottom: 4 }}
+                      barCategoryGap={14}
+                    >
+                      <CartesianGrid horizontal={false} stroke={colors.chartAxisLine} strokeDasharray="4 8" />
                       <XAxis
-                        dataKey="group_label"
-                        tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
-                        axisLine={{ stroke: colors.chartAxisLine }}
-                        tickLine={false}
-                      />
-                      <YAxis
+                        type="number"
                         tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
                         axisLine={false}
                         tickLine={false}
-                        width={52}
                         tickFormatter={(value: number) => `$${value.toFixed(2)}`}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="group_label"
+                        width={136}
+                        tickFormatter={(value: string) => compactChartLabel(value, 18)}
+                        tick={{ fill: colors.chartAxisTick, fontSize: 10, fontFamily: 'IBM Plex Mono' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Legend
+                        verticalAlign="top"
+                        align="right"
+                        iconType="circle"
+                        wrapperStyle={{
+                          color: colors.chartAxisTick,
+                          fontSize: 11,
+                          paddingBottom: 8,
+                        }}
+                        formatter={(value: string) => {
+                          if (value === 'normal_input_cost_usd') return t('cache.costMix.normal')
+                          if (value === 'cache_read_cost_usd') return t('cache.costMix.read')
+                          if (value === 'cache_creation_cost_usd') return t('cache.costMix.write')
+                          if (value === 'output_cost_usd') return t('cache.costMix.output')
+                          return value
+                        }}
                       />
                       <Tooltip
                         contentStyle={tooltipStyle}
@@ -701,10 +737,10 @@ export function AnalyticsPage() {
                           return [value, name]
                         }}
                       />
-                      <Bar dataKey="normal_input_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.normal} radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="normal_input_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.normal} barSize={18} radius={[6, 0, 0, 6]} />
                       <Bar dataKey="cache_read_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.read} />
                       <Bar dataKey="cache_creation_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.write} />
-                      <Bar dataKey="output_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.output} radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="output_cost_usd" stackId="cost" fill={CACHE_STACK_COLORS.output} radius={[0, 6, 6, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>

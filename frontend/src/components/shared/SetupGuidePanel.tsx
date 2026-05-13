@@ -44,7 +44,7 @@ export function SetupGuidePanel({
 
   return (
     <CardStatic className={className}>
-      <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+      <CardHeader className="gap-4 pb-4 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-400">
             <Icon className="h-4.5 w-4.5" />
@@ -56,7 +56,7 @@ export function SetupGuidePanel({
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex max-w-full flex-wrap gap-1.5 md:justify-end">
           {statuses.map((status) => (
             <Badge key={`${status.label}:${status.value}`} variant={status.tone || 'zinc'} className="gap-1.5 whitespace-nowrap">
               <span className="text-[var(--foreground-dim)]">{status.label}</span>
@@ -65,8 +65,8 @@ export function SetupGuidePanel({
           ))}
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]">
+      <CardContent className="pt-1">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]">
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
             {bullets.map((bullet) => (
               <div

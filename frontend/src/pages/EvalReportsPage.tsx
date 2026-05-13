@@ -378,7 +378,7 @@ export function EvalReportsPage() {
         badge={<Badge variant="gold">{t('evals.badge.readOnly')}</Badge>}
       />
 
-      <GuidanceSection storageKey="eval-reports" complete={data.totals.runs > 0}>
+      <GuidanceSection storageKey="eval-reports" complete={data.totals.runs > 0} className="mb-5">
         <ConceptPanel
           conceptId="evals"
           icon={Scale}
