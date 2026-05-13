@@ -583,6 +583,9 @@ function buildGatewayConfig({ mockUpstreamUrl, database, redisUrl }) {
       body_limit: '1mb',
     },
     database,
+    dashboard: {
+      auth_required: false,
+    },
     auth: {
       api_keys: [],
       rate_limit: {

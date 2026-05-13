@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+## 2.8.4 - 2026-05-13
+
+### Fixed
+
+- Fixed local Quick Start startup by loading `.env` automatically before config
+  interpolation and switching example provider keys to runtime secret
+  references.
+- Prevented Dashboard config saves from writing unedited resolved provider
+  secrets back into `gateway.config.yaml`.
+- Cleared production dependency audit findings by upgrading OpenTelemetry,
+  `uuid`, and the affected protobuf transformer path.
+- Restored the root `npm run lint` script with an ESLint flat config and
+  tracked dev dependencies.
+
+### Changed
+
+- Hardened OSS defaults: source installs bind to localhost, Docker Compose
+  publishes localhost-only, CORS defaults to same-origin/no credentials, and
+  Dashboard auth is required by default with first-start password generation.
+- Added a non-Docker GitHub CI workflow covering docs, build, unit/e2e tests,
+  frontend checks, SDK checks, Kubernetes validation, release checks, provider
+  registry validation, and production dependency audit.
+
+### Test Evidence
+
+- `npm run lint`
+- `npm run build`
+- `npm test -- --runInBand test/unit/config-mutations.spec.ts`
+- `npm test -- --runInBand test/unit/auth-service.spec.ts test/unit/dashboard-guard.spec.ts test/unit/auth-controller.spec.ts`
+- `npm run test:e2e -- --runInBand test/e2e/auth.e2e-spec.ts`
+- `npm run docs:check`
+- `npm run validate:config -- --config gateway.config.example.yaml`
+- `npm run validate:k8s`
+- `npm run release:check`
+- `npm run provider-registry:check`
+- `npm audit`
+
+### Boundaries
+
+- v2.8.4 is an OSS hardening release. It does not change storage schemas,
+  provider request/response formats, routing selection semantics, budget
+  accounting, or the public OpenAI/Anthropic-compatible API shape.
+
 ## 2.8.3 - 2026-05-12
 
 ### Fixed
