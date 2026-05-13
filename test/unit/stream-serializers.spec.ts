@@ -187,6 +187,64 @@ describe('ResponsesStreamSerializer', () => {
     expect(data.response.usage.output_tokens).toBe(5);
   });
 
+  it('should preserve multiple Responses function calls through completion', () => {
+    serializer.serialize(startEvent);
+    serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_1', name: 'shell' },
+    });
+    serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_1', input_delta: '{"cmd":"pwd"}' },
+    });
+    serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_2', name: 'read_file' },
+    });
+    serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_2', input_delta: '{"path":"README.md"}' },
+    });
+
+    const result = serializer.serialize(stopEvent);
+    const payloads = result
+      .split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => JSON.parse(line.replace('data: ', '')));
+    const completed = payloads.find(
+      (payload) => payload.type === 'response.completed',
+    );
+    const functionCalls = completed.response.output.filter(
+      (item: { type: string }) => item.type === 'function_call',
+    );
+    expect(functionCalls).toEqual([
+      {
+        type: 'function_call',
+        id: 'fc_call_1',
+        call_id: 'call_1',
+        name: 'shell',
+        arguments: '{"cmd":"pwd"}',
+        status: 'completed',
+      },
+      {
+        type: 'function_call',
+        id: 'fc_call_2',
+        call_id: 'call_2',
+        name: 'read_file',
+        arguments: '{"path":"README.md"}',
+        status: 'completed',
+      },
+    ]);
+
+    const argumentDoneEvents = payloads.filter(
+      (payload) => payload.type === 'response.function_call_arguments.done',
+    );
+    expect(argumentDoneEvents.map((payload) => payload.call_id)).toEqual([
+      'call_1',
+      'call_2',
+    ]);
+  });
+
   it('should serialize error event', () => {
     const result = serializer.serialize(errorEvent);
     expect(result).toContain('event: error');

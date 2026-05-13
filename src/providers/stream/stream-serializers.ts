@@ -139,6 +139,13 @@ export class ChatCompletionsStreamSerializer {
 // Responses SSE Serializer
 // ═══════════════════════════════════════════════════════
 
+interface ResponsesFunctionCallState {
+  outputIndex: number;
+  callId: string;
+  name: string;
+  arguments: string;
+}
+
 export class ResponsesStreamSerializer {
   private id = '';
   private model = '';
@@ -146,9 +153,8 @@ export class ResponsesStreamSerializer {
   private sequenceNumber = 0;
   private messageItemId = '';
   private accumulatedText = '';
-  private functionCallId = '';
-  private functionCallName = '';
-  private functionArguments = '';
+  private activeFunctionCallId = '';
+  private functionCalls: ResponsesFunctionCallState[] = [];
 
   serialize(event: CanonicalStreamEvent): string {
     switch (event.type) {
@@ -159,9 +165,8 @@ export class ResponsesStreamSerializer {
         this.sequenceNumber = 0;
         this.messageItemId = `msg_${this.id}`;
         this.accumulatedText = '';
-        this.functionCallId = '';
-        this.functionCallName = '';
-        this.functionArguments = '';
+        this.activeFunctionCallId = '';
+        this.functionCalls = [];
         let result = '';
         result += this.sseEvent('response.created', {
           type: 'response.created',
@@ -224,34 +229,34 @@ export class ResponsesStreamSerializer {
 
         if (event.content.type === 'tool_use') {
           if (event.content.name) {
-            // New function call
-            this.outputIndex++;
-            this.functionCallId = event.content.id || `call_${this.outputIndex}`;
-            this.functionCallName = event.content.name;
-            this.functionArguments = '';
+            const call = this.upsertFunctionCall(
+              event.content.id,
+              event.content.name,
+            );
             return this.sseEvent('response.output_item.added', {
               type: 'response.output_item.added',
-              output_index: this.outputIndex,
+              output_index: call.outputIndex,
               sequence_number: this.nextSequenceNumber(),
               item: {
                 type: 'function_call',
-                id: `fc_${this.functionCallId}`,
-                call_id: this.functionCallId,
-                name: this.functionCallName,
-                arguments: '',
+                id: this.functionItemId(call),
+                call_id: call.callId,
+                name: call.name,
+                arguments: call.arguments,
                 status: 'in_progress',
               },
             });
           }
           if (event.content.input_delta) {
-            this.functionArguments += event.content.input_delta;
+            const call = this.resolveFunctionCallForDelta(event.content.id);
+            call.arguments += event.content.input_delta;
             return this.sseEvent(
               'response.function_call_arguments.delta',
               {
                 type: 'response.function_call_arguments.delta',
-                output_index: this.outputIndex,
-                item_id: this.functionCallId ? `fc_${this.functionCallId}` : undefined,
-                call_id: this.functionCallId || undefined,
+                output_index: call.outputIndex,
+                item_id: this.functionItemId(call),
+                call_id: call.callId,
                 delta: event.content.input_delta,
                 sequence_number: this.nextSequenceNumber(),
               },
@@ -304,25 +309,25 @@ export class ResponsesStreamSerializer {
             ],
           },
         });
-        if (this.functionCallId) {
+        for (const call of this.functionCalls) {
           result += this.sseEvent('response.function_call_arguments.done', {
             type: 'response.function_call_arguments.done',
-            output_index: this.outputIndex,
-            item_id: `fc_${this.functionCallId}`,
-            call_id: this.functionCallId,
-            arguments: this.functionArguments,
+            output_index: call.outputIndex,
+            item_id: this.functionItemId(call),
+            call_id: call.callId,
+            arguments: call.arguments,
             sequence_number: this.nextSequenceNumber(),
           });
           result += this.sseEvent('response.output_item.done', {
             type: 'response.output_item.done',
-            output_index: this.outputIndex,
+            output_index: call.outputIndex,
             sequence_number: this.nextSequenceNumber(),
             item: {
               type: 'function_call',
-              id: `fc_${this.functionCallId}`,
-              call_id: this.functionCallId,
-              name: this.functionCallName,
-              arguments: this.functionArguments,
+              id: this.functionItemId(call),
+              call_id: call.callId,
+              name: call.name,
+              arguments: call.arguments,
               status: 'completed',
             },
           });
@@ -351,18 +356,14 @@ export class ResponsesStreamSerializer {
                   },
                 ],
               },
-              ...(this.functionCallId
-                ? [
-                    {
-                      type: 'function_call',
-                      id: `fc_${this.functionCallId}`,
-                      call_id: this.functionCallId,
-                      name: this.functionCallName,
-                      arguments: this.functionArguments,
-                      status: 'completed',
-                    },
-                  ]
-                : []),
+              ...this.functionCalls.map((call) => ({
+                type: 'function_call',
+                id: this.functionItemId(call),
+                call_id: call.callId,
+                name: call.name,
+                arguments: call.arguments,
+                status: 'completed',
+              })),
             ],
             usage,
           },
@@ -405,6 +406,52 @@ export class ResponsesStreamSerializer {
           }
         : {}),
     };
+  }
+
+  private upsertFunctionCall(
+    callId: string | undefined,
+    name: string,
+  ): ResponsesFunctionCallState {
+    const resolvedCallId =
+      callId || this.activeFunctionCallId || `call_${this.outputIndex + 1}`;
+    let call = this.functionCalls.find(
+      (candidate) => candidate.callId === resolvedCallId,
+    );
+    if (!call) {
+      this.outputIndex++;
+      call = {
+        outputIndex: this.outputIndex,
+        callId: resolvedCallId,
+        name,
+        arguments: '',
+      };
+      this.functionCalls.push(call);
+    } else if (name) {
+      call.name = name;
+    }
+    this.activeFunctionCallId = call.callId;
+    return call;
+  }
+
+  private resolveFunctionCallForDelta(
+    callId: string | undefined,
+  ): ResponsesFunctionCallState {
+    const resolvedCallId = callId || this.activeFunctionCallId;
+    const existing = resolvedCallId
+      ? this.functionCalls.find((call) => call.callId === resolvedCallId)
+      : undefined;
+    if (existing) {
+      this.activeFunctionCallId = existing.callId;
+      return existing;
+    }
+    return this.upsertFunctionCall(
+      resolvedCallId || `call_${this.outputIndex + 1}`,
+      '',
+    );
+  }
+
+  private functionItemId(call: ResponsesFunctionCallState): string {
+    return `fc_${call.callId}`;
   }
 
   private nextSequenceNumber(): number {

@@ -27,8 +27,10 @@ import {
 export class ResponsesStreamParser {
   private buffer = '';
   private currentEvent = '';
+  private hasSentStop = false;
   private readonly startedFunctionCalls = new Set<string>();
   private readonly functionCallsWithArgumentDeltas = new Set<string>();
+  private readonly functionCallItemIds = new Map<string, string>();
 
   constructor(private readonly usageSchema?: UsageSchema) {}
 
@@ -52,6 +54,19 @@ export class ResponsesStreamParser {
       // Data line
       if (trimmed.startsWith('data: ')) {
         const data = trimmed.slice(6).trim();
+
+        if (data === '[DONE]') {
+          if (!this.hasSentStop) {
+            this.hasSentStop = true;
+            yield {
+              type: 'stop',
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 0, output_tokens: 0 },
+            };
+          }
+          this.currentEvent = '';
+          return;
+        }
 
         try {
           const parsed = JSON.parse(data);
@@ -104,7 +119,12 @@ export class ResponsesStreamParser {
       }
 
       case 'response.function_call_arguments.delta': {
-        const callId = (data.call_id as string) || (data.item_id as string) || '';
+        const itemId = data.item_id as string | undefined;
+        const callId =
+          (data.call_id as string) ||
+          (itemId ? this.functionCallItemIds.get(itemId) : undefined) ||
+          itemId ||
+          '';
         if (callId) {
           this.functionCallsWithArgumentDeltas.add(callId);
         }
@@ -148,11 +168,22 @@ export class ResponsesStreamParser {
       }
 
       case 'response.completed': {
+        this.hasSentStop = true;
         yield {
           type: 'stop',
           stop_reason: this.mapStatus(
             (response.status as string) || (data.status as string),
           ),
+          usage: this.resolveUsage(data),
+        };
+        break;
+      }
+
+      case 'response.incomplete': {
+        this.hasSentStop = true;
+        yield {
+          type: 'stop',
+          stop_reason: 'max_tokens',
           usage: this.resolveUsage(data),
         };
         break;
@@ -165,19 +196,26 @@ export class ResponsesStreamParser {
         // Informational events — skip
         break;
 
-      case 'error': {
-        const error = (data.error || {}) as Record<string, unknown>;
+      case 'response.failed': {
+        this.hasSentStop = true;
+        const error = this.unwrapError(data);
         yield {
           type: 'error',
           error: {
-            message:
-              (error.message as string) ||
-              (data.message as string) ||
-              'Unknown stream error',
-            code:
-              (error.code as string) ||
-              (data.code as string) ||
-              undefined,
+            message: error.message || 'Responses stream failed',
+            code: error.code || undefined,
+          },
+        };
+        break;
+      }
+
+      case 'error': {
+        const error = this.unwrapError(data);
+        yield {
+          type: 'error',
+          error: {
+            message: error.message || 'Unknown stream error',
+            code: error.code || undefined,
           },
         };
         break;
@@ -194,6 +232,10 @@ export class ResponsesStreamParser {
   ): Generator<CanonicalStreamEvent> {
     const callId = this.functionCallId(item);
     if (!callId || this.startedFunctionCalls.has(callId)) return;
+    const itemId = item.id as string | undefined;
+    if (itemId) {
+      this.functionCallItemIds.set(itemId, callId);
+    }
     this.startedFunctionCalls.add(callId);
     yield {
       type: 'delta',
@@ -274,5 +316,28 @@ export class ResponsesStreamParser {
 
   private unwrapResponse(data: Record<string, unknown>): Record<string, unknown> {
     return (data.response || {}) as Record<string, unknown>;
+  }
+
+  private unwrapError(data: Record<string, unknown>): {
+    message?: string;
+    code?: string;
+  } {
+    const response = this.unwrapResponse(data);
+    const error = ((response.error || data.error || {}) as Record<
+      string,
+      unknown
+    >);
+    return {
+      message:
+        (error.message as string) ||
+        (response.message as string) ||
+        (data.message as string) ||
+        undefined,
+      code:
+        (error.code as string) ||
+        (response.code as string) ||
+        (data.code as string) ||
+        undefined,
+    };
   }
 }

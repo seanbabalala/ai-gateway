@@ -365,6 +365,31 @@ describe('ResponsesStreamParser', () => {
     });
   });
 
+  it('should map Responses function argument item_id back to call_id', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(
+      parser,
+      'event: response.output_item.added\n' +
+        'data: {"output_index":1,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"shell","arguments":"","status":"in_progress"}}\n\n' +
+        'event: response.function_call_arguments.delta\n' +
+        'data: {"output_index":1,"item_id":"fc_1","delta":"{\\"command\\":\\"pwd\\"}"}\n\n',
+    );
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_1', name: 'shell' },
+    });
+    expect(events[1]).toMatchObject({
+      type: 'delta',
+      content: {
+        type: 'tool_use',
+        id: 'call_1',
+        input_delta: '{"command":"pwd"}',
+      },
+    });
+  });
+
   it('should recover function_call arguments from output_item.done when deltas are absent', () => {
     const parser = new ResponsesStreamParser();
     const events = collect(
@@ -402,6 +427,40 @@ describe('ResponsesStreamParser', () => {
     }
   });
 
+  it('should parse [DONE] as a terminal stop event', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(parser, 'data: [DONE]\n\n');
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('stop');
+  });
+
+  it('should not emit duplicate stop on response.completed followed by [DONE]', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(
+      parser,
+      'event: response.completed\n' +
+        'data: {"id":"resp_1","status":"completed","usage":{"input_tokens":20,"output_tokens":10}}\n\n' +
+        'data: [DONE]\n\n',
+    );
+    expect(events.filter((event) => event.type === 'stop')).toHaveLength(1);
+  });
+
+  it('should parse response.incomplete as max_tokens stop', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(
+      parser,
+      'event: response.incomplete\n' +
+        'data: {"type":"response.incomplete","response":{"id":"resp_1","status":"incomplete","usage":{"input_tokens":20,"output_tokens":4096}}}\n\n',
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('stop');
+    if (events[0].type === 'stop') {
+      expect(events[0].stop_reason).toBe('max_tokens');
+      expect(events[0].usage.input_tokens).toBe(20);
+      expect(events[0].usage.output_tokens).toBe(4096);
+    }
+  });
+
   it('should parse OpenAI wrapped response.completed → stop event with usage', () => {
     const parser = new ResponsesStreamParser();
     const events = collect(parser,
@@ -415,6 +474,21 @@ describe('ResponsesStreamParser', () => {
       expect(events[0].usage.input_tokens).toBe(20);
       expect(events[0].usage.output_tokens).toBe(10);
       expect(events[0].usage.cache_read_input_tokens).toBe(5);
+    }
+  });
+
+  it('should parse response.failed with nested response error', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(
+      parser,
+      'event: response.failed\n' +
+        'data: {"type":"response.failed","response":{"id":"resp_1","status":"failed","error":{"message":"Bad input","code":"invalid_request_error"}}}\n\n',
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') {
+      expect(events[0].error.message).toBe('Bad input');
+      expect(events[0].error.code).toBe('invalid_request_error');
     }
   });
 
