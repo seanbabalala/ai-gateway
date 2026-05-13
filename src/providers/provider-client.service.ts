@@ -999,6 +999,14 @@ export class ProviderClientService {
           continue;
         }
 
+        if (typedBlock.type === 'tool_use') {
+          sanitized.push({
+            ...typedBlock,
+            input: this.normalizeToolUseInput(typedBlock.input),
+          });
+          continue;
+        }
+
         if (Object.prototype.hasOwnProperty.call(typedBlock, 'content')) {
           sanitized.push({
             ...typedBlock,
@@ -1033,6 +1041,24 @@ export class ProviderClientService {
     }
 
     return body;
+  }
+
+  private normalizeToolUseInput(input: unknown): Record<string, unknown> {
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+      return input as Record<string, unknown>;
+    }
+    if (typeof input === 'string' && input.trim()) {
+      try {
+        const parsed = JSON.parse(input) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        return { value: input };
+      }
+      return { value: input };
+    }
+    return {};
   }
 
   private extractNativeMessageHeaders(
