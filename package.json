@@ -30,7 +30,7 @@
     "catalog": "ts-node src/cli/siftgate.ts catalog",
     "migrate:db": "ts-node src/cli/siftgate.ts migrate-db",
     "typecheck:sdk": "npm --workspace @siftgate/client run typecheck",
-    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "lint": "eslint \"{src,test}/**/*.ts\" \"scripts/**/*.{js,ts}\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest",
     "test:sdk": "npm --workspace @siftgate/client run test",

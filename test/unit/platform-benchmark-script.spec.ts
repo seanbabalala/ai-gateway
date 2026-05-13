@@ -47,10 +47,15 @@ describe('benchmark-platform script', () => {
 
     const fromStdout = JSON.parse(stdout);
     const fromFile = JSON.parse(fs.readFileSync(output, 'utf8'));
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    );
+    const expectedRelease = `v${packageJson.version}`;
+
     expect(fromStdout).toEqual(fromFile);
     expect(fromFile).toMatchObject({
       report_schema: 'siftgate.platform_benchmark.v1',
-      release: 'v2.8.2',
+      release: expectedRelease,
       rc_measurement: false,
       methodology: {
         script: 'npm run benchmark:platform',
@@ -83,7 +88,7 @@ describe('benchmark-platform script', () => {
     expect(fromFile.comparisons.length).toBeGreaterThan(0);
 
     const markdown = fs.readFileSync(markdownOutput, 'utf8');
-    expect(markdown).toContain('SiftGate v2.8.2 Performance Report');
+    expect(markdown).toContain(`SiftGate ${expectedRelease} Performance Report`);
     expect(markdown).toContain('GA measurements');
   });
 });

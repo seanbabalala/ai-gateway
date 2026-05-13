@@ -64,6 +64,7 @@ prefer the broadest reasonable gate.
 
 ```bash
 npm run docs:check
+npm run lint
 npm run build
 npm test -- --runInBand
 npm run test:e2e

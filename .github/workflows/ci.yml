@@ -29,6 +29,9 @@ jobs:
       - name: Check docs
         run: npm run docs:check
 
+      - name: Lint backend and scripts
+        run: npm run lint
+
       - name: Build backend
         run: npm run build
 
