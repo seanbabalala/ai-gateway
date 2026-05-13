@@ -1,7 +1,10 @@
 # SiftGate Documentation
 
-This is the public documentation home for SiftGate. The root README is the
-storefront; this page is the map for operators, contributors, and self-hosters.
+SiftGate is a self-hosted AI Gateway for multi-provider model traffic, coding
+agents, MCP tools, cost governance, policy enforcement, and metadata-only
+operations. The root [README](../README.md) is the product overview; this page
+is the documentation map for operators, platform teams, contributors, and
+self-hosters.
 
 ## Languages
 
@@ -15,6 +18,19 @@ storefront; this page is the map for operators, contributors, and self-hosters.
 | ไทย | [i18n/th/README.md](i18n/th/README.md) |
 | Español | [i18n/es/README.md](i18n/es/README.md) |
 
+## Recommended Reading Paths
+
+| Goal | Read these first |
+| --- | --- |
+| Try SiftGate locally | [Quickstart](QUICKSTART.md), [Dashboard](DASHBOARD.md), [OSS concepts](OSS_CONCEPTS.md) |
+| Run it in containers | [Docker quickstart](DOCKER_QUICKSTART.md), [Production](PRODUCTION.md), [State backends](STATE_BACKEND.md) |
+| Add provider coverage | [Provider Catalog](PROVIDER_CATALOG.md), [Adding providers](ADDING_PROVIDERS.md), [Provider extensibility](PROVIDER_EXTENSIBILITY.md) |
+| Govern teams and apps | [Dashboard](DASHBOARD.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md), [Cost and chargeback platform](COST_CHARGEBACK_PLATFORM.md) |
+| Connect coding agents | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent integrations](AGENT_INTEGRATIONS.md) |
+| Operate advanced controls | [Semantic Controls](SEMANTIC_PLATFORM.md), [Evaluation framework](EVALUATION_FRAMEWORK.md), [Caching](CACHING.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
+| Deploy to production | [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [Security](SECURITY.md), [Secret management](SECRET_MANAGEMENT.md) |
+| Extend or contribute | [Architecture](ARCHITECTURE.md), [API reference](API_REFERENCE.md), [Plugins](PLUGINS.md), [Release checklist](RELEASE_CHECKLIST.md) |
+
 ## Start
 
 | Topic | Link |
@@ -24,7 +40,9 @@ storefront; this page is the map for operators, contributors, and self-hosters.
 | Docker quickstart | [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md) |
 | Dashboard | [DASHBOARD.md](DASHBOARD.md) |
 | OSS concepts | [OSS_CONCEPTS.md](OSS_CONCEPTS.md) |
+| Comparison | [COMPARISON.md](COMPARISON.md) |
 | API reference | [API_REFERENCE.md](API_REFERENCE.md) |
+| Open-core model | [OPEN_CORE.md](OPEN_CORE.md) |
 
 ## Operate
 
@@ -36,7 +54,11 @@ storefront; this page is the map for operators, contributors, and self-hosters.
 | Secret management | [SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) |
 | Config validation | [CONFIG_VALIDATION.md](CONFIG_VALIDATION.md) |
 | Config audit and rollback | [CONFIG_AUDIT_ROLLBACK.md](CONFIG_AUDIT_ROLLBACK.md) |
+| OIDC and invites | [OIDC_AND_INVITES.md](OIDC_AND_INVITES.md) |
 | Security | [SECURITY.md](SECURITY.md) |
+| Performance | [PERFORMANCE.md](PERFORMANCE.md) |
+| Webhook alerts | [WEBHOOK_ALERTS.md](WEBHOOK_ALERTS.md) |
+| Log sinks | [LOG_SINKS.md](LOG_SINKS.md) |
 
 ## Configure AI Traffic
 
@@ -49,6 +71,9 @@ storefront; this page is the map for operators, contributors, and self-hosters.
 | Routing recommendations | [ROUTING_RECOMMENDATIONS.md](ROUTING_RECOMMENDATIONS.md) |
 | Policy Namespaces and Shadow Traffic | [NAMESPACES_AND_SHADOW.md](NAMESPACES_AND_SHADOW.md) |
 | Cost and chargeback platform | [COST_CHARGEBACK_PLATFORM.md](COST_CHARGEBACK_PLATFORM.md) |
+| Multimodal capabilities | [MULTIMODAL_CAPABILITIES.md](MULTIMODAL_CAPABILITIES.md) |
+| Stream, cache, and batching | [STREAM_CACHE_BATCHING.md](STREAM_CACHE_BATCHING.md) |
+| Batch API | [BATCH_API.md](BATCH_API.md) |
 
 ## Agents, Tools, And Advanced Surfaces
 
@@ -57,11 +82,12 @@ storefront; this page is the map for operators, contributors, and self-hosters.
 | Coding Agent Gateway | [CODING_AGENT_GATEWAY.md](CODING_AGENT_GATEWAY.md) |
 | Agent Gateway profiles | [AGENT_GATEWAY.md](AGENT_GATEWAY.md) |
 | Agent integrations | [AGENT_INTEGRATIONS.md](AGENT_INTEGRATIONS.md) |
+| Agent Platform preview | [AGENT_PLATFORM_PREVIEW.md](AGENT_PLATFORM_PREVIEW.md) |
 | MCP Tool Gateway | [MCP_GATEWAY.md](MCP_GATEWAY.md) |
 | Semantic Controls | [SEMANTIC_PLATFORM.md](SEMANTIC_PLATFORM.md) |
+| Intelligence Loop | [INTELLIGENCE_LOOP.md](INTELLIGENCE_LOOP.md) |
 | Evaluation framework | [EVALUATION_FRAMEWORK.md](EVALUATION_FRAMEWORK.md) |
 | Caching | [CACHING.md](CACHING.md) |
-| Batch API | [BATCH_API.md](BATCH_API.md) |
 | Playground | [PLAYGROUND.md](PLAYGROUND.md) |
 
 ## Developers
@@ -73,10 +99,15 @@ storefront; this page is the map for operators, contributors, and self-hosters.
 | Python SDK design | [PYTHON_SDK_DESIGN.md](PYTHON_SDK_DESIGN.md) |
 | Plugins | [PLUGINS.md](PLUGINS.md) |
 | Official plugins | [plugins/OFFICIAL_PLUGINS.md](plugins/OFFICIAL_PLUGINS.md) |
+| Migration compatibility | [MIGRATION_COMPAT.md](MIGRATION_COMPAT.md) |
+| Migration from v1 to v2 | [MIGRATION_V1_TO_V2.md](MIGRATION_V1_TO_V2.md) |
+| Migration from LiteLLM | [MIGRATION_LITELLM.md](MIGRATION_LITELLM.md) |
+| Development specification | [DEVELOPMENT_SPECIFICATION.md](DEVELOPMENT_SPECIFICATION.md) |
 | Release checklist | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) |
 
 ## Privacy Baseline
 
 SiftGate documentation and examples use placeholders only. The gateway does not
 store prompts, responses, raw provider headers, provider keys, tool payloads,
-media bytes, hidden reasoning, or resolved secrets by default.
+media bytes, hidden reasoning, source code, diffs, or resolved secrets by
+default.
