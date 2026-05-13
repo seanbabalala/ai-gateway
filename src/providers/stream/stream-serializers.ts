@@ -14,12 +14,21 @@ import {
 export class ChatCompletionsStreamSerializer {
   private id = '';
   private model = '';
+  private nextToolCallIndex = 0;
+  private activeToolCallKey = '';
+  private readonly toolCalls = new Map<
+    string,
+    { index: number; id: string; name?: string; started: boolean }
+  >();
 
   serialize(event: CanonicalStreamEvent): string {
     switch (event.type) {
       case 'start': {
         this.id = event.id;
         this.model = event.model;
+        this.nextToolCallIndex = 0;
+        this.activeToolCallKey = '';
+        this.toolCalls.clear();
         return this.sse({
           id: this.id,
           object: 'chat.completion.chunk',
@@ -49,16 +58,20 @@ export class ChatCompletionsStreamSerializer {
         }
 
         if (event.content.type === 'tool_use') {
-          const toolCall: Record<string, unknown> = {
-            index: 0,
-          };
-          if (event.content.id) toolCall.id = event.content.id;
+          const state = this.resolveToolCallState(event.content);
+          const toolCall: Record<string, unknown> = { index: state.index };
+          const fn: Record<string, unknown> = {};
+
+          if (!state.started && state.id) toolCall.id = state.id;
           if (event.content.name) {
             toolCall.type = 'function';
-            toolCall.function = { name: event.content.name, arguments: '' };
-          } else if (event.content.input_delta) {
-            toolCall.function = { arguments: event.content.input_delta };
+            fn.name = event.content.name;
+            fn.arguments = event.content.input_delta || '';
+          } else if (event.content.input_delta !== undefined) {
+            fn.arguments = event.content.input_delta;
           }
+          if (Object.keys(fn).length > 0) toolCall.function = fn;
+          state.started = true;
 
           return this.sse({
             id: this.id,
@@ -119,6 +132,31 @@ export class ChatCompletionsStreamSerializer {
 
   private sse(data: unknown): string {
     return `data: ${JSON.stringify(data)}\n\n`;
+  }
+
+  private resolveToolCallState(
+    content: Extract<CanonicalStreamEvent, { type: 'delta' }>['content'] & {
+      type: 'tool_use';
+    },
+  ): { index: number; id: string; name?: string; started: boolean } {
+    const key =
+      content.id ||
+      this.activeToolCallKey ||
+      (content.name ? `name:${content.name}` : `anonymous:${this.nextToolCallIndex}`);
+    let state = this.toolCalls.get(key);
+    if (!state) {
+      state = {
+        index: this.nextToolCallIndex++,
+        id: content.id || '',
+        name: content.name,
+        started: false,
+      };
+      this.toolCalls.set(key, state);
+    }
+    if (content.id) state.id = content.id;
+    if (content.name) state.name = content.name;
+    this.activeToolCallKey = key;
+    return state;
   }
 
   private mapStopReason(reason: string): string {

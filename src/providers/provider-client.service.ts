@@ -392,6 +392,14 @@ export class ProviderClientService {
           yield event;
         }
       }
+      if (
+        'flush' in parser &&
+        typeof (parser as { flush?: () => Generator<CanonicalStreamEvent> }).flush === 'function'
+      ) {
+        for (const event of (parser as { flush: () => Generator<CanonicalStreamEvent> }).flush()) {
+          yield event;
+        }
+      }
     } catch (err) {
       // Transmission phase error — emit as error event (don't throw)
       yield {
@@ -690,8 +698,11 @@ export class ProviderClientService {
     }
 
     switch (protocol) {
-      case 'chat_completions':
-        return this.chatDenorm.denormalize(canonical, targetModel);
+      case 'chat_completions': {
+        const requestBody = this.chatDenorm.denormalize(canonical, targetModel);
+        this.applyNativeChatCompletionsPassthrough(canonical, requestBody);
+        return requestBody;
+      }
       case 'responses': {
         const requestBody = this.respDenorm.denormalize(canonical, targetModel);
         this.applyNativeResponsesPassthrough(canonical, requestBody);
@@ -701,6 +712,53 @@ export class ProviderClientService {
         return this.msgDenorm.denormalize(canonical, targetModel);
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
+    }
+  }
+
+  private applyNativeChatCompletionsPassthrough(
+    canonical: CanonicalRequest,
+    requestBody: Record<string, unknown>,
+  ): void {
+    if (canonical.metadata.source_format !== 'chat_completions') return;
+    const rawBody =
+      canonical.metadata.raw_body &&
+      typeof canonical.metadata.raw_body === 'object' &&
+      !Array.isArray(canonical.metadata.raw_body)
+        ? (canonical.metadata.raw_body as Record<string, unknown>)
+        : {};
+
+    if (
+      rawBody.max_completion_tokens !== undefined &&
+      rawBody.max_tokens === undefined
+    ) {
+      delete requestBody.max_tokens;
+      requestBody.max_completion_tokens = this.cloneJson(
+        rawBody.max_completion_tokens,
+      );
+    }
+
+    for (const field of [
+      'audio',
+      'frequency_penalty',
+      'logit_bias',
+      'logprobs',
+      'metadata',
+      'modalities',
+      'n',
+      'parallel_tool_calls',
+      'prediction',
+      'presence_penalty',
+      'seed',
+      'service_tier',
+      'store',
+      'stream_options',
+      'top_logprobs',
+      'user',
+      'web_search_options',
+    ]) {
+      if (requestBody[field] === undefined && rawBody[field] !== undefined) {
+        requestBody[field] = this.cloneJson(rawBody[field]);
+      }
     }
   }
 

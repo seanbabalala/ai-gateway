@@ -38,12 +38,13 @@ describe('ChatCompletionsStreamParser', () => {
     const events = collect(parser,
       'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}\n\n',
     );
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('delta');
-    if (events[0].type === 'delta') {
-      expect(events[0].content.type).toBe('text');
-      if (events[0].content.type === 'text') {
-        expect(events[0].content.text).toBe('Hello ');
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ type: 'start', id: '1', model: 'gpt-4o' });
+    expect(events[1].type).toBe('delta');
+    if (events[1].type === 'delta') {
+      expect(events[1].content.type).toBe('text');
+      if (events[1].content.type === 'text') {
+        expect(events[1].content.text).toBe('Hello ');
       }
     }
   });
@@ -53,10 +54,11 @@ describe('ChatCompletionsStreamParser', () => {
     const events = collect(parser,
       'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{"tool_calls":[{"id":"call_1","function":{"name":"search","arguments":""}}]},"finish_reason":null}]}\n\n',
     );
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('delta');
-    if (events[0].type === 'delta') {
-      expect(events[0].content.type).toBe('tool_use');
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ type: 'start', id: '1', model: 'gpt-4o' });
+    expect(events[1].type).toBe('delta');
+    if (events[1].type === 'delta') {
+      expect(events[1].content.type).toBe('tool_use');
     }
   });
 
@@ -65,12 +67,13 @@ describe('ChatCompletionsStreamParser', () => {
     const events = collect(parser,
       'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
     );
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('stop');
-    if (events[0].type === 'stop') {
-      expect(events[0].stop_reason).toBe('end_turn');
-      expect(events[0].usage.input_tokens).toBe(10);
-      expect(events[0].usage.output_tokens).toBe(5);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ type: 'start', id: '1', model: 'gpt-4o' });
+    expect(events[1].type).toBe('stop');
+    if (events[1].type === 'stop') {
+      expect(events[1].stop_reason).toBe('end_turn');
+      expect(events[1].usage.input_tokens).toBe(10);
+      expect(events[1].usage.output_tokens).toBe(5);
     }
   });
 
@@ -108,12 +111,12 @@ describe('ChatCompletionsStreamParser', () => {
     const parser = new ChatCompletionsStreamParser();
 
     const stopEvents = collect(parser,
-      'data: {"id":"1","model":"m","choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+      'data: {"id":"1","model":"m","choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n' +
+      'data: [DONE]\n\n',
     );
-    expect(stopEvents[0].type).toBe('stop');
-    if (stopEvents[0].type === 'stop') {
-      expect(stopEvents[0].stop_reason).toBe('tool_use');
-    }
+    const stop = stopEvents.find((event) => event.type === 'stop');
+    expect(stop?.type).toBe('stop');
+    if (stop?.type === 'stop') expect(stop.stop_reason).toBe('tool_use');
   });
 
   it('should handle chunked/split SSE lines across multiple calls', () => {
@@ -123,8 +126,9 @@ describe('ChatCompletionsStreamParser', () => {
       'data: {"id":"1","model":"gpt-4o","cho',
       'ices":[{"delta":{"content":"hi"},"finish_reason":null}]}\n\n',
     );
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('delta');
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe('start');
+    expect(events[1].type).toBe('delta');
   });
 
   it('should skip comments and empty lines', () => {
@@ -134,8 +138,53 @@ describe('ChatCompletionsStreamParser', () => {
       '\n\n' +
       'data: {"id":"1","model":"m","choices":[{"delta":{"content":"hi"},"finish_reason":null}]}\n\n',
     );
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('delta');
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe('start');
+    expect(events[1].type).toBe('delta');
+  });
+
+  it('should keep tool call id/name across indexed argument deltas', () => {
+    const parser = new ChatCompletionsStreamParser();
+    const events = collect(parser,
+      'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search","arguments":""}}]},"finish_reason":null}]}\n\n' +
+      'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"q\\":"}}]},"finish_reason":null}]}\n\n' +
+      'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"test\\"}"}}]},"finish_reason":null}]}\n\n',
+    );
+    const deltas = events.filter((event) => event.type === 'delta') as Extract<CanonicalStreamEvent, { type: 'delta' }>[];
+    expect(deltas).toHaveLength(3);
+    expect(deltas[0].content).toMatchObject({ type: 'tool_use', id: 'call_1', name: 'search' });
+    expect(deltas[1].content).toMatchObject({ type: 'tool_use', id: 'call_1', input_delta: '{"q":' });
+    expect(deltas[2].content).toMatchObject({ type: 'tool_use', id: 'call_1', input_delta: '"test"}' });
+  });
+
+  it('should combine finish_reason with following usage-only chunk', () => {
+    const parser = new ChatCompletionsStreamParser();
+    const events = collect(parser,
+      'data: {"id":"1","model":"gpt-4o","choices":[{"delta":{},"finish_reason":"stop"}]}\n\n' +
+      'data: {"id":"1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":50,"completion_tokens":20}}\n\n' +
+      'data: [DONE]\n\n',
+    );
+    const stopEvents = events.filter((event) => event.type === 'stop');
+    expect(stopEvents).toHaveLength(1);
+    const stop = stopEvents[0];
+    if (stop.type === 'stop') {
+      expect(stop.stop_reason).toBe('end_turn');
+      expect(stop.usage.input_tokens).toBe(50);
+      expect(stop.usage.output_tokens).toBe(20);
+    }
+  });
+
+  it('should parse upstream error chunks', () => {
+    const parser = new ChatCompletionsStreamParser();
+    const events = collect(parser,
+      'data: {"error":{"message":"bad request","code":"invalid_request_error"}}\n\n',
+    );
+    expect(events).toEqual([
+      {
+        type: 'error',
+        error: { message: 'bad request', code: 'invalid_request_error' },
+      },
+    ]);
   });
 
   it('should skip unparseable JSON', () => {

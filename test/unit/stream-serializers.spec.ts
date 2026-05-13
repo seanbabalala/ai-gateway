@@ -81,6 +81,31 @@ describe('ChatCompletionsStreamSerializer', () => {
     );
   });
 
+  it('should preserve separate indexes for multiple streamed tool calls', () => {
+    serializer.serialize(startEvent);
+    const first = serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_1', name: 'search' },
+    });
+    const second = serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_2', name: 'lookup' },
+    });
+    const secondArgs = serializer.serialize({
+      type: 'delta',
+      content: { type: 'tool_use', id: 'call_2', input_delta: '{"id":2}' },
+    });
+
+    const firstData = JSON.parse(first.replace('data: ', '').trim());
+    const secondData = JSON.parse(second.replace('data: ', '').trim());
+    const argsData = JSON.parse(secondArgs.replace('data: ', '').trim());
+
+    expect(firstData.choices[0].delta.tool_calls[0].index).toBe(0);
+    expect(secondData.choices[0].delta.tool_calls[0].index).toBe(1);
+    expect(argsData.choices[0].delta.tool_calls[0].index).toBe(1);
+    expect(argsData.choices[0].delta.tool_calls[0].function.arguments).toBe('{"id":2}');
+  });
+
   it('should serialize stop event with finish_reason and [DONE]', () => {
     serializer.serialize(startEvent);
     const result = serializer.serialize(stopEvent);

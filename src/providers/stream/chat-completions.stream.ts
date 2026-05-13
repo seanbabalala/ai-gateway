@@ -16,7 +16,10 @@ import {
  */
 export class ChatCompletionsStreamParser {
   private buffer = '';
+  private hasStarted = false;
   private hasSentStop = false;
+  private pendingStopReason: string | null = null;
+  private readonly toolCallsByIndex = new Map<number, { id: string; name?: string }>();
 
   constructor(private readonly usageSchema?: UsageSchema) {}
 
@@ -40,14 +43,14 @@ export class ChatCompletionsStreamParser {
         const data = trimmed.slice(6).trim();
 
         if (data === '[DONE]') {
-          // Only emit stop if we haven't already from a finish_reason chunk
           if (!this.hasSentStop) {
             this.hasSentStop = true;
             yield {
               type: 'stop',
-              stop_reason: 'end_turn',
+              stop_reason: this.pendingStopReason || 'end_turn',
               usage: { input_tokens: 0, output_tokens: 0 },
             };
+            this.pendingStopReason = null;
           }
           return;
         }
@@ -65,15 +68,31 @@ export class ChatCompletionsStreamParser {
   private *parseDataObject(
     data: Record<string, unknown>,
   ): Generator<CanonicalStreamEvent> {
+    if (data.error && typeof data.error === 'object' && !Array.isArray(data.error)) {
+      const error = data.error as Record<string, unknown>;
+      yield {
+        type: 'error',
+        error: {
+          message: String(error.message || 'Upstream stream error'),
+          code: error.code === null || error.code === undefined ? undefined : String(error.code),
+        },
+      };
+      return;
+    }
+
     const choices = data.choices as Record<string, unknown>[];
     if (!choices || choices.length === 0) {
-      // Could be a usage-only chunk at the end
-      if (data.usage) {
+      if (data.usage && !this.hasSentStop) {
+        if (!this.hasStarted && (data.id || data.model)) {
+          yield* this.ensureStarted(data);
+        }
+        this.hasSentStop = true;
         yield {
           type: 'stop',
-          stop_reason: 'end_turn',
+          stop_reason: this.pendingStopReason || 'end_turn',
           usage: this.resolveUsage(data),
         };
+        this.pendingStopReason = null;
       }
       return;
     }
@@ -82,15 +101,7 @@ export class ChatCompletionsStreamParser {
     const delta = (choice.delta || {}) as Record<string, unknown>;
     const finishReason = choice.finish_reason as string | null;
 
-    // First chunk often has role but no content — emit start
-    if (delta.role === 'assistant' && !delta.content && !delta.tool_calls) {
-      yield {
-        type: 'start',
-        id: (data.id as string) || '',
-        model: (data.model as string) || '',
-      };
-      return;
-    }
+    yield* this.ensureStarted(data);
 
     // Text delta
     if (delta.content !== undefined && delta.content !== null) {
@@ -104,13 +115,30 @@ export class ChatCompletionsStreamParser {
     if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
       for (const tc of delta.tool_calls as Record<string, unknown>[]) {
         const fn = (tc.function || {}) as Record<string, unknown>;
+        const index =
+          typeof tc.index === 'number' && Number.isFinite(tc.index)
+            ? tc.index
+            : this.toolCallsByIndex.size;
+        const state = this.toolCallsByIndex.get(index) || { id: '' };
+        const id = typeof tc.id === 'string' && tc.id ? tc.id : state.id;
+        const name =
+          typeof fn.name === 'string' && fn.name
+            ? fn.name
+            : state.name;
+        if (id || name) {
+          this.toolCallsByIndex.set(index, { id, name });
+        }
+        const inputDelta =
+          fn.arguments === undefined || fn.arguments === null
+            ? undefined
+            : String(fn.arguments);
         yield {
           type: 'delta',
           content: {
             type: 'tool_use',
-            id: (tc.id as string) || '',
-            name: fn.name as string | undefined,
-            input_delta: fn.arguments as string | undefined,
+            id,
+            name: typeof fn.name === 'string' && fn.name ? fn.name : undefined,
+            input_delta: inputDelta,
           },
         };
       }
@@ -118,13 +146,43 @@ export class ChatCompletionsStreamParser {
 
     // Finish reason — end of stream
     if (finishReason) {
+      const stopReason = this.mapFinishReason(finishReason);
+      if (data.usage) {
+        this.hasSentStop = true;
+        this.pendingStopReason = null;
+        yield {
+          type: 'stop',
+          stop_reason: stopReason,
+          usage: this.resolveUsage(data),
+        };
+      } else {
+        this.pendingStopReason = stopReason;
+      }
+    }
+  }
+
+  *flush(): Generator<CanonicalStreamEvent> {
+    if (!this.hasSentStop && this.pendingStopReason) {
       this.hasSentStop = true;
       yield {
         type: 'stop',
-        stop_reason: this.mapFinishReason(finishReason),
-        usage: this.resolveUsage(data),
+        stop_reason: this.pendingStopReason,
+        usage: { input_tokens: 0, output_tokens: 0 },
       };
+      this.pendingStopReason = null;
     }
+  }
+
+  private *ensureStarted(
+    data: Record<string, unknown>,
+  ): Generator<CanonicalStreamEvent> {
+    if (this.hasStarted) return;
+    this.hasStarted = true;
+    yield {
+      type: 'start',
+      id: (data.id as string) || '',
+      model: (data.model as string) || '',
+    };
   }
 
   private mapFinishReason(reason: string): string {

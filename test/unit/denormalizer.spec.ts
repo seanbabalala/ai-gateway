@@ -268,6 +268,27 @@ describe('ChatCompletionsDenormalizer', () => {
       const result = denorm.denormalizeResponse(canonical);
       expect((result.choices as any[])[0].finish_reason).toBe('length');
     });
+
+    it('should include cached token details in chat response usage', () => {
+      const canonical = makeCanonicalResponse({
+        usage: {
+          input_tokens: 800,
+          output_tokens: 100,
+          cache_read_input_tokens: 512,
+        },
+      });
+
+      const result = denorm.denormalizeResponse(canonical);
+
+      expect(result.usage).toEqual(
+        expect.objectContaining({
+          prompt_tokens: 800,
+          completion_tokens: 100,
+          total_tokens: 900,
+          prompt_tokens_details: { cached_tokens: 512 },
+        }),
+      );
+    });
   });
 });
 

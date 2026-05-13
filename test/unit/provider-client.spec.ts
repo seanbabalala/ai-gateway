@@ -647,6 +647,48 @@ describe('ProviderClientService', () => {
     });
   });
 
+  describe('denormalizeRequest — native chat completions passthrough', () => {
+    it('should preserve Chat-specific top-level fields for chat → chat forwarding', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        stream: true,
+        max_tokens: 128,
+        metadata: {
+          source_format: 'chat_completions',
+          original_model: 'gpt-4o',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'Hi' }],
+            stream: true,
+            max_completion_tokens: 128,
+            stream_options: { include_usage: true },
+            parallel_tool_calls: true,
+            seed: 42,
+            user: 'u_123',
+            logprobs: true,
+            top_logprobs: 2,
+          },
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'chat_completions',
+        'gpt-4o',
+      );
+
+      expect(body.max_tokens).toBeUndefined();
+      expect(body.max_completion_tokens).toBe(128);
+      expect(body.stream_options).toEqual({ include_usage: true });
+      expect(body.parallel_tool_calls).toBe(true);
+      expect(body.seed).toBe(42);
+      expect(body.user).toBe('u_123');
+      expect(body.logprobs).toBe(true);
+      expect(body.top_logprobs).toBe(2);
+    });
+  });
+
   // ── Header extraction ──────────────────────────────────
 
   describe('extractNativeMessageHeaders', () => {

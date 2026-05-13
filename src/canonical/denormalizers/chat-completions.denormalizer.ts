@@ -207,6 +207,18 @@ export class ChatCompletionsDenormalizer implements RequestDenormalizer {
       message.tool_calls = toolCalls;
     }
 
+    const usage: Record<string, unknown> = {
+      prompt_tokens: canonical.usage.input_tokens,
+      completion_tokens: canonical.usage.output_tokens,
+      total_tokens:
+        canonical.usage.input_tokens + canonical.usage.output_tokens,
+    };
+    if (canonical.usage.cache_read_input_tokens) {
+      usage.prompt_tokens_details = {
+        cached_tokens: canonical.usage.cache_read_input_tokens,
+      };
+    }
+
     return {
       id: `chatcmpl-${canonical.id}`,
       object: 'chat.completion',
@@ -219,12 +231,7 @@ export class ChatCompletionsDenormalizer implements RequestDenormalizer {
           finish_reason: this.mapStopReason(canonical.stop_reason),
         },
       ],
-      usage: {
-        prompt_tokens: canonical.usage.input_tokens,
-        completion_tokens: canonical.usage.output_tokens,
-        total_tokens:
-          canonical.usage.input_tokens + canonical.usage.output_tokens,
-      },
+      usage,
     };
   }
 

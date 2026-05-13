@@ -77,7 +77,8 @@ export class ChatCompletionsNormalizer implements Normalizer {
           content: [
             {
               type: 'tool_result' as const,
-              tool_use_id: (m.tool_call_id as string) || '',
+              tool_use_id:
+                (m.tool_call_id as string) || (m.name as string) || '',
               content: (m.content as string) || '',
             } satisfies ToolResultBlock,
           ],
@@ -119,26 +120,12 @@ export class ChatCompletionsNormalizer implements Normalizer {
 
         blocks.push({
           type: 'tool_use',
-          id: `legacy_fc_${Date.now()}`,
+          id: (fn.name as string) || 'legacy_function_call',
           name: (fn.name as string) || '',
           input: this.safeParseJson(fn.arguments as string),
         });
 
         return { role, content: blocks };
-      }
-
-      // Legacy: function role (old function result)
-      if ((m.role as string) === 'function') {
-        return {
-          role: 'tool' as const,
-          content: [
-            {
-              type: 'tool_result' as const,
-              tool_use_id: (m.name as string) || '',
-              content: (m.content as string) || '',
-            } satisfies ToolResultBlock,
-          ],
-        };
       }
 
       // Regular message — may have array content (multimodal)
@@ -209,28 +196,34 @@ export class ChatCompletionsNormalizer implements Normalizer {
   ): CanonicalTool[] | undefined {
     if (!tools || !Array.isArray(tools) || tools.length === 0) return undefined;
 
-    return tools.map((tool) => {
+    const normalized: CanonicalTool[] = [];
+    for (const tool of tools) {
       const t = tool as Record<string, unknown>;
 
       // OpenAI format: { type: "function", function: { name, description, parameters } }
       if (t.type === 'function' && t.function) {
         const fn = t.function as Record<string, unknown>;
-        return {
+        if (typeof fn.name !== 'string' || fn.name.length === 0) continue;
+        normalized.push({
           name: (fn.name as string) || '',
           description: (fn.description as string) || '',
           parameters: (fn.parameters as Record<string, unknown>) || {},
           ...this.cacheControlFragment(t),
-        };
+        });
+        continue;
       }
 
       // Legacy / direct format: { name, description, parameters }
-      return {
+      if (typeof t.name !== 'string' || t.name.length === 0) continue;
+      normalized.push({
         name: (t.name as string) || '',
         description: (t.description as string) || '',
         parameters: (t.parameters as Record<string, unknown>) || {},
         ...this.cacheControlFragment(t),
-      };
-    });
+      });
+    }
+
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   private normalizeToolChoice(

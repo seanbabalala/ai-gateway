@@ -314,6 +314,54 @@ describe('ChatCompletionsNormalizer', () => {
     });
     expect(result.thinking?.source).toBe('gemini.thinking_config');
   });
+
+  it('should use deterministic ids for legacy function_call correlation', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'assistant',
+            content: null,
+            function_call: { name: 'lookup', arguments: '{"id":1}' },
+          },
+          { role: 'function', name: 'lookup', content: 'ok' },
+        ],
+      },
+      headers,
+    );
+
+    const assistant = result.messages[0];
+    const tool = result.messages[1];
+    expect(Array.isArray(assistant.content)).toBe(true);
+    if (Array.isArray(assistant.content)) {
+      expect(assistant.content[0]).toMatchObject({
+        type: 'tool_use',
+        id: 'lookup',
+        name: 'lookup',
+      });
+    }
+    expect(Array.isArray(tool.content)).toBe(true);
+    if (Array.isArray(tool.content)) {
+      expect(tool.content[0]).toMatchObject({
+        type: 'tool_result',
+        tool_use_id: 'lookup',
+      });
+    }
+  });
+
+  it('should not turn unsupported non-function chat tools into empty functions', () => {
+    const result = normalizer.normalize(
+      {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Search' }],
+        tools: [{ type: 'web_search_preview' }],
+      },
+      headers,
+    );
+
+    expect(result.tools).toBeUndefined();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
