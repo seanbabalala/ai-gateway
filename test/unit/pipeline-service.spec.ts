@@ -341,10 +341,13 @@ describe('PipelineService — direct routing', () => {
     const result = await pipeline.process(request);
 
     expect(result.statusCode).toBe(200);
+    expect(result.requestId).toBeDefined();
     expect(mocks.providerClient.forward).toHaveBeenCalledWith(
       request, 'openai', 'gpt-4o',
       expect.objectContaining({ tier: 'direct', is_fallback: false }),
     );
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(result.requestId).toBe(savedLog.request_id);
     // Scoring engine should NOT be called for direct routing
     expect(mocks.scoringService.score).not.toHaveBeenCalled();
   });

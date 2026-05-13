@@ -79,6 +79,10 @@ import { SemanticPlatformService } from '../semantic-platform/semantic-platform.
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 import {
+  GATEWAY_REQUEST_ID_HEADER,
+  LEGACY_REQUEST_ID_HEADER,
+} from '../http/public-contract';
+import {
   RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionCacheEvidence,
   RouteDecisionCompatibilityEvidence,
@@ -279,6 +283,7 @@ export class PipelineService {
                   return {
                     body: this.formatBudgetError(canonical.metadata.source_format, err),
                     statusCode: 429,
+                    requestId,
                   };
                 }
                 throw err;
@@ -302,6 +307,7 @@ export class PipelineService {
               return {
                 body: this.denormalizeForClient(scResponse, canonical.metadata.source_format),
                 statusCode: 200,
+                requestId,
               };
             }
             canonical = (hookResult.data as { request: CanonicalRequest }).request;
@@ -317,6 +323,7 @@ export class PipelineService {
               return {
                 body: this.formatBudgetError(canonical.metadata.source_format, err),
                 statusCode: 429,
+                requestId,
               };
             }
             throw err;
@@ -351,7 +358,7 @@ export class PipelineService {
                   reason: 'local prompt cache hit',
                   selectionHints: this.cacheSelectionHintsFromStore(store),
                 }) });
-              return { body: responseBody, statusCode: 200 };
+              return { body: responseBody, statusCode: 200, requestId };
             }
             this.telemetry.recordCacheMiss();
           }
@@ -418,7 +425,7 @@ export class PipelineService {
                   selectionHints: this.cacheSelectionHintsFromStore(store),
                 }),
               });
-              return { body: responseBody, statusCode: 200 };
+              return { body: responseBody, statusCode: 200, requestId };
             }
           }
 
@@ -453,6 +460,7 @@ export class PipelineService {
                 intelligenceDecision.rejected.message,
               ),
               statusCode: intelligenceDecision.rejected.statusCode,
+              requestId,
             };
           }
           if (intelligenceDecision) {
@@ -571,6 +579,7 @@ export class PipelineService {
               return {
                 body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
                 statusCode: 200,
+                requestId,
               };
             }
             this.telemetry.upstreamErrors.add(1, { node: usedNodeId, reason: 'all_failed' });
@@ -583,6 +592,7 @@ export class PipelineService {
             return {
               body: this.formatError(canonical.metadata.source_format, failureStatus, errorMsg),
               statusCode: failureStatus,
+              requestId,
             };
           }
 
@@ -771,7 +781,7 @@ export class PipelineService {
             usedModel,
           );
 
-          return { body: responseBody, statusCode: 200 };
+          return { body: responseBody, statusCode: 200, requestId };
         } catch (err) {
           const recovered = await this.runOnErrorHooks(
             canonical,
@@ -792,6 +802,7 @@ export class PipelineService {
             return {
               body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
               statusCode: 200,
+              requestId,
             };
           }
           if (err instanceof GatewayRequestRejectedError) {
@@ -802,6 +813,7 @@ export class PipelineService {
                 err.message,
               ),
               statusCode: err.statusCode,
+              requestId,
             };
           }
           if (err instanceof RoutingConstraintError) {
@@ -812,6 +824,7 @@ export class PipelineService {
                 err.message,
               ),
               statusCode: err.statusCode,
+              requestId,
             };
           }
           throw err;
@@ -2482,6 +2495,8 @@ export class PipelineService {
       }
     };
     res.on?.('close', onClientClose);
+    res.setHeader(GATEWAY_REQUEST_ID_HEADER, requestId);
+    res.setHeader(LEGACY_REQUEST_ID_HEADER, requestId);
 
     // Manual span for streaming (can't use withSpan with generators)
     const rootSpan = this.telemetry.tracer.startSpan('gateway.request', {
@@ -2504,6 +2519,8 @@ export class PipelineService {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no');
+      res.setHeader(GATEWAY_REQUEST_ID_HEADER, requestId);
+      res.setHeader(LEGACY_REQUEST_ID_HEADER, requestId);
       res.flushHeaders();
       headersFlushed = true;
     };
@@ -2551,7 +2568,12 @@ export class PipelineService {
             error: null,
             retryCount: 0,
           });
-          this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, scResponse);
+          this.writeSyntheticStreamResponse(
+            res,
+            canonical.metadata.source_format,
+            scResponse,
+            requestId,
+          );
           rootSpan.end();
           return;
         }
@@ -2590,7 +2612,12 @@ export class PipelineService {
 
           await this.recordBudgetUsage(canonical, cached.usage, cached.model);
           streamCompleted = true;
-          this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, cached);
+          this.writeSyntheticStreamResponse(
+            res,
+            canonical.metadata.source_format,
+            cached,
+            requestId,
+          );
 
           await this.logCall({ requestId, canonical, tier: 'cached', score: 0, nodeId: 'cache',
             model: cached.model, statusCode: 200, isFallback: false, latencyMs: cacheLatency,
@@ -2725,6 +2752,7 @@ export class PipelineService {
             res,
             canonical.metadata.source_format,
             scResponse,
+            requestId,
           );
           rootSpan.end();
           return;
@@ -3000,7 +3028,12 @@ export class PipelineService {
                   fallbackFromNode,
                   routeTrace: activeRouteTrace,
                 });
-                this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+                this.writeSyntheticStreamResponse(
+                  res,
+                  canonical.metadata.source_format,
+                  recovered,
+                  requestId,
+                );
                 rootSpan.end();
                 return;
               }
@@ -3093,7 +3126,12 @@ export class PipelineService {
           fallbackFromNode,
           routeTrace: activeRouteTrace,
         });
-        this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+        this.writeSyntheticStreamResponse(
+          res,
+          canonical.metadata.source_format,
+          recovered,
+          requestId,
+        );
         rootSpan.end();
         return;
       }
@@ -3125,7 +3163,12 @@ export class PipelineService {
           nodeId: 'hook',
           latencyMs: Date.now() - streamStartTime,
         });
-        this.writeSyntheticStreamResponse(res, canonical.metadata.source_format, recovered);
+        this.writeSyntheticStreamResponse(
+          res,
+          canonical.metadata.source_format,
+          recovered,
+          requestId,
+        );
         rootSpan.end();
         return;
       }
@@ -5314,12 +5357,17 @@ export class PipelineService {
     res: ExpressResponse,
     sourceFormat: SourceFormat,
     canonical: CanonicalResponse,
+    requestId?: string,
   ): void {
     const serializer = this.createSerializer(sourceFormat);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
+    if (requestId) {
+      res.setHeader(GATEWAY_REQUEST_ID_HEADER, requestId);
+      res.setHeader(LEGACY_REQUEST_ID_HEADER, requestId);
+    }
     res.flushHeaders();
 
     const startEvt: CanonicalStreamEvent = { type: 'start', id: canonical.id, model: canonical.model };

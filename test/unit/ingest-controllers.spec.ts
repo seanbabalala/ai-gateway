@@ -419,6 +419,35 @@ describe('ResponsesController', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it('should use the pipeline request id for successful responses headers', async () => {
+    const pipeline = mockPipeline({
+      process: jest.fn().mockResolvedValue({
+        statusCode: 200,
+        body: { id: 'resp_1' },
+        requestId: 'req_pipeline_123',
+      }),
+    });
+    const controller = new ResponsesController(pipeline);
+
+    const req = mockReq({
+      model: 'gpt-4.1',
+      input: 'Hello!',
+      stream: false,
+    });
+    const res = mockRes();
+
+    await controller.handle(req, res);
+
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'x-siftgate-request-id',
+      'req_pipeline_123',
+    );
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'x-request-id',
+      'req_pipeline_123',
+    );
+  });
+
   it('should handle stream responses request', async () => {
     const pipeline = mockPipeline();
     const controller = new ResponsesController(pipeline);
