@@ -624,7 +624,7 @@ function exportSiftGateToLiteLlm(
       const modelName = aliasForModel(node, model) || model;
       const params: Record<string, unknown> = {
         model: `${provider}/${model}`,
-        api_key: safeExportedApiKey(node.api_key, node.id, report, `nodes.${node.id}.api_key`),
+        api_key: safeExportedApiKey(exportedNodeApiKey(node), node.id, report, `nodes.${node.id}.api_key`),
         api_base: node.base_url,
         timeout: Math.round(node.timeout_ms / 1000),
       };
@@ -691,7 +691,7 @@ function exportSiftGateToChannelConfig(
       name: node.name || node.id,
       type: providerToChannelType(provider),
       base_url: node.base_url,
-      key: safeExportedApiKey(node.api_key, node.id, report, `nodes.${node.id}.api_key`),
+      key: safeExportedApiKey(exportedNodeApiKey(node), node.id, report, `nodes.${node.id}.api_key`),
       models: allBucketModels(buckets).join(','),
       status: 1,
       weight: 1,
@@ -1215,6 +1215,10 @@ function mapSiftGateStrategyToLiteLlm(strategy: LoadBalancingStrategy | undefine
   if (strategy === 'least_latency') return 'latency-based-routing';
   if (strategy === 'random') return 'simple-shuffle';
   return 'simple-shuffle-v2';
+}
+
+function exportedNodeApiKey(node: GatewayConfig['nodes'][number]): string {
+  return node.api_key || node.credentials?.find((entry) => entry.enabled !== false)?.api_key || '';
 }
 
 function safeExportedApiKey(

@@ -30,6 +30,10 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import {
+  CredentialPoolService,
+  CredentialSelection,
+} from './credential-pool.service';
+import {
   extractUsageBySchema,
   extractUsageByKnownFields,
   UsageSchema,
@@ -54,6 +58,11 @@ interface ProviderRequestOptions {
   signal?: AbortSignal;
 }
 
+interface ResponseCredentialMetadata {
+  selection: CredentialSelection;
+  retryCount: number;
+}
+
 @Injectable()
 export class ProviderClientService {
   private readonly logger = new Logger(ProviderClientService.name);
@@ -67,6 +76,8 @@ export class ProviderClientService {
   private readonly chatDenorm = new ChatCompletionsDenormalizer();
   private readonly respDenorm = new ResponsesDenormalizer();
   private readonly msgDenorm = new MessagesDenormalizer();
+  private readonly responseCredentials = new WeakMap<Response, ResponseCredentialMetadata>();
+  private readonly completedCredentialResponses = new WeakSet<Response>();
 
   constructor(
     private readonly config: ConfigService,
@@ -75,6 +86,8 @@ export class ProviderClientService {
     private readonly connectionPool?: UpstreamConnectionPoolService,
     @Optional()
     private readonly secretResolver?: SecretReferenceResolverService,
+    @Optional()
+    private readonly credentialPool?: CredentialPoolService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -134,6 +147,7 @@ export class ProviderClientService {
           latencyMs,
           usageSchema,
         );
+        this.applyCredentialRoutingMetadata(canonical_resp.routing, response);
 
         // GenAI semantic attributes
         span.setAttributes({
@@ -195,6 +209,7 @@ export class ProviderClientService {
           targetModel,
           latencyMs,
         );
+        this.applyCredentialRoutingMetadata(canonicalResp.routing, response);
         span.setAttributes({
           'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
           'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
@@ -254,6 +269,7 @@ export class ProviderClientService {
           targetModel,
           latencyMs,
         );
+        this.applyCredentialRoutingMetadata(canonicalResp.routing, response);
         span.setAttributes({
           'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
           'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
@@ -307,14 +323,27 @@ export class ProviderClientService {
         const latencyMs = Date.now() - startTime;
 
         this.telemetry.upstreamDuration.record(latencyMs, { node: nodeId, model: targetModel });
-        const canonicalResp = await this.normalizeMediaResponse(
-          response,
-          canonical,
-          routingMeta,
-          nodeId,
-          targetModel,
-          latencyMs,
-        );
+        let canonicalResp: CanonicalMediaResponse;
+        try {
+          canonicalResp = await this.normalizeMediaResponse(
+            response,
+            canonical,
+            routingMeta,
+            nodeId,
+            targetModel,
+            latencyMs,
+          );
+          this.applyCredentialRoutingMetadata(canonicalResp.routing, response);
+          this.completeResponseCredential(response, {
+            statusCode: response.status,
+          });
+        } catch (err) {
+          this.completeResponseCredential(response, {
+            statusCode: response.status,
+            error: err instanceof Error ? err.message : 'media_response_error',
+          });
+          throw err;
+        }
         span.setAttributes({
           'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
           'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
@@ -410,6 +439,9 @@ export class ProviderClientService {
         },
       };
     } finally {
+      this.completeResponseCredential(response, {
+        statusCode: options.signal?.aborted ? 499 : response.status,
+      });
       options.signal?.removeEventListener('abort', cancelReader);
       reader.releaseLock();
     }
@@ -419,12 +451,21 @@ export class ProviderClientService {
   // Shared HTTP Request Logic
   // ══════════════════════════════════════════════════════
 
-  private async resolveNodeApiKey(node: NodeConfig): Promise<string> {
+  private async resolveNodeApiKey(
+    node: NodeConfig,
+    credential?: CredentialSelection,
+  ): Promise<string> {
+    const configuredKey = credential?.credential.api_key || node.api_key;
+    if (!configuredKey) {
+      throw new Error(`Node "${node.id}" must define api_key or credentials`);
+    }
     return this.secretResolver
-      ? this.secretResolver.resolveString(node.api_key, {
-          location: `nodes.${node.id}.api_key`,
+      ? this.secretResolver.resolveString(configuredKey, {
+          location: credential?.synthetic
+            ? `nodes.${node.id}.api_key`
+            : `nodes.${node.id}.credentials.${credential?.credential.id || 'default'}.api_key`,
         })
-      : node.api_key;
+      : configuredKey;
   }
 
   private async resolveNodeHeaders(node: NodeConfig): Promise<Record<string, string>> {
@@ -446,89 +487,103 @@ export class ProviderClientService {
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
     const nodeHeaders = await this.resolveNodeHeaders(node);
-    const apiKey = await this.resolveNodeApiKey(node);
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    // Auth
-    const authType =
-      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    if (authType === 'custom-header') {
-      const headerName = node.auth_header_name?.trim();
-      if (!headerName) {
-        throw new Error(`Node "${node.id}" auth_type=custom-header requires auth_header_name`);
-      }
-      headers[headerName] = node.auth_header_prefix
-        ? `${node.auth_header_prefix} ${apiKey}`
-        : apiKey;
-    } else if (authType === 'x-api-key') {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
-    } else {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
-    // Custom headers
-    Object.assign(headers, nodeHeaders);
-
-    // Preserve Anthropic-native request headers for messages → messages passthrough.
-    if (canonical && this.shouldPassthroughNativeMessages(canonical, node.protocol)) {
-      Object.assign(headers, this.extractNativeMessageHeaders(canonical));
-    }
-
-    this.logger.debug(
-      `Forwarding to ${node.id} (${node.protocol}) → ${url} model=${requestBody.model} stream=${requestBody.stream}`,
-    );
-
-    const controller = new AbortController();
     const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
-    const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
-    const abortFromExternal = () => controller.abort();
-    if (signal?.aborted) {
-      controller.abort();
-    } else {
-      signal?.addEventListener('abort', abortFromExternal, { once: true });
-    }
 
-    let response: Response;
-    try {
-      const fetchOptions: FetchOptionsWithDispatcher = {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      };
-      const dispatcher = this.connectionPool?.getDispatcher(node);
-      if (dispatcher) {
-        fetchOptions.dispatcher = dispatcher;
-      }
+    const triedCredentialIds = new Set<string>();
+    const attemptLimit = this.credentialPool?.attemptLimit(node) ?? 1;
+    let lastError: ProviderError | null = null;
 
-      response = await fetch(url, fetchOptions);
-    } catch (err: unknown) {
-      clearTimeout(timeout);
-      const message = err instanceof Error ? err.message : 'Unknown fetch error';
-      const errorName = err instanceof Error ? err.name : '';
-      if (errorName === 'AbortError' || isUndiciTimeoutError(err)) {
-        throw new ProviderError(
-          `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
-          504,
-          node.id,
-          'timeout',
-        );
-      }
-      throw new ProviderError(
-        `Failed to connect to ${node.id}: ${message}`,
-        0,
-        node.id,
-        'network_error',
+    for (let attempt = 0; attempt < attemptLimit; attempt++) {
+      const credential = this.selectCredential(node, canonical?.metadata, triedCredentialIds);
+      triedCredentialIds.add(credential.credential.id);
+      const headers = await this.buildHeaders(
+        node,
+        nodeHeaders,
+        'application/json',
+        credential,
       );
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', abortFromExternal);
-    }
 
-    if (!response.ok) {
+      // Preserve Anthropic-native request headers for messages → messages passthrough.
+      if (canonical && this.shouldPassthroughNativeMessages(canonical, node.protocol)) {
+        Object.assign(headers, this.extractNativeMessageHeaders(canonical));
+      }
+
+      this.logger.debug(
+        `Forwarding to ${node.id} (${node.protocol}) → ${url} model=${requestBody.model} stream=${requestBody.stream} credential=${credential.credential.id}`,
+      );
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+      const abortFromExternal = () => controller.abort();
+      if (signal?.aborted) {
+        controller.abort();
+      } else {
+        signal?.addEventListener('abort', abortFromExternal, { once: true });
+      }
+
+      let response: Response;
+      try {
+        const fetchOptions: FetchOptionsWithDispatcher = {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        };
+        const dispatcher = this.connectionPool?.getDispatcher(node);
+        if (dispatcher) {
+          fetchOptions.dispatcher = dispatcher;
+        }
+
+        response = await fetch(url, fetchOptions);
+      } catch (err: unknown) {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', abortFromExternal);
+        const message = err instanceof Error ? err.message : 'Unknown fetch error';
+        const errorName = err instanceof Error ? err.name : '';
+        const providerError =
+          errorName === 'AbortError' || isUndiciTimeoutError(err)
+            ? new ProviderError(
+                `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
+                504,
+                node.id,
+                'timeout',
+                credential.credential.id,
+                credential.strategy,
+                attempt,
+              )
+            : new ProviderError(
+                `Failed to connect to ${node.id}: ${message}`,
+                0,
+                node.id,
+                'network_error',
+                credential.credential.id,
+                credential.strategy,
+                attempt,
+              );
+        this.completeCredential(credential, {
+          statusCode: providerError.statusCode,
+          failureType: providerError.failureType,
+          error: providerError.message,
+        });
+        lastError = providerError;
+        if (
+          attempt < attemptLimit - 1 &&
+          this.credentialPool?.shouldRetry(node, providerError.statusCode, providerError.failureType)
+        ) {
+          continue;
+        }
+        throw providerError;
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', abortFromExternal);
+      }
+
+      if (response.ok) {
+        this.responseCredentials.set(response, { selection: credential, retryCount: attempt });
+        this.applyCredentialRequestMetadata(canonical?.metadata, credential, attempt);
+        return response;
+      }
+
       let errorBody: string;
       try { errorBody = await response.text(); } catch { errorBody = 'Unable to read error body'; }
       if (process.env.GATEWAY_DEBUG_MESSAGES_BODY === '1' && node.protocol === 'messages') {
@@ -538,16 +593,33 @@ export class ProviderClientService {
       }
       this.logger.warn(`Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 200)}`);
       const retryAfter = response.headers?.get?.('retry-after');
-      throw new ProviderError(
+      const providerError = new ProviderError(
         `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}` +
           (retryAfter ? ` retry-after: ${retryAfter}` : ''),
         response.status,
         node.id,
         response.status === 429 ? 'rate_limited' : 'http_error',
+        credential.credential.id,
+        credential.strategy,
+        attempt,
       );
+      this.completeCredential(credential, {
+        statusCode: response.status,
+        failureType: providerError.failureType,
+        error: providerError.message,
+        retryAfter,
+      });
+      lastError = providerError;
+      if (
+        attempt < attemptLimit - 1 &&
+        this.credentialPool?.shouldRetry(node, response.status, providerError.failureType)
+      ) {
+        continue;
+      }
+      throw providerError;
     }
 
-    return response;
+    throw lastError || new ProviderError(`Provider ${node.id} has no credential attempts`, 503, node.id);
   }
 
   private async sendMediaRequest(
@@ -559,9 +631,164 @@ export class ProviderClientService {
   ): Promise<Response> {
     const url = `${node.base_url}${endpoint}`;
     const nodeHeaders = await this.resolveNodeHeaders(node);
-    const apiKey = await this.resolveNodeApiKey(node);
+    const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
+
+    const triedCredentialIds = new Set<string>();
+    const attemptLimit = this.credentialPool?.attemptLimit(node) ?? 1;
+    let lastError: ProviderError | null = null;
+
+    for (let attempt = 0; attempt < attemptLimit; attempt++) {
+      const credential = this.selectCredential(node, undefined, triedCredentialIds);
+      triedCredentialIds.add(credential.credential.id);
+      const headers = await this.buildHeaders(
+        node,
+        nodeHeaders,
+        request.contentType,
+        credential,
+      );
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+      const abortFromExternal = () => controller.abort();
+      if (signal?.aborted) {
+        controller.abort();
+      } else {
+        signal?.addEventListener('abort', abortFromExternal, { once: true });
+      }
+
+      try {
+        const body = Buffer.isBuffer(request.body)
+          ? (request.body as unknown as BodyInit)
+          : JSON.stringify(request.body);
+        const fetchOptions: FetchOptionsWithDispatcher = {
+          method: 'POST',
+          headers,
+          body,
+          signal: controller.signal,
+        };
+        const dispatcher = this.connectionPool?.getDispatcher(node);
+        if (dispatcher) {
+          fetchOptions.dispatcher = dispatcher;
+        }
+        const response = await fetch(url, fetchOptions);
+        if (response.ok) {
+          this.responseCredentials.set(response, { selection: credential, retryCount: attempt });
+          return response;
+        }
+
+        let errorBody: string;
+        try { errorBody = await response.text(); } catch { errorBody = 'Unable to read error body'; }
+        this.logger.warn(`Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 200)}`);
+        const retryAfter = response.headers?.get?.('retry-after');
+        const providerError = new ProviderError(
+          `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}` +
+            (retryAfter ? ` retry-after: ${retryAfter}` : ''),
+          response.status,
+          node.id,
+          response.status === 429 ? 'rate_limited' : 'http_error',
+          credential.credential.id,
+          credential.strategy,
+          attempt,
+        );
+        this.completeCredential(credential, {
+          statusCode: response.status,
+          failureType: providerError.failureType,
+          error: providerError.message,
+          retryAfter,
+        });
+        lastError = providerError;
+        if (
+          attempt < attemptLimit - 1 &&
+          this.credentialPool?.shouldRetry(node, response.status, providerError.failureType)
+        ) {
+          continue;
+        }
+        throw providerError;
+      } catch (err: unknown) {
+        if (err instanceof ProviderError) throw err;
+        const message = err instanceof Error ? err.message : 'Unknown fetch error';
+        const errorName = err instanceof Error ? err.name : '';
+        const providerError =
+          errorName === 'AbortError' || isUndiciTimeoutError(err)
+            ? new ProviderError(
+                `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
+                504,
+                node.id,
+                'timeout',
+                credential.credential.id,
+                credential.strategy,
+                attempt,
+              )
+            : new ProviderError(
+                `Failed to connect to ${node.id}: ${message}`,
+                0,
+                node.id,
+                'network_error',
+                credential.credential.id,
+                credential.strategy,
+                attempt,
+              );
+        this.completeCredential(credential, {
+          statusCode: providerError.statusCode,
+          failureType: providerError.failureType,
+          error: providerError.message,
+        });
+        lastError = providerError;
+        if (
+          attempt < attemptLimit - 1 &&
+          this.credentialPool?.shouldRetry(node, providerError.statusCode, providerError.failureType)
+        ) {
+          continue;
+        }
+        throw providerError;
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', abortFromExternal);
+      }
+    }
+
+    throw lastError || new ProviderError(`Provider ${node.id} has no credential attempts`, 503, node.id);
+  }
+
+  private async readJsonResponse(
+    response: Response,
+    node: NodeConfig,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const body = (await response.json()) as Record<string, unknown>;
+      this.completeResponseCredential(response, { statusCode: response.status });
+      return body;
+    } catch (err: unknown) {
+      if (isUndiciTimeoutError(err)) {
+        this.completeResponseCredential(response, {
+          statusCode: 504,
+          failureType: 'timeout',
+          error: `Provider ${node.id} timed out while reading upstream response body`,
+        });
+        throw new ProviderError(
+          `Provider ${node.id} timed out while reading upstream response body`,
+          504,
+          node.id,
+          'timeout',
+        );
+      }
+      this.completeResponseCredential(response, {
+        statusCode: response.status,
+        error: err instanceof Error ? err.message : 'response_parse_error',
+      });
+      throw err;
+    }
+  }
+
+  private async buildHeaders(
+    node: NodeConfig,
+    nodeHeaders: Record<string, string>,
+    contentType: string,
+    credential: CredentialSelection,
+  ): Promise<Record<string, string>> {
+    const apiKey = await this.resolveNodeApiKey(node, credential);
     const headers: Record<string, string> = {
-      'Content-Type': request.contentType,
+      'Content-Type': contentType,
     };
 
     const authType =
@@ -580,88 +807,89 @@ export class ProviderClientService {
     } else {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
+
     Object.assign(headers, nodeHeaders);
-
-    const controller = new AbortController();
-    const effectiveTimeoutMs = timeoutMs ?? node.timeout_ms ?? 60000;
-    const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
-    const abortFromExternal = () => controller.abort();
-    if (signal?.aborted) {
-      controller.abort();
-    } else {
-      signal?.addEventListener('abort', abortFromExternal, { once: true });
-    }
-
-    try {
-      const body = Buffer.isBuffer(request.body)
-        ? (request.body as unknown as BodyInit)
-        : JSON.stringify(request.body);
-      const fetchOptions: FetchOptionsWithDispatcher = {
-        method: 'POST',
-        headers,
-        body,
-        signal: controller.signal,
-      };
-      const dispatcher = this.connectionPool?.getDispatcher(node);
-      if (dispatcher) {
-        fetchOptions.dispatcher = dispatcher;
-      }
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        let errorBody: string;
-        try { errorBody = await response.text(); } catch { errorBody = 'Unable to read error body'; }
-        this.logger.warn(`Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 200)}`);
-        const retryAfter = response.headers?.get?.('retry-after');
-        throw new ProviderError(
-          `Provider ${node.id} returned ${response.status}: ${errorBody.substring(0, 500)}` +
-            (retryAfter ? ` retry-after: ${retryAfter}` : ''),
-          response.status,
-          node.id,
-          response.status === 429 ? 'rate_limited' : 'http_error',
-        );
-      }
-      return response;
-    } catch (err: unknown) {
-      if (err instanceof ProviderError) throw err;
-      const message = err instanceof Error ? err.message : 'Unknown fetch error';
-      const errorName = err instanceof Error ? err.name : '';
-      if (errorName === 'AbortError' || isUndiciTimeoutError(err)) {
-        throw new ProviderError(
-          `Provider ${node.id} timed out after ${effectiveTimeoutMs}ms`,
-          504,
-          node.id,
-          'timeout',
-        );
-      }
-      throw new ProviderError(
-        `Failed to connect to ${node.id}: ${message}`,
-        0,
-        node.id,
-        'network_error',
-      );
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', abortFromExternal);
-    }
+    return headers;
   }
 
-  private async readJsonResponse(
-    response: Response,
+  private selectCredential(
     node: NodeConfig,
-  ): Promise<Record<string, unknown>> {
-    try {
-      return (await response.json()) as Record<string, unknown>;
-    } catch (err: unknown) {
-      if (isUndiciTimeoutError(err)) {
-        throw new ProviderError(
-          `Provider ${node.id} timed out while reading upstream response body`,
-          504,
-          node.id,
-          'timeout',
-        );
-      }
-      throw err;
+    metadata?: CanonicalRequest['metadata'],
+    triedCredentialIds?: Set<string>,
+  ): CredentialSelection {
+    if (this.credentialPool) {
+      return this.credentialPool.select(node, { metadata, triedCredentialIds });
     }
+    const fallback = {
+      nodeId: node.id,
+      credential: {
+        id: 'default',
+        api_key: node.api_key || '',
+        weight: 1,
+        enabled: true,
+      },
+      strategy: 'least_in_flight' as const,
+      stickyBy: 'none' as const,
+      cooldownMs: 60_000,
+      maxFailures: 3,
+      retryOnStatus: [429, 500, 502, 503, 504],
+      synthetic: true,
+    };
+    return fallback;
+  }
+
+  private completeCredential(
+    selection: CredentialSelection,
+    result: {
+      statusCode?: number;
+      failureType?: string;
+      error?: string | null;
+      retryAfter?: string | null;
+    },
+  ): void {
+    this.credentialPool?.complete(selection, result);
+  }
+
+  private completeResponseCredential(
+    response: Response,
+    result: {
+      statusCode?: number;
+      failureType?: string;
+      error?: string | null;
+      retryAfter?: string | null;
+    },
+  ): void {
+    const metadata = this.responseCredentials.get(response);
+    if (!metadata) return;
+    if (this.completedCredentialResponses.has(response)) return;
+    this.completedCredentialResponses.add(response);
+    this.completeCredential(metadata.selection, result);
+  }
+
+  private applyCredentialRequestMetadata(
+    metadata: CanonicalRequest['metadata'] | undefined,
+    selection: CredentialSelection,
+    retryCount: number,
+  ): void {
+    if (!metadata) return;
+    metadata.provider_credential_id = selection.credential.id;
+    metadata.provider_credential_strategy = selection.strategy;
+    metadata.provider_credential_retry_count = retryCount;
+  }
+
+  private applyCredentialRoutingMetadata(
+    routing: {
+      credential_id?: string | null;
+      credential_strategy?: string | null;
+      credential_retry_count?: number;
+    },
+    response: Response,
+  ): void {
+    const metadata = this.responseCredentials.get(response);
+    if (!metadata) return;
+    routing.credential_id = metadata.selection.credential.id;
+    routing.credential_strategy = metadata.selection.strategy;
+    routing.credential_retry_count = metadata.retryCount;
   }
 
   // ══════════════════════════════════════════════════════
@@ -1707,6 +1935,9 @@ export class ProviderError extends Error {
       | 'rate_limited'
       | 'http_error'
       | 'network_error' = 'http_error',
+    public readonly credentialId?: string,
+    public readonly credentialStrategy?: string,
+    public readonly credentialRetryCount = 0,
   ) {
     super(message);
     this.name = 'ProviderError';

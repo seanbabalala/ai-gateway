@@ -23,7 +23,7 @@
 
 # SiftGate
 
-Current release: **v2.8.4**.
+Current release: **v2.9.0**.
 
 SiftGate is an MIT open-source AI Gateway that gives organizations one
 self-hosted control point for model traffic, agent traffic, provider
@@ -102,12 +102,48 @@ plane is optional; AI requests do not need to pass through a hosted service.
 | Protocol translation | Canonical request model, protocol-aware normalizers and denormalizers, structured-output preservation, reasoning/thinking intent metadata, streaming support, multipart media pass-through, async job metadata. |
 | Routing | `model: "auto"`, direct model routing, aliases, node shortcuts, model-family prefixes, tiered routing, fallback chains, split testing, compatibility-profile filtering, circuit breakers, momentum, load balancing, cache-aware cost routing. |
 | Governance | Workspaces, local Dashboard RBAC, Gateway API keys, teams, Policy Namespaces, allowed endpoints, allowed modalities, allowed nodes, allowed models, per-key/team/namespace/global budgets, rate limits, audit events. |
-| Provider operations | Provider Catalog, Add Node Wizard, 50+ provider metadata coverage, active vs transport-only visibility, pricing-source governance, custom provider templates, custom-header auth, provider health dashboard, config validation. |
+| Provider operations | Provider Catalog, Add Node Wizard, 50+ provider metadata coverage, active vs transport-only visibility, pricing-source governance, custom provider templates, custom-header auth, provider credential pools with weighted rotation/sticky affinity/cooldown, provider health dashboard, config validation. |
 | Agent operations | Coding Agent Gateway profiles, profile-scoped virtual models, connector templates, metadata-only coding-agent sessions, Agent Platform preview, MCP server allow-lists and tool-call proxying. |
 | Observability | Dashboard analytics, call logs, route decision traces, session timelines, provider health, benchmarks, cache savings, export-safe metadata, webhook alerts, optional log sinks, OpenTelemetry metrics/traces. |
 | Cost and quality | Daily budget enforcement, estimated spend, provider-cache savings, chargeback reports, anomaly detection, route feedback, Intelligence Loop token prediction, optional cost optimizer, optional quality gate, async eval metadata. |
 | Semantic controls | Semantic Cache v2, Prompt Registry metadata, Context Window Optimizer evidence, Intent Classification, Guardrails v2 metadata, workspace/API key/model isolation by default. |
 | Deployment | Local development, Docker Compose, Docker image path, Kubernetes manifests, Helm chart, SQLite default, PostgreSQL production path, optional Redis shared state, OIDC, secret references. |
+
+## Provider Credential Pools
+
+Provider nodes can use a single `api_key` or a first-class `credentials` pool.
+Pools rotate multiple upstream credentials inside the same node before the
+router falls back to another node, which is useful when one provider account has
+multiple approved keys for the same endpoint and model surface.
+
+```yaml
+nodes:
+  - id: ada-coding-plan
+    name: "ADA Coding Plan"
+    protocol: messages
+    base_url: "https://api.anthropic.com"
+    endpoint: "/v1/messages"
+    auth_type: x-api-key
+    credentials:
+      - id: primary
+        api_key: "${env:ADA_CLAUDE_KEY_PRIMARY}"
+        weight: 1
+        enabled: true
+      - id: backup
+        api_key: "${env:ADA_CLAUDE_KEY_BACKUP}"
+        weight: 1
+        enabled: true
+    credential_pool:
+      enabled: true
+      strategy: least_in_flight
+      sticky_by: agent_session
+      cooldown_ms: 60000
+      max_failures: 3
+      retry_on_status: [429, 500, 502, 503, 504]
+```
+
+Credential ids are logged for operations, but secret values are never returned
+by Dashboard APIs, call logs, route traces, telemetry, or log sinks.
 
 ## Competitive Matrix
 

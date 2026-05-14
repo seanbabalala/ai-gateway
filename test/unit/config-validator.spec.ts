@@ -3098,6 +3098,52 @@ describe('config validator', () => {
     expect(result.ok).toBe(false);
     expect(codes(result.errors)).toContain('invalid_cache_affinity_config');
   });
+
+  it('accepts provider credential pools without a legacy node api_key', () => {
+    const config = secretReferenceConfig('${OPENAI_API_KEY:-test}');
+    (config.nodes[0] as Record<string, unknown>).api_key = undefined;
+    (config.nodes[0] as Record<string, unknown>).credentials = [
+      { id: 'primary', api_key: '${OPENAI_API_KEY_PRIMARY:-test}', weight: 2 },
+      { id: 'backup', api_key: '${OPENAI_API_KEY_BACKUP:-test}', enabled: true },
+    ];
+    (config.nodes[0] as Record<string, unknown>).credential_pool = {
+      strategy: 'least_in_flight',
+      sticky_by: 'agent_session',
+      cooldown_ms: 60000,
+      max_failures: 3,
+      retry_on_status: [429, 500, 502, 503, 504],
+    };
+
+    const result = validateConfigObject(config, { env: {} });
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('missing_required_field');
+  });
+
+  it('rejects duplicate credential ids and invalid pool settings', () => {
+    const config = secretReferenceConfig('${OPENAI_API_KEY:-test}');
+    (config.nodes[0] as Record<string, unknown>).credentials = [
+      { id: 'dup', api_key: '${OPENAI_API_KEY_PRIMARY:-test}', weight: 0 },
+      { id: 'dup', api_key: '' },
+    ];
+    (config.nodes[0] as Record<string, unknown>).credential_pool = {
+      strategy: 'random',
+      sticky_by: 'cookie',
+      retry_on_status: [42],
+    };
+
+    const result = validateConfigObject(config, { env: {} });
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toEqual(expect.arrayContaining([
+      'duplicate_credential_id',
+      'missing_credential_api_key',
+      'invalid_credential_weight',
+      'invalid_credential_pool_strategy',
+      'invalid_credential_pool_sticky_by',
+      'invalid_credential_pool_retry_status',
+    ]));
+  });
 });
 
 describe('siftgate validate CLI', () => {

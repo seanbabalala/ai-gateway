@@ -5736,6 +5736,12 @@ export class PipelineService {
         error: params.error,
         api_key_name: params.canonical.metadata.api_key_name || null,
         api_key_id: params.canonical.metadata.api_key_id || null,
+        credential_id:
+          params.canonical.metadata.provider_credential_id || null,
+        credential_strategy:
+          params.canonical.metadata.provider_credential_strategy || null,
+        credential_retry_count:
+          params.canonical.metadata.provider_credential_retry_count || 0,
         namespace_id: params.canonical.metadata.namespace_id || null,
         team_id: params.canonical.metadata.team_id || null,
         ...agentMetadata,

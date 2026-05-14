@@ -140,6 +140,8 @@ describe('CallLog schema patch', () => {
       'cost_without_cache_usd',
       'stream',
       'client_source',
+      'credential_id',
+      'credential_retry_count',
       'agent_connector',
       'route_decisions.agent_connector',
       'intelligence_optimizer_applied',
@@ -156,6 +158,12 @@ describe('CallLog schema patch', () => {
     );
     expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN client_source varchar',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN credential_id varchar',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'ALTER TABLE call_logs ADD COLUMN credential_retry_count integer NOT NULL DEFAULT 0',
     );
     expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE call_logs ADD COLUMN intelligence_optimizer_applied boolean NOT NULL DEFAULT 0',

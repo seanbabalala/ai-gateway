@@ -260,6 +260,13 @@ interface PricingRow {
   pricing_trust?: NonNullable<CatalogModel["pricing_trust"]>;
 }
 
+interface CredentialRow {
+  id: string;
+  api_key: string;
+  weight: string;
+  enabled: boolean;
+}
+
 interface HealthCheckForm {
   enabled: boolean;
   interval_seconds: string;
@@ -299,6 +306,18 @@ interface FormState {
   compatibility_profile: string[];
   aliases: KeyValueRow[];
   headers: KeyValueRow[];
+  credentials: CredentialRow[];
+  credential_pool_enabled: boolean;
+  credential_pool_strategy: "least_in_flight" | "weighted_round_robin";
+  credential_pool_sticky_by:
+    | "none"
+    | "agent_session"
+    | "api_key"
+    | "team"
+    | "namespace";
+  credential_pool_cooldown_ms: string;
+  credential_pool_max_failures: string;
+  credential_pool_retry_on_status: string;
   pricing: PricingRow[];
   auth_type: string;
   auth_header_name: string;
@@ -361,6 +380,13 @@ const EMPTY_FORM: FormState = {
   compatibility_profile: [],
   aliases: [],
   headers: [],
+  credentials: [],
+  credential_pool_enabled: true,
+  credential_pool_strategy: "least_in_flight",
+  credential_pool_sticky_by: "agent_session",
+  credential_pool_cooldown_ms: "60000",
+  credential_pool_max_failures: "3",
+  credential_pool_retry_on_status: "429,500,502,503,504",
   pricing: [],
   auth_type: "",
   auth_header_name: "",
@@ -920,6 +946,26 @@ export function NodeFormModal({
           : editNode.resolved_compatibility_profiles || [],
         aliases: rowsFromRecord(editNode.aliases),
         headers: [],
+        credentials: (editNode.credentials || []).map((credential) => ({
+          id: credential.id,
+          api_key: "",
+          weight: String(credential.weight ?? 1),
+          enabled: credential.enabled !== false,
+        })),
+        credential_pool_enabled: editNode.credential_pool?.enabled ?? true,
+        credential_pool_strategy:
+          editNode.credential_pool?.strategy || "least_in_flight",
+        credential_pool_sticky_by:
+          editNode.credential_pool?.sticky_by || "agent_session",
+        credential_pool_cooldown_ms: String(
+          editNode.credential_pool?.cooldown_ms ?? 60000,
+        ),
+        credential_pool_max_failures: String(
+          editNode.credential_pool?.max_failures ?? 3,
+        ),
+        credential_pool_retry_on_status:
+          editNode.credential_pool?.retry_on_status?.join(",") ||
+          "429,500,502,503,504",
         auth_type: editNode.auth_type || "",
         auth_header_name: editNode.auth_header_name || "",
         auth_header_prefix: editNode.auth_header_prefix || "",
@@ -1221,6 +1267,33 @@ export function NodeFormModal({
       ),
     );
 
+  const addCredential = () =>
+    setField("credentials", [
+      ...form.credentials,
+      {
+        id: `key-${form.credentials.length + 1}`,
+        api_key: "",
+        weight: "1",
+        enabled: true,
+      },
+    ]);
+  const removeCredential = (index: number) =>
+    setField(
+      "credentials",
+      form.credentials.filter((_, idx) => idx !== index),
+    );
+  const updateCredential = (
+    index: number,
+    field: keyof CredentialRow,
+    value: string | boolean,
+  ) =>
+    setField(
+      "credentials",
+      form.credentials.map((row, idx) =>
+        idx === index ? { ...row, [field]: value } : row,
+      ),
+    );
+
   const addPricing = () =>
     setField("pricing", [
       ...form.pricing,
@@ -1270,14 +1343,39 @@ export function NodeFormModal({
       }
     }
     if (targetStep === "settings" || targetStep === "test") {
+      const credentialRows = form.credentials.filter(
+        (credential) => credential.id.trim() || credential.api_key.trim(),
+      );
       if (!isEdit) {
         if (!form.id.trim()) errs.id = t("form.errors.idRequired");
         else if (!/^[a-z0-9_-]+$/i.test(form.id.trim()))
           errs.id = t("form.errors.idFormat");
         else if (existingIds.includes(form.id.trim()))
           errs.id = t("form.errors.idExists");
-        if (!form.api_key.trim())
+        if (
+          !form.api_key.trim() &&
+          credentialRows.filter(
+            (credential) => credential.id.trim() && credential.api_key.trim(),
+          ).length === 0
+        )
           errs.api_key = t("form.errors.apiKeyRequired");
+      }
+      const credentialIds = compactModels(
+        credentialRows.map((credential) => credential.id),
+      );
+      if (credentialIds.length !== credentialRows.length) {
+        errs.credentials = t("form.errors.credentialsUnique");
+      }
+      if (
+        credentialRows.some(
+          (credential) =>
+            !credential.id.trim() ||
+            (!isEdit && !credential.api_key.trim()) ||
+            Number(credential.weight) < 1 ||
+            Number.isNaN(Number(credential.weight)),
+        )
+      ) {
+        errs.credentials = t("form.errors.credentialsInvalid");
       }
       if (!form.name.trim()) errs.name = t("form.errors.nameRequired");
       if (!form.base_url.trim())
@@ -1373,6 +1471,18 @@ export function NodeFormModal({
     const tags = compactModels(form.tags);
     const aliases = toRecord(form.aliases);
     const headers = toRecord(form.headers);
+    const credentials = form.credentials
+      .filter((credential) => credential.id.trim() || credential.api_key.trim())
+      .map((credential) => ({
+        id: credential.id.trim(),
+        api_key: credential.api_key.trim(),
+        weight: Number(credential.weight) || 1,
+        enabled: credential.enabled,
+      }));
+    const retryStatuses = form.credential_pool_retry_on_status
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item >= 100 && item <= 599);
     const modelCapabilities = buildModelCapabilities();
     const healthCheck = buildHealthCheck();
     const textModels = active.includes("models")
@@ -1448,6 +1558,21 @@ export function NodeFormModal({
       model_aliases: aliases,
       model_prefixes: modelPrefixes.length > 0 ? modelPrefixes : undefined,
       headers,
+      credentials: credentials.length > 0 ? credentials : undefined,
+      credential_pool:
+        credentials.length > 0
+          ? {
+              enabled: form.credential_pool_enabled,
+              strategy: form.credential_pool_strategy,
+              sticky_by: form.credential_pool_sticky_by,
+              cooldown_ms:
+                Number(form.credential_pool_cooldown_ms) || undefined,
+              max_failures:
+                Number(form.credential_pool_max_failures) || undefined,
+              retry_on_status:
+                retryStatuses.length > 0 ? retryStatuses : undefined,
+            }
+          : undefined,
       model_capabilities: modelCapabilities,
       auth_type: form.auth_type
         ? (form.auth_type as "bearer" | "x-api-key" | "custom-header")
@@ -1473,7 +1598,7 @@ export function NodeFormModal({
     return {
       ...basePayload,
       id: form.id.trim(),
-      api_key: form.api_key.trim(),
+      ...(form.api_key.trim() ? { api_key: form.api_key.trim() } : {}),
     } as CreateNodeRequest;
   };
 
@@ -1493,7 +1618,12 @@ export function NodeFormModal({
         message: err.message || t("form.errors.requestFailed"),
       });
 
-    if (isEdit && !form.api_key.trim()) {
+    const testApiKey =
+      form.api_key.trim() ||
+      form.credentials.find((credential) => credential.api_key.trim())?.api_key.trim() ||
+      "";
+
+    if (isEdit && !testApiKey) {
       testExisting.mutate(editNode!.id, {
         onSuccess: onResult,
         onError: onFail,
@@ -1504,7 +1634,7 @@ export function NodeFormModal({
     const errs: Record<string, string> = {};
     if (!form.base_url.trim()) errs.base_url = t("form.errors.requiredForTest");
     if (!form.endpoint.trim()) errs.endpoint = t("form.errors.requiredForTest");
-    if (!form.api_key.trim()) errs.api_key = t("form.errors.requiredForTest");
+    if (!testApiKey) errs.api_key = t("form.errors.requiredForTest");
     if (!textModelForTest) errs.models = t("form.errors.needModelForTest");
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -1516,7 +1646,7 @@ export function NodeFormModal({
         protocol: form.protocol,
         base_url: form.base_url.trim(),
         endpoint: form.endpoint.trim(),
-        api_key: form.api_key.trim(),
+        api_key: testApiKey,
         model: textModelForTest,
         auth_type: form.auth_type
           ? (form.auth_type as "bearer" | "x-api-key" | "custom-header")
@@ -2077,6 +2207,164 @@ export function NodeFormModal({
                       </div>
                     </Panel>
                   </div>
+
+                  <Panel
+                    title={t("form.panels.credentials")}
+                    icon={KeyRound}
+                    error={errors.credentials}
+                  >
+                    <div className="space-y-3">
+                      <div className="grid gap-3 lg:grid-cols-[1.1fr_1.5fr_96px_92px_40px]">
+                        {form.credentials.map((credential, index) => (
+                          <div
+                            key={index}
+                            className="contents"
+                          >
+                            <Input
+                              value={credential.id}
+                              onChange={(event) =>
+                                updateCredential(index, "id", event.target.value)
+                              }
+                              placeholder={t("form.placeholders.credentialId")}
+                            />
+                            <Input
+                              type="password"
+                              value={credential.api_key}
+                              onChange={(event) =>
+                                updateCredential(
+                                  index,
+                                  "api_key",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder={
+                                isEdit
+                                  ? t("form.placeholders.keepExistingKey")
+                                  : t("form.placeholders.apiKey")
+                              }
+                            />
+                            <Input
+                              type="number"
+                              min={1}
+                              value={credential.weight}
+                              onChange={(event) =>
+                                updateCredential(
+                                  index,
+                                  "weight",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder={t("form.placeholders.weight")}
+                            />
+                            <label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-[12px] font-semibold text-[var(--foreground-muted)]">
+                              <input
+                                type="checkbox"
+                                checked={credential.enabled}
+                                onChange={(event) =>
+                                  updateCredential(
+                                    index,
+                                    "enabled",
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                              {t("form.labels.enabled")}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => removeCredential(index)}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--foreground-dim)] hover:border-red-300 hover:text-red-600"
+                              aria-label={t("form.actions.removeCredential")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <Button type="button" variant="outline" size="sm" onClick={addCredential}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        {t("form.actions.addCredential")}
+                      </Button>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        <label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-[12px] font-semibold text-[var(--foreground-muted)]">
+                          <input
+                            type="checkbox"
+                            checked={form.credential_pool_enabled}
+                            onChange={(event) =>
+                              setField(
+                                "credential_pool_enabled",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          {t("form.labels.poolEnabled")}
+                        </label>
+                        <FieldGroup label={t("form.labels.poolStrategy")}>
+                          <NativeSelect
+                            value={form.credential_pool_strategy}
+                            onChange={(event) =>
+                              setField(
+                                "credential_pool_strategy",
+                                event.target.value as FormState["credential_pool_strategy"],
+                              )
+                            }
+                            options={[
+                              {
+                                value: "least_in_flight",
+                                label: t("form.credentialPool.leastInFlight"),
+                              },
+                              {
+                                value: "weighted_round_robin",
+                                label: t("form.credentialPool.weightedRoundRobin"),
+                              },
+                            ]}
+                          />
+                        </FieldGroup>
+                        <FieldGroup label={t("form.labels.poolStickyBy")}>
+                          <NativeSelect
+                            value={form.credential_pool_sticky_by}
+                            onChange={(event) =>
+                              setField(
+                                "credential_pool_sticky_by",
+                                event.target.value as FormState["credential_pool_sticky_by"],
+                              )
+                            }
+                            options={[
+                              { value: "agent_session", label: t("form.credentialPool.agentSession") },
+                              { value: "api_key", label: t("form.credentialPool.apiKey") },
+                              { value: "team", label: t("form.credentialPool.team") },
+                              { value: "namespace", label: t("form.credentialPool.namespace") },
+                              { value: "none", label: t("form.credentialPool.none") },
+                            ]}
+                          />
+                        </FieldGroup>
+                        <FieldGroup label={t("form.labels.poolCooldown")}>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={form.credential_pool_cooldown_ms}
+                            onChange={(event) =>
+                              setField(
+                                "credential_pool_cooldown_ms",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </FieldGroup>
+                        <FieldGroup label={t("form.labels.poolRetryStatus")}>
+                          <Input
+                            value={form.credential_pool_retry_on_status}
+                            onChange={(event) =>
+                              setField(
+                                "credential_pool_retry_on_status",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </FieldGroup>
+                      </div>
+                    </div>
+                  </Panel>
 
                   <Panel
                     title={t("form.panels.endpoints")}

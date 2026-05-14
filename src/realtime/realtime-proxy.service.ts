@@ -867,8 +867,15 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       optional: true,
       location: `nodes.${node.id}.headers`,
     });
-    const apiKey = await this.secretResolver.resolveString(node.api_key, {
-      location: `nodes.${node.id}.api_key`,
+    const credential = node.credentials?.find((entry) => entry.enabled !== false);
+    const apiKeyRef = node.api_key || credential?.api_key;
+    if (!apiKeyRef) {
+      throw new Error(`Node "${node.id}" must define api_key or credentials`);
+    }
+    const apiKey = await this.secretResolver.resolveString(apiKeyRef, {
+      location: node.api_key
+        ? `nodes.${node.id}.api_key`
+        : `nodes.${node.id}.credentials.${credential?.id || 'default'}.api_key`,
     });
     const headers: Record<string, string> = {
       'OpenAI-Beta': 'realtime=v1',

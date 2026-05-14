@@ -414,6 +414,25 @@ nodes:
     # Preferred: runtime secret reference resolved only when requests need it.
     # Legacy startup interpolation still works: api_key: "${OPENAI_API_KEY}"
     api_key: "${env:OPENAI_API_KEY}"
+    # Optional: use credentials[] instead of api_key when the same upstream
+    # account/node has multiple approved provider keys. SiftGate rotates inside
+    # the node before falling back to another node and logs only credential ids.
+    # credentials:
+    #   - id: primary
+    #     api_key: "${env:OPENAI_API_KEY_PRIMARY}"
+    #     weight: 1
+    #     enabled: true
+    #   - id: backup
+    #     api_key: "${env:OPENAI_API_KEY_BACKUP}"
+    #     weight: 1
+    #     enabled: true
+    # credential_pool:
+    #   enabled: true
+    #   strategy: least_in_flight       # least_in_flight | weighted_round_robin
+    #   sticky_by: agent_session        # none | agent_session | api_key | team | namespace
+    #   cooldown_ms: 60000
+    #   max_failures: 3
+    #   retry_on_status: [429, 500, 502, 503, 504]
     models: ["gpt-4o", "gpt-4o-mini"]
     embedding_models: ["text-embedding-3-small", "text-embedding-3-large"]
     # rerank_models: ["rerank-english-v3"]

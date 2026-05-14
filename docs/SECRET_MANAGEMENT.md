@@ -15,6 +15,11 @@ api_key: "${env:OPENAI_API_KEY}"
 api_key: "${vault:secret/openai#api_key}"
 api_key: "${aws-sm:openai/prod#api_key}"
 api_key: "${gcp-sm:openai-prod#api_key}"
+credentials:
+  - id: primary
+    api_key: "${env:OPENAI_API_KEY_PRIMARY}"
+  - id: backup
+    api_key: "${vault:secret/openai#backup_api_key}"
 ```
 
 Legacy startup interpolation still works:
@@ -34,6 +39,7 @@ reload; only `${VAR:-default}` keeps fallback semantics.
 ## Where References Work
 
 - `nodes[].api_key`
+- `nodes[].credentials[].api_key`
 - `nodes[].headers`
 - Active health probes, because they inherit node auth and headers
 - Realtime upstream auth, because it inherits node auth and headers

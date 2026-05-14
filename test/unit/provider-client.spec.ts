@@ -2,6 +2,7 @@ import { ProviderClientService, ProviderError } from '../../src/providers/provid
 import { Tier, CanonicalMediaRequest, CanonicalRequest } from '../../src/canonical/canonical.types';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
 import { BUILTIN_PROVIDER_CATALOG } from '../../src/catalog/built-in-catalog';
+import { CredentialPoolService } from '../../src/providers/credential-pool.service';
 
 const routingMeta = { tier: 'standard' as Tier, score: 0.1, is_fallback: false };
 
@@ -53,6 +54,30 @@ function makeServiceWithPool(
   return new ProviderClientService({
     getNode: jest.fn().mockReturnValue(node),
   } as any, new TelemetryService(), pool as any);
+}
+
+function makeServiceWithCredentialPool(nodeOverrides: Record<string, any> = {}): ProviderClientService {
+  const node = {
+    id: 'openai',
+    name: 'OpenAI',
+    protocol: 'chat_completions',
+    base_url: 'https://api.openai.com',
+    endpoint: '/v1/chat/completions',
+    api_key: 'sk-test',
+    models: ['gpt-4o'],
+    model_aliases: {},
+    timeout_ms: 5000,
+    ...nodeOverrides,
+  };
+  return new ProviderClientService(
+    {
+      getNode: jest.fn().mockReturnValue(node),
+    } as any,
+    new TelemetryService(),
+    undefined,
+    undefined,
+    new CredentialPoolService(),
+  );
 }
 
 function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequest {
@@ -260,6 +285,74 @@ describe('ProviderClientService', () => {
       expect(err.nodeId).toBe('openai');
       expect(err.name).toBe('ProviderError');
       expect(err instanceof Error).toBe(true);
+    });
+  });
+
+  describe('credential pool', () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      jest.restoreAllMocks();
+    });
+
+    it('retries another credential inside the same node on rate limits', async () => {
+      const fetchMock = jest.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'busy' }), { status: 429 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          id: 'chatcmpl-credential-pool',
+          model: 'gpt-4o',
+          choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        }), { status: 200 }));
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithCredentialPool({
+        api_key: undefined,
+        credentials: [
+          { id: 'a', api_key: 'sk-a', weight: 1, enabled: true },
+          { id: 'b', api_key: 'sk-b', weight: 1, enabled: true },
+        ],
+        credential_pool: {
+          enabled: true,
+          strategy: 'least_in_flight',
+          retry_on_status: [429, 500, 502, 503, 504],
+        },
+      });
+
+      const response = await svc.forward(
+        makeCanonical(),
+        'openai',
+        'gpt-4o',
+        routingMeta,
+      );
+
+      expect(response.content[0]).toEqual({ type: 'text', text: 'ok' });
+      expect(response.routing.credential_id).toBe('b');
+      expect(response.routing.credential_strategy).toBe('least_in_flight');
+      expect(response.routing.credential_retry_count).toBe(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect((fetchMock.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-a');
+      expect((fetchMock.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-b');
+    });
+
+    it('does not retry client-shape 400 responses across credentials', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'bad request' }), { status: 400 }),
+      );
+      global.fetch = fetchMock as any;
+      const svc = makeServiceWithCredentialPool({
+        api_key: undefined,
+        credentials: [
+          { id: 'a', api_key: 'sk-a' },
+          { id: 'b', api_key: 'sk-b' },
+        ],
+      });
+
+      await expect(
+        svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta),
+      ).rejects.toMatchObject({ statusCode: 400, credentialId: 'a' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 

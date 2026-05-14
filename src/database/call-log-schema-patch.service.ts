@@ -6,6 +6,8 @@ const ROUTE_DECISIONS_TABLE = 'route_decisions';
 const COST_WITHOUT_CACHE_COLUMN = 'cost_without_cache_usd';
 const STREAM_COLUMN = 'stream';
 const CLIENT_SOURCE_COLUMNS = ['client_source'] as const;
+const CREDENTIAL_TEXT_COLUMNS = ['credential_id', 'credential_strategy'] as const;
+const CREDENTIAL_INTEGER_COLUMNS = ['credential_retry_count'] as const;
 const AGENT_METADATA_COLUMNS = [
   'agent_connector',
   'agent_profile_id',
@@ -73,6 +75,20 @@ export async function applyCallLogSchemaPatches(
       dataSource,
       CALL_LOGS_TABLE,
       CLIENT_SOURCE_COLUMNS,
+    )),
+  );
+  applied.push(
+    ...(await applyMetadataTextColumnPatches(
+      dataSource,
+      CALL_LOGS_TABLE,
+      CREDENTIAL_TEXT_COLUMNS,
+    )),
+  );
+  applied.push(
+    ...(await applyMetadataIntegerColumnPatches(
+      dataSource,
+      CALL_LOGS_TABLE,
+      CREDENTIAL_INTEGER_COLUMNS,
     )),
   );
   applied.push(
@@ -311,6 +327,30 @@ async function applyMetadataBooleanColumnPatches(
       );
     } else {
       await dataSource.query(`ALTER TABLE ${table} ADD COLUMN ${column} boolean NOT NULL DEFAULT 0`);
+    }
+    applied.push(column);
+  }
+
+  return applied;
+}
+
+async function applyMetadataIntegerColumnPatches(
+  dataSource: DataSource,
+  table: string,
+  columns: readonly string[],
+): Promise<string[]> {
+  const applied: string[] = [];
+  if (!supportsSchemaPatch(dataSource)) return applied;
+  if (!(await hasTable(dataSource, table))) return applied;
+
+  for (const column of columns) {
+    if (await hasTableColumnInternal(dataSource, table, column, true)) continue;
+    if (dataSource.options.type === 'postgres') {
+      await dataSource.query(
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} integer NOT NULL DEFAULT 0`,
+      );
+    } else {
+      await dataSource.query(`ALTER TABLE ${table} ADD COLUMN ${column} integer NOT NULL DEFAULT 0`);
     }
     applied.push(column);
   }
