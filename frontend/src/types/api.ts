@@ -1439,6 +1439,8 @@ export interface NodeInfo {
   auth_type?: "bearer" | "x-api-key" | "custom-header" | null;
   auth_header_name?: string | null;
   auth_header_prefix?: string | null;
+  credentials?: ProviderCredentialInfo[];
+  credential_pool?: CredentialPoolInfo;
   endpoints?: Record<string, string>;
   models: string[];
   embeddings_endpoint?: string | null;
@@ -1481,6 +1483,44 @@ export interface NodeInfo {
   realtime?: RealtimeNodeStatus;
   compatibility_matrix?: ProviderCompatibilityMatrixItem[];
   healthy: boolean;
+}
+
+export type CredentialPoolStrategy = "least_in_flight" | "weighted_round_robin";
+export type CredentialStickyBy =
+  | "none"
+  | "agent_session"
+  | "api_key"
+  | "team"
+  | "namespace";
+
+export interface ProviderCredentialInfo {
+  id: string;
+  enabled: boolean;
+  weight: number;
+  api_key?: string;
+  api_key_secret_reference?: boolean;
+}
+
+export interface CredentialRuntimeStatus {
+  id: string;
+  enabled: boolean;
+  weight: number;
+  active: number;
+  failures: number;
+  cooldown_until: string | null;
+  last_status: number | null;
+  last_error: string | null;
+  updated_at: string | null;
+}
+
+export interface CredentialPoolInfo {
+  enabled: boolean;
+  strategy: CredentialPoolStrategy;
+  sticky_by: CredentialStickyBy;
+  cooldown_ms: number;
+  max_failures: number;
+  retry_on_status: number[];
+  credentials: CredentialRuntimeStatus[];
 }
 
 export interface ModelCapabilityInfo {
@@ -2645,7 +2685,9 @@ export interface CreateNodeRequest {
   protocol: "chat_completions" | "responses" | "messages";
   base_url: string;
   endpoint: string;
-  api_key: string;
+  api_key?: string;
+  credentials?: ProviderCredentialRequest[];
+  credential_pool?: CredentialPoolRequest;
   models: string[];
   embeddings_endpoint?: string;
   embedding_models?: string[];
@@ -2697,6 +2739,8 @@ export interface UpdateNodeRequest {
   base_url?: string;
   endpoint?: string;
   api_key?: string;
+  credentials?: ProviderCredentialRequest[];
+  credential_pool?: CredentialPoolRequest;
   models?: string[];
   embeddings_endpoint?: string;
   embedding_models?: string[];
@@ -2740,6 +2784,22 @@ export interface UpdateNodeRequest {
   auth_header_prefix?: string;
   health_check?: HealthCheckRequest;
   compatibility_profile?: string[];
+}
+
+export interface ProviderCredentialRequest {
+  id: string;
+  api_key: string;
+  weight?: number;
+  enabled?: boolean;
+}
+
+export interface CredentialPoolRequest {
+  enabled?: boolean;
+  strategy?: CredentialPoolStrategy;
+  sticky_by?: CredentialStickyBy;
+  cooldown_ms?: number;
+  max_failures?: number;
+  retry_on_status?: number[];
 }
 
 export interface HealthCheckRequest {

@@ -45,6 +45,74 @@ export class HealthCheckDto {
   lightweight_model?: string;
 }
 
+export class NodeCredentialDto {
+  @ApiProperty({ example: 'primary' })
+  @IsString()
+  @IsNotEmpty()
+  id!: string;
+
+  @ApiProperty({
+    example: '${OPENAI_API_KEY_PRIMARY}',
+    format: 'password',
+    writeOnly: true,
+  })
+  @IsString()
+  @IsNotEmpty()
+  api_key!: string;
+
+  @ApiPropertyOptional({ example: 1, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  weight?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class CredentialPoolDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ enum: ['least_in_flight', 'weighted_round_robin'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['least_in_flight', 'weighted_round_robin'])
+  strategy?: 'least_in_flight' | 'weighted_round_robin';
+
+  @ApiPropertyOptional({ enum: ['none', 'agent_session', 'api_key', 'team', 'namespace'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['none', 'agent_session', 'api_key', 'team', 'namespace'])
+  sticky_by?: 'none' | 'agent_session' | 'api_key' | 'team' | 'namespace';
+
+  @ApiPropertyOptional({ example: 60000, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  cooldown_ms?: number;
+
+  @ApiPropertyOptional({ example: 3, minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  max_failures?: number;
+
+  @ApiPropertyOptional({ type: [Number], example: [429, 500, 502, 503, 504] })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  @Type(() => Number)
+  retry_on_status?: number[];
+}
+
 export class CreateNodeDto {
   @ApiProperty({ example: 'openai', description: 'Stable upstream provider, account, deployment, or proxy route id.' })
   @IsString()
@@ -71,15 +139,28 @@ export class CreateNodeDto {
   @IsNotEmpty()
   endpoint!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '${OPENAI_API_KEY}',
     format: 'password',
     writeOnly: true,
-    description: 'Provider API key or environment reference. Full values are never returned by config APIs.',
+    description: 'Provider API key or environment reference. Omit when credentials[] is used.',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  api_key!: string;
+  api_key?: string;
+
+  @ApiPropertyOptional({ type: [NodeCredentialDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => NodeCredentialDto)
+  credentials?: NodeCredentialDto[];
+
+  @ApiPropertyOptional({ type: CredentialPoolDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CredentialPoolDto)
+  credential_pool?: CredentialPoolDto;
 
   @ApiProperty({ type: [String], example: ['gpt-4o', 'gpt-4o-mini'] })
   @IsArray()
@@ -465,6 +546,19 @@ export class UpdateNodeDto {
   @IsOptional()
   @IsString()
   api_key?: string;
+
+  @ApiPropertyOptional({ type: [NodeCredentialDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => NodeCredentialDto)
+  credentials?: NodeCredentialDto[];
+
+  @ApiPropertyOptional({ type: CredentialPoolDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CredentialPoolDto)
+  credential_pool?: CredentialPoolDto;
 
   @ApiPropertyOptional({ type: [String], example: ['gpt-4o', 'gpt-4o-mini'] })
   @IsOptional()

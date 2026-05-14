@@ -286,6 +286,12 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       if (!node?.id || !node.name || !node.protocol || !node.base_url || !node.endpoint) {
         throw new Error(`Invalid configuration: nodes[${idx}] is missing required fields`);
       }
+      if (
+        !node.api_key &&
+        (!Array.isArray(node.credentials) || node.credentials.length === 0)
+      ) {
+        throw new Error(`Invalid configuration: node "${node.id}" must define api_key or credentials`);
+      }
       if (!Array.isArray(node.models) || node.models.length === 0) {
         throw new Error(`Invalid configuration: node "${node.id}" must define at least one model`);
       }

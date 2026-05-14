@@ -606,6 +606,41 @@ export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 
 export type HealthCheckMethod = 'HEAD' | 'GET' | 'POST';
 
+export type CredentialPoolStrategy = 'least_in_flight' | 'weighted_round_robin';
+
+export type CredentialStickyBy =
+  | 'none'
+  | 'agent_session'
+  | 'api_key'
+  | 'team'
+  | 'namespace';
+
+export interface NodeCredentialConfig {
+  /** Stable label for observability. The secret value is never logged or returned by Dashboard APIs. */
+  id: string;
+  /** Provider API key or secret reference for this credential. */
+  api_key: string;
+  /** Relative selection weight. Defaults to 1. */
+  weight?: number;
+  /** Disable a credential without deleting it. Defaults to true. */
+  enabled?: boolean;
+}
+
+export interface CredentialPoolConfig {
+  /** Enables multi-credential selection for this node. Defaults to true when credentials are configured. */
+  enabled?: boolean;
+  /** Selection strategy. Defaults to least_in_flight. */
+  strategy?: CredentialPoolStrategy;
+  /** Optional affinity key for reducing provider-side session churn. Defaults to agent_session. */
+  sticky_by?: CredentialStickyBy;
+  /** Cooldown duration after retryable failures. Defaults to 60000. */
+  cooldown_ms?: number;
+  /** Consecutive retryable failures before a credential is considered unhealthy. Defaults to 3. */
+  max_failures?: number;
+  /** HTTP statuses that trigger another credential attempt inside the same node. */
+  retry_on_status?: number[];
+}
+
 export interface ModelCapabilityConfig {
   /** Explicit modalities supported by this model. "vision" remains supported as the legacy image-input alias. */
   modalities?: Modality[];
@@ -689,7 +724,10 @@ export interface NodeConfig {
   protocol: NodeProtocol;
   base_url: string;
   endpoint: string;
-  api_key: string;
+  api_key?: string;
+  /** Optional pool of upstream credentials used by the provider client before node-level fallback. */
+  credentials?: NodeCredentialConfig[];
+  credential_pool?: CredentialPoolConfig;
   auth_type?: AuthType; // Default: 'bearer' for chat_completions/responses, 'x-api-key' for messages
   /** Header name used when auth_type=custom-header. The api_key value is inserted into this header. */
   auth_header_name?: string;

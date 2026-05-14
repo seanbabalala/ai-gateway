@@ -65,6 +65,8 @@ export interface ValidateConfigObjectOptions {
 
 const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
 const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages']);
+const CREDENTIAL_POOL_STRATEGIES = new Set(['least_in_flight', 'weighted_round_robin']);
+const CREDENTIAL_STICKY_MODES = new Set(['none', 'agent_session', 'api_key', 'team', 'namespace']);
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
 const ROUTING_OPTIMIZATIONS = new Set(['cost', 'latency', 'balanced', 'quality']);
 const ALERT_EVENTS = new Set([
@@ -159,6 +161,12 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isNumberLike(value: unknown): boolean {
+  if (isFiniteNumber(value)) return true;
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  return Number.isFinite(Number(value));
 }
 
 function isBoolean(value: unknown): value is boolean {
@@ -1338,18 +1346,24 @@ function validateNodes(
     validateOptionalEndpoint(node, basePath, 'batch_status_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'batch_cancel_endpoint', issues);
     validateOptionalEndpoint(node, basePath, 'batch_result_endpoint', issues);
-    if (!isNonEmptyString(node.api_key)) {
+    const hasCredentials =
+      Array.isArray(node.credentials) &&
+      node.credentials.some(
+        (credential) => isRecord(credential) && isNonEmptyString(credential.api_key),
+      );
+    if (!isNonEmptyString(node.api_key) && !hasCredentials) {
       issues.push(
         issue(
           'error',
           'missing_required_field',
-          'nodes[].api_key is required.',
+          'nodes[].api_key or nodes[].credentials is required.',
           `${basePath}.api_key`,
         ),
       );
-    } else {
+    } else if (isNonEmptyString(node.api_key)) {
       validateProviderApiKey(node, node.api_key, basePath, issues);
     }
+    validateNodeCredentials(node, basePath, issues);
     validateNodeAuthMapping(node, basePath, issues);
     const hasSpecializedModels = [
       'embedding_models',
@@ -6703,6 +6717,199 @@ function validateProviderApiKey(
         `${nodePath}.api_key`,
       ),
     );
+  }
+}
+
+function validateNodeCredentials(
+  node: Record<string, unknown>,
+  basePath: string,
+  issues: ConfigValidationIssue[],
+): void {
+  if (node.credentials !== undefined) {
+    if (!Array.isArray(node.credentials)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_credentials',
+          'nodes[].credentials must be an array when set.',
+          `${basePath}.credentials`,
+        ),
+      );
+    } else {
+      const seen = new Map<string, string>();
+      node.credentials.forEach((credential, index) => {
+        const credentialPath = `${basePath}.credentials[${index}]`;
+        if (!isRecord(credential)) {
+          issues.push(
+            issue(
+              'error',
+              'invalid_node_credential',
+              'nodes[].credentials[] must be an object.',
+              credentialPath,
+            ),
+          );
+          return;
+        }
+        if (!isNonEmptyString(credential.id)) {
+          issues.push(
+            issue(
+              'error',
+              'missing_credential_id',
+              'nodes[].credentials[].id is required.',
+              `${credentialPath}.id`,
+            ),
+          );
+        } else {
+          if (!NODE_ID_PATTERN.test(credential.id)) {
+            issues.push(
+              issue(
+                'error',
+                'invalid_credential_id',
+                'Credential id must start with a letter or number and contain only letters, numbers, dots, underscores, or dashes.',
+                `${credentialPath}.id`,
+              ),
+            );
+          }
+          const previous = seen.get(credential.id);
+          if (previous) {
+            issues.push(
+              issue(
+                'error',
+                'duplicate_credential_id',
+                `Credential id "${credential.id}" is already used at ${previous}.`,
+                `${credentialPath}.id`,
+              ),
+            );
+          } else {
+            seen.set(credential.id, `${credentialPath}.id`);
+          }
+        }
+        if (!isNonEmptyString(credential.api_key)) {
+          issues.push(
+            issue(
+              'error',
+              'missing_credential_api_key',
+              'nodes[].credentials[].api_key is required.',
+              `${credentialPath}.api_key`,
+            ),
+          );
+        } else {
+          validateProviderApiKey(node, credential.api_key, credentialPath, issues);
+        }
+        if (
+          credential.weight !== undefined &&
+          (!isNumberLike(credential.weight) || Number(credential.weight) <= 0)
+        ) {
+          issues.push(
+            issue(
+              'error',
+              'invalid_credential_weight',
+              'nodes[].credentials[].weight must be a positive number when set.',
+              `${credentialPath}.weight`,
+            ),
+          );
+        }
+        if (
+          credential.enabled !== undefined &&
+          typeof credential.enabled !== 'boolean'
+        ) {
+          issues.push(
+            issue(
+              'error',
+              'invalid_credential_enabled',
+              'nodes[].credentials[].enabled must be a boolean when set.',
+              `${credentialPath}.enabled`,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  if (node.credential_pool !== undefined) {
+    if (!isRecord(node.credential_pool)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_credential_pool',
+          'nodes[].credential_pool must be an object when set.',
+          `${basePath}.credential_pool`,
+        ),
+      );
+      return;
+    }
+    const pool = node.credential_pool;
+    if (pool.enabled !== undefined && typeof pool.enabled !== 'boolean') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_credential_pool_enabled',
+          'nodes[].credential_pool.enabled must be a boolean when set.',
+          `${basePath}.credential_pool.enabled`,
+        ),
+      );
+    }
+    if (
+      pool.strategy !== undefined &&
+      (!isNonEmptyString(pool.strategy) || !CREDENTIAL_POOL_STRATEGIES.has(pool.strategy))
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_credential_pool_strategy',
+          'nodes[].credential_pool.strategy must be least_in_flight or weighted_round_robin.',
+          `${basePath}.credential_pool.strategy`,
+        ),
+      );
+    }
+    if (
+      pool.sticky_by !== undefined &&
+      (!isNonEmptyString(pool.sticky_by) || !CREDENTIAL_STICKY_MODES.has(pool.sticky_by))
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_credential_pool_sticky_by',
+          'nodes[].credential_pool.sticky_by must be none, agent_session, api_key, team, or namespace.',
+          `${basePath}.credential_pool.sticky_by`,
+        ),
+      );
+    }
+    for (const [key, min] of [
+      ['cooldown_ms', 0],
+      ['max_failures', 1],
+    ] as const) {
+      if (
+        pool[key] !== undefined &&
+        (!isNumberLike(pool[key]) || Number(pool[key]) < min)
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_credential_pool_number',
+            `nodes[].credential_pool.${key} must be a number >= ${min}.`,
+            `${basePath}.credential_pool.${key}`,
+          ),
+        );
+      }
+    }
+    if (pool.retry_on_status !== undefined) {
+      if (
+        !Array.isArray(pool.retry_on_status) ||
+        !pool.retry_on_status.every(
+          (value) => Number.isInteger(Number(value)) && Number(value) >= 100 && Number(value) <= 599,
+        )
+      ) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_credential_pool_retry_status',
+            'nodes[].credential_pool.retry_on_status must be an array of HTTP status codes.',
+            `${basePath}.credential_pool.retry_on_status`,
+          ),
+        );
+      }
+    }
   }
 }
 

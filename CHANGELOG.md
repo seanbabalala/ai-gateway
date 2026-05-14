@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+## 2.9.0 - 2026-05-14
+
+### Added
+
+- Added first-class provider credential pools for upstream nodes via
+  `nodes[].credentials[]` and `nodes[].credential_pool`, including
+  least-in-flight and weighted round-robin selection, agent/API-key/team/
+  namespace sticky affinity, retryable-status failover, cooldown handling, and
+  write-only Dashboard editing.
+- Added credential-level observability without secret exposure: call logs now
+  store `credential_id`, `credential_strategy`, and
+  `credential_retry_count`; Dashboard node responses expose sanitized
+  credential runtime status.
+
+### Changed
+
+- Provider requests now retry another credential inside the same node on
+  configured retry statuses, 401/403 credential failures, network errors, and
+  timeouts before node-level fallback runs.
+- Provider compatibility tests, active health probes, realtime upstream auth,
+  batch provider auth, video provider proxy auth, config migration exports, and
+  secret preservation all understand credential-pool configs.
+- Updated release metadata to v2.9.0 across package, lock, Dashboard, client,
+  Python, Helm, Kubernetes, OpenAPI, README, and release-version sync files.
+
+### Test Evidence
+
+- `npm run build`
+- `cd frontend && npm run build`
+- `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/config-validator.spec.ts test/unit/call-log-schema-patch.service.spec.ts`
+
+### Boundaries
+
+- v2.9.0 is a backward-compatible core runtime feature. Existing single
+  `nodes[].api_key` configs continue to work unchanged. Provider secret values
+  remain redacted from Dashboard responses, call logs, route traces, telemetry,
+  and external log sinks.
+
 ## 2.8.4 - 2026-05-13
 
 ### Fixed

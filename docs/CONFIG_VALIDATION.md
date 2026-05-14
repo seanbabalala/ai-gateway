@@ -47,7 +47,11 @@ hardening visible without blocking local development.
   `database.synchronize` when set. PostgreSQL configs warn unless production
   schema synchronization is explicitly disabled.
 - Required node fields: `id`, `name`, `protocol`, `base_url`, `endpoint`,
-  `api_key`, `models`, and `timeout_ms`.
+  either `api_key` or `credentials[]`, `models`, and `timeout_ms`.
+- Optional `nodes[].credentials[]` provider credential pools, including unique
+  credential ids, positive weights, boolean enablement, supported
+  `credential_pool.strategy`/`sticky_by` values, cooldown controls, and retry
+  HTTP status lists.
 - Optional `nodes[].connection` pool settings, including `pool_size`,
   `keep_alive_ms`, `headers_timeout_ms`, `body_timeout_ms`, and experimental
   `http2`.

@@ -84,6 +84,9 @@ const SAFE_LOG_FIELDS = [
   'error',
   'api_key_name',
   'api_key_id',
+  'credential_id',
+  'credential_strategy',
+  'credential_retry_count',
   'retry_count',
   'experiment_group',
 ];
@@ -422,6 +425,9 @@ export class LogSinkService implements OnModuleDestroy {
       error: log.error || null,
       api_key_name: log.api_key_name || null,
       api_key_id: log.api_key_id || null,
+      credential_id: log.credential_id || null,
+      credential_strategy: log.credential_strategy || null,
+      credential_retry_count: Number(log.credential_retry_count || 0),
       retry_count: Number(log.retry_count || 0),
       experiment_group: log.experiment_group || null,
     };

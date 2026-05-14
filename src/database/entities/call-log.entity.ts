@@ -18,6 +18,7 @@ import {
 @Index(['client_source'])
 @Index(['api_key_name'])
 @Index(['api_key_id'])
+@Index(['credential_id'])
 @Index(['namespace_id'])
 @Index(['team_id'])
 @Index(['fallback_reason'])
@@ -163,6 +164,15 @@ export class CallLog {
 
   @Column({ type: 'varchar', nullable: true })
   api_key_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  credential_id!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  credential_strategy!: string | null;
+
+  @Column({ type: 'integer', default: 0 })
+  credential_retry_count!: number;
 
   @Column({ type: 'varchar', nullable: true })
   namespace_id!: string | null;

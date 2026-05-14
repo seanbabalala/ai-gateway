@@ -237,11 +237,18 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
           location: `nodes.${node.id}.headers`,
         })
       : { ...(node.headers || {}) };
+    const credential = node.credentials?.find((entry) => entry.enabled !== false);
+    const apiKeyRef = node.api_key || credential?.api_key;
+    if (!apiKeyRef) {
+      throw new Error(`Node "${node.id}" must define api_key or credentials`);
+    }
     const apiKey = this.secretResolver
-      ? await this.secretResolver.resolveString(node.api_key, {
-          location: `nodes.${node.id}.api_key`,
+      ? await this.secretResolver.resolveString(apiKeyRef, {
+          location: node.api_key
+            ? `nodes.${node.id}.api_key`
+            : `nodes.${node.id}.credentials.${credential?.id || 'default'}.api_key`,
         })
-      : node.api_key;
+      : apiKeyRef;
     const headers: Record<string, string> = {};
     if (method === 'POST') {
       headers['Content-Type'] = 'application/json';

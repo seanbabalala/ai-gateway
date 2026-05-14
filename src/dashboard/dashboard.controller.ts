@@ -64,6 +64,7 @@ import {
 } from "../routing/circuit-breaker.service";
 import { ConcurrencyLimiterService } from "../routing/concurrency-limiter.service";
 import { ActiveHealthProbeService } from "../routing/active-health-probe.service";
+import { CredentialPoolService } from "../providers/credential-pool.service";
 import { BudgetService } from "../budget/budget.service";
 import {
   CallLog,
@@ -1631,6 +1632,9 @@ export class DashboardController {
     @Optional()
     @Inject(WorkspaceInvitationService)
     private readonly invitations?: WorkspaceInvitationService,
+    @Optional()
+    @Inject(CredentialPoolService)
+    private readonly credentialPool?: CredentialPoolService,
   ) {
     // Run log cleanup on startup
     this.cleanupOldLogs().catch(() => {});
@@ -5204,9 +5208,15 @@ export class DashboardController {
     // Sanitize: mask API keys
     const sanitizedNodes = full.nodes.map((node) => ({
       ...node,
-      api_key: maskSecretForDisplay(node.api_key),
+      api_key: node.api_key ? maskSecretForDisplay(node.api_key) : undefined,
       api_key_secret_reference:
-        this.secretResolver?.isReference(node.api_key) ?? false,
+        node.api_key ? (this.secretResolver?.isReference(node.api_key) ?? false) : false,
+      credentials: node.credentials?.map((credential) => ({
+        ...credential,
+        api_key: maskSecretForDisplay(credential.api_key),
+        api_key_secret_reference:
+          this.secretResolver?.isReference(credential.api_key) ?? false,
+      })),
       headers: this.maskSecretHeaderRecord(node.headers),
     }));
 
@@ -5850,6 +5860,25 @@ export class DashboardController {
           node.auth_type === "custom-header" ? node.auth_header_name || null : null,
         auth_header_prefix:
           node.auth_type === "custom-header" ? node.auth_header_prefix || null : null,
+        credentials: (node.credentials || []).map((credential) => ({
+          id: credential.id,
+          enabled: credential.enabled !== false,
+          weight: credential.weight ?? 1,
+          api_key: maskSecretForDisplay(credential.api_key),
+          api_key_secret_reference:
+            this.secretResolver?.isReference(credential.api_key) ?? false,
+        })),
+        credential_pool:
+          this.credentialPool?.getNodeStatus(node) || {
+            enabled: false,
+            strategy: node.credential_pool?.strategy || "least_in_flight",
+            sticky_by: node.credential_pool?.sticky_by || "agent_session",
+            cooldown_ms: node.credential_pool?.cooldown_ms ?? 60000,
+            max_failures: node.credential_pool?.max_failures ?? 3,
+            retry_on_status:
+              node.credential_pool?.retry_on_status || [429, 500, 502, 503, 504],
+            credentials: [],
+          },
         endpoints,
         models: node.models,
         embedding_models: node.embedding_models || [],
@@ -6310,6 +6339,8 @@ export class DashboardController {
             base_url: dto.base_url,
             endpoint: dto.endpoint,
             api_key: dto.api_key,
+            credentials: dto.credentials,
+            credential_pool: dto.credential_pool,
             models: dto.models,
             embeddings_endpoint: dto.embeddings_endpoint,
             embedding_models: dto.embedding_models,
@@ -6382,6 +6413,18 @@ export class DashboardController {
       ][]) {
         if (value === undefined || value === "") continue;
         (updates as Record<string, unknown>)[key] = value;
+      }
+      if (Array.isArray(updates.credentials)) {
+        const existing = this.config.getNode(nodeId);
+        updates.credentials = updates.credentials.map((credential) => {
+          const current = existing?.credentials?.find(
+            (entry) => entry.id === credential.id,
+          );
+          return {
+            ...credential,
+            api_key: credential.api_key || current?.api_key,
+          };
+        }) as typeof updates.credentials;
       }
       await this.configAudit.trackChange(
         {

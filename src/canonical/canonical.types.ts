@@ -214,6 +214,9 @@ export interface CanonicalRequestMetadata {
   agent_repo?: string;
   agent_project?: string;
   agent_routing_hint?: Record<string, unknown>;
+  provider_credential_id?: string;
+  provider_credential_strategy?: string;
+  provider_credential_retry_count?: number;
   api_key_permissions?: {
     allow_auto: boolean;
     allow_direct: boolean;
@@ -271,6 +274,9 @@ export interface CanonicalResponse {
     score: number;
     is_fallback: boolean;
     fallback_reason?: string | null;
+    credential_id?: string | null;
+    credential_strategy?: string | null;
+    credential_retry_count?: number;
   };
 }
 
@@ -308,6 +314,9 @@ export interface CanonicalEmbeddingResponse {
     score: number;
     is_fallback: boolean;
     fallback_reason?: string | null;
+    credential_id?: string | null;
+    credential_strategy?: string | null;
+    credential_retry_count?: number;
   };
 }
 
@@ -344,6 +353,9 @@ export interface CanonicalRerankResponse {
     score: number;
     is_fallback: boolean;
     fallback_reason?: string | null;
+    credential_id?: string | null;
+    credential_strategy?: string | null;
+    credential_retry_count?: number;
   };
 }
 
@@ -384,6 +396,9 @@ export interface CanonicalMediaResponse {
     score: number;
     is_fallback: boolean;
     fallback_reason?: string | null;
+    credential_id?: string | null;
+    credential_strategy?: string | null;
+    credential_retry_count?: number;
   };
 }
 

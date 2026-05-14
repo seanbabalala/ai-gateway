@@ -31,6 +31,7 @@ import { BatchModule } from '../batch/batch.module';
 import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
 import { AgentPlatformModule } from '../agent-platform/agent-platform.module';
 import { ClusterModule } from '../cluster/cluster.module';
+import { ProvidersModule } from '../providers/providers.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ClusterModule } from '../cluster/cluster.module';
     AgentProfilesModule,
     AgentPlatformModule,
     ClusterModule,
+    ProvidersModule,
     TypeOrmModule.forFeature([
       CallLog,
       ConfigAuditEvent,
