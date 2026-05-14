@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 2.11.2 - 2026-05-14
+
+### Changed
+
+- Updated all localized documentation entry README files for English,
+  Simplified Chinese, Traditional Chinese, Japanese, Korean, Thai, and Spanish
+  so the localized project storefront matches the latest SiftGate positioning:
+  AI traffic data plane, 30-second pitch, agent/MCP governance, cache-aware
+  provider credential pools, metadata-only defaults, and production deployment
+  path.
+
+### Test Evidence
+
+- `npm run docs:check`
+- `npm run validate:k8s`
+- `npm run release:check`
+- `npm run build`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Boundaries
+
+- v2.11.2 is a localization and documentation release. It does not change
+  runtime gateway behavior, provider routing semantics, config schemas, or
+  public ingress APIs.
+
 ## 2.11.1 - 2026-05-14
 
 ### Changed
