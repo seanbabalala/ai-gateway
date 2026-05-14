@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+## 2.10.0 - 2026-05-14
+
+### Added
+
+- Added first-class native Gemini provider support via `protocol: gemini`,
+  including GenerateContent request translation, native streaming through
+  `streamGenerateContent?alt=sse`, Gemini usage accounting, function tools,
+  JSON output, thinking config, and Google Search grounding.
+- Added Dashboard and provider-catalog support for Gemini native nodes,
+  including protocol selection, capability selection, node testing, localized
+  labels, Gemini catalog defaults, and native health-probe request bodies.
+
+### Changed
+
+- Google Gemini catalog defaults now prefer the native Gemini endpoint while
+  preserving the OpenAI-compatible chat endpoint as an alternate path.
+- Google AI Studio API-key requests sent to
+  `generativelanguage.googleapis.com` now use `x-goog-api-key`, including the
+  OpenAI-compatible endpoint path.
+
+### Test Evidence
+
+- `npm run build`
+- `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/stream-parsers.spec.ts test/unit/compatibility-profiles.spec.ts test/unit/config-validator.spec.ts test/unit/provider-catalog.service.spec.ts test/unit/built-in-catalog.spec.ts test/unit/usage-schema-resolver.spec.ts`
+- `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/active-health-probe.service.spec.ts test/unit/dashboard-controller.spec.ts`
+- `cd frontend && npm run i18n:check`
+- `cd frontend && npm run build`
+- `npm run docs:check`
+
+### Boundaries
+
+- v2.10.0 is backward compatible for existing OpenAI-compatible Gemini nodes
+  and single-key node configs. It adds native Gemini as a first-class upstream
+  protocol without changing public OpenAI/Anthropic-compatible ingress routes.
+
 ## 2.9.1 - 2026-05-14
 
 ### Fixed

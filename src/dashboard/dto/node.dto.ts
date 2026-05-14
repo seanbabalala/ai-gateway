@@ -124,10 +124,10 @@ export class CreateNodeDto {
   @IsNotEmpty()
   name!: string;
 
-  @ApiProperty({ enum: ['chat_completions', 'responses', 'messages'], example: 'chat_completions' })
+  @ApiProperty({ enum: ['chat_completions', 'responses', 'messages', 'gemini'], example: 'chat_completions' })
   @IsString()
-  @IsIn(['chat_completions', 'responses', 'messages'])
-  protocol!: 'chat_completions' | 'responses' | 'messages';
+  @IsIn(['chat_completions', 'responses', 'messages', 'gemini'])
+  protocol!: 'chat_completions' | 'responses' | 'messages' | 'gemini';
 
   @ApiProperty({ example: 'https://api.openai.com' })
   @IsString()
@@ -431,10 +431,10 @@ export class CreateNodeDto {
 }
 
 export class TestNodeDto {
-  @ApiProperty({ enum: ['chat_completions', 'responses', 'messages'], example: 'chat_completions' })
+  @ApiProperty({ enum: ['chat_completions', 'responses', 'messages', 'gemini'], example: 'chat_completions' })
   @IsString()
-  @IsIn(['chat_completions', 'responses', 'messages'])
-  protocol!: 'chat_completions' | 'responses' | 'messages';
+  @IsIn(['chat_completions', 'responses', 'messages', 'gemini'])
+  protocol!: 'chat_completions' | 'responses' | 'messages' | 'gemini';
 
   @ApiProperty({ example: 'https://api.openai.com' })
   @IsString()
@@ -519,11 +519,11 @@ export class UpdateNodeDto {
   @IsNotEmpty()
   name?: string;
 
-  @ApiPropertyOptional({ enum: ['chat_completions', 'responses', 'messages'], example: 'chat_completions' })
+  @ApiPropertyOptional({ enum: ['chat_completions', 'responses', 'messages', 'gemini'], example: 'chat_completions' })
   @IsOptional()
   @IsString()
-  @IsIn(['chat_completions', 'responses', 'messages'])
-  protocol?: 'chat_completions' | 'responses' | 'messages';
+  @IsIn(['chat_completions', 'responses', 'messages', 'gemini'])
+  protocol?: 'chat_completions' | 'responses' | 'messages' | 'gemini';
 
   @ApiPropertyOptional({ example: 'https://api.openai.com' })
   @IsOptional()

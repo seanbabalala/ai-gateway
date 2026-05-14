@@ -406,6 +406,8 @@ export class ProviderExtensibilityService {
         ? '/v1/responses'
         : protocol === 'messages'
           ? '/v1/messages'
+          : protocol === 'gemini'
+            ? '/v1beta/models/:model:generateContent'
           : '/v1/chat/completions')
     );
   }
@@ -602,7 +604,7 @@ function hostFromUrl(value: string): string {
 }
 
 function defaultAuthType(protocol: NodeProtocol): AuthType {
-  return protocol === 'messages' ? 'x-api-key' : 'bearer';
+  return protocol === 'messages' || protocol === 'gemini' ? 'x-api-key' : 'bearer';
 }
 
 function issue(

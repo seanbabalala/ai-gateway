@@ -182,6 +182,7 @@ const DASHBOARD_PROTOCOLS = [
   "chat_completions",
   "responses",
   "messages",
+  "gemini",
 ] as const;
 const DASHBOARD_PROVIDER_FAMILIES = [
   "foundation",
@@ -727,6 +728,13 @@ function dashboardProviderHomepage(provider: CatalogProvider): string | null {
   } catch {
     return null;
   }
+}
+
+function usesGoogleApiKeyHeader(protocol: string, baseUrl: string): boolean {
+  return (
+    protocol === "gemini" ||
+    baseUrl.toLowerCase().includes("generativelanguage.googleapis.com")
+  );
 }
 
 function roundLogCost(value: number): number {
@@ -6077,11 +6085,20 @@ export class DashboardController {
       auth_header_prefix,
       headers: extraHeaders,
     } = params;
-    const url = `${base_url.replace(/\/+$/, "")}${endpoint}`;
+    const resolvedEndpoint =
+      protocol === "gemini"
+        ? endpoint
+            .replace(":model", encodeURIComponent(model))
+            .replace("{model}", encodeURIComponent(model))
+        : endpoint;
+    const url = `${base_url.replace(/\/+$/, "")}${resolvedEndpoint}`;
 
     // Build auth headers
     const resolvedAuthType =
-      auth_type || (protocol === "messages" ? "x-api-key" : "bearer");
+      auth_type ||
+      (protocol === "messages" || protocol === "gemini"
+        ? "x-api-key"
+        : "bearer");
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -6122,8 +6139,12 @@ export class DashboardController {
         ? `${auth_header_prefix.trim()} ${resolvedApiKey}`
         : resolvedApiKey;
     } else if (resolvedAuthType === "x-api-key") {
-      headers["x-api-key"] = resolvedApiKey;
-      headers["anthropic-version"] = "2023-06-01";
+      if (usesGoogleApiKeyHeader(protocol, base_url)) {
+        headers["x-goog-api-key"] = resolvedApiKey;
+      } else {
+        headers["x-api-key"] = resolvedApiKey;
+        headers["anthropic-version"] = "2023-06-01";
+      }
     } else {
       headers["Authorization"] = `Bearer ${resolvedApiKey}`;
     }
@@ -6151,6 +6172,11 @@ export class DashboardController {
             content: [{ type: "input_text", text: "hi" }],
           },
         ],
+      };
+    } else if (protocol === "gemini") {
+      body = {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        generationConfig: { maxOutputTokens: 16 },
       };
     } else {
       // chat_completions

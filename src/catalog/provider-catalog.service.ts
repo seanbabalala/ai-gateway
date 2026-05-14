@@ -348,6 +348,7 @@ function isLegacyEndpoint(endpoint: string): endpoint is CatalogEndpoint {
     'chat_completions',
     'responses',
     'messages',
+    'gemini',
     'embeddings',
     'image_generations',
     'image_edits',
@@ -364,7 +365,7 @@ function isLegacyEndpoint(endpoint: string): endpoint is CatalogEndpoint {
 function protocolListFromEndpoints(
   endpoints: Partial<Record<CatalogEndpoint, string>>,
 ): NodeProtocol[] {
-  return (['chat_completions', 'responses', 'messages'] as NodeProtocol[]).filter(
+  return (['chat_completions', 'responses', 'messages', 'gemini'] as NodeProtocol[]).filter(
     (protocol) => Boolean(endpoints[protocol]),
   );
 }

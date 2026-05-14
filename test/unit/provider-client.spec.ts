@@ -275,6 +275,344 @@ describe('ProviderClientService', () => {
     });
   });
 
+  describe('normalizeResponse — gemini', () => {
+    it('should normalize Gemini GenerateContent text responses', () => {
+      const svc = makeService();
+      const body = {
+        responseId: 'gemini-resp-1',
+        modelVersion: 'gemini-2.5-flash',
+        candidates: [
+          {
+            content: { parts: [{ text: 'Hello from Gemini' }] },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 12,
+          candidatesTokenCount: 7,
+          totalTokenCount: 19,
+          cachedContentTokenCount: 3,
+        },
+      };
+
+      const result = svc.normalizeResponse(
+        body,
+        'gemini',
+        routingMeta,
+        'google',
+        'gemini-2.5-flash',
+        180,
+      );
+
+      expect(result.id).toBe('gemini-resp-1');
+      expect(result.model).toBe('gemini-2.5-flash');
+      expect(result.content[0]).toEqual({ type: 'text', text: 'Hello from Gemini' });
+      expect(result.stop_reason).toBe('end_turn');
+      expect(result.usage).toEqual(expect.objectContaining({
+        input_tokens: 12,
+        output_tokens: 7,
+        cache_read_input_tokens: 3,
+      }));
+    });
+
+    it('should normalize Gemini function calls as tool_use blocks', () => {
+      const svc = makeService();
+      const body = {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    name: 'get_weather',
+                    args: { city: 'Paris' },
+                  },
+                },
+              ],
+            },
+            finishReason: 'MALFORMED_FUNCTION_CALL',
+          },
+        ],
+        usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2 },
+      };
+
+      const result = svc.normalizeResponse(
+        body,
+        'gemini',
+        routingMeta,
+        'google',
+        'gemini-2.5-pro',
+        100,
+      );
+
+      expect(result.content[0].type).toBe('tool_use');
+      if (result.content[0].type === 'tool_use') {
+        expect(result.content[0].name).toBe('get_weather');
+        expect(result.content[0].input).toEqual({ city: 'Paris' });
+      }
+      expect(result.stop_reason).toBe('tool_use');
+    });
+  });
+
+  describe('denormalizeRequest — gemini', () => {
+    it('should build a native Gemini GenerateContent request', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        messages: [
+          { role: 'system', content: 'Be concise.' },
+          { role: 'user', content: 'Hello!' },
+        ],
+        max_tokens: 32,
+        temperature: 0.3,
+        top_p: 0.9,
+        stop: ['END'],
+        response_format: {
+          type: 'json_schema',
+          source: 'chat_completions.response_format',
+          raw: {},
+          json_schema: {
+            schema: {
+              type: 'object',
+              properties: { answer: { type: 'string' } },
+            },
+          },
+        },
+        reasoning: {
+          requested: true,
+          source: 'chat_completions.reasoning_effort',
+          effort: 'medium',
+          raw: 'medium',
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'gemini',
+        'gemini-2.5-flash',
+      );
+
+      expect(body).toMatchObject({
+        systemInstruction: { parts: [{ text: 'Be concise.' }] },
+        contents: [{ role: 'user', parts: [{ text: 'Hello!' }] }],
+        generationConfig: {
+          maxOutputTokens: 32,
+          temperature: 0.3,
+          topP: 0.9,
+          stopSequences: ['END'],
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+          },
+          thinkingConfig: { thinkingBudget: 2048 },
+        },
+      });
+      expect(body.model).toBeUndefined();
+      expect(body.stream).toBeUndefined();
+    });
+
+    it('should map web search and functions to Gemini native tools', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        tools: [
+          {
+            name: 'lookup',
+            description: 'Lookup local data',
+            parameters: { type: 'object', properties: {} },
+          },
+        ],
+        tool_choice: { name: 'lookup' },
+        metadata: {
+          source_format: 'responses',
+          raw_headers: {},
+          raw_body: {
+            tools: [{ type: 'web_search_preview' }],
+          },
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'gemini',
+        'gemini-2.5-pro',
+      );
+
+      expect(body.tools).toEqual([
+        {
+          functionDeclarations: [
+            {
+              name: 'lookup',
+              description: 'Lookup local data',
+              parameters: { type: 'object', properties: {} },
+            },
+          ],
+        },
+        { googleSearch: {} },
+      ]);
+      expect(body.toolConfig).toEqual({
+        functionCallingConfig: {
+          mode: 'ANY',
+          allowedFunctionNames: ['lookup'],
+        },
+      });
+    });
+
+    it('should map tool results back to Gemini functionResponse names', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'call_1',
+                name: 'get_weather',
+                input: { city: 'Paris' },
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              { type: 'tool_result', tool_use_id: 'call_1', content: '22C' },
+            ],
+          },
+        ],
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'gemini',
+        'gemini-2.5-pro',
+      );
+
+      expect(body.contents).toEqual([
+        {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                name: 'get_weather',
+                args: { city: 'Paris' },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          parts: [
+            {
+              functionResponse: {
+                name: 'get_weather',
+                response: { output: '22C' },
+              },
+            },
+          ],
+        },
+      ]);
+    });
+  });
+
+  describe('Gemini upstream forwarding', () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      jest.restoreAllMocks();
+    });
+
+    it('should use Gemini native endpoints and x-goog-api-key auth', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(
+        new Response(JSON.stringify({
+          responseId: 'gemini-forward',
+          modelVersion: 'gemini-2.5-flash',
+          candidates: [
+            {
+              content: { parts: [{ text: 'ok' }] },
+              finishReason: 'STOP',
+            },
+          ],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+        }), { status: 200 }),
+      );
+      global.fetch = fetchMock as any;
+      const svc = makeServiceWithNode({
+        id: 'google',
+        protocol: 'gemini',
+        base_url: 'https://generativelanguage.googleapis.com',
+        endpoint: '/v1beta/models/:model:generateContent',
+        api_key: 'gk-test',
+        models: ['gemini-2.5-flash'],
+      });
+
+      const result = await svc.forward(
+        makeCanonical(),
+        'google',
+        'gemini-2.5-flash',
+        routingMeta,
+      );
+
+      expect(result.content[0]).toEqual({ type: 'text', text: 'ok' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+      );
+      const init = fetchMock.mock.calls[0][1];
+      expect(init.headers['x-goog-api-key']).toBe('gk-test');
+      expect(init.headers.Authorization).toBeUndefined();
+      expect(JSON.parse(init.body)).toEqual({
+        contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+      });
+    });
+
+    it('should use x-goog-api-key for Google OpenAI-compatible endpoints too', async () => {
+      const fetchMock = jest.fn().mockResolvedValue(
+        new Response(JSON.stringify({
+          id: 'chatcmpl-google',
+          model: 'gemini-2.5-flash',
+          choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }), { status: 200 }),
+      );
+      global.fetch = fetchMock as any;
+      const svc = makeServiceWithNode({
+        id: 'google',
+        protocol: 'chat_completions',
+        base_url: 'https://generativelanguage.googleapis.com',
+        endpoint: '/v1beta/openai/chat/completions',
+        auth_type: 'x-api-key',
+        api_key: 'gk-test',
+        models: ['gemini-2.5-flash'],
+      });
+
+      await svc.forward(
+        makeCanonical(),
+        'google',
+        'gemini-2.5-flash',
+        routingMeta,
+      );
+
+      const init = fetchMock.mock.calls[0][1];
+      expect(init.headers['x-goog-api-key']).toBe('gk-test');
+      expect(init.headers['x-api-key']).toBeUndefined();
+      expect(init.headers['anthropic-version']).toBeUndefined();
+    });
+
+    it('should switch Gemini stream requests to streamGenerateContent SSE', () => {
+      const svc = makeService();
+      const node = {
+        protocol: 'gemini',
+        endpoint: '/v1beta/models/:model:generateContent',
+      };
+
+      expect((svc as any).resolveRequestEndpoint(node, 'gemini-2.5-pro', false))
+        .toBe('/v1beta/models/gemini-2.5-pro:generateContent');
+      expect((svc as any).resolveRequestEndpoint(node, 'gemini-2.5-pro', true))
+        .toBe('/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse');
+    });
+  });
+
   // ── ProviderError ───────────────────────────────────────
 
   describe('ProviderError', () => {

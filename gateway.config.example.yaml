@@ -601,16 +601,17 @@ nodes:
     headers:
       anthropic-version: "2023-06-01"
 
-  # ── Google Gemini (via OpenAI-compatible endpoint) ──
+  # ── Google Gemini (native GenerateContent API) ──
   # - id: gemini
   #   name: "Google Gemini"
-  #   protocol: chat_completions
+  #   protocol: gemini
   #   base_url: "https://generativelanguage.googleapis.com"
-  #   endpoint: "/v1beta/chat/completions"
+  #   endpoint: "/v1beta/models/:model:generateContent"
+  #   auth_type: x-api-key             # sent as x-goog-api-key for protocol: gemini
   #   api_key: "${GOOGLE_API_KEY}"
-  #   models: ["gemini-2.5-pro"]
+  #   models: ["gemini-2.5-pro", "gemini-2.5-flash"]
   #   timeout_ms: 60000
-  #   tags: ["code", "frontend", "fast", "long-context"]
+  #   tags: ["code", "frontend", "fast", "long-context", "web-search"]
   #   model_aliases:
   #     gemini-pro: gemini-2.5-pro
   #   model_prefixes: ["gemini"]

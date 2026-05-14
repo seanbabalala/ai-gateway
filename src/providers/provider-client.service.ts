@@ -22,10 +22,12 @@ import {
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
 import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.denormalizer';
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
+import { GeminiDenormalizer } from '../canonical/denormalizers/gemini.denormalizer';
 import { toAnthropicMessagesOutputFormat } from '../canonical/structured-output';
 import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
+import { GeminiStreamParser } from './stream/gemini.stream';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
@@ -76,6 +78,7 @@ export class ProviderClientService {
   private readonly chatDenorm = new ChatCompletionsDenormalizer();
   private readonly respDenorm = new ResponsesDenormalizer();
   private readonly msgDenorm = new MessagesDenormalizer();
+  private readonly geminiDenorm = new GeminiDenormalizer();
   private readonly responseCredentials = new WeakMap<Response, ResponseCredentialMetadata>();
   private readonly completedCredentialResponses = new WeakSet<Response>();
 
@@ -123,7 +126,7 @@ export class ProviderClientService {
         const upstreamModel = this.resolveUpstreamModel(node, targetModel);
         const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
         this.applyNodeRequestCompatibility(node, requestBody);
-        (requestBody as Record<string, unknown>).stream = false;
+        this.applyStreamFlag(node, requestBody, false);
 
         const response = await this.sendRequest(
           node,
@@ -131,6 +134,7 @@ export class ProviderClientService {
           canonical,
           options.timeoutMs,
           options.signal,
+          this.resolveRequestEndpoint(node, upstreamModel, false),
         );
         const latencyMs = Date.now() - startTime;
 
@@ -378,7 +382,7 @@ export class ProviderClientService {
     const upstreamModel = this.resolveUpstreamModel(node, targetModel);
     const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
     this.applyNodeRequestCompatibility(node, requestBody);
-    (requestBody as Record<string, unknown>).stream = true;
+    this.applyStreamFlag(node, requestBody, true);
 
     const response = await this.sendRequest(
       node,
@@ -386,6 +390,7 @@ export class ProviderClientService {
       canonical,
       options.timeoutMs,
       options.signal,
+      this.resolveRequestEndpoint(node, upstreamModel, true),
     );
 
     if (!response.body) {
@@ -792,7 +797,10 @@ export class ProviderClientService {
     };
 
     const authType =
-      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
+      node.auth_type ||
+      (node.protocol === 'messages' || node.protocol === 'gemini'
+        ? 'x-api-key'
+        : 'bearer');
     if (authType === 'custom-header') {
       const headerName = node.auth_header_name?.trim();
       if (!headerName) {
@@ -802,14 +810,25 @@ export class ProviderClientService {
         ? `${node.auth_header_prefix} ${apiKey}`
         : apiKey;
     } else if (authType === 'x-api-key') {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
+      if (this.usesGoogleApiKeyHeader(node)) {
+        headers['x-goog-api-key'] = apiKey;
+      } else {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
+      }
     } else {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     Object.assign(headers, nodeHeaders);
     return headers;
+  }
+
+  private usesGoogleApiKeyHeader(node: NodeConfig): boolean {
+    return (
+      node.protocol === 'gemini' ||
+      node.base_url.toLowerCase().includes('generativelanguage.googleapis.com')
+    );
   }
 
   private selectCredential(
@@ -907,6 +926,8 @@ export class ProviderClientService {
         return new ResponsesStreamParser(usageSchema);
       case 'messages':
         return new MessagesStreamParser(usageSchema);
+      case 'gemini':
+        return new GeminiStreamParser(usageSchema);
       default:
         throw new Error(`Unsupported stream protocol: ${protocol}`);
     }
@@ -938,9 +959,23 @@ export class ProviderClientService {
       }
       case 'messages':
         return this.msgDenorm.denormalize(canonical, targetModel);
+      case 'gemini':
+        return this.geminiDenorm.denormalize(canonical, targetModel);
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
     }
+  }
+
+  private applyStreamFlag(
+    node: NodeConfig,
+    requestBody: Record<string, unknown>,
+    stream: boolean,
+  ): void {
+    if (node.protocol === 'gemini') {
+      delete requestBody.stream;
+      return;
+    }
+    requestBody.stream = stream;
   }
 
   private applyNativeChatCompletionsPassthrough(
@@ -1078,6 +1113,28 @@ export class ProviderClientService {
 
   private resolveUpstreamModel(node: NodeConfig, targetModel: string): string {
     return node.upstream_model_aliases?.[targetModel] || targetModel;
+  }
+
+  private resolveRequestEndpoint(
+    node: NodeConfig,
+    targetModel: string,
+    stream: boolean,
+  ): string | undefined {
+    if (node.protocol !== 'gemini') return undefined;
+    const encodedModel = encodeURIComponent(targetModel);
+    let endpoint = node.endpoint || '/v1beta/models/:model:generateContent';
+    endpoint = endpoint
+      .replace(':model', encodedModel)
+      .replace('{model}', encodedModel);
+    if (stream) {
+      endpoint = endpoint
+        .replace(':generateContent', ':streamGenerateContent')
+        .replace('generateContent', 'streamGenerateContent');
+      if (!endpoint.includes('alt=sse')) {
+        endpoint += endpoint.includes('?') ? '&alt=sse' : '?alt=sse';
+      }
+    }
+    return endpoint;
   }
 
   private applyNodeRequestCompatibility(
@@ -1528,6 +1585,15 @@ export class ProviderClientService {
           latencyMs,
           usageSchema,
         );
+      case 'gemini':
+        return this.normalizeGeminiResponse(
+          body,
+          routingMeta,
+          nodeId,
+          model,
+          latencyMs,
+          usageSchema,
+        );
       default:
         throw new Error(`Unsupported protocol: ${protocol}`);
     }
@@ -1850,6 +1916,66 @@ export class ProviderClientService {
     };
   }
 
+  private normalizeGeminiResponse(
+    body: Record<string, unknown>,
+    routingMeta: {
+      tier: Tier;
+      score: number;
+      is_fallback: boolean;
+      fallback_reason?: string | null;
+    },
+    nodeId: string,
+    model: string,
+    latencyMs: number,
+    usageSchema?: UsageSchema,
+  ): CanonicalResponse {
+    const candidates = Array.isArray(body.candidates)
+      ? (body.candidates as Record<string, unknown>[])
+      : [];
+    const candidate = candidates[0] || {};
+    const candidateContent = (candidate.content || {}) as Record<string, unknown>;
+    const parts = Array.isArray(candidateContent.parts)
+      ? (candidateContent.parts as Record<string, unknown>[])
+      : [];
+    const content: CanonicalContentBlock[] = [];
+
+    for (const part of parts) {
+      if (typeof part.text === 'string') {
+        content.push({ type: 'text', text: part.text });
+      } else if (part.functionCall && typeof part.functionCall === 'object') {
+        const functionCall = part.functionCall as Record<string, unknown>;
+        content.push({
+          type: 'tool_use',
+          id: (functionCall.id as string) || (functionCall.name as string) || '',
+          name: (functionCall.name as string) || '',
+          input:
+            functionCall.args &&
+            typeof functionCall.args === 'object' &&
+            !Array.isArray(functionCall.args)
+              ? (functionCall.args as Record<string, unknown>)
+              : {},
+        });
+      }
+    }
+
+    const usageMetadata = (body.usageMetadata || {}) as Record<string, unknown>;
+    const fallbackUsage: TokenUsage = {
+      input_tokens: (usageMetadata.promptTokenCount as number) || 0,
+      output_tokens: (usageMetadata.candidatesTokenCount as number) || 0,
+      cache_read_input_tokens:
+        (usageMetadata.cachedContentTokenCount as number) || 0,
+    };
+
+    return {
+      id: (body.responseId as string) || `gemini_${Date.now()}`,
+      content,
+      stop_reason: this.mapGeminiFinishReason(candidate.finishReason as string),
+      usage: this.resolveNormalizedUsage(body, usageSchema, fallbackUsage),
+      model: (body.modelVersion as string) || model,
+      routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },
+    };
+  }
+
   // ══════════════════════════════════════════════════════
   // Helpers
   // ══════════════════════════════════════════════════════
@@ -1867,6 +1993,18 @@ export class ProviderClientService {
     if (status === 'completed') return 'end_turn';
     if (status === 'incomplete') return 'max_tokens';
     return 'end_turn';
+  }
+
+  private mapGeminiFinishReason(reason: string): StopReason {
+    switch (reason) {
+      case 'MAX_TOKENS':
+        return 'max_tokens';
+      case 'MALFORMED_FUNCTION_CALL':
+        return 'tool_use';
+      case 'STOP':
+      default:
+        return 'end_turn';
+    }
   }
 
   private safeParseJson(str: string): Record<string, unknown> {

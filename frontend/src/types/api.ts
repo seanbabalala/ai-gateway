@@ -1431,7 +1431,7 @@ export interface ProviderCompatibilityMatrixItem {
 export interface NodeInfo {
   id: string;
   name: string;
-  protocol: "chat_completions" | "responses" | "messages";
+  protocol: "chat_completions" | "responses" | "messages" | "gemini";
   base_url: string;
   endpoint: string;
   timeout_ms: number;
@@ -2685,7 +2685,7 @@ export interface WorkspaceInvitationMutationResponse extends ActionResponse {
 export interface CreateNodeRequest {
   id: string;
   name: string;
-  protocol: "chat_completions" | "responses" | "messages";
+  protocol: "chat_completions" | "responses" | "messages" | "gemini";
   base_url: string;
   endpoint: string;
   api_key?: string;
@@ -2738,7 +2738,7 @@ export interface CreateNodeRequest {
 
 export interface UpdateNodeRequest {
   name?: string;
-  protocol?: "chat_completions" | "responses" | "messages";
+  protocol?: "chat_completions" | "responses" | "messages" | "gemini";
   base_url?: string;
   endpoint?: string;
   api_key?: string;
@@ -2815,7 +2815,7 @@ export interface HealthCheckRequest {
 }
 
 export interface TestNodeRequest {
-  protocol: "chat_completions" | "responses" | "messages";
+  protocol: "chat_completions" | "responses" | "messages" | "gemini";
   base_url: string;
   endpoint: string;
   api_key: string;
@@ -2854,6 +2854,7 @@ export type CatalogEndpoint =
   | "chat_completions"
   | "responses"
   | "messages"
+  | "gemini"
   | "embeddings"
   | "image_generations"
   | "image_edits"
@@ -3196,8 +3197,8 @@ export interface CatalogProvider {
   status_reason?: string;
   base_url: string;
   base_url_matchers: string[];
-  protocols: Array<"chat_completions" | "responses" | "messages">;
-  default_protocol: "chat_completions" | "responses" | "messages";
+  protocols: Array<"chat_completions" | "responses" | "messages" | "gemini">;
+  default_protocol: "chat_completions" | "responses" | "messages" | "gemini";
   endpoints: Partial<Record<CatalogEndpoint, string>>;
   compatibility_profiles?: string[];
   auth_type: CatalogAuthType;

@@ -15,6 +15,7 @@ export type CatalogEndpoint =
   | 'chat_completions'
   | 'responses'
   | 'messages'
+  | 'gemini'
   | 'embeddings'
   | 'image_generations'
   | 'image_edits'

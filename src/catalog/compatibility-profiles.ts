@@ -396,10 +396,10 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     streaming_strategy: 'provider_specific',
     multipart_strategy: 'translated',
     async_job_strategy: 'provider_specific',
-    supported_source_formats: ['chat_completions', 'responses', 'embeddings', 'video_generation'],
+    supported_source_formats: ['chat_completions', 'responses', 'messages', 'embeddings', 'video_generation'],
     supported_modalities: ['text', 'vision', 'embedding', 'video'],
-    passthrough_fields: ['metadata', 'thinking_config', 'stream'],
-    downgraded_fields: ['tools', 'response_format', 'reasoning_effort'],
+    passthrough_fields: ['metadata', 'thinking_config', 'tools', 'response_format', 'stream'],
+    downgraded_fields: ['logprobs', 'parallel_tool_calls'],
     unsupported_fields: ['anthropic_version'],
     known_limitations: [
       'Gemini request/response shapes are translated; unsupported OpenAI fields stay in trace evidence.',
@@ -1313,6 +1313,7 @@ function inferNodeCompatibilityProfileIds(
   if (nodeId.includes('lmstudio') || baseUrl.includes('1234')) ids.add('local_lmstudio');
   if (node.protocol === 'messages') ids.add('anthropic_messages_compatible');
   if (node.protocol === 'responses') ids.add('openai_responses_compatible');
+  if (node.protocol === 'gemini') ids.add('google_gemini_compatible');
   if (node.protocol === 'chat_completions') ids.add('openai_compatible');
   if (node.embedding_models?.length || node.embeddings_endpoint) ids.add('embedding_compatible');
   if (node.rerank_models?.length || node.rerank_endpoint) ids.add('rerank_compatible');
@@ -1340,6 +1341,8 @@ function protocolToUsageSchemaKey(
       return 'responses';
     case 'messages':
       return 'messages';
+    case 'gemini':
+      return 'gemini_generate_content';
     default:
       return null;
   }

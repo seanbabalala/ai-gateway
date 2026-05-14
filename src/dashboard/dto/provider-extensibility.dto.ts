@@ -12,7 +12,7 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-const PROVIDER_PROTOCOLS = ['chat_completions', 'responses', 'messages'] as const;
+const PROVIDER_PROTOCOLS = ['chat_completions', 'responses', 'messages', 'gemini'] as const;
 const PROVIDER_AUTH_TYPES = ['bearer', 'x-api-key', 'custom-header', 'none'] as const;
 
 export class ProviderTemplatePricingRowDto {

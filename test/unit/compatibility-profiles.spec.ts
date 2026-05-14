@@ -142,6 +142,25 @@ describe('provider compatibility profiles', () => {
     ).toBeNull();
   });
 
+  it('treats native Gemini as a translated first-class text target', () => {
+    const profile = getCompatibilityProfile('google_gemini_compatible')!;
+
+    expect(profile.supported_source_formats).toEqual(
+      expect.arrayContaining(['chat_completions', 'responses', 'messages']),
+    );
+    expect(profile.passthrough_fields).toEqual(
+      expect.arrayContaining(['tools', 'response_format', 'thinking_config']),
+    );
+    expect(profile.downgraded_fields).not.toContain('tools');
+    expect(
+      compatibilityFilteredReason({
+        profiles: [profile],
+        sourceFormat: 'messages',
+        requestedModality: 'text',
+      }),
+    ).toBeNull();
+  });
+
   it('flags unsupported streaming and multipart strategies', () => {
     const profiles = [getCompatibilityProfile('media_generation_sync')!];
 

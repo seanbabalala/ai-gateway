@@ -209,12 +209,18 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     body?: string;
   }> {
     const headers = await this.buildHeaders(node, check.method);
-    const url = this.buildUrl(node.base_url, check.path);
+    const model = check.lightweightModel || node.models[0];
+    const path =
+      node.protocol === 'gemini' && model
+        ? check.path
+            .replace(':model', encodeURIComponent(model))
+            .replace('{model}', encodeURIComponent(model))
+        : check.path;
+    const url = this.buildUrl(node.base_url, path);
     if (check.method !== 'POST') {
       return { url, method: check.method, headers };
     }
 
-    const model = check.lightweightModel || node.models[0];
     if (!model) {
       throw new Error(`Node "${node.id}" has no model available for POST health probe`);
     }
@@ -255,7 +261,10 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
     }
 
     const authType =
-      node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
+      node.auth_type ||
+      (node.protocol === 'messages' || node.protocol === 'gemini'
+        ? 'x-api-key'
+        : 'bearer');
     if (authType === 'custom-header') {
       const headerName = node.auth_header_name?.trim();
       if (!headerName) {
@@ -265,14 +274,25 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
         ? `${node.auth_header_prefix} ${apiKey}`
         : apiKey;
     } else if (authType === 'x-api-key') {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
+      if (this.usesGoogleApiKeyHeader(node)) {
+        headers['x-goog-api-key'] = apiKey;
+      } else {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
+      }
     } else {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     Object.assign(headers, nodeHeaders);
     return headers;
+  }
+
+  private usesGoogleApiKeyHeader(node: NodeConfig): boolean {
+    return (
+      node.protocol === 'gemini' ||
+      node.base_url.toLowerCase().includes('generativelanguage.googleapis.com')
+    );
   }
 
   private buildSyntheticProbeBody(
@@ -300,6 +320,13 @@ export class ActiveHealthProbeService implements OnModuleInit, OnModuleDestroy {
         stream: false,
         max_tokens: 1,
         messages: [{ role: 'user', content: 'health check' }],
+      };
+    }
+
+    if (node.protocol === 'gemini') {
+      return {
+        contents: [{ role: 'user', parts: [{ text: 'health check' }] }],
+        generationConfig: { maxOutputTokens: 1 },
       };
     }
 

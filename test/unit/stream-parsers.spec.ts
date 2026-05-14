@@ -1,6 +1,7 @@
 import { ChatCompletionsStreamParser } from '../../src/providers/stream/chat-completions.stream';
 import { MessagesStreamParser } from '../../src/providers/stream/messages.stream';
 import { ResponsesStreamParser } from '../../src/providers/stream/responses.stream';
+import { GeminiStreamParser } from '../../src/providers/stream/gemini.stream';
 import { CanonicalStreamEvent } from '../../src/canonical/canonical.types';
 import { getCompatibilityProfile } from '../../src/catalog/compatibility-profiles';
 
@@ -191,6 +192,61 @@ describe('ChatCompletionsStreamParser', () => {
     const parser = new ChatCompletionsStreamParser();
     const events = collect(parser, 'data: {invalid json}\n\n');
     expect(events).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Gemini Stream Parser
+// ═══════════════════════════════════════════════════════════
+
+describe('GeminiStreamParser', () => {
+  it('should parse Gemini SSE text deltas and usage', () => {
+    const parser = new GeminiStreamParser();
+    const events = collect(
+      parser,
+      'data: {"responseId":"gemini_1","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":null}]}\n\n' +
+        'data: {"responseId":"gemini_1","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"parts":[{"text":" world"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,"cachedContentTokenCount":1}}\n\n',
+    );
+
+    expect(events[0]).toMatchObject({
+      type: 'start',
+      id: 'gemini_1',
+      model: 'gemini-2.5-flash',
+    });
+    expect(events[1]).toEqual({
+      type: 'delta',
+      content: { type: 'text', text: 'Hello' },
+    });
+    expect(events[2]).toEqual({
+      type: 'delta',
+      content: { type: 'text', text: ' world' },
+    });
+    expect(events[3].type).toBe('stop');
+    if (events[3].type === 'stop') {
+      expect(events[3].usage).toEqual(expect.objectContaining({
+        input_tokens: 5,
+        output_tokens: 2,
+        cache_read_input_tokens: 1,
+      }));
+    }
+  });
+
+  it('should parse Gemini functionCall parts as tool deltas', () => {
+    const parser = new GeminiStreamParser();
+    const events = collect(
+      parser,
+      'data: {"responseId":"gemini_2","candidates":[{"content":{"parts":[{"functionCall":{"name":"lookup","args":{"q":"siftgate"}}}]},"finishReason":"STOP"}]}\n\n',
+    );
+
+    expect(events[1]).toEqual({
+      type: 'delta',
+      content: {
+        type: 'tool_use',
+        id: 'lookup',
+        name: 'lookup',
+        input_delta: '{"q":"siftgate"}',
+      },
+    });
   });
 });
 

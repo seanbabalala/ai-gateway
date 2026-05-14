@@ -64,7 +64,7 @@ export interface ValidateConfigObjectOptions {
 }
 
 const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
-const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages']);
+const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages', 'gemini']);
 const CREDENTIAL_POOL_STRATEGIES = new Set(['least_in_flight', 'weighted_round_robin']);
 const CREDENTIAL_STICKY_MODES = new Set(['none', 'agent_session', 'api_key', 'team', 'namespace']);
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
@@ -1251,7 +1251,7 @@ function validateNodes(
         issue(
           'error',
           'invalid_node_protocol',
-          'nodes[].protocol must be one of chat_completions, responses, or messages.',
+          'nodes[].protocol must be one of chat_completions, responses, messages, or gemini.',
           `${basePath}.protocol`,
         ),
       );

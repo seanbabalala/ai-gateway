@@ -87,7 +87,7 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
         gateway_id: cp.gateway_id || 'default',
         version: process.env.npm_package_version || '0.1.0',
         capabilities: {
-          protocols: ['chat_completions', 'responses', 'messages'],
+          protocols: ['chat_completions', 'responses', 'messages', 'gemini'],
           privacy: {
             prompt_upload_default: false,
             response_upload_default: false,

@@ -27,7 +27,7 @@ The v1.4 registry includes these built-in profile ids:
 | `openai_compatible` | OpenAI Chat Completions-compatible text, vision, realtime-style, and Batch endpoint targets |
 | `openai_responses_compatible` | OpenAI Responses-compatible targets |
 | `anthropic_messages_compatible` | Anthropic Messages-compatible targets |
-| `google_gemini_compatible` | Google Gemini-style generate content targets |
+| `google_gemini_compatible` | Google Gemini native GenerateContent targets, including Gemini tools, JSON output, thinking config, and Google Search grounding |
 | `google_vertex_compatible` | Google Vertex-style endpoints and long-running operations |
 | `aws_bedrock_converse` | AWS Bedrock Converse-style targets |
 | `azure_openai_compatible` | Azure OpenAI-compatible deployments |

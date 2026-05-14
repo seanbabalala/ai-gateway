@@ -543,8 +543,12 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     id: 'google',
     name: 'Google Gemini / Vertex',
     base_url: 'https://generativelanguage.googleapis.com',
-    auth_type: 'bearer',
-    endpoints: { chat_completions: '/v1beta/openai/chat/completions', embeddings: '/v1beta/openai/embeddings' },
+    auth_type: 'x-api-key',
+    endpoints: {
+      gemini: '/v1beta/models/:model:generateContent',
+      chat_completions: '/v1beta/openai/chat/completions',
+      embeddings: '/v1beta/openai/embeddings',
+    },
     model_prefixes: ['gemini'],
     capabilities: ['vision', 'long_context', 'read_cache'],
     read_cache: true,
@@ -562,7 +566,10 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         id: 'gemini-2.5-pro',
         provider: 'google',
         modalities: ['text', 'vision', 'audio', 'video'],
-        endpoints: { chat_completions: '/v1beta/openai/chat/completions' },
+        endpoints: {
+          gemini: '/v1beta/models/:model:generateContent',
+          chat_completions: '/v1beta/openai/chat/completions',
+        },
         capabilities: ['vision', 'long_context'],
         limits: { max_context_tokens: 1000000 },
         pricing: pricing(1.25, 10),
@@ -582,7 +589,10 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         id: 'gemini-3.1-pro-preview',
         provider: 'google',
         modalities: ['text', 'vision', 'audio', 'video'],
-        endpoints: { chat_completions: '/v1beta/openai/chat/completions' },
+        endpoints: {
+          gemini: '/v1beta/models/:model:generateContent',
+          chat_completions: '/v1beta/openai/chat/completions',
+        },
         capabilities: ['vision', 'long_context', 'read_cache'],
         limits: { max_context_tokens: 1000000 },
         pricing: cacheReadPricing(
@@ -611,7 +621,10 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         id: 'gemini-3.1-flash-lite-preview',
         provider: 'google',
         modalities: ['text', 'vision', 'audio', 'video'],
-        endpoints: { chat_completions: '/v1beta/openai/chat/completions' },
+        endpoints: {
+          gemini: '/v1beta/models/:model:generateContent',
+          chat_completions: '/v1beta/openai/chat/completions',
+        },
         capabilities: ['vision', 'long_context', 'read_cache'],
         limits: { max_context_tokens: 1000000 },
         pricing: cacheReadPricing(

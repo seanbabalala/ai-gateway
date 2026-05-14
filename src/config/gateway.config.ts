@@ -598,7 +598,7 @@ export interface ShadowTrafficConfig {
 }
 
 // ===== Node (AI Provider) =====
-export type NodeProtocol = 'chat_completions' | 'responses' | 'messages';
+export type NodeProtocol = 'chat_completions' | 'responses' | 'messages' | 'gemini';
 
 export type AuthType = 'bearer' | 'x-api-key' | 'custom-header';
 

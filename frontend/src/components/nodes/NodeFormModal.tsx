@@ -74,6 +74,7 @@ type WizardCapability =
   | "chat"
   | "responses"
   | "messages"
+  | "gemini"
   | "embeddings"
   | "rerank"
   | "images"
@@ -93,6 +94,7 @@ const PROTOCOL_ENDPOINTS: Record<Protocol, string> = {
   chat_completions: "/v1/chat/completions",
   responses: "/v1/responses",
   messages: "/v1/messages",
+  gemini: "/v1beta/models/:model:generateContent",
 };
 
 const DEFAULT_ENDPOINTS = {
@@ -132,6 +134,11 @@ const CAPABILITY_OPTIONS: Array<{
     icon: MessagesSquare,
   },
   {
+    id: "gemini",
+    labelKey: "form.capabilityChoices.gemini",
+    icon: Search,
+  },
+  {
     id: "embeddings",
     labelKey: "form.capabilityChoices.embeddings",
     icon: Database,
@@ -153,7 +160,7 @@ const MODEL_BUCKETS: Array<{
     key: "models",
     labelKey: "form.buckets.textModels",
     placeholderKey: "form.placeholders.model",
-    capabilities: ["chat", "responses", "messages"],
+    capabilities: ["chat", "responses", "messages", "gemini"],
   },
   {
     key: "embedding_models",
@@ -476,6 +483,8 @@ function providerCapabilities(provider: CatalogProvider): WizardCapability[] {
     capabilities.add("responses");
   if (provider.protocols.includes("messages") || provider.endpoints.messages)
     capabilities.add("messages");
+  if (provider.protocols.includes("gemini") || provider.endpoints.gemini)
+    capabilities.add("gemini");
   if (
     provider.endpoints.embeddings ||
     provider.modalities.includes("embedding")
@@ -519,6 +528,7 @@ function bucketsForModel(model: CatalogModel): ModelBucketKey[] {
     model.endpoints.includes("chat_completions") ||
     model.endpoints.includes("responses") ||
     model.endpoints.includes("messages") ||
+    model.endpoints.includes("gemini") ||
     model.modalities.includes("text") ||
     model.modalities.includes("vision")
   )
@@ -749,7 +759,7 @@ function deriveModalities(selectedCapabilities: WizardCapability[]): string[] {
   const modalities = new Set<string>();
   if (
     selectedCapabilities.some((capability) =>
-      ["chat", "responses", "messages"].includes(capability),
+      ["chat", "responses", "messages", "gemini"].includes(capability),
     )
   ) {
     modalities.add("text");
@@ -777,6 +787,8 @@ function endpointForCapability(
       return preset.endpoints.responses;
     case "messages":
       return preset.endpoints.messages;
+    case "gemini":
+      return preset.endpoints.gemini;
     case "embeddings":
       return preset.endpoints.embeddings;
     case "rerank":
@@ -796,6 +808,7 @@ function protocolFromCapability(capability: WizardCapability): Protocol | null {
   if (capability === "chat") return "chat_completions";
   if (capability === "responses") return "responses";
   if (capability === "messages") return "messages";
+  if (capability === "gemini") return "gemini";
   return null;
 }
 
@@ -2144,6 +2157,10 @@ export function NodeFormModal({
                               {
                                 value: "messages",
                                 label: t("form.protocol.messages"),
+                              },
+                              {
+                                value: "gemini",
+                                label: t("form.protocol.gemini"),
                               },
                             ]}
                           />

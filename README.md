@@ -23,7 +23,7 @@
 
 # SiftGate
 
-Current release: **v2.9.1**.
+Current release: **v2.10.0**.
 
 SiftGate is an MIT open-source AI Gateway that gives organizations one
 self-hosted control point for model traffic, agent traffic, provider

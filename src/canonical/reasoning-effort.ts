@@ -201,6 +201,22 @@ export function resolveReasoningForwarding(
     };
   }
 
+  if (targetProtocol === 'gemini') {
+    const canMap = Boolean(
+      intent.budget_tokens ||
+        intent.source === 'gemini.thinking_config' ||
+        (intent.effort && intent.effort !== 'unknown'),
+    );
+    return {
+      ...base,
+      strategy: canMap ? 'native' : 'downgraded',
+      supported: canMap,
+      reason: canMap
+        ? null
+        : 'gemini thinking requires budget_tokens or a native thinking_config',
+    };
+  }
+
   return {
     ...base,
     strategy: 'downgraded',
