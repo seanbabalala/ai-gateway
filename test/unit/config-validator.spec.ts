@@ -3107,7 +3107,7 @@ describe('config validator', () => {
       { id: 'backup', api_key: '${OPENAI_API_KEY_BACKUP:-test}', enabled: true },
     ];
     (config.nodes[0] as Record<string, unknown>).credential_pool = {
-      strategy: 'least_in_flight',
+      strategy: 'cache_aware',
       sticky_by: 'agent_session',
       cooldown_ms: 60000,
       max_failures: 3,

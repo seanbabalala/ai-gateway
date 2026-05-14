@@ -603,6 +603,7 @@
   "form.actions.removeCredential": "자격 증명 제거",
   "form.credentialPool.agentSession": "에이전트 세션",
   "form.credentialPool.apiKey": "게이트웨이 API 키",
+  "form.credentialPool.cacheAware": "캐시 인식 고정",
   "form.credentialPool.leastInFlight": "진행 중 최소",
   "form.credentialPool.namespace": "네임스페이스",
   "form.credentialPool.none": "고정 없음",

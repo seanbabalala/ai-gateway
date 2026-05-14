@@ -79,11 +79,11 @@ export class CredentialPoolDto {
   @IsBoolean()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ enum: ['least_in_flight', 'weighted_round_robin'] })
+  @ApiPropertyOptional({ enum: ['least_in_flight', 'weighted_round_robin', 'cache_aware'] })
   @IsOptional()
   @IsString()
-  @IsIn(['least_in_flight', 'weighted_round_robin'])
-  strategy?: 'least_in_flight' | 'weighted_round_robin';
+  @IsIn(['least_in_flight', 'weighted_round_robin', 'cache_aware'])
+  strategy?: 'least_in_flight' | 'weighted_round_robin' | 'cache_aware';
 
   @ApiPropertyOptional({ enum: ['none', 'agent_session', 'api_key', 'team', 'namespace'] })
   @IsOptional()

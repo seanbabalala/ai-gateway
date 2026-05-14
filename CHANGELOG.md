@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 2.11.0 - 2026-05-14
+
+### Added
+
+- Added `cache_aware` provider credential-pool strategy. When upstream usage
+  reports prompt-cache creation or reads, SiftGate pins matching Gateway API
+  key/session/team/namespace traffic to the same provider credential for the
+  cache window, while still failing over to another credential on 429/5xx,
+  network errors, and timeouts.
+
+### Test Evidence
+
+- `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/config-validator.spec.ts`
+- `npm run build`
+- `npm run lint`
+- `cd frontend && npm run i18n:check`
+- `cd frontend && npm run build`
+- `npm run docs:check`
+- `npm run release:check`
+- `npm run validate:config -- --config gateway.config.yaml`
+
+### Boundaries
+
+- v2.11.0 is backward compatible for existing single-key nodes and existing
+  `least_in_flight` / `weighted_round_robin` credential pools. The new
+  strategy only activates when `nodes[].credential_pool.strategy` is set to
+  `cache_aware`.
+
 ## 2.10.0 - 2026-05-14
 
 ### Added

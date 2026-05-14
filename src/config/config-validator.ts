@@ -65,7 +65,7 @@ export interface ValidateConfigObjectOptions {
 
 const DEFAULT_CONFIG_FILE = 'gateway.config.yaml';
 const NODE_PROTOCOLS = new Set(['chat_completions', 'responses', 'messages', 'gemini']);
-const CREDENTIAL_POOL_STRATEGIES = new Set(['least_in_flight', 'weighted_round_robin']);
+const CREDENTIAL_POOL_STRATEGIES = new Set(['least_in_flight', 'weighted_round_robin', 'cache_aware']);
 const CREDENTIAL_STICKY_MODES = new Set(['none', 'agent_session', 'api_key', 'team', 'namespace']);
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
 const ROUTING_OPTIMIZATIONS = new Set(['cost', 'latency', 'balanced', 'quality']);
@@ -6857,7 +6857,7 @@ function validateNodeCredentials(
         issue(
           'error',
           'invalid_credential_pool_strategy',
-          'nodes[].credential_pool.strategy must be least_in_flight or weighted_round_robin.',
+          'nodes[].credential_pool.strategy must be least_in_flight, weighted_round_robin, or cache_aware.',
           `${basePath}.credential_pool.strategy`,
         ),
       );

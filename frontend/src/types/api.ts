@@ -1488,7 +1488,10 @@ export interface NodeInfo {
   healthy: boolean;
 }
 
-export type CredentialPoolStrategy = "least_in_flight" | "weighted_round_robin";
+export type CredentialPoolStrategy =
+  | "least_in_flight"
+  | "weighted_round_robin"
+  | "cache_aware";
 export type CredentialStickyBy =
   | "none"
   | "agent_session"

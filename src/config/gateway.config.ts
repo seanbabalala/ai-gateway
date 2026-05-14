@@ -606,7 +606,10 @@ export type QueuePolicy = 'wait' | 'fallback' | 'reject';
 
 export type HealthCheckMethod = 'HEAD' | 'GET' | 'POST';
 
-export type CredentialPoolStrategy = 'least_in_flight' | 'weighted_round_robin';
+export type CredentialPoolStrategy =
+  | 'least_in_flight'
+  | 'weighted_round_robin'
+  | 'cache_aware';
 
 export type CredentialStickyBy =
   | 'none'

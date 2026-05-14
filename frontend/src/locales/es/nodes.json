@@ -603,6 +603,7 @@
   "form.actions.removeCredential": "Quitar credencial",
   "form.credentialPool.agentSession": "Sesión de agente",
   "form.credentialPool.apiKey": "Clave API del gateway",
+  "form.credentialPool.cacheAware": "Afinidad consciente de caché",
   "form.credentialPool.leastInFlight": "Menos solicitudes activas",
   "form.credentialPool.namespace": "Espacio de nombres",
   "form.credentialPool.none": "Sin afinidad",
