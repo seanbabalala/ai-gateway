@@ -31,6 +31,8 @@ expectRegexValue(
 );
 expectRegexValue('src/openapi/setup-openapi.ts', /\.setVersion\('([^']+)'\)/, releaseVersion);
 expectFileIncludes('README.md', `Current release: **v${releaseVersion}`);
+expectFileIncludes('README.md', `img.shields.io/badge/release-v${releaseVersion}-`);
+expectFileIncludes('README.md', `/releases/tag/v${releaseVersion}`);
 expectFileIncludes('CHANGELOG.md', `## ${releaseVersion} -`);
 
 if (failures.length > 0) {

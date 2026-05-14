@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/seanbabalala/ai-gateway/releases"><img alt="Release" src="https://img.shields.io/github/v/release/seanbabalala/ai-gateway?label=release"></a>
+  <a href="https://github.com/seanbabalala/ai-gateway/releases/tag/v2.11.2"><img alt="Release" src="https://img.shields.io/badge/release-v2.11.2-22d7a8"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-062f25"></a>
   <a href="docs/SECURITY.md"><img alt="Privacy default" src="https://img.shields.io/badge/privacy-metadata--only%20by%20default-22d7a8"></a>
   <a href="docs/README.md"><img alt="Docs" src="https://img.shields.io/badge/docs-7%20languages-062f25"></a>
