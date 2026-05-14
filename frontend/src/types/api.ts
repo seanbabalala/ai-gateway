@@ -741,6 +741,9 @@ export interface CallLog {
   api_key_id?: string | null;
   api_key_name?: string | null;
   namespace_id?: string | null;
+  credential_id?: string | null;
+  credential_strategy?: string | null;
+  credential_retry_count?: number;
 }
 
 export interface LogsPagination {

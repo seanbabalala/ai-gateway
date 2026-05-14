@@ -160,6 +160,34 @@ function UpstreamProtocolBadge({
   )
 }
 
+function CredentialBadge({ log, isCache }: { log: CallLog; isCache: boolean }) {
+  const { t } = useTranslation('logs')
+  if (isCache) {
+    return <Badge variant="zinc">{t('cache.noUpstream')}</Badge>
+  }
+
+  const credentialId = log.credential_id || 'default'
+  const isDefault = credentialId === 'default'
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2 align-middle">
+      <Badge
+        variant={isDefault ? 'amber' : 'blue'}
+        className="max-w-[190px] truncate whitespace-nowrap font-mono normal-case tracking-normal"
+      >
+        {isDefault ? t('detail.defaultCredential') : credentialId}
+      </Badge>
+      {(log.credential_strategy || (log.credential_retry_count ?? 0) > 0) && (
+        <span className="min-w-0 truncate font-mono text-[11px] text-[var(--foreground-dim)]">
+          {[log.credential_strategy, t('detail.credentialRetry', { count: log.credential_retry_count ?? 0 })]
+            .filter(Boolean)
+            .join(' / ')}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function UpstreamCell({ log }: { log: CallLog }) {
   const { t } = useTranslation('logs')
   if (isPromptCacheLog(log)) {
@@ -262,6 +290,10 @@ function LogDetailRow({
             <span className="font-mono text-[var(--foreground-muted)]">
               {isCache ? t('cache.noUpstream') : log.node_id}
             </span>
+          </div>
+          <div>
+            <span className="text-[var(--foreground-dim)]">{t('detail.credential')}: </span>
+            <CredentialBadge log={log} isCache={isCache} />
           </div>
           <div>
             <span className="text-[var(--foreground-dim)]">{t('detail.upstreamProtocol')}: </span>

@@ -118,6 +118,70 @@ const API_KEY_ENDPOINTS = [
   'models',
 ] as const
 
+type SampleCurlEndpoint = 'chat_completions' | 'responses' | 'messages' | 'embeddings'
+
+const SAMPLE_CURL_ENDPOINTS = new Set<string>([
+  'chat_completions',
+  'responses',
+  'messages',
+  'embeddings',
+])
+
+function normalizeSampleCurlEndpoint(value?: string | null): SampleCurlEndpoint | null {
+  if (value && SAMPLE_CURL_ENDPOINTS.has(value)) {
+    return value as SampleCurlEndpoint
+  }
+  return null
+}
+
+function selectSampleCurlEndpoint(
+  allowedEndpoints: string[] = [],
+  nodeProtocol?: string | null,
+): SampleCurlEndpoint {
+  return (
+    allowedEndpoints
+      .map((endpoint) => normalizeSampleCurlEndpoint(endpoint))
+      .find((endpoint): endpoint is SampleCurlEndpoint => Boolean(endpoint)) ||
+    normalizeSampleCurlEndpoint(nodeProtocol) ||
+    'chat_completions'
+  )
+}
+
+function sampleCurlPath(endpoint: SampleCurlEndpoint) {
+  switch (endpoint) {
+    case 'responses':
+      return '/v1/responses'
+    case 'messages':
+      return '/v1/messages'
+    case 'embeddings':
+      return '/v1/embeddings'
+    case 'chat_completions':
+    default:
+      return '/v1/chat/completions'
+  }
+}
+
+function sampleCurlPayload(endpoint: SampleCurlEndpoint, model: string) {
+  switch (endpoint) {
+    case 'responses':
+      return { model, input: 'hello' }
+    case 'messages':
+      return { model, max_tokens: 128, messages: [{ role: 'user', content: 'hello' }] }
+    case 'embeddings':
+      return { model, input: 'hello' }
+    case 'chat_completions':
+    default:
+      return { model, messages: [{ role: 'user', content: 'hello' }] }
+  }
+}
+
+function buildSampleCurl(endpoint: SampleCurlEndpoint, plainKey: string, model: string) {
+  return `curl http://localhost:2099${sampleCurlPath(endpoint)} \\
+  -H "Authorization: Bearer ${plainKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(sampleCurlPayload(endpoint, model))}'`
+}
+
 const API_KEY_MODALITIES = [
   'text',
   'vision',
@@ -482,20 +546,15 @@ function CreatedKeyDialog({
   const plainKey = created?.key || ''
   const key = created?.item
   const allowedNodeSet = new Set(key?.allowed_nodes || [])
+  const availableNodes = nodes.filter((node) => allowedNodeSet.size === 0 || allowedNodeSet.has(node.id))
   const directModel =
     key?.allowed_models?.[0] ||
-    nodes
-      .filter((node) => allowedNodeSet.size === 0 || allowedNodeSet.has(node.id))
-      .flatMap((node) => node.models)[0] ||
+    availableNodes.flatMap((node) => node.models)[0] ||
     'gpt-4o'
-  const autoCurl = `curl http://localhost:2099/v1/chat/completions \\
-  -H "Authorization: Bearer ${plainKey}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model":"auto","messages":[{"role":"user","content":"hello"}]}'`
-  const directCurl = `curl http://localhost:2099/v1/chat/completions \\
-  -H "Authorization: Bearer ${plainKey}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model":"${directModel}","messages":[{"role":"user","content":"hello"}]}'`
+  const directNodeProtocol = availableNodes.find((node) => node.models.includes(directModel))?.protocol
+  const sampleEndpoint = selectSampleCurlEndpoint(key?.allowed_endpoints, directNodeProtocol)
+  const autoCurl = buildSampleCurl(sampleEndpoint, plainKey, 'auto')
+  const directCurl = buildSampleCurl(sampleEndpoint, plainKey, directModel)
 
   return (
     <Dialog open={!!created} onOpenChange={(open) => !open && onClose()}>

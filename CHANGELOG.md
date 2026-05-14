@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 2.9.1 - 2026-05-14
+
+### Fixed
+
+- Fixed Gateway API Key creation examples so the generated curl sample follows
+  the selected/allowed ingress endpoint, including `/v1/messages`,
+  `/v1/responses`, `/v1/embeddings`, and `/v1/chat/completions`.
+- Added credential-hit visibility to Dashboard request log details. Logs now
+  show the selected provider credential id when a credential pool is used and a
+  localized default-key badge for legacy single-key nodes, without exposing
+  provider secrets.
+
+### Test Evidence
+
+- `cd frontend && npm run i18n:check`
+- `cd frontend && npm run api-keys:check`
+- `cd frontend && npm run build`
+- `npm run release:check`
+
+### Boundaries
+
+- v2.9.1 is a Dashboard bugfix release. It does not change provider routing,
+  credential selection semantics, schemas, or public ingress API behavior.
+
 ## 2.9.0 - 2026-05-14
 
 ### Added
