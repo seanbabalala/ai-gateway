@@ -1,9 +1,10 @@
 # Comparison
 
 SiftGate is positioned as an open-source AI traffic data plane for teams that
-want self-hosted control over provider keys, model routing, agent traffic,
-budgets, policy, audit, and operational evidence. It is not primarily an API
-resale platform, billing wallet, or single-purpose model router.
+want self-hosted control over provider keys, provider credential pools, model
+routing, agent traffic, budgets, policy, audit, and operational evidence. It is
+not primarily an API resale platform, billing wallet, or single-purpose model
+router.
 
 Public positioning references:
 
@@ -32,9 +33,9 @@ projects contributed to the ecosystem.
 
 | Product | Best At | SiftGate Difference |
 | --- | --- | --- |
-| Manifest | Cost-first smart model routing for agents and applications | SiftGate adds a broader team data plane: Workspaces, Dashboard RBAC, Policy Namespaces, provider compatibility profiles, richer protocol coverage, MCP governance, route explanations, audit, production deployment paths, and metadata-only privacy defaults. |
-| One API | LLM API management, channels, users, tokens, quota, and redistribution | SiftGate is not primarily a redistribution panel. It focuses on BYOK team-owned traffic, explainable routing, policy hierarchy, agent governance, provider health, semantic controls, audit, and self-hosted production operations. |
-| New API | Aggregation/distribution hub with UI, channel management, billing, and OpenAI/Claude/Gemini conversion | SiftGate overlaps on gatewaying and protocol compatibility, but emphasizes local policy enforcement, evidence-rich route decisions, workspace-scoped operational metadata, no default content storage, and separation from reseller/payment workflows. |
+| Manifest | Cost-first smart model routing for agents and applications | SiftGate adds a broader team data plane: Workspaces, Dashboard RBAC, Policy Namespaces, provider compatibility profiles, richer protocol coverage, MCP governance, route explanations, provider credential pools, audit, production deployment paths, and metadata-only privacy defaults. |
+| One API | LLM API management, channels, users, tokens, quota, and redistribution | SiftGate is not primarily a redistribution panel. It focuses on BYOK team-owned traffic, explainable routing, policy hierarchy, provider credential pools, agent governance, provider health, semantic controls, audit, and self-hosted production operations. |
+| New API | Aggregation/distribution hub with UI, channel management, billing, and OpenAI/Claude/Gemini conversion | SiftGate overlaps on gatewaying and protocol compatibility, but emphasizes local policy enforcement, evidence-rich route decisions, workspace-scoped operational metadata, provider credential pools, no default content storage, and separation from reseller/payment workflows. |
 | LiteLLM Proxy | Broad provider compatibility and developer-friendly proxying | SiftGate emphasizes Dashboard-first operations, canonical protocol metadata, policy governance, cost evidence, provider catalog governance, agent profiles, MCP gatewaying, and route explainability. |
 
 ## Capability Matrix
@@ -54,6 +55,7 @@ projects contributed to the ecosystem.
 | Route explainability | First-class Route Explanation with selected/rejected candidates and policy/cost/latency/compatibility evidence | Cost/model metadata focus | Channel/log evidence | Channel/log/quota evidence | Logs and callback metadata |
 | Provider catalog governance | 50+ provider metadata, compatibility profiles, price source status, active vs transport-only visibility, local overrides | Model catalog oriented toward cost routing | Channel/provider administration | Channel/model asset administration | Provider support matrix |
 | Gateway API keys | Yes, separate from provider keys | Yes / provider credentials model | Yes, token-centric | Yes, token-centric | Yes / virtual keys |
+| Provider credential pools | Yes: multiple `credentials[]` per node, least-in-flight, weighted round-robin, sticky affinity, cooldown, retryable-status failover, and credential-hit logs without secret exposure | Not the center of the product; provider credentials support routing | Usually channel/token based rather than per-node credential-pool operations | Usually channel/provider based capacity and failover | Supports provider keys and routing patterns; implementation depends on deployment |
 | Policy hierarchy | Workspace, API key, Team, Policy Namespace, endpoint/modality/node/model restrictions | Agents, providers, budgets, limits | Users, tokens, channels, quotas | Users, groups, tokens, channels, quotas, billing | Keys, teams/orgs, budgets depending on setup |
 | Budget scopes | Global, Policy Namespace, Team, API Key | Spend limits and tracking | Quota/token accounting | Billing, recharge/subscription-style quotas | Budgets and spend controls |
 | Agent profiles | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI, Generic Anthropic | Strong personal-agent orientation | Generic API integration | AI editor skills and app integrations | Generic client/proxy integration |
@@ -71,6 +73,8 @@ projects contributed to the ecosystem.
   MCP Tool Gateway traffic.
 - A local data plane where provider keys, runtime policy, and operational
   metadata stay with the operator by default.
+- A provider credential-pool layer that can rotate multiple upstream keys
+  inside one logical node before node-level fallback runs.
 - A routing and governance layer for teams using multiple models, agents,
   providers, and client applications.
 - A Dashboard-first operations product for keys, workspaces, budgets, route

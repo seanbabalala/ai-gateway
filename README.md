@@ -2,7 +2,7 @@
   <img src="docs/assets/brand/siftgate-logo.svg" alt="SiftGate" width="420" />
 </p>
 
-<h3 align="center">Self-hosted AI Gateway infrastructure for teams, agents, and multi-provider applications.</h3>
+<h3 align="center">Self-hosted AI Gateway infrastructure for teams, agents, provider credential pools, and multi-provider applications.</h3>
 
 <p align="center">
   <a href="https://github.com/seanbabalala/ai-gateway/releases"><img alt="Release" src="https://img.shields.io/github/v/release/seanbabalala/ai-gateway?label=release"></a>
@@ -27,9 +27,10 @@ Current release: **v2.9.1**.
 
 SiftGate is an MIT open-source AI Gateway that gives organizations one
 self-hosted control point for model traffic, agent traffic, provider
-credentials, routing policy, cost governance, and operational evidence. It sits
-between applications, coding agents, SDKs, MCP tools, and upstream AI providers,
-then applies local policy before a request leaves your infrastructure.
+credentials, credential-pool rotation, routing policy, cost governance, and
+operational evidence. It sits between applications, coding agents, SDKs, MCP
+tools, and upstream AI providers, then applies local policy before a request
+leaves your infrastructure.
 
 It supports OpenAI-compatible, Anthropic-compatible, Batch, Realtime preview,
 media, embedding, rerank, and MCP tool traffic while keeping provider keys,
@@ -45,6 +46,7 @@ a platform problem:
 | --- | --- |
 | Provider sprawl | One gateway for OpenAI, Anthropic, Google, Azure, Bedrock, OpenRouter, local runtimes, media providers, speech providers, and custom OpenAI-compatible endpoints. |
 | Agent sprawl | Govern Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, chatbot clients, and MCP tool calls through one local ingress. |
+| Fragmented provider quota | Pool multiple upstream credentials inside one provider node, rotate them by weighted round-robin or least-in-flight, keep agent sessions sticky when needed, and cool down unhealthy keys before failing over. |
 | Unclear routing | Explain why a node or model was selected, skipped, filtered, retried, or downgraded without storing prompt or response bodies by default. |
 | Cost surprises | Enforce daily budgets, token and cost limits, provider-cache savings, price-source governance, chargeback reports, and anomaly evidence. |
 | Key exposure | Keep provider API keys in local config, environment variables, or secret references; issue separate Gateway API keys to apps and agents. |
@@ -65,6 +67,7 @@ flowchart LR
     Auth["Gateway API keys"]
     Policy["Workspace, team, namespace policy"]
     Route["Smart router and compatibility filter"]
+    Creds["Provider credential pools<br/>rotation, sticky affinity, cooldown"]
     Cost["Budgets, cost, cache evidence"]
     Observe["Logs, route explanations, audit"]
     Dashboard["Local Dashboard"]
@@ -81,11 +84,12 @@ flowchart LR
   Agent --> Auth
   MCP --> Auth
   Batch --> Auth
-  Auth --> Policy --> Route --> Cost
+  Auth --> Policy --> Route --> Creds --> Cost
   Cost --> Direct
   Cost --> Cloud
   Cost --> Local
   Cost --> Media
+  Creds --> Observe
   Route --> Observe
   Dashboard --> Policy
   Dashboard --> Observe
@@ -102,7 +106,7 @@ plane is optional; AI requests do not need to pass through a hosted service.
 | Protocol translation | Canonical request model, protocol-aware normalizers and denormalizers, structured-output preservation, reasoning/thinking intent metadata, streaming support, multipart media pass-through, async job metadata. |
 | Routing | `model: "auto"`, direct model routing, aliases, node shortcuts, model-family prefixes, tiered routing, fallback chains, split testing, compatibility-profile filtering, circuit breakers, momentum, load balancing, cache-aware cost routing. |
 | Governance | Workspaces, local Dashboard RBAC, Gateway API keys, teams, Policy Namespaces, allowed endpoints, allowed modalities, allowed nodes, allowed models, per-key/team/namespace/global budgets, rate limits, audit events. |
-| Provider operations | Provider Catalog, Add Node Wizard, 50+ provider metadata coverage, active vs transport-only visibility, pricing-source governance, custom provider templates, custom-header auth, provider credential pools with weighted rotation/sticky affinity/cooldown, provider health dashboard, config validation. |
+| Provider operations | Provider Catalog, Add Node Wizard, 50+ provider metadata coverage, active vs transport-only visibility, pricing-source governance, custom provider templates, custom-header auth, provider credential pools with least-in-flight or weighted rotation, sticky affinity, cooldown, retryable-status failover, per-credential observability, provider health dashboard, config validation. |
 | Agent operations | Coding Agent Gateway profiles, profile-scoped virtual models, connector templates, metadata-only coding-agent sessions, Agent Platform preview, MCP server allow-lists and tool-call proxying. |
 | Observability | Dashboard analytics, call logs, route decision traces, session timelines, provider health, benchmarks, cache savings, export-safe metadata, webhook alerts, optional log sinks, OpenTelemetry metrics/traces. |
 | Cost and quality | Daily budget enforcement, estimated spend, provider-cache savings, chargeback reports, anomaly detection, route feedback, Intelligence Loop token prediction, optional cost optimizer, optional quality gate, async eval metadata. |
@@ -115,6 +119,14 @@ Provider nodes can use a single `api_key` or a first-class `credentials` pool.
 Pools rotate multiple upstream credentials inside the same node before the
 router falls back to another node, which is useful when one provider account has
 multiple approved keys for the same endpoint and model surface.
+
+| Pool control | What it solves |
+| --- | --- |
+| Multiple `credentials[]` per node | Keep one logical provider/model node while spreading traffic across several upstream keys or accounts. |
+| `least_in_flight` and `weighted_round_robin` | Prefer the least busy key for agent workloads, or use explicit weights for planned capacity distribution. |
+| Sticky affinity | Keep a coding-agent session, API key, namespace, or model family on the same upstream credential when continuity matters. |
+| Cooldown and retry status policy | Move away from keys that return 429/5xx/timeouts, then recover them after cooldown without operator intervention. |
+| Credential-level log metadata | See which credential id handled a request, including retry count and strategy, while never exposing secret values. |
 
 ```yaml
 nodes:
@@ -217,8 +229,15 @@ Public positioning references: [Manifest](https://github.com/mnfst/manifest),
       <td align="center"><strong>Billing controls</strong><br><sub>Users, groups, tokens, channels, quota, recharge/subscription workflows</sub></td>
     </tr>
     <tr>
+      <td><strong>Provider credential pools</strong><br><sub>Multiple upstream keys inside one logical node</sub></td>
+      <td align="center"><strong>First-class</strong><br><sub><code>credentials[]</code>, least-in-flight, weighted rotation, sticky affinity, cooldown, retryable-status failover, credential-hit logs</sub></td>
+      <td align="center"><strong>Not the center</strong><br><sub>Provider credentials support routing, but pool operations are not the main product surface</sub></td>
+      <td align="center"><strong>Channel based</strong><br><sub>Capacity is usually modeled through channels and tokens rather than per-node credential pools</sub></td>
+      <td align="center"><strong>Channel based</strong><br><sub>Capacity and failover are commonly managed through channel/provider configuration</sub></td>
+    </tr>
+    <tr>
       <td><strong>Operations evidence</strong><br><sub>What operators can inspect</sub></td>
-      <td align="center"><strong>First-class</strong><br><sub>Route Explanation, logs, sessions, audit, provider health, cost platform, semantic controls, config rollback</sub></td>
+      <td align="center"><strong>First-class</strong><br><sub>Route Explanation, credential-hit logs, sessions, audit, provider health, cost platform, semantic controls, config rollback</sub></td>
       <td align="center"><strong>Model/cost focused</strong><br><sub>Routing and usage evidence</sub></td>
       <td align="center"><strong>Admin focused</strong><br><sub>Channel, user, quota, log evidence</sub></td>
       <td align="center"><strong>Admin focused</strong><br><sub>Dashboard, logs, quota, channel evidence</sub></td>
@@ -266,6 +285,7 @@ sequenceDiagram
   participant SG as SiftGate
   participant Policy as Local Policy
   participant Router as Router
+  participant Creds as Credential Pool
   participant Provider as Upstream Provider
   participant Logs as Metadata Store
 
@@ -274,15 +294,18 @@ sequenceDiagram
   Policy->>Policy: Check endpoint, modality, node/model, budget, rate limit
   Policy->>Router: Send canonical request metadata
   Router->>Router: Score complexity, compatibility, cost, health, cache evidence
-  Router->>Provider: Forward provider-compatible request
+  Router->>Creds: Select upstream credential by strategy and sticky policy
+  Creds->>Provider: Forward provider-compatible request
   Provider-->>SG: Stream or response
+  Creds->>Creds: Retry alternate credential on configured failures
   SG-->>Client: Caller-compatible response
-  SG->>Logs: Store metadata, route evidence, cost, audit signals
+  SG->>Logs: Store metadata, route evidence, credential id, cost, audit signals
 ```
 
 By default, SiftGate stores operational metadata such as request ids, selected
-node/model, latency, status, token usage, cost estimate, policy labels,
-fallback reason, cache evidence, and route explanation. It does **not** store
+node/model, credential id, credential retry count, latency, status, token
+usage, cost estimate, policy labels, fallback reason, cache evidence, and route
+explanation. It does **not** store
 prompts, responses, raw provider headers, provider keys, tool payloads, media
 bytes, hidden reasoning text, or resolved secrets unless a specific feature is
 explicitly configured to retain content.
@@ -322,11 +345,11 @@ data plane.
 | Page | What operators use it for |
 | --- | --- |
 | Overview | First-run setup, live traffic, cost, cache savings, provider health, recent activity, and Intelligence Loop summary. |
-| Nodes | Configure upstream provider nodes, run safe checks, inspect health, circuits, compatibility, and pricing warnings. |
+| Nodes | Configure upstream provider nodes and credential pools, run safe checks, inspect health, circuits, compatibility, and pricing warnings. |
 | Provider Catalog | Explore provider/model metadata, recommended defaults, modality coverage, compatibility profiles, and pricing source status. |
 | Routing | Edit tiers, targets, fallback chains, load balancing, split rules, and recommendations. |
 | Route Explanation | Inspect selected and rejected candidates, policy filters, cost/latency/context tradeoffs, compatibility evidence, and fallback reasons. |
-| Logs and Sessions | Review request metadata, source format, route result, cache outcome, structured-output and reasoning intent, agent sessions, and export-safe details. |
+| Logs and Sessions | Review request metadata, source format, route result, credential hit, cache outcome, structured-output and reasoning intent, agent sessions, and export-safe details. |
 | API Keys | Create, rotate, disable, scope, and audit client-facing Gateway API keys. |
 | Workspaces and Members | Manage local Workspaces, fixed OSS roles, membership, and invitations. |
 | Policy Namespaces and Budget | Configure shared policy labels, source-of-truth budget scopes, limits, and resets. |
@@ -378,6 +401,9 @@ SiftGate is built around local control:
 
 - Provider API keys are not client credentials. They stay in local config,
   environment variables, or secret references and are only used by the gateway.
+- Provider credential pools expose operator-defined credential ids and runtime
+  status only. Secret values are redacted from Dashboard APIs, logs, route
+  traces, telemetry, exports, and log sinks.
 - Gateway API keys are shown in full only once on create or rotate. Lists and
   detail views expose masked prefixes and policy metadata.
 - Dashboard authentication is enabled by default. Local password bootstrap,
