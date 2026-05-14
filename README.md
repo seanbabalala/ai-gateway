@@ -27,7 +27,7 @@
 
 # SiftGate
 
-Current release: **v2.11.1**.
+Current release: **v2.11.2**.
 
 <p align="center">
   <img src="docs/assets/homepage/siftgate-hero.svg" alt="SiftGate AI traffic data plane" width="100%" />
