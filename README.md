@@ -2,7 +2,11 @@
   <img src="docs/assets/brand/siftgate-logo.svg" alt="SiftGate" width="420" />
 </p>
 
-<h3 align="center">Self-hosted AI Gateway infrastructure for teams, agents, provider credential pools, and multi-provider applications.</h3>
+<h3 align="center">The self-hosted AI traffic data plane for serious model traffic.</h3>
+
+<p align="center">
+  Govern apps, coding agents, MCP tools, provider keys, routing, budgets, cache, and evidence before requests leave your infrastructure.
+</p>
 
 <p align="center">
   <a href="https://github.com/seanbabalala/ai-gateway/releases"><img alt="Release" src="https://img.shields.io/github/v/release/seanbabalala/ai-gateway?label=release"></a>
@@ -23,19 +27,81 @@
 
 # SiftGate
 
-Current release: **v2.11.0**.
+Current release: **v2.11.1**.
 
-SiftGate is an MIT open-source AI Gateway that gives organizations one
-self-hosted control point for model traffic, agent traffic, provider
-credentials, credential-pool rotation, routing policy, cost governance, and
-operational evidence. It sits between applications, coding agents, SDKs, MCP
-tools, and upstream AI providers, then applies local policy before a request
-leaves your infrastructure.
+<p align="center">
+  <img src="docs/assets/homepage/siftgate-hero.svg" alt="SiftGate AI traffic data plane" width="100%" />
+</p>
+
+SiftGate is an MIT open-source AI Gateway for teams that have outgrown direct
+provider keys and single-purpose proxy panels. It gives organizations one
+self-hosted control point for model traffic, coding-agent traffic, MCP tools,
+provider credentials, credential-pool rotation, routing policy, cost
+governance, cache savings, and operational evidence.
+
+It sits between applications, agents, SDKs, tools, and upstream AI providers,
+then answers the questions serious operators ask on every request:
+
+| Operator question | SiftGate answer |
+| --- | --- |
+| Is this caller allowed to use this endpoint, model, modality, node, team budget, or namespace? | Gateway API keys, Workspaces, Teams, Policy Namespaces, endpoint/model/node restrictions, rate limits, and budget scopes. |
+| Which model/provider should receive this request right now? | Compatibility filtering, tiered routing, model aliases, fallback chains, circuit state, cache-aware cost evidence, split rules, and route explanation. |
+| Which upstream provider key should be used? | First-class `credentials[]` pools with least-in-flight, weighted round-robin, sticky affinity, cache-aware affinity, cooldown, and retryable-status failover. |
+| What happened when the request ran? | Metadata-only call logs, route decision traces, credential-hit visibility, provider health, cache savings, cost estimates, session timelines, audit, and export-safe evidence. |
+| What sensitive data is retained? | No prompt, response, raw header, provider key, tool payload, media, source, diff, hidden reasoning, or resolved secret storage by default. |
 
 It supports OpenAI-compatible, Anthropic-compatible, Batch, Realtime preview,
 media, embedding, rerank, and MCP tool traffic while keeping provider keys,
 runtime policy, and sensitive operational metadata inside the self-hosted data
 plane by default.
+
+## The 30-Second Pitch
+
+Most gateways stop at "route this request to a model." SiftGate goes further:
+it turns AI traffic into a governed, explainable, production-grade control
+loop.
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <strong>Traffic Control</strong><br>
+      <sub>One ingress for Chat Completions, Responses, Anthropic Messages, Gemini-native calls, embeddings, rerank, media, Batch, Realtime preview, feedback, and MCP tool traffic.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <strong>Provider Power</strong><br>
+      <sub>50+ provider metadata profiles, compatibility checks, provider health, model aliases, custom providers, secret references, and credential pools inside one logical node.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <strong>Operator Evidence</strong><br>
+      <sub>Every route can explain selected and rejected candidates, policy filters, credential hits, cache effects, fallback reasons, cost estimates, latency, and audit context.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
+      <strong>Agent Ready</strong><br>
+      <sub>Govern Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, generic OpenAI/Anthropic agents, virtual smart models, and MCP tool calls.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <strong>Cost Discipline</strong><br>
+      <sub>Daily budgets, team/key/namespace scopes, provider-cache savings, price-source governance, chargeback reports, anomaly evidence, and route feedback.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <strong>Self-Hosted Core</strong><br>
+      <sub>SQLite local, PostgreSQL production, optional Redis shared state, Docker, Kubernetes, Helm, OIDC, OpenTelemetry, log sinks, and validation-first config rollout.</sub>
+    </td>
+  </tr>
+</table>
+
+## What Makes It Different
+
+| SiftGate strength | Why it matters |
+| --- | --- |
+| **AI traffic data plane, not just a proxy** | Policy, routing, credential selection, budgets, cost, cache, audit, and evidence live in one local runtime path. |
+| **First-class coding-agent gateway** | Agent tools get governed connector profiles and virtual smart models without giving every editor direct provider keys. |
+| **Provider credential pools** | Multiple upstream keys can sit inside one logical node, with rotation, sticky affinity, cache-aware affinity, cooldown, retry, and credential-hit logs. |
+| **Route explanation as a product surface** | Operators can see why SiftGate selected, skipped, retried, downgraded, or rejected a provider/model. |
+| **Metadata-only by default** | The project is designed for operations without becoming a prompt, response, source-code, tool-payload, or provider-key store. |
+| **Open-source production path** | The OSS data plane includes Dashboard, RBAC basics, Workspaces, policy scopes, audit, deployment manifests, docs, and validation gates. |
 
 ## Why SiftGate Exists
 
@@ -46,7 +112,7 @@ a platform problem:
 | --- | --- |
 | Provider sprawl | One gateway for OpenAI, Anthropic, Google, Azure, Bedrock, OpenRouter, local runtimes, media providers, speech providers, and custom OpenAI-compatible endpoints. |
 | Agent sprawl | Govern Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, chatbot clients, and MCP tool calls through one local ingress. |
-| Fragmented provider quota | Pool multiple upstream credentials inside one provider node, rotate them by weighted round-robin or least-in-flight, keep agent sessions sticky when needed, and cool down unhealthy keys before failing over. |
+| Fragmented provider quota | Pool multiple upstream credentials inside one provider node, rotate them by weighted round-robin or least-in-flight, keep agent sessions sticky, preserve provider cache locality, and cool down unhealthy keys before failing over. |
 | Unclear routing | Explain why a node or model was selected, skipped, filtered, retried, or downgraded without storing prompt or response bodies by default. |
 | Cost surprises | Enforce daily budgets, token and cost limits, provider-cache savings, price-source governance, chargeback reports, and anomaly evidence. |
 | Key exposure | Keep provider API keys in local config, environment variables, or secret references; issue separate Gateway API keys to apps and agents. |
@@ -67,7 +133,7 @@ flowchart LR
     Auth["Gateway API keys"]
     Policy["Workspace, team, namespace policy"]
     Route["Smart router and compatibility filter"]
-    Creds["Provider credential pools<br/>rotation, sticky affinity, cooldown"]
+    Creds["Provider credential pools<br/>cache-aware affinity, rotation, cooldown"]
     Cost["Budgets, cost, cache evidence"]
     Observe["Logs, route explanations, audit"]
     Dashboard["Local Dashboard"]
@@ -106,7 +172,7 @@ plane is optional; AI requests do not need to pass through a hosted service.
 | Protocol translation | Canonical request model, protocol-aware normalizers and denormalizers, structured-output preservation, reasoning/thinking intent metadata, streaming support, multipart media pass-through, async job metadata. |
 | Routing | `model: "auto"`, direct model routing, aliases, node shortcuts, model-family prefixes, tiered routing, fallback chains, split testing, compatibility-profile filtering, circuit breakers, momentum, load balancing, cache-aware cost routing. |
 | Governance | Workspaces, local Dashboard RBAC, Gateway API keys, teams, Policy Namespaces, allowed endpoints, allowed modalities, allowed nodes, allowed models, per-key/team/namespace/global budgets, rate limits, audit events. |
-| Provider operations | Provider Catalog, Add Node Wizard, 50+ provider metadata coverage, active vs transport-only visibility, pricing-source governance, custom provider templates, custom-header auth, provider credential pools with least-in-flight or weighted rotation, sticky affinity, cooldown, retryable-status failover, per-credential observability, provider health dashboard, config validation. |
+| Provider operations | Provider Catalog, Add Node Wizard, 50+ provider metadata coverage, active vs transport-only visibility, pricing-source governance, custom provider templates, custom-header auth, provider credential pools with cache-aware affinity, least-in-flight or weighted rotation, sticky affinity, cooldown, retryable-status failover, per-credential observability, provider health dashboard, config validation. |
 | Agent operations | Coding Agent Gateway profiles, profile-scoped virtual models, connector templates, metadata-only coding-agent sessions, Agent Platform preview, MCP server allow-lists and tool-call proxying. |
 | Observability | Dashboard analytics, call logs, route decision traces, session timelines, provider health, benchmarks, cache savings, export-safe metadata, webhook alerts, optional log sinks, OpenTelemetry metrics/traces. |
 | Cost and quality | Daily budget enforcement, estimated spend, provider-cache savings, chargeback reports, anomaly detection, route feedback, Intelligence Loop token prediction, optional cost optimizer, optional quality gate, async eval metadata. |
@@ -162,8 +228,8 @@ by Dashboard APIs, call logs, route traces, telemetry, or log sinks.
 
 SiftGate is not only a cheap model router and not only an API resale panel. It
 is an AI traffic data plane: provider-compatible ingress, policy, routing,
-budget control, agent governance, route evidence, and production operations in
-one self-hosted system.
+budget control, agent governance, MCP controls, cache-aware credential pools,
+route evidence, and production operations in one self-hosted system.
 
 Public positioning references: [Manifest](https://github.com/mnfst/manifest),
 [One API](https://github.com/songquanpeng/one-api), and
@@ -231,7 +297,7 @@ Public positioning references: [Manifest](https://github.com/mnfst/manifest),
     </tr>
     <tr>
       <td><strong>Provider credential pools</strong><br><sub>Multiple upstream keys inside one logical node</sub></td>
-      <td align="center"><strong>First-class</strong><br><sub><code>credentials[]</code>, least-in-flight, weighted rotation, sticky affinity, cooldown, retryable-status failover, credential-hit logs</sub></td>
+      <td align="center"><strong>First-class</strong><br><sub><code>credentials[]</code>, cache-aware affinity, least-in-flight, weighted rotation, sticky affinity, cooldown, retryable-status failover, credential-hit logs</sub></td>
       <td align="center"><strong>Not the center</strong><br><sub>Provider credentials support routing, but pool operations are not the main product surface</sub></td>
       <td align="center"><strong>Channel based</strong><br><sub>Capacity is usually modeled through channels and tokens rather than per-node credential pools</sub></td>
       <td align="center"><strong>Channel based</strong><br><sub>Capacity and failover are commonly managed through channel/provider configuration</sub></td>

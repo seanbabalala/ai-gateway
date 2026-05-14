@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 2.11.1 - 2026-05-14
+
+### Changed
+
+- Refreshed the public repository homepage with a stronger SiftGate product
+  storefront: clearer AI traffic data-plane positioning, a 30-second pitch,
+  stronger differentiators, and updated provider-credential-pool messaging.
+- Added a new README hero SVG and tightened the competitive matrix SVG so
+  headings, table labels, and comparison text stay inside their visual bounds
+  across GitHub and local renderers.
+
+### Test Evidence
+
+- `xmllint --noout docs/assets/homepage/siftgate-hero.svg docs/assets/comparison/competitive-matrix.svg`
+- `npm run docs:check`
+- `npm run validate:k8s`
+- `npm run release:check`
+- `git diff --check`
+
+### Boundaries
+
+- v2.11.1 is a public documentation and repository presentation release. It
+  does not change runtime gateway behavior, provider routing semantics, config
+  schemas, or public ingress APIs.
+
 ## 2.11.0 - 2026-05-14
 
 ### Added
