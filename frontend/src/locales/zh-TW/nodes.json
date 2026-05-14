@@ -603,6 +603,7 @@
   "form.actions.removeCredential": "移除憑證",
   "form.credentialPool.agentSession": "代理會話",
   "form.credentialPool.apiKey": "閘道 API Key",
+  "form.credentialPool.cacheAware": "快取感知親和",
   "form.credentialPool.leastInFlight": "最少進行中",
   "form.credentialPool.namespace": "命名空間",
   "form.credentialPool.none": "不保持黏性",

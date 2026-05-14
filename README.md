@@ -23,7 +23,7 @@
 
 # SiftGate
 
-Current release: **v2.10.0**.
+Current release: **v2.11.0**.
 
 SiftGate is an MIT open-source AI Gateway that gives organizations one
 self-hosted control point for model traffic, agent traffic, provider
@@ -123,8 +123,9 @@ multiple approved keys for the same endpoint and model surface.
 | Pool control | What it solves |
 | --- | --- |
 | Multiple `credentials[]` per node | Keep one logical provider/model node while spreading traffic across several upstream keys or accounts. |
+| `cache_aware` | Keep requests that have created or read provider prompt cache on the same upstream key, reducing duplicated cache warmup across parallel coding-plan keys. |
 | `least_in_flight` and `weighted_round_robin` | Prefer the least busy key for agent workloads, or use explicit weights for planned capacity distribution. |
-| Sticky affinity | Keep a coding-agent session, API key, namespace, or model family on the same upstream credential when continuity matters. |
+| Sticky affinity | Keep a coding-agent session, API key, namespace, or model family on the same upstream credential when continuity matters. `cache_aware` falls back to stable API-key/team/session signals when agent sessions are missing. |
 | Cooldown and retry status policy | Move away from keys that return 429/5xx/timeouts, then recover them after cooldown without operator intervention. |
 | Credential-level log metadata | See which credential id handled a request, including retry count and strategy, while never exposing secret values. |
 
@@ -147,7 +148,7 @@ nodes:
         enabled: true
     credential_pool:
       enabled: true
-      strategy: least_in_flight
+      strategy: cache_aware
       sticky_by: agent_session
       cooldown_ms: 60000
       max_failures: 3

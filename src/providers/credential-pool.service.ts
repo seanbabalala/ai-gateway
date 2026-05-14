@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   CredentialPoolConfig,
   CredentialPoolStrategy,
@@ -6,10 +6,14 @@ import {
   NodeConfig,
   NodeCredentialConfig,
 } from '../config/gateway.config';
-import { CanonicalRequestMetadata } from '../canonical/canonical.types';
+import { CanonicalRequestMetadata, TokenUsage } from '../canonical/canonical.types';
+import { StateBackendService } from '../state/state-backend.service';
 
 const DEFAULT_RETRY_STATUSES = [429, 500, 502, 503, 504];
 const AUTH_FAILURE_STATUSES = [401, 403];
+const CACHE_AFFINITY_TTL_MS = 60 * 60 * 1000;
+const CACHE_AFFINITY_STATE_TTL_SECONDS = Math.ceil(CACHE_AFFINITY_TTL_MS / 1000);
+const CACHE_AFFINITY_STATE_PREFIX = 'credential:';
 
 export interface CredentialSelection {
   nodeId: string;
@@ -55,13 +59,26 @@ interface ReportResult {
   retryAfter?: string | null;
 }
 
+interface CredentialCacheAffinity {
+  credentialId: string;
+  updatedAt: number;
+  lastCacheReadTokens: number;
+  lastCacheCreationTokens: number;
+  workspaceId?: string | null;
+}
+
 @Injectable()
 export class CredentialPoolService {
   private readonly states = new Map<string, CredentialState>();
   private readonly roundRobinCursors = new Map<string, number>();
   private readonly stickyAssignments = new Map<string, string>();
+  private readonly cacheAffinities = new Map<string, CredentialCacheAffinity>();
 
-  select(node: NodeConfig, context: SelectionContext = {}): CredentialSelection {
+  constructor(
+    @Optional() private readonly stateBackend?: StateBackendService,
+  ) {}
+
+  async select(node: NodeConfig, context: SelectionContext = {}): Promise<CredentialSelection> {
     const credentials = this.listCredentials(node);
     if (credentials.length === 0) {
       throw new Error(`Node "${node.id}" must define api_key or credentials`);
@@ -77,6 +94,19 @@ export class CredentialPoolService {
     const untried = enabled.filter((entry) => !tried.has(entry.id));
     const candidates = this.availableCredentials(node.id, untried.length ? untried : enabled);
     const stickyKey = this.stickyKey(node.id, pool.sticky_by, context.metadata);
+    if (pool.strategy === 'cache_aware') {
+      const cacheAffinityKeys = this.cacheAffinityKeys(node.id, pool.sticky_by, context.metadata);
+      await this.hydrateCacheAffinities(cacheAffinityKeys, context.metadata);
+      const cached = this.selectCacheAware(node.id, candidates, cacheAffinityKeys);
+      if (cached) {
+        if (stickyKey) {
+          this.stickyAssignments.set(stickyKey, cached.id);
+        }
+        this.markActive(node.id, cached.id);
+        return this.toSelection(node, cached, pool, credentials);
+      }
+    }
+
     if (stickyKey) {
       const assignedId = this.stickyAssignments.get(stickyKey);
       const assigned = assignedId
@@ -88,10 +118,7 @@ export class CredentialPoolService {
       }
     }
 
-    const selected =
-      pool.strategy === 'weighted_round_robin'
-        ? this.selectWeightedRoundRobin(node.id, candidates)
-        : this.selectLeastInFlight(node.id, candidates);
+    const selected = this.selectFallback(node.id, candidates, pool.strategy);
 
     if (stickyKey) {
       this.stickyAssignments.set(stickyKey, selected.id);
@@ -126,6 +153,7 @@ export class CredentialPoolService {
     ) {
       state.failures = Math.max(state.failures + 1, pool.max_failures);
       state.cooldownUntil = Date.now() + Math.max(pool.cooldown_ms, 300_000);
+      this.clearCacheAffinitiesForCredential(selection.nodeId, selection.credential.id);
       return;
     }
 
@@ -139,6 +167,33 @@ export class CredentialPoolService {
       const retryAfterMs = parseRetryAfterMs(result.retryAfter);
       const baseCooldown = retryAfterMs ?? pool.cooldown_ms;
       state.cooldownUntil = Date.now() + Math.max(0, baseCooldown);
+    }
+  }
+
+  recordUsage(
+    selection: CredentialSelection,
+    usage: Pick<TokenUsage, 'cache_read_input_tokens' | 'cache_creation_input_tokens'> | undefined,
+    metadata?: CanonicalRequestMetadata,
+  ): void {
+    if (selection.strategy !== 'cache_aware') return;
+
+    const cacheReadTokens = Math.max(0, Number(usage?.cache_read_input_tokens || 0));
+    const cacheCreationTokens = Math.max(0, Number(usage?.cache_creation_input_tokens || 0));
+    if (cacheReadTokens <= 0 && cacheCreationTokens <= 0) return;
+
+    const keys = this.cacheAffinityKeys(selection.nodeId, selection.stickyBy, metadata);
+    if (keys.length === 0) return;
+
+    const affinity: CredentialCacheAffinity = {
+      credentialId: selection.credential.id,
+      updatedAt: Date.now(),
+      lastCacheReadTokens: cacheReadTokens,
+      lastCacheCreationTokens: cacheCreationTokens,
+      workspaceId: metadata?.workspace_id ?? null,
+    };
+    for (const key of keys) {
+      this.cacheAffinities.set(key, affinity);
+      void this.persistCacheAffinity(key, affinity, metadata).catch(() => undefined);
     }
   }
 
@@ -268,6 +323,38 @@ export class CredentialPoolService {
     return credentials[0];
   }
 
+  private selectFallback(
+    nodeId: string,
+    credentials: NodeCredentialConfig[],
+    strategy: CredentialPoolStrategy,
+  ): NodeCredentialConfig {
+    return strategy === 'weighted_round_robin'
+      ? this.selectWeightedRoundRobin(nodeId, credentials)
+      : this.selectLeastInFlight(nodeId, credentials);
+  }
+
+  private selectCacheAware(
+    nodeId: string,
+    credentials: NodeCredentialConfig[],
+    affinityKeys: string[],
+  ): NodeCredentialConfig | null {
+    if (affinityKeys.length === 0) return null;
+    const now = Date.now();
+    for (const key of affinityKeys) {
+      const affinity = this.cacheAffinities.get(key);
+      if (!affinity) continue;
+      if (now - affinity.updatedAt > CACHE_AFFINITY_TTL_MS) {
+        this.cacheAffinities.delete(key);
+        continue;
+      }
+      const candidate = credentials.find((entry) => entry.id === affinity.credentialId);
+      if (!candidate) continue;
+      if (this.stateFor(nodeId, candidate.id).cooldownUntil > now) continue;
+      return candidate;
+    }
+    return null;
+  }
+
   private markActive(nodeId: string, credentialId: string): void {
     this.stateFor(nodeId, credentialId).active += 1;
   }
@@ -305,6 +392,98 @@ export class CredentialPoolService {
             ? metadata.team_id || metadata.team_name
             : metadata.namespace_id || metadata.namespace_name;
     return value ? `${nodeId}:${stickyBy}:${value}` : null;
+  }
+
+  private cacheAffinityKeys(
+    nodeId: string,
+    stickyBy: CredentialStickyBy,
+    metadata?: CanonicalRequestMetadata,
+  ): string[] {
+    if (!metadata) return [];
+
+    const orderedModes: CredentialStickyBy[] = [];
+    if (stickyBy !== 'none') {
+      orderedModes.push(stickyBy);
+    }
+    for (const mode of ['api_key', 'agent_session', 'team', 'namespace'] as CredentialStickyBy[]) {
+      if (!orderedModes.includes(mode)) orderedModes.push(mode);
+    }
+
+    const keys = orderedModes
+      .map((mode) => this.stickyKey(nodeId, mode, metadata))
+      .filter((key): key is string => Boolean(key));
+
+    const sourceKey =
+      metadata.client_source || metadata.agent_profile_id || metadata.agent_connector;
+    if (sourceKey) {
+      keys.push(`${nodeId}:client:${sourceKey}`);
+    }
+    return [...new Set(keys)];
+  }
+
+  private clearCacheAffinitiesForCredential(nodeId: string, credentialId: string): void {
+    for (const [key, affinity] of this.cacheAffinities) {
+      if (key.startsWith(`${nodeId}:`) && affinity.credentialId === credentialId) {
+        this.cacheAffinities.delete(key);
+        void this.stateBackend
+          ?.delete('cache_affinity', this.stateKey(key), { workspaceId: affinity.workspaceId })
+          .catch(() => undefined);
+      }
+    }
+  }
+
+  private async hydrateCacheAffinities(
+    keys: string[],
+    metadata?: CanonicalRequestMetadata,
+  ): Promise<void> {
+    if (!this.stateBackend || keys.length === 0) return;
+    const missingKeys = keys.filter((key) => !this.cacheAffinities.has(key));
+    if (missingKeys.length === 0) return;
+
+    await Promise.all(
+      missingKeys.map(async (key) => {
+        try {
+          const affinity = await this.stateBackend?.getJson<CredentialCacheAffinity>(
+            'cache_affinity',
+            this.stateKey(key),
+            { workspaceId: metadata?.workspace_id },
+          );
+          if (this.isValidCacheAffinity(affinity)) {
+            this.cacheAffinities.set(key, affinity);
+          }
+        } catch {
+          // Provider credential affinity is an optimization; request routing remains fail-open.
+        }
+      }),
+    );
+  }
+
+  private async persistCacheAffinity(
+    key: string,
+    affinity: CredentialCacheAffinity,
+    metadata?: CanonicalRequestMetadata,
+  ): Promise<void> {
+    await this.stateBackend?.setJson(
+      'cache_affinity',
+      this.stateKey(key),
+      affinity,
+      CACHE_AFFINITY_STATE_TTL_SECONDS,
+      { workspaceId: metadata?.workspace_id },
+    );
+  }
+
+  private stateKey(key: string): string {
+    return `${CACHE_AFFINITY_STATE_PREFIX}${key}`;
+  }
+
+  private isValidCacheAffinity(value: unknown): value is CredentialCacheAffinity {
+    if (!value || typeof value !== 'object') return false;
+    const typed = value as Partial<CredentialCacheAffinity>;
+    return (
+      typeof typed.credentialId === 'string' &&
+      typeof typed.updatedAt === 'number' &&
+      Number.isFinite(typed.updatedAt)
+    );
   }
 
   private resolvePool(node: NodeConfig): Required<CredentialPoolConfig> {

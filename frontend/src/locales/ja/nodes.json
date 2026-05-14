@@ -603,6 +603,7 @@
   "form.actions.removeCredential": "認証情報を削除",
   "form.credentialPool.agentSession": "エージェントセッション",
   "form.credentialPool.apiKey": "ゲートウェイ API キー",
+  "form.credentialPool.cacheAware": "キャッシュ認識アフィニティ",
   "form.credentialPool.leastInFlight": "処理中が最少",
   "form.credentialPool.namespace": "名前空間",
   "form.credentialPool.none": "固定なし",

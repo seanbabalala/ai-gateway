@@ -603,6 +603,7 @@
   "form.actions.removeCredential": "ลบข้อมูลรับรอง",
   "form.credentialPool.agentSession": "เซสชันเอเจนต์",
   "form.credentialPool.apiKey": "คีย์ API ของเกตเวย์",
+  "form.credentialPool.cacheAware": "ผูกตามแคช",
   "form.credentialPool.leastInFlight": "งานค้างน้อยสุด",
   "form.credentialPool.namespace": "เนมสเปซ",
   "form.credentialPool.none": "ไม่ผูกติด",

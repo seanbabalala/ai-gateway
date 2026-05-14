@@ -692,6 +692,129 @@ describe('ProviderClientService', () => {
       ).rejects.toMatchObject({ statusCode: 400, credentialId: 'a' });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+
+    it('keeps cache-aware requests on the provider credential that created cache', async () => {
+      const fetchMock = jest.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          id: 'chatcmpl-cache-primer',
+          model: 'gpt-4o',
+          choices: [{ message: { role: 'assistant', content: 'warm' }, finish_reason: 'stop' }],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 2,
+            prompt_tokens_details: { cached_tokens: 64 },
+          },
+        }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          id: 'chatcmpl-cache-affinity',
+          model: 'gpt-4o',
+          choices: [{ message: { role: 'assistant', content: 'still warm' }, finish_reason: 'stop' }],
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 2,
+            prompt_tokens_details: { cached_tokens: 48 },
+          },
+        }), { status: 200 }));
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithCredentialPool({
+        api_key: undefined,
+        credentials: [
+          { id: 'a', api_key: 'sk-a', weight: 1, enabled: true },
+          { id: 'b', api_key: 'sk-b', weight: 1, enabled: true },
+        ],
+        credential_pool: {
+          enabled: true,
+          strategy: 'cache_aware',
+          sticky_by: 'agent_session',
+        },
+      });
+
+      const metadata = {
+        source_format: 'chat_completions' as const,
+        raw_headers: {},
+        api_key_name: 'claude-code',
+      };
+
+      const first = await svc.forward(
+        makeCanonical({ metadata: { ...metadata } }),
+        'openai',
+        'gpt-4o',
+        routingMeta,
+      );
+      const second = await svc.forward(
+        makeCanonical({ metadata: { ...metadata } }),
+        'openai',
+        'gpt-4o',
+        routingMeta,
+      );
+
+      expect(first.routing.credential_id).toBe('a');
+      expect(second.routing.credential_id).toBe('a');
+      expect(second.routing.credential_strategy).toBe('cache_aware');
+      expect((fetchMock.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-a');
+      expect((fetchMock.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-a');
+    });
+
+    it('fails over from a cache-aware credential when the preferred key is rate limited', async () => {
+      const fetchMock = jest.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          id: 'chatcmpl-cache-primer',
+          model: 'gpt-4o',
+          choices: [{ message: { role: 'assistant', content: 'warm' }, finish_reason: 'stop' }],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 2,
+            prompt_tokens_details: { cached_tokens: 64 },
+          },
+        }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'busy' }), { status: 429 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          id: 'chatcmpl-cache-fallback',
+          model: 'gpt-4o',
+          choices: [{ message: { role: 'assistant', content: 'fallback' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 8, completion_tokens: 2 },
+        }), { status: 200 }));
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithCredentialPool({
+        api_key: undefined,
+        credentials: [
+          { id: 'a', api_key: 'sk-a', weight: 1, enabled: true },
+          { id: 'b', api_key: 'sk-b', weight: 1, enabled: true },
+        ],
+        credential_pool: {
+          enabled: true,
+          strategy: 'cache_aware',
+          retry_on_status: [429, 500, 502, 503, 504],
+        },
+      });
+
+      const metadata = {
+        source_format: 'chat_completions' as const,
+        raw_headers: {},
+        api_key_name: 'claude-code',
+      };
+
+      await svc.forward(
+        makeCanonical({ metadata: { ...metadata } }),
+        'openai',
+        'gpt-4o',
+        routingMeta,
+      );
+      const fallback = await svc.forward(
+        makeCanonical({ metadata: { ...metadata } }),
+        'openai',
+        'gpt-4o',
+        routingMeta,
+      );
+
+      expect(fallback.content[0]).toEqual({ type: 'text', text: 'fallback' });
+      expect(fallback.routing.credential_id).toBe('b');
+      expect(fallback.routing.credential_retry_count).toBe(1);
+      expect((fetchMock.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-a');
+      expect((fetchMock.mock.calls[2][1].headers as Record<string, string>).Authorization).toBe('Bearer sk-b');
+    });
   });
 
   // ── Native Messages Passthrough (via private methods accessed indirectly) ──

@@ -315,7 +315,7 @@ interface FormState {
   headers: KeyValueRow[];
   credentials: CredentialRow[];
   credential_pool_enabled: boolean;
-  credential_pool_strategy: "least_in_flight" | "weighted_round_robin";
+  credential_pool_strategy: "least_in_flight" | "weighted_round_robin" | "cache_aware";
   credential_pool_sticky_by:
     | "none"
     | "agent_session"
@@ -2333,6 +2333,10 @@ export function NodeFormModal({
                               {
                                 value: "weighted_round_robin",
                                 label: t("form.credentialPool.weightedRoundRobin"),
+                              },
+                              {
+                                value: "cache_aware",
+                                label: t("form.credentialPool.cacheAware"),
                               },
                             ]}
                           />

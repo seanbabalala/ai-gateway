@@ -152,6 +152,7 @@ export class ProviderClientService {
           usageSchema,
         );
         this.applyCredentialRoutingMetadata(canonical_resp.routing, response);
+        this.recordResponseCredentialUsage(response, canonical_resp.usage, canonical.metadata);
 
         // GenAI semantic attributes
         span.setAttributes({
@@ -214,6 +215,7 @@ export class ProviderClientService {
           latencyMs,
         );
         this.applyCredentialRoutingMetadata(canonicalResp.routing, response);
+        this.recordResponseCredentialUsage(response, canonicalResp.usage, canonical.metadata);
         span.setAttributes({
           'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
           'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
@@ -274,6 +276,7 @@ export class ProviderClientService {
           latencyMs,
         );
         this.applyCredentialRoutingMetadata(canonicalResp.routing, response);
+        this.recordResponseCredentialUsage(response, canonicalResp.usage, canonical.metadata);
         span.setAttributes({
           'gen_ai.usage.input_tokens': canonicalResp.usage.input_tokens,
           'gen_ai.usage.output_tokens': canonicalResp.usage.output_tokens,
@@ -338,6 +341,7 @@ export class ProviderClientService {
             latencyMs,
           );
           this.applyCredentialRoutingMetadata(canonicalResp.routing, response);
+          this.recordResponseCredentialUsage(response, canonicalResp.usage, canonical.metadata);
           this.completeResponseCredential(response, {
             statusCode: response.status,
           });
@@ -402,6 +406,7 @@ export class ProviderClientService {
       node.protocol,
       this.resolveUsageSchemaForNode(node),
     );
+    let latestUsage: TokenUsage | undefined;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const cancelReader = () => {
@@ -423,6 +428,9 @@ export class ProviderClientService {
 
         const chunk = decoder.decode(value, { stream: true });
         for (const event of parser.parse(chunk)) {
+          if (event.type === 'stop') {
+            latestUsage = event.usage;
+          }
           yield event;
         }
       }
@@ -431,6 +439,9 @@ export class ProviderClientService {
         typeof (parser as { flush?: () => Generator<CanonicalStreamEvent> }).flush === 'function'
       ) {
         for (const event of (parser as { flush: () => Generator<CanonicalStreamEvent> }).flush()) {
+          if (event.type === 'stop') {
+            latestUsage = event.usage;
+          }
           yield event;
         }
       }
@@ -444,6 +455,7 @@ export class ProviderClientService {
         },
       };
     } finally {
+      this.recordResponseCredentialUsage(response, latestUsage, canonical.metadata);
       this.completeResponseCredential(response, {
         statusCode: options.signal?.aborted ? 499 : response.status,
       });
@@ -499,7 +511,7 @@ export class ProviderClientService {
     let lastError: ProviderError | null = null;
 
     for (let attempt = 0; attempt < attemptLimit; attempt++) {
-      const credential = this.selectCredential(node, canonical?.metadata, triedCredentialIds);
+      const credential = await this.selectCredential(node, canonical?.metadata, triedCredentialIds);
       triedCredentialIds.add(credential.credential.id);
       const headers = await this.buildHeaders(
         node,
@@ -643,7 +655,7 @@ export class ProviderClientService {
     let lastError: ProviderError | null = null;
 
     for (let attempt = 0; attempt < attemptLimit; attempt++) {
-      const credential = this.selectCredential(node, undefined, triedCredentialIds);
+      const credential = await this.selectCredential(node, undefined, triedCredentialIds);
       triedCredentialIds.add(credential.credential.id);
       const headers = await this.buildHeaders(
         node,
@@ -831,11 +843,11 @@ export class ProviderClientService {
     );
   }
 
-  private selectCredential(
+  private async selectCredential(
     node: NodeConfig,
     metadata?: CanonicalRequest['metadata'],
     triedCredentialIds?: Set<string>,
-  ): CredentialSelection {
+  ): Promise<CredentialSelection> {
     if (this.credentialPool) {
       return this.credentialPool.select(node, { metadata, triedCredentialIds });
     }
@@ -909,6 +921,16 @@ export class ProviderClientService {
     routing.credential_id = metadata.selection.credential.id;
     routing.credential_strategy = metadata.selection.strategy;
     routing.credential_retry_count = metadata.retryCount;
+  }
+
+  private recordResponseCredentialUsage(
+    response: Response,
+    usage: TokenUsage | undefined,
+    requestMetadata?: CanonicalRequest['metadata'],
+  ): void {
+    const metadata = this.responseCredentials.get(response);
+    if (!metadata) return;
+    this.credentialPool?.recordUsage(metadata.selection, usage, requestMetadata);
   }
 
   // ══════════════════════════════════════════════════════

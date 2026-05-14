@@ -428,7 +428,7 @@ nodes:
     #     enabled: true
     # credential_pool:
     #   enabled: true
-    #   strategy: least_in_flight       # least_in_flight | weighted_round_robin
+    #   strategy: cache_aware           # cache_aware | least_in_flight | weighted_round_robin
     #   sticky_by: agent_session        # none | agent_session | api_key | team | namespace
     #   cooldown_ms: 60000
     #   max_failures: 3
