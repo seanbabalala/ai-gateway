@@ -5840,6 +5840,11 @@ export class DashboardController {
         protocol: node.protocol,
         base_url: node.base_url,
         endpoint: node.endpoint,
+        timeout_ms: node.timeout_ms,
+        max_concurrency: node.max_concurrency ?? null,
+        queue_timeout_ms: node.queue_timeout_ms ?? null,
+        queue_policy: node.queue_policy ?? null,
+        health_check: node.health_check ?? null,
         auth_type: node.auth_type || null,
         auth_header_name:
           node.auth_type === "custom-header" ? node.auth_header_name || null : null,

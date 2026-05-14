@@ -1431,6 +1431,11 @@ export interface NodeInfo {
   protocol: "chat_completions" | "responses" | "messages";
   base_url: string;
   endpoint: string;
+  timeout_ms: number;
+  max_concurrency?: number | null;
+  queue_timeout_ms?: number | null;
+  queue_policy?: "wait" | "fallback" | "reject" | null;
+  health_check?: HealthCheckRequest | null;
   auth_type?: "bearer" | "x-api-key" | "custom-header" | null;
   auth_header_name?: string | null;
   auth_header_prefix?: string | null;

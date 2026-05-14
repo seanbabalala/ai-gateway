@@ -923,10 +923,40 @@ export function NodeFormModal({
         auth_type: editNode.auth_type || "",
         auth_header_name: editNode.auth_header_name || "",
         auth_header_prefix: editNode.auth_header_prefix || "",
-        max_concurrency: "",
-        queue_timeout_ms: "",
-        queue_policy: "wait",
-        health_check: { ...EMPTY_HEALTH_CHECK },
+        timeout_ms: String(editNode.timeout_ms ?? 30000),
+        max_concurrency:
+          editNode.max_concurrency !== null &&
+          editNode.max_concurrency !== undefined
+            ? String(editNode.max_concurrency)
+            : "",
+        queue_timeout_ms:
+          editNode.queue_timeout_ms !== null &&
+          editNode.queue_timeout_ms !== undefined
+            ? String(editNode.queue_timeout_ms)
+            : "",
+        queue_policy: editNode.queue_policy || "wait",
+        health_check: {
+          ...EMPTY_HEALTH_CHECK,
+          ...(editNode.health_check
+            ? {
+                enabled: Boolean(editNode.health_check.enabled),
+                interval_seconds: String(
+                  editNode.health_check.interval_seconds ??
+                    EMPTY_HEALTH_CHECK.interval_seconds,
+                ),
+                timeout_ms: String(
+                  editNode.health_check.timeout_ms ??
+                    EMPTY_HEALTH_CHECK.timeout_ms,
+                ),
+                method:
+                  editNode.health_check.method ?? EMPTY_HEALTH_CHECK.method,
+                path: editNode.health_check.path ?? EMPTY_HEALTH_CHECK.path,
+                lightweight_model:
+                  editNode.health_check.lightweight_model ??
+                  EMPTY_HEALTH_CHECK.lightweight_model,
+              }
+            : {}),
+        },
         selectedCapabilities,
         pricing: pricingRowsFromCapabilities(editNode.model_capabilities),
       });

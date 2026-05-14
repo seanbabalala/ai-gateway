@@ -352,8 +352,8 @@ export class ProviderCompatibilityService {
       const response = await this.fetchWithTimeout(url, {
         method: 'POST',
         headers: await this.authHeaders(node),
-        body: JSON.stringify(this.safeBodyFor(plan)),
-      });
+        body: JSON.stringify(this.safeBodyFor(node, plan)),
+      }, this.timeoutMsForNode(node));
       const latencyMs = Date.now() - started;
       const classification = this.classifyResponse(response.status, plan.capability);
       await response.text().catch(() => '');
@@ -387,7 +387,7 @@ export class ProviderCompatibilityService {
       const response = await this.fetchWithTimeout(url, {
         method: 'HEAD',
         headers: await this.authHeaders(node, false),
-      });
+      }, this.timeoutMsForNode(node));
       return this.persistResult(node, plan, {
         configured: true,
         tested: true,
@@ -449,9 +449,10 @@ export class ProviderCompatibilityService {
   private async fetchWithTimeout(
     url: string,
     init: RequestInit,
+    timeoutMs = 15_000,
   ): Promise<Response> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     timeout.unref?.();
     try {
       return await fetch(url, {
@@ -477,7 +478,15 @@ export class ProviderCompatibilityService {
       : node.api_key;
     const headers: Record<string, string> = json ? { 'Content-Type': 'application/json' } : {};
     const authType = node.auth_type || (node.protocol === 'messages' ? 'x-api-key' : 'bearer');
-    if (authType === 'x-api-key') {
+    if (authType === 'custom-header') {
+      const headerName = node.auth_header_name?.trim();
+      if (!headerName) {
+        throw new Error(`Node "${node.id}" auth_type=custom-header requires auth_header_name`);
+      }
+      headers[headerName] = node.auth_header_prefix
+        ? `${node.auth_header_prefix} ${apiKey}`
+        : apiKey;
+    } else if (authType === 'x-api-key') {
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = nodeHeaders['anthropic-version'] || '2023-06-01';
     } else {
@@ -489,8 +498,11 @@ export class ProviderCompatibilityService {
     return headers;
   }
 
-  private safeBodyFor(plan: CapabilityPlan): Record<string, unknown> {
-    const model = plan.model || 'auto';
+  private safeBodyFor(
+    node: NodeConfig,
+    plan: CapabilityPlan,
+  ): Record<string, unknown> {
+    const model = this.resolveUpstreamModel(node, plan.model) || 'auto';
     switch (plan.capability) {
       case 'responses':
         return {
@@ -540,6 +552,15 @@ export class ProviderCompatibilityService {
           messages: [{ role: 'user', content: 'ping' }],
         };
     }
+  }
+
+  private resolveUpstreamModel(node: NodeConfig, model: string | null): string | null {
+    if (!model) return model;
+    return node.upstream_model_aliases?.[model] || model;
+  }
+
+  private timeoutMsForNode(node: NodeConfig): number {
+    return node.timeout_ms ?? 60_000;
   }
 
   private buildHttpUrl(node: NodeConfig, endpoint: string | null): string {

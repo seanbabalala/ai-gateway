@@ -68,6 +68,10 @@ function makeDashboard(overrides: Record<string, any> = {}) {
         endpoints: { image: "/v1/images/generations" },
         models: ["gpt-4o"],
         embedding_models: ["text-embedding-3-small"],
+        timeout_ms: 60000,
+        max_concurrency: 3,
+        queue_timeout_ms: 250,
+        queue_policy: "fallback",
         api_key: "sk-test12345678rest",
         tags: [],
         model_aliases: {},
@@ -3075,6 +3079,14 @@ describe("DashboardController — nodes", () => {
     expect(result.nodes).toHaveLength(2);
     expect(result.nodes[0].id).toBe("openai");
     expect(result.nodes[0].healthy).toBe(true);
+    expect(result.nodes[0]).toEqual(
+      expect.objectContaining({
+        timeout_ms: 60000,
+        max_concurrency: 3,
+        queue_timeout_ms: 250,
+        queue_policy: "fallback",
+      }),
+    );
     expect(result.nodes[0].capabilities).toBeDefined();
     expect(result.nodes[0].modalities).toBeDefined();
     expect(result.nodes[0].embedding_models).toEqual([

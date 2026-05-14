@@ -142,6 +142,67 @@ describe('ProviderCompatibilityService', () => {
     expect(JSON.stringify(repo.rows)).not.toContain('{"ok":true}');
   });
 
+  it('uses upstream model aliases for provider safe requests', async () => {
+    const repo = makeRepo();
+    const service = makeService(repo);
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 200,
+      text: jest.fn().mockResolvedValue('{"ok":true}'),
+    });
+    global.fetch = fetchMock as any;
+
+    const result = await service.runNodeMatrix(
+      node({
+        protocol: 'messages',
+        endpoint: '/v1/messages',
+        models: ['claude-opus-4-7-ctrip'],
+        upstream_model_aliases: {
+          'claude-opus-4-7-ctrip': 'claude-opus-4-7',
+        },
+        compatibility_profile: ['anthropic_messages_compatible'],
+        auth_type: 'bearer',
+      }),
+      { capabilities: ['messages'] },
+    );
+
+    expect(result.success).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual(
+      expect.objectContaining({
+        model: 'claude-opus-4-7',
+        max_tokens: 1,
+      }),
+    );
+  });
+
+  it('uses node timeout and custom auth headers for safe requests', async () => {
+    const repo = makeRepo();
+    const service = makeService(repo);
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 200,
+      text: jest.fn().mockResolvedValue('{"ok":true}'),
+    });
+    global.fetch = fetchMock as any;
+
+    await service.runNodeMatrix(
+      node({
+        auth_type: 'custom-header',
+        auth_header_name: 'x-provider-token',
+        auth_header_prefix: 'Token',
+        timeout_ms: 1234,
+      }),
+      { capabilities: ['chat'] },
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers).toMatchObject({
+      'x-provider-token': 'Token sk-test',
+    });
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
+  });
+
   it('uses the minimum portable Responses output token limit', async () => {
     const repo = makeRepo();
     const service = makeService(repo);
