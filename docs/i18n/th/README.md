@@ -2,7 +2,7 @@
 
 [หน้าหลักเอกสาร](../../README.md) · [README ของโปรเจกต์](../../../README.md)
 
-รีลีสปัจจุบัน: **v2.11.2**
+รีลีสปัจจุบัน: **v2.11.3**
 
 SiftGate คือ self-hosted AI traffic data plane สำหรับทีมที่ไม่ต้องการจบที่การแจก
 provider key โดยตรง การตั้งค่า proxy เฉพาะหน้า หรือ model routing ที่ตรวจสอบไม่ได้

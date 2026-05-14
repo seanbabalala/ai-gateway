@@ -1,8 +1,9 @@
 import { BadGatewayException, ForbiddenException, GatewayTimeoutException, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common'
+import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { ConfigService } from '../config/config.service'
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service'
-import type { McpServerConfig, McpToolConfig } from '../config/gateway.config'
+import type { McpServerConfig, McpServerTransport, McpToolConfig } from '../config/gateway.config'
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service'
 import { WorkspaceContextService } from '../workspaces/workspace-context.service'
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope'
@@ -89,6 +90,14 @@ interface McpRequestMetadata {
   requestBytes: number
 }
 
+interface McpUpstreamResult {
+  statusCode: number
+  contentType: string
+  bodyText: string
+  headers: Record<string, string>
+  ok: boolean
+}
+
 @Injectable()
 export class McpGatewayService {
   private readonly auditEntries: McpGatewayAuditEntry[] = []
@@ -142,43 +151,28 @@ export class McpGatewayService {
     try {
       this.assertRequestSize(server, metadata.requestBytes)
       this.assertAccess(server, input.apiKey, metadata)
-      const headers = await this.buildUpstreamHeaders(server, requestId)
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), Math.max(1, server.timeout_ms ?? 30_000))
-      let upstream: Response
-      try {
-        upstream = await fetch(server.url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(input.body ?? null),
-          signal: controller.signal,
-        })
-      } finally {
-        clearTimeout(timeout)
-      }
-
-      const bodyText = await upstream.text()
-      const contentType = upstream.headers.get('content-type') || 'application/json; charset=utf-8'
-      const responseHeaders = this.safeResponseHeaders(upstream.headers)
-      responseHeaders['x-siftgate-mcp-request-id'] = requestId
+      const upstream =
+        this.resolveTransport(server) === 'stdio'
+          ? await this.forwardStdio(server, input.body, requestId)
+          : await this.forwardHttp(server, input.body, requestId)
 
       this.recordAudit({
         requestId,
         server,
         metadata,
         apiKey: input.apiKey,
-        statusCode: upstream.status,
+        statusCode: upstream.statusCode,
         success: upstream.ok,
         latencyMs: Date.now() - started,
-        errorType: upstream.ok ? null : `upstream_${upstream.status}`,
+        errorType: upstream.ok ? null : `upstream_${upstream.statusCode}`,
       })
 
       return {
         requestId,
-        statusCode: upstream.status,
-        contentType,
-        bodyText,
-        headers: responseHeaders,
+        statusCode: upstream.statusCode,
+        contentType: upstream.contentType,
+        bodyText: upstream.bodyText,
+        headers: upstream.headers,
       }
     } catch (error) {
       const errorType = this.errorType(error)
@@ -212,7 +206,7 @@ export class McpGatewayService {
       description: server.description || null,
       enabled: server.enabled !== false,
       transport: server.transport || 'http_json_rpc',
-      endpoint: safeEndpoint(server.url),
+      endpoint: safeEndpoint(server),
       allowed_namespaces: server.allowed_namespaces || [],
       tools: (server.tools || []).map((tool) => this.toolSummary(tool)),
       tags: server.tags || [],
@@ -326,6 +320,184 @@ export class McpGatewayService {
     }
   }
 
+  private resolveTransport(server: McpServerConfig): McpServerTransport {
+    return server.transport || 'http_json_rpc'
+  }
+
+  private async forwardHttp(server: McpServerConfig, body: unknown, requestId: string): Promise<McpUpstreamResult> {
+    if (!server.url) {
+      throw new Error(`MCP server ${server.id} is missing url.`)
+    }
+    const headers = await this.buildUpstreamHeaders(server, requestId)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), Math.max(1, server.timeout_ms ?? 30_000))
+    let response: Response
+    try {
+      response = await fetch(server.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body ?? null),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    const responseHeaders = this.safeResponseHeaders(response.headers)
+    responseHeaders['x-siftgate-mcp-request-id'] = requestId
+    return {
+      statusCode: response.status,
+      contentType: response.headers.get('content-type') || 'application/json; charset=utf-8',
+      bodyText: await response.text(),
+      headers: responseHeaders,
+      ok: response.ok,
+    }
+  }
+
+  private async forwardStdio(server: McpServerConfig, body: unknown, requestId: string): Promise<McpUpstreamResult> {
+    if (!server.command) {
+      throw new Error(`MCP stdio server ${server.id} is missing command.`)
+    }
+
+    const timeoutMs = Math.max(1, server.timeout_ms ?? 30_000)
+    const command = await this.secrets.resolveString(server.command, {
+      location: `mcp.servers.${server.id}.command`,
+    })
+    const args = await Promise.all(
+      (server.args || []).map((arg, index) =>
+        this.secrets.resolveString(arg, {
+          optional: true,
+          location: `mcp.servers.${server.id}.args[${index}]`,
+        }),
+      ),
+    )
+    const configuredEnv = await this.secrets.resolveRecord(server.env, {
+      optional: true,
+      location: `mcp.servers.${server.id}.env`,
+    })
+    const cwd = server.cwd
+      ? await this.secrets.resolveString(server.cwd, {
+          optional: true,
+          location: `mcp.servers.${server.id}.cwd`,
+        })
+      : undefined
+
+    return new Promise<McpUpstreamResult>((resolve, reject) => {
+      const child = spawn(command, args, {
+        cwd,
+        env: {
+          ...process.env,
+          ...configuredEnv,
+          SIFTGATE_MCP_REQUEST_ID: requestId,
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      const expectedIds = requestIds(body)
+      const initId = `siftgate-init-${requestId}`
+      const shouldInitialize = shouldAutoInitializeStdio(body)
+      const responses: unknown[] = []
+      let stdoutBuffer = ''
+      let stderrBuffer = ''
+      let settled = false
+      let sentBody = false
+
+      const finish = (result: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        child.kill()
+        resolve({
+          statusCode: 200,
+          contentType: 'application/json; charset=utf-8',
+          bodyText: JSON.stringify(result),
+          headers: {
+            'x-siftgate-mcp-request-id': requestId,
+          },
+          ok: true,
+        })
+      }
+
+      const fail = (error: Error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        child.kill()
+        reject(error)
+      }
+
+      const send = (message: unknown) => {
+        child.stdin.write(`${JSON.stringify(message)}\n`)
+      }
+
+      const sendBody = () => {
+        if (sentBody) return
+        sentBody = true
+        send(body ?? null)
+        if (expectedIds.size === 0) {
+          finish({ jsonrpc: '2.0', result: null })
+        }
+      }
+
+      const timeout = setTimeout(() => {
+        fail(new Error('MCP stdio upstream timed out.'))
+      }, timeoutMs)
+
+      child.once('error', (error) => fail(error))
+      child.once('exit', (code, signal) => {
+        if (settled) return
+        const suffix = stderrBuffer.trim() ? `: ${sanitizeStdioError(stderrBuffer)}` : ''
+        fail(new Error(`MCP stdio upstream exited before returning a response (${signal || code || 'unknown'})${suffix}`))
+      })
+
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderrBuffer = limitBuffer(`${stderrBuffer}${chunk.toString('utf8')}`)
+      })
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdoutBuffer += chunk.toString('utf8')
+        const lines = stdoutBuffer.split(/\r?\n/)
+        stdoutBuffer = lines.pop() || ''
+        for (const line of lines) {
+          const parsed = parseJsonLine(line)
+          if (parsed === undefined) continue
+          const messages = Array.isArray(parsed) ? parsed : [parsed]
+          for (const message of messages) {
+            const responseId = jsonRpcId(message)
+            if (responseId === initId) {
+              send({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} })
+              sendBody()
+              continue
+            }
+            if (responseId !== null && expectedIds.has(responseId)) {
+              responses.push(message)
+            }
+          }
+          if (responses.length > 0 && responses.length >= expectedIds.size) {
+            finish(Array.isArray(body) ? responses : responses[0])
+          }
+        }
+      })
+
+      if (shouldInitialize) {
+        send({
+          jsonrpc: '2.0',
+          id: initId,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: {
+              name: 'siftgate-mcp-gateway',
+              version: '1.0.0',
+            },
+          },
+        })
+      } else {
+        sendBody()
+      }
+    })
+  }
+
   private safeResponseHeaders(headers: Headers): Record<string, string> {
     const allowed = new Set(['cache-control', 'content-language', 'content-type', 'mcp-session-id'])
     const result: Record<string, string> = {}
@@ -397,11 +569,59 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function safeEndpoint(rawUrl: string): string {
+function safeEndpoint(server: McpServerConfig): string {
+  if ((server.transport || 'http_json_rpc') === 'stdio') {
+    return `stdio:${server.command || server.id}`
+  }
+  const rawUrl = server.url || ''
   try {
     const url = new URL(rawUrl)
     return `${url.origin}${url.pathname}`
   } catch {
     return rawUrl.split('?')[0] || rawUrl
   }
+}
+
+function requestIds(body: unknown): Set<string> {
+  const ids = new Set<string>()
+  const requests = Array.isArray(body) ? body : [body]
+  for (const item of requests) {
+    if (!isRecord(item) || !('id' in item)) continue
+    const id = item.id
+    if (typeof id === 'string' || typeof id === 'number') {
+      ids.add(String(id))
+    }
+  }
+  return ids
+}
+
+function jsonRpcId(message: unknown): string | null {
+  if (!isRecord(message)) return null
+  const id = message.id
+  if (typeof id === 'string' || typeof id === 'number') return String(id)
+  return null
+}
+
+function shouldAutoInitializeStdio(body: unknown): boolean {
+  const requests = Array.isArray(body) ? body : [body]
+  return !requests.some((item) => isRecord(item) && item.method === 'initialize')
+}
+
+function parseJsonLine(line: string): unknown | undefined {
+  const trimmed = line.trim()
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return undefined
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return undefined
+  }
+}
+
+function limitBuffer(value: string): string {
+  const max = 4000
+  return value.length > max ? value.slice(value.length - max) : value
+}
+
+function sanitizeStdioError(value: string): string {
+  return value.replace(/\s+/g, ' ').slice(0, 300)
 }

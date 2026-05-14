@@ -4064,12 +4064,24 @@ function validateMcpGateway(
       );
     }
 
-    if (!isNonEmptyString(server.url)) {
+    const transport = typeof server.transport === 'string' ? server.transport : 'http_json_rpc';
+    if (transport === 'stdio') {
+      if (!isNonEmptyString(server.command)) {
+        issues.push(
+          issue(
+            'error',
+            'missing_required_field',
+            'mcp.servers[].command is required when transport is stdio.',
+            `${basePath}.command`,
+          ),
+        );
+      }
+    } else if (!isNonEmptyString(server.url)) {
       issues.push(
         issue(
           'error',
           'missing_required_field',
-          'mcp.servers[].url is required.',
+          'mcp.servers[].url is required for HTTP MCP transports.',
           `${basePath}.url`,
         ),
       );
@@ -4085,14 +4097,63 @@ function validateMcpGateway(
     if (
       server.transport !== undefined &&
       server.transport !== 'http_json_rpc' &&
-      server.transport !== 'streamable_http'
+      server.transport !== 'streamable_http' &&
+      server.transport !== 'stdio'
     ) {
       issues.push(
         issue(
           'error',
           'invalid_mcp_server',
-          'mcp.servers[].transport must be http_json_rpc or streamable_http.',
+          'mcp.servers[].transport must be http_json_rpc, streamable_http, or stdio.',
           `${basePath}.transport`,
+        ),
+      );
+    }
+
+    if (server.args !== undefined) {
+      if (!Array.isArray(server.args) || !server.args.every((item) => typeof item === 'string')) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_mcp_server',
+            'mcp.servers[].args must be an array of strings when set.',
+            `${basePath}.args`,
+          ),
+        );
+      }
+    }
+
+    if (server.env !== undefined && !isRecord(server.env)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].env must be an object.',
+          `${basePath}.env`,
+        ),
+      );
+    } else if (isRecord(server.env)) {
+      for (const [envName, envValue] of Object.entries(server.env)) {
+        if (!isNonEmptyString(envName) || typeof envValue !== 'string') {
+          issues.push(
+            issue(
+              'error',
+              'invalid_mcp_server',
+              'MCP stdio env entries must be string key/value pairs.',
+              `${basePath}.env.${envName}`,
+            ),
+          );
+        }
+      }
+    }
+
+    if (server.cwd !== undefined && !isNonEmptyString(server.cwd)) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].cwd must be a non-empty string when set.',
+          `${basePath}.cwd`,
         ),
       );
     }

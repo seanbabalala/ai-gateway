@@ -2,7 +2,7 @@
 
 [문서 홈](../../README.md) · [프로젝트 README](../../../README.md)
 
-현재 릴리스: **v2.11.2**.
+현재 릴리스: **v2.11.3**.
 
 SiftGate는 직접 배포된 provider key, 임시 proxy 설정, 불투명한 model routing을
 넘어선 팀을 위한 self-hosted AI traffic data plane입니다. 앱, Coding Agent,

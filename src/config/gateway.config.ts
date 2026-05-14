@@ -528,7 +528,7 @@ export interface NamespaceConfig {
 }
 
 // ===== MCP Gateway Preview =====
-export type McpServerTransport = 'http_json_rpc' | 'streamable_http';
+export type McpServerTransport = 'http_json_rpc' | 'streamable_http' | 'stdio';
 
 export interface McpToolConfig {
   /** Tool name advertised in Dashboard metadata. */
@@ -544,12 +544,20 @@ export interface McpServerConfig {
   description?: string;
   /** Disable one server without removing it. Default: true. */
   enabled?: boolean;
-  /** Upstream MCP HTTP endpoint. Values may use secret references in headers, not URL query secrets. */
-  url: string;
-  /** Preview supports HTTP JSON-RPC style forwarding. Default: http_json_rpc. */
+  /** Upstream MCP HTTP endpoint. Required for HTTP transports. Values may use secret references in headers, not URL query secrets. */
+  url?: string;
+  /** Preview supports HTTP JSON-RPC and local stdio MCP process forwarding. Default: http_json_rpc. */
   transport?: McpServerTransport;
   /** Optional outbound headers. Values may use runtime secret references. */
   headers?: Record<string, string>;
+  /** Stdio MCP command, for example uvx. Required when transport is stdio. */
+  command?: string;
+  /** Stdio MCP command arguments. Values may use runtime secret references. */
+  args?: string[];
+  /** Optional stdio MCP process environment. Values may use runtime secret references. */
+  env?: Record<string, string>;
+  /** Optional stdio MCP process working directory. */
+  cwd?: string;
   /** Optional namespace allow-list. Empty/unset allows all namespaces. */
   allowed_namespaces?: string[];
   /** Optional static tool metadata for Dashboard. Tool inputs/outputs are never stored by default. */

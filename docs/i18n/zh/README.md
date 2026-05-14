@@ -2,7 +2,7 @@
 
 [文档首页](../../README.md) · [项目 README](../../../README.md)
 
-当前版本：**v2.11.2**。
+当前版本：**v2.11.3**。
 
 SiftGate 是一个自托管 AI traffic data plane，面向已经不满足于“直接发供应商
 Key”或“简单代理转发”的团队。它把应用、Coding Agent、MCP 工具、供应商凭证、

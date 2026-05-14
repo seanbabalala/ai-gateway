@@ -248,6 +248,30 @@ auth:
 #           description: "Search local product docs"
 #           input_schema:
 #             type: object
+#
+#     # MiniMax Token Plan MCP exposes web_search and understand_image through a
+#     # local stdio MCP process. Clients still call SiftGate at /mcp/:serverId,
+#     # while SiftGate launches and initializes the upstream MCP process.
+#     - id: minimax-token-plan
+#       name: "MiniMax Token Plan MCP"
+#       description: "MiniMax MCP tools for web search and image understanding"
+#       transport: stdio
+#       command: uvx
+#       args: ["minimax-coding-plan-mcp"]
+#       timeout_ms: 30000
+#       max_request_bytes: 1000000
+#       env:
+#         MINIMAX_API_KEY: "${env:MINIMAX_TOKEN_PLAN_KEY}"
+#         MINIMAX_API_HOST: "https://api.minimaxi.com"
+#       tools:
+#         - name: web_search
+#           description: "Search the web through MiniMax Token Plan"
+#           input_schema:
+#             type: object
+#         - name: understand_image
+#           description: "Analyze image content through MiniMax Token Plan"
+#           input_schema:
+#             type: object
 
 # ============================================================
 # Secret Manager References (optional)
@@ -259,6 +283,7 @@ auth:
 # Supported reference locations:
 #   - nodes[].api_key
 #   - nodes[].headers
+#   - mcp.servers[].headers / command / args / env / cwd
 #   - health/realtime provider auth inherited from node auth fields
 #   - control_plane.registration_token
 #
