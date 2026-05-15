@@ -144,8 +144,8 @@ These additions would make the comparison easier for new operators to act on:
 | One API / New API migration | Keep expanding channel/token/quota mapping in [Migration compatibility](MIGRATION_COMPAT.md), or create a focused migration guide if it grows. |
 | LiteLLM confidence | Use [Migration from LiteLLM](MIGRATION_LITELLM.md) to validate migrated aliases against Dashboard logs and Route Explanation, then add more provider-specific examples. |
 | Performance proof | Use the committed v2.0.0 reports in [Performance](PERFORMANCE.md) as current evidence, then add higher-concurrency PostgreSQL/Redis/MCP reports when available. |
-| Agent + MCP demo | Use the end-to-end Claude Code/Codex + MCP paths in [Agent Gateway profiles](AGENT_GATEWAY.md) and [MCP Tool Gateway](MCP_GATEWAY.md), then add screenshots or a video. |
-| Provider coverage trust | Add tested provider smoke-test status to [Provider Catalog](PROVIDER_CATALOG.md) or [Provider compatibility](PROVIDER_COMPATIBILITY.md). |
+| Agent + MCP demo | Use the end-to-end Claude Code/Codex + MCP path and screenshot storyboard in [Agent + MCP Demo](AGENT_MCP_DEMO.md), then add real redacted Dashboard captures when available. |
+| Provider coverage trust | Use [Provider Smoke Matrix](PROVIDER_SMOKE_MATRIX.md) for current evidence, then add dated live-provider reports as operator keys and accounts are available. |
 
 ## Capability Matrix
 

@@ -24,9 +24,9 @@ self-hosters.
 | --- | --- |
 | Try SiftGate locally | [Quickstart](QUICKSTART.md), [Dashboard](DASHBOARD.md), [OSS concepts](OSS_CONCEPTS.md) |
 | Run it in containers | [Docker quickstart](DOCKER_QUICKSTART.md), [Production](PRODUCTION.md), [State backends](STATE_BACKEND.md) |
-| Add provider coverage | [Provider Catalog](PROVIDER_CATALOG.md), [Adding providers](ADDING_PROVIDERS.md), [Provider extensibility](PROVIDER_EXTENSIBILITY.md) |
+| Add provider coverage | [Provider Catalog](PROVIDER_CATALOG.md), [Provider Smoke Matrix](PROVIDER_SMOKE_MATRIX.md), [Adding providers](ADDING_PROVIDERS.md), [Provider extensibility](PROVIDER_EXTENSIBILITY.md) |
 | Govern teams and apps | [Dashboard](DASHBOARD.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md), [Cost and chargeback platform](COST_CHARGEBACK_PLATFORM.md) |
-| Connect coding agents | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent integrations](AGENT_INTEGRATIONS.md) |
+| Connect coding agents | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent + MCP Demo](AGENT_MCP_DEMO.md), [Agent integrations](AGENT_INTEGRATIONS.md) |
 | Operate advanced controls | [Semantic Controls](SEMANTIC_PLATFORM.md), [Evaluation framework](EVALUATION_FRAMEWORK.md), [Caching](CACHING.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
 | Deploy to production | [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [Security](SECURITY.md), [Secret management](SECRET_MANAGEMENT.md) |
 | Extend or contribute | [Architecture](ARCHITECTURE.md), [API reference](API_REFERENCE.md), [Plugins](PLUGINS.md), [Release checklist](RELEASE_CHECKLIST.md) |
@@ -38,11 +38,11 @@ self-hosters.
 | First-run setup, Dashboard onboarding, OSS concepts | [Quickstart](QUICKSTART.md), [Dashboard](DASHBOARD.md), [OSS concepts](OSS_CONCEPTS.md) |
 | Workspaces, local RBAC, OIDC, invites | [Dashboard](DASHBOARD.md), [OIDC and invites](OIDC_AND_INVITES.md), [Migration from v1 to v2](MIGRATION_V1_TO_V2.md) |
 | Gateway API keys, Policy Namespaces, budgets, chargeback | [API reference](API_REFERENCE.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md), [Cost and chargeback platform](COST_CHARGEBACK_PLATFORM.md), [Billing loop](BILLING_LOOP.md) |
-| Provider nodes, provider catalog, compatibility, custom providers | [Provider Catalog](PROVIDER_CATALOG.md), [Provider compatibility](PROVIDER_COMPATIBILITY.md), [Provider extensibility](PROVIDER_EXTENSIBILITY.md), [Adding providers](ADDING_PROVIDERS.md) |
+| Provider nodes, provider catalog, compatibility, custom providers | [Provider Catalog](PROVIDER_CATALOG.md), [Provider Smoke Matrix](PROVIDER_SMOKE_MATRIX.md), [Provider compatibility](PROVIDER_COMPATIBILITY.md), [Provider extensibility](PROVIDER_EXTENSIBILITY.md), [Adding providers](ADDING_PROVIDERS.md) |
 | Protocols, modalities, streaming, batching, playground | [API reference](API_REFERENCE.md), [Multimodal capabilities](MULTIMODAL_CAPABILITIES.md), [Stream, cache, and batching](STREAM_CACHE_BATCHING.md), [Batch API](BATCH_API.md), [Playground](PLAYGROUND.md) |
 | Routing recommendations, route explanation, performance evidence | [Routing recommendations](ROUTING_RECOMMENDATIONS.md), [Architecture](ARCHITECTURE.md), [Performance](PERFORMANCE.md) |
 | Cache, Semantic Controls, Intelligence Loop, evals, experiments, shadow traffic | [Caching](CACHING.md), [Semantic Controls](SEMANTIC_PLATFORM.md), [Intelligence Loop](INTELLIGENCE_LOOP.md), [Evaluation framework](EVALUATION_FRAMEWORK.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md) |
-| Coding agents, Agent Profiles, integrations, Agent Platform, MCP tools | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent integrations](AGENT_INTEGRATIONS.md), [Agent Platform preview](AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
+| Coding agents, Agent Profiles, integrations, Agent Platform, MCP tools | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent + MCP Demo](AGENT_MCP_DEMO.md), [Agent integrations](AGENT_INTEGRATIONS.md), [Agent Platform preview](AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
 | Deployment, state, secrets, config audit, logs, alerts, optional control plane | [Docker quickstart](DOCKER_QUICKSTART.md), [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [State backends](STATE_BACKEND.md), [Secret management](SECRET_MANAGEMENT.md), [Config validation](CONFIG_VALIDATION.md), [Config audit and rollback](CONFIG_AUDIT_ROLLBACK.md), [Log sinks](LOG_SINKS.md), [Webhook alerts](WEBHOOK_ALERTS.md), [Optional Control Plane Contract](CONTROL_PLANE.md) |
 | SDKs, plugins, migrations, release process | [SDKs](SDKS.md), [Python SDK design](PYTHON_SDK_DESIGN.md), [Plugins](PLUGINS.md), [Official plugins](plugins/OFFICIAL_PLUGINS.md), [Migration compatibility](MIGRATION_COMPAT.md), [Migration from LiteLLM](MIGRATION_LITELLM.md), [Release checklist](RELEASE_CHECKLIST.md) |
 
@@ -82,6 +82,7 @@ self-hosters.
 | Topic | Link |
 | --- | --- |
 | Provider Catalog | [PROVIDER_CATALOG.md](PROVIDER_CATALOG.md) |
+| Provider Smoke Matrix | [PROVIDER_SMOKE_MATRIX.md](PROVIDER_SMOKE_MATRIX.md) |
 | Provider compatibility | [PROVIDER_COMPATIBILITY.md](PROVIDER_COMPATIBILITY.md) |
 | Provider extensibility | [PROVIDER_EXTENSIBILITY.md](PROVIDER_EXTENSIBILITY.md) |
 | Adding providers | [ADDING_PROVIDERS.md](ADDING_PROVIDERS.md) |
@@ -98,6 +99,7 @@ self-hosters.
 | --- | --- |
 | Coding Agent Gateway | [CODING_AGENT_GATEWAY.md](CODING_AGENT_GATEWAY.md) |
 | Agent Gateway profiles | [AGENT_GATEWAY.md](AGENT_GATEWAY.md) |
+| Agent + MCP Demo | [AGENT_MCP_DEMO.md](AGENT_MCP_DEMO.md) |
 | Agent integrations | [AGENT_INTEGRATIONS.md](AGENT_INTEGRATIONS.md) |
 | Agent Platform preview | [AGENT_PLATFORM_PREVIEW.md](AGENT_PLATFORM_PREVIEW.md) |
 | MCP Tool Gateway | [MCP_GATEWAY.md](MCP_GATEWAY.md) |

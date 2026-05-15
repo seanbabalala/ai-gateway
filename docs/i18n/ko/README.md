@@ -68,6 +68,30 @@ operation을 위한 self-hosted AI traffic data plane입니다.
 
 자세한 내용은 [Comparison](../../COMPARISON.md)을 참고하세요.
 
+## Evidence Assets
+
+Provider smoke evidence는 로컬 프로토콜 테스트와 운영자의 실제 key가 필요한
+live provider check를 분리해서 보여줍니다. 자세한 내용은
+[Provider Smoke Matrix](../../PROVIDER_SMOKE_MATRIX.md)를 참고하세요.
+
+<p align="center">
+  <img src="../../assets/providers/provider-smoke-matrix.svg" alt="SiftGate provider smoke matrix" width="100%" />
+</p>
+
+Provider Catalog Dashboard는 active catalog, transport-only preset,
+compatibility profiles, pricing review 상태, catalog sync governance를 보여줍니다.
+
+<p align="center">
+  <img src="../../assets/dashboard/provider-catalog-dashboard.png" alt="SiftGate Provider Catalog Dashboard" width="100%" />
+</p>
+
+Codex/Claude Code + MiniMax MCP 흐름은
+[Agent + MCP Demo](../../AGENT_MCP_DEMO.md)를 참고하세요.
+
+<p align="center">
+  <img src="../../assets/demo/agent-mcp-demo.svg" alt="SiftGate Agent and MCP demo" width="100%" />
+</p>
+
 ## 빠른 시작
 
 ```bash

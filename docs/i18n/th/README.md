@@ -66,6 +66,30 @@ Agent/MCP control, cache-aware key pool และ production operations
 
 ดูรายละเอียดที่ [Comparison](../../COMPARISON.md)
 
+## Evidence Assets
+
+Provider smoke evidence แยกการทดสอบ protocol ภายใน repo ออกจาก live provider
+check ที่ต้องใช้ key จริงของ operator ดูที่
+[Provider Smoke Matrix](../../PROVIDER_SMOKE_MATRIX.md)
+
+<p align="center">
+  <img src="../../assets/providers/provider-smoke-matrix.svg" alt="SiftGate provider smoke matrix" width="100%" />
+</p>
+
+Provider Catalog Dashboard แสดง active catalog, transport-only preset,
+compatibility profiles, สถานะ pricing review และ catalog sync governance.
+
+<p align="center">
+  <img src="../../assets/dashboard/provider-catalog-dashboard.png" alt="SiftGate Provider Catalog Dashboard" width="100%" />
+</p>
+
+เส้นทาง Codex/Claude Code + MiniMax MCP ดูที่
+[Agent + MCP Demo](../../AGENT_MCP_DEMO.md)
+
+<p align="center">
+  <img src="../../assets/demo/agent-mcp-demo.svg" alt="SiftGate Agent and MCP demo" width="100%" />
+</p>
+
 ## เริ่มต้นอย่างรวดเร็ว
 
 ```bash

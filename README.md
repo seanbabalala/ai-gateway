@@ -2,10 +2,11 @@
   <img src="docs/assets/brand/siftgate-logo.svg" alt="SiftGate" width="420" />
 </p>
 
-<h3 align="center">The self-hosted AI traffic data plane for serious model traffic.</h3>
+<h1 align="center">Self-Hosted AI Traffic Data Plane</h1>
 
 <p align="center">
-  Govern apps, coding agents, MCP tools, provider keys, routing, budgets, cache, and evidence before requests leave your infrastructure.
+  Govern apps, coding agents, MCP tools, provider keys, routing, budgets,
+  cache, and evidence before requests leave your infrastructure.
 </p>
 
 <p align="center">
@@ -13,6 +14,20 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-062f25"></a>
   <a href="docs/SECURITY.md"><img alt="Privacy default" src="https://img.shields.io/badge/privacy-metadata--only%20by%20default-22d7a8"></a>
   <a href="docs/README.md"><img alt="Docs" src="https://img.shields.io/badge/docs-7%20languages-062f25"></a>
+</p>
+
+<p align="center">
+  Current release: <strong>v2.11.3</strong>
+</p>
+<!-- Current release: **v2.11.3** -->
+
+<p align="center">
+  <a href="docs/QUICKSTART.md"><strong>Quickstart</strong></a>
+  · <a href="docs/DASHBOARD.md"><strong>Dashboard</strong></a>
+  · <a href="docs/COMPARISON.md"><strong>Comparison</strong></a>
+  · <a href="docs/PROVIDER_SMOKE_MATRIX.md"><strong>Provider evidence</strong></a>
+  · <a href="docs/AGENT_MCP_DEMO.md"><strong>Agent + MCP demo</strong></a>
+  · <a href="docs/PRODUCTION.md"><strong>Production</strong></a>
 </p>
 
 <p align="center">
@@ -25,13 +40,20 @@
   · <a href="docs/i18n/es/README.md">Español</a>
 </p>
 
-# SiftGate
-
-Current release: **v2.11.3**.
-
 <p align="center">
   <img src="docs/assets/homepage/siftgate-hero.svg" alt="SiftGate AI traffic data plane" width="100%" />
 </p>
+
+<table>
+  <tr>
+    <td align="center" width="16%"><strong>50+</strong><br><sub>provider metadata profiles</sub></td>
+    <td align="center" width="16%"><strong>7</strong><br><sub>localized doc entrypoints</sub></td>
+    <td align="center" width="17%"><strong>Metadata-only</strong><br><sub>logs and audit by default</sub></td>
+    <td align="center" width="17%"><strong>Agent-ready</strong><br><sub>Codex, Claude Code, Cursor, Cline</sub></td>
+    <td align="center" width="17%"><strong>MCP-aware</strong><br><sub>HTTP, Streamable HTTP, SSE, stdio</sub></td>
+    <td align="center" width="17%"><strong>Production path</strong><br><sub>Docker, Kubernetes, Postgres, Redis</sub></td>
+  </tr>
+</table>
 
 SiftGate is an MIT open-source AI Gateway for teams that have outgrown direct
 provider keys and single-purpose proxy panels. It gives organizations one
@@ -63,30 +85,30 @@ loop.
 
 <table>
   <tr>
-    <td width="33%" valign="top">
-      <strong>Traffic Control</strong><br>
+    <td width="33%" valign="top" align="center">
+      <strong>Traffic Control</strong><br><br>
       <sub>One ingress for Chat Completions, Responses, Anthropic Messages, Gemini-native calls, embeddings, rerank, media, Batch, Realtime preview, feedback, and MCP tool traffic.</sub>
     </td>
-    <td width="33%" valign="top">
-      <strong>Provider Power</strong><br>
+    <td width="33%" valign="top" align="center">
+      <strong>Provider Power</strong><br><br>
       <sub>50+ provider metadata profiles, compatibility checks, provider health, model aliases, custom providers, secret references, and credential pools inside one logical node.</sub>
     </td>
-    <td width="33%" valign="top">
-      <strong>Operator Evidence</strong><br>
+    <td width="33%" valign="top" align="center">
+      <strong>Operator Evidence</strong><br><br>
       <sub>Every route can explain selected and rejected candidates, policy filters, credential hits, cache effects, fallback reasons, cost estimates, latency, and audit context.</sub>
     </td>
   </tr>
   <tr>
-    <td width="33%" valign="top">
-      <strong>Agent Ready</strong><br>
+    <td width="33%" valign="top" align="center">
+      <strong>Agent Ready</strong><br><br>
       <sub>Govern Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, generic OpenAI/Anthropic agents, virtual smart models, and MCP tool calls.</sub>
     </td>
-    <td width="33%" valign="top">
-      <strong>Cost Discipline</strong><br>
+    <td width="33%" valign="top" align="center">
+      <strong>Cost Discipline</strong><br><br>
       <sub>Daily budgets, team/key/namespace scopes, provider-cache savings, price-source governance, chargeback reports, anomaly evidence, and route feedback.</sub>
     </td>
-    <td width="33%" valign="top">
-      <strong>Self-Hosted Core</strong><br>
+    <td width="33%" valign="top" align="center">
+      <strong>Self-Hosted Core</strong><br><br>
       <sub>SQLite local, PostgreSQL production, optional Redis shared state, Docker, Kubernetes, Helm, OIDC, OpenTelemetry, log sinks, and validation-first config rollout.</sub>
     </td>
   </tr>
@@ -253,6 +275,32 @@ prompts from WildBench v2, IFEval, MT-Bench, GSM8K, and HumanEval; see the
 
 <p align="center">
   <img src="docs/assets/performance/benchmark-evidence.svg" alt="SiftGate benchmark evidence snapshot" width="100%" />
+</p>
+
+The provider smoke matrix separates repository-local protocol evidence from
+operator-run live provider checks. It shows which paths already have local
+smoke coverage and which provider families are catalog-ready but still need
+account-specific validation with real keys.
+
+<p align="center">
+  <img src="docs/assets/providers/provider-smoke-matrix.svg" alt="SiftGate provider smoke matrix" width="100%" />
+</p>
+
+The Provider Catalog Dashboard is the operator-facing view of that same
+evidence: active catalog rows, transport-only presets, compatibility profiles,
+pricing review state, and catalog sync governance are visible before a node is
+added.
+
+<p align="center">
+  <img src="docs/assets/dashboard/provider-catalog-dashboard.png" alt="SiftGate Provider Catalog Dashboard" width="100%" />
+</p>
+
+The Agent + MCP demo screenshot shows the governed path for Codex or Claude
+Code using `coding-auto` plus MiniMax Token Plan MCP tools such as `web_search`
+and `understand_image`, all through one scoped Gateway API key.
+
+<p align="center">
+  <img src="docs/assets/demo/agent-mcp-demo.svg" alt="SiftGate Agent and MCP demo" width="100%" />
 </p>
 
 <p align="center">
@@ -469,6 +517,9 @@ Catalog data is operational guidance, not a billing authority. Explicit local
 node pricing, `models_pricing`, and `catalog.override.yaml` always remain the
 operator-controlled source of truth.
 
+For current provider evidence, see the
+[Provider Smoke Matrix](docs/PROVIDER_SMOKE_MATRIX.md).
+
 ## Agent And Tool Gateway
 
 SiftGate can act as the governed ingress for developer tools and autonomous
@@ -481,6 +532,9 @@ agents without becoming a workflow engine or content store.
 | Agent session tracing | Stores metadata such as connector, repo label, project label, session id, selected route, cost, latency, fallback, and trace links. It does not store source files, diffs, prompts, or responses by default. |
 | MCP Tool Gateway | Proxies configured HTTP JSON-RPC, Streamable HTTP, legacy SSE, and stdio MCP servers behind Gateway API key auth, Policy Namespace allow-lists, rate limits, and metadata-only call logs. |
 | Agent Platform preview | Shows read-only A2A registry rows, tool registry metadata, workflow metadata, memory counters, and recent trace spans. |
+
+For a concrete Codex/Claude Code + MiniMax MCP walkthrough, see the
+[Agent + MCP Demo](docs/AGENT_MCP_DEMO.md).
 
 ## Security And Privacy Baseline
 
@@ -587,6 +641,8 @@ Start here:
 | Docker Quickstart | [docs/DOCKER_QUICKSTART.md](docs/DOCKER_QUICKSTART.md) |
 | Dashboard Guide | [docs/DASHBOARD.md](docs/DASHBOARD.md) |
 | Comparison | [docs/COMPARISON.md](docs/COMPARISON.md) |
+| Provider Smoke Matrix | [docs/PROVIDER_SMOKE_MATRIX.md](docs/PROVIDER_SMOKE_MATRIX.md) |
+| Agent + MCP Demo | [docs/AGENT_MCP_DEMO.md](docs/AGENT_MCP_DEMO.md) |
 | API Reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | Architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Provider Catalog | [docs/PROVIDER_CATALOG.md](docs/PROVIDER_CATALOG.md) |

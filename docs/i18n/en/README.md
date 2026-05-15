@@ -69,6 +69,30 @@ agent/MCP control, cache-aware key pooling, and production operations.
 
 See [Comparison](../../COMPARISON.md) for the detailed public positioning.
 
+## Evidence Assets
+
+Provider smoke evidence separates local protocol tests from operator-run live
+provider checks. See [Provider Smoke Matrix](../../PROVIDER_SMOKE_MATRIX.md).
+
+<p align="center">
+  <img src="../../assets/providers/provider-smoke-matrix.svg" alt="SiftGate provider smoke matrix" width="100%" />
+</p>
+
+The Provider Catalog Dashboard shows active catalog rows, transport-only
+presets, compatibility profiles, pricing review state, and catalog sync
+governance.
+
+<p align="center">
+  <img src="../../assets/dashboard/provider-catalog-dashboard.png" alt="SiftGate Provider Catalog Dashboard" width="100%" />
+</p>
+
+For a Codex/Claude Code + MiniMax MCP walkthrough, see
+[Agent + MCP Demo](../../AGENT_MCP_DEMO.md).
+
+<p align="center">
+  <img src="../../assets/demo/agent-mcp-demo.svg" alt="SiftGate Agent and MCP demo" width="100%" />
+</p>
+
 ## Quick Start
 
 ```bash

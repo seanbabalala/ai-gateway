@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="860" viewBox="0 0 1440 860" role="img" aria-labelledby="title desc">
+  <title id="title">SiftGate Agent and MCP demo screenshot</title>
+  <desc id="desc">A product-style screenshot storyboard showing Codex or Claude Code using a SiftGate Agent Profile, a Gateway API key, route explanation, and MiniMax MCP web_search and understand_image tool permissions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#061311"/>
+      <stop offset="0.50" stop-color="#0b1716"/>
+      <stop offset="1" stop-color="#11160b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d2722"/>
+      <stop offset="0.58" stop-color="#12312c"/>
+      <stop offset="1" stop-color="#1a2a18"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d7a8"/>
+      <stop offset="0.5" stop-color="#7ddfff"/>
+      <stop offset="1" stop-color="#d7f67a"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-15%" y="-20%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.30"/>
+    </filter>
+    <style>
+      .font { font-family: "Avenir Next", "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif; }
+      .eyebrow { font-size: 15px; font-weight: 850; letter-spacing: 0.16em; fill: #22d7a8; }
+      .title { font-size: 46px; font-weight: 900; letter-spacing: 0; fill: #f6fffb; }
+      .subtitle { font-size: 18px; fill: #b9cbc6; }
+      .label { font-size: 17px; font-weight: 850; fill: #f6fffb; }
+      .body { font-size: 15px; fill: #c8d8d3; }
+      .small { font-size: 13px; fill: #90a6a0; }
+      .tiny { font-size: 12px; fill: #87a09a; }
+      .green { fill: #22d7a8; }
+      .aqua { fill: #7ddfff; }
+      .lime { fill: #d7f67a; }
+      .card { fill: rgba(255,255,255,0.046); stroke: rgba(236,255,249,0.13); stroke-width: 1; }
+      .main { fill: url(#panel); stroke: url(#accent); stroke-width: 1.8; }
+      .chip { fill: rgba(34,215,168,0.12); stroke: rgba(34,215,168,0.46); stroke-width: 1; }
+      .chip2 { fill: rgba(125,223,255,0.10); stroke: rgba(125,223,255,0.36); stroke-width: 1; }
+      .chip3 { fill: rgba(215,246,122,0.10); stroke: rgba(215,246,122,0.34); stroke-width: 1; }
+      .row { fill: rgba(255,255,255,0.034); stroke: rgba(236,255,249,0.08); stroke-width: 1; }
+      .rule { stroke: rgba(236,255,249,0.12); stroke-width: 1; }
+      .wire { fill: none; stroke: url(#accent); stroke-width: 2.5; stroke-linecap: round; opacity: 0.72; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="860" fill="url(#bg)"/>
+  <rect width="1440" height="860" fill="url(#grid)" opacity="0.82"/>
+  <path d="M72 246H1368" stroke="url(#accent)" stroke-width="2" opacity="0.42"/>
+  <path d="M72 790H1368" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <g transform="translate(72 72)">
+    <text class="font eyebrow" x="0" y="0">AGENT + MCP DEMO</text>
+    <text class="font title" x="0" y="62">One Gateway key governs model calls and tools.</text>
+    <text class="font subtitle" x="0" y="106">Codex or Claude Code can use `coding-auto` while MiniMax MCP tools stay permission-scoped.</text>
+    <text class="font subtitle" x="0" y="134">Provider keys, MCP headers, prompts, responses, images, and tool payloads are not shown.</text>
+  </g>
+
+  <g transform="translate(72 286)" filter="url(#shadow)">
+    <rect class="main" x="0" y="0" width="398" height="410" rx="30"/>
+    <text class="font eyebrow" x="30" y="42">AGENT PROFILE</text>
+    <text class="font label" x="30" y="80">Codex workspace profile</text>
+    <line class="rule" x1="30" y1="106" x2="368" y2="106"/>
+    <g transform="translate(30 132)">
+      <rect class="chip" x="0" y="0" width="138" height="34" rx="17"/>
+      <text class="font small green" x="69" y="22" text-anchor="middle" font-weight="850">connector: codex</text>
+      <rect class="chip2" x="152" y="0" width="154" height="34" rx="17"/>
+      <text class="font small aqua" x="229" y="22" text-anchor="middle" font-weight="850">model: coding-auto</text>
+    </g>
+    <g transform="translate(30 196)">
+      <text class="font body" x="0" y="0">Gateway API Key</text>
+      <text class="font small" x="0" y="24">gw_sk_live...masked</text>
+      <text class="font body" x="0" y="70">MCP servers</text>
+      <text class="font small" x="0" y="94">minimax-token-plan</text>
+    </g>
+    <g transform="translate(30 330)">
+      <text class="font tiny" x="0" y="0">Rendered setup uses placeholders only.</text>
+      <text class="font tiny" x="0" y="22">No provider key leaves SiftGate.</text>
+    </g>
+  </g>
+
+  <path class="wire" d="M470 486 C522 486 544 486 594 486"/>
+
+  <g transform="translate(594 286)" filter="url(#shadow)">
+    <rect class="card" x="0" y="0" width="350" height="410" rx="30"/>
+    <text class="font eyebrow" x="30" y="42">KEY POLICY</text>
+    <text class="font label" x="30" y="80">Allowed endpoints</text>
+    <line class="rule" x1="30" y1="106" x2="320" y2="106"/>
+    <g transform="translate(30 136)">
+      <rect class="row" x="0" y="0" width="290" height="52" rx="16"/>
+      <text class="font body" x="18" y="32">chat_completions</text>
+      <rect class="row" x="0" y="66" width="290" height="52" rx="16"/>
+      <text class="font body" x="18" y="98">mcp:...:web_search</text>
+      <rect class="row" x="0" y="132" width="290" height="52" rx="16"/>
+      <text class="font body" x="18" y="164">mcp:...:understand_image</text>
+    </g>
+    <g transform="translate(30 346)">
+      <rect class="chip3" x="0" y="0" width="142" height="34" rx="17"/>
+      <text class="font small lime" x="71" y="22" text-anchor="middle" font-weight="850">allow_auto: true</text>
+      <rect class="chip" x="156" y="0" width="132" height="34" rx="17"/>
+      <text class="font small green" x="222" y="22" text-anchor="middle" font-weight="850">direct: off</text>
+    </g>
+  </g>
+
+  <path class="wire" d="M944 486 C990 486 1014 486 1060 486"/>
+
+  <g transform="translate(1060 286)" filter="url(#shadow)">
+    <rect class="card" x="0" y="0" width="308" height="410" rx="30"/>
+    <text class="font eyebrow" x="28" y="42">EVIDENCE</text>
+    <text class="font label" x="28" y="80">Route + MCP audit</text>
+    <line class="rule" x1="28" y1="106" x2="280" y2="106"/>
+    <g transform="translate(28 132)">
+      <text class="font body green" x="0" y="0">Route Explanation</text>
+      <text class="font small" x="0" y="25">selected node/model</text>
+      <text class="font small" x="0" y="47">policy + budget context</text>
+      <text class="font small" x="0" y="69">fallback + compatibility</text>
+    </g>
+    <g transform="translate(28 238)">
+      <text class="font body aqua" x="0" y="0">MCP Tool Gateway</text>
+      <text class="font small" x="0" y="25">tools/call: web_search</text>
+      <text class="font small" x="0" y="47">tools/call: understand_image</text>
+      <text class="font small" x="0" y="69">status, latency, sanitized errors</text>
+    </g>
+    <g transform="translate(28 352)">
+      <text class="font tiny" x="0" y="0">Metadata-only audit rows.</text>
+      <text class="font tiny" x="0" y="22">Tool args/results stay out.</text>
+    </g>
+  </g>
+
+  <g transform="translate(72 734)">
+    <rect class="chip" x="0" y="0" width="300" height="44" rx="22"/>
+    <text class="font small green" x="150" y="28" text-anchor="middle" font-weight="850">Agent model request is routed</text>
+    <rect class="chip2" x="320" y="0" width="336" height="44" rx="22"/>
+    <text class="font small aqua" x="488" y="28" text-anchor="middle" font-weight="850">MCP tools are permission-scoped</text>
+    <rect class="chip3" x="676" y="0" width="344" height="44" rx="22"/>
+    <text class="font small lime" x="848" y="28" text-anchor="middle" font-weight="850">MiniMax web_search + image understanding</text>
+    <rect class="chip" x="1040" y="0" width="328" height="44" rx="22"/>
+    <text class="font small green" x="1204" y="28" text-anchor="middle" font-weight="850">No prompts, payloads, or secrets stored</text>
+  </g>
+
+  <g transform="translate(72 816)">
+    <text class="font tiny" x="0" y="0">Screenshot storyboard uses placeholders; mask real keys, prompts, responses, image bytes, and account ids before committing live captures.</text>
+  </g>
+</svg>

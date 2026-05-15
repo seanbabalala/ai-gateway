@@ -10,6 +10,9 @@ connectors for compatibility.
 For the v2.1 coding-agent walkthrough, safe headers, and North Star demo, see
 [Coding Agent Gateway](CODING_AGENT_GATEWAY.md).
 
+For a focused Codex/Claude Code + MiniMax MCP demo path and screenshot
+storyboard, see [Agent + MCP Demo](AGENT_MCP_DEMO.md).
+
 Profiles are part of the MIT open-source Data Plane. They use the OSS
 workspace/RBAC boundary when enabled and do not require SiftGate Cloud, the
 enterprise app, SSO, SCIM, or organization billing.

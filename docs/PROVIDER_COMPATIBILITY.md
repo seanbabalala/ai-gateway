@@ -18,6 +18,10 @@ The same profile registry is used by:
 
 This keeps the Dashboard, CLI, validation, and routing engine aligned instead of each surface inventing its own compatibility vocabulary.
 
+For the current public evidence table that separates local protocol smoke
+tests from operator-run live provider checks, see
+[Provider Smoke Matrix](PROVIDER_SMOKE_MATRIX.md).
+
 ## Built-In Profiles
 
 The v1.4 registry includes these built-in profile ids:

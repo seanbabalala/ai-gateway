@@ -5,6 +5,9 @@ It proxies locally registered MCP servers through SiftGate so agent/tool traffic
 can reuse Gateway API keys, endpoint permissions, Policy Namespace boundaries,
 rate limits, and Dashboard metadata visibility.
 
+For a focused Codex/Claude Code + MiniMax Token Plan walkthrough, see
+[Agent + MCP Demo](AGENT_MCP_DEMO.md).
+
 MCP Tool Gateway is a tool-call proxy and governance surface. It is not model
 routing and it does not choose upstream LLM providers.
 

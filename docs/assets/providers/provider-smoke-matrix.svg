@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="920" viewBox="0 0 1440 920" role="img" aria-labelledby="title desc">
+  <title id="title">SiftGate provider smoke matrix</title>
+  <desc id="desc">A provider smoke matrix showing local smoke pass, catalog ready, operator live check, and pricing review status for major SiftGate provider families.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#061311"/>
+      <stop offset="0.52" stop-color="#0b1716"/>
+      <stop offset="1" stop-color="#11160b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d2722"/>
+      <stop offset="0.58" stop-color="#12312c"/>
+      <stop offset="1" stop-color="#1a2a18"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d7a8"/>
+      <stop offset="0.5" stop-color="#7ddfff"/>
+      <stop offset="1" stop-color="#d7f67a"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-15%" y="-20%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.30"/>
+    </filter>
+    <style>
+      .font { font-family: "Avenir Next", "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif; }
+      .eyebrow { font-size: 15px; font-weight: 850; letter-spacing: 0.16em; fill: #22d7a8; }
+      .title { font-size: 46px; font-weight: 900; letter-spacing: 0; fill: #f6fffb; }
+      .subtitle { font-size: 18px; fill: #b9cbc6; }
+      .label { font-size: 17px; font-weight: 850; fill: #f6fffb; }
+      .body { font-size: 15px; fill: #c8d8d3; }
+      .small { font-size: 13px; fill: #90a6a0; }
+      .tiny { font-size: 12px; fill: #87a09a; }
+      .green { fill: #22d7a8; }
+      .aqua { fill: #7ddfff; }
+      .lime { fill: #d7f67a; }
+      .card { fill: rgba(255,255,255,0.046); stroke: rgba(236,255,249,0.13); stroke-width: 1; }
+      .panel { fill: url(#panel); stroke: url(#accent); stroke-width: 1.7; }
+      .row { fill: rgba(255,255,255,0.030); stroke: rgba(236,255,249,0.075); stroke-width: 1; }
+      .rowAlt { fill: rgba(255,255,255,0.046); stroke: rgba(236,255,249,0.085); stroke-width: 1; }
+      .chipPass { fill: rgba(34,215,168,0.13); stroke: rgba(34,215,168,0.55); stroke-width: 1; }
+      .chipReady { fill: rgba(125,223,255,0.11); stroke: rgba(125,223,255,0.42); stroke-width: 1; }
+      .chipLive { fill: rgba(215,246,122,0.10); stroke: rgba(215,246,122,0.38); stroke-width: 1; }
+      .chipReview { fill: rgba(255,255,255,0.06); stroke: rgba(236,255,249,0.18); stroke-width: 1; }
+      .rule { stroke: rgba(236,255,249,0.12); stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="920" fill="url(#bg)"/>
+  <rect width="1440" height="920" fill="url(#grid)" opacity="0.82"/>
+  <path d="M72 246H1368" stroke="url(#accent)" stroke-width="2" opacity="0.42"/>
+  <path d="M72 844H1368" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <g transform="translate(72 72)">
+    <text class="font eyebrow" x="0" y="0">PROVIDER SMOKE MATRIX</text>
+    <text class="font title" x="0" y="62">Provider evidence matrix</text>
+    <text class="font subtitle" x="0" y="106">What is proven locally, what still needs live keys, and what needs pricing review.</text>
+    <text class="font subtitle" x="0" y="134">No row claims a vendor-account result unless a committed live report exists.</text>
+  </g>
+
+  <g transform="translate(916 70)">
+    <rect class="chipPass" x="0" y="0" width="190" height="42" rx="21"/>
+    <text class="font small green" x="95" y="27" text-anchor="middle" font-weight="850">local smoke pass</text>
+    <rect class="chipReady" x="210" y="0" width="164" height="42" rx="21"/>
+    <text class="font small aqua" x="292" y="27" text-anchor="middle" font-weight="850">catalog ready</text>
+    <rect class="chipLive" x="0" y="56" width="190" height="42" rx="21"/>
+    <text class="font small lime" x="95" y="83" text-anchor="middle" font-weight="850">operator live check</text>
+    <rect class="chipReview" x="210" y="56" width="164" height="42" rx="21"/>
+    <text class="font small" x="292" y="83" text-anchor="middle" font-weight="850">review pricing</text>
+  </g>
+
+  <g transform="translate(72 286)" filter="url(#shadow)">
+    <rect class="card" x="0" y="0" width="1296" height="520" rx="28"/>
+    <rect x="0" y="0" width="1296" height="58" rx="28" fill="rgba(255,255,255,0.055)"/>
+    <text class="font tiny" x="28" y="36">PROVIDER</text>
+    <text class="font tiny" x="270" y="36">PROFILES</text>
+    <text class="font tiny" x="565" y="36">CURRENT EVIDENCE</text>
+    <text class="font tiny" x="1015" y="36">NEXT LIVE CHECK</text>
+
+    <g transform="translate(0 58)">
+      <rect class="rowAlt" x="0" y="0" width="1296" height="64"/>
+      <text class="font label" x="28" y="27">OpenAI</text>
+      <text class="font small" x="28" y="48">chat, responses, media</text>
+      <text class="font body" x="270" y="28">OpenAI + Responses + Embedding</text>
+      <rect class="chipPass" x="565" y="15" width="142" height="30" rx="15"/>
+      <text class="font tiny green" x="636" y="35" text-anchor="middle">local pass</text>
+      <text class="font body" x="730" y="34">E2E gateway + compatibility matrix</text>
+      <text class="font body" x="1015" y="34">Account model + media sweep</text>
+    </g>
+
+    <g transform="translate(0 122)">
+      <rect class="row" x="0" y="0" width="1296" height="64"/>
+      <text class="font label" x="28" y="27">Anthropic</text>
+      <text class="font small" x="28" y="48">Messages API</text>
+      <text class="font body" x="270" y="28">Anthropic Messages</text>
+      <rect class="chipPass" x="565" y="15" width="142" height="30" rx="15"/>
+      <text class="font tiny green" x="636" y="35" text-anchor="middle">local pass</text>
+      <text class="font body" x="730" y="34">Messages shape + upstream auth</text>
+      <text class="font body" x="1015" y="34">Vision, tools, thinking, stream</text>
+    </g>
+
+    <g transform="translate(0 186)">
+      <rect class="rowAlt" x="0" y="0" width="1296" height="64"/>
+      <text class="font label" x="28" y="27">OpenRouter</text>
+      <text class="font small" x="28" y="48">Aggregator</text>
+      <text class="font body" x="270" y="28">OpenRouter aggregator</text>
+      <rect class="chipReady" x="565" y="15" width="142" height="30" rx="15"/>
+      <text class="font tiny aqua" x="636" y="35" text-anchor="middle">catalog ready</text>
+      <text class="font body" x="730" y="34">OpenAI-compatible route preset</text>
+      <text class="font body" x="1015" y="34">Model availability + usage schema</text>
+    </g>
+
+    <g transform="translate(0 250)">
+      <rect class="row" x="0" y="0" width="1296" height="64"/>
+      <text class="font label" x="28" y="27">Gemini / Vertex</text>
+      <text class="font small" x="28" y="48">Google native</text>
+      <text class="font body" x="270" y="28">Gemini + Vertex profiles</text>
+      <rect class="chipReady" x="565" y="15" width="142" height="30" rx="15"/>
+      <text class="font tiny aqua" x="636" y="35" text-anchor="middle">catalog ready</text>
+      <text class="font body" x="730" y="34">Native profile metadata</text>
+      <text class="font body" x="1015" y="34">GenerateContent + JSON/tools</text>
+    </g>
+
+    <g transform="translate(0 314)">
+      <rect class="rowAlt" x="0" y="0" width="1296" height="64"/>
+      <text class="font label" x="28" y="27">Mistral / DeepSeek</text>
+      <text class="font small" x="28" y="48">OpenAI-style direct APIs</text>
+      <text class="font body" x="270" y="28">Mistral + DeepSeek compatible</text>
+      <rect class="chipReady" x="565" y="15" width="142" height="30" rx="15"/>
+      <text class="font tiny aqua" x="636" y="35" text-anchor="middle">catalog ready</text>
+      <text class="font body" x="730" y="34">Chat and model metadata</text>
+      <text class="font body" x="1015" y="34">Streaming + structured output</text>
+    </g>
+
+    <g transform="translate(0 378)">
+      <rect class="row" x="0" y="0" width="1296" height="64"/>
+      <text class="font label" x="28" y="27">Cohere / Bedrock / Azure</text>
+      <text class="font small" x="28" y="48">Managed APIs</text>
+      <text class="font body" x="270" y="28">Rerank, Converse, Azure OpenAI</text>
+      <rect class="chipReady" x="565" y="15" width="142" height="30" rx="15"/>
+      <text class="font tiny aqua" x="636" y="35" text-anchor="middle">catalog ready</text>
+      <text class="font body" x="730" y="34">Endpoint/auth profiles present</text>
+      <text class="font body" x="1015" y="34">Region/deployment live checks</text>
+    </g>
+
+    <g transform="translate(0 442)">
+      <rect class="rowAlt" x="0" y="0" width="1296" height="78" rx="0 0 28 28"/>
+      <text class="font label" x="28" y="30">Qwen / MiniMax</text>
+      <text class="font small" x="28" y="52">China providers + MCP demo</text>
+      <text class="font body" x="270" y="31">OpenAI-compatible + media/MCP</text>
+      <rect class="chipReady" x="565" y="18" width="142" height="30" rx="15"/>
+      <text class="font tiny aqua" x="636" y="38" text-anchor="middle">catalog ready</text>
+      <text class="font body" x="730" y="37">MiniMax Token Plan demo path</text>
+      <text class="font body" x="1015" y="37">Chat, media, web_search, image</text>
+    </g>
+  </g>
+
+  <g transform="translate(72 852)">
+    <text class="font small" x="0" y="0">Boundary: local smoke pass is repository evidence; catalog ready still needs operator credentials for live provider proof.</text>
+  </g>
+</svg>

@@ -65,6 +65,29 @@ data plane，重点在 BYOK 治理、路由证据、Agent/MCP 控制、缓存感
 
 完整对比见：[Comparison](../../COMPARISON.md)。
 
+## 证据资产
+
+Provider smoke evidence 会区分本地协议测试和需要运营方真实 Key 的 live
+provider check。见：[Provider Smoke Matrix](../../PROVIDER_SMOKE_MATRIX.md)。
+
+<p align="center">
+  <img src="../../assets/providers/provider-smoke-matrix.svg" alt="SiftGate provider smoke matrix" width="100%" />
+</p>
+
+Provider Catalog Dashboard 会展示 active catalog、transport-only preset、
+compatibility profiles、pricing review 状态和 catalog sync governance。
+
+<p align="center">
+  <img src="../../assets/dashboard/provider-catalog-dashboard.png" alt="SiftGate Provider Catalog Dashboard" width="100%" />
+</p>
+
+Codex/Claude Code + MiniMax MCP 的端到端路径见：
+[Agent + MCP Demo](../../AGENT_MCP_DEMO.md)。
+
+<p align="center">
+  <img src="../../assets/demo/agent-mcp-demo.svg" alt="SiftGate Agent and MCP demo" width="100%" />
+</p>
+
 ## 快速开始
 
 ```bash
