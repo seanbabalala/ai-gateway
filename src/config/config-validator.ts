@@ -4098,16 +4098,37 @@ function validateMcpGateway(
       server.transport !== undefined &&
       server.transport !== 'http_json_rpc' &&
       server.transport !== 'streamable_http' &&
+      server.transport !== 'sse' &&
       server.transport !== 'stdio'
     ) {
       issues.push(
         issue(
           'error',
           'invalid_mcp_server',
-          'mcp.servers[].transport must be http_json_rpc, streamable_http, or stdio.',
+          'mcp.servers[].transport must be http_json_rpc, streamable_http, sse, or stdio.',
           `${basePath}.transport`,
         ),
       );
+    }
+
+    if (server.message_url !== undefined) {
+      if (!isNonEmptyString(server.message_url)) {
+        issues.push(
+          issue(
+            'error',
+            'invalid_mcp_server_url',
+            'mcp.servers[].message_url must be a non-empty HTTP URL or relative path when set.',
+            `${basePath}.message_url`,
+          ),
+        );
+      } else if (!server.message_url.startsWith('/')) {
+        validateHttpUrl(
+          server.message_url,
+          `${basePath}.message_url`,
+          'invalid_mcp_server_url',
+          issues,
+        );
+      }
     }
 
     if (server.args !== undefined) {

@@ -10,6 +10,9 @@
   processes can be launched, initialized, and proxied behind existing Gateway
   API key, Policy Namespace, rate-limit, request-size, and metadata-only audit
   controls.
+- Added real Streamable HTTP SSE-response handling and legacy HTTP+SSE
+  transport support for MCP Tool Gateway, including optional `message_url`
+  configuration for older MCP servers.
 - Added MiniMax Token Plan MCP examples for `web_search` and
   `understand_image`, including tool-level `allowed_endpoints` examples for
   `mcp:minimax-token-plan:web_search` and

@@ -249,6 +249,37 @@ auth:
 #           input_schema:
 #             type: object
 #
+#     # Current remote MCP servers should prefer Streamable HTTP.
+#     - id: remote-tools
+#       name: "Remote Streamable MCP"
+#       description: "Remote MCP server using Streamable HTTP"
+#       url: "https://mcp.example.com/mcp"
+#       transport: streamable_http
+#       timeout_ms: 30000
+#       max_request_bytes: 1000000
+#       headers:
+#         Authorization: "Bearer ${env:REMOTE_MCP_TOKEN}"
+#       tools:
+#         - name: web_search
+#           description: "Search the web"
+#           input_schema:
+#             type: object
+#
+#     # Legacy HTTP+SSE MCP servers remain supported for older tooling.
+#     - id: legacy-sse-tools
+#       name: "Legacy SSE MCP"
+#       description: "Legacy MCP server using HTTP+SSE"
+#       url: "https://legacy-mcp.example.com/sse"
+#       transport: sse
+#       message_url: "https://legacy-mcp.example.com/messages"
+#       timeout_ms: 30000
+#       max_request_bytes: 1000000
+#       tools:
+#         - name: search_docs
+#           description: "Search legacy docs"
+#           input_schema:
+#             type: object
+#
 #     # MiniMax Token Plan MCP exposes web_search and understand_image through a
 #     # local stdio MCP process. Clients still call SiftGate at /mcp/:serverId,
 #     # while SiftGate launches and initializes the upstream MCP process.

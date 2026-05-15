@@ -98,6 +98,11 @@ interface McpUpstreamResult {
   ok: boolean
 }
 
+interface SseEvent {
+  event: string
+  data: string
+}
+
 @Injectable()
 export class McpGatewayService {
   private readonly auditEntries: McpGatewayAuditEntry[] = []
@@ -151,10 +156,13 @@ export class McpGatewayService {
     try {
       this.assertRequestSize(server, metadata.requestBytes)
       this.assertAccess(server, input.apiKey, metadata)
+      const transport = this.resolveTransport(server)
       const upstream =
-        this.resolveTransport(server) === 'stdio'
+        transport === 'stdio'
           ? await this.forwardStdio(server, input.body, requestId)
-          : await this.forwardHttp(server, input.body, requestId)
+          : transport === 'sse'
+            ? await this.forwardLegacySse(server, input.body, requestId)
+            : await this.forwardHttp(server, input.body, requestId)
 
       this.recordAudit({
         requestId,
@@ -307,16 +315,25 @@ export class McpGatewayService {
     }
   }
 
-  private async buildUpstreamHeaders(server: McpServerConfig, requestId: string): Promise<Record<string, string>> {
+  private async buildUpstreamHeaders(
+    server: McpServerConfig,
+    requestId: string,
+    options: { contentType?: boolean } = {},
+  ): Promise<Record<string, string>> {
     const configured = await this.secrets.resolveRecord(server.headers, {
       optional: true,
       location: `mcp.servers.${server.id}.headers`,
     })
-    return {
-      'content-type': 'application/json',
+    const headers: Record<string, string> = {
       accept: 'application/json, text/event-stream',
       'x-siftgate-mcp-request-id': requestId,
       ...configured,
+    }
+    if (options.contentType !== false) {
+      headers['content-type'] = 'application/json'
+    }
+    return {
+      ...headers,
     }
   }
 
@@ -339,19 +356,149 @@ export class McpGatewayService {
         body: JSON.stringify(body ?? null),
         signal: controller.signal,
       })
+      const responseHeaders = this.safeResponseHeaders(response.headers)
+      responseHeaders['x-siftgate-mcp-request-id'] = requestId
+      const contentType = response.headers.get('content-type') || 'application/json; charset=utf-8'
+      const bodyText = isEventStream(contentType)
+        ? JSON.stringify(await this.readSseJsonRpcResponse(response, body))
+        : await response.text()
+      return {
+        statusCode: response.status,
+        contentType: isEventStream(contentType) ? 'application/json; charset=utf-8' : contentType,
+        bodyText,
+        headers: responseHeaders,
+        ok: response.ok,
+      }
     } finally {
       clearTimeout(timeout)
     }
+  }
 
-    const responseHeaders = this.safeResponseHeaders(response.headers)
-    responseHeaders['x-siftgate-mcp-request-id'] = requestId
-    return {
-      statusCode: response.status,
-      contentType: response.headers.get('content-type') || 'application/json; charset=utf-8',
-      bodyText: await response.text(),
-      headers: responseHeaders,
-      ok: response.ok,
+  private async forwardLegacySse(server: McpServerConfig, body: unknown, requestId: string): Promise<McpUpstreamResult> {
+    if (!server.url) {
+      throw new Error(`MCP legacy SSE server ${server.id} is missing url.`)
     }
+    const timeoutMs = Math.max(1, server.timeout_ms ?? 30_000)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const sseHeaders = await this.buildUpstreamHeaders(server, requestId, { contentType: false })
+      const streamResponse = await fetch(server.url, {
+        method: 'GET',
+        headers: sseHeaders,
+        signal: controller.signal,
+      })
+      if (!streamResponse.ok) {
+        return {
+          statusCode: streamResponse.status,
+          contentType: streamResponse.headers.get('content-type') || 'text/plain; charset=utf-8',
+          bodyText: await streamResponse.text(),
+          headers: {
+            ...this.safeResponseHeaders(streamResponse.headers),
+            'x-siftgate-mcp-request-id': requestId,
+          },
+          ok: false,
+        }
+      }
+
+      let endpoint: string | null = server.message_url || null
+      const expectedIds = requestIds(body)
+      const responses: unknown[] = []
+      let endpointReady: (() => void) | null = null
+      let responseReady: (() => void) | null = null
+      let streamError: unknown
+      const endpointPromise = new Promise<void>((resolve) => {
+        endpointReady = resolve
+        if (endpoint) resolve()
+      })
+      const responsePromise = new Promise<void>((resolve) => {
+        responseReady = resolve
+        if (expectedIds.size === 0) resolve()
+      })
+
+      const streamPromise = readSseEvents(streamResponse, (event) => {
+        if (event.event === 'endpoint' && event.data.trim()) {
+          endpoint = event.data.trim()
+          endpointReady?.()
+          return
+        }
+        const parsed = parseSseJsonData(event.data)
+        if (parsed === undefined) return
+        for (const message of Array.isArray(parsed) ? parsed : [parsed]) {
+          const responseId = jsonRpcId(message)
+          if (responseId !== null && expectedIds.has(responseId)) {
+            responses.push(message)
+          }
+        }
+        if (responses.length > 0 && responses.length >= expectedIds.size) {
+          responseReady?.()
+        }
+      }).catch((error) => {
+        streamError = error
+        endpointReady?.()
+        responseReady?.()
+      })
+
+      await endpointPromise
+      if (streamError) throw streamError
+      if (!endpoint) {
+        throw new Error(`MCP legacy SSE server ${server.id} did not provide a message endpoint.`)
+      }
+
+      const messageUrl = resolveEndpointUrl(server.url, endpoint)
+      const postHeaders = await this.buildUpstreamHeaders(server, requestId)
+      const postResponse = await fetch(messageUrl, {
+        method: 'POST',
+        headers: postHeaders,
+        body: JSON.stringify(body ?? null),
+        signal: controller.signal,
+      })
+      if (!postResponse.ok) {
+        return {
+          statusCode: postResponse.status,
+          contentType: postResponse.headers.get('content-type') || 'text/plain; charset=utf-8',
+          bodyText: await postResponse.text(),
+          headers: {
+            ...this.safeResponseHeaders(postResponse.headers),
+            'x-siftgate-mcp-request-id': requestId,
+          },
+          ok: false,
+        }
+      }
+
+      await Promise.race([responsePromise, streamPromise])
+      if (streamError) throw streamError
+      return {
+        statusCode: 200,
+        contentType: 'application/json; charset=utf-8',
+        bodyText: JSON.stringify(Array.isArray(body) ? responses : responses[0] || { jsonrpc: '2.0', result: null }),
+        headers: {
+          ...this.safeResponseHeaders(streamResponse.headers),
+          'x-siftgate-mcp-request-id': requestId,
+        },
+        ok: true,
+      }
+    } finally {
+      clearTimeout(timeout)
+      controller.abort()
+    }
+  }
+
+  private async readSseJsonRpcResponse(response: Response, body: unknown): Promise<unknown> {
+    const expectedIds = requestIds(body)
+    const responses: unknown[] = []
+    await readSseEvents(response, (event) => {
+      const parsed = parseSseJsonData(event.data)
+      if (parsed === undefined) return
+      for (const message of Array.isArray(parsed) ? parsed : [parsed]) {
+        const responseId = jsonRpcId(message)
+        if (expectedIds.size === 0 || (responseId !== null && expectedIds.has(responseId))) {
+          responses.push(message)
+        }
+      }
+    })
+    if (Array.isArray(body)) return responses
+    return responses[0] || { jsonrpc: '2.0', result: null }
   }
 
   private async forwardStdio(server: McpServerConfig, body: unknown, requestId: string): Promise<McpUpstreamResult> {
@@ -580,6 +727,76 @@ function safeEndpoint(server: McpServerConfig): string {
   } catch {
     return rawUrl.split('?')[0] || rawUrl
   }
+}
+
+async function readSseEvents(response: Response, onEvent: (event: SseEvent) => void): Promise<void> {
+  if (!response.body) return
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let index = nextSseBoundary(buffer)
+      while (index !== -1) {
+        const block = buffer.slice(0, index)
+        buffer = buffer.slice(buffer[index] === '\r' ? index + 4 : index + 2)
+        const event = parseSseEvent(block)
+        if (event) onEvent(event)
+        index = nextSseBoundary(buffer)
+      }
+    }
+    buffer += decoder.decode()
+    const event = parseSseEvent(buffer)
+    if (event) onEvent(event)
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+function nextSseBoundary(value: string): number {
+  const lf = value.indexOf('\n\n')
+  const crlf = value.indexOf('\r\n\r\n')
+  if (lf === -1) return crlf
+  if (crlf === -1) return lf
+  return Math.min(lf, crlf)
+}
+
+function parseSseEvent(block: string): SseEvent | null {
+  let event = 'message'
+  const data: string[] = []
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trimEnd()
+    if (!line || line.startsWith(':')) continue
+    const separator = line.indexOf(':')
+    const field = separator === -1 ? line : line.slice(0, separator)
+    const rawValue = separator === -1 ? '' : line.slice(separator + 1)
+    const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
+    if (field === 'event') event = value || 'message'
+    if (field === 'data') data.push(value)
+  }
+  if (data.length === 0) return null
+  return { event, data: data.join('\n') }
+}
+
+function parseSseJsonData(data: string): unknown | undefined {
+  const trimmed = data.trim()
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return undefined
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return undefined
+  }
+}
+
+function isEventStream(contentType: string): boolean {
+  return contentType.toLowerCase().includes('text/event-stream')
+}
+
+function resolveEndpointUrl(baseUrl: string, endpoint: string): string {
+  return new URL(endpoint, baseUrl).toString()
 }
 
 function requestIds(body: unknown): Set<string> {

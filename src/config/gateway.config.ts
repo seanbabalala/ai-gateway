@@ -528,7 +528,7 @@ export interface NamespaceConfig {
 }
 
 // ===== MCP Gateway Preview =====
-export type McpServerTransport = 'http_json_rpc' | 'streamable_http' | 'stdio';
+export type McpServerTransport = 'http_json_rpc' | 'streamable_http' | 'sse' | 'stdio';
 
 export interface McpToolConfig {
   /** Tool name advertised in Dashboard metadata. */
@@ -546,10 +546,12 @@ export interface McpServerConfig {
   enabled?: boolean;
   /** Upstream MCP HTTP endpoint. Required for HTTP transports. Values may use secret references in headers, not URL query secrets. */
   url?: string;
-  /** Preview supports HTTP JSON-RPC and local stdio MCP process forwarding. Default: http_json_rpc. */
+  /** Preview supports HTTP JSON-RPC, Streamable HTTP, legacy HTTP+SSE, and local stdio MCP process forwarding. Default: http_json_rpc. */
   transport?: McpServerTransport;
   /** Optional outbound headers. Values may use runtime secret references. */
   headers?: Record<string, string>;
+  /** Optional legacy HTTP+SSE message endpoint. When omitted, SiftGate waits for the upstream endpoint event. */
+  message_url?: string;
   /** Stdio MCP command, for example uvx. Required when transport is stdio. */
   command?: string;
   /** Stdio MCP command arguments. Values may use runtime secret references. */

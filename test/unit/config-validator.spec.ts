@@ -345,6 +345,36 @@ describe('config validator', () => {
     expect(codes(result.errors)).not.toContain('invalid_mcp_server');
   });
 
+  it('accepts Streamable HTTP and legacy SSE MCP Tool Gateway registry config', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        mcp: {
+          enabled: true,
+          servers: [
+            {
+              id: 'streamable-tools',
+              transport: 'streamable_http',
+              url: 'http://localhost:8787/mcp',
+              tools: [{ name: 'web_search' }],
+            },
+            {
+              id: 'legacy-sse-tools',
+              transport: 'sse',
+              url: 'http://localhost:8788/sse',
+              message_url: '/messages',
+              tools: [{ name: 'understand_image' }],
+            },
+          ],
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_mcp_server');
+    expect(codes(result.errors)).not.toContain('invalid_mcp_server_url');
+  });
+
   it('validates MCP Tool Gateway server references', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {

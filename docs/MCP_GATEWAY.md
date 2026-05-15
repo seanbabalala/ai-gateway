@@ -51,14 +51,41 @@ mcp:
 `headers` may use runtime secret references. Resolved values are used only for
 the upstream request and are not returned by Dashboard APIs.
 
-HTTP MCP servers use `transport: http_json_rpc` or `transport: streamable_http`
-with `url`. Local MCP processes use `transport: stdio` with `command`, optional
-`args`, optional `env`, and optional `cwd`:
+MCP servers can use:
+
+- `transport: http_json_rpc` for simple HTTP JSON-RPC POST forwarding.
+- `transport: streamable_http` for current MCP Streamable HTTP servers. SiftGate
+  forwards the JSON-RPC POST and collects either JSON responses or
+  `text/event-stream` JSON-RPC responses.
+- `transport: sse` for legacy HTTP+SSE MCP servers. `url` points at the SSE
+  endpoint; `message_url` can be set explicitly, or SiftGate waits for the
+  upstream `endpoint` SSE event.
+- `transport: stdio` for local MCP processes with `command`, optional `args`,
+  optional `env`, and optional `cwd`.
 
 ```yaml
 mcp:
   enabled: true
   servers:
+    - id: remote-tools
+      name: "Remote Streamable MCP"
+      url: "https://mcp.example.com/mcp"
+      transport: streamable_http
+      tools:
+        - name: web_search
+          description: "Search the web"
+          input_schema:
+            type: object
+    - id: legacy-tools
+      name: "Legacy SSE MCP"
+      url: "https://legacy-mcp.example.com/sse"
+      transport: sse
+      message_url: "https://legacy-mcp.example.com/messages"
+      tools:
+        - name: search_docs
+          description: "Search legacy docs"
+          input_schema:
+            type: object
     - id: minimax-token-plan
       name: "MiniMax Token Plan MCP"
       description: "MiniMax MCP tools for web search and image understanding"
@@ -84,7 +111,9 @@ mcp:
 For stdio servers, SiftGate starts the configured command for the proxied call,
 performs the MCP `initialize` handshake when the client request is not already
 an initialize request, forwards the JSON-RPC message, and returns the matching
-JSON-RPC response.
+JSON-RPC response. For legacy SSE servers, SiftGate opens the SSE stream,
+discovers or uses the configured message endpoint, posts the JSON-RPC request,
+and returns the matching SSE JSON-RPC response.
 
 ## Proxy Endpoint
 

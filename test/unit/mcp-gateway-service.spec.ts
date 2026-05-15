@@ -138,6 +138,145 @@ describe('McpGatewayService', () => {
     expect(JSON.stringify(summary)).not.toContain('Bearer resolved')
   })
 
+  it('collects Streamable HTTP SSE responses as JSON-RPC results', async () => {
+    const { service } = makeService({
+      servers: [
+        {
+          id: 'streamable-tools',
+          name: 'Streamable Tools',
+          transport: 'streamable_http',
+          url: 'http://mcp.local/streamable',
+          tools: [{ name: 'web_search', description: 'Search the web' }],
+        },
+      ],
+    })
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        `event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: 3, result: { content: [{ type: 'text', text: 'search result' }] } })}\n\n`,
+        {
+          status: 200,
+          headers: {
+            'content-type': 'text/event-stream',
+            'mcp-session-id': 'session_123',
+          },
+        },
+      ),
+    )
+
+    const result = await service.proxy({
+      serverId: 'streamable-tools',
+      apiKey: {
+        ...apiKey,
+        allowed_endpoints: ['mcp:streamable-tools:web_search'],
+        namespace_id: null,
+        namespace_name: null,
+      },
+      body: {
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
+        params: { name: 'web_search', arguments: { query: 'private query' } },
+      },
+    })
+
+    expect(result.statusCode).toBe(200)
+    expect(result.contentType).toContain('application/json')
+    expect(result.headers['mcp-session-id']).toBe('session_123')
+    expect(JSON.parse(result.bodyText)).toMatchObject({
+      jsonrpc: '2.0',
+      id: 3,
+      result: { content: [{ type: 'text', text: 'search result' }] },
+    })
+    expect(service.getDashboardSummary().recent_calls[0]).toMatchObject({
+      server_id: 'streamable-tools',
+      method: 'tools/call',
+      tool_name: 'web_search',
+      success: true,
+    })
+    expect(JSON.stringify(service.getDashboardSummary())).not.toContain('private query')
+  })
+
+  it('proxies legacy HTTP+SSE MCP servers through endpoint and message events', async () => {
+    const { service } = makeService({
+      servers: [
+        {
+          id: 'legacy-tools',
+          name: 'Legacy Tools',
+          transport: 'sse',
+          url: 'http://mcp.local/sse',
+          tools: [{ name: 'understand_image', description: 'Analyze image content' }],
+        },
+      ],
+    })
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          [
+            'event: endpoint',
+            'data: /messages?session=abc',
+            '',
+            'event: message',
+            `data: ${JSON.stringify({ jsonrpc: '2.0', id: 4, result: { content: [{ type: 'text', text: 'image result' }] } })}`,
+            '',
+          ].join('\n'),
+          {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(new Response('', { status: 202 }))
+
+    const result = await service.proxy({
+      serverId: 'legacy-tools',
+      apiKey: {
+        ...apiKey,
+        allowed_endpoints: ['mcp:legacy-tools:understand_image'],
+        namespace_id: null,
+        namespace_name: null,
+      },
+      body: {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: { name: 'understand_image', arguments: { image_url: 'https://example.com/private.png' } },
+      },
+    })
+
+    expect(result.statusCode).toBe(200)
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://mcp.local/sse',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.not.objectContaining({
+          'content-type': expect.any(String),
+        }),
+      }),
+    )
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      'http://mcp.local/messages?session=abc',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('understand_image'),
+      }),
+    )
+    expect(JSON.parse(result.bodyText)).toMatchObject({
+      jsonrpc: '2.0',
+      id: 4,
+      result: { content: [{ type: 'text', text: 'image result' }] },
+    })
+    expect(service.getDashboardSummary().recent_calls[0]).toMatchObject({
+      server_id: 'legacy-tools',
+      method: 'tools/call',
+      tool_name: 'understand_image',
+      success: true,
+    })
+    expect(JSON.stringify(service.getDashboardSummary())).not.toContain('private.png')
+  })
+
   it('enforces API key endpoint permissions before upstream forwarding', async () => {
     const { service } = makeService()
     global.fetch = jest.fn()
