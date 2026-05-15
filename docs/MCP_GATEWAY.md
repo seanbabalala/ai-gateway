@@ -51,6 +51,70 @@ mcp:
 `headers` may use runtime secret references. Resolved values are used only for
 the upstream request and are not returned by Dashboard APIs.
 
+MCP servers can use:
+
+- `transport: http_json_rpc` for simple HTTP JSON-RPC POST forwarding.
+- `transport: streamable_http` for current MCP Streamable HTTP servers. SiftGate
+  forwards the JSON-RPC POST and collects either JSON responses or
+  `text/event-stream` JSON-RPC responses.
+- `transport: sse` for legacy HTTP+SSE MCP servers. `url` points at the SSE
+  endpoint; `message_url` can be set explicitly, or SiftGate waits for the
+  upstream `endpoint` SSE event.
+- `transport: stdio` for local MCP processes with `command`, optional `args`,
+  optional `env`, and optional `cwd`.
+
+```yaml
+mcp:
+  enabled: true
+  servers:
+    - id: remote-tools
+      name: "Remote Streamable MCP"
+      url: "https://mcp.example.com/mcp"
+      transport: streamable_http
+      tools:
+        - name: web_search
+          description: "Search the web"
+          input_schema:
+            type: object
+    - id: legacy-tools
+      name: "Legacy SSE MCP"
+      url: "https://legacy-mcp.example.com/sse"
+      transport: sse
+      message_url: "https://legacy-mcp.example.com/messages"
+      tools:
+        - name: search_docs
+          description: "Search legacy docs"
+          input_schema:
+            type: object
+    - id: minimax-token-plan
+      name: "MiniMax Token Plan MCP"
+      description: "MiniMax MCP tools for web search and image understanding"
+      transport: stdio
+      command: uvx
+      args: ["minimax-coding-plan-mcp"]
+      timeout_ms: 30000
+      max_request_bytes: 1000000
+      env:
+        MINIMAX_API_KEY: "${env:MINIMAX_TOKEN_PLAN_KEY}"
+        MINIMAX_API_HOST: "https://api.minimaxi.com"
+      tools:
+        - name: web_search
+          description: "Search the web through MiniMax Token Plan"
+          input_schema:
+            type: object
+        - name: understand_image
+          description: "Analyze image content through MiniMax Token Plan"
+          input_schema:
+            type: object
+```
+
+For stdio servers, SiftGate starts the configured command for the proxied call,
+performs the MCP `initialize` handshake when the client request is not already
+an initialize request, forwards the JSON-RPC message, and returns the matching
+JSON-RPC response. For legacy SSE servers, SiftGate opens the SSE stream,
+discovers or uses the configured message endpoint, posts the JSON-RPC request,
+and returns the matching SSE JSON-RPC response.
+
 ## Proxy Endpoint
 
 Clients call:
@@ -82,6 +146,10 @@ Gateway API keys can restrict MCP access with `allowed_endpoints`:
 - `mcp`: allow all configured MCP servers.
 - `mcp:<serverId>`: allow one MCP server.
 - `mcp:<serverId>:<toolName>`: allow one tool call on one MCP server.
+
+For the MiniMax Token Plan example above, use
+`mcp:minimax-token-plan:web_search` or
+`mcp:minimax-token-plan:understand_image` for tool-level access.
 
 If `mcp.servers[].allowed_namespaces` is set, the Gateway API key must be bound
 to one of those Policy Namespaces.

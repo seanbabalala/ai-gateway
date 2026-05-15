@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## 2.11.3 - 2026-05-14
+
+### Added
+
+- Added `transport: stdio` support to MCP Tool Gateway so local MCP server
+  processes can be launched, initialized, and proxied behind existing Gateway
+  API key, Policy Namespace, rate-limit, request-size, and metadata-only audit
+  controls.
+- Added real Streamable HTTP SSE-response handling and legacy HTTP+SSE
+  transport support for MCP Tool Gateway, including optional `message_url`
+  configuration for older MCP servers.
+- Added MiniMax Token Plan MCP examples for `web_search` and
+  `understand_image`, including tool-level `allowed_endpoints` examples for
+  `mcp:minimax-token-plan:web_search` and
+  `mcp:minimax-token-plan:understand_image`.
+
+### Test Evidence
+
+- `npm test -- --runInBand test/unit/mcp-gateway-service.spec.ts test/unit/config-validator.spec.ts`
+- `npm run build`
+- `npm test -- --runInBand`
+- `npm run docs:check`
+- `npm run lint`
+- `npm run release:check`
+- `npm run validate:k8s`
+- `npm run validate:config -- --config gateway.config.yaml`
+- `cd frontend && npm test`
+- `cd frontend && npm run build`
+
+### Boundaries
+
+- v2.11.3 keeps existing HTTP MCP proxy behavior unchanged. Stdio MCP servers
+  are explicitly configured per server and continue to store only metadata by
+  default; SiftGate does not persist tool arguments, tool results, raw headers,
+  provider keys, resolved secrets, or media bytes.
+
 ## 2.11.2 - 2026-05-14
 
 ### Changed

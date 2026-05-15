@@ -306,6 +306,75 @@ describe('config validator', () => {
     expect(codes(result.errors)).not.toContain('invalid_mcp_config');
   });
 
+  it('accepts stdio MCP Tool Gateway registry config for MiniMax tools', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        mcp: {
+          enabled: true,
+          servers: [
+            {
+              id: 'minimax-token-plan',
+              name: 'MiniMax Token Plan MCP',
+              transport: 'stdio',
+              command: 'uvx',
+              args: ['minimax-coding-plan-mcp'],
+              env: {
+                MINIMAX_API_KEY: '${env:MINIMAX_TOKEN_PLAN_KEY:-test}',
+                MINIMAX_API_HOST: 'https://api.minimaxi.com',
+              },
+              tools: [
+                {
+                  name: 'web_search',
+                  description: 'Search the web through MiniMax Token Plan.',
+                  input_schema: { type: 'object' },
+                },
+                {
+                  name: 'understand_image',
+                  description: 'Analyze image content through MiniMax Token Plan.',
+                  input_schema: { type: 'object' },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_mcp_server');
+  });
+
+  it('accepts Streamable HTTP and legacy SSE MCP Tool Gateway registry config', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        mcp: {
+          enabled: true,
+          servers: [
+            {
+              id: 'streamable-tools',
+              transport: 'streamable_http',
+              url: 'http://localhost:8787/mcp',
+              tools: [{ name: 'web_search' }],
+            },
+            {
+              id: 'legacy-sse-tools',
+              transport: 'sse',
+              url: 'http://localhost:8788/sse',
+              message_url: '/messages',
+              tools: [{ name: 'understand_image' }],
+            },
+          ],
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.errors)).not.toContain('invalid_mcp_server');
+    expect(codes(result.errors)).not.toContain('invalid_mcp_server_url');
+  });
+
   it('validates MCP Tool Gateway server references', () => {
     const result = validateConfigObject(
       secretReferenceConfig('${OPENAI_API_KEY:-test}', {
@@ -317,7 +386,7 @@ describe('config validator', () => {
             {
               id: 'local-tools',
               url: 'file:///tmp/mcp.sock',
-              transport: 'stdio',
+              transport: 'bad_transport',
               allowed_namespaces: ['missing-team'],
               tools: [{ description: 'missing name' }],
             },

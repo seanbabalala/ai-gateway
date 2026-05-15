@@ -2,7 +2,7 @@
 
 [Inicio de documentación](../../README.md) · [README del proyecto](../../../README.md)
 
-Versión actual: **v2.11.2**.
+Versión actual: **v2.11.3**.
 
 SiftGate es el AI traffic data plane self-hosted para equipos que ya superaron
 las claves directas de proveedor, los proxies puntuales y el routing de modelos
