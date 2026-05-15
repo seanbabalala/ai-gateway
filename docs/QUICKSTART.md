@@ -74,7 +74,33 @@ curl http://localhost:2099/v1/chat/completions \
   }'
 ```
 
-## 6. Validate Before Production
+## 6. Five-Minute Governed Request
+
+Use this path when evaluating SiftGate against a lightweight proxy or API
+distribution panel. The goal is to prove that one request is governed, routed,
+logged, and explainable without turning on advanced features.
+
+1. Open `http://localhost:2099/dashboard`.
+2. Confirm one Workspace exists.
+3. Add or verify one Provider Node with a runtime secret reference such as
+   `${env:OPENAI_API_KEY}`.
+4. Create one Gateway API Key with:
+   - `allowed_endpoints`: `chat_completions` or `messages`
+   - `allowed_nodes`: the node you just verified
+   - `allowed_models`: one model or alias
+   - optional daily token or cost budget
+5. Send the request with that Gateway API key.
+6. Open **Logs** and confirm the request id, node, model, status, latency,
+   token/cost metadata, and API key attribution.
+7. Open **Route Explanation** for the request and confirm why SiftGate selected
+   or rejected candidates.
+
+This is the smallest SiftGate loop: client key, provider key separation,
+endpoint/model policy, budget context, route evidence, and metadata-only logs.
+It is intentionally separate from public API resale, prepaid wallets, or channel
+redistribution workflows.
+
+## 7. Validate Before Production
 
 ```bash
 npm run validate:config

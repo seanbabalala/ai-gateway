@@ -235,6 +235,26 @@ Public positioning references: [Manifest](https://github.com/mnfst/manifest),
 [One API](https://github.com/songquanpeng/one-api), and
 [New API](https://github.com/QuantumNous/new-api).
 
+Choose SiftGate when the job is team-owned AI traffic governance: provider
+keys, agent access, MCP tools, policy boundaries, budgets, route evidence,
+metadata-only audit, and production rollout in one self-hosted data plane. If
+the job is public API resale, prepaid wallets, or the lightest possible
+provider proxy, One API, New API, Manifest, or LiteLLM may be a better fit.
+
+The committed v2.0.0 benchmark reports also give operators a repeatable
+baseline for local gateway overhead: on an Apple M4 mock-upstream run,
+non-streaming direct proxy overhead measured +8 ms p50/p95/p99, streaming total
+overhead measured +10 ms p50/p95/p99, streaming first-byte overhead measured
++3 ms, and metadata-only Dashboard log writes measured 1 ms p50/p95/p99. See
+[Performance](docs/PERFORMANCE.md) for methodology and limitations.
+The smart-routing benchmark prompt corpus is tracked separately with 500
+prompts from WildBench v2, IFEval, MT-Bench, GSM8K, and HumanEval; see the
+[prompt corpus summary](docs/reports/smart-routing-prompt-corpus.md).
+
+<p align="center">
+  <img src="docs/assets/performance/benchmark-evidence.svg" alt="SiftGate benchmark evidence snapshot" width="100%" />
+</p>
+
 <p align="center">
   <img src="docs/assets/comparison/competitive-matrix.svg" alt="SiftGate competitive matrix" width="100%" />
 </p>

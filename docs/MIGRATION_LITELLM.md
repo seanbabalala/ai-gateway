@@ -84,5 +84,37 @@ After generation:
 node dist/cli/siftgate.js validate --config ./gateway.generated.yaml
 ```
 
+## Verify The Migrated Route
+
+After the generated config validates, run one request through SiftGate before
+moving production traffic. Use the migrated alias or model name so the check
+exercises the imported route instead of a hand-picked direct model:
+
+```bash
+curl http://localhost:2099/v1/chat/completions \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer ${SIFTGATE_API_KEY}" \
+  -d '{
+    "model": "gpt-4o-public",
+    "messages": [{"role": "user", "content": "Migration smoke test."}]
+  }'
+```
+
+Then open Dashboard logs and Route Explanation for that request. Confirm:
+
+- the requested LiteLLM alias maps to the expected SiftGate node and upstream
+  model;
+- fallback order matches the migration report and any collapsed LiteLLM
+  fallback map has been reviewed;
+- pricing confidence is not `low` before budgets or cost routing are enforced;
+- provider compatibility evidence matches the endpoint, modality, streaming,
+  and structured-output behavior the client expects;
+- cache evidence is visible when semantic cache or provider prompt-cache
+  routing is enabled.
+
+SiftGate stores route/cost/policy metadata for this verification path. It does
+not store prompts, responses, raw auth headers, provider keys, resolved
+secrets, media bytes, or MCP tool payloads by default.
+
 For v0.5 database migration from local SQLite runtime data to PostgreSQL, see
 [Production Deployment](PRODUCTION.md).

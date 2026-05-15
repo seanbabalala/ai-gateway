@@ -58,6 +58,53 @@ Use `--json` for CI or automation.
 - Provider Catalog hints for endpoints, modalities, limits, structured output,
   streaming/realtime/rerank support, and placeholder pricing.
 
+## One API And New API Mapping
+
+One API and New API are often organized around channels, users, groups, tokens,
+quota, and optional billing or recharge flows. SiftGate uses a different center
+of gravity: provider nodes, Gateway API keys, local teams, Policy Namespaces,
+budgets, and route evidence. The migrator keeps that boundary explicit instead
+of pretending the models are identical.
+
+| One API / New API concept | SiftGate concept | Migration behavior |
+| --- | --- | --- |
+| Channel/provider entry | `nodes[]` provider node | Imported as a node with provider id, base URL, protocol hint, endpoint map, and model buckets when available. |
+| Channel priority, weight, or group routing | `routing.tiers[]` targets, fallback, split, or load balancing | Emitted as conservative routing scaffolds with manual review notes when source semantics are ambiguous. |
+| Channel API key | `nodes[].api_key` or `nodes[].credentials[]` secret reference | Literal keys are replaced with `${env:...}` placeholders; multiple keys for one provider should be reviewed as a credential pool. |
+| Model mapping or channel model list | `nodes[].models`, aliases, and model buckets | Preserved as direct model ids or aliases where possible; unknown model families are left with provider/catalog review notes. |
+| User token / API token | Gateway API Key | Export scaffolds create client-facing Gateway API key placeholders; imports do not copy token plaintext. |
+| Group or user scope | Team or Policy Namespace | Suggested as `teams[]` or `namespaces[]` depending on whether the source scope is identity-oriented or policy-oriented. |
+| Quota or billing limit | Budget scope | Mapped to global, Team, Policy Namespace, or API-key budget scaffolds when the source shape is clear. Recharge and wallet semantics remain manual. |
+| Enabled/disabled channel status | Node `enabled` state | Preserved when available. Disabled channels stay disabled in generated nodes. |
+| Logs and usage rows | SiftGate call logs after cutover | Historical logs are not imported; SiftGate starts metadata-only logs once traffic flows through it. |
+| Prepaid wallet, payment, reseller identity | Outside SiftGate OSS scope | Reported as unsupported/manual because SiftGate is not a billing wallet or resale marketplace. |
+
+## Example Channel Import Shape
+
+The import accepts common YAML scaffolds rather than a single database schema:
+
+```yaml
+channels:
+  - name: openai-main
+    type: openai
+    base_url: https://api.openai.com/v1
+    models: [gpt-4o, gpt-4o-mini]
+    key: ${OPENAI_API_KEY}
+    weight: 1
+    group: team-a
+    quota:
+      daily_cost_limit: 25
+```
+
+Generated SiftGate config should be reviewed for:
+
+- `nodes[].protocol`, `endpoint`, and `model_buckets`
+- provider secret references
+- `routing.tiers[]` target order and fallback behavior
+- Gateway API key endpoint/model/node restrictions
+- whether `group` should become a Team, Policy Namespace, or both
+- budget units and reset semantics
+
 ## Privacy And Secrets
 
 Literal provider keys are never copied to generated YAML. The migrator replaces

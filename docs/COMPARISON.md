@@ -38,6 +38,115 @@ projects contributed to the ecosystem.
 | New API | Aggregation/distribution hub with UI, channel management, billing, and OpenAI/Claude/Gemini conversion | SiftGate overlaps on gatewaying and protocol compatibility, but emphasizes local policy enforcement, evidence-rich route decisions, workspace-scoped operational metadata, provider credential pools, no default content storage, and separation from reseller/payment workflows. |
 | LiteLLM Proxy | Broad provider compatibility and developer-friendly proxying | SiftGate emphasizes Dashboard-first operations, canonical protocol metadata, policy governance, cost evidence, provider catalog governance, agent profiles, MCP gatewaying, and route explainability. |
 
+## Benchmark Evidence Snapshot
+
+SiftGate includes committed benchmark reports, not only a benchmark script. The
+v2.0.0 GA report was generated on 2026-05-08 at commit
+`2328dd76ba1a26e7de5b9d2b88610921aec69883` on macOS arm64, Node v24.12.0, and
+Apple M4 hardware. It uses a local deterministic mock upstream to isolate
+SiftGate overhead from provider/network latency.
+
+| Evidence | v2.0.0 GA result |
+| --- | --- |
+| Non-streaming direct proxy overhead | +8 ms p50 / +8 ms p95 / +8 ms p99 versus local mock upstream |
+| Smart routing path | 15 ms p50 / 15 ms p95 / 15 ms p99 through SQLite metadata path |
+| Streaming total overhead | +10 ms p50 / +10 ms p95 / +10 ms p99 versus local streaming mock upstream |
+| Streaming first-byte overhead | +3 ms p50 / +3 ms p95 / +3 ms p99 |
+| Metadata-only Dashboard log write | 1 ms p50 / 1 ms p95 / 1 ms p99 |
+| Metadata-only Dashboard benchmark read | 5 ms p50 / 5 ms p95 / 5 ms p99 |
+
+The rc.2 report remains available as a slightly larger release-candidate run:
+5 requests at concurrency 2, with non-streaming proxy overhead of +13 ms p50 /
++17 ms p95 / +17 ms p99 and streaming first-byte overhead of +3 ms p50 / +3 ms
+p95 / +3 ms p99.
+
+The smart-routing prompt corpus is tracked separately in
+[`docs/reports/smart-routing-prompt-corpus.md`](reports/smart-routing-prompt-corpus.md).
+It contains 500 prompts with seed `42`, tiered as 75 simple, 150 standard, 175
+complex, and 100 reasoning prompts. Source counts are WildBench v2 157, IFEval
+140, MT-Bench 95, GSM8K 53, and HumanEval 55.
+
+Use these reports as evidence for local gateway overhead, logging overhead, and
+repeatability. Do not treat them as live-provider or competitor benchmarks
+unless request body, concurrency, commit, hardware, database, network
+placement, upstream latency profile, and config are identical. See
+[Performance](PERFORMANCE.md) and the committed reports under
+[`docs/reports/`](reports/).
+
+## When To Choose SiftGate
+
+Choose SiftGate when the operator owns the AI traffic and needs a governed
+runtime path rather than a resale panel or thin SDK proxy:
+
+- Teams need separate Gateway API keys from upstream provider keys.
+- Coding agents, applications, MCP tools, and batch jobs should share policy
+  without sharing provider credentials.
+- Operators need route evidence: selected/rejected candidates, compatibility
+  filters, credential hits, fallback reasons, cost estimates, cache evidence,
+  and namespace or budget context.
+- Provider credentials need to rotate inside a logical node with sticky
+  affinity, cooldown, retry-on-status, and credential-level metadata.
+- Prompt, response, tool payload, media, source, diff, and resolved secret
+  storage must stay off by default.
+- The production path needs Dashboard operations, config validation, config
+  audit/rollback, OIDC, secret references, log sinks, OpenTelemetry, Docker,
+  Kubernetes, and Helm without requiring a hosted control plane.
+
+## When Another Project May Fit Better
+
+This is also an intentional boundary. SiftGate is not trying to win every
+gateway-shaped job:
+
+- Choose One API or New API when the primary product is API distribution,
+  channel administration, users, quotas, recharge, prepaid wallets, or a
+  public-facing resale workflow.
+- Choose Manifest when the primary job is a lightweight smart router focused
+  on choosing cheaper capable models for agents or applications.
+- Choose LiteLLM Proxy when the primary job is broad provider abstraction,
+  quick SDK compatibility, and developer-friendly proxying across many model
+  APIs with minimal product surface.
+- Choose Envoy AI Gateway-style infrastructure when the organization already
+  standardizes on Envoy/Gateway API and wants L7 gateway primitives first, with
+  AI routing layered into that platform.
+
+## Gaps To Close
+
+SiftGate's current gaps are mostly product adoption and proof, not lack of
+surface area:
+
+- **Faster first value**: the feature set is broad, so new users need a shorter
+  "one provider, one key, one request, one route explanation" path before they
+  learn Workspaces, Policy Namespaces, MCP, Semantic Controls, and evals.
+- **Provider confidence**: LiteLLM has stronger market memory for provider
+  breadth. SiftGate needs clearer compatibility tables, migration examples,
+  and repeated provider smoke tests to make its coverage feel equally trusted.
+- **Migration guides**: SiftGate already has LiteLLM migration coverage, but
+  One API and New API operators need explicit mapping from channels, tokens,
+  groups, quota, and model aliases into SiftGate nodes, Gateway API keys,
+  teams, budgets, and Policy Namespaces.
+- **Performance proof**: committed v2.0.0 reports already cover local
+  mock-upstream overhead, streaming first-byte overhead, and Dashboard/log write
+  cost. Future reports should expand concurrency, PostgreSQL, Redis, provider
+  credential-pool retry, and MCP stdio launch overhead.
+- **Demo assets**: add a visible end-to-end demo for Claude Code or Codex,
+  `claude-opus`/`coding-auto`, MCP web search/image understanding, namespace
+  policy, budget, and route explanation.
+- **Operational defaults**: reduce setup choices for the default local path
+  while keeping the advanced controls discoverable.
+
+## Near-Term Documentation Backlog
+
+These additions would make the comparison easier for new operators to act on:
+
+| Gap | Public doc to add or expand |
+| --- | --- |
+| Shorter first value | Keep expanding the "Five-Minute Governed Request" path in [Quickstart](QUICKSTART.md) with screenshots or a short video. |
+| One API / New API migration | Keep expanding channel/token/quota mapping in [Migration compatibility](MIGRATION_COMPAT.md), or create a focused migration guide if it grows. |
+| LiteLLM confidence | Use [Migration from LiteLLM](MIGRATION_LITELLM.md) to validate migrated aliases against Dashboard logs and Route Explanation, then add more provider-specific examples. |
+| Performance proof | Use the committed v2.0.0 reports in [Performance](PERFORMANCE.md) as current evidence, then add higher-concurrency PostgreSQL/Redis/MCP reports when available. |
+| Agent + MCP demo | Use the end-to-end Claude Code/Codex + MCP paths in [Agent Gateway profiles](AGENT_GATEWAY.md) and [MCP Tool Gateway](MCP_GATEWAY.md), then add screenshots or a video. |
+| Provider coverage trust | Add tested provider smoke-test status to [Provider Catalog](PROVIDER_CATALOG.md) or [Provider compatibility](PROVIDER_COMPATIBILITY.md). |
+
 ## Capability Matrix
 
 | Capability | SiftGate | Manifest | One API | New API | LiteLLM Proxy |

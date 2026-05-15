@@ -158,6 +158,29 @@ For the MiniMax Token Plan example above, use
 If `mcp.servers[].allowed_namespaces` is set, the Gateway API key must be bound
 to one of those Policy Namespaces.
 
+## Agent Demo Checklist
+
+For a Claude Code, Codex, or generic coding-agent demo, pair MCP Tool Gateway
+with an Agent Profile:
+
+1. Register the MCP server in `mcp.servers[]`.
+2. Create a Gateway API Key with a model endpoint permission such as
+   `messages` or `chat_completions`.
+3. Add tool-level MCP permissions such as
+   `mcp:minimax-token-plan:web_search` and
+   `mcp:minimax-token-plan:understand_image`.
+4. Attach the MCP server id to the Agent Profile through `mcp_server_ids`.
+5. Use the rendered Agent Profile setup for the connector and keep provider
+   keys in SiftGate nodes or secret references.
+6. Verify the model request in Route Explanation and the MCP call in the
+   metadata-only MCP audit buffer.
+
+This demo proves a single client key can cover coding-agent model traffic and
+tool access while still applying endpoint, model, node, namespace, budget, and
+MCP tool restrictions independently. It also keeps tool arguments, tool
+results, media bytes, raw headers, and resolved secret values out of the
+Dashboard.
+
 ## Privacy
 
 The recent MCP audit buffer stores metadata only:

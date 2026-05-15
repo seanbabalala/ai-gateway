@@ -77,6 +77,59 @@ The rc.2 release-candidate reports remain available for comparison at:
 - [`docs/reports/v2.0.0-rc.2-performance.json`](reports/v2.0.0-rc.2-performance.json)
 - [`docs/reports/v2.0.0-rc.2-performance.md`](reports/v2.0.0-rc.2-performance.md)
 
+## Committed Evidence Snapshot
+
+The v2.0.0 GA report is the current committed baseline for local deterministic
+mock-upstream overhead. It was generated on 2026-05-08 at commit
+`2328dd76ba1a26e7de5b9d2b88610921aec69883` on macOS arm64, Node v24.12.0, and
+Apple M4 hardware.
+
+| Measurement | v2.0.0 GA result |
+| --- | --- |
+| Local mock upstream baseline | 19 ms p50 / 19 ms p95 / 19 ms p99 |
+| Direct chat proxy through SiftGate + SQLite | 27 ms p50 / 27 ms p95 / 27 ms p99 |
+| Non-streaming proxy overhead | +8 ms p50 / +8 ms p95 / +8 ms p99 |
+| Smart routing through SiftGate + SQLite | 15 ms p50 / 15 ms p95 / 15 ms p99 |
+| Streaming mock upstream baseline | 7 ms p50 / 7 ms p95 / 7 ms p99; 1 ms first-byte p50/p95/p99 |
+| Streaming chat through SiftGate + SQLite | 17 ms p50 / 17 ms p95 / 17 ms p99; 4 ms first-byte p50/p95/p99 |
+| Streaming overhead | +10 ms total p50/p95/p99; +3 ms first-byte p50/p95/p99 |
+| Metadata-only Dashboard log write | 1 ms p50 / 1 ms p95 / 1 ms p99 |
+| Dashboard benchmark read from sanitized logs | 5 ms p50 / 5 ms p95 / 5 ms p99 |
+
+The v2.0.0-rc.2 report is useful as a release-candidate comparison because it
+ran 5 requests at concurrency 2. In that run, non-streaming proxy overhead was
++13 ms p50 / +17 ms p95 / +17 ms p99, streaming total overhead was +7 ms p50 /
++15 ms p95 / +15 ms p99, and streaming first-byte overhead was +3 ms
+p50/p95/p99.
+
+The homepage chart at
+[`docs/assets/performance/benchmark-evidence.svg`](assets/performance/benchmark-evidence.svg)
+summarizes the same numbers and states the boundary explicitly: these results
+measure local gateway overhead, not live-provider latency, model quality, or
+competitor performance.
+
+## Smart Routing Prompt Corpus
+
+The smart-routing benchmark prompt corpus is summarized in
+[`docs/reports/smart-routing-prompt-corpus.md`](reports/smart-routing-prompt-corpus.md)
+so routing evidence can be discussed alongside latency evidence without
+requiring raw prompt text in public documentation.
+
+| Field | Value |
+| --- | --- |
+| Public summary | [`docs/reports/smart-routing-prompt-corpus.md`](reports/smart-routing-prompt-corpus.md) |
+| Total prompts | 500 |
+| Random seed | 42 |
+| Tier distribution | 75 simple, 150 standard, 175 complex, 100 reasoning |
+| Source counts | WildBench v2 157, IFEval 140, MT-Bench 95, GSM8K 53, HumanEval 55 |
+
+The metadata cites source datasets and licenses: WildBench v2 from the Allen
+Institute for AI under CC-BY-4.0; IFEval from Google Research under
+Apache-2.0; GSM8K and HumanEval from OpenAI under MIT; and MT-Bench from
+LMSYS / UC Berkeley under Apache-2.0. Arena-Hard-Auto v2 is listed as a
+candidate cited dataset, but the source count for Arena-Hard is `0` in this
+corpus summary.
+
 These numbers are local deterministic mock-upstream measurements. They are
 useful for tracking SiftGate overhead on the measured commit and machine; do
 not publish comparative claims unless request body, concurrency, commit,
@@ -149,6 +202,31 @@ Keep benchmark notes with the gateway commit, node config, machine, provider or
 mock upstream, and request body so future runs can be compared. Do not publish
 comparative claims unless request body, concurrency, commit, hardware, network
 placement, upstream latency profile, and config are identical.
+
+## Publishable Benchmark Checklist
+
+When publishing a performance result in docs, release notes, or comparison
+materials, include enough context for another operator to rerun the test:
+
+- SiftGate commit SHA, version, and whether the tree had local changes.
+- Benchmark command, environment variables, request body, model, endpoint, and
+  stream/non-stream mode.
+- Request count, concurrency, timeout, warmup behavior, and retry settings.
+- Machine, CPU, memory, OS, Node.js version, database backend, Redis state, and
+  whether SiftGate and the upstream were on the same host.
+- Upstream type: local mock, private compatible endpoint, or live provider. Do
+  not publish live-provider comparisons without documenting network placement
+  and upstream latency profile.
+- p50, p75, p95, p99, throughput, status counts, sanitized top errors,
+  first-byte timing for streams, and fallback/cache rates when relevant.
+- Config features that affect latency, including Dashboard log writes,
+  semantic cache, provider prompt-cache routing, credential pools, retries,
+  shadow traffic, OpenTelemetry, and log sinks.
+
+For competitor or before/after claims, keep the same request body, concurrency,
+hardware, database, network placement, upstream/mock, and runtime config. If
+any of those differ, publish the result as an operator-local measurement rather
+than a comparative benchmark.
 
 ## Dashboard Benchmark Report
 

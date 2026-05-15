@@ -352,6 +352,34 @@ If an MCP server declares `allowed_namespaces`, the Gateway API key must be boun
 
 MCP Tool Gateway audit metadata does not store tool arguments or tool results. See [MCP Tool Gateway](MCP_GATEWAY.md).
 
+## Agent + MCP Demo Path
+
+Use this path to demonstrate the difference between SiftGate and a plain model
+proxy: the same Gateway API key governs the coding-agent model request and the
+MCP tool calls.
+
+1. Configure an MCP server such as `minimax-token-plan` in
+   `gateway.config.yaml` with tools like `web_search` and `understand_image`.
+2. Create a Gateway API Key for the agent and allow the model endpoint it uses:
+   `chat_completions` for OpenAI-compatible clients or `messages` for
+   Claude-style clients.
+3. Add only the MCP permissions the demo needs, for example
+   `mcp:minimax-token-plan:web_search` and
+   `mcp:minimax-token-plan:understand_image`.
+4. Create an Agent Profile for Codex, Claude Code, or another connector, bind
+   the same Gateway API Key, choose `coding-auto`, and attach
+   `mcp_server_ids: ["minimax-token-plan"]`.
+5. Send one normal agent model request, then one MCP `tools/call` request
+   through `POST /mcp/minimax-token-plan`.
+6. Open Dashboard logs, Sessions, Agent Platform, and MCP Tool Gateway views.
+
+The expected evidence is model route metadata for the agent request plus
+metadata-only MCP audit rows for the tool calls. The Dashboard should show the
+profile, connector, API key attribution, selected node/model, policy context,
+MCP server id, MCP tool name, status, latency, and sanitized error type when a
+tool fails. It should not expose provider keys, resolved MCP headers, prompts,
+responses, image bytes, tool arguments, or tool results.
+
 ## Dashboard API
 
 The local Dashboard API exposes Agent Profiles:

@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="860" viewBox="0 0 1440 860" role="img" aria-labelledby="title desc">
+  <title id="title">SiftGate benchmark evidence snapshot</title>
+  <desc id="desc">A benchmark evidence chart for SiftGate v2.0.0 showing local deterministic mock-upstream measurements, direct proxy overhead, streaming first-byte overhead, dashboard log write cost, prompt corpus sources, and the benchmark limitations.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#061311"/>
+      <stop offset="0.50" stop-color="#0b1716"/>
+      <stop offset="1" stop-color="#11160b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d2722"/>
+      <stop offset="0.58" stop-color="#12312c"/>
+      <stop offset="1" stop-color="#1a2a18"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d7a8"/>
+      <stop offset="0.52" stop-color="#7ddfff"/>
+      <stop offset="1" stop-color="#d7f67a"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d7a8"/>
+      <stop offset="1" stop-color="#7ddfff"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7ddfff"/>
+      <stop offset="1" stop-color="#d7f67a"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-15%" y="-20%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+    <style>
+      .font { font-family: "Avenir Next", "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif; }
+      .eyebrow { font-size: 15px; font-weight: 850; letter-spacing: 0.16em; fill: #22d7a8; }
+      .title { font-size: 46px; font-weight: 900; letter-spacing: 0; fill: #f6fffb; }
+      .subtitle { font-size: 19px; fill: #b9cbc6; }
+      .small { font-size: 15px; fill: #9fb2ad; }
+      .tiny { font-size: 13px; fill: #87a09a; }
+      .label { font-size: 18px; font-weight: 850; fill: #f6fffb; }
+      .body { font-size: 16px; fill: #c8d8d3; }
+      .metric { font-size: 42px; font-weight: 900; fill: #f6fffb; }
+      .metricSmall { font-size: 30px; font-weight: 900; fill: #f6fffb; }
+      .green { fill: #22d7a8; }
+      .aqua { fill: #7ddfff; }
+      .lime { fill: #d7f67a; }
+      .muted { fill: #87a09a; }
+      .card { fill: rgba(255,255,255,0.052); stroke: rgba(236,255,249,0.14); stroke-width: 1; }
+      .soft { fill: rgba(255,255,255,0.035); stroke: rgba(236,255,249,0.10); stroke-width: 1; }
+      .evidence { fill: url(#panel); stroke: url(#accent); stroke-width: 1.8; }
+      .chip { fill: rgba(34,215,168,0.11); stroke: rgba(34,215,168,0.42); stroke-width: 1; }
+      .chip2 { fill: rgba(125,223,255,0.10); stroke: rgba(125,223,255,0.34); stroke-width: 1; }
+      .chip3 { fill: rgba(215,246,122,0.10); stroke: rgba(215,246,122,0.34); stroke-width: 1; }
+      .track { fill: rgba(255,255,255,0.07); }
+      .rule { stroke: rgba(236,255,249,0.12); stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="860" fill="url(#bg)"/>
+  <rect width="1440" height="860" fill="url(#grid)" opacity="0.82"/>
+  <path d="M72 252H1368" stroke="url(#accent)" stroke-width="2" opacity="0.40"/>
+  <path d="M72 790H1368" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <g transform="translate(72 72)">
+    <text class="font eyebrow" x="0" y="0">BENCHMARK EVIDENCE</text>
+    <text class="font title" x="0" y="62">How much does the gateway add?</text>
+    <text class="font subtitle" x="0" y="106">Committed v2.0.0 GA local mock-upstream run, isolating SiftGate overhead</text>
+    <text class="font subtitle" x="0" y="136">from provider latency, model generation time, and public network variance.</text>
+  </g>
+
+  <g transform="translate(1000 68)">
+    <rect class="chip" x="0" y="0" width="288" height="44" rx="22"/>
+    <text class="font small green" x="144" y="28" text-anchor="middle" font-weight="850">v2.0.0 GA report</text>
+    <rect class="chip2" x="0" y="58" width="288" height="44" rx="22"/>
+    <text class="font small aqua" x="144" y="86" text-anchor="middle" font-weight="850">Apple M4, Node v24.12.0</text>
+    <rect class="chip3" x="0" y="116" width="288" height="44" rx="22"/>
+    <text class="font small lime" x="144" y="144" text-anchor="middle" font-weight="850">Metadata-only report</text>
+  </g>
+
+  <g transform="translate(72 300)" filter="url(#shadow)">
+    <rect class="evidence" x="0" y="0" width="424" height="400" rx="30"/>
+    <text class="font eyebrow" x="32" y="42">WHAT WAS MEASURED</text>
+    <text class="font label" x="32" y="82">Local HTTP data-plane overhead</text>
+    <line class="rule" x1="32" y1="108" x2="392" y2="108"/>
+
+    <g transform="translate(32 138)">
+      <circle cx="8" cy="-5" r="5" fill="#22d7a8"/>
+      <text class="font body" x="28" y="0">Local deterministic mock upstream</text>
+      <text class="font tiny" x="28" y="24">No external provider calls</text>
+    </g>
+    <g transform="translate(32 202)">
+      <circle cx="8" cy="-5" r="5" fill="#7ddfff"/>
+      <text class="font body" x="28" y="0">Real SiftGate public HTTP path</text>
+      <text class="font tiny" x="28" y="24">Gateway API key, routing, SQLite logs</text>
+    </g>
+    <g transform="translate(32 266)">
+      <circle cx="8" cy="-5" r="5" fill="#d7f67a"/>
+      <text class="font body" x="28" y="0">Streaming first-byte and total time</text>
+      <text class="font tiny" x="28" y="24">Includes SSE stream read path</text>
+    </g>
+    <g transform="translate(32 330)">
+      <circle cx="8" cy="-5" r="5" fill="#22d7a8"/>
+      <text class="font body" x="28" y="0">Dashboard metadata log write/read</text>
+      <text class="font tiny" x="28" y="24">No prompts, responses, keys, or payloads</text>
+    </g>
+  </g>
+
+  <g transform="translate(532 300)" filter="url(#shadow)">
+    <rect class="card" x="0" y="0" width="836" height="400" rx="30"/>
+    <text class="font eyebrow" x="32" y="42">KEY RESULTS</text>
+    <text class="font label" x="32" y="82">v2.0.0 committed GA report</text>
+    <text class="font tiny" x="590" y="62">All values are p50/p95/p99</text>
+    <text class="font tiny" x="590" y="84">Commit 2328dd7...aec69883</text>
+    <line class="rule" x1="32" y1="108" x2="804" y2="108"/>
+
+    <g transform="translate(32 138)">
+      <text class="font body" x="0" y="0">Direct proxy overhead</text>
+      <rect class="track" x="250" y="-17" width="360" height="24" rx="12"/>
+      <rect x="250" y="-17" width="120" height="24" rx="12" fill="url(#bar)"/>
+      <text class="font metricSmall green" x="790" y="5" text-anchor="end">+8 ms</text>
+    </g>
+
+    <g transform="translate(32 198)">
+      <text class="font body" x="0" y="0">Streaming total overhead</text>
+      <rect class="track" x="250" y="-17" width="360" height="24" rx="12"/>
+      <rect x="250" y="-17" width="150" height="24" rx="12" fill="url(#bar2)"/>
+      <text class="font metricSmall aqua" x="790" y="5" text-anchor="end">+10 ms</text>
+    </g>
+
+    <g transform="translate(32 258)">
+      <text class="font body" x="0" y="0">Streaming first-byte overhead</text>
+      <rect class="track" x="250" y="-17" width="360" height="24" rx="12"/>
+      <rect x="250" y="-17" width="45" height="24" rx="12" fill="url(#bar)"/>
+      <text class="font metricSmall lime" x="790" y="5" text-anchor="end">+3 ms</text>
+    </g>
+
+    <g transform="translate(32 318)">
+      <text class="font body" x="0" y="0">Dashboard log write</text>
+      <rect class="track" x="250" y="-17" width="360" height="24" rx="12"/>
+      <rect x="250" y="-17" width="18" height="24" rx="12" fill="url(#bar2)"/>
+      <text class="font metricSmall green" x="790" y="5" text-anchor="end">1 ms</text>
+    </g>
+  </g>
+
+  <g transform="translate(72 730)">
+    <rect class="soft" x="0" y="0" width="408" height="72" rx="22"/>
+    <text class="font label" x="24" y="30">This is evidence for</text>
+    <text class="font tiny" x="24" y="52">local gateway overhead, streaming overhead, and metadata log cost</text>
+
+    <rect class="soft" x="444" y="0" width="408" height="72" rx="22"/>
+    <text class="font label" x="468" y="30">This is not evidence for</text>
+    <text class="font tiny" x="468" y="52">live-provider latency, model quality, or competitor performance</text>
+
+    <rect class="soft" x="888" y="0" width="480" height="72" rx="22"/>
+    <text class="font label" x="912" y="30">Compare only when inputs match</text>
+    <text class="font tiny" x="912" y="52">same request, concurrency, hardware, database, upstream, and config</text>
+  </g>
+
+  <g transform="translate(72 826)">
+    <text class="font tiny muted" x="0" y="0">Prompt corpus tracked separately: 500 smart-routing prompts from WildBench v2, IFEval, MT-Bench, GSM8K, and HumanEval; seed 42.</text>
+  </g>
+</svg>
