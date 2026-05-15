@@ -1,6 +1,6 @@
 # MCP Tool Gateway Preview
 
-MCP Tool Gateway is an experimental v1.2 preview for the MIT open-source Data Plane.
+MCP Tool Gateway is an OSS-local preview for the MIT open-source Data Plane.
 It proxies locally registered MCP servers through SiftGate so agent/tool traffic
 can reuse Gateway API keys, endpoint permissions, Policy Namespace boundaries,
 rate limits, and Dashboard metadata visibility.
@@ -23,6 +23,10 @@ proxying through `/mcp/:serverId`.
 It is intentionally local-only. It does not include an enterprise MCP
 marketplace, remote workspace registry, SSO/RBAC policy, or SiftGate Cloud
 dependency.
+
+Clients always call SiftGate over HTTP at `POST /mcp/:serverId`. SiftGate then
+forwards the JSON-RPC request through the server's configured upstream
+transport.
 
 ## Configuration
 

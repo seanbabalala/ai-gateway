@@ -18,7 +18,7 @@ cache evidence และ production operations ไว้ใน control plane ภ
 | จุดแข็งของ SiftGate | ทำไมจึงสำคัญ |
 | --- | --- |
 | AI traffic data plane | policy, routing, credential selection, budget, cost, cache, audit และ evidence ทำงานใน self-hosted request path เดียว |
-| Agent และ MCP governance | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, OpenAI/Anthropic agent ทั่วไป และ MCP tools ใช้ ingress ที่ถูกควบคุมร่วมกันได้ |
+| Agent และ MCP governance | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, OpenAI/Anthropic agent ทั่วไป และ MCP tools แบบ HTTP JSON-RPC, Streamable HTTP, legacy SSE หรือ stdio ใช้ ingress ที่ถูกควบคุมร่วมกันได้ |
 | Cache-aware credential pools | Provider Node เดียวมีหลาย upstream key ได้ พร้อม `cache_aware`, least-in-flight, weighted rotation, sticky affinity, cooldown และ retry failover |
 | Route Explanation | operator ตรวจสอบได้ว่า model/node ถูกเลือก ข้าม retry downgrade หรือ reject เพราะอะไร โดยไม่บันทึก prompt/response เป็นค่าเริ่มต้น |
 | metadata-only by default | ค่าเริ่มต้นไม่บันทึก prompt, response, raw header, provider key, tool payload, media bytes, source, diff, hidden reasoning หรือ resolved secret |
@@ -97,10 +97,11 @@ npm start
 
 | พื้นที่ | จุดเริ่มต้น |
 | --- | --- |
-| ทดลองในเครื่อง | [Quickstart](../../QUICKSTART.md), [Dashboard](../../DASHBOARD.md), [OSS Concepts](../../OSS_CONCEPTS.md) |
-| Container และ production | [Docker Quickstart](../../DOCKER_QUICKSTART.md), [Production](../../PRODUCTION.md), [Kubernetes and Helm](../../KUBERNETES.md), [State Backends](../../STATE_BACKEND.md) |
-| Provider และ model | [Provider Catalog](../../PROVIDER_CATALOG.md), [Adding Providers](../../ADDING_PROVIDERS.md), [Provider Compatibility](../../PROVIDER_COMPATIBILITY.md) |
-| Routing และ governance | [Routing Recommendations](../../ROUTING_RECOMMENDATIONS.md), [Policy Namespaces and Shadow Traffic](../../NAMESPACES_AND_SHADOW.md), [Cost Platform](../../COST_CHARGEBACK_PLATFORM.md) |
-| Agent และ tool traffic | [Coding Agent Gateway](../../CODING_AGENT_GATEWAY.md), [Agent Integrations](../../AGENT_INTEGRATIONS.md), [MCP Tool Gateway](../../MCP_GATEWAY.md) |
-| Advanced controls | [Semantic Controls](../../SEMANTIC_PLATFORM.md), [Caching](../../CACHING.md), [Intelligence Loop](../../INTELLIGENCE_LOOP.md), [Evaluation Framework](../../EVALUATION_FRAMEWORK.md) |
-| Development | [Architecture](../../ARCHITECTURE.md), [API Reference](../../API_REFERENCE.md), [SDKs](../../SDKS.md), [Plugins](../../PLUGINS.md), [Release Checklist](../../RELEASE_CHECKLIST.md) |
+| ทดลองในเครื่องและ Dashboard | [Quickstart](../../QUICKSTART.md), [Dashboard](../../DASHBOARD.md), [OSS Concepts](../../OSS_CONCEPTS.md), [Playground](../../PLAYGROUND.md) |
+| Production operations | [Docker Quickstart](../../DOCKER_QUICKSTART.md), [Production](../../PRODUCTION.md), [Kubernetes and Helm](../../KUBERNETES.md), [State Backends](../../STATE_BACKEND.md), [Secret Management](../../SECRET_MANAGEMENT.md), [Config Validation](../../CONFIG_VALIDATION.md), [Config Audit and Rollback](../../CONFIG_AUDIT_ROLLBACK.md) |
+| Provider และ protocol | [Provider Catalog](../../PROVIDER_CATALOG.md), [Adding Providers](../../ADDING_PROVIDERS.md), [Provider Compatibility](../../PROVIDER_COMPATIBILITY.md), [Provider Extensibility](../../PROVIDER_EXTENSIBILITY.md), [Multimodal Capabilities](../../MULTIMODAL_CAPABILITIES.md), [Batch API](../../BATCH_API.md) |
+| Routing และ governance | [Routing Recommendations](../../ROUTING_RECOMMENDATIONS.md), [Policy Namespaces and Shadow Traffic](../../NAMESPACES_AND_SHADOW.md), [Cost Platform](../../COST_CHARGEBACK_PLATFORM.md), [Billing Loop](../../BILLING_LOOP.md) |
+| Agent และ MCP traffic | [Coding Agent Gateway](../../CODING_AGENT_GATEWAY.md), [Agent Gateway Profiles](../../AGENT_GATEWAY.md), [Agent Integrations](../../AGENT_INTEGRATIONS.md), [Agent Platform Preview](../../AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](../../MCP_GATEWAY.md) |
+| Advanced controls และ evidence | [Semantic Controls](../../SEMANTIC_PLATFORM.md), [Caching](../../CACHING.md), [Stream, Cache, and Batching](../../STREAM_CACHE_BATCHING.md), [Intelligence Loop](../../INTELLIGENCE_LOOP.md), [Evaluation Framework](../../EVALUATION_FRAMEWORK.md), [Performance](../../PERFORMANCE.md) |
+| Observability และ control plane | [Webhook Alerts](../../WEBHOOK_ALERTS.md), [Log Sinks](../../LOG_SINKS.md), [Control Plane Contract](../../CONTROL_PLANE.md), [Security](../../SECURITY.md) |
+| Development และ migration | [Architecture](../../ARCHITECTURE.md), [API Reference](../../API_REFERENCE.md), [SDKs](../../SDKS.md), [Plugins](../../PLUGINS.md), [Migration Compatibility](../../MIGRATION_COMPAT.md), [Release Checklist](../../RELEASE_CHECKLIST.md) |

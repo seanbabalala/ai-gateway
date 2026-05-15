@@ -31,6 +31,21 @@ self-hosters.
 | Deploy to production | [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [Security](SECURITY.md), [Secret management](SECRET_MANAGEMENT.md) |
 | Extend or contribute | [Architecture](ARCHITECTURE.md), [API reference](API_REFERENCE.md), [Plugins](PLUGINS.md), [Release checklist](RELEASE_CHECKLIST.md) |
 
+## Feature Coverage Matrix
+
+| Product surface | Public docs |
+| --- | --- |
+| First-run setup, Dashboard onboarding, OSS concepts | [Quickstart](QUICKSTART.md), [Dashboard](DASHBOARD.md), [OSS concepts](OSS_CONCEPTS.md) |
+| Workspaces, local RBAC, OIDC, invites | [Dashboard](DASHBOARD.md), [OIDC and invites](OIDC_AND_INVITES.md), [Migration from v1 to v2](MIGRATION_V1_TO_V2.md) |
+| Gateway API keys, Policy Namespaces, budgets, chargeback | [API reference](API_REFERENCE.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md), [Cost and chargeback platform](COST_CHARGEBACK_PLATFORM.md), [Billing loop](BILLING_LOOP.md) |
+| Provider nodes, provider catalog, compatibility, custom providers | [Provider Catalog](PROVIDER_CATALOG.md), [Provider compatibility](PROVIDER_COMPATIBILITY.md), [Provider extensibility](PROVIDER_EXTENSIBILITY.md), [Adding providers](ADDING_PROVIDERS.md) |
+| Protocols, modalities, streaming, batching, playground | [API reference](API_REFERENCE.md), [Multimodal capabilities](MULTIMODAL_CAPABILITIES.md), [Stream, cache, and batching](STREAM_CACHE_BATCHING.md), [Batch API](BATCH_API.md), [Playground](PLAYGROUND.md) |
+| Routing recommendations, route explanation, performance evidence | [Routing recommendations](ROUTING_RECOMMENDATIONS.md), [Architecture](ARCHITECTURE.md), [Performance](PERFORMANCE.md) |
+| Cache, Semantic Controls, Intelligence Loop, evals, experiments, shadow traffic | [Caching](CACHING.md), [Semantic Controls](SEMANTIC_PLATFORM.md), [Intelligence Loop](INTELLIGENCE_LOOP.md), [Evaluation framework](EVALUATION_FRAMEWORK.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md) |
+| Coding agents, Agent Profiles, integrations, Agent Platform, MCP tools | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent integrations](AGENT_INTEGRATIONS.md), [Agent Platform preview](AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
+| Deployment, state, secrets, config audit, logs, alerts, optional control plane | [Docker quickstart](DOCKER_QUICKSTART.md), [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [State backends](STATE_BACKEND.md), [Secret management](SECRET_MANAGEMENT.md), [Config validation](CONFIG_VALIDATION.md), [Config audit and rollback](CONFIG_AUDIT_ROLLBACK.md), [Log sinks](LOG_SINKS.md), [Webhook alerts](WEBHOOK_ALERTS.md), [Optional Control Plane Contract](CONTROL_PLANE.md) |
+| SDKs, plugins, migrations, release process | [SDKs](SDKS.md), [Python SDK design](PYTHON_SDK_DESIGN.md), [Plugins](PLUGINS.md), [Official plugins](plugins/OFFICIAL_PLUGINS.md), [Migration compatibility](MIGRATION_COMPAT.md), [Migration from LiteLLM](MIGRATION_LITELLM.md), [Release checklist](RELEASE_CHECKLIST.md) |
+
 ## Start
 
 | Topic | Link |
@@ -57,8 +72,10 @@ self-hosters.
 | OIDC and invites | [OIDC_AND_INVITES.md](OIDC_AND_INVITES.md) |
 | Security | [SECURITY.md](SECURITY.md) |
 | Performance | [PERFORMANCE.md](PERFORMANCE.md) |
+| Billing loop | [BILLING_LOOP.md](BILLING_LOOP.md) |
 | Webhook alerts | [WEBHOOK_ALERTS.md](WEBHOOK_ALERTS.md) |
 | Log sinks | [LOG_SINKS.md](LOG_SINKS.md) |
+| Optional Control Plane Contract | [CONTROL_PLANE.md](CONTROL_PLANE.md) |
 
 ## Configure AI Traffic
 
@@ -102,7 +119,6 @@ self-hosters.
 | Migration compatibility | [MIGRATION_COMPAT.md](MIGRATION_COMPAT.md) |
 | Migration from v1 to v2 | [MIGRATION_V1_TO_V2.md](MIGRATION_V1_TO_V2.md) |
 | Migration from LiteLLM | [MIGRATION_LITELLM.md](MIGRATION_LITELLM.md) |
-| Development specification | [DEVELOPMENT_SPECIFICATION.md](DEVELOPMENT_SPECIFICATION.md) |
 | Release checklist | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) |
 
 ## Privacy Baseline

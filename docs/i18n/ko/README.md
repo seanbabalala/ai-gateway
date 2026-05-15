@@ -18,7 +18,7 @@ production operation을 하나의 로컬 제어면으로 모읍니다.
 | SiftGate 강점 | 중요한 이유 |
 | --- | --- |
 | AI traffic data plane | 정책, 라우팅, credential 선택, budget, cost, cache, audit, evidence가 하나의 self-hosted request path에서 실행됩니다. |
-| Agent와 MCP governance | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, 범용 OpenAI/Anthropic Agent, MCP 도구를 하나의 관리형 ingress로 묶을 수 있습니다. |
+| Agent와 MCP governance | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, 범용 OpenAI/Anthropic Agent와 HTTP JSON-RPC, Streamable HTTP, legacy SSE, stdio MCP 도구를 하나의 관리형 ingress로 묶을 수 있습니다. |
 | Cache-aware credential pools | 하나의 Provider Node에 여러 upstream key를 두고 `cache_aware`, least-in-flight, weighted rotation, sticky affinity, cooldown, retry failover를 사용할 수 있습니다. |
 | Route Explanation | prompt/response를 기본 저장하지 않으면서 모델이나 노드가 선택, 제외, 재시도, 다운그레이드, 거절된 이유를 확인할 수 있습니다. |
 | metadata-only 기본값 | 기본적으로 prompt, response, raw header, provider key, tool payload, media bytes, source, diff, hidden reasoning, resolved secret을 저장하지 않습니다. |
@@ -99,10 +99,11 @@ npm start
 
 | 영역 | 시작점 |
 | --- | --- |
-| 로컬 평가 | [Quickstart](../../QUICKSTART.md), [Dashboard](../../DASHBOARD.md), [OSS Concepts](../../OSS_CONCEPTS.md) |
-| 컨테이너와 운영 | [Docker Quickstart](../../DOCKER_QUICKSTART.md), [Production](../../PRODUCTION.md), [Kubernetes and Helm](../../KUBERNETES.md), [State Backends](../../STATE_BACKEND.md) |
-| Provider와 모델 | [Provider Catalog](../../PROVIDER_CATALOG.md), [Adding Providers](../../ADDING_PROVIDERS.md), [Provider Compatibility](../../PROVIDER_COMPATIBILITY.md) |
-| 라우팅과 governance | [Routing Recommendations](../../ROUTING_RECOMMENDATIONS.md), [Policy Namespaces and Shadow Traffic](../../NAMESPACES_AND_SHADOW.md), [Cost Platform](../../COST_CHARGEBACK_PLATFORM.md) |
-| Agent와 도구 traffic | [Coding Agent Gateway](../../CODING_AGENT_GATEWAY.md), [Agent Integrations](../../AGENT_INTEGRATIONS.md), [MCP Tool Gateway](../../MCP_GATEWAY.md) |
-| 고급 제어 | [Semantic Controls](../../SEMANTIC_PLATFORM.md), [Caching](../../CACHING.md), [Intelligence Loop](../../INTELLIGENCE_LOOP.md), [Evaluation Framework](../../EVALUATION_FRAMEWORK.md) |
-| 개발과 확장 | [Architecture](../../ARCHITECTURE.md), [API Reference](../../API_REFERENCE.md), [SDKs](../../SDKS.md), [Plugins](../../PLUGINS.md), [Release Checklist](../../RELEASE_CHECKLIST.md) |
+| 로컬 평가와 Dashboard | [Quickstart](../../QUICKSTART.md), [Dashboard](../../DASHBOARD.md), [OSS Concepts](../../OSS_CONCEPTS.md), [Playground](../../PLAYGROUND.md) |
+| 운영 환경 | [Docker Quickstart](../../DOCKER_QUICKSTART.md), [Production](../../PRODUCTION.md), [Kubernetes and Helm](../../KUBERNETES.md), [State Backends](../../STATE_BACKEND.md), [Secret Management](../../SECRET_MANAGEMENT.md), [Config Validation](../../CONFIG_VALIDATION.md), [Config Audit and Rollback](../../CONFIG_AUDIT_ROLLBACK.md) |
+| Provider와 protocol | [Provider Catalog](../../PROVIDER_CATALOG.md), [Adding Providers](../../ADDING_PROVIDERS.md), [Provider Compatibility](../../PROVIDER_COMPATIBILITY.md), [Provider Extensibility](../../PROVIDER_EXTENSIBILITY.md), [Multimodal Capabilities](../../MULTIMODAL_CAPABILITIES.md), [Batch API](../../BATCH_API.md) |
+| 라우팅과 governance | [Routing Recommendations](../../ROUTING_RECOMMENDATIONS.md), [Policy Namespaces and Shadow Traffic](../../NAMESPACES_AND_SHADOW.md), [Cost Platform](../../COST_CHARGEBACK_PLATFORM.md), [Billing Loop](../../BILLING_LOOP.md) |
+| Agent와 MCP traffic | [Coding Agent Gateway](../../CODING_AGENT_GATEWAY.md), [Agent Gateway Profiles](../../AGENT_GATEWAY.md), [Agent Integrations](../../AGENT_INTEGRATIONS.md), [Agent Platform Preview](../../AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](../../MCP_GATEWAY.md) |
+| 고급 제어와 evidence | [Semantic Controls](../../SEMANTIC_PLATFORM.md), [Caching](../../CACHING.md), [Stream, Cache, and Batching](../../STREAM_CACHE_BATCHING.md), [Intelligence Loop](../../INTELLIGENCE_LOOP.md), [Evaluation Framework](../../EVALUATION_FRAMEWORK.md), [Performance](../../PERFORMANCE.md) |
+| Observability와 control plane | [Webhook Alerts](../../WEBHOOK_ALERTS.md), [Log Sinks](../../LOG_SINKS.md), [Control Plane Contract](../../CONTROL_PLANE.md), [Security](../../SECURITY.md) |
+| 개발과 migration | [Architecture](../../ARCHITECTURE.md), [API Reference](../../API_REFERENCE.md), [SDKs](../../SDKS.md), [Plugins](../../PLUGINS.md), [Migration Compatibility](../../MIGRATION_COMPAT.md), [Release Checklist](../../RELEASE_CHECKLIST.md) |

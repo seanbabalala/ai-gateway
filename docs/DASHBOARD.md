@@ -345,12 +345,13 @@ Default samples are intentionally tiny and synthetic. Realtime is a probe-only c
 
 The MCP Tool Gateway page reads `GET /api/dashboard/mcp`. It is read-only and only displays local config registry metadata plus recent in-memory audit metadata. It does not call tools from the browser and cannot modify MCP server config.
 
-The MCP Tool Gateway preview stores server id/name, method, tool name, API key id/name, Policy Namespace, HTTP status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
+The MCP Tool Gateway preview stores server id/name, method, tool name, API key id/name, Policy Namespace, upstream status, latency, byte size, and sanitized error type. It does not store MCP tool arguments, tool results, raw headers, provider keys, resolved secret values, media bytes, or marketplace metadata.
 
 The setup panel clarifies that MCP Tool Gateway governs tool-call proxying, not
 model routing. The copyable YAML example combines `mcp.servers[]`,
-`allowed_namespaces`, secret-reference headers, and API key `allowed_endpoints`
-such as `mcp:local-docs:search_docs`.
+transport choice, optional `message_url` or stdio fields, `allowed_namespaces`,
+secret-reference headers, and API key `allowed_endpoints` such as
+`mcp:local-docs:search_docs`.
 
 ## Agent Platform Preview
 

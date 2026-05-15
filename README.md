@@ -421,7 +421,7 @@ data plane.
 | Workspaces and Members | Manage local Workspaces, fixed OSS roles, membership, and invitations. |
 | Policy Namespaces and Budget | Configure shared policy labels, source-of-truth budget scopes, limits, and resets. |
 | Agents | Render safe connector profiles for coding agents and inspect metadata-only agent sessions. |
-| MCP Tool Gateway | Proxy MCP server calls behind Gateway API key auth and namespace allow-lists. |
+| MCP Tool Gateway | Proxy HTTP JSON-RPC, Streamable HTTP, legacy SSE, and stdio MCP calls behind Gateway API key auth and namespace allow-lists. |
 | Semantic Controls | Operate semantic cache metadata, prompt registry metadata, intent counts, context evidence, and guardrails findings. |
 | Cost Platform | Review chargeback reports, anomalies, provider price governance, and feedback aggregation. |
 | Eval, Shadow, Experiments | Keep eval reports, shadow traffic, and A/B split analytics separate and inspectable. |
@@ -459,7 +459,7 @@ agents without becoming a workflow engine or content store.
 | Coding Agent Gateway | Creates connector profiles for Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, Generic OpenAI-compatible agents, and Generic Anthropic-compatible agents. |
 | Virtual smart models | Exposes profile-scoped aliases such as `coding-auto`, `coding-fast`, `coding-deep`, and `coding-security`, which map to internal smart routing while respecting policy. |
 | Agent session tracing | Stores metadata such as connector, repo label, project label, session id, selected route, cost, latency, fallback, and trace links. It does not store source files, diffs, prompts, or responses by default. |
-| MCP Tool Gateway | Proxies configured MCP servers behind Gateway API key auth, Policy Namespace allow-lists, rate limits, and metadata-only call logs. |
+| MCP Tool Gateway | Proxies configured HTTP JSON-RPC, Streamable HTTP, legacy SSE, and stdio MCP servers behind Gateway API key auth, Policy Namespace allow-lists, rate limits, and metadata-only call logs. |
 | Agent Platform preview | Shows read-only A2A registry rows, tool registry metadata, workflow metadata, memory counters, and recent trace spans. |
 
 ## Security And Privacy Baseline

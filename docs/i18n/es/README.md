@@ -19,7 +19,7 @@ producción en un único plano de control local.
 | Fortaleza de SiftGate | Por qué importa |
 | --- | --- |
 | AI traffic data plane | Política, routing, selección de credenciales, presupuestos, coste, caché, auditoría y evidencia viven en una ruta self-hosted. |
-| Gobierno de Agent y MCP | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, agents OpenAI/Anthropic genéricos y herramientas MCP pueden usar un solo ingreso gobernado. |
+| Gobierno de Agent y MCP | Cursor, Cline, Roo Code, Continue, Codex, Claude Code, OpenCode, agents OpenAI/Anthropic genéricos y herramientas MCP por HTTP JSON-RPC, Streamable HTTP, SSE legacy o stdio pueden usar un solo ingreso gobernado. |
 | Credential pools conscientes de caché | Un Provider Node puede tener varias claves upstream con `cache_aware`, least-in-flight, weighted rotation, sticky affinity, cooldown y retry failover. |
 | Route Explanation | Los operadores ven por qué un modelo/nodo fue elegido, omitido, reintentado, degradado o rechazado sin guardar prompts/responses por defecto. |
 | Metadata-only por defecto | Por defecto no guarda prompts, responses, raw headers, provider keys, tool payloads, media bytes, source, diffs, hidden reasoning ni resolved secrets. |
@@ -100,10 +100,11 @@ Gateway API Key y envía una solicitud a `http://localhost:2099/v1/chat/completi
 
 | Área | Entradas |
 | --- | --- |
-| Evaluación local | [Quickstart](../../QUICKSTART.md), [Dashboard](../../DASHBOARD.md), [OSS Concepts](../../OSS_CONCEPTS.md) |
-| Contenedores y producción | [Docker Quickstart](../../DOCKER_QUICKSTART.md), [Production](../../PRODUCTION.md), [Kubernetes and Helm](../../KUBERNETES.md), [State Backends](../../STATE_BACKEND.md) |
-| Proveedores y modelos | [Provider Catalog](../../PROVIDER_CATALOG.md), [Adding Providers](../../ADDING_PROVIDERS.md), [Provider Compatibility](../../PROVIDER_COMPATIBILITY.md) |
-| Routing y gobierno | [Routing Recommendations](../../ROUTING_RECOMMENDATIONS.md), [Policy Namespaces and Shadow Traffic](../../NAMESPACES_AND_SHADOW.md), [Cost Platform](../../COST_CHARGEBACK_PLATFORM.md) |
-| Agents y herramientas | [Coding Agent Gateway](../../CODING_AGENT_GATEWAY.md), [Agent Integrations](../../AGENT_INTEGRATIONS.md), [MCP Tool Gateway](../../MCP_GATEWAY.md) |
-| Controles avanzados | [Semantic Controls](../../SEMANTIC_PLATFORM.md), [Caching](../../CACHING.md), [Intelligence Loop](../../INTELLIGENCE_LOOP.md), [Evaluation Framework](../../EVALUATION_FRAMEWORK.md) |
-| Desarrollo | [Architecture](../../ARCHITECTURE.md), [API Reference](../../API_REFERENCE.md), [SDKs](../../SDKS.md), [Plugins](../../PLUGINS.md), [Release Checklist](../../RELEASE_CHECKLIST.md) |
+| Evaluación local y Dashboard | [Quickstart](../../QUICKSTART.md), [Dashboard](../../DASHBOARD.md), [OSS Concepts](../../OSS_CONCEPTS.md), [Playground](../../PLAYGROUND.md) |
+| Operación en producción | [Docker Quickstart](../../DOCKER_QUICKSTART.md), [Production](../../PRODUCTION.md), [Kubernetes and Helm](../../KUBERNETES.md), [State Backends](../../STATE_BACKEND.md), [Secret Management](../../SECRET_MANAGEMENT.md), [Config Validation](../../CONFIG_VALIDATION.md), [Config Audit and Rollback](../../CONFIG_AUDIT_ROLLBACK.md) |
+| Proveedores y protocolos | [Provider Catalog](../../PROVIDER_CATALOG.md), [Adding Providers](../../ADDING_PROVIDERS.md), [Provider Compatibility](../../PROVIDER_COMPATIBILITY.md), [Provider Extensibility](../../PROVIDER_EXTENSIBILITY.md), [Multimodal Capabilities](../../MULTIMODAL_CAPABILITIES.md), [Batch API](../../BATCH_API.md) |
+| Routing y gobierno | [Routing Recommendations](../../ROUTING_RECOMMENDATIONS.md), [Policy Namespaces and Shadow Traffic](../../NAMESPACES_AND_SHADOW.md), [Cost Platform](../../COST_CHARGEBACK_PLATFORM.md), [Billing Loop](../../BILLING_LOOP.md) |
+| Tráfico de Agent y MCP | [Coding Agent Gateway](../../CODING_AGENT_GATEWAY.md), [Agent Gateway Profiles](../../AGENT_GATEWAY.md), [Agent Integrations](../../AGENT_INTEGRATIONS.md), [Agent Platform Preview](../../AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](../../MCP_GATEWAY.md) |
+| Controles avanzados y evidencia | [Semantic Controls](../../SEMANTIC_PLATFORM.md), [Caching](../../CACHING.md), [Stream, Cache, and Batching](../../STREAM_CACHE_BATCHING.md), [Intelligence Loop](../../INTELLIGENCE_LOOP.md), [Evaluation Framework](../../EVALUATION_FRAMEWORK.md), [Performance](../../PERFORMANCE.md) |
+| Observabilidad y control | [Webhook Alerts](../../WEBHOOK_ALERTS.md), [Log Sinks](../../LOG_SINKS.md), [Control Plane Contract](../../CONTROL_PLANE.md), [Security](../../SECURITY.md) |
+| Desarrollo y migración | [Architecture](../../ARCHITECTURE.md), [API Reference](../../API_REFERENCE.md), [SDKs](../../SDKS.md), [Plugins](../../PLUGINS.md), [Migration Compatibility](../../MIGRATION_COMPAT.md), [Release Checklist](../../RELEASE_CHECKLIST.md) |

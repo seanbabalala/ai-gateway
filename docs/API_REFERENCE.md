@@ -493,10 +493,12 @@ MCP Tool Gateway preview is disabled by default and uses local configuration onl
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/mcp/:serverId` | Proxy one JSON-RPC MCP request or batch to a configured upstream MCP server |
+| `POST` | `/mcp/:serverId` | Proxy one JSON-RPC MCP request or batch to a configured upstream MCP server over `http_json_rpc`, `streamable_http`, `sse`, or `stdio` |
 | `GET` | `/api/dashboard/mcp` | Read MCP registry, static tool metadata, recent call metadata, and error summaries |
 
 `POST /mcp/:serverId` requires `Authorization: Bearer <gateway-api-key>` and runs through the normal Gateway API key and rate-limit guards. API key endpoint restrictions may allow `mcp`, `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`. If a server declares `allowed_namespaces`, the Gateway API key must be bound to one of those local Policy Namespaces.
+
+Configured MCP servers may use HTTP JSON-RPC POST forwarding, Streamable HTTP with JSON or `text/event-stream` JSON-RPC response collection, legacy HTTP+SSE with an optional `message_url`, or local stdio processes with `command`, optional `args`, `env`, and `cwd`. The external client endpoint remains `POST /mcp/:serverId` for all transports.
 
 The Dashboard API is metadata-only. It returns server id/name, sanitized upstream endpoint without query strings, static tool names/descriptions, recent method/tool/status/latency/size entries, API key id/name, Policy Namespace id, and sanitized error type. Tool input, tool output, raw headers, provider keys, and resolved secret values are never returned or stored by the preview audit buffer.
 
@@ -676,6 +678,16 @@ are sanitized before storage and response serialization; SiftGate does not log
 provider keys, Gateway API key plaintext, prompts, responses, raw provider
 headers, media bytes, tool payloads, hidden reasoning text, or resolved secrets
 by default.
+
+### Shadow Traffic
+
+The Dashboard Shadow Traffic APIs are read-only. They expose sanitized status,
+recent mirrored results, and comparison metadata for the local shadow traffic
+feature documented in [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md).
+
+`GET /api/dashboard/shadow` supports `namespace` and `limit` filters and returns
+whether shadow traffic is configured, whether a target node/model is set, and
+recent metadata-only mirror results.
 
 ### Shadow Comparison Report
 

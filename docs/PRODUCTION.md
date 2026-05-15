@@ -305,6 +305,7 @@ mcp:
   servers:
     - id: local-docs
       url: "http://localhost:8787/mcp"
+      transport: http_json_rpc
       allowed_namespaces: [team-a]
       headers:
         Authorization: "Bearer ${env:LOCAL_DOCS_MCP_TOKEN}"
@@ -313,7 +314,10 @@ mcp:
 Use Gateway API key `allowed_endpoints` to scope access to `mcp`,
 `mcp:<serverId>`, or `mcp:<serverId>:<toolName>`. Keep upstream credentials in
 environment or secret references, avoid secrets in MCP URLs, and prefer
-namespace allow-lists for team-scoped tool servers. The preview audit buffer is
+namespace allow-lists for team-scoped tool servers. Use `streamable_http` for
+current remote MCP servers, `sse` plus optional `message_url` for legacy
+HTTP+SSE servers, and `stdio` with `command`, optional `args`, `env`, and `cwd`
+for local MCP processes. The preview audit buffer is
 metadata-only and in-memory; it is useful for recent operational visibility but
 is not a durable compliance event store.
 
