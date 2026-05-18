@@ -21,6 +21,19 @@
 </p>
 <!-- Current release: **v2.11.3** -->
 
+<table>
+  <tr>
+    <td align="center">
+      <strong>Enterprise model access and routing support</strong><br>
+      Teams with production LLM traffic can contact us for SiftGate deployment guidance,
+      provider onboarding, and reliable OpenAI, Claude, and Gemini integration paths.
+      The open-source data plane remains self-hosted; provider credentials, policy,
+      billing, and compliance stay under your operational control.<br>
+      <strong>Telegram:</strong> <a href="https://t.me/seanbbuu">@seanbbuu</a>
+    </td>
+  </tr>
+</table>
+
 <p align="center">
   <a href="docs/QUICKSTART.md"><strong>Quickstart</strong></a>
   · <a href="docs/DASHBOARD.md"><strong>Dashboard</strong></a>
