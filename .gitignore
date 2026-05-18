@@ -66,6 +66,8 @@ coverage/
 test-results/
 playwright-report/
 .nyc_output/
+__pycache__/
+*.py[cod]
 
 # Frontend build
 frontend/dist/

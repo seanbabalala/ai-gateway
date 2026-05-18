@@ -260,16 +260,17 @@ describe('SemanticPlatformService', () => {
 
   it('summarizes semantic platform dashboard state from metadata and traces only', async () => {
     const { service, routeDecisions, callLogs } = makeService();
+    const recentTimestamp = new Date(Date.now() - 60_000);
     await callLogs.save({
       id: 1,
-      timestamp: new Date('2026-05-09T00:00:00.000Z'),
+      timestamp: recentTimestamp,
       workspace_id: 'default-workspace',
       semantic_cache_hit: true,
       semantic_cache_score: 0.96,
     });
     await routeDecisions.save({
       id: 1,
-      timestamp: new Date('2026-05-09T00:00:00.000Z'),
+      timestamp: recentTimestamp,
       workspace_id: 'default-workspace',
       trace_json: JSON.stringify({
         semantic_platform: {

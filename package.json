@@ -25,6 +25,7 @@
     "validate:config": "ts-node src/cli/siftgate.ts validate",
     "validate:k8s": "ts-node scripts/validate-k8s.ts",
     "docs:check": "node scripts/check-docs.js",
+    "public:check": "node scripts/check-public-release.js",
     "release:check": "node scripts/check-release-version.js",
     "provider-registry:check": "node scripts/validate-provider-registry.js",
     "catalog": "ts-node src/cli/siftgate.ts catalog",

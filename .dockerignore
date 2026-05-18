@@ -24,6 +24,8 @@ gateway.config.yaml
 .docker-smoke
 test-results
 playwright-report
+__pycache__
+*.py[cod]
 CLAUDE.md
 public-skills
 docs/DEVELOPMENT_SPECIFICATION.md

@@ -57,12 +57,29 @@ Every pull request should get non-Docker CI signal from `.github/workflows/ci.ym
 Docker smoke remains a separate workflow because it depends on a working Docker
 daemon and is useful as a container-path complement, not the only quality gate.
 
+## Public Repository Boundary
+
+Run the public release guard before opening the repository or cutting a
+release:
+
+```bash
+npm run public:check
+```
+
+This check verifies required community files, package publication metadata,
+critical ignore rules, tracked-file boundaries, and common literal secret
+patterns across non-test tracked text files. It is intentionally read-only and
+should fail if local runtime config, build output, dependency folders, private
+workspace folders, `.DS_Store`, or other local-only artifacts are accidentally
+tracked.
+
 ## Required Tests
 
 Choose the full set that matches the release scope. For v2 platform releases,
 prefer the broadest reasonable gate.
 
 ```bash
+npm run public:check
 npm run docs:check
 npm run lint
 npm run build

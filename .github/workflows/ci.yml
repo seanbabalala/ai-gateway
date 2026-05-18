@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check public repository boundary
+        run: npm run public:check
+
       - name: Check docs
         run: npm run docs:check
 

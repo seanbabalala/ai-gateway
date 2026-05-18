@@ -674,6 +674,7 @@ catalog sync cache, local agent notes, and private development prompts.
 Before opening a PR, run:
 
 ```bash
+npm run public:check
 npm run docs:check
 npm run build
 cd frontend && npm test && npm run build
