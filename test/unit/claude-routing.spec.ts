@@ -52,7 +52,7 @@ describe('Claude routing compatibility', () => {
     const config = new ConfigService();
 
     expect(config.resolveModel('claude-haiku-4-5-20251001')).toEqual({
-      nodeId: 'ctrip-anthropic',
+      nodeId: 'enterprise-anthropic',
       model: 'claude-haiku-4-5-20251001',
     });
   });
@@ -92,7 +92,7 @@ describe('Claude routing compatibility', () => {
     const route = await (service as any).resolveSmartRoute(makeMessagesRequest());
 
     expect(route.route.primary).toEqual({
-      node: 'ctrip-anthropic',
+      node: 'enterprise-anthropic',
       model: 'claude-opus-4-6-v1',
     });
     expect(route.route.fallbacks).toEqual([]);

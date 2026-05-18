@@ -232,19 +232,19 @@ multiple approved keys for the same endpoint and model surface.
 
 ```yaml
 nodes:
-  - id: ada-coding-plan
-    name: "ADA Coding Plan"
+  - id: enterprise-anthropic
+    name: "Enterprise Anthropic"
     protocol: messages
     base_url: "https://api.anthropic.com"
     endpoint: "/v1/messages"
     auth_type: x-api-key
     credentials:
       - id: primary
-        api_key: "${env:ADA_CLAUDE_KEY_PRIMARY}"
+        api_key: "${env:ANTHROPIC_POOL_KEY_PRIMARY}"
         weight: 1
         enabled: true
       - id: backup
-        api_key: "${env:ADA_CLAUDE_KEY_BACKUP}"
+        api_key: "${env:ANTHROPIC_POOL_KEY_BACKUP}"
         weight: 1
         enabled: true
     credential_pool:

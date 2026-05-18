@@ -155,9 +155,9 @@ describe('ProviderCompatibilityService', () => {
       node({
         protocol: 'messages',
         endpoint: '/v1/messages',
-        models: ['claude-opus-4-7-ctrip'],
+        models: ['claude-opus-4-7-enterprise'],
         upstream_model_aliases: {
-          'claude-opus-4-7-ctrip': 'claude-opus-4-7',
+          'claude-opus-4-7-enterprise': 'claude-opus-4-7',
         },
         compatibility_profile: ['anthropic_messages_compatible'],
         auth_type: 'bearer',

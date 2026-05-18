@@ -25,8 +25,8 @@ nodes:
     model_prefixes:
       - gpt
 
-  - id: ctrip-anthropic
-    name: Ctrip Anthropic
+  - id: enterprise-anthropic
+    name: Enterprise Anthropic
     protocol: messages
     base_url: https://api.anthropic.com
     endpoint: /v1/messages
@@ -50,9 +50,9 @@ routing:
     standard:
       primary: { node: openai, model: gpt-4o }
       fallbacks:
-        - { node: ctrip-anthropic, model: claude-opus-4-6-v1 }
+        - { node: enterprise-anthropic, model: claude-opus-4-6-v1 }
     complex:
-      primary: { node: ctrip-anthropic, model: claude-opus-4-6-v1 }
+      primary: { node: enterprise-anthropic, model: claude-opus-4-6-v1 }
       fallbacks:
         - { node: openai, model: gpt-4o }
   scoring:

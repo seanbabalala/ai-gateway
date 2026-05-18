@@ -12,8 +12,8 @@ function makeBreaker(alerts?: { emit: jest.Mock }): CircuitBreakerService {
   return new CircuitBreakerService(alerts as any);
 }
 
-/** Trip the circuit for a node+model (3 consecutive failures = OPEN) */
-function tripCircuit(cb: CircuitBreakerService, nodeId: string, model: string): void {
+/** Force the circuit open for a node+model (3 consecutive failures = OPEN) */
+function forceCircuitOpen(cb: CircuitBreakerService, nodeId: string, model: string): void {
   cb.recordFailure(nodeId, model);
   cb.recordFailure(nodeId, model);
   cb.recordFailure(nodeId, model);
@@ -39,16 +39,16 @@ describe('CircuitBreakerService — CLOSED → OPEN', () => {
 
   it('should transition to OPEN after reaching failure threshold', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'node1', 'gpt-4');
+    forceCircuitOpen(cb, 'node1', 'gpt-4');
     expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.OPEN);
     expect(cb.isAvailable('node1', 'gpt-4')).toBe(false);
   });
 
-  it('should emit circuit_open when the failure threshold trips', () => {
+  it('should emit circuit_open when the failure threshold opens', () => {
     const alerts = { emit: jest.fn() };
     const cb = makeBreaker(alerts);
 
-    tripCircuit(cb, 'node1', 'gpt-4');
+    forceCircuitOpen(cb, 'node1', 'gpt-4');
 
     expect(alerts.emit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -63,7 +63,7 @@ describe('CircuitBreakerService — CLOSED → OPEN', () => {
     cb.recordFailure('node1', 'gpt-4');
     cb.recordFailure('node1', 'gpt-4');
     cb.recordSuccess('node1', 'gpt-4');
-    // After reset, need another 3 failures to trip
+    // After reset, need another 3 failures to open
     cb.recordFailure('node1', 'gpt-4');
     cb.recordFailure('node1', 'gpt-4');
     expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.CLOSED);
@@ -77,7 +77,7 @@ describe('CircuitBreakerService — CLOSED → OPEN', () => {
 describe('CircuitBreakerService — OPEN → HALF_OPEN', () => {
   it('should remain OPEN before cooldown elapses', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'node1', 'gpt-4');
+    forceCircuitOpen(cb, 'node1', 'gpt-4');
     // Without advancing time, should stay OPEN
     expect(cb.isAvailable('node1', 'gpt-4')).toBe(false);
     expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.OPEN);
@@ -85,7 +85,7 @@ describe('CircuitBreakerService — OPEN → HALF_OPEN', () => {
 
   it('should transition to HALF_OPEN when cooldown elapses', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'node1', 'gpt-4');
+    forceCircuitOpen(cb, 'node1', 'gpt-4');
 
     // Advance time past cooldown (30s default)
     const realNow = Date.now;
@@ -105,7 +105,7 @@ describe('CircuitBreakerService — OPEN → HALF_OPEN', () => {
 
 describe('CircuitBreakerService — HALF_OPEN', () => {
   function makeHalfOpen(cb: CircuitBreakerService, nodeId: string, model: string): void {
-    tripCircuit(cb, nodeId, model);
+    forceCircuitOpen(cb, nodeId, model);
     const realNow = Date.now;
     Date.now = jest.fn().mockReturnValue(realNow() + 31_000);
     cb.isAvailable(nodeId, model); // triggers transition to HALF_OPEN
@@ -162,7 +162,7 @@ describe('CircuitBreakerService — HALF_OPEN', () => {
 describe('CircuitBreakerService — per-model isolation', () => {
   it('should maintain independent circuits for different models on same node', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
 
     expect(cb.getCircuitState('openai', 'gpt-4')).toBe(CircuitState.OPEN);
     expect(cb.getCircuitState('openai', 'gpt-4o-mini')).toBe(CircuitState.CLOSED);
@@ -171,7 +171,7 @@ describe('CircuitBreakerService — per-model isolation', () => {
 
   it('should maintain independent circuits for different nodes', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
 
     expect(cb.getCircuitState('openai', 'gpt-4')).toBe(CircuitState.OPEN);
     expect(cb.getCircuitState('claude', 'gpt-4')).toBe(CircuitState.CLOSED);
@@ -194,7 +194,7 @@ describe('CircuitBreakerService — getNodeStatus', () => {
   it('should return OPEN if any model circuit is OPEN', () => {
     const cb = makeBreaker();
     cb.recordFailure('openai', 'gpt-4'); // 1 failure (still CLOSED)
-    tripCircuit(cb, 'openai', 'gpt-4o-mini'); // 3 failures → OPEN
+    forceCircuitOpen(cb, 'openai', 'gpt-4o-mini'); // 3 failures → OPEN
 
     const status = cb.getNodeStatus('openai');
     expect(status.state).toBe(CircuitState.OPEN);
@@ -203,7 +203,7 @@ describe('CircuitBreakerService — getNodeStatus', () => {
 
   it('should return HALF_OPEN if any model is HALF_OPEN and none are OPEN', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
 
     // Advance time to trigger HALF_OPEN
     const realNow = Date.now;
@@ -217,8 +217,8 @@ describe('CircuitBreakerService — getNodeStatus', () => {
 
   it('should prefer OPEN over HALF_OPEN in aggregation', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
-    tripCircuit(cb, 'openai', 'gpt-4o-mini');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4o-mini');
 
     // Make gpt-4 HALF_OPEN but gpt-4o-mini stays OPEN
     const realNow = Date.now;
@@ -227,7 +227,7 @@ describe('CircuitBreakerService — getNodeStatus', () => {
     // gpt-4o-mini also transitions if checked, so don't check it
     Date.now = realNow;
 
-    // Manually re-trip gpt-4o-mini to ensure it's OPEN
+    // Manually reopen gpt-4o-mini to ensure it's OPEN
     cb.recordFailure('openai', 'gpt-4o-mini'); // back to OPEN from HALF_OPEN
 
     const status = cb.getNodeStatus('openai');
@@ -254,7 +254,7 @@ describe('CircuitBreakerService — getModelStatuses', () => {
   it('should return per-model map', () => {
     const cb = makeBreaker();
     cb.recordFailure('openai', 'gpt-4');
-    tripCircuit(cb, 'openai', 'gpt-4o-mini');
+    forceCircuitOpen(cb, 'openai', 'gpt-4o-mini');
 
     const statuses = cb.getModelStatuses('openai');
     expect(statuses['gpt-4']).toBeDefined();
@@ -288,7 +288,7 @@ describe('CircuitBreakerService — getAllStatuses', () => {
   it('should return all tracked circuits', () => {
     const cb = makeBreaker();
     cb.recordFailure('openai', 'gpt-4');
-    tripCircuit(cb, 'claude', 'claude-3');
+    forceCircuitOpen(cb, 'claude', 'claude-3');
 
     const all = cb.getAllStatuses();
     expect(all.size).toBe(2);
@@ -319,7 +319,7 @@ describe('CircuitBreakerService — getAllStatuses', () => {
       },
     };
     const cb = new CircuitBreakerService(undefined as any, telemetry as any);
-    tripCircuit(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
 
     const observable = { observe: jest.fn() };
     gauges.siftgate_circuit_breaker_state.callback(observable);
@@ -342,8 +342,8 @@ describe('CircuitBreakerService — getAllStatuses', () => {
 describe('CircuitBreakerService — reset', () => {
   it('should reset a specific model circuit', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
-    tripCircuit(cb, 'openai', 'gpt-4o-mini');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4o-mini');
 
     cb.reset('openai', 'gpt-4');
 
@@ -355,9 +355,9 @@ describe('CircuitBreakerService — reset', () => {
 
   it('should reset all model circuits for a node', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
-    tripCircuit(cb, 'openai', 'gpt-4o-mini');
-    tripCircuit(cb, 'claude', 'claude-3');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'openai', 'gpt-4o-mini');
+    forceCircuitOpen(cb, 'claude', 'claude-3');
 
     cb.reset('openai');
 
@@ -369,8 +369,8 @@ describe('CircuitBreakerService — reset', () => {
 
   it('should resetAll to clear everything', () => {
     const cb = makeBreaker();
-    tripCircuit(cb, 'openai', 'gpt-4');
-    tripCircuit(cb, 'claude', 'claude-3');
+    forceCircuitOpen(cb, 'openai', 'gpt-4');
+    forceCircuitOpen(cb, 'claude', 'claude-3');
 
     cb.resetAll();
 

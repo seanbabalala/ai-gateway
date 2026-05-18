@@ -51,6 +51,10 @@ const scanRoots = [
 
 const privateRepoPattern = new RegExp(`${'siftgate'}[-_]${'cloud'}|/${'siftgate'}[-_]${'cloud'}`, 'i');
 const privateKeyBlockPattern = new RegExp(['-----BEGIN ', '[A-Z ]*', 'PRIV' + 'ATE KEY-----'].join(''));
+const knownInternalLabelPattern = new RegExp(
+  `\\b(?:${['c', 't', 'r', 'i', 'p'].join('')}|${['token', 'flux'].join('')})\\b`,
+  'i',
+);
 
 const forbiddenPatterns = [
   { name: 'private repo reference', pattern: privateRepoPattern },
@@ -61,7 +65,7 @@ const forbiddenPatterns = [
   { name: 'bearer token literal', pattern: /\bBearer\s+[A-Za-z0-9._-]{24,}\b/ },
   { name: 'local macOS home path', pattern: /\/Users\/[A-Za-z0-9._-]+/ },
   { name: 'internal planning source', pattern: /\b(V2_EXECUTION_PROMPTS|OPEN_SOURCE_OPTIMIZATION_PLAN|PRODUCT_ROADMAP|GATEWAY_ROADMAP)\b/ },
-  { name: 'known internal provider label', pattern: /\b(ctrip|tokenflux)\b/i },
+  { name: 'known internal provider label', pattern: knownInternalLabelPattern },
   { name: 'private intranet planning phrase', pattern: /公司内网/ },
 ];
 

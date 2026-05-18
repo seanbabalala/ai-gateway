@@ -6,6 +6,10 @@ const { execFileSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const failures = [];
+const internalCompanyTermPattern = new RegExp(
+  `\\b(?:${['c', 't', 'r', 'i', 'p'].join('')}|${['t', 'r', 'i', 'p'].join('')})\\b`,
+  'i',
+);
 
 const requiredFiles = [
   'LICENSE',
@@ -50,6 +54,13 @@ const forbiddenTextRules = [
   { name: 'private key block', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
   { name: 'literal long bearer token', pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{32,}\b/ },
   { name: 'local macOS home path', pattern: /\/Users\/[A-Za-z0-9._-]+/ },
+];
+
+const forbiddenAllTextRules = [
+  { name: 'internal company term', pattern: internalCompanyTermPattern },
+  { name: 'internal coding-plan example id', pattern: new RegExp(['ada', 'coding', 'plan'].join('-'), 'i') },
+  { name: 'internal coding-plan example name', pattern: new RegExp(['ADA', 'Coding', 'Plan'].join(' ')) },
+  { name: 'internal provider env prefix', pattern: new RegExp(['ADA', 'CLAUDE'].join('_'), 'i') },
 ];
 
 for (const file of requiredFiles) {
@@ -109,10 +120,16 @@ function readIfExists(relPath) {
 
 function scanTrackedTextFiles(files) {
   for (const file of files) {
-    if (file.startsWith('test/')) continue;
     if (!isScannableTextPath(file)) continue;
 
     const text = readIfExists(file);
+    for (const rule of forbiddenAllTextRules) {
+      if (rule.pattern.test(text)) {
+        failures.push(`${file}: forbidden ${rule.name}`);
+      }
+    }
+    if (file.startsWith('test/')) continue;
+
     for (const rule of forbiddenTextRules) {
       if (rule.pattern.test(text)) {
         failures.push(`${file}: forbidden ${rule.name}`);
