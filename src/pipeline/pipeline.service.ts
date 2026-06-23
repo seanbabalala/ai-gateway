@@ -3462,7 +3462,7 @@ export class PipelineService {
   ): Promise<SmartRouteResolution> {
     const requestedModel = await this.applyAgentProfileVirtualModel(canonical);
 
-    if (this.shouldPinMessagesRequestToClaude(canonical)) {
+    if (this.shouldPinMessagesRequestToClaude(canonical, requestedModel)) {
       const pinnedNode = this.findPinnedMessagesNode(requestedModel);
       if (pinnedNode) {
         this.assertRouteModeAllowed(canonical, 'direct');
@@ -3527,18 +3527,9 @@ export class PipelineService {
           }
         }
 
-        // Build fallbacks from other nodes (modality-aware)
-        const fallbacks = this.filterContextCompatibleFallbacks(
-          canonical,
-          this.filterAllowedTargets(
-            canonical,
-            this.buildDirectFallbacks(canonical, resolved.nodeId),
-          ),
-        );
-
         const route = {
           primary: { node: resolved.nodeId, model: resolved.model },
-          fallbacks,
+          fallbacks: [],
         };
 
         return {
@@ -5118,13 +5109,26 @@ export class PipelineService {
     );
   }
 
-  private shouldPinMessagesRequestToClaude(canonical: CanonicalRequest): boolean {
+  private shouldPinMessagesRequestToClaude(
+    canonical: CanonicalRequest,
+    requestedModel?: string,
+  ): boolean {
     if (canonical.metadata.source_format !== 'messages') {
       return false;
     }
 
     if (canonical.metadata.agent_virtual_model) {
       return false;
+    }
+
+    if (requestedModel && requestedModel !== 'auto') {
+      const resolved = this.config.resolveModel(requestedModel);
+      const resolvedNode = resolved
+        ? this.config.getNode(resolved.nodeId)
+        : undefined;
+      if (resolvedNode && resolvedNode.protocol !== 'messages') {
+        return false;
+      }
     }
 
     const headers = canonical.metadata.raw_headers || {};

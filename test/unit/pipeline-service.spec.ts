@@ -396,6 +396,25 @@ describe('PipelineService — direct routing', () => {
     );
   });
 
+  it('does not fallback to another model for an explicit direct route', async () => {
+    const { pipeline, mocks } = makePipeline();
+    mocks.providerClient.forward.mockRejectedValue(
+      new ProviderError('Direct model failed', 400, 'openai'),
+    );
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(400);
+    expect(mocks.providerClient.forward).toHaveBeenCalledTimes(1);
+    expect(mocks.providerClient.forward).toHaveBeenCalledWith(
+      request,
+      'openai',
+      'gpt-4o',
+      expect.objectContaining({ tier: 'direct', is_fallback: false }),
+    );
+  });
+
   it('should fall through to auto routing for unknown models', async () => {
     const { pipeline, mocks } = makePipeline();
     const request = makeRequest('Hello', { originalModel: 'unknown-model-xyz' });
@@ -1675,7 +1694,7 @@ describe('PipelineService — concurrency limiter', () => {
     const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
     await pipeline.process(request);
 
-    expect(release).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it('should skip to fallback when a saturated node allows fallback', async () => {

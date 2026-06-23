@@ -1608,6 +1608,55 @@ function validateNodeRequestCompatibility(
       ),
     );
   }
+
+  const chatToolMessages = compatibility.chat_tool_messages;
+  if (
+    chatToolMessages !== undefined &&
+    chatToolMessages !== 'native' &&
+    chatToolMessages !== 'stringify_as_user' &&
+    chatToolMessages !== 'drop'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_request_compatibility_chat_tool_messages',
+        'nodes[].request_compatibility.chat_tool_messages must be "native", "stringify_as_user", or "drop".',
+        `${basePath}.request_compatibility.chat_tool_messages`,
+      ),
+    );
+  }
+
+  if (compatibility.drop_parameters !== undefined) {
+    if (
+      !Array.isArray(compatibility.drop_parameters) ||
+      compatibility.drop_parameters.some(
+        (parameter) => typeof parameter !== 'string' || parameter.trim().length === 0,
+      )
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_node_request_compatibility_drop_parameters',
+          'nodes[].request_compatibility.drop_parameters must be an array of non-empty strings.',
+          `${basePath}.request_compatibility.drop_parameters`,
+        ),
+      );
+    }
+  }
+
+  if (
+    compatibility.default_parameters !== undefined &&
+    !isRecord(compatibility.default_parameters)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_node_request_compatibility_default_parameters',
+        'nodes[].request_compatibility.default_parameters must be an object when set.',
+        `${basePath}.request_compatibility.default_parameters`,
+      ),
+    );
+  }
 }
 
 function validateNodeConnection(

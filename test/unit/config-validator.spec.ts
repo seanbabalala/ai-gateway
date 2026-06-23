@@ -482,6 +482,18 @@ describe('config validator', () => {
             timeout_ms: 60000,
             request_compatibility: {
               messages_tool_result_content: 'string',
+              chat_tool_messages: 'stringify_as_user',
+              drop_parameters: ['top_p'],
+              default_parameters: {
+                extra_body: {
+                  google: {
+                    thinking_config: {
+                      thinking_budget: 0,
+                      include_thoughts: false,
+                    },
+                  },
+                },
+              },
             },
           },
         ],
@@ -506,6 +518,9 @@ describe('config validator', () => {
 
     expect(valid.ok).toBe(true);
     expect(codes(valid.errors)).not.toContain('invalid_node_request_compatibility_mode');
+    expect(codes(valid.errors)).not.toContain('invalid_node_request_compatibility_chat_tool_messages');
+    expect(codes(valid.errors)).not.toContain('invalid_node_request_compatibility_drop_parameters');
+    expect(codes(valid.errors)).not.toContain('invalid_node_request_compatibility_default_parameters');
 
     const invalid = validateConfigObject(
       {
@@ -548,6 +563,138 @@ describe('config validator', () => {
 
     expect(invalid.ok).toBe(false);
     expect(codes(invalid.errors)).toContain('invalid_node_request_compatibility_mode');
+
+    const invalidChatToolMessages = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai-compatible',
+            name: 'OpenAI compatible',
+            protocol: 'chat_completions',
+            base_url: 'https://openai-compatible.example.com',
+            endpoint: '/v1/chat/completions',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-4o'],
+            timeout_ms: 60000,
+            request_compatibility: {
+              chat_tool_messages: 'flatten',
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai-compatible', model: 'gpt-4o' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-4o': { input: 5, output: 15 } },
+      },
+      { env: {} },
+    );
+
+    expect(invalidChatToolMessages.ok).toBe(false);
+    expect(codes(invalidChatToolMessages.errors)).toContain(
+      'invalid_node_request_compatibility_chat_tool_messages',
+    );
+
+    const invalidDropParameters = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai-compatible',
+            name: 'OpenAI compatible',
+            protocol: 'responses',
+            base_url: 'https://openai-compatible.example.com',
+            endpoint: '/v1/responses',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-5.5'],
+            timeout_ms: 60000,
+            request_compatibility: {
+              drop_parameters: ['top_p', ''],
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai-compatible', model: 'gpt-5.5' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-5.5': { input: 5, output: 15 } },
+      },
+      { env: {} },
+    );
+
+    expect(invalidDropParameters.ok).toBe(false);
+    expect(codes(invalidDropParameters.errors)).toContain(
+      'invalid_node_request_compatibility_drop_parameters',
+    );
+
+    const invalidDefaultParameters = validateConfigObject(
+      {
+        server: { port: 2099, host: '0.0.0.0' },
+        database: { type: 'sqlite', path: ':memory:' },
+        auth: { api_keys: [] },
+        nodes: [
+          {
+            id: 'openai-compatible',
+            name: 'OpenAI compatible',
+            protocol: 'responses',
+            base_url: 'https://openai-compatible.example.com',
+            endpoint: '/v1/responses',
+            api_key: '${OPENAI_API_KEY:-test}',
+            models: ['gpt-5.5'],
+            timeout_ms: 60000,
+            request_compatibility: {
+              default_parameters: ['top_p'],
+            },
+          },
+        ],
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai-compatible', model: 'gpt-5.5' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+        },
+        budget: {
+          daily_token_limit: 1000000,
+          daily_cost_limit: 25,
+          alert_threshold: 0.8,
+        },
+        models_pricing: { 'gpt-5.5': { input: 5, output: 15 } },
+      },
+      { env: {} },
+    );
+
+    expect(invalidDefaultParameters.ok).toBe(false);
+    expect(codes(invalidDefaultParameters.errors)).toContain(
+      'invalid_node_request_compatibility_default_parameters',
+    );
   });
 
   it('validates optional batch endpoint paths', () => {

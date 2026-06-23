@@ -1369,6 +1369,7 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
     auth_type: 'bearer',
     endpoints: {
       chat_completions: '/v1/text/chatcompletion_v2',
+      messages: '/anthropic/v1/messages',
       audio: '/v1/t2a_v2',
       image: '/v1/image_generation',
       video: '/v1/video_generation',
@@ -1384,7 +1385,10 @@ export const BUILTIN_PROVIDER_CATALOG: CatalogProvider[] = [
         id: 'MiniMax-M2',
         provider: 'minimax',
         modalities: ['text'],
-        endpoints: { chat_completions: '/v1/text/chatcompletion_v2' },
+        endpoints: {
+          chat_completions: '/v1/text/chatcompletion_v2',
+          messages: '/anthropic/v1/messages',
+        },
         capabilities: ['streaming', 'tools'],
         pricing: referencePricing(
           'https://platform.minimaxi.com/docs/api-reference/text/chat-completion',

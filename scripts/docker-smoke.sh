@@ -112,6 +112,9 @@ database:
   path: ./data/gateway.db
   log_retention_days: 1
 
+dashboard:
+  auth_required: false
+
 auth:
   api_keys: []
   rate_limit:

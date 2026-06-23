@@ -1024,6 +1024,7 @@ export class ProviderClientService {
 
     for (const field of [
       'audio',
+      'extra_body',
       'frequency_penalty',
       'logit_bias',
       'logprobs',
@@ -1163,6 +1164,30 @@ export class ProviderClientService {
     node: NodeConfig,
     requestBody: Record<string, unknown>,
   ): void {
+    for (const parameter of node.request_compatibility?.drop_parameters || []) {
+      delete requestBody[parameter];
+    }
+
+    const defaultParameters =
+      node.request_compatibility?.default_parameters || {};
+    for (const [parameter, value] of Object.entries(defaultParameters)) {
+      if (requestBody[parameter] === undefined) {
+        requestBody[parameter] = this.cloneJson(value);
+      } else {
+        requestBody[parameter] = this.mergeMissingDefaults(
+          requestBody[parameter],
+          value,
+        );
+      }
+    }
+
+    if (node.protocol === 'chat_completions') {
+      this.applyChatToolMessageCompatibility(
+        requestBody,
+        node.request_compatibility?.chat_tool_messages,
+      );
+    }
+
     if (
       node.protocol !== 'messages' ||
       node.request_compatibility?.messages_tool_result_content !== 'string'
@@ -1171,6 +1196,172 @@ export class ProviderClientService {
     }
 
     this.stringifyToolResultContent(requestBody.messages);
+  }
+
+  private applyChatToolMessageCompatibility(
+    requestBody: Record<string, unknown>,
+    mode?: 'native' | 'stringify_as_user' | 'drop',
+  ): void {
+    if (!mode || mode === 'native' || !Array.isArray(requestBody.messages)) {
+      return;
+    }
+
+    const rewritten: unknown[] = [];
+
+    for (const item of requestBody.messages) {
+      if (!this.isPlainRecord(item)) {
+        rewritten.push(item);
+        continue;
+      }
+
+      const role = item.role;
+      if (role === 'tool' || role === 'function') {
+        if (mode === 'stringify_as_user') {
+          rewritten.push(this.chatToolMessageAsUserMessage(item));
+        }
+        continue;
+      }
+
+      if (role === 'assistant') {
+        const message = { ...item };
+        const toolSummary = this.chatAssistantToolSummary(message);
+        if (toolSummary) {
+          delete message.tool_calls;
+          delete message.function_call;
+          if (mode === 'stringify_as_user') {
+            message.content = this.appendTextToChatContent(
+              message.content,
+              toolSummary,
+            );
+          }
+        }
+
+        if (mode === 'drop' && this.isEmptyChatContent(message.content)) {
+          continue;
+        }
+
+        rewritten.push(message);
+        continue;
+      }
+
+      rewritten.push(item);
+    }
+
+    requestBody.messages = rewritten;
+  }
+
+  private chatToolMessageAsUserMessage(
+    message: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const role = message.role;
+    const label = role === 'function' ? 'Function result' : 'Tool result';
+    const id =
+      typeof message.tool_call_id === 'string' && message.tool_call_id
+        ? ` ${message.tool_call_id}`
+        : typeof message.name === 'string' && message.name
+          ? ` ${message.name}`
+          : '';
+    const content = this.chatContentToText(message.content);
+    return {
+      role: 'user',
+      content: content ? `[${label}${id}]\n${content}` : `[${label}${id}]`,
+    };
+  }
+
+  private chatAssistantToolSummary(
+    message: Record<string, unknown>,
+  ): string {
+    const parts: string[] = [];
+    if (Array.isArray(message.tool_calls)) {
+      const toolCalls = message.tool_calls
+        .map((toolCall) => this.chatToolCallToText(toolCall))
+        .filter(Boolean);
+      parts.push(...toolCalls);
+    }
+
+    if (this.isPlainRecord(message.function_call)) {
+      parts.push(this.legacyFunctionCallToText(message.function_call));
+    }
+
+    return parts.filter(Boolean).join('\n');
+  }
+
+  private chatToolCallToText(toolCall: unknown): string {
+    if (!this.isPlainRecord(toolCall)) {
+      return `[Tool call] ${this.jsonishToText(toolCall)}`;
+    }
+
+    const functionRecord = this.isPlainRecord(toolCall.function)
+      ? toolCall.function
+      : {};
+    const id =
+      typeof toolCall.id === 'string' && toolCall.id
+        ? ` ${toolCall.id}`
+        : '';
+    const name =
+      typeof functionRecord.name === 'string' && functionRecord.name
+        ? functionRecord.name
+        : typeof toolCall.name === 'string' && toolCall.name
+          ? toolCall.name
+          : 'unknown';
+    const args = this.jsonishToText(
+      functionRecord.arguments ?? toolCall.arguments,
+    );
+
+    return args
+      ? `[Tool call${id}] ${name}: ${args}`
+      : `[Tool call${id}] ${name}`;
+  }
+
+  private legacyFunctionCallToText(
+    functionCall: Record<string, unknown>,
+  ): string {
+    const name =
+      typeof functionCall.name === 'string' && functionCall.name
+        ? functionCall.name
+        : 'unknown';
+    const args = this.jsonishToText(functionCall.arguments);
+    return args
+      ? `[Function call] ${name}: ${args}`
+      : `[Function call] ${name}`;
+  }
+
+  private appendTextToChatContent(content: unknown, text: string): unknown {
+    if (!text) return content ?? '';
+    if (content === undefined || content === null) return text;
+    if (typeof content === 'string') {
+      return content.trim().length > 0 ? `${content}\n${text}` : text;
+    }
+    if (Array.isArray(content)) {
+      const blocks = this.cloneJson(content) as unknown[];
+      blocks.push({ type: 'text', text });
+      return blocks;
+    }
+
+    const existing = this.chatContentToText(content);
+    return existing ? `${existing}\n${text}` : text;
+  }
+
+  private isEmptyChatContent(content: unknown): boolean {
+    return this.chatContentToText(content).trim().length === 0;
+  }
+
+  private chatContentToText(content: unknown): string {
+    if (content === null || content === undefined) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) return this.contentBlocksToText(content);
+    if (typeof content === 'object') return this.contentBlockToText(content);
+    return String(content);
+  }
+
+  private jsonishToText(value: unknown): string {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value) || '';
+    } catch {
+      return String(value);
+    }
   }
 
   private stringifyToolResultContent(value: unknown): void {
@@ -1223,6 +1414,26 @@ export class ProviderClientService {
       return record.content;
     }
     return JSON.stringify(record);
+  }
+
+  private mergeMissingDefaults(current: unknown, defaults: unknown): unknown {
+    if (!this.isPlainRecord(current) || !this.isPlainRecord(defaults)) {
+      return current;
+    }
+
+    const merged = this.cloneJson(current) as Record<string, unknown>;
+    for (const [key, defaultValue] of Object.entries(defaults)) {
+      if (merged[key] === undefined) {
+        merged[key] = this.cloneJson(defaultValue);
+      } else {
+        merged[key] = this.mergeMissingDefaults(merged[key], defaultValue);
+      }
+    }
+    return merged;
+  }
+
+  private isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
   }
 
   private buildEmbeddingsRequest(

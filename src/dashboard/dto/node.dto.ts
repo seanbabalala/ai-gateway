@@ -366,15 +366,34 @@ export class CreateNodeDto {
         type: 'string',
         enum: ['native', 'string'],
       },
+      chat_tool_messages: {
+        type: 'string',
+        enum: ['native', 'stringify_as_user', 'drop'],
+      },
+      drop_parameters: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      default_parameters: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
     additionalProperties: false,
-    example: { messages_tool_result_content: 'string' },
+    example: {
+      messages_tool_result_content: 'string',
+      chat_tool_messages: 'stringify_as_user',
+      drop_parameters: ['top_p'],
+    },
     description: 'Optional request-shape compatibility overrides for upstream providers.',
   })
   @IsOptional()
   @IsObject()
   request_compatibility?: {
     messages_tool_result_content?: 'native' | 'string';
+    chat_tool_messages?: 'native' | 'stringify_as_user' | 'drop';
+    drop_parameters?: string[];
+    default_parameters?: Record<string, unknown>;
   };
 
   @ApiPropertyOptional({ type: [String], example: ['gpt'] })
@@ -766,15 +785,34 @@ export class UpdateNodeDto {
         type: 'string',
         enum: ['native', 'string'],
       },
+      chat_tool_messages: {
+        type: 'string',
+        enum: ['native', 'stringify_as_user', 'drop'],
+      },
+      drop_parameters: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      default_parameters: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
     additionalProperties: false,
-    example: { messages_tool_result_content: 'string' },
+    example: {
+      messages_tool_result_content: 'string',
+      chat_tool_messages: 'stringify_as_user',
+      drop_parameters: ['top_p'],
+    },
     description: 'Optional request-shape compatibility overrides for upstream providers.',
   })
   @IsOptional()
   @IsObject()
   request_compatibility?: {
     messages_tool_result_content?: 'native' | 'string';
+    chat_tool_messages?: 'native' | 'stringify_as_user' | 'drop';
+    drop_parameters?: string[];
+    default_parameters?: Record<string, unknown>;
   };
 
   @ApiPropertyOptional({ type: [String], example: ['gpt'] })

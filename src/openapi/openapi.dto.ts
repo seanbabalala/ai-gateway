@@ -970,13 +970,41 @@ export class SanitizedNodeConfigDto {
         type: 'string',
         enum: ['native', 'string'],
       },
+      chat_tool_messages: {
+        type: 'string',
+        enum: ['native', 'stringify_as_user', 'drop'],
+      },
+      drop_parameters: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      default_parameters: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
     additionalProperties: false,
-    example: { messages_tool_result_content: 'string' },
+    example: {
+      messages_tool_result_content: 'string',
+      drop_parameters: ['top_p'],
+      default_parameters: {
+        extra_body: {
+          google: {
+            thinking_config: {
+              thinking_budget: 0,
+              include_thoughts: false,
+            },
+          },
+        },
+      },
+    },
     description: 'Optional request-shape compatibility overrides for upstream providers.',
   })
   request_compatibility?: {
     messages_tool_result_content?: 'native' | 'string';
+    chat_tool_messages?: 'native' | 'stringify_as_user' | 'drop';
+    drop_parameters?: string[];
+    default_parameters?: Record<string, unknown>;
   };
 
   @ApiPropertyOptional({ type: [String], example: ['text-embedding-3-small'] })

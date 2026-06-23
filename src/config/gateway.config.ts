@@ -729,6 +729,15 @@ export interface NodeRequestCompatibilityConfig {
    * tool_result blocks. The default "native" keeps Anthropic content blocks.
    */
   messages_tool_result_content?: 'native' | 'string';
+  /**
+   * Some OpenAI-compatible upstreams strictly validate historical tool-call
+   * ordering. The default "native" keeps chat tool messages unchanged.
+   */
+  chat_tool_messages?: 'native' | 'stringify_as_user' | 'drop';
+  /** Request body fields to omit before forwarding to this upstream node. */
+  drop_parameters?: string[];
+  /** Request body fields to add when the client did not provide them; plain objects merge by missing nested keys. */
+  default_parameters?: Record<string, unknown>;
 }
 
 export interface NodeConfig {

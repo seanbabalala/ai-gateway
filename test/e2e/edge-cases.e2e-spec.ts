@@ -65,7 +65,7 @@ describe('Edge Cases (e2e)', () => {
       .post('/v1/chat/completions')
       .set('Authorization', `Bearer ${API_KEY}`)
       .send({
-        model: 'gpt-4o',
+        model: 'auto',
         messages: [{ role: 'user', content: 'test fallback' }],
       });
 

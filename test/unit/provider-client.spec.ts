@@ -817,6 +817,78 @@ describe('ProviderClientService', () => {
     });
   });
 
+  describe('request compatibility', () => {
+    it('drops configured request parameters before forwarding', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        top_p: 0.8,
+        temperature: 0.2,
+        metadata: {
+          source_format: 'chat_completions',
+          raw_headers: {},
+        },
+      });
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'responses',
+        'gpt-5.5-2026-04-24',
+      );
+
+      (svc as any).applyNodeRequestCompatibility(
+        {
+          id: 'compat-gpt',
+          protocol: 'responses',
+          request_compatibility: { drop_parameters: ['top_p'] },
+        },
+        body,
+      );
+
+      expect(body.top_p).toBeUndefined();
+      expect(body.temperature).toBe(0.2);
+    });
+
+    it('adds configured default parameters without overriding client values', () => {
+      const svc = makeService();
+      const body: Record<string, unknown> = {
+        model: 'gemini-3.1-pro-preview',
+        extra_body: {
+          google: {
+            thinking_config: { include_thoughts: true },
+          },
+        },
+      };
+
+      (svc as any).applyNodeRequestCompatibility(
+        {
+          id: 'gemini',
+          protocol: 'chat_completions',
+          request_compatibility: {
+            default_parameters: {
+              extra_body: {
+                google: {
+                  thinking_config: {
+                    thinking_budget: 0,
+                    include_thoughts: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+        body,
+      );
+
+      expect(body.extra_body).toEqual({
+        google: {
+          thinking_config: {
+            include_thoughts: true,
+            thinking_budget: 0,
+          },
+        },
+      });
+    });
+  });
+
   // ── Native Messages Passthrough (via private methods accessed indirectly) ──
 
   describe('denormalizeRequest — native messages passthrough', () => {
@@ -1505,6 +1577,86 @@ describe('ProviderClientService', () => {
         type: 'tool_result',
         tool_use_id: 'toolu_1',
         content: 'ok',
+      });
+    });
+
+    it('should stringify chat tool history when the node requests compatibility mode', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'chatcmpl_tool_compat',
+          model: 'MiniMax-M3',
+          choices: [{ message: { content: 'pong' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        id: 'minimax',
+        name: 'MiniMax',
+        protocol: 'chat_completions',
+        base_url: 'https://api.minimaxi.com',
+        endpoint: '/v1/chat/completions',
+        models: ['MiniMax-M3'],
+        request_compatibility: {
+          drop_parameters: ['tools', 'tool_choice', 'parallel_tool_calls'],
+          chat_tool_messages: 'stringify_as_user',
+        },
+      });
+      await svc.forward(
+        makeCanonical({
+          messages: [
+            { role: 'user', content: 'Hi' },
+            {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool_use',
+                  id: 'call_1',
+                  name: 'lookup',
+                  input: { q: 'status' },
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'call_1',
+                  content: [{ type: 'text', text: 'ok' }],
+                },
+              ],
+            },
+            { role: 'user', content: 'Reply exactly: pong' },
+          ],
+          tools: [
+            {
+              name: 'lookup',
+              description: 'Lookup status',
+              parameters: { type: 'object' },
+            },
+          ],
+          tool_choice: 'auto',
+        }),
+        'minimax',
+        'MiniMax-M3',
+        routingMeta,
+      );
+
+      const [, opts] = fetchMock.mock.calls[0];
+      const body = JSON.parse(opts.body as string);
+      expect(body.tools).toBeUndefined();
+      expect(body.tool_choice).toBeUndefined();
+      expect(body.messages[1]).toEqual({
+        role: 'assistant',
+        content: '[Tool call call_1] lookup: {"q":"status"}',
+      });
+      expect(body.messages[2]).toEqual({
+        role: 'user',
+        content: '[Tool result call_1]\nok',
       });
     });
 
