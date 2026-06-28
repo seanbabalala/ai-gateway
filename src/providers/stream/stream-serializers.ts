@@ -23,6 +23,9 @@ export class ChatCompletionsStreamSerializer {
 
   serialize(event: CanonicalStreamEvent): string {
     switch (event.type) {
+      case 'raw_sse':
+        return event.text;
+
       case 'start': {
         this.id = event.id;
         this.model = event.model;
@@ -196,6 +199,9 @@ export class ResponsesStreamSerializer {
 
   serialize(event: CanonicalStreamEvent): string {
     switch (event.type) {
+      case 'raw_sse':
+        return event.text;
+
       case 'start': {
         this.id = event.id || `resp_${Date.now()}`;
         this.model = event.model;
@@ -512,6 +518,9 @@ export class MessagesStreamSerializer {
 
   serialize(event: CanonicalStreamEvent): string {
     switch (event.type) {
+      case 'raw_sse':
+        return event.text;
+
       case 'start': {
         this.id = event.id || `msg_${Date.now()}`;
         this.model = event.model;

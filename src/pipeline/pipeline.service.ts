@@ -2784,6 +2784,20 @@ export class PipelineService {
               let streamModel = '';
               let streamId = '';
               let streamStopReason = '';
+              const accumulateStreamEvent = (event: CanonicalStreamEvent) => {
+                if (event.type === 'start') {
+                  streamModel = event.model;
+                  streamId = event.id;
+                } else if (event.type === 'delta' && event.content.type === 'text') {
+                  accumulatedText.push(event.content.text);
+                } else if (event.type === 'stop') {
+                  usage.input_tokens = event.usage.input_tokens;
+                  usage.output_tokens = event.usage.output_tokens;
+                  if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
+                  if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
+                  streamStopReason = event.stop_reason;
+                }
+              };
 
               currentPhase = 'upstreamStream';
               for await (const event of stream) {
@@ -2797,21 +2811,20 @@ export class PipelineService {
                 isFallback = !isFirstTarget || costDowngrade.reason !== null;
 
                 // Accumulate for cache
-                if (event.type === 'start') {
-                  streamModel = event.model;
-                  streamId = event.id;
-                } else if (event.type === 'delta' && event.content.type === 'text') {
-                  accumulatedText.push(event.content.text);
-                } else if (event.type === 'stop') {
-                  usage.input_tokens = event.usage.input_tokens;
-                  usage.output_tokens = event.usage.output_tokens;
-                  if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
-                  if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
-                  streamStopReason = event.stop_reason;
+                if (event.type === 'raw_sse') {
+                  for (const parsedEvent of event.events || []) {
+                    accumulateStreamEvent(parsedEvent);
+                  }
+                  if (event.text) {
+                    ensureStreamHeaders();
+                    res.write(event.text);
+                  }
+                  continue;
                 }
+                accumulateStreamEvent(event);
 
                 // ── streamEvent Hook ──
-                let outputEvent = event;
+                let outputEvent: CanonicalStreamEvent = event;
                 if (!this.hooks.isEmpty()) {
                   const hookResult = await this.hooks.run(
                     'streamEvent',

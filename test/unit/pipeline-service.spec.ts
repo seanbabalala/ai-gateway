@@ -2250,6 +2250,147 @@ describe('PipelineService — processStream', () => {
     expect(mocks.budgetService.record).toHaveBeenCalled();
   });
 
+  it('should write native Responses raw SSE without reconstructing function call events', async () => {
+    const upstreamSse =
+      'event: response.output_item.added\n' +
+      'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"edit_file","arguments":"","status":"in_progress"}}\n\n' +
+      'event: response.function_call_arguments.delta\n' +
+      'data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","call_id":"call_1","delta":"{\\"path\\":\\"a.ts\\"}"}\n\n' +
+      'event: response.function_call_arguments.done\n' +
+      'data: {"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_1","call_id":"call_1","arguments":"{\\"path\\":\\"a.ts\\"}"}\n\n' +
+      'event: response.output_item.done\n' +
+      'data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"edit_file","arguments":"{\\"path\\":\\"a.ts\\"}","status":"completed"}}\n\n' +
+      'event: response.completed\n' +
+      'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","status":"completed","usage":{"input_tokens":12,"output_tokens":7}}}\n\n';
+    async function* mockStream() {
+      yield {
+        type: 'raw_sse' as const,
+        text: upstreamSse,
+        events: [
+          { type: 'start' as const, id: 'resp_1', model: 'gpt-5.5' },
+          {
+            type: 'stop' as const,
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 12, output_tokens: 7 },
+          },
+        ],
+      };
+    }
+    const hooks = {
+      isEmpty: jest.fn().mockReturnValue(false),
+      run: jest.fn(async (_hookName: string, data: any) => ({ data })),
+    };
+    const { pipeline, mocks } = makePipeline({
+      hooks,
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+
+    const request = makeRequest('Use a tool', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    request.metadata.source_format = 'responses';
+    request.metadata.raw_body = { model: 'gpt-4o', stream: true, input: 'Use a tool' };
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    const allChunks = res._chunks.join('');
+    expect(allChunks).toBe(upstreamSse);
+    expect(allChunks).toContain('event: response.function_call_arguments.done');
+    expect(allChunks).toContain('"output_index":0');
+    expect(allChunks).not.toContain('event: response.content_part.added');
+    expect(hooks.run).not.toHaveBeenCalledWith(
+      'streamEvent',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      19,
+      expect.any(Number),
+      undefined,
+    );
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.input_tokens).toBe(12);
+    expect(savedLog.output_tokens).toBe(7);
+  });
+
+  it('should write native Messages raw SSE without reconstructing Anthropic events', async () => {
+    const upstreamSse =
+      'event: message_start\n' +
+      'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4","content":[],"stop_reason":null,"usage":{"input_tokens":8,"output_tokens":1}}}\n\n' +
+      'event: content_block_start\n' +
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"read_file","input":{}}}\n\n' +
+      'event: content_block_delta\n' +
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":\\"a.ts\\"}"}}\n\n' +
+      'event: content_block_stop\n' +
+      'data: {"type":"content_block_stop","index":0}\n\n' +
+      'event: message_delta\n' +
+      'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}\n\n' +
+      'event: message_stop\n' +
+      'data: {"type":"message_stop"}\n\n';
+    async function* mockStream() {
+      yield {
+        type: 'raw_sse' as const,
+        text: upstreamSse,
+        events: [
+          { type: 'start' as const, id: 'msg_1', model: 'claude-sonnet-4' },
+          {
+            type: 'stop' as const,
+            stop_reason: 'tool_use',
+            usage: { input_tokens: 8, output_tokens: 5 },
+          },
+        ],
+      };
+    }
+    const hooks = {
+      isEmpty: jest.fn().mockReturnValue(false),
+      run: jest.fn(async (_hookName: string, data: any) => ({ data })),
+    };
+    const { pipeline, mocks } = makePipeline({
+      hooks,
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+
+    const request = makeRequest('Use a tool', { originalModel: 'claude-sonnet-4' });
+    request.stream = true;
+    request.metadata.source_format = 'messages';
+    request.metadata.raw_body = {
+      model: 'claude-sonnet-4',
+      stream: true,
+      messages: [{ role: 'user', content: 'Use a tool' }],
+      max_tokens: 100,
+    };
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    const allChunks = res._chunks.join('');
+    expect(allChunks).toBe(upstreamSse);
+    expect(allChunks).toContain('event: content_block_start');
+    expect(allChunks).toContain('"type":"tool_use"');
+    expect(allChunks).not.toContain('event: response.output_item.added');
+    expect(hooks.run).not.toHaveBeenCalledWith(
+      'streamEvent',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      13,
+      expect.any(Number),
+      undefined,
+    );
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.input_tokens).toBe(8);
+    expect(savedLog.output_tokens).toBe(5);
+  });
+
   it('should release the concurrency slot after stream completion', async () => {
     const release = jest.fn();
     async function* mockStream() {

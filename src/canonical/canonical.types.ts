@@ -448,11 +448,18 @@ export interface StreamErrorEvent {
   };
 }
 
+export interface StreamRawSseEvent {
+  type: 'raw_sse';
+  text: string;
+  events?: CanonicalStreamEvent[];
+}
+
 export type CanonicalStreamEvent =
   | StreamStartEvent
   | StreamDeltaEvent
   | StreamStopEvent
-  | StreamErrorEvent;
+  | StreamErrorEvent
+  | StreamRawSseEvent;
 
 // ===== Normalizer / Denormalizer Interfaces =====
 

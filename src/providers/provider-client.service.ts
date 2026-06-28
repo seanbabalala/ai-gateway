@@ -384,6 +384,10 @@ export class ProviderClientService {
     if (!node) throw new Error(`Node not found: ${nodeId}`);
 
     const upstreamModel = this.resolveUpstreamModel(node, targetModel);
+    const passthroughNativeStream = this.shouldPassthroughRawSse(
+      canonical,
+      node.protocol,
+    );
     const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
     this.applyNodeRequestCompatibility(node, requestBody);
     this.applyStreamFlag(node, requestBody, true);
@@ -409,6 +413,15 @@ export class ProviderClientService {
     let latestUsage: TokenUsage | undefined;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const parseChunk = (chunk: string): CanonicalStreamEvent[] => {
+      const parsedEvents = [...parser.parse(chunk)];
+      for (const event of parsedEvents) {
+        if (event.type === 'stop') {
+          latestUsage = event.usage;
+        }
+      }
+      return parsedEvents;
+    };
     const cancelReader = () => {
       void reader.cancel().catch(() => undefined);
     };
@@ -427,22 +440,47 @@ export class ProviderClientService {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        for (const event of parser.parse(chunk)) {
-          if (event.type === 'stop') {
-            latestUsage = event.usage;
+        const parsedEvents = parseChunk(chunk);
+        if (passthroughNativeStream) {
+          if (chunk || parsedEvents.length > 0) {
+            yield { type: 'raw_sse', text: chunk, events: parsedEvents };
           }
+          continue;
+        }
+
+        for (const event of parsedEvents) {
           yield event;
+        }
+      }
+      const trailingChunk = decoder.decode();
+      if (trailingChunk) {
+        const parsedEvents = parseChunk(trailingChunk);
+        if (passthroughNativeStream) {
+          yield { type: 'raw_sse', text: trailingChunk, events: parsedEvents };
+        } else {
+          for (const event of parsedEvents) {
+            yield event;
+          }
         }
       }
       if (
         'flush' in parser &&
         typeof (parser as { flush?: () => Generator<CanonicalStreamEvent> }).flush === 'function'
       ) {
-        for (const event of (parser as { flush: () => Generator<CanonicalStreamEvent> }).flush()) {
+        const flushedEvents = [
+          ...(parser as { flush: () => Generator<CanonicalStreamEvent> }).flush(),
+        ];
+        for (const event of flushedEvents) {
           if (event.type === 'stop') {
             latestUsage = event.usage;
           }
-          yield event;
+        }
+        if (passthroughNativeStream && flushedEvents.length > 0) {
+          yield { type: 'raw_sse', text: '', events: flushedEvents };
+        } else {
+          for (const event of flushedEvents) {
+            yield event;
+          }
         }
       }
     } catch (err) {
@@ -964,6 +1002,10 @@ export class ProviderClientService {
     protocol: NodeProtocol,
     targetModel: string,
   ): Record<string, unknown> {
+    if (this.shouldPassthroughNativeResponses(canonical, protocol)) {
+      return this.buildNativeResponsesRequest(canonical, targetModel);
+    }
+
     if (this.shouldPassthroughNativeMessages(canonical, protocol)) {
       return this.buildNativeMessagesRequest(canonical, targetModel);
     }
@@ -1558,6 +1600,38 @@ export class ProviderClientService {
     protocol: NodeProtocol,
   ): boolean {
     return protocol === 'messages' && canonical.metadata.source_format === 'messages';
+  }
+
+  private shouldPassthroughNativeResponses(
+    canonical: CanonicalRequest,
+    protocol: NodeProtocol,
+  ): boolean {
+    return protocol === 'responses' && canonical.metadata.source_format === 'responses';
+  }
+
+  private shouldPassthroughRawSse(
+    canonical: CanonicalRequest,
+    protocol: NodeProtocol,
+  ): boolean {
+    return (
+      this.shouldPassthroughNativeResponses(canonical, protocol) ||
+      this.shouldPassthroughNativeMessages(canonical, protocol)
+    );
+  }
+
+  private buildNativeResponsesRequest(
+    canonical: CanonicalRequest,
+    targetModel: string,
+  ): Record<string, unknown> {
+    const rawBody = this.isPlainRecord(canonical.metadata.raw_body)
+      ? canonical.metadata.raw_body
+      : null;
+    const cloned = rawBody
+      ? (this.cloneJson(rawBody) as Record<string, unknown>)
+      : this.respDenorm.denormalize(canonical, targetModel);
+    cloned.model = targetModel;
+    cloned.stream = canonical.stream;
+    return cloned;
   }
 
   private buildNativeMessagesRequest(

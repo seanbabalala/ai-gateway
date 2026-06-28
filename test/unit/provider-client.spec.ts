@@ -1271,6 +1271,52 @@ describe('ProviderClientService', () => {
       expect(body.tools).toEqual([{ type: 'web_search_preview' }]);
       expect(body.tool_choice).toEqual({ type: 'web_search_preview' });
     });
+
+    it('should clone native Responses request bodies for responses → responses routes', () => {
+      const svc = makeService();
+      const rawBody = {
+        model: 'gpt-5.5-2026-04-24',
+        stream: true,
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Use a tool' }],
+          },
+        ],
+        tools: [{ type: 'function', name: 'edit_file', parameters: { type: 'object' } }],
+        tool_choice: 'auto',
+        previous_response_id: 'resp_prev',
+        parallel_tool_calls: true,
+        truncation: 'auto',
+        include: ['reasoning.encrypted_content'],
+        metadata: { codex: 'true' },
+        extra_native_field: { preserved: true },
+      };
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.5-2026-04-24',
+          raw_headers: {},
+          raw_body: rawBody,
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'responses',
+        'gpt-5.5-2026-04-24-upstream',
+      );
+
+      expect(body).toEqual({
+        ...rawBody,
+        model: 'gpt-5.5-2026-04-24-upstream',
+        stream: true,
+      });
+      expect(body).not.toBe(rawBody);
+      expect(body.input).not.toBe(rawBody.input);
+    });
   });
 
   describe('denormalizeRequest — native chat completions passthrough', () => {
@@ -2427,6 +2473,139 @@ describe('ProviderClientService', () => {
       }
       expect(events.length).toBeGreaterThanOrEqual(3);
       expect(events[0].type).toBe('start');
+    });
+
+    it('should pass through native Responses SSE chunks with side parsed usage', async () => {
+      const upstreamSse =
+        'event: response.created\n' +
+        'data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.5","status":"in_progress"}}\n\n' +
+        'event: response.output_item.added\n' +
+        'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"edit_file","arguments":"","status":"in_progress"}}\n\n' +
+        'event: response.function_call_arguments.delta\n' +
+        'data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","call_id":"call_1","delta":"{\\"path\\":\\"a.ts\\"}"}\n\n' +
+        'event: response.function_call_arguments.done\n' +
+        'data: {"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_1","call_id":"call_1","arguments":"{\\"path\\":\\"a.ts\\"}"}\n\n' +
+        'event: response.output_item.done\n' +
+        'data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"edit_file","arguments":"{\\"path\\":\\"a.ts\\"}","status":"completed"}}\n\n' +
+        'event: response.completed\n' +
+        'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","status":"completed","usage":{"input_tokens":12,"output_tokens":7}}}\n\n';
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(upstreamSse));
+          controller.close();
+        },
+      });
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: stream,
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        protocol: 'responses',
+        endpoint: '/v1/responses',
+      });
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.5',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.5',
+            stream: true,
+            input: 'Use a tool',
+            parallel_tool_calls: true,
+          },
+        },
+      });
+
+      const events = [];
+      for await (const event of svc.forwardStream(canonical, 'openai', 'gpt-5.5')) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      const rawEvent = events[0];
+      expect(rawEvent).toMatchObject({ type: 'raw_sse', text: upstreamSse });
+      expect(rawEvent.type).toBe('raw_sse');
+      if (rawEvent.type !== 'raw_sse') throw new Error('expected raw_sse');
+      expect(rawEvent.events?.some((event: any) => event.type === 'stop')).toBe(true);
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(JSON.parse(opts.body as string)).toEqual({
+        model: 'gpt-5.5',
+        stream: true,
+        input: 'Use a tool',
+        parallel_tool_calls: true,
+      });
+    });
+
+    it('should passthrough native Messages SSE chunks without reserializing', async () => {
+      const upstreamSse =
+        'event: message_start\n' +
+        'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4","content":[],"stop_reason":null,"usage":{"input_tokens":8,"output_tokens":1}}}\n\n' +
+        'event: content_block_start\n' +
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n' +
+        'event: content_block_delta\n' +
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}\n\n' +
+        'event: message_delta\n' +
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}\n\n' +
+        'event: message_stop\n' +
+        'data: {"type":"message_stop"}\n\n';
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(upstreamSse));
+          controller.close();
+        },
+      });
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: stream,
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        protocol: 'messages',
+        endpoint: '/v1/messages',
+      });
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'messages',
+          original_model: 'claude-sonnet-4',
+          raw_headers: {},
+          raw_body: {
+            model: 'claude-sonnet-4',
+            stream: true,
+            messages: [{ role: 'user', content: 'Hi' }],
+            max_tokens: 100,
+          },
+        },
+      });
+
+      const events = [];
+      for await (const event of svc.forwardStream(canonical, 'openai', 'claude-sonnet-4')) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      const rawEvent = events[0];
+      expect(rawEvent).toMatchObject({ type: 'raw_sse', text: upstreamSse });
+      expect(rawEvent.type).toBe('raw_sse');
+      if (rawEvent.type !== 'raw_sse') throw new Error('expected raw_sse');
+      expect(rawEvent.events?.some((event: any) => event.type === 'delta')).toBe(true);
+      expect(rawEvent.events?.some((event: any) => event.type === 'stop')).toBe(true);
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(JSON.parse(opts.body as string)).toEqual({
+        model: 'claude-sonnet-4',
+        stream: true,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 100,
+      });
     });
 
     it('should send the upstream model for aliased streaming routes', async () => {
