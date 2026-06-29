@@ -1223,6 +1223,8 @@ export class ProviderClientService {
       }
     }
 
+    this.sanitizeFunctionToolSchemas(requestBody);
+
     if (node.protocol === 'chat_completions') {
       this.applyChatToolMessageCompatibility(
         requestBody,
@@ -1238,6 +1240,78 @@ export class ProviderClientService {
     }
 
     this.stringifyToolResultContent(requestBody.messages);
+  }
+
+  private sanitizeFunctionToolSchemas(
+    value: unknown,
+    seen = new WeakSet<object>(),
+  ): void {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        this.sanitizeFunctionToolSchemas(item, seen);
+      }
+      return;
+    }
+
+    if (!this.isPlainRecord(value)) return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    this.sanitizeFunctionToolRecord(value);
+
+    for (const child of Object.values(value)) {
+      this.sanitizeFunctionToolSchemas(child, seen);
+    }
+  }
+
+  private sanitizeFunctionToolRecord(record: Record<string, unknown>): void {
+    if (record.type === 'function') {
+      if (this.isPlainRecord(record.function)) {
+        record.function.parameters = this.normalizeFunctionParametersSchema(
+          record.function.parameters,
+        );
+        return;
+      }
+
+      record.parameters = this.normalizeFunctionParametersSchema(
+        record.parameters,
+      );
+      return;
+    }
+
+    if (
+      typeof record.name === 'string' &&
+      Object.prototype.hasOwnProperty.call(record, 'input_schema')
+    ) {
+      record.input_schema = this.normalizeFunctionParametersSchema(
+        record.input_schema,
+      );
+    }
+  }
+
+  private normalizeFunctionParametersSchema(
+    schema: unknown,
+  ): Record<string, unknown> {
+    if (!this.isPlainRecord(schema)) {
+      return { type: 'object', properties: {} };
+    }
+
+    const normalized = this.cloneJson(schema) as Record<string, unknown>;
+    const schemaType = normalized.type;
+    if (Array.isArray(schemaType)) {
+      normalized.type = 'object';
+    } else if (
+      typeof schemaType !== 'string' ||
+      schemaType.toLowerCase() !== 'object'
+    ) {
+      normalized.type = 'object';
+    }
+
+    if (!this.isPlainRecord(normalized.properties)) {
+      normalized.properties = {};
+    }
+
+    return normalized;
   }
 
   private applyChatToolMessageCompatibility(

@@ -887,6 +887,113 @@ describe('ProviderClientService', () => {
         },
       });
     });
+
+    it('normalizes invalid chat function parameter schemas before forwarding', () => {
+      const svc = makeService();
+      const body: Record<string, unknown> = {
+        model: 'gpt-4o',
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'automation_update',
+              description: 'Update automation state',
+              parameters: { type: 'None' },
+            },
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'no_args',
+              description: 'No argument tool',
+            },
+          },
+        ],
+      };
+
+      (svc as any).applyNodeRequestCompatibility(
+        {
+          id: 'azure-compatible',
+          protocol: 'chat_completions',
+        },
+        body,
+      );
+
+      const tools = body.tools as any[];
+      expect(tools[0].function.parameters).toEqual({
+        type: 'object',
+        properties: {},
+      });
+      expect(tools[1].function.parameters).toEqual({
+        type: 'object',
+        properties: {},
+      });
+    });
+
+    it('normalizes nested Responses function schemas from Codex tool containers', () => {
+      const svc = makeService();
+      const body: Record<string, unknown> = {
+        model: 'gpt-5.5-2026-04-24',
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Run the task' }],
+            tools: [
+              {
+                type: 'tool_search',
+                tools: [
+                  {
+                    type: 'function',
+                    name: 'automation_update',
+                    description: 'Update automation state',
+                    parameters: { type: 'None' },
+                  },
+                  {
+                    type: 'function',
+                    name: 'valid_tool',
+                    parameters: {
+                      type: 'object',
+                      properties: { id: { type: 'string' } },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        tools: [
+          { type: 'web_search_preview' },
+          { type: 'function', name: 'top_level', parameters: null },
+        ],
+      };
+
+      (svc as any).applyNodeRequestCompatibility(
+        {
+          id: 'ctrip-aigw',
+          protocol: 'responses',
+        },
+        body,
+      );
+
+      const input = body.input as any[];
+      const nestedTool = input[0].tools[0].tools[0];
+      const validTool = input[0].tools[0].tools[1];
+      const topLevelTools = body.tools as any[];
+      expect(nestedTool.parameters).toEqual({
+        type: 'object',
+        properties: {},
+      });
+      expect(validTool.parameters).toEqual({
+        type: 'object',
+        properties: { id: { type: 'string' } },
+      });
+      expect(topLevelTools[0]).toEqual({ type: 'web_search_preview' });
+      expect(topLevelTools[1].parameters).toEqual({
+        type: 'object',
+        properties: {},
+      });
+    });
   });
 
   // ── Native Messages Passthrough (via private methods accessed indirectly) ──
