@@ -1245,10 +1245,11 @@ export class ProviderClientService {
   private sanitizeFunctionToolSchemas(
     value: unknown,
     seen = new WeakSet<object>(),
+    inToolContainer = false,
   ): void {
     if (Array.isArray(value)) {
       for (const item of value) {
-        this.sanitizeFunctionToolSchemas(item, seen);
+        this.sanitizeFunctionToolSchemas(item, seen, inToolContainer);
       }
       return;
     }
@@ -1257,14 +1258,21 @@ export class ProviderClientService {
     if (seen.has(value)) return;
     seen.add(value);
 
-    this.sanitizeFunctionToolRecord(value);
+    this.sanitizeFunctionToolRecord(value, inToolContainer);
 
-    for (const child of Object.values(value)) {
-      this.sanitizeFunctionToolSchemas(child, seen);
+    for (const [key, child] of Object.entries(value)) {
+      this.sanitizeFunctionToolSchemas(
+        child,
+        seen,
+        key === 'tools' && Array.isArray(child),
+      );
     }
   }
 
-  private sanitizeFunctionToolRecord(record: Record<string, unknown>): void {
+  private sanitizeFunctionToolRecord(
+    record: Record<string, unknown>,
+    inToolContainer: boolean,
+  ): void {
     if (record.type === 'function') {
       if (this.isPlainRecord(record.function)) {
         record.function.parameters = this.normalizeFunctionParametersSchema(
@@ -1273,6 +1281,17 @@ export class ProviderClientService {
         return;
       }
 
+      record.parameters = this.normalizeFunctionParametersSchema(
+        record.parameters,
+      );
+      return;
+    }
+
+    if (
+      inToolContainer &&
+      typeof record.name === 'string' &&
+      Object.prototype.hasOwnProperty.call(record, 'parameters')
+    ) {
       record.parameters = this.normalizeFunctionParametersSchema(
         record.parameters,
       );
@@ -1306,6 +1325,12 @@ export class ProviderClientService {
     ) {
       normalized.type = 'object';
     }
+
+    delete normalized.oneOf;
+    delete normalized.anyOf;
+    delete normalized.allOf;
+    delete normalized.enum;
+    delete normalized.not;
 
     if (!this.isPlainRecord(normalized.properties)) {
       normalized.properties = {};

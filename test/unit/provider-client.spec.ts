@@ -898,7 +898,11 @@ describe('ProviderClientService', () => {
             function: {
               name: 'automation_update',
               description: 'Update automation state',
-              parameters: { type: 'None' },
+              parameters: {
+                type: 'None',
+                anyOf: [{ type: 'object' }, { type: 'null' }],
+                enum: ['bad'],
+              },
             },
           },
           {
@@ -924,6 +928,8 @@ describe('ProviderClientService', () => {
         type: 'object',
         properties: {},
       });
+      expect(tools[0].function.parameters.anyOf).toBeUndefined();
+      expect(tools[0].function.parameters.enum).toBeUndefined();
       expect(tools[1].function.parameters).toEqual({
         type: 'object',
         properties: {},
@@ -944,10 +950,13 @@ describe('ProviderClientService', () => {
                 type: 'tool_search',
                 tools: [
                   {
-                    type: 'function',
                     name: 'automation_update',
                     description: 'Update automation state',
-                    parameters: { type: 'None' },
+                    parameters: {
+                      type: 'object',
+                      oneOf: [{ required: ['id'] }],
+                      properties: { id: { type: 'string' } },
+                    },
                   },
                   {
                     type: 'function',
@@ -982,8 +991,9 @@ describe('ProviderClientService', () => {
       const topLevelTools = body.tools as any[];
       expect(nestedTool.parameters).toEqual({
         type: 'object',
-        properties: {},
+        properties: { id: { type: 'string' } },
       });
+      expect(nestedTool.parameters.oneOf).toBeUndefined();
       expect(validTool.parameters).toEqual({
         type: 'object',
         properties: { id: { type: 'string' } },
