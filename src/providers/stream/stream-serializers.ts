@@ -125,8 +125,9 @@ export class ChatCompletionsStreamSerializer {
         return this.sse({
           error: {
             message: event.error.message,
-            type: 'server_error',
+            type: event.error.type || 'server_error',
             code: event.error.code || null,
+            status_code: event.error.status_code || null,
           },
         });
       }
@@ -421,9 +422,12 @@ export class ResponsesStreamSerializer {
           error: {
             message: event.error.message,
             code: event.error.code || null,
+            type: event.error.type || 'api_error',
+            status_code: event.error.status_code || null,
           },
           message: event.error.message,
           code: event.error.code || null,
+          status_code: event.error.status_code || null,
           sequence_number: this.nextSequenceNumber(),
         });
       }
@@ -620,8 +624,10 @@ export class MessagesStreamSerializer {
         return this.sseEvent('error', {
           type: 'error',
           error: {
-            type: 'api_error',
+            type: event.error.type || 'api_error',
             message: event.error.message,
+            code: event.error.code || null,
+            status_code: event.error.status_code || null,
           },
         });
       }

@@ -28,6 +28,7 @@ import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
 import { GeminiStreamParser } from './stream/gemini.stream';
+import { classifyStreamError } from './stream/stream-error-classifier';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
@@ -418,6 +419,13 @@ export class ProviderClientService {
       for (const event of parsedEvents) {
         if (event.type === 'stop') {
           latestUsage = event.usage;
+        } else if (event.type === 'error') {
+          const classification = classifyStreamError(event);
+          this.completeResponseCredential(response, {
+            statusCode: classification.statusCode,
+            failureType: classification.failureType,
+            error: event.error.message,
+          });
         }
       }
       return parsedEvents;
@@ -473,6 +481,13 @@ export class ProviderClientService {
         for (const event of flushedEvents) {
           if (event.type === 'stop') {
             latestUsage = event.usage;
+          } else if (event.type === 'error') {
+            const classification = classifyStreamError(event);
+            this.completeResponseCredential(response, {
+              statusCode: classification.statusCode,
+              failureType: classification.failureType,
+              error: event.error.message,
+            });
           }
         }
         if (passthroughNativeStream && flushedEvents.length > 0) {
