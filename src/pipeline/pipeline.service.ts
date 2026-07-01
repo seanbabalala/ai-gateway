@@ -67,6 +67,10 @@ import {
   ResponsesStreamSerializer,
   MessagesStreamSerializer,
 } from '../providers/stream/stream-serializers';
+import {
+  classifyStreamError,
+  streamErrorMessage,
+} from '../providers/stream/stream-error-classifier';
 import { CallLog, RouteDecisionLog } from '../database/entities';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
@@ -2784,6 +2788,9 @@ export class PipelineService {
               let streamModel = '';
               let streamId = '';
               let streamStopReason = '';
+              let streamFailureEvent:
+                | Extract<CanonicalStreamEvent, { type: 'error' }>
+                | null = null;
               const accumulateStreamEvent = (event: CanonicalStreamEvent) => {
                 if (event.type === 'start') {
                   streamModel = event.model;
@@ -2796,6 +2803,8 @@ export class PipelineService {
                   if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
                   if (event.usage.cache_read_input_tokens) usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
                   streamStopReason = event.stop_reason;
+                } else if (event.type === 'error') {
+                  streamFailureEvent = event;
                 }
               };
 
@@ -2850,10 +2859,31 @@ export class PipelineService {
 
               // Stream completed successfully
               const latencyMs = Date.now() - startTime;
-              this.circuitBreaker.recordSuccess(target.node, target.model);
+              const streamFailure = streamFailureEvent
+                ? classifyStreamError(streamFailureEvent)
+                : null;
+              const streamStatusCode = streamFailure?.statusCode ?? 200;
+              const streamError = streamFailureEvent
+                ? streamErrorMessage(streamFailureEvent)
+                : null;
+              if (streamFailureEvent) {
+                this.logger.warn(
+                  `Stream ${target.node} ended with upstream error (${streamStatusCode}): ${streamError}`,
+                );
+                this.circuitBreaker.recordFailure(target.node, target.model);
+                this.routingService.recordTargetResult?.(
+                  target.node,
+                  target.model,
+                  latencyMs,
+                  streamStatusCode,
+                );
+              } else {
+                this.circuitBreaker.recordSuccess(target.node, target.model);
+              }
 
               // ── Cache Store (from stream accumulation) ──
               if (
+                !streamFailureEvent &&
                 !streamCanceled &&
                 this.shouldUseStreamCache(canonical) &&
                 accumulatedText.length > 0
@@ -2895,17 +2925,17 @@ export class PipelineService {
                     canonical,
                     target: { node: usedNodeId, model: usedModel },
                     requestId,
-                    statusCode: 200,
+                    statusCode: streamStatusCode,
                     latencyMs,
                   }),
                 });
               }
               await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-                statusCode: 200, isFallback, latencyMs, usage, error: null,
+                statusCode: streamStatusCode, isFallback, latencyMs, usage, error: streamError,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
                 fallbackFromNode, routeTrace: activeRouteTrace });
-              if (accumulatedText.length > 0) {
+              if (!streamFailureEvent && accumulatedText.length > 0) {
                 this.shadowTraffic?.enqueueChat(
                   requestId,
                   canonical,
@@ -2941,11 +2971,17 @@ export class PipelineService {
                 'gen_ai.usage.input_tokens': usage.input_tokens,
                 'gen_ai.usage.output_tokens': usage.output_tokens,
               });
-              this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: 200 });
+              this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: streamStatusCode });
               this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
               this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
               if (costUsd > 0) {
                 this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+              }
+              if (streamFailureEvent) {
+                this.telemetry.upstreamErrors.add(1, {
+                  node: usedNodeId,
+                  reason: streamFailure?.failureType || 'stream_error',
+                });
               }
 
               streamCompleted = true;

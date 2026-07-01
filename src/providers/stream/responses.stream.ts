@@ -204,6 +204,8 @@ export class ResponsesStreamParser {
           error: {
             message: error.message || 'Responses stream failed',
             code: error.code || undefined,
+            type: error.type || undefined,
+            status_code: error.status_code || undefined,
           },
         };
         break;
@@ -216,6 +218,8 @@ export class ResponsesStreamParser {
           error: {
             message: error.message || 'Unknown stream error',
             code: error.code || undefined,
+            type: error.type || undefined,
+            status_code: error.status_code || undefined,
           },
         };
         break;
@@ -321,12 +325,20 @@ export class ResponsesStreamParser {
   private unwrapError(data: Record<string, unknown>): {
     message?: string;
     code?: string;
+    type?: string;
+    status_code?: number;
   } {
     const response = this.unwrapResponse(data);
     const error = ((response.error || data.error || {}) as Record<
       string,
       unknown
     >);
+    const statusCode =
+      typeof error.status_code === 'number'
+        ? error.status_code
+        : typeof error.statusCode === 'number'
+          ? error.statusCode
+          : undefined;
     return {
       message:
         (error.message as string) ||
@@ -338,6 +350,12 @@ export class ResponsesStreamParser {
         (response.code as string) ||
         (data.code as string) ||
         undefined,
+      type:
+        (error.type as string) ||
+        (response.type as string) ||
+        (data.type as string) ||
+        undefined,
+      status_code: statusCode,
     };
   }
 }

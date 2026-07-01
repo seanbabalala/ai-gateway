@@ -75,6 +75,13 @@ export class ChatCompletionsStreamParser {
         error: {
           message: String(error.message || 'Upstream stream error'),
           code: error.code === null || error.code === undefined ? undefined : String(error.code),
+          type: typeof error.type === 'string' ? error.type : undefined,
+          status_code:
+            typeof error.status_code === 'number'
+              ? error.status_code
+              : typeof error.statusCode === 'number'
+                ? error.statusCode
+                : undefined,
         },
       };
       return;

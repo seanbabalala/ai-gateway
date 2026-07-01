@@ -2659,6 +2659,168 @@ describe('ProviderClientService', () => {
       });
     });
 
+    it('should preserve split native Responses SSE chunks for direct HTTP requests', async () => {
+      const chunkA =
+        'event: response.output_text.delta\n' +
+        'data: {"type":"response.output_text.delta","delta":"hel';
+      const chunkB =
+        'lo"}\n\n' +
+        'event: response.completed\n' +
+        'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","status":"completed","usage":{"input_tokens":3,"output_tokens":1}}}\n\n';
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(chunkA));
+          controller.enqueue(encoder.encode(chunkB));
+          controller.close();
+        },
+      });
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: stream,
+      });
+      global.fetch = fetchMock as any;
+
+      const svc = makeServiceWithNode({
+        protocol: 'responses',
+        endpoint: '/v1/responses',
+      });
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.5',
+          raw_headers: { 'content-type': 'application/json' },
+          raw_body: {
+            model: 'gpt-5.5',
+            stream: true,
+            input: 'Say hello',
+          },
+        },
+      });
+
+      const events = [];
+      for await (const event of svc.forwardStream(canonical, 'openai', 'gpt-5.5')) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({ type: 'raw_sse', text: chunkA });
+      expect(events[1]).toMatchObject({ type: 'raw_sse', text: chunkB });
+      const second = events[1];
+      expect(second.type).toBe('raw_sse');
+      if (second.type !== 'raw_sse') throw new Error('expected raw_sse');
+      expect(second.events?.some((event: any) => event.type === 'delta')).toBe(true);
+      expect(second.events?.some((event: any) => event.type === 'stop')).toBe(true);
+      const [, opts] = fetchMock.mock.calls[0];
+      expect(JSON.parse(opts.body as string)).toEqual({
+        model: 'gpt-5.5',
+        stream: true,
+        input: 'Say hello',
+      });
+    });
+
+    it('should complete response credentials with failed stream status codes', async () => {
+      const upstreamSse =
+        'event: response.failed\n' +
+        'data: {"type":"response.failed","response":{"status":"failed","error":{"message":"The system is currently experiencing high demand","code":"no_capacity","type":"too_many_requests","status_code":429}}}\n\n';
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(upstreamSse));
+          controller.close();
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: stream,
+      });
+      const credentialPool = {
+        attemptLimit: jest.fn().mockReturnValue(1),
+        shouldRetry: jest.fn().mockReturnValue(false),
+        select: jest.fn().mockResolvedValue({
+          nodeId: 'openai',
+          credential: {
+            id: 'cred-a',
+            api_key: 'sk-test',
+            weight: 1,
+            enabled: true,
+          },
+          strategy: 'least_in_flight',
+          stickyBy: 'none',
+          cooldownMs: 60_000,
+          maxFailures: 3,
+          retryOnStatus: [429, 500, 502, 503, 504],
+        }),
+        complete: jest.fn(),
+        recordUsage: jest.fn(),
+      };
+
+      const svc = new ProviderClientService(
+        {
+          getNode: jest.fn().mockReturnValue({
+            id: 'openai',
+            name: 'OpenAI',
+            base_url: 'https://api.openai.com',
+          protocol: 'responses',
+          endpoint: '/v1/responses',
+            api_key: 'sk-test',
+            models: ['gpt-5.5'],
+            model_aliases: {},
+            timeout_ms: 5000,
+          }),
+        } as any,
+        new TelemetryService(),
+        undefined,
+        undefined,
+        credentialPool as any,
+      );
+      const canonical = makeCanonical({
+        stream: true,
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.5',
+          raw_headers: { 'content-type': 'application/json' },
+          raw_body: {
+            model: 'gpt-5.5',
+            stream: true,
+            input: 'Say hello',
+          },
+        },
+      });
+
+      const events = [];
+      for await (const event of svc.forwardStream(canonical, 'openai', 'gpt-5.5')) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'raw_sse',
+        events: [
+          {
+            type: 'error',
+            error: {
+              code: 'no_capacity',
+              status_code: 429,
+              type: 'too_many_requests',
+            },
+          },
+        ],
+      });
+      expect(credentialPool.complete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credential: expect.objectContaining({ id: 'cred-a' }),
+        }),
+        expect.objectContaining({
+          statusCode: 429,
+          failureType: 'rate_limited',
+        }),
+      );
+    });
+
     it('should passthrough native Messages SSE chunks without reserializing', async () => {
       const upstreamSse =
         'event: message_start\n' +

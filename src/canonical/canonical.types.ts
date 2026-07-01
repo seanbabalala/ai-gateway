@@ -445,6 +445,8 @@ export interface StreamErrorEvent {
   error: {
     message: string;
     code?: string;
+    type?: string;
+    status_code?: number;
   };
 }
 

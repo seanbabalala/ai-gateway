@@ -185,7 +185,17 @@ export class MessagesStreamParser {
           type: 'error',
           error: {
             message: (error.message as string) || 'Unknown stream error',
-            code: (error.type as string) || undefined,
+            code:
+              (error.code as string) ||
+              (error.type as string) ||
+              undefined,
+            type: (error.type as string) || undefined,
+            status_code:
+              typeof error.status_code === 'number'
+                ? error.status_code
+                : typeof error.statusCode === 'number'
+                  ? error.statusCode
+                  : undefined,
           },
         };
         break;

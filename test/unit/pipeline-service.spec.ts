@@ -2317,6 +2317,125 @@ describe('PipelineService — processStream', () => {
     expect(savedLog.output_tokens).toBe(7);
   });
 
+  it('should write split native Responses raw SSE chunks unchanged', async () => {
+    const chunkA =
+      'event: response.output_text.delta\n' +
+      'data: {"type":"response.output_text.delta","delta":"hel';
+    const chunkB =
+      'lo"}\n\n' +
+      'event: response.completed\n' +
+      'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","status":"completed","usage":{"input_tokens":3,"output_tokens":1}}}\n\n';
+    async function* mockStream() {
+      yield {
+        type: 'raw_sse' as const,
+        text: chunkA,
+        events: [],
+      };
+      yield {
+        type: 'raw_sse' as const,
+        text: chunkB,
+        events: [
+          { type: 'delta' as const, content: { type: 'text' as const, text: 'hello' } },
+          {
+            type: 'stop' as const,
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 3, output_tokens: 1 },
+          },
+        ],
+      };
+    }
+    const hooks = {
+      isEmpty: jest.fn().mockReturnValue(false),
+      run: jest.fn(async (_hookName: string, data: any) => ({ data })),
+    };
+    const { pipeline, mocks } = makePipeline({
+      hooks,
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+
+    const request = makeRequest('Say hello', { originalModel: 'gpt-5.5' });
+    request.stream = true;
+    request.metadata.source_format = 'responses';
+    request.metadata.raw_body = { model: 'gpt-5.5', stream: true, input: 'Say hello' };
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res._chunks).toEqual([chunkA, chunkB]);
+    expect(res._chunks.join('')).toBe(chunkA + chunkB);
+    expect(hooks.run).not.toHaveBeenCalledWith(
+      'streamEvent',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      4,
+      expect.any(Number),
+      undefined,
+    );
+  });
+
+  it('should record native Responses stream failure events as upstream failures', async () => {
+    const upstreamSse =
+      'event: response.created\n' +
+      'data: {"type":"response.created","response":{"id":"resp_fail","model":"gpt-5.5","status":"in_progress"}}\n\n' +
+      'event: response.failed\n' +
+      'data: {"type":"response.failed","response":{"id":"resp_fail","model":"gpt-5.5","status":"failed","error":{"message":"The system is currently experiencing high demand","code":"no_capacity","type":"too_many_requests","status_code":429}}}\n\n';
+    async function* mockStream() {
+      yield {
+        type: 'raw_sse' as const,
+        text: upstreamSse,
+        events: [
+          { type: 'start' as const, id: 'resp_fail', model: 'gpt-5.5' },
+          {
+            type: 'error' as const,
+            error: {
+              message: 'The system is currently experiencing high demand',
+              code: 'no_capacity',
+              type: 'too_many_requests',
+              status_code: 429,
+            },
+          },
+        ],
+      };
+    }
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+
+    const request = makeRequest('Say hello', { originalModel: 'gpt-5.5' });
+    request.stream = true;
+    request.metadata.source_format = 'responses';
+    request.metadata.raw_body = { model: 'gpt-5.5', stream: true, input: 'Say hello' };
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(res._chunks.join('')).toBe(upstreamSse);
+    expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalledWith(
+      'openai',
+      'gpt-4o',
+    );
+    expect(mocks.circuitBreaker.recordSuccess).not.toHaveBeenCalled();
+    expect(mocks.routingService.recordTargetResult).toHaveBeenCalledWith(
+      'openai',
+      'gpt-4o',
+      expect.any(Number),
+      429,
+    );
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+    expect(savedLog.status_code).toBe(429);
+    expect(savedLog.error).toContain('high demand');
+    expect(savedLog.error).toContain('no_capacity');
+  });
+
   it('should write native Messages raw SSE without reconstructing Anthropic events', async () => {
     const upstreamSse =
       'event: message_start\n' +
