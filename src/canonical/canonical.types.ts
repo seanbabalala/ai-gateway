@@ -434,6 +434,12 @@ export interface StreamDeltaEvent {
   content: StreamTextDelta | StreamToolUseDelta;
 }
 
+export interface StreamToolCallCompleteEvent {
+  type: 'tool_call_complete';
+  id: string;
+  tool_type: string;
+}
+
 export interface StreamStopEvent {
   type: 'stop';
   stop_reason: string;
@@ -459,6 +465,7 @@ export interface StreamRawSseEvent {
 export type CanonicalStreamEvent =
   | StreamStartEvent
   | StreamDeltaEvent
+  | StreamToolCallCompleteEvent
   | StreamStopEvent
   | StreamErrorEvent
   | StreamRawSseEvent;

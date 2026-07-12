@@ -164,6 +164,13 @@ export class ResponsesStreamParser {
             };
           }
         }
+        if (this.isToolCallItem(item)) {
+          yield {
+            type: 'tool_call_complete',
+            id: this.functionCallId(item),
+            tool_type: item.type as string,
+          };
+        }
         break;
       }
 
@@ -253,6 +260,10 @@ export class ResponsesStreamParser {
 
   private functionCallId(item: Record<string, unknown>): string {
     return (item.call_id as string) || (item.id as string) || '';
+  }
+
+  private isToolCallItem(item: Record<string, unknown>): boolean {
+    return typeof item.type === 'string' && item.type.endsWith('_call');
   }
 
   private mapStatus(status: string): string {

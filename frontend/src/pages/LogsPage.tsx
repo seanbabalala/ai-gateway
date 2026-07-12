@@ -30,6 +30,7 @@ import { useNodes } from '@/hooks/use-nodes'
 import { formatTimestamp, formatTokens, formatCost, formatLatency } from '@/lib/utils'
 import {
   isPromptCacheLog,
+  isClientClosedAfterToolCall,
   providerCacheCostBreakdown,
   isProviderCacheLog,
   isSemanticCacheLog,
@@ -233,6 +234,7 @@ function LogDetailRow({
   const isSemanticCache = isSemanticCacheLog(log)
   const isCache = isPromptCacheLog(log) || isSemanticCache
   const isProviderCache = isProviderCacheLog(log)
+  const isToolCallHandoff = isClientClosedAfterToolCall(log)
   const cacheCost = providerCacheCostBreakdown(log)
   const cachedInputPercent = `${(cacheCost.cachedInputRatio * 100).toFixed(1)}%`
   const hasFallbackEvidence = log.is_fallback || Boolean(log.fallback_reason)
@@ -533,8 +535,18 @@ function LogDetailRow({
           </div>
           {log.error && (
             <div className="col-span-3">
-              <span className="text-[var(--foreground-dim)]">{t('detail.error')}: </span>
-              <span className="font-mono text-red-600 dark:text-red-400">{log.error}</span>
+              <span className="text-[var(--foreground-dim)]">
+                {isToolCallHandoff ? t('detail.outcome') : t('detail.error')}: {' '}
+              </span>
+              <span
+                className={
+                  isToolCallHandoff
+                    ? 'font-mono text-[var(--foreground-muted)]'
+                    : 'font-mono text-red-600 dark:text-red-400'
+                }
+              >
+                {log.error}
+              </span>
             </div>
           )}
           <div className="md:col-span-2 xl:col-span-3">
@@ -831,15 +843,23 @@ export function LogsPage() {
                         {formatLatency(log.latency_ms)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <span
-                          className={`font-mono text-[11px] font-semibold ${
-                            log.status_code === 200
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-red-600 dark:text-red-400'
-                          }`}
-                        >
-                          {log.status_code}
-                        </span>
+                        {isClientClosedAfterToolCall(log) ? (
+                          <Tooltip content="client_closed_after_tool_call">
+                            <Badge variant="zinc" className="whitespace-nowrap">
+                              {t('status.toolCallHandedOff')}
+                            </Badge>
+                          </Tooltip>
+                        ) : (
+                          <span
+                            className={`font-mono text-[11px] font-semibold ${
+                              log.status_code === 200
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}
+                          >
+                            {log.status_code}
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                     {expandedId === log.id && (

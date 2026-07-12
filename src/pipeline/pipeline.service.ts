@@ -97,6 +97,9 @@ import {
 import { pricingEvidenceFromModelPricing } from '../catalog/pricing-governance';
 import { compatibilityEvidence } from '../catalog/compatibility-profiles';
 
+const CLIENT_CLOSED_AFTER_TOOL_CALL = 'client_closed_after_tool_call';
+const CLIENT_CLOSE_TOOL_CALL_DRAIN_MS = 1_500;
+
 export interface PipelineResult {
   body: Record<string, unknown> | Buffer | string;
   statusCode: number;
@@ -2491,12 +2494,37 @@ export class PipelineService {
     const streamAbort = new AbortController();
     let streamCanceled = false;
     let streamCompleted = false;
+    let clientClosed = false;
+    let completedToolCallSeen = false;
+    let clientClosedAfterToolCall = false;
+    let clientCloseDrainTimer: NodeJS.Timeout | undefined;
+
+    const clearClientCloseDrainTimer = () => {
+      if (!clientCloseDrainTimer) return;
+      clearTimeout(clientCloseDrainTimer);
+      clientCloseDrainTimer = undefined;
+    };
 
     const onClientClose = () => {
-      if (!streamCompleted && !(res as { writableEnded?: boolean }).writableEnded) {
-        streamCanceled = true;
-        streamAbort.abort();
+      if (
+        streamCompleted ||
+        clientClosed ||
+        (res as { writableEnded?: boolean }).writableEnded
+      ) return;
+
+      clientClosed = true;
+      if (completedToolCallSeen) {
+        clientClosedAfterToolCall = true;
+        clientCloseDrainTimer = setTimeout(
+          () => streamAbort.abort(),
+          CLIENT_CLOSE_TOOL_CALL_DRAIN_MS,
+        );
+        clientCloseDrainTimer.unref?.();
+        return;
       }
+
+      streamCanceled = true;
+      streamAbort.abort();
     };
     res.on?.('close', onClientClose);
     res.setHeader(GATEWAY_REQUEST_ID_HEADER, requestId);
@@ -2788,6 +2816,7 @@ export class PipelineService {
               let streamModel = '';
               let streamId = '';
               let streamStopReason = '';
+              let streamStopReceived = false;
               let streamFailureEvent:
                 | Extract<CanonicalStreamEvent, { type: 'error' }>
                 | null = null;
@@ -2797,7 +2826,10 @@ export class PipelineService {
                   streamId = event.id;
                 } else if (event.type === 'delta' && event.content.type === 'text') {
                   accumulatedText.push(event.content.text);
+                } else if (event.type === 'tool_call_complete') {
+                  completedToolCallSeen = true;
                 } else if (event.type === 'stop') {
+                  streamStopReceived = true;
                   usage.input_tokens = event.usage.input_tokens;
                   usage.output_tokens = event.usage.output_tokens;
                   if (event.usage.cache_creation_input_tokens) usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
@@ -2824,13 +2856,17 @@ export class PipelineService {
                   for (const parsedEvent of event.events || []) {
                     accumulateStreamEvent(parsedEvent);
                   }
-                  if (event.text) {
+                  if (event.text && !clientClosed) {
                     ensureStreamHeaders();
                     res.write(event.text);
                   }
                   continue;
                 }
                 accumulateStreamEvent(event);
+
+                if (clientClosedAfterToolCall) {
+                  continue;
+                }
 
                 // ── streamEvent Hook ──
                 let outputEvent: CanonicalStreamEvent = event;
@@ -2856,17 +2892,30 @@ export class PipelineService {
               if (streamCanceled) {
                 throw new Error('Client canceled stream.');
               }
+              clearClientCloseDrainTimer();
 
               // Stream completed successfully
               const latencyMs = Date.now() - startTime;
               const streamFailure = streamFailureEvent
                 ? classifyStreamError(streamFailureEvent)
                 : null;
-              const streamStatusCode = streamFailure?.statusCode ?? 200;
-              const streamError = streamFailureEvent
-                ? streamErrorMessage(streamFailureEvent)
-                : null;
-              if (streamFailureEvent) {
+              const streamStatusCode = clientClosedAfterToolCall
+                ? 499
+                : streamFailure?.statusCode ?? 200;
+              const streamError = clientClosedAfterToolCall
+                ? CLIENT_CLOSED_AFTER_TOOL_CALL
+                : streamFailureEvent
+                  ? streamErrorMessage(streamFailureEvent)
+                  : null;
+              if (clientClosedAfterToolCall) {
+                this.logger.log(
+                  `Client closed stream after completed tool call from ${target.node}; ` +
+                  `usage=${streamStopReceived ? 'captured' : 'unavailable'}`,
+                );
+                if (streamStopReceived) {
+                  this.circuitBreaker.recordSuccess(target.node, target.model);
+                }
+              } else if (streamFailureEvent) {
                 this.logger.warn(
                   `Stream ${target.node} ended with upstream error (${streamStatusCode}): ${streamError}`,
                 );
@@ -2885,6 +2934,7 @@ export class PipelineService {
               if (
                 !streamFailureEvent &&
                 !streamCanceled &&
+                !clientClosed &&
                 this.shouldUseStreamCache(canonical) &&
                 accumulatedText.length > 0
               ) {
@@ -2935,7 +2985,7 @@ export class PipelineService {
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
                 fallbackFromNode, routeTrace: activeRouteTrace });
-              if (!streamFailureEvent && accumulatedText.length > 0) {
+              if (!streamFailureEvent && !clientClosed && accumulatedText.length > 0) {
                 this.shadowTraffic?.enqueueChat(
                   requestId,
                   canonical,
@@ -2977,7 +3027,7 @@ export class PipelineService {
               if (costUsd > 0) {
                 this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
               }
-              if (streamFailureEvent) {
+              if (streamFailureEvent && !clientClosedAfterToolCall) {
                 this.telemetry.upstreamErrors.add(1, {
                   node: usedNodeId,
                   reason: streamFailure?.failureType || 'stream_error',
@@ -2985,7 +3035,9 @@ export class PipelineService {
               }
 
               streamCompleted = true;
-              res.end();
+              if (!clientClosed) {
+                res.end();
+              }
               rootSpan.end();
               return;
             } finally {
@@ -3262,6 +3314,7 @@ export class PipelineService {
         throw err;
       }
     } finally {
+      clearClientCloseDrainTimer();
       res.off?.('close', onClientClose);
     }
   }

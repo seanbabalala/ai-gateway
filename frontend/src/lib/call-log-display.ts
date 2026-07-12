@@ -1,6 +1,14 @@
 import type { TFunction } from 'i18next'
 import type { CallLog, NodeDistribution, TierDistribution } from '@/types/api'
 
+export const CLIENT_CLOSED_AFTER_TOOL_CALL = 'client_closed_after_tool_call'
+
+export function isClientClosedAfterToolCall(
+  log: Pick<CallLog, 'status_code' | 'error'>,
+): boolean {
+  return log.status_code === 499 && log.error === CLIENT_CLOSED_AFTER_TOOL_CALL
+}
+
 const PROMPT_CACHE_TIER = 'cached'
 const PROMPT_CACHE_NODE = 'cache'
 const SEMANTIC_CACHE_NODE = 'semantic_cache'

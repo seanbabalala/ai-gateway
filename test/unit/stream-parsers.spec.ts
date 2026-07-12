@@ -503,7 +503,7 @@ describe('ResponsesStreamParser', () => {
         'data: {"output_index":1,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"shell","arguments":"{\\"command\\":\\"pwd\\"}","status":"completed"}}\n\n',
     );
 
-    expect(events).toHaveLength(2);
+    expect(events).toHaveLength(3);
     expect(events[0]).toMatchObject({
       type: 'delta',
       content: { type: 'tool_use', id: 'call_1', name: 'shell' },
@@ -516,6 +516,28 @@ describe('ResponsesStreamParser', () => {
         input_delta: '{"command":"pwd"}',
       },
     });
+    expect(events[2]).toEqual({
+      type: 'tool_call_complete',
+      id: 'call_1',
+      tool_type: 'function_call',
+    });
+  });
+
+  it('should mark completed custom tool calls for downstream drain handling', () => {
+    const parser = new ResponsesStreamParser();
+    const events = collect(
+      parser,
+      'event: response.output_item.done\n' +
+        'data: {"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","status":"completed"}}\n\n',
+    );
+
+    expect(events).toEqual([
+      {
+        type: 'tool_call_complete',
+        id: 'call_1',
+        tool_type: 'custom_tool_call',
+      },
+    ]);
   });
 
   it('should parse response.completed → stop event', () => {

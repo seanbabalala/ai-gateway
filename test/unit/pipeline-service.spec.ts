@@ -2715,6 +2715,129 @@ describe('PipelineService — processStream', () => {
     );
   });
 
+  it('should drain briefly and capture usage after a completed tool call disconnect', async () => {
+    async function* toolCallStream() {
+      yield {
+        type: 'raw_sse' as const,
+        text:
+          'event: response.output_item.done\n' +
+          'data: {"item":{"type":"function_call","call_id":"call_1","status":"completed"}}\n\n',
+        events: [
+          {
+            type: 'tool_call_complete' as const,
+            id: 'call_1',
+            tool_type: 'function_call',
+          },
+        ],
+      };
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      yield {
+        type: 'raw_sse' as const,
+        text:
+          'event: response.completed\n' +
+          'data: {"response":{"status":"completed","usage":{"input_tokens":42,"output_tokens":7}}}\n\n',
+        events: [
+          {
+            type: 'stop' as const,
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 42, output_tokens: 7 },
+          },
+        ],
+      };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(toolCallStream()),
+      },
+    });
+    const request = makeRequest('Use a tool', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    request.metadata.source_format = 'responses';
+    const res = mockResponse();
+    res.write.mockImplementation((chunk: string) => {
+      res._chunks.push(chunk);
+      res.emit('close');
+      return true;
+    });
+
+    await pipeline.processStream(request, res);
+
+    expect(res._chunks).toHaveLength(1);
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status_code: 499,
+        error: 'client_closed_after_tool_call',
+        input_tokens: 42,
+        output_tokens: 7,
+      }),
+    );
+    expect(mocks.budgetService.record).toHaveBeenCalledWith(
+      49,
+      expect.any(Number),
+      undefined,
+    );
+    expect(mocks.circuitBreaker.recordSuccess).toHaveBeenCalled();
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it('should stop draining when usage does not arrive within the grace period', async () => {
+    async function* slowToolCallStream(
+      _request: unknown,
+      _nodeId: string,
+      _model: string,
+      options: { signal?: AbortSignal },
+    ) {
+      yield {
+        type: 'raw_sse' as const,
+        text:
+          'event: response.output_item.done\n' +
+          'data: {"item":{"type":"custom_tool_call","call_id":"call_1","status":"completed"}}\n\n',
+        events: [
+          {
+            type: 'tool_call_complete' as const,
+            id: 'call_1',
+            tool_type: 'custom_tool_call',
+          },
+        ],
+      };
+      await new Promise<void>((resolve) => {
+        options.signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockImplementation(slowToolCallStream),
+      },
+    });
+    const request = makeRequest('Use a custom tool', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    request.metadata.source_format = 'responses';
+    const res = mockResponse();
+    res.write.mockImplementation((chunk: string) => {
+      res._chunks.push(chunk);
+      res.emit('close');
+      return true;
+    });
+
+    const startedAt = Date.now();
+    await pipeline.processStream(request, res);
+
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_400);
+    expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status_code: 499,
+        error: 'client_closed_after_tool_call',
+        input_tokens: 0,
+        output_tokens: 0,
+      }),
+    );
+    expect(mocks.circuitBreaker.recordSuccess).not.toHaveBeenCalled();
+  });
+
   it('should not fallback after a structured-output stream has started', async () => {
     async function* invalidJsonStream() {
       yield { type: 'start' as const, id: 'json-stream', model: 'gpt-4o' };

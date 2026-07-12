@@ -2649,6 +2649,11 @@ describe('ProviderClientService', () => {
       expect(rawEvent).toMatchObject({ type: 'raw_sse', text: upstreamSse });
       expect(rawEvent.type).toBe('raw_sse');
       if (rawEvent.type !== 'raw_sse') throw new Error('expected raw_sse');
+      expect(rawEvent.events).toContainEqual({
+        type: 'tool_call_complete',
+        id: 'call_1',
+        tool_type: 'function_call',
+      });
       expect(rawEvent.events?.some((event: any) => event.type === 'stop')).toBe(true);
       const [, opts] = fetchMock.mock.calls[0];
       expect(JSON.parse(opts.body as string)).toEqual({

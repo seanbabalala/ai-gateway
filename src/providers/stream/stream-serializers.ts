@@ -26,6 +26,9 @@ export class ChatCompletionsStreamSerializer {
       case 'raw_sse':
         return event.text;
 
+      case 'tool_call_complete':
+        return '';
+
       case 'start': {
         this.id = event.id;
         this.model = event.model;
@@ -202,6 +205,9 @@ export class ResponsesStreamSerializer {
     switch (event.type) {
       case 'raw_sse':
         return event.text;
+
+      case 'tool_call_complete':
+        return '';
 
       case 'start': {
         this.id = event.id || `resp_${Date.now()}`;
@@ -524,6 +530,9 @@ export class MessagesStreamSerializer {
     switch (event.type) {
       case 'raw_sse':
         return event.text;
+
+      case 'tool_call_complete':
+        return '';
 
       case 'start': {
         this.id = event.id || `msg_${Date.now()}`;
