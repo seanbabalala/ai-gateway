@@ -3102,5 +3102,72 @@ describe('ProviderClientService', () => {
         },
       });
     });
+
+    it('should throw ProviderError when stream exceeds max duration before first chunk', async () => {
+      const stream = new ReadableStream({
+        start() {
+          // Keep the stream open without producing data.
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      }) as any;
+
+      const svc = makeServiceWithNode({
+        connection: { body_timeout_ms: 0, stream_max_duration_ms: 10 },
+      });
+      const events = [];
+      let thrown: unknown;
+      try {
+        for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+          events.push(event);
+        }
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(events).toHaveLength(0);
+      expect(thrown).toBeInstanceOf(ProviderError);
+      expect(thrown).toMatchObject({
+        statusCode: 504,
+        failureType: 'timeout',
+        nodeId: 'openai',
+      });
+      expect(thrown instanceof Error ? thrown.message : '').toContain('exceeded max duration');
+    });
+
+    it('should emit timeout error when stream exceeds max duration after first chunk', async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"chatcmpl-max-duration","model":"gpt-4o","choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
+          ));
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      }) as any;
+
+      const svc = makeServiceWithNode({
+        connection: { body_timeout_ms: 0, stream_max_duration_ms: 10 },
+      });
+      const events = [];
+      for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+        events.push(event);
+      }
+
+      const errorEvent = events.find(e => e.type === 'error');
+      expect(errorEvent).toMatchObject({
+        type: 'error',
+        error: {
+          code: 'timeout',
+          status_code: 504,
+        },
+      });
+      expect(errorEvent?.type === 'error' ? errorEvent.error.message : '').toContain('exceeded max duration');
+    });
   });
 });

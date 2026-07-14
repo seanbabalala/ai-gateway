@@ -1713,7 +1713,7 @@ function validateNodeConnection(
     }
   }
 
-  for (const key of ['headers_timeout_ms', 'body_timeout_ms']) {
+  for (const key of ['headers_timeout_ms', 'body_timeout_ms', 'stream_max_duration_ms']) {
     if (
       connection[key] !== undefined &&
       (!isFiniteNumber(connection[key]) || connection[key] < 0)
