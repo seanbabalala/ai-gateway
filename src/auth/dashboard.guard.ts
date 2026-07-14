@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { DASHBOARD_SESSION_COOKIE } from './dashboard-session-cookie';
 
 @Injectable()
 export class DashboardGuard implements CanActivate {
@@ -21,7 +22,7 @@ export class DashboardGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
 
-    // Extract token from Authorization header or query param
+    // Extract token from Authorization header, session cookie, or legacy query param.
     const token = this.extractToken(request);
     if (!token) {
       throw new UnauthorizedException('Authentication required');
@@ -42,21 +43,50 @@ export class DashboardGuard implements CanActivate {
   }
 
   private extractToken(request: {
-    headers?: Record<string, string>;
-    query?: Record<string, string>;
+    cookies?: Record<string, string | undefined>;
+    headers?: Record<string, string | string[] | undefined>;
+    query?: Record<string, string | string[] | undefined>;
   }): string | null {
     // 1. Authorization: Bearer <token>
-    const authHeader = request.headers?.authorization;
+    const authHeader = this.headerValue(request.headers?.authorization);
     if (authHeader?.startsWith('Bearer ')) {
       return authHeader.slice(7);
     }
 
-    // 2. Query param ?token=<jwt> (for SSE / EventSource)
-    const queryToken = request.query?.token;
+    // 2. HttpOnly dashboard session cookie.
+    const cookieToken =
+      request.cookies?.[DASHBOARD_SESSION_COOKIE] ||
+      this.extractCookieToken(this.headerValue(request.headers?.cookie));
+    if (cookieToken) {
+      return cookieToken;
+    }
+
+    // 3. Legacy query param ?token=<jwt> for older EventSource clients.
+    const queryToken = this.headerValue(request.query?.token);
     if (queryToken) {
       return queryToken;
     }
 
+    return null;
+  }
+
+  private headerValue(value: string | string[] | undefined): string | undefined {
+    return Array.isArray(value) ? value[0] : value;
+  }
+
+  private extractCookieToken(cookieHeader: string | undefined): string | null {
+    if (!cookieHeader) return null;
+    for (const part of cookieHeader.split(';')) {
+      const [rawName, ...rawValue] = part.split('=');
+      if (rawName.trim() !== DASHBOARD_SESSION_COOKIE) continue;
+      const value = rawValue.join('=').trim();
+      if (!value) return null;
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }
     return null;
   }
 }

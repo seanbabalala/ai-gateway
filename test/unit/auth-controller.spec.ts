@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { AuthController } from '../../src/auth/auth.controller';
+import { DASHBOARD_SESSION_COOKIE } from '../../src/auth/dashboard-session-cookie';
 import { mockConfigService } from '../helpers';
 
 /** Minimal mock AuthService */
@@ -18,16 +19,33 @@ function makeReq(ip = '127.0.0.1'): any {
   return { ip, connection: { remoteAddress: ip } };
 }
 
+function makeRes(): any {
+  return {
+    cookie: jest.fn(),
+    clearCookie: jest.fn(),
+  };
+}
+
 describe('AuthController', () => {
   describe('login', () => {
-    it('should return a token for valid password', async () => {
+    it('should return a token and set a session cookie for valid password', async () => {
       const authService = mockAuthService();
       const config = mockConfigService();
       const controller = new AuthController(authService, config);
+      const res = makeRes();
 
-      const result = await controller.login(makeReq(), { password: 'correct' });
+      const result = await controller.login(makeReq(), { password: 'correct' }, res);
       expect(result).toEqual({ token: 'jwt-token-123' });
       expect(authService.verifyPassword).toHaveBeenCalledWith('correct', '$2b$10$hash');
+      expect(res.cookie).toHaveBeenCalledWith(
+        DASHBOARD_SESSION_COOKIE,
+        'jwt-token-123',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+        }),
+      );
     });
 
     it('should accept a workspace invitation during local login', async () => {
@@ -105,8 +123,17 @@ describe('AuthController', () => {
       const config = mockConfigService();
       const controller = new AuthController(authService, config);
 
-      const result = await controller.login(makeReq(), {});
+      const res = makeRes();
+      const result = await controller.login(makeReq(), {}, res);
       expect(result).toEqual({ token: '' });
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        DASHBOARD_SESSION_COOKIE,
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+        }),
+      );
     });
 
     it('should reject local login when only OIDC auth is enabled', async () => {
@@ -127,6 +154,25 @@ describe('AuthController', () => {
         },
         status: HttpStatus.NOT_FOUND,
       });
+    });
+  });
+
+  describe('logout', () => {
+    it('should clear the dashboard session cookie', () => {
+      const authService = mockAuthService();
+      const config = mockConfigService();
+      const controller = new AuthController(authService, config);
+      const res = makeRes();
+
+      expect(controller.logout(res)).toEqual({ ok: true });
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        DASHBOARD_SESSION_COOKIE,
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+        }),
+      );
     });
   });
 

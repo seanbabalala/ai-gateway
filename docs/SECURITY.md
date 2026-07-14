@@ -48,6 +48,11 @@ When OIDC is enabled without a local password, set `dashboard.session_secret`
 through an environment or external secret reference so Dashboard JWTs are stable
 across restarts and instances.
 
+Successful Dashboard login sets an HttpOnly, SameSite=Lax
+`siftgate_dashboard_session` cookie. Dashboard APIs still accept bearer tokens
+for compatibility, but browser Server-Sent Events use the cookie-first path so
+session tokens do not need to be placed in SSE URLs during normal operation.
+
 Store OIDC client secrets as secret references such as
 `${env:OIDC_CLIENT_SECRET}`. Dashboard auth status only exposes whether OIDC is
 enabled plus issuer/client metadata; it never returns client secrets.
