@@ -23,6 +23,7 @@ describe('AuthController', () => {
       isLocalPasswordAuthEnabled: true,
       verifyPassword: jest.fn().mockResolvedValue(true),
       generateToken: jest.fn().mockReturnValue('jwt-token-123'),
+      verifyToken: jest.fn().mockReturnValue(null),
       config: { dashboardPasswordHash: '$2b$10$hashedvalue' },
       ...overrides,
     };
@@ -98,6 +99,7 @@ describe('AuthController', () => {
     const controller = new AuthController(authService, config);
     expect(controller.getStatus()).toEqual({
       authRequired: true,
+      authenticated: false,
       localLoginEnabled: true,
       oidc: {
         enabled: false,
@@ -117,6 +119,7 @@ describe('AuthController', () => {
     const controller = new AuthController(authService, config);
     expect(controller.getStatus()).toEqual({
       authRequired: false,
+      authenticated: false,
       localLoginEnabled: false,
       oidc: {
         enabled: false,

@@ -10,6 +10,7 @@ function mockAuthService(overrides: Record<string, unknown> = {}): any {
     isLocalPasswordAuthEnabled: true,
     verifyPassword: jest.fn().mockResolvedValue(true),
     generateToken: jest.fn().mockReturnValue('jwt-token-123'),
+    verifyToken: jest.fn().mockReturnValue(null),
     config: { dashboardPasswordHash: '$2b$10$hash' },
     ...overrides,
   };
@@ -184,6 +185,7 @@ describe('AuthController', () => {
 
       expect(controller.getStatus()).toEqual({
         authRequired: true,
+        authenticated: false,
         localLoginEnabled: true,
         oidc: {
           enabled: false,
@@ -204,6 +206,7 @@ describe('AuthController', () => {
 
       expect(controller.getStatus()).toEqual({
         authRequired: false,
+        authenticated: false,
         localLoginEnabled: false,
         oidc: {
           enabled: false,
@@ -212,6 +215,49 @@ describe('AuthController', () => {
           scopes: [],
         },
       });
+    });
+
+    it('should return authenticated: true when the session cookie is valid', () => {
+      const authService = mockAuthService({
+        verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
+      });
+      const config = mockConfigService();
+      const controller = new AuthController(authService, config);
+
+      expect(
+        controller.getStatus({
+          cookies: { [DASHBOARD_SESSION_COOKIE]: 'jwt-token-123' },
+        }),
+      ).toEqual({
+        authRequired: true,
+        authenticated: true,
+        localLoginEnabled: true,
+        oidc: {
+          enabled: false,
+          issuer: null,
+          client_id: null,
+          scopes: [],
+        },
+      });
+      expect(authService.verifyToken).toHaveBeenCalledWith('jwt-token-123');
+    });
+
+    it('should return authenticated: false when the session cookie is invalid', () => {
+      const authService = mockAuthService({
+        verifyToken: jest.fn().mockReturnValue(null),
+      });
+      const config = mockConfigService();
+      const controller = new AuthController(authService, config);
+
+      expect(
+        controller.getStatus({
+          cookies: { [DASHBOARD_SESSION_COOKIE]: 'expired-token' },
+        }),
+      ).toEqual(expect.objectContaining({
+        authRequired: true,
+        authenticated: false,
+      }));
+      expect(authService.verifyToken).toHaveBeenCalledWith('expired-token');
     });
   });
 

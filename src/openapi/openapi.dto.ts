@@ -51,6 +51,12 @@ export class LoginResponseDto {
 export class AuthStatusResponseDto {
   @ApiProperty({ example: true })
   authRequired!: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Whether the current request has a valid Dashboard session cookie.',
+  })
+  authenticated!: boolean;
 }
 
 export class OrganizationSummaryDto {

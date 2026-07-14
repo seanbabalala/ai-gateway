@@ -35,6 +35,7 @@ import { StateBackendService } from '../state/state-backend.service';
 import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
 import {
   clearDashboardSessionCookie,
+  getDashboardSessionCookie,
   setDashboardSessionCookie,
 } from './dashboard-session-cookie';
 
@@ -129,7 +130,7 @@ export class AuthController {
   @Get('status')
   @ApiOperation({ summary: 'Check whether Dashboard authentication is enabled' })
   @ApiOkResponse({ type: AuthStatusResponseDto })
-  getStatus() {
+  getStatus(@Req() req?: any) {
     const oidc = this.oidc?.getPublicStatus() ?? {
       enabled: false,
       issuer: null,
@@ -139,6 +140,7 @@ export class AuthController {
     return {
       authRequired: this.authService.isAuthRequired,
       localLoginEnabled: this.authService.isLocalPasswordAuthEnabled,
+      authenticated: this.hasAuthenticatedSession(req),
       oidc,
     };
   }
@@ -259,6 +261,16 @@ export class AuthController {
 
     // Record this attempt
     timestamps.push(now);
+  }
+
+  private hasAuthenticatedSession(req: any): boolean {
+    const token = getDashboardSessionCookie(req);
+    if (!token) return false;
+    try {
+      return !!this.authService.verifyToken(token);
+    } catch {
+      return false;
+    }
   }
 
   private async acceptLocalInvite(

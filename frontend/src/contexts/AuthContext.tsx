@@ -11,6 +11,7 @@ import { i18n } from '@/i18n'
 interface AuthContextValue {
   token: string | null
   authRequired: boolean
+  authenticated: boolean
   localLoginEnabled: boolean
   oidc: {
     enabled: boolean
@@ -43,6 +44,7 @@ export function clearAuthToken(): void {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getAuthToken())
   const [authRequired, setAuthRequired] = useState(true)
+  const [sessionAuthenticated, setSessionAuthenticated] = useState(false)
   const [localLoginEnabled, setLocalLoginEnabled] = useState(false)
   const [oidc, setOidc] = useState<AuthContextValue['oidc']>({
     enabled: false,
@@ -62,11 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(i18n.t('login:login.authStatusError'))
         const data = (await res.json()) as {
           authRequired: boolean
+          authenticated?: boolean
           localLoginEnabled?: boolean
           oidc?: AuthContextValue['oidc']
         }
         if (!cancelled) {
           setAuthRequired(data.authRequired)
+          setSessionAuthenticated(Boolean(data.authenticated))
           setLocalLoginEnabled(data.localLoginEnabled ?? data.authRequired)
           setOidc(data.oidc ?? {
             enabled: false,
@@ -79,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If auth status is unavailable, keep protected routes closed.
         if (!cancelled) {
           setAuthRequired(true)
+          setSessionAuthenticated(false)
           setLocalLoginEnabled(true)
           setOidc({ enabled: false, issuer: null, client_id: null, scopes: [] })
         }
@@ -109,24 +114,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = (await res.json()) as { token: string }
     setAuthToken(data.token)
     setToken(data.token)
+    setSessionAuthenticated(true)
   }, [])
 
   const completeLogin = useCallback((nextToken: string) => {
     setAuthToken(nextToken)
     setToken(nextToken)
+    setSessionAuthenticated(true)
   }, [])
 
   const logout = useCallback(() => {
     clearAuthToken()
     setToken(null)
+    setSessionAuthenticated(false)
     void fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'same-origin',
     }).catch(() => undefined)
   }, [])
 
+  const authenticated = !authRequired || sessionAuthenticated || Boolean(token)
+
   return (
-    <AuthContext.Provider value={{ token, authRequired, localLoginEnabled, oidc, loading, login, completeLogin, logout }}>
+    <AuthContext.Provider value={{ token, authRequired, authenticated, localLoginEnabled, oidc, loading, login, completeLogin, logout }}>
       {children}
     </AuthContext.Provider>
   )

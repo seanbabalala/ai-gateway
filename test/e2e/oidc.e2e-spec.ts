@@ -110,6 +110,7 @@ describe('OIDC login and invites (e2e)', () => {
     const status = await agent.get('/api/auth/status');
     expect(status.status).toBe(200);
     expect(status.body.authRequired).toBe(true);
+    expect(status.body.authenticated).toBe(false);
     expect(status.body.localLoginEnabled).toBe(false);
     expect(status.body.oidc.enabled).toBe(true);
 
