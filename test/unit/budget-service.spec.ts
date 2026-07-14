@@ -113,7 +113,7 @@ function mockBudgetRepo() {
 }
 
 function makeService(overrides: Record<string, unknown> = {}) {
-  const { telemetry, api_keys, namespaces, ...budgetOverrides } = overrides as any;
+  const { telemetry, managementAudit, api_keys, namespaces, ...budgetOverrides } = overrides as any;
   const config = mockConfigService({
     budget: {
       daily_token_limit: 100_000,
@@ -135,6 +135,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     repo as any,
     alerts as any,
     telemetry as any,
+    managementAudit as any,
   );
   return { svc, repo, config, alerts, workspaceContext };
 }
@@ -819,6 +820,59 @@ describe('BudgetService', () => {
       expect(repo._store.find((r: any) => r.id === 1).current_value).toBe(0);
       expect(repo._store.find((r: any) => r.id === 2).current_value).toBe(0);
     });
+
+    it('should audit rejected reservations without API key identifiers', async () => {
+      const managementAudit = { record: jest.fn().mockResolvedValue(null) };
+      const { svc, repo } = makeService({ managementAudit });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 50,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'client',
+        api_key_id: 'key_secret_123',
+      });
+
+      await expect(svc.reserve(60, 0, 'client', 'key_secret_123')).rejects.toThrow(BudgetExceededError);
+
+      expect(managementAudit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'budget.reservation.rejected',
+          resourceType: 'budget_rule',
+          resourceId: null,
+          result: 'denied',
+          failureReason: 'daily_tokens budget exceeded',
+          source: 'budget',
+          afterSummary: expect.objectContaining({
+            rejected: true,
+            scope: 'api_key',
+            budget_type: 'daily_tokens',
+            current: 60,
+            limit: 50,
+          }),
+          metadata: {
+            scope: 'api_key',
+            budget_type: 'daily_tokens',
+          },
+        }),
+      );
+      expect(JSON.stringify(managementAudit.record.mock.calls)).not.toContain('client');
+      expect(JSON.stringify(managementAudit.record.mock.calls)).not.toContain('key_secret_123');
+    });
   });
 
   // ── record ───────────────────────────────────────────────
@@ -1329,6 +1383,51 @@ describe('BudgetService', () => {
       await svc.resetRule(1);
 
       expect(repo._store[0].current_value).toBe(0);
+    });
+
+    it('should audit manual resets without API key identifiers', async () => {
+      const managementAudit = { record: jest.fn().mockResolvedValue(null) };
+      const { svc, repo } = makeService({ managementAudit });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 42,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'client',
+        api_key_id: 'key_secret_123',
+      });
+
+      await svc.resetRule(1);
+
+      expect(managementAudit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'budget.rule.reset',
+          resourceType: 'budget_rule',
+          resourceId: '1',
+          source: 'budget',
+          beforeSummary: expect.objectContaining({
+            scope: 'api_key',
+            budget_type: 'daily_tokens',
+            current: 42,
+            limit: 100,
+          }),
+          afterSummary: expect.objectContaining({
+            scope: 'api_key',
+            budget_type: 'daily_tokens',
+            current: 0,
+            limit: 100,
+          }),
+          metadata: {
+            scope: 'api_key',
+            budget_type: 'daily_tokens',
+          },
+        }),
+      );
+      expect(JSON.stringify(managementAudit.record.mock.calls)).not.toContain('client');
+      expect(JSON.stringify(managementAudit.record.mock.calls)).not.toContain('key_secret_123');
     });
 
     it('should do nothing for non-existent rule', async () => {
