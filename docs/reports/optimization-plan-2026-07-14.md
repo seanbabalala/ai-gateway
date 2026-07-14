@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites, 1442 tests |
+| `npm test -- --runInBand` | Passed: 102 suites, 1455 tests |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -41,8 +41,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `2962f60f3255172ebb2b605607ca647cb2b875eb` |
-| `origin/main` | `2962f60f3255172ebb2b605607ca647cb2b875eb` |
+| Local HEAD | `1cebfb67b377faf29ed6de61be4ba5c48903e330` |
+| `origin/main` | `1cebfb67b377faf29ed6de61be4ba5c48903e330` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -109,6 +109,10 @@ Completed PRs in this overnight hardening run:
 | #55 | `bd1eccb1` | Abort upstream fetch after stream cancel | Downstream stream cancellation aborts the upstream provider fetch signal |
 | #56 | `6030fe9e` | Enforce zero lint warnings | Root lint script now fails on any warning |
 | #57 | `2962f60f` | Add frontend bundle budget gate | Frontend build now runs a gzip bundle budget check for key chunks |
+| #58 | `55da1ab2` | Refresh current optimization baseline | Updated this plan with the real PR #57 baseline and remaining queue |
+| #59 | `0dddcadc` | Add budget reservation proof | Added process-local budget reservations with commit/release semantics and concurrency coverage |
+| #60 | `6a544652` | Harden release checklist | Added release/security/production checks for auth, stream, budget, lint, and bundle controls |
+| #61 | `1cebfb67` | Fence legacy dashboard token auth | Added `dashboard.allow_legacy_token_auth=false` to reject legacy bearer/query Dashboard tokens |
 
 Every merged PR followed this loop:
 
@@ -127,12 +131,11 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/budget-reservation-proof` | Add a focused concurrency proof and the smallest reservation path for budget enforcement | `src/budget/budget.service.ts`, budget tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
-| 2 | `codex/release-checklist-hardening` | Update release checklist so new auth/session/stream/lint/bundle controls are validated before release | `docs/RELEASE_CHECKLIST.md`, `docs/SECURITY.md`, `docs/PRODUCTION.md` | `npm run docs:check && npm run public:check` |
-| 3 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | `docs/PRODUCTION.md`, `docs/MIGRATION_V1_TO_V2.md`, scripts or config docs as needed | `npm run docs:check && npm run public:check` |
-| 4 | `codex/dashboard-legacy-token-fence` | Add a configurable compatibility fence for remaining dashboard bearer/query-token fallback paths | `src/auth/dashboard.guard.ts`, frontend auth/SSE helpers, auth tests | `npm test -- --runInBand test/unit/dashboard-guard.spec.ts`; `cd frontend && npm test` |
-| 5 | `codex/budget-reservation-metrics` | Emit operator-visible metrics or audit events for budget reservation denials/releases after the proof lands | `src/budget/*`, telemetry/audit tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
-| 6 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | `frontend/src/App.tsx`, route/page components | `cd frontend && npm test && npm run build` |
+| 1 | `codex/budget-reservation-pipeline-hook` | Connect the reservation contract to request dispatch with conservative estimates and release-on-failure behavior | `src/pipeline/pipeline.service.ts`, `src/budget/budget.service.ts`, pipeline/budget tests | `npm test -- --runInBand test/unit/pipeline-service.spec.ts test/unit/budget*.spec.ts`; `npm run build` |
+| 2 | `codex/budget-reservation-metrics` | Emit operator-visible metrics or audit events for budget reservation denials/releases | `src/budget/*`, telemetry/audit tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
+| 3 | `codex/stream-abort-reason-metrics` | Add metrics for provider stream idle timeout, max-duration, and downstream client abort reasons | `src/providers/provider-client.service.ts`, telemetry/provider tests | `npm test -- --runInBand test/unit/provider-client.spec.ts`; `npm run build` |
+| 4 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | `docs/PRODUCTION.md`, `docs/MIGRATION_V1_TO_V2.md`, scripts or config docs as needed | `npm run docs:check && npm run public:check` |
+| 5 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | `frontend/src/App.tsx`, route/page components | `cd frontend && npm test && npm run build` |
 
 ## Key Findings
 
@@ -207,6 +210,9 @@ Status:
 - Legacy bearer, query-token SSE fallback, and `localStorage` token compatibility
   remain for migration safety; PR #54 added a one-time warning for legacy SSE
   query-token use without logging token values.
+- `dashboard.allow_legacy_token_auth=false` can now reject legacy Dashboard
+  bearer tokens and SSE query tokens after clients move to cookie-only sessions
+  as of PR #61.
 
 ### P1: OIDC Fetches Need Explicit Timeout And Error Classification
 
@@ -352,6 +358,14 @@ Target outcome:
   deployments.
 - Add concurrent budget tests that prove only the allowed number of requests can
   pass.
+
+Status:
+
+- PR #59 added a process-local reservation contract with all-or-nothing scope
+  checks, concurrent reservation coverage, and idempotent commit/release
+  settlement.
+- Remaining follow-up: wire reservations into request dispatch with conservative
+  estimates, release-on-failure behavior, and multi-instance SQL/Redis atomicity.
 
 ### P1: API Key Last-Used Updates Can Cause Write Amplification
 
@@ -529,8 +543,8 @@ Exit criteria:
 Deliverables:
 
 - Keep PR #54's one-time warning for legacy SSE query-token compatibility and
-  follow up with a config fence when operators are ready to make compatibility
-  explicit.
+  PR #61's `dashboard.allow_legacy_token_auth=false` fence when operators are
+  ready to make compatibility explicit.
 - Keep compatibility only where required for older clients and SSE fallback.
 - Document the deprecation path.
 
@@ -631,6 +645,7 @@ Implementation steps:
 8. Warn on remaining legacy SSE query-token usage without logging token values.
    Completed in PR #54.
 9. Add an explicit compatibility fence for remaining legacy token paths.
+   Completed in PR #61.
 
 Tests:
 
@@ -668,7 +683,8 @@ Implementation steps:
 
 1. Estimate request cost before dispatch using model pricing and requested
    limits.
-2. Reserve budget atomically before provider call.
+2. Reserve budget before provider call. Process-local reservation proof completed
+   in PR #59; request dispatch integration remains.
 3. Commit actual usage after provider completion.
 4. Release unused reservation on failure or client abort.
 5. Add Redis or SQL conditional update path for multi-instance deployments.
@@ -759,7 +775,7 @@ Targets:
 | AGW-SEC-05 | Add OIDC fetch timeout helper | P1 | Backend/Auth | Done on current `main` |
 | AGW-SEC-07 | Let protected routes accept verified cookie sessions after reload | P0 | Frontend/Auth | Done in PR #52 |
 | AGW-SEC-08 | Remove OIDC URL-hash token delivery | P0 | Backend/Auth | Done in PR #53 |
-| AGW-SEC-09 | Add explicit compatibility fence for legacy dashboard token paths | P1 | Backend/Auth | Planned |
+| AGW-SEC-09 | Add explicit compatibility fence for legacy dashboard token paths | P1 | Backend/Auth | Done in PR #61 |
 | AGW-REL-01 | Add provider stream idle timeout | P1 | Provider | Done in PR #45 |
 | AGW-REL-02 | Propagate client disconnect to upstream provider | P1 | Provider | Done in PR #55 |
 | AGW-REL-03 | Treat pre-first-event stream reader failures as fallbackable | P1 | Provider/Pipeline | Done in PR #46 |
@@ -767,7 +783,7 @@ Targets:
 | AGW-REL-05 | Add stream lifecycle abort reason metrics | P1 | Provider/Observability | Planned |
 | AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; keep regression coverage |
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
-| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Planned |
+| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local reservation proof done in PR #59; pipeline and multi-instance atomicity planned |
 | AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Planned after AGW-COST-01 |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
@@ -776,6 +792,7 @@ Targets:
 | AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
 | AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Planned |
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
+| AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
 
 ## Pull Request Discipline
 
@@ -830,15 +847,13 @@ Quality:
 
 ## Quick Wins
 
-- Add the first budget reservation concurrency proof.
-- Add a compatibility fence for remaining legacy dashboard bearer/query-token
-  paths.
+- Wire budget reservations into request dispatch with conservative estimates and
+  release-on-failure behavior.
+- Add budget reservation metrics and audit visibility.
 - Add provider stream abort reason metrics.
 - Add route-level dashboard loading states for lazy pages and locales.
 - Document the production database migration policy and schema patch
   compatibility windows.
-- Update release/security docs for cookie sessions, stream max duration, and
-  legacy token deprecation.
 
 ## Non-Goals For This Plan
 
