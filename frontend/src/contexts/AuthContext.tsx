@@ -42,7 +42,7 @@ export function clearAuthToken(): void {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getAuthToken())
-  const [authRequired, setAuthRequired] = useState(false)
+  const [authRequired, setAuthRequired] = useState(true)
   const [localLoginEnabled, setLocalLoginEnabled] = useState(false)
   const [oidc, setOidc] = useState<AuthContextValue['oidc']>({
     enabled: false,
@@ -76,10 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
         }
       } catch {
-        // If we can't reach the server, assume no auth required
+        // If auth status is unavailable, keep protected routes closed.
         if (!cancelled) {
-          setAuthRequired(false)
-          setLocalLoginEnabled(false)
+          setAuthRequired(true)
+          setLocalLoginEnabled(true)
           setOidc({ enabled: false, issuer: null, client_id: null, scopes: [] })
         }
       } finally {
