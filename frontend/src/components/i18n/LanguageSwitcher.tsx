@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  changeDashboardLanguage,
   localeStorageKey,
   normalizeLocale,
   supportedLocales,
@@ -52,7 +53,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
 
   const handleChange = (locale: SupportedLocale) => {
     localStorage.setItem(localeStorageKey, locale)
-    void i18n.changeLanguage(locale)
+    void changeDashboardLanguage(locale)
     setOpen(false)
   }
 
