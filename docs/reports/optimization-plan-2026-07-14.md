@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites, 1467 tests |
+| `npm test -- --runInBand` | Passed: 102 suites, 1469 tests |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,19 +42,19 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `f0b0dedf0437dfbddc243ad0d577f4854fd3eac4` |
-| `origin/main` | `f0b0dedf0437dfbddc243ad0d577f4854fd3eac4` |
+| Local HEAD | `324b0f86233b835e1932eeb564c1e5a73153d8a6` |
+| `origin/main` | `324b0f86233b835e1932eeb564c1e5a73153d8a6` |
 | Worktree | Clean |
 
 Frontend build size baseline:
 
 | Asset | Minified | Gzip |
 | --- | ---: | ---: |
-| `dist/assets/index-DlWQpEAA.js` | 47.49 kB | 13.94 kB |
-| `dist/assets/react-vendor-DpaXkVd2.js` | 193.97 kB | 60.56 kB |
-| `dist/assets/vendor-8JS6qKYL.js` | 349.24 kB | 107.76 kB |
-| `dist/assets/charts-vendor-uXGeMExF.js` | 343.02 kB | 84.88 kB |
-| `dist/assets/NodesPage-D58r9-Kp.js` | 102.81 kB | 22.44 kB |
+| `dist/assets/index-BH5U_jv4.js` | 51.10 kB | 14.82 kB |
+| `dist/assets/react-vendor-DpaXkVd2.js` | 193.97 kB | 60.61 kB |
+| `dist/assets/vendor-8JS6qKYL.js` | 349.24 kB | 108.01 kB |
+| `dist/assets/charts-vendor-uXGeMExF.js` | 343.02 kB | 85.09 kB |
+| `dist/assets/NodesPage-DFJDA9Cf.js` | 102.81 kB | 22.44 kB |
 
 ## Optimization Principles
 
@@ -117,6 +117,11 @@ Completed PRs in this overnight hardening run:
 | #62 | `ea778d95` | Refresh optimization plan after token fence | Updated this plan after the explicit legacy token compatibility fence |
 | #63 | `711236ad` | Reserve budget before pipeline dispatch | Connected budget reservations to chat, stream, embeddings, rerank, and media dispatch with commit/release handling |
 | #64 | `f0b0dedf` | Emit budget reservation metrics | Added low-cardinality reservation lifecycle metrics for reserve, commit, release, and rejected events |
+| #65 | `d64afe0d` | Refresh overnight optimization baseline | Updated this plan with PR #62-#64 outcomes and the immediate queue |
+| #66 | `fb15f952` | Emit stream lifecycle metrics | Added low-cardinality provider stream lifecycle metrics for client abort, idle timeout, and max duration |
+| #67 | `9cd5701b` | Document production database migration policy | Documented migrations-first PostgreSQL operations and schema patch compatibility windows |
+| #68 | `ae72ab84` | Add dashboard route loading skeletons | Added route-level and login-route skeleton states for lazy page loading |
+| #69 | `324b0f86` | Lock budget reservations in PostgreSQL | Added PostgreSQL transaction and row-lock semantics for budget reservation, record, commit, and release mutations |
 
 Every merged PR followed this loop:
 
@@ -128,17 +133,30 @@ Every merged PR followed this loop:
 6. Merge after checks pass and delete the remote branch.
 7. Return local `main` to the same SHA as `origin/main`.
 
-## Immediate PR Queue
+## Completed Immediate PR Queue
+
+The post-#65 immediate queue has been completed. Each slice landed as a separate
+PR, waited for GitHub checks, merged, deleted its branch, and returned local
+`main` to the same SHA as `origin/main`.
+
+| Order | Branch | Slice | Status | Validation evidence |
+| ---: | --- | --- | --- | --- |
+| 1 | `codex/stream-abort-reason-metrics` | Add metrics for provider stream idle timeout, max-duration, and downstream client abort reasons | Done in PR #66 | Focused provider/telemetry tests, build, lint, unit, docs/public, e2e, GitHub checks |
+| 2 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | Done in PR #67 | Docs/public/diff checks and GitHub checks |
+| 3 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | Done in PR #68 | Frontend tests, frontend build, diff check, GitHub checks |
+| 4 | `codex/budget-reservation-atomic-backend` | Add SQL-backed multi-instance safety for budget reservation mutations | Done in PR #69 | Focused budget tests, backend build, lint, full unit, billing-loop e2e, docs/public/diff checks, GitHub checks |
+
+## Next Candidate PR Queue
 
 The next slices should stay intentionally narrow. Do not batch these unless a
 testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/stream-abort-reason-metrics` | Add metrics for provider stream idle timeout, max-duration, and downstream client abort reasons | `src/providers/provider-client.service.ts`, telemetry/provider tests | `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/telemetry-service.spec.ts`; `npm run build` |
-| 2 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | `docs/PRODUCTION.md`, `docs/MIGRATION_V1_TO_V2.md`, scripts or config docs as needed | `npm run docs:check && npm run public:check` |
-| 3 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | `frontend/src/App.tsx`, route/page components | `cd frontend && npm test && npm run build` |
-| 4 | `codex/budget-reservation-atomic-backend` | Replace the process-local reservation mutation queue with a SQL or Redis conditional-update path for multi-instance deployments | `src/budget/budget.service.ts`, state-backend/budget tests | `npm test -- --runInBand test/unit/budget-service.spec.ts test/unit/state-backend.spec.ts`; `npm run build` |
+| 1 | `codex/budget-audit-reservation-events` | Add management audit visibility for rejected budget reservations and manual budget resets without exposing key names or ids | `src/budget/budget.service.ts`, audit/dashboard tests | `npm test -- --runInBand test/unit/budget-service.spec.ts test/unit/management-audit-service.spec.ts`; `npm run build` |
+| 2 | `codex/auth-status-observability` | Count dashboard auth status failures and disabled-auth startup events as low-cardinality telemetry | auth guard/status controller, telemetry tests | `npm test -- --runInBand test/unit/auth-controller.spec.ts test/unit/telemetry-service.spec.ts`; `npm run build` |
+| 3 | `codex/postgres-budget-lock-integration` | Add an optional Postgres-backed regression or smoke fixture for the budget row-lock path when `DATABASE_URL` is available | budget tests, CI docs | `npm test -- --runInBand test/unit/budget-service.spec.ts`; optional Postgres smoke when configured |
+| 4 | `codex/frontend-fcp-smoke` | Add a lightweight dashboard first-paint smoke script that validates the loading skeleton and bundle budget together | `frontend/scripts`, frontend package checks | `cd frontend && npm test && npm run build` |
 
 ## Key Findings
 
@@ -277,8 +295,9 @@ Status:
 - Configurable max stream duration landed in PR #49.
 - Downstream stream cancellation now aborts the upstream provider fetch signal as
   of PR #55.
-- Remaining follow-up: add observability around stream abort reasons and keep
-  lifecycle tests broad when provider stream handling changes.
+- PR #66 added stream lifecycle metrics for client abort, idle timeout, and max
+  duration outcomes. Remaining follow-up: keep lifecycle tests broad when
+  provider stream handling changes.
 
 ### P1: Provider Error Bodies Need Stronger Redaction
 
@@ -372,8 +391,13 @@ Status:
   behavior.
 - PR #64 added low-cardinality lifecycle metrics for reservation success,
   settlement, release, and rejection events.
-- Remaining follow-up: replace the process-local mutation queue with
-  multi-instance SQL/Redis conditional reservation semantics.
+- PR #69 added PostgreSQL `READ COMMITTED` transactions and
+  `pessimistic_write` row locks around reservation, record, commit, and release
+  mutations, while retaining the process-local queue fallback for SQLite and
+  in-memory test repositories.
+- Remaining follow-up: add an optional real-PostgreSQL smoke fixture and decide
+  whether Redis-backed counters are needed for deployments that do not use
+  PostgreSQL as the shared budget source of truth.
 
 ### P1: API Key Last-Used Updates Can Cause Write Amplification
 
@@ -480,8 +504,10 @@ Status:
 
 - Current `main` has route lazy loading, manual chunks, lazy locale loading, and
   a frontend bundle budget gate from PRs #41, #42, and #57.
-- Remaining follow-up: route-level loading states should keep first paint useful
-  as future lazy pages grow.
+- PR #68 added dashboard-shaped route skeletons and a separate login-route
+  loading skeleton so lazy pages keep first paint useful as they grow.
+- Remaining follow-up: add a lightweight first-paint smoke check if frontend
+  loading regressions become common.
 
 ### P2: Lint Warnings Should Become A Quality Gate
 
@@ -608,7 +634,7 @@ Deliverables:
 
 - Keep atomic config writes and MCP env isolation covered as future changes land.
 - Review TypeORM synchronize, schema patch services, and migrations to produce a
-  single production migration policy.
+  single production migration policy. Completed in PR #67.
 
 Exit criteria:
 
@@ -675,8 +701,8 @@ Implementation steps:
    failure types. Provider and streaming redaction landed across PRs #39 and #43.
 5. Preserve public error mapping so unexpected provider/internal errors return
    stable client messages.
-6. Emit stream abort reason metrics for connect, idle, max-duration, and client
-   disconnect paths.
+6. Emit stream abort reason metrics for idle, max-duration, and client
+   disconnect paths. Completed in PR #66.
 
 Tests:
 
@@ -696,6 +722,8 @@ Implementation steps:
 3. Commit actual usage after provider completion. Completed in PR #63.
 4. Release unused reservation on failure or client abort. Completed in PR #63.
 5. Add Redis or SQL conditional update path for multi-instance deployments.
+   PostgreSQL transaction and row-lock coverage completed in PR #69; Redis stays
+   optional unless a non-PostgreSQL shared budget backend becomes required.
 6. Throttle `last_used_at` writes with a per-key memory/Redis debounce.
 
 Tests:
@@ -747,7 +775,7 @@ Implementation steps:
 2. Keep the lightweight bundle budget script for initial entry and chart chunks
    green. Completed in PR #57.
 3. Add route-level loading states that keep first paint useful when future pages
-   grow.
+   grow. Completed in PR #68.
 
 Targets:
 
@@ -788,17 +816,17 @@ Targets:
 | AGW-REL-02 | Propagate client disconnect to upstream provider | P1 | Provider | Done in PR #55 |
 | AGW-REL-03 | Treat pre-first-event stream reader failures as fallbackable | P1 | Provider/Pipeline | Done in PR #46 |
 | AGW-REL-04 | Add provider stream max-duration cap | P1 | Provider | Done in PR #49 |
-| AGW-REL-05 | Add stream lifecycle abort reason metrics | P1 | Provider/Observability | Planned |
+| AGW-REL-05 | Add stream lifecycle abort reason metrics | P1 | Provider/Observability | Done in PR #66 |
 | AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; keep regression coverage |
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
-| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local proof done in PR #59; dispatch integration done in PR #63; multi-instance atomicity planned |
+| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local proof done in PR #59; dispatch integration done in PR #63; PostgreSQL row-lock path done in PR #69 |
 | AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility optional follow-up |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
-| AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Planned |
+| AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Done in PR #67 |
 | AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
-| AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Planned |
+| AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Done in PR #68 |
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 | AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
 
@@ -855,12 +883,23 @@ Quality:
 
 ## Quick Wins
 
-- Add provider stream abort reason metrics.
-- Add route-level dashboard loading states for lazy pages and locales.
+Completed:
+
+- Add provider stream abort reason metrics. Done in PR #66.
+- Add route-level dashboard loading states for lazy pages and locales. Done in
+  PR #68.
 - Document the production database migration policy and schema patch
-  compatibility windows.
-- Add SQL or Redis conditional reservation updates for multi-instance budget
-  enforcement.
+  compatibility windows. Done in PR #67.
+- Add SQL-backed reservation locking for multi-instance budget enforcement. Done
+  in PR #69 for PostgreSQL deployments.
+
+Remaining:
+
+- Add budget reservation audit visibility for rejected requests and manual
+  resets without leaking key identifiers.
+- Add auth status failure telemetry for management-plane health.
+- Add optional Postgres smoke coverage for row-lock budget reservations.
+- Add a frontend first-paint smoke check if loading regressions become frequent.
 
 ## Non-Goals For This Plan
 
