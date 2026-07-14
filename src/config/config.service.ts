@@ -420,7 +420,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     try {
       const nextConfig = this.loadConfigFromYaml(rawYaml);
       const changed = this.describeChanges(previousConfig, nextConfig.resolved);
-      fs.writeFileSync(this.configPath, rawYaml, 'utf8');
+      this.writeConfigFileAtomic(rawYaml);
       this.commitConfig(nextConfig);
       const current = this.getSnapshot();
       const result: ConfigReloadResult = {
@@ -1867,10 +1867,65 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       noRefs: true,
       sortKeys: false,
     });
-    fs.writeFileSync(this.configPath, yamlStr, 'utf8');
+    this.writeConfigFileAtomic(yamlStr);
     this.originalConfigForPersistence = this.cloneConfig(configToPersist);
     this.resolvedConfigForPersistence = this.cloneConfig(this.config);
     this.logger.log(`Configuration saved to ${this.configPath}`);
+  }
+
+  private writeConfigFileAtomic(contents: string): void {
+    const dir = path.dirname(this.configPath);
+    const base = path.basename(this.configPath);
+    const tempPath = path.join(
+      dir,
+      `.${base}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
+    );
+    const mode = this.configFileMode();
+    let wroteTemp = false;
+
+    try {
+      const fd = fs.openSync(tempPath, 'w', mode);
+      try {
+        fs.writeFileSync(fd, contents, 'utf8');
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      fs.chmodSync(tempPath, mode);
+      wroteTemp = true;
+      fs.renameSync(tempPath, this.configPath);
+      this.fsyncDirectoryBestEffort(dir);
+    } catch (err) {
+      if (wroteTemp || fs.existsSync(tempPath)) {
+        try {
+          fs.unlinkSync(tempPath);
+        } catch {
+          // Best effort cleanup only; preserve the original write failure.
+        }
+      }
+      throw err;
+    }
+  }
+
+  private configFileMode(): number {
+    try {
+      return fs.statSync(this.configPath).mode & 0o777;
+    } catch {
+      return 0o600;
+    }
+  }
+
+  private fsyncDirectoryBestEffort(dir: string): void {
+    try {
+      const fd = fs.openSync(dir, 'r');
+      try {
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      // Some platforms/filesystems do not allow opening directories.
+    }
   }
 
   private prepareConfigForPersistence(): GatewayConfig {

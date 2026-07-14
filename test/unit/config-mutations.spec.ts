@@ -187,6 +187,27 @@ describe('ConfigService — addNode', () => {
     expect(persisted.nodes).toHaveLength(3);
   });
 
+  it('persists config atomically without changing file permissions or leaving temp files', () => {
+    const { svc, configPath } = loadConfigService();
+    fs.chmodSync(configPath, 0o640);
+    const configDir = path.dirname(configPath);
+
+    svc.addNode({
+      id: 'gemini',
+      name: 'Gemini',
+      protocol: 'chat_completions',
+      base_url: 'https://api.google.com',
+      endpoint: '/v1/chat/completions',
+      api_key: 'gk-test',
+      models: ['gemini-2.0-flash'],
+    } as any);
+
+    expect(fs.statSync(configPath).mode & 0o777).toBe(0o640);
+    expect(
+      fs.readdirSync(configDir).filter((name) => name.endsWith('.tmp')),
+    ).toEqual([]);
+  });
+
   it('should throw if node ID already exists', () => {
     const { svc } = loadConfigService();
     expect(() => svc.addNode({ id: 'openai' } as any)).toThrow('already exists');
