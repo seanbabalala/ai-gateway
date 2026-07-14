@@ -85,6 +85,7 @@ export class ProviderClientService {
   private readonly msgDenorm = new MessagesDenormalizer();
   private readonly geminiDenorm = new GeminiDenormalizer();
   private readonly responseCredentials = new WeakMap<Response, ResponseCredentialMetadata>();
+  private readonly responseAbortCleanups = new WeakMap<Response, () => void>();
   private readonly completedCredentialResponses = new WeakSet<Response>();
 
   constructor(
@@ -404,6 +405,7 @@ export class ProviderClientService {
       options.timeoutMs,
       options.signal,
       this.resolveRequestEndpoint(node, upstreamModel, true),
+      true,
     );
 
     if (!response.body) {
@@ -567,6 +569,8 @@ export class ProviderClientService {
       this.completeResponseCredential(response, {
         statusCode: options.signal?.aborted ? 499 : response.status,
       });
+      this.responseAbortCleanups.get(response)?.();
+      this.responseAbortCleanups.delete(response);
       options.signal?.removeEventListener('abort', cancelReader);
       reader.releaseLock();
     }
@@ -696,6 +700,7 @@ export class ProviderClientService {
     timeoutMs?: number,
     signal?: AbortSignal,
     endpointOverride?: string,
+    preserveAbortAfterResponse = false,
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
     const nodeHeaders = await this.resolveNodeHeaders(node);
@@ -792,6 +797,17 @@ export class ProviderClientService {
 
       if (response.ok) {
         this.responseCredentials.set(response, { selection: credential, retryCount: attempt });
+        if (preserveAbortAfterResponse && signal) {
+          const abortAfterResponse = () => controller.abort();
+          if (signal.aborted) {
+            controller.abort();
+          } else {
+            signal.addEventListener('abort', abortAfterResponse, { once: true });
+          }
+          this.responseAbortCleanups.set(response, () => {
+            signal.removeEventListener('abort', abortAfterResponse);
+          });
+        }
         this.applyCredentialRequestMetadata(canonical?.metadata, credential, attempt);
         return response;
       }

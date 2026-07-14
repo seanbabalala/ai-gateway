@@ -2632,6 +2632,40 @@ describe('ProviderClientService', () => {
       expect(events[0].type).toBe('start');
     });
 
+    it('should abort the upstream fetch signal when a stream is canceled after headers', async () => {
+      let fetchSignal: AbortSignal | undefined;
+      const stream = new ReadableStream<Uint8Array>({
+        start() {
+          // Keep the body open until the downstream abort cancels the reader.
+        },
+      });
+      global.fetch = jest.fn().mockImplementation((_url, opts: RequestInit) => {
+        fetchSignal = opts.signal as AbortSignal;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: stream,
+        });
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      const abortController = new AbortController();
+      const iterator = svc.forwardStream(
+        makeCanonical({ stream: true }),
+        'openai',
+        'gpt-4o',
+        { signal: abortController.signal },
+      );
+      const nextEvent = iterator.next();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(fetchSignal).toBeDefined();
+      expect(fetchSignal?.aborted).toBe(false);
+      abortController.abort();
+      await expect(nextEvent).resolves.toMatchObject({ done: true });
+      expect(fetchSignal?.aborted).toBe(true);
+    });
+
     it('should pass through native Responses SSE chunks with side parsed usage', async () => {
       const upstreamSse =
         'event: response.created\n' +
