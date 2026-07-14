@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run bundle:check",
     "i18n:check": "node scripts/check-i18n.mjs",
     "routing:check": "node scripts/check-dev-routing.mjs",
     "auth:check": "node scripts/check-auth-fail-closed.mjs",
@@ -15,6 +15,7 @@
     "traffic-experiments:check": "node scripts/check-traffic-experiments.mjs",
     "shadow-report:check": "node scripts/check-shadow-report.mjs",
     "benchmark:check": "node scripts/check-benchmark-report.mjs",
+    "bundle:check": "node scripts/check-bundle-budget.mjs",
     "guardrails:check": "node scripts/check-guardrails.mjs",
     "provider-catalog:check": "node scripts/check-provider-catalog.mjs",
     "provider-logos:check": "node scripts/check-provider-logos.mjs",
