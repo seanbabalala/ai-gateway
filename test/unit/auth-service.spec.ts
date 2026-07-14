@@ -162,10 +162,15 @@ describe('AuthService', () => {
         dashboard: { auth_required: false },
         dashboardPasswordHash: undefined,
       });
-      const svc = new AuthService(config);
+      const telemetry = { recordDashboardAuthEvent: jest.fn() };
+      const svc = new AuthService(config, telemetry as any);
 
       await svc.ensurePasswordHashed();
       expect(config.setDashboardPasswordHash).not.toHaveBeenCalled();
+      expect(telemetry.recordDashboardAuthEvent).toHaveBeenCalledWith({
+        event: 'disabled_auth',
+        mode: 'development_allowed',
+      });
     });
 
     it('should generate a password when production config disables auth without override', async () => {
@@ -175,12 +180,36 @@ describe('AuthService', () => {
         dashboard: { auth_required: false },
         dashboardPasswordHash: undefined,
       });
-      const svc = new AuthService(config);
+      const telemetry = { recordDashboardAuthEvent: jest.fn() };
+      const svc = new AuthService(config, telemetry as any);
 
       await svc.ensurePasswordHashed();
       expect(config.setDashboardPasswordHash).toHaveBeenCalledTimes(1);
       const savedHash = config.setDashboardPasswordHash.mock.calls[0][0];
       expect(savedHash).toMatch(/^\$2[ab]\$/);
+      expect(telemetry.recordDashboardAuthEvent).toHaveBeenCalledWith({
+        event: 'disabled_auth',
+        mode: 'production_ignored',
+      });
+    });
+
+    it('should record explicitly allowed production disabled auth', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD = 'true';
+      const config = mockConfigService({
+        dashboard: { auth_required: false },
+        dashboardPasswordHash: undefined,
+      });
+      const telemetry = { recordDashboardAuthEvent: jest.fn() };
+      const svc = new AuthService(config, telemetry as any);
+
+      await svc.ensurePasswordHashed();
+
+      expect(config.setDashboardPasswordHash).not.toHaveBeenCalled();
+      expect(telemetry.recordDashboardAuthEvent).toHaveBeenCalledWith({
+        event: 'disabled_auth',
+        mode: 'production_allowed',
+      });
     });
 
     it('should do nothing when password is already hashed', async () => {

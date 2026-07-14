@@ -25,6 +25,7 @@ import { OidcService } from './oidc.service';
 import { WorkspaceInvitationService } from './workspace-invitation.service';
 import { WorkspaceMembershipService } from './workspace-membership.service';
 import { ConfigService } from '../config/config.service';
+import { TelemetryService } from '../telemetry/telemetry.service';
 import {
   AuthStatusResponseDto,
   ErrorEnvelopeDto,
@@ -52,6 +53,7 @@ export class AuthController {
     @Optional() private readonly oidc?: OidcService,
     @Optional() private readonly invitations?: WorkspaceInvitationService,
     @Optional() private readonly memberships?: WorkspaceMembershipService,
+    @Optional() private readonly telemetry?: TelemetryService,
   ) {}
 
   /**
@@ -131,18 +133,26 @@ export class AuthController {
   @ApiOperation({ summary: 'Check whether Dashboard authentication is enabled' })
   @ApiOkResponse({ type: AuthStatusResponseDto })
   getStatus(@Req() req?: any) {
-    const oidc = this.oidc?.getPublicStatus() ?? {
-      enabled: false,
-      issuer: null,
-      client_id: null,
-      scopes: [],
-    };
-    return {
-      authRequired: this.authService.isAuthRequired,
-      localLoginEnabled: this.authService.isLocalPasswordAuthEnabled,
-      authenticated: this.hasAuthenticatedSession(req),
-      oidc,
-    };
+    try {
+      const oidc = this.oidc?.getPublicStatus() ?? {
+        enabled: false,
+        issuer: null,
+        client_id: null,
+        scopes: [],
+      };
+      return {
+        authRequired: this.authService.isAuthRequired,
+        localLoginEnabled: this.authService.isLocalPasswordAuthEnabled,
+        authenticated: this.hasAuthenticatedSession(req),
+        oidc,
+      };
+    } catch (err) {
+      this.telemetry?.recordDashboardAuthEvent({
+        event: 'status_failure',
+        mode: 'unknown',
+      });
+      throw err;
+    }
   }
 
   @Get('oidc/start')
