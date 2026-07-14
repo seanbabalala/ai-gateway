@@ -3,17 +3,22 @@ import {
   ExecutionContext,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { getDashboardSessionCookie } from './dashboard-session-cookie';
+import { TelemetryService } from '../telemetry/telemetry.service';
 
 @Injectable()
 export class DashboardGuard implements CanActivate {
   private readonly logger = new Logger(DashboardGuard.name);
   private legacyQueryTokenWarningEmitted = false;
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    @Optional() private readonly telemetry?: TelemetryService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     // No password configured → dashboard is open (backwards-compatible)
@@ -57,24 +62,43 @@ export class DashboardGuard implements CanActivate {
       return cookieToken;
     }
 
-    if (!this.authService.allowsLegacyDashboardTokenAuth) {
-      return null;
-    }
-
     // 2. Legacy Authorization: Bearer <token>.
     const authHeader = this.headerValue(request.headers?.authorization);
-    if (authHeader?.startsWith('Bearer ')) {
-      return authHeader.slice(7);
-    }
+    const bearerToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : null;
 
     // 3. Legacy query param ?token=<jwt> for older EventSource clients.
     const queryToken = this.headerValue(request.query?.token);
+
+    if (!this.authService.allowsLegacyDashboardTokenAuth) {
+      if (bearerToken !== null) {
+        this.recordLegacyTokenEvent('legacy_rejected', 'bearer');
+      } else if (queryToken) {
+        this.recordLegacyTokenEvent('legacy_rejected', 'query');
+      }
+      return null;
+    }
+
+    if (bearerToken !== null) {
+      this.recordLegacyTokenEvent('legacy_bearer_used', 'bearer');
+      return bearerToken;
+    }
+
     if (queryToken) {
       this.warnLegacyQueryToken();
+      this.recordLegacyTokenEvent('legacy_query_used', 'query');
       return queryToken;
     }
 
     return null;
+  }
+
+  private recordLegacyTokenEvent(
+    event: 'legacy_bearer_used' | 'legacy_query_used' | 'legacy_rejected',
+    source: 'bearer' | 'query',
+  ): void {
+    this.telemetry?.recordDashboardLegacyTokenEvent({ event, source });
   }
 
   private warnLegacyQueryToken(): void {
