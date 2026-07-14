@@ -198,7 +198,7 @@ export class AuthController {
     }
     const result = await this.oidc.completeCallback({ code, state });
     setDashboardSessionCookie(res, result.token);
-    return res.redirect(302, this.oidc.loginRedirectUrl({ token: result.token }));
+    return res.redirect(302, this.oidc.loginRedirectUrl());
   }
 
   /**

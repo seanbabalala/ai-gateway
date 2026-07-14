@@ -157,10 +157,9 @@ export class OidcService {
     };
   }
 
-  loginRedirectUrl(input: { token?: string; error?: string }): string {
+  loginRedirectUrl(input: { error?: string } = {}): string {
     const url = new URL('/login', this.config.dashboardOidc.redirect_uri || 'http://localhost');
     const hash = new URLSearchParams();
-    if (input.token) hash.set('token', input.token);
     if (input.error) hash.set('error', input.error);
     url.hash = hash.toString();
     return `${url.pathname}${url.search}${url.hash}`;

@@ -11,6 +11,7 @@ import {
   WorkspaceInvitation,
   WorkspaceMembership,
 } from '../../src/database/entities';
+import { DASHBOARD_SESSION_COOKIE } from '../../src/auth/dashboard-session-cookie';
 import { hashInviteToken } from '../../src/auth/workspace-invitation.service';
 import type { Repository } from 'typeorm';
 
@@ -148,7 +149,11 @@ describe('OIDC login and invites (e2e)', () => {
       .redirects(0);
 
     expect(callback.status).toBe(302);
-    expect(callback.headers.location).toMatch(/^\/login#token=/);
+    expect(callback.headers.location).toBe('/login');
+    expect(callback.headers.location).not.toContain('token=');
+    const setCookie = callback.headers['set-cookie'] as string | string[] | undefined;
+    const setCookieHeader = Array.isArray(setCookie) ? setCookie.join('\n') : (setCookie ?? '');
+    expect(setCookieHeader).toContain(`${DASHBOARD_SESSION_COOKIE}=`);
     const membership = await membershipRepo.findOne({
       where: {
         user_id: 'oidc:dev@example.com',

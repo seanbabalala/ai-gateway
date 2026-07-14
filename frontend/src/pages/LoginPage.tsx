@@ -9,7 +9,14 @@ import { Card, CardContent } from '@/components/ui/card'
 
 export function LoginPage() {
   const { t } = useTranslation('login')
-  const { completeLogin, localLoginEnabled, login, oidc } = useAuth()
+  const {
+    authenticated,
+    completeLogin,
+    loading: authLoading,
+    localLoginEnabled,
+    login,
+    oidc,
+  } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -28,6 +35,12 @@ export function LoginPage() {
       window.history.replaceState(null, '', '/login')
     }
   }, [completeLogin, navigate])
+
+  useEffect(() => {
+    if (!authLoading && authenticated) {
+      navigate('/', { replace: true })
+    }
+  }, [authenticated, authLoading, navigate])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
