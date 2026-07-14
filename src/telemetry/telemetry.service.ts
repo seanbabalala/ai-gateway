@@ -67,6 +67,17 @@ export interface DashboardAuthMetricInput {
   mode?: DashboardAuthMetricMode;
 }
 
+export type DashboardLegacyTokenMetricEvent =
+  | 'legacy_bearer_used'
+  | 'legacy_query_used'
+  | 'legacy_rejected';
+export type DashboardLegacyTokenMetricSource = 'bearer' | 'query' | 'unknown';
+
+export interface DashboardLegacyTokenMetricInput {
+  event: DashboardLegacyTokenMetricEvent;
+  source: DashboardLegacyTokenMetricSource;
+}
+
 export type StreamLifecycleMetricEvent = 'abort' | 'timeout';
 export type StreamLifecycleMetricReason = 'client_aborted' | 'idle_timeout' | 'max_duration';
 export type StreamLifecycleMetricPhase = 'pre_first_chunk' | 'transmission';
@@ -96,6 +107,7 @@ export class TelemetryService {
   readonly budgetReservations: Counter;
   readonly streamLifecycleTotal: Counter;
   readonly dashboardAuthEvents: Counter;
+  readonly dashboardLegacyTokenEvents: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
@@ -153,6 +165,13 @@ export class TelemetryService {
       description: 'Dashboard authentication status failures and disabled-auth startup events',
       unit: '{event}',
     });
+    this.dashboardLegacyTokenEvents = this.meter.createCounter(
+      'siftgate_dashboard_legacy_token_events_total',
+      {
+        description: 'Dashboard legacy token compatibility fallback events by bounded source',
+        unit: '{event}',
+      },
+    );
 
     // Histograms
     this.requestDuration = this.meter.createHistogram('siftgate_request_duration_seconds', {
@@ -258,6 +277,13 @@ export class TelemetryService {
     });
   }
 
+  recordDashboardLegacyTokenEvent(input: DashboardLegacyTokenMetricInput): void {
+    this.dashboardLegacyTokenEvents.add(1, {
+      event: this.safeDashboardLegacyTokenEvent(input.event),
+      source: this.safeDashboardLegacyTokenSource(input.source),
+    });
+  }
+
   private recordTokens(
     value: number,
     attrs: { node: string; model: string; direction: string },
@@ -346,6 +372,24 @@ export class TelemetryService {
       'production_ignored',
       'unknown',
     ].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeDashboardLegacyTokenEvent(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return [
+      'legacy_bearer_used',
+      'legacy_query_used',
+      'legacy_rejected',
+    ].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeDashboardLegacyTokenSource(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['bearer', 'query', 'unknown'].includes(normalized)
       ? normalized
       : 'unknown';
   }

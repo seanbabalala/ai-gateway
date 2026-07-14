@@ -28,6 +28,7 @@ describe('TelemetryService', () => {
     expect(service.budgetReservations).toBeDefined();
     expect(service.streamLifecycleTotal).toBeDefined();
     expect(service.dashboardAuthEvents).toBeDefined();
+    expect(service.dashboardLegacyTokenEvents).toBeDefined();
   });
 
   it('should create all histogram instruments', () => {
@@ -53,6 +54,9 @@ describe('TelemetryService', () => {
     expect(() => service.budgetReservations.add(1, { event: 'reserve' })).not.toThrow();
     expect(() => service.streamLifecycleTotal.add(1, { reason: 'client_aborted' })).not.toThrow();
     expect(() => service.dashboardAuthEvents.add(1, { event: 'status_failure' })).not.toThrow();
+    expect(() =>
+      service.dashboardLegacyTokenEvents.add(1, { event: 'legacy_bearer_used' }),
+    ).not.toThrow();
   });
 
   it('should not throw when recording histograms (no-op)', () => {
@@ -182,6 +186,20 @@ describe('TelemetryService', () => {
     expect(service.dashboardAuthEvents.add).toHaveBeenCalledWith(1, {
       event: 'disabled_auth',
       mode: 'production_ignored',
+    });
+  });
+
+  it('should record dashboard legacy token events with bounded labels', () => {
+    (service as any).dashboardLegacyTokenEvents = { add: jest.fn() };
+
+    service.recordDashboardLegacyTokenEvent({
+      event: 'legacy_query_used',
+      source: 'query',
+    });
+
+    expect(service.dashboardLegacyTokenEvents.add).toHaveBeenCalledWith(1, {
+      event: 'legacy_query_used',
+      source: 'query',
     });
   });
 

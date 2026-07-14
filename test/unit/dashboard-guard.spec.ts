@@ -11,6 +11,12 @@ function makeAuthService(overrides: Record<string, unknown> = {}): any {
   };
 }
 
+function makeTelemetryService(): any {
+  return {
+    recordDashboardLegacyTokenEvent: jest.fn(),
+  };
+}
+
 function makeContext(
   headers: Record<string, string> = {},
   query: Record<string, string> = {},
@@ -52,41 +58,58 @@ describe('DashboardGuard', () => {
   });
 
   it('should allow valid Bearer token', () => {
+    const telemetry = makeTelemetryService();
     const auth = makeAuthService({
       isAuthRequired: true,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
     });
-    const guard = new DashboardGuard(auth);
+    const guard = new DashboardGuard(auth, telemetry);
     const result = guard.canActivate(
       makeContext({ authorization: 'Bearer valid-jwt-token' }),
     );
     expect(result).toBe(true);
     expect(auth.verifyToken).toHaveBeenCalledWith('valid-jwt-token');
+    expect(telemetry.recordDashboardLegacyTokenEvent).toHaveBeenCalledWith({
+      event: 'legacy_bearer_used',
+      source: 'bearer',
+    });
+    expect(JSON.stringify(telemetry.recordDashboardLegacyTokenEvent.mock.calls)).not.toContain(
+      'valid-jwt-token',
+    );
   });
 
   it('should accept token from query param (for SSE)', () => {
     const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const telemetry = makeTelemetryService();
     const auth = makeAuthService({
       isAuthRequired: true,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
     });
-    const guard = new DashboardGuard(auth);
+    const guard = new DashboardGuard(auth, telemetry);
     const result = guard.canActivate(makeContext({}, { token: 'query-jwt' }));
     expect(result).toBe(true);
     expect(auth.verifyToken).toHaveBeenCalledWith('query-jwt');
+    expect(telemetry.recordDashboardLegacyTokenEvent).toHaveBeenCalledWith({
+      event: 'legacy_query_used',
+      source: 'query',
+    });
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('query-token authentication is deprecated'),
     );
     expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('query-jwt');
+    expect(JSON.stringify(telemetry.recordDashboardLegacyTokenEvent.mock.calls)).not.toContain(
+      'query-jwt',
+    );
     warnSpy.mockRestore();
   });
 
   it('should accept token from dashboard session cookie', () => {
+    const telemetry = makeTelemetryService();
     const auth = makeAuthService({
       isAuthRequired: true,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
     });
-    const guard = new DashboardGuard(auth);
+    const guard = new DashboardGuard(auth, telemetry);
     const result = guard.canActivate(
       makeContext(
         { cookie: `other=value; ${DASHBOARD_SESSION_COOKIE}=cookie-jwt` },
@@ -94,6 +117,7 @@ describe('DashboardGuard', () => {
     );
     expect(result).toBe(true);
     expect(auth.verifyToken).toHaveBeenCalledWith('cookie-jwt');
+    expect(telemetry.recordDashboardLegacyTokenEvent).not.toHaveBeenCalled();
   });
 
   it('should prefer Bearer header over query param', () => {
@@ -165,12 +189,13 @@ describe('DashboardGuard', () => {
   });
 
   it('should reject legacy Bearer tokens when compatibility is disabled', () => {
+    const telemetry = makeTelemetryService();
     const auth = makeAuthService({
       isAuthRequired: true,
       allowsLegacyDashboardTokenAuth: false,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
     });
-    const guard = new DashboardGuard(auth);
+    const guard = new DashboardGuard(auth, telemetry);
 
     expect(() =>
       guard.canActivate(
@@ -178,22 +203,37 @@ describe('DashboardGuard', () => {
       ),
     ).toThrow(UnauthorizedException);
     expect(auth.verifyToken).not.toHaveBeenCalled();
+    expect(telemetry.recordDashboardLegacyTokenEvent).toHaveBeenCalledWith({
+      event: 'legacy_rejected',
+      source: 'bearer',
+    });
+    expect(JSON.stringify(telemetry.recordDashboardLegacyTokenEvent.mock.calls)).not.toContain(
+      'header-token',
+    );
   });
 
   it('should reject legacy query tokens when compatibility is disabled', () => {
     const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const telemetry = makeTelemetryService();
     const auth = makeAuthService({
       isAuthRequired: true,
       allowsLegacyDashboardTokenAuth: false,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
     });
-    const guard = new DashboardGuard(auth);
+    const guard = new DashboardGuard(auth, telemetry);
 
     expect(() =>
       guard.canActivate(makeContext({}, { token: 'query-token' })),
     ).toThrow(UnauthorizedException);
     expect(auth.verifyToken).not.toHaveBeenCalled();
     expect(warnSpy).not.toHaveBeenCalled();
+    expect(telemetry.recordDashboardLegacyTokenEvent).toHaveBeenCalledWith({
+      event: 'legacy_rejected',
+      source: 'query',
+    });
+    expect(JSON.stringify(telemetry.recordDashboardLegacyTokenEvent.mock.calls)).not.toContain(
+      'query-token',
+    );
     warnSpy.mockRestore();
   });
 });
