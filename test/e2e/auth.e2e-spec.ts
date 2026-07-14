@@ -20,6 +20,7 @@ describe('Auth (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.authRequired).toBe(false);
+    expect(res.body.authenticated).toBe(false);
     expect(res.body.localLoginEnabled).toBe(false);
     expect(res.body.oidc.enabled).toBe(false);
   });

@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { DASHBOARD_SESSION_COOKIE } from './dashboard-session-cookie';
+import { getDashboardSessionCookie } from './dashboard-session-cookie';
 
 @Injectable()
 export class DashboardGuard implements CanActivate {
@@ -54,9 +54,7 @@ export class DashboardGuard implements CanActivate {
     }
 
     // 2. HttpOnly dashboard session cookie.
-    const cookieToken =
-      request.cookies?.[DASHBOARD_SESSION_COOKIE] ||
-      this.extractCookieToken(this.headerValue(request.headers?.cookie));
+    const cookieToken = getDashboardSessionCookie(request);
     if (cookieToken) {
       return cookieToken;
     }
@@ -72,21 +70,5 @@ export class DashboardGuard implements CanActivate {
 
   private headerValue(value: string | string[] | undefined): string | undefined {
     return Array.isArray(value) ? value[0] : value;
-  }
-
-  private extractCookieToken(cookieHeader: string | undefined): string | null {
-    if (!cookieHeader) return null;
-    for (const part of cookieHeader.split(';')) {
-      const [rawName, ...rawValue] = part.split('=');
-      if (rawName.trim() !== DASHBOARD_SESSION_COOKIE) continue;
-      const value = rawValue.join('=').trim();
-      if (!value) return null;
-      try {
-        return decodeURIComponent(value);
-      } catch {
-        return value;
-      }
-    }
-    return null;
   }
 }

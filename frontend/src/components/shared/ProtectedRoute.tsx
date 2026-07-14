@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { t } = useTranslation('common')
-  const { token, authRequired, loading } = useAuth()
+  const { authenticated, authRequired, loading } = useAuth()
 
   if (loading) {
     return (
@@ -18,7 +18,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     )
   }
 
-  if (authRequired && !token) {
+  if (authRequired && !authenticated) {
     return <Navigate to="/login" replace />
   }
 

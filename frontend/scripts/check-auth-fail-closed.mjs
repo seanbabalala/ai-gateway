@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const authContextPath = fileURLToPath(new URL('../src/contexts/AuthContext.tsx', import.meta.url))
+const protectedRoutePath = fileURLToPath(new URL('../src/components/shared/ProtectedRoute.tsx', import.meta.url))
 const source = readFileSync(authContextPath, 'utf8')
+const protectedRouteSource = readFileSync(protectedRoutePath, 'utf8')
 
 assert(
   source.includes('const [authRequired, setAuthRequired] = useState(true)'),
@@ -17,6 +19,17 @@ assert(
 assert(
   !source.includes('assume no auth required') && !source.includes('setAuthRequired(false)\\n          setLocalLoginEnabled(false)'),
   'AuthContext must not fail open when /api/auth/status is unavailable.',
+)
+
+assert(
+  source.includes('authenticated?: boolean') && source.includes('setSessionAuthenticated(Boolean(data.authenticated))'),
+  'AuthContext must consume the backend authenticated status so cookie-backed sessions survive reloads.',
+)
+
+assert(
+  protectedRouteSource.includes('authRequired && !authenticated') &&
+    !protectedRouteSource.includes('authRequired && !token'),
+  'ProtectedRoute must use verified authentication state instead of requiring a localStorage token.',
 )
 
 console.log('Dashboard auth status fail-closed behavior validated.')
