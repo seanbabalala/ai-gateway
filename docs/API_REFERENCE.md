@@ -22,7 +22,7 @@ SiftGate uses two bearer-token contexts:
 | Context | Used by | Header |
 | --- | --- | --- |
 | Gateway API key | AI proxy endpoints under `/v1/*` | `Authorization: Bearer gw_sk_live_...` |
-| Dashboard session JWT | Dashboard API under `/api/dashboard/*` when dashboard auth is enabled | `Authorization: Bearer <dashboard_jwt>` |
+| Dashboard session JWT | Dashboard API under `/api/dashboard/*` when dashboard auth is enabled | HttpOnly `siftgate_dashboard_session` cookie, or `Authorization: Bearer <dashboard_jwt>` for compatibility |
 
 Provider API keys are never client credentials. They stay in `gateway.config.yaml`, `.env`, or another local secret source and are used only by the gateway when it calls upstream providers.
 
@@ -377,7 +377,8 @@ Dashboard routes are guarded by the dashboard auth layer by default. Set
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/api/auth/login` | Exchange the dashboard password for a session JWT |
+| `POST` | `/api/auth/login` | Exchange the dashboard password for a session JWT and HttpOnly session cookie |
+| `POST` | `/api/auth/logout` | Clear the dashboard session cookie |
 | `GET` | `/api/auth/status` | Check whether dashboard auth is required |
 | `GET` | `/api/dashboard/stats` | Aggregate calls, tokens, cost, latency, success rate, and distributions |
 | `GET` | `/api/dashboard/logs` | Paginated call logs |

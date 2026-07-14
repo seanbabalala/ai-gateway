@@ -33,6 +33,10 @@ import {
 } from '../openapi/openapi.dto';
 import { StateBackendService } from '../state/state-backend.service';
 import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
+import {
+  clearDashboardSessionCookie,
+  setDashboardSessionCookie,
+} from './dashboard-session-cookie';
 
 @Controller('api/auth')
 @ApiTags('Dashboard Auth')
@@ -59,7 +63,11 @@ export class AuthController {
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
   @ApiTooManyRequestsResponse({ type: ErrorEnvelopeDto })
-  async login(@Req() req: any, @Body() body: { password?: string; invite?: string }) {
+  async login(
+    @Req() req: any,
+    @Body() body: { password?: string; invite?: string },
+    @Res({ passthrough: true }) res?: Response,
+  ) {
     const ip: string = req.ip || req.connection?.remoteAddress || 'unknown';
     await this.checkLoginRate(ip);
 
@@ -76,6 +84,7 @@ export class AuthController {
         );
       }
       // No Dashboard auth configured: preserve the open local/dev behavior.
+      clearDashboardSessionCookie(res);
       return { token: '' };
     }
 
@@ -101,7 +110,15 @@ export class AuthController {
           }
         : {},
     );
+    setDashboardSessionCookie(res, token);
     return { token };
+  }
+
+  @Post('logout')
+  @ApiOperation({ summary: 'Clear the Dashboard session cookie' })
+  logout(@Res({ passthrough: true }) res?: Response) {
+    clearDashboardSessionCookie(res);
+    return { ok: true };
   }
 
   /**
@@ -178,6 +195,7 @@ export class AuthController {
       );
     }
     const result = await this.oidc.completeCallback({ code, state });
+    setDashboardSessionCookie(res, result.token);
     return res.redirect(302, this.oidc.loginRedirectUrl({ token: result.token }));
   }
 

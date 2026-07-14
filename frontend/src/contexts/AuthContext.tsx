@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function checkStatus() {
       try {
-        const res = await fetch('/api/auth/status')
+        const res = await fetch('/api/auth/status', { credentials: 'same-origin' })
         if (!res.ok) throw new Error(i18n.t('login:login.authStatusError'))
         const data = (await res.json()) as {
           authRequired: boolean
@@ -96,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (password: string, invite?: string | null) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password, invite: invite || undefined }),
     })
@@ -118,6 +119,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearAuthToken()
     setToken(null)
+    void fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).catch(() => undefined)
   }, [])
 
   return (
