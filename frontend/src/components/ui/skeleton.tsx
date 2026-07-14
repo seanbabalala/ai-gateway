@@ -5,6 +5,8 @@ interface SkeletonProps {
   style?: React.CSSProperties
 }
 
+const chartSkeletonBars = [42, 68, 54, 80, 46, 64, 58, 72] as const
+
 export function Skeleton({ className, style }: SkeletonProps) {
   return (
     <div className={cn('animate-shimmer rounded-lg', className)} style={style} />
@@ -73,7 +75,7 @@ export function SkeletonChart({
           key={i}
           className="flex-1 rounded-t-md"
           style={{
-            height: `${30 + Math.random() * 60}%`,
+            height: `${chartSkeletonBars[i % chartSkeletonBars.length]}%`,
             animationDelay: `${i * 100}ms`,
           }}
         />
