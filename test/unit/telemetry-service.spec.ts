@@ -25,6 +25,7 @@ describe('TelemetryService', () => {
     expect(service.fallbackTotal).toBeDefined();
     expect(service.cacheHitsTotal).toBeDefined();
     expect(service.cacheMissesTotal).toBeDefined();
+    expect(service.budgetReservations).toBeDefined();
   });
 
   it('should create all histogram instruments', () => {
@@ -47,6 +48,7 @@ describe('TelemetryService', () => {
     expect(() => service.fallbackTotal.add(1, { tier: 'standard' })).not.toThrow();
     expect(() => service.cacheHitsTotal.add(1)).not.toThrow();
     expect(() => service.cacheMissesTotal.add(1)).not.toThrow();
+    expect(() => service.budgetReservations.add(1, { event: 'reserve' })).not.toThrow();
   });
 
   it('should not throw when recording histograms (no-op)', () => {
@@ -127,6 +129,22 @@ describe('TelemetryService', () => {
     expect(service.cacheOperations.add).toHaveBeenCalledWith(1, { operation: 'store' });
     expect(service.cacheHitsTotal.add).toHaveBeenCalledWith(1);
     expect(service.cacheMissesTotal.add).toHaveBeenCalledWith(1);
+  });
+
+  it('should record budget reservation metrics with bounded labels', () => {
+    (service as any).budgetReservations = { add: jest.fn() };
+
+    service.recordBudgetReservation({
+      event: 'reserve',
+      scope: 'api_key',
+      budgetType: 'daily tokens',
+    });
+
+    expect(service.budgetReservations.add).toHaveBeenCalledWith(1, {
+      event: 'reserve',
+      scope: 'api_key',
+      budget_type: 'daily_tokens',
+    });
   });
 
   // ── withSpan() ──────────────────────────────────────────────
