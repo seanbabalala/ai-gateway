@@ -3005,9 +3005,52 @@ describe('ProviderClientService', () => {
       }).rejects.toThrow('No response body');
     });
 
-    it('should emit error event on stream read failure', async () => {
+    it('should throw ProviderError when stream read fails before any chunk', async () => {
       const stream = new ReadableStream({
         start(controller) {
+          controller.error(new Error('Stream read failed Bearer sk-secret-provider-token'));
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      const events = [];
+      let thrown: unknown;
+      try {
+        for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+          events.push(event);
+        }
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(events).toHaveLength(0);
+      expect(thrown).toBeInstanceOf(ProviderError);
+      expect(thrown).toMatchObject({
+        statusCode: 502,
+        failureType: 'http_error',
+        nodeId: 'openai',
+      });
+      const message = thrown instanceof Error ? thrown.message : '';
+      expect(message).toContain('[REDACTED]');
+      expect(message).not.toContain('sk-secret-provider-token');
+    });
+
+    it('should emit error event on stream read failure after first chunk', async () => {
+      const encoder = new TextEncoder();
+      let readCount = 0;
+      const stream = new ReadableStream({
+        pull(controller) {
+          readCount += 1;
+          if (readCount === 1) {
+            controller.enqueue(encoder.encode(
+              'data: {"id":"chatcmpl-read-failure","model":"gpt-4o","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+            ));
+            return;
+          }
           controller.error(new Error('Stream read failed Bearer sk-secret-provider-token'));
         },
       });
@@ -3021,7 +3064,7 @@ describe('ProviderClientService', () => {
       for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
         events.push(event);
       }
-      expect(events.length).toBeGreaterThanOrEqual(1);
+      expect(events.length).toBeGreaterThanOrEqual(2);
       const errorEvent = events.find(e => e.type === 'error');
       expect(errorEvent).toBeDefined();
       expect(errorEvent?.type === 'error' ? errorEvent.error.message : '').toContain('[REDACTED]');

@@ -438,6 +438,7 @@ export class ProviderClientService {
       }
       return parsedEvents;
     };
+    let forwardedStreamData = false;
     const cancelReader = () => {
       void reader.cancel().catch(() => undefined);
     };
@@ -463,12 +464,14 @@ export class ProviderClientService {
         const parsedEvents = parseChunk(chunk);
         if (passthroughNativeStream) {
           if (chunk || parsedEvents.length > 0) {
+            forwardedStreamData = true;
             yield { type: 'raw_sse', text: chunk, events: parsedEvents };
           }
           continue;
         }
 
         for (const event of parsedEvents) {
+          forwardedStreamData = true;
           yield event;
         }
       }
@@ -476,9 +479,11 @@ export class ProviderClientService {
       if (trailingChunk) {
         const parsedEvents = parseChunk(trailingChunk);
         if (passthroughNativeStream) {
+          forwardedStreamData = true;
           yield { type: 'raw_sse', text: trailingChunk, events: parsedEvents };
         } else {
           for (const event of parsedEvents) {
+            forwardedStreamData = true;
             yield event;
           }
         }
@@ -503,16 +508,18 @@ export class ProviderClientService {
           }
         }
         if (passthroughNativeStream && flushedEvents.length > 0) {
+          forwardedStreamData = true;
           yield { type: 'raw_sse', text: '', events: flushedEvents };
         } else {
           for (const event of flushedEvents) {
+            forwardedStreamData = true;
             yield event;
           }
         }
       }
     } catch (err) {
-      // Transmission phase error — emit as error event (don't throw)
       const message = err instanceof Error ? err.message : String(err);
+      const redactedMessage = redactProviderErrorText(message);
       const providerError = err instanceof ProviderError ? err : null;
       if (providerError) {
         this.completeResponseCredential(response, {
@@ -521,10 +528,29 @@ export class ProviderClientService {
           error: providerError.message,
         });
       }
+      if (!forwardedStreamData) {
+        const connectionPhaseError =
+          providerError ||
+          new ProviderError(
+            `Provider ${node.id} stream failed before receiving data: ${redactedMessage}`,
+            502,
+            node.id,
+            'http_error',
+          );
+        if (!providerError) {
+          this.completeResponseCredential(response, {
+            statusCode: connectionPhaseError.statusCode,
+            failureType: connectionPhaseError.failureType,
+            error: connectionPhaseError.message,
+          });
+        }
+        throw connectionPhaseError;
+      }
+      // Transmission phase error — emit as error event (don't throw)
       const errorEvent: CanonicalStreamEvent = {
         type: 'error',
         error: {
-          message: `Stream interrupted from ${node.id}: ${redactProviderErrorText(message)}`,
+          message: `Stream interrupted from ${node.id}: ${redactedMessage}`,
           code: providerError?.failureType === 'timeout' ? 'timeout' : 'stream_error',
         },
       };
