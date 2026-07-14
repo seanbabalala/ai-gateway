@@ -53,8 +53,8 @@ hardening visible without blocking local development.
   `credential_pool.strategy`/`sticky_by` values, cooldown controls, and retry
   HTTP status lists.
 - Optional `nodes[].connection` pool settings, including `pool_size`,
-  `keep_alive_ms`, `headers_timeout_ms`, `body_timeout_ms`, and experimental
-  `http2`.
+  `keep_alive_ms`, `headers_timeout_ms`, `body_timeout_ms`,
+  `stream_max_duration_ms`, and experimental `http2`.
 - Duplicate node ids and duplicate model ids inside the same node.
 - Shared ConfigService diagnostics for ambiguous node/model resolution,
   duplicate model ids across nodes, alias conflicts, duplicate prefixes,

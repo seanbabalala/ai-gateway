@@ -461,6 +461,7 @@ describe('config validator', () => {
               keep_alive_ms: 60000,
               headers_timeout_ms: 5000,
               body_timeout_ms: 0,
+              stream_max_duration_ms: 900000,
               http2: true,
             },
           },

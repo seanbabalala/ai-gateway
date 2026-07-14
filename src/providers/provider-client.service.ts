@@ -422,6 +422,8 @@ export class ProviderClientService {
       node,
       options.timeoutMs,
     );
+    const streamMaxDurationMs = this.resolveStreamMaxDurationMs(node);
+    const streamStartedAtMs = Date.now();
     const parseChunk = (chunk: string): CanonicalStreamEvent[] => {
       const parsedEvents = [...parser.parse(chunk)];
       for (const event of parsedEvents) {
@@ -453,10 +455,12 @@ export class ProviderClientService {
         if (options.signal?.aborted) {
           break;
         }
-        const { done, value } = await this.readStreamChunkWithIdleTimeout(
+        const { done, value } = await this.readStreamChunkWithTimeouts(
           reader,
           node.id,
           streamBodyIdleTimeoutMs,
+          streamMaxDurationMs,
+          streamStartedAtMs,
         );
         if (done) break;
 
@@ -587,34 +591,75 @@ export class ProviderClientService {
     return requestTimeoutMs ?? node.timeout_ms ?? 60000;
   }
 
-  private async readStreamChunkWithIdleTimeout(
+  private resolveStreamMaxDurationMs(node: NodeConfig): number {
+    const configuredMaxDurationMs = node.connection?.stream_max_duration_ms;
+    if (
+      typeof configuredMaxDurationMs === 'number' &&
+      Number.isFinite(configuredMaxDurationMs) &&
+      configuredMaxDurationMs >= 0
+    ) {
+      return Math.floor(configuredMaxDurationMs);
+    }
+    return 0;
+  }
+
+  private async readStreamChunkWithTimeouts(
     reader: ReadableStreamDefaultReader<Uint8Array>,
     nodeId: string,
-    timeoutMs: number,
+    idleTimeoutMs: number,
+    maxDurationMs: number,
+    streamStartedAtMs: number,
   ): Promise<ReadableStreamReadResult<Uint8Array>> {
-    if (timeoutMs <= 0) {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const timeoutPromises: Promise<never>[] = [];
+
+    const addTimeout = (
+      timeoutMs: number,
+      errorMessage: string,
+    ): void => {
+      timeoutPromises.push(
+        new Promise<never>((_resolve, reject) => {
+          const timeout = setTimeout(() => {
+            void reader.cancel().catch(() => undefined);
+            reject(new ProviderError(errorMessage, 504, nodeId, 'timeout'));
+          }, timeoutMs);
+          timers.push(timeout);
+        }),
+      );
+    };
+
+    if (maxDurationMs > 0) {
+      const remainingDurationMs = maxDurationMs - (Date.now() - streamStartedAtMs);
+      if (remainingDurationMs <= 0) {
+        void reader.cancel().catch(() => undefined);
+        throw new ProviderError(
+          `Provider ${nodeId} stream exceeded max duration ${maxDurationMs}ms`,
+          504,
+          nodeId,
+          'timeout',
+        );
+      }
+      addTimeout(
+        remainingDurationMs,
+        `Provider ${nodeId} stream exceeded max duration ${maxDurationMs}ms`,
+      );
+    }
+
+    if (idleTimeoutMs > 0) {
+      addTimeout(
+        idleTimeoutMs,
+        `Provider ${nodeId} stream timed out after ${idleTimeoutMs}ms without receiving data`,
+      );
+    }
+
+    if (timeoutPromises.length === 0) {
       return reader.read();
     }
 
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      timeout = setTimeout(() => {
-        void reader.cancel().catch(() => undefined);
-        reject(
-          new ProviderError(
-            `Provider ${nodeId} stream timed out after ${timeoutMs}ms without receiving data`,
-            504,
-            nodeId,
-            'timeout',
-          ),
-        );
-      }, timeoutMs);
-    });
-
     try {
-      return await Promise.race([reader.read(), timeoutPromise]);
+      return await Promise.race([reader.read(), ...timeoutPromises]);
     } finally {
-      if (timeout) clearTimeout(timeout);
+      for (const timeout of timers) clearTimeout(timeout);
     }
   }
 

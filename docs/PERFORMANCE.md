@@ -153,11 +153,16 @@ nodes:
       keep_alive_ms: 60000
       headers_timeout_ms: 30000
       body_timeout_ms: 300000
+      stream_max_duration_ms: 900000
       http2: false
 ```
 
 `http2: true` is experimental and should be tested against each upstream before
 production use. Leave it disabled for default HTTP/1.1 pooling.
+`body_timeout_ms` limits idle time between stream chunks; set
+`stream_max_duration_ms` when you also need a total wall-clock deadline for
+long-lived upstream streams. Use `0` or omit the field to disable the total
+stream deadline.
 
 ## Existing Gateway / Upstream Benchmark
 

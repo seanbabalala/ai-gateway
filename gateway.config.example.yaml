@@ -590,6 +590,7 @@ nodes:
     #   keep_alive_ms: 60000
     #   headers_timeout_ms: 30000
     #   body_timeout_ms: 300000
+    #   stream_max_duration_ms: 900000 # 0 or unset disables the total stream deadline
     #   http2: false
     # Active health probing is disabled by default. Prefer HEAD/GET against a
     # cheap provider/proxy readiness endpoint. Use lightweight_model only when

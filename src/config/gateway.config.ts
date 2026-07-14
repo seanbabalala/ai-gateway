@@ -725,6 +725,8 @@ export interface NodeConnectionConfig {
   headers_timeout_ms?: number;
   /** Timeout between upstream response body chunks in milliseconds; 0 disables. */
   body_timeout_ms?: number;
+  /** Maximum total duration for one upstream stream in milliseconds; 0 disables. */
+  stream_max_duration_ms?: number;
   /** Experimental HTTP/2 ALPN support through undici allowH2 (default: false). */
   http2?: boolean;
 }
