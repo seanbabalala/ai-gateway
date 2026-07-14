@@ -221,6 +221,31 @@ Startup diagnostics and migration docs now treat the v1.9-to-v2 dry-run report,
 database backups, and metadata-only audit table as the final Platform Trust
 upgrade guardrails before v2.0.0 GA.
 
+## Production Database Change Policy
+
+For production PostgreSQL, keep `database.synchronize=false` and treat schema
+changes as release-controlled migration work. The v1.9-to-v2 dry run is
+read-only evidence; it does not replace a database backup, staging rehearsal,
+or maintenance window for mutating startup/backfill steps.
+
+Before a production v2 upgrade:
+
+- Run the dry run and store the JSON report with release evidence.
+- Back up `gateway.config.yaml`, `catalog.override.yaml`, `.env`, and the
+  SQLite or PostgreSQL database.
+- Rehearse the upgrade against staging or a restored production snapshot.
+- Apply any required schema bootstrap or migration step once before rolling
+  multiple gateway instances.
+- Verify row counts and the privacy boundary: prompts, responses, raw provider
+  headers, provider keys, media bytes, tool payloads, hidden reasoning text, and
+  resolved secrets should not appear in migration reports.
+
+Startup schema patch services are compatibility bridges for older local
+metadata tables. They can keep upgraded SQLite and small deployments moving, but
+production operators should not rely on them as a long-term substitute for
+explicit backups, staged migration evidence, and release notes that name the
+schema change being applied.
+
 ## v2.0.0 GA Upgrade Checklist
 
 Before upgrading an existing v1.9.x deployment to v2.0.0:

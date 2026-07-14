@@ -302,6 +302,39 @@ Recommended production process:
 6. Restart SiftGate and verify `/health`, Dashboard API keys, budgets, and call
    logs.
 
+### Production Schema Policy
+
+Treat production PostgreSQL schema changes as deployment steps, not as ordinary
+gateway startup side effects:
+
+- Keep `database.synchronize: false` for production PostgreSQL. SQLite and
+  local development can keep the default synchronize behavior, but production
+  Postgres should not rely on TypeORM runtime synchronization as a migration
+  strategy.
+- Run schema bootstrap or migration commands once per environment before the
+  gateway rollout. For multi-instance deployments, apply the database step
+  before starting new gateway instances so several pods do not attempt schema
+  changes concurrently.
+- Take a database backup or managed snapshot before every mutating schema step.
+  Keep the backup until `/ready`, `/health`, Dashboard login, API key lookup,
+  budgets, call logs, and audit/event pages have been verified on the new
+  release.
+- Rehearse the same command sequence against staging or a restored production
+  snapshot. Keep the dry-run output, row counts, and release version with the
+  change record.
+- Rollbacks are database rollbacks. Do not assume application downgrade can
+  reverse a schema change; restore the snapshot or run the documented down
+  migration when one is provided.
+
+The startup schema patch services in `src/database/*schema-patch.service.ts`
+exist for compatibility windows around local SQLite and older metadata tables.
+They are intentionally small, idempotent bridges so upgraded single-node
+deployments can keep starting while the project moves older metadata into the
+current entity shape. Operators should treat them as compatibility support, not
+as a substitute for production migration planning. When a release note or
+change review says a schema patch may run, test it in staging first and watch
+startup logs for `Applied schema patch:` entries.
+
 ## Health And Readiness
 
 Use `/ready` for load balancer and Kubernetes readiness probes. It checks the

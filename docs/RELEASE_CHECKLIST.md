@@ -168,6 +168,20 @@ cd frontend && npm test && npm run build
 If no Dashboard strings changed, state that no locale files were changed in the
 release notes or final implementation summary.
 
+## Database Migration Review
+
+When a release changes persistent entities, schema patch services, or database
+configuration:
+
+- Confirm production PostgreSQL guidance keeps `database.synchronize=false`.
+- Document the migration or bootstrap command, dry-run evidence, and rollback
+  path in the PR and release notes.
+- Take or verify a database backup before running mutating schema steps.
+- Apply migrations once per environment before rolling multiple gateway
+  instances.
+- Treat startup schema patch services as compatibility windows; verify them in
+  staging and watch startup logs for `Applied schema patch:` entries.
+
 ## Documentation And Privacy Review
 
 - Update `CHANGELOG.md` under the exact release version.
