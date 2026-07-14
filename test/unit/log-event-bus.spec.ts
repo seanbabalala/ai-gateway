@@ -1,5 +1,5 @@
 import { LogEventBus } from '../../src/dashboard/log-event-bus';
-import { firstValueFrom, take, toArray } from 'rxjs';
+import { take } from 'rxjs';
 
 describe('LogEventBus', () => {
   it('should emit log events to subscribers', (done) => {

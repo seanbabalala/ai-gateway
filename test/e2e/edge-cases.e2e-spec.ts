@@ -21,7 +21,7 @@ describe('Edge Cases (e2e)', () => {
 
   it('primary returns 500 → fallback used → 200', async () => {
     let callCount = 0;
-    harness.fetchMock.setHandler(async (url, init) => {
+    harness.fetchMock.setHandler(async (url, _init) => {
       callCount++;
       if (callCount === 1) {
         // Primary fails

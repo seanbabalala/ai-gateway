@@ -2851,7 +2851,7 @@ describe("DashboardController — exportLogs", () => {
 
 describe("DashboardController — budget", () => {
   it("should return budget status", async () => {
-    const { controller, budgetService } = makeDashboard({
+    const { controller } = makeDashboard({
       budgetService: {
         getStatus: jest
           .fn()
@@ -3338,7 +3338,7 @@ describe("DashboardController — capabilities & routing", () => {
 
   it("should recommend tiers", () => {
     const { controller, capabilityService } = makeDashboard();
-    const result = controller.recommendTiers({
+    controller.recommendTiers({
       capabilities: ["reasoning", "code"],
     });
     expect(capabilityService.recommendTiers).toHaveBeenCalledWith([

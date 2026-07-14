@@ -408,7 +408,6 @@ export function buildCatalogSyncStatus(input: {
     supported_adapters: supportedCatalogSyncAdapters(),
     enabled_adapters: enabledAdapters,
     providers: sources.map((source) => {
-      const provider = input.catalog.providers.find((entry) => entry.id === source.provider);
       const adapterInfo = adapterStatusInfo(source.provider, input.catalog, input.internal);
       const lastSync = adapterInfo.last_sync;
       const staleAfterDays = adapterInfo.stale_after_days ?? (source.automatic ? 7 : null);

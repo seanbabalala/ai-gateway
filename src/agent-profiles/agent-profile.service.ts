@@ -889,7 +889,7 @@ export class AgentProfileService {
   ): Promise<AgentProfileGatewayKeySummary | null> {
     try {
       return this.toGatewayKeySummary(await this.gatewayApiKeys.getSummary(id));
-    } catch (error) {
+    } catch (_error) {
       if (strict) {
         throw new BadRequestException(`Unknown api_key_id: ${id}`);
       }

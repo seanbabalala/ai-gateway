@@ -10,7 +10,6 @@ import {
 } from '../http/public-error-handling'
 import {
   MCP_REQUEST_ID_HEADER,
-  sendPublicErrorResponse,
 } from '../http/public-contract'
 import { ErrorEnvelopeDto } from '../openapi/openapi.dto'
 import { McpGatewayService } from './mcp-gateway.service'

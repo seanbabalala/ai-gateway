@@ -11,7 +11,6 @@ import * as os from "os";
 import { PluginLoaderService } from "../../src/plugins/plugin-loader.service";
 import { PluginRegistryService } from "../../src/plugins/plugin-registry.service";
 import { EventBusService } from "../../src/plugins/event-bus.service";
-import type { GatewayPlugin } from "../../src/plugins/types";
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -29,11 +28,6 @@ function makeLoader(overrides: Record<string, any> = {}): {
 
   const loader = new PluginLoaderService(registry, eventBus, config as any);
   return { loader, registry, eventBus };
-}
-
-class TestPlugin implements GatewayPlugin {
-  meta = { name: "test-plugin", version: "1.0.0" };
-  onLoad = jest.fn();
 }
 
 // ── Tests ───────────────────────────────────────────────────

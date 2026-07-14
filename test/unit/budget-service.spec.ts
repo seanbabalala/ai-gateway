@@ -6,7 +6,7 @@ import { mockConfigService } from '../helpers';
  * Stores entities in an array and simulates basic CRUD.
  */
 function mockBudgetRepo() {
-  let store: any[] = [];
+  const store: any[] = [];
   let nextId = 1;
 
   return {

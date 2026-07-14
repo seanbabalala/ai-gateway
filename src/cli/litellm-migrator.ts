@@ -39,12 +39,6 @@ export interface LiteLlmMigrationResult {
   report: MigrationReport;
 }
 
-interface LiteLlmModelEntry {
-  model_name?: unknown;
-  litellm_params?: Record<string, unknown>;
-  model_info?: Record<string, unknown>;
-}
-
 interface NormalizedLiteLlmModel {
   index: number;
   modelName: string;

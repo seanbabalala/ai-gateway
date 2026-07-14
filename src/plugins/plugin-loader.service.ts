@@ -91,7 +91,6 @@ export class PluginLoaderService implements OnModuleInit {
     const resolvedPath = this.resolvePluginPath(entry.path);
 
     // require() the plugin module
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require(resolvedPath);
     const PluginClass = mod.default || mod;
 
@@ -144,7 +143,6 @@ export class PluginLoaderService implements OnModuleInit {
   ): void {
     try {
       // Use ajv if available (it's in node_modules)
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const Ajv = require("ajv");
       const ajv = new Ajv({ allErrors: true });
       const validate = ajv.compile(schema);

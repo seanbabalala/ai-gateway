@@ -129,7 +129,7 @@ describe('ConfigService', () => {
         (n) => n.model_aliases && Object.keys(n.model_aliases).length > 0,
       );
       if (nodeWithAliases) {
-        const [alias, target] = Object.entries(nodeWithAliases.model_aliases!)[0];
+        const [alias] = Object.entries(nodeWithAliases.model_aliases!)[0];
         const result = config.resolveModel(alias);
         expect(result).not.toBeNull();
         // The alias should resolve to the correct target model

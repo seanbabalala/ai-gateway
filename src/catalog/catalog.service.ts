@@ -529,20 +529,6 @@ function normalizeCanonicalRegistryValue(
   };
 }
 
-function normalizeCatalogInternalMaterializationValue(
-  value: unknown,
-): CatalogInternalMaterialization {
-  if (!isRecord(value)) return {};
-  const canonicalRegistry = normalizeCanonicalRegistryValue(value.canonical_registry);
-  const zeroEvalOverlay = normalizeZeroEvalOverlayDiagnosticsValue(
-    isRecord(value.diagnostics) ? value.diagnostics.zeroeval_overlay : undefined,
-  );
-  return {
-    canonical_registry: canonicalRegistry,
-    diagnostics: zeroEvalOverlay ? { zeroeval_overlay: zeroEvalOverlay } : undefined,
-  };
-}
-
 function normalizeComparableUrl(value: string): string {
   try {
     const url = new URL(value);
