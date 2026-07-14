@@ -1,7 +1,27 @@
 import { AuthService } from '../../src/auth/auth.service';
 import { mockConfigService } from '../helpers';
 
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+const ORIGINAL_ALLOW_UNAUTHENTICATED_DASHBOARD =
+  process.env.SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD;
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
 describe('AuthService', () => {
+  afterEach(() => {
+    restoreEnv('NODE_ENV', ORIGINAL_NODE_ENV);
+    restoreEnv(
+      'SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD',
+      ORIGINAL_ALLOW_UNAUTHENTICATED_DASHBOARD,
+    );
+  });
+
   // ── isAuthRequired ───────────────────────────────────────
 
   describe('isAuthRequired', () => {
@@ -12,6 +32,28 @@ describe('AuthService', () => {
     });
 
     it('should return false when dashboard auth is explicitly disabled', () => {
+      const config = mockConfigService({
+        dashboard: { auth_required: false },
+        dashboardPasswordHash: undefined,
+      });
+      const svc = new AuthService(config);
+      expect(svc.isAuthRequired).toBe(false);
+    });
+
+    it('should require auth in production when dashboard auth is disabled without override', () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD;
+      const config = mockConfigService({
+        dashboard: { auth_required: false },
+        dashboardPasswordHash: undefined,
+      });
+      const svc = new AuthService(config);
+      expect(svc.isAuthRequired).toBe(true);
+    });
+
+    it('should allow disabled dashboard auth in production only with explicit override', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD = 'true';
       const config = mockConfigService({
         dashboard: { auth_required: false },
         dashboardPasswordHash: undefined,
@@ -108,6 +150,21 @@ describe('AuthService', () => {
 
       await svc.ensurePasswordHashed();
       expect(config.setDashboardPasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('should generate a password when production config disables auth without override', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD;
+      const config = mockConfigService({
+        dashboard: { auth_required: false },
+        dashboardPasswordHash: undefined,
+      });
+      const svc = new AuthService(config);
+
+      await svc.ensurePasswordHashed();
+      expect(config.setDashboardPasswordHash).toHaveBeenCalledTimes(1);
+      const savedHash = config.setDashboardPasswordHash.mock.calls[0][0];
+      expect(savedHash).toMatch(/^\$2[ab]\$/);
     });
 
     it('should do nothing when password is already hashed', async () => {

@@ -38,7 +38,9 @@ Dashboard authentication is required by default. When neither local password nor
 OIDC is configured, SiftGate generates an initial local Dashboard password on
 first startup, logs it once, hashes it with bcrypt, and persists only the hash
 to `gateway.config.yaml`. Set `dashboard.auth_required=false` only for trusted
-local development environments.
+local development environments. In `NODE_ENV=production`, SiftGate ignores
+`dashboard.auth_required=false` unless
+`SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD=true` is explicitly set.
 
 Local Dashboard password login remains available for self-hosted installs.
 Generic OIDC login is optional and disabled unless `dashboard.oidc.enabled=true`.

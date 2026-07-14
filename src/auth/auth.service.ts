@@ -4,6 +4,9 @@ import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import { ConfigService } from '../config/config.service';
 
+const ALLOW_UNAUTHENTICATED_DASHBOARD_ENV =
+  'SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD';
+
 @Injectable()
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
@@ -16,7 +19,8 @@ export class AuthService implements OnModuleInit {
 
   /** Whether dashboard auth is required. Secure by default unless explicitly disabled. */
   get isAuthRequired(): boolean {
-    return this.config.dashboard?.auth_required !== false;
+    if (this.config.dashboard?.auth_required !== false) return true;
+    return !this.isUnauthenticatedDashboardAllowed();
   }
 
   get isLocalPasswordAuthEnabled(): boolean {
@@ -90,6 +94,14 @@ export class AuthService implements OnModuleInit {
    */
   async ensurePasswordHashed(): Promise<void> {
     const password = this.config.dashboardPasswordHash;
+    if (
+      this.config.dashboard?.auth_required === false &&
+      !this.isUnauthenticatedDashboardAllowed()
+    ) {
+      this.logger.warn(
+        `dashboard.auth_required=false is ignored in production unless ${ALLOW_UNAUTHENTICATED_DASHBOARD_ENV}=true is set. Dashboard auth will fail closed.`,
+      );
+    }
     if (!password) {
       if (!this.isAuthRequired) {
         this.logger.warn(
@@ -136,5 +148,12 @@ export class AuthService implements OnModuleInit {
 
   private generateInitialPassword(): string {
     return crypto.randomBytes(24).toString('base64url');
+  }
+
+  private isUnauthenticatedDashboardAllowed(): boolean {
+    if (process.env[ALLOW_UNAUTHENTICATED_DASHBOARD_ENV] === 'true') {
+      return true;
+    }
+    return process.env.NODE_ENV !== 'production';
   }
 }
