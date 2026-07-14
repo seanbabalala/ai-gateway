@@ -26,6 +26,7 @@ describe('TelemetryService', () => {
     expect(service.cacheHitsTotal).toBeDefined();
     expect(service.cacheMissesTotal).toBeDefined();
     expect(service.budgetReservations).toBeDefined();
+    expect(service.streamLifecycleTotal).toBeDefined();
   });
 
   it('should create all histogram instruments', () => {
@@ -49,6 +50,7 @@ describe('TelemetryService', () => {
     expect(() => service.cacheHitsTotal.add(1)).not.toThrow();
     expect(() => service.cacheMissesTotal.add(1)).not.toThrow();
     expect(() => service.budgetReservations.add(1, { event: 'reserve' })).not.toThrow();
+    expect(() => service.streamLifecycleTotal.add(1, { reason: 'client_aborted' })).not.toThrow();
   });
 
   it('should not throw when recording histograms (no-op)', () => {
@@ -144,6 +146,26 @@ describe('TelemetryService', () => {
       event: 'reserve',
       scope: 'api_key',
       budget_type: 'daily_tokens',
+    });
+  });
+
+  it('should record stream lifecycle metrics with bounded labels', () => {
+    (service as any).streamLifecycleTotal = { add: jest.fn() };
+
+    service.recordStreamLifecycle({
+      event: 'timeout',
+      reason: 'max_duration',
+      phase: 'pre_first_chunk',
+      node: 'openai/us east',
+      model: 'gpt-4o/tenant-secret-key-that-should-not-be-a-label',
+    });
+
+    expect(service.streamLifecycleTotal.add).toHaveBeenCalledWith(1, {
+      event: 'timeout',
+      reason: 'max_duration',
+      phase: 'pre_first_chunk',
+      node: 'openai_us_east',
+      model: 'gpt-4o_tenant-secret-key-that-should-not-be-a-label',
     });
   });
 

@@ -55,6 +55,18 @@ export interface BudgetReservationMetricInput {
   budgetType: string;
 }
 
+export type StreamLifecycleMetricEvent = 'abort' | 'timeout';
+export type StreamLifecycleMetricReason = 'client_aborted' | 'idle_timeout' | 'max_duration';
+export type StreamLifecycleMetricPhase = 'pre_first_chunk' | 'transmission';
+
+export interface StreamLifecycleMetricInput {
+  event: StreamLifecycleMetricEvent;
+  reason: StreamLifecycleMetricReason;
+  phase: StreamLifecycleMetricPhase;
+  node: string;
+  model: string;
+}
+
 @Injectable()
 export class TelemetryService {
   readonly tracer: Tracer;
@@ -70,6 +82,7 @@ export class TelemetryService {
   readonly cacheHitsTotal: Counter;
   readonly cacheMissesTotal: Counter;
   readonly budgetReservations: Counter;
+  readonly streamLifecycleTotal: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
@@ -117,6 +130,10 @@ export class TelemetryService {
     });
     this.budgetReservations = this.meter.createCounter('siftgate_budget_reservations_total', {
       description: 'Budget reservation lifecycle events by bounded scope and budget type',
+      unit: '{event}',
+    });
+    this.streamLifecycleTotal = this.meter.createCounter('siftgate_stream_lifecycle_total', {
+      description: 'Streaming lifecycle interruptions by bounded reason and phase',
       unit: '{event}',
     });
 
@@ -207,6 +224,16 @@ export class TelemetryService {
     });
   }
 
+  recordStreamLifecycle(input: StreamLifecycleMetricInput): void {
+    this.streamLifecycleTotal.add(1, {
+      event: this.safeStreamLifecycleEvent(input.event),
+      reason: this.safeStreamLifecycleReason(input.reason),
+      phase: this.safeStreamLifecyclePhase(input.phase),
+      node: this.safeLabel(input.node, 'unknown'),
+      model: this.safeLabel(input.model, 'unknown'),
+    });
+  }
+
   private recordTokens(
     value: number,
     attrs: { node: string; model: string; direction: string },
@@ -257,6 +284,25 @@ export class TelemetryService {
   private safeBudgetScope(value: unknown): string {
     const normalized = this.safeLabel(value, 'unknown');
     return ['global', 'api_key', 'namespace', 'team'].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeStreamLifecycleEvent(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['abort', 'timeout'].includes(normalized) ? normalized : 'unknown';
+  }
+
+  private safeStreamLifecycleReason(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['client_aborted', 'idle_timeout', 'max_duration'].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeStreamLifecyclePhase(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['pre_first_chunk', 'transmission'].includes(normalized)
       ? normalized
       : 'unknown';
   }

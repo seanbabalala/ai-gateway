@@ -10,7 +10,10 @@ function makeService(): ProviderClientService {
   return new ProviderClientService({} as any, new TelemetryService());
 }
 
-function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderClientService {
+function makeServiceWithNode(
+  nodeOverrides: Record<string, any> = {},
+  telemetry: TelemetryService = new TelemetryService(),
+): ProviderClientService {
   const node = {
     id: 'openai', name: 'OpenAI', protocol: 'chat_completions',
     base_url: 'https://api.openai.com', endpoint: '/v1/chat/completions',
@@ -20,7 +23,7 @@ function makeServiceWithNode(nodeOverrides: Record<string, any> = {}): ProviderC
   };
   return new ProviderClientService({
     getNode: jest.fn().mockReturnValue(node),
-  } as any, new TelemetryService());
+  } as any, telemetry);
 }
 
 function makeServiceWithConfig(
@@ -86,6 +89,12 @@ function makeCanonical(overrides: Partial<CanonicalRequest> = {}): CanonicalRequ
     stream: false,
     metadata: { source_format: 'chat_completions', raw_headers: {} },
     ...overrides,
+  };
+}
+
+function makeStreamTelemetryMock() {
+  return {
+    recordStreamLifecycle: jest.fn(),
   };
 }
 
@@ -2648,7 +2657,8 @@ describe('ProviderClientService', () => {
         });
       }) as any;
 
-      const svc = makeServiceWithNode();
+      const telemetry = makeStreamTelemetryMock();
+      const svc = makeServiceWithNode({}, telemetry as any);
       const abortController = new AbortController();
       const iterator = svc.forwardStream(
         makeCanonical({ stream: true }),
@@ -2664,6 +2674,13 @@ describe('ProviderClientService', () => {
       abortController.abort();
       await expect(nextEvent).resolves.toMatchObject({ done: true });
       expect(fetchSignal?.aborted).toBe(true);
+      expect(telemetry.recordStreamLifecycle).toHaveBeenCalledWith({
+        event: 'abort',
+        reason: 'client_aborted',
+        phase: 'pre_first_chunk',
+        node: 'openai',
+        model: 'gpt-4o',
+      });
     });
 
     it('should pass through native Responses SSE chunks with side parsed usage', async () => {
@@ -3119,9 +3136,10 @@ describe('ProviderClientService', () => {
         body: stream,
       }) as any;
 
+      const telemetry = makeStreamTelemetryMock();
       const svc = makeServiceWithNode({
         connection: { body_timeout_ms: 10 },
-      });
+      }, telemetry as any);
       const events = [];
       for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
         events.push(event);
@@ -3134,6 +3152,13 @@ describe('ProviderClientService', () => {
           code: 'timeout',
           status_code: 504,
         },
+      });
+      expect(telemetry.recordStreamLifecycle).toHaveBeenCalledWith({
+        event: 'timeout',
+        reason: 'idle_timeout',
+        phase: 'transmission',
+        node: 'openai',
+        model: 'gpt-4o',
       });
     });
 
@@ -3148,9 +3173,10 @@ describe('ProviderClientService', () => {
         body: stream,
       }) as any;
 
+      const telemetry = makeStreamTelemetryMock();
       const svc = makeServiceWithNode({
         connection: { body_timeout_ms: 0, stream_max_duration_ms: 10 },
-      });
+      }, telemetry as any);
       const events = [];
       let thrown: unknown;
       try {
@@ -3169,6 +3195,13 @@ describe('ProviderClientService', () => {
         nodeId: 'openai',
       });
       expect(thrown instanceof Error ? thrown.message : '').toContain('exceeded max duration');
+      expect(telemetry.recordStreamLifecycle).toHaveBeenCalledWith({
+        event: 'timeout',
+        reason: 'max_duration',
+        phase: 'pre_first_chunk',
+        node: 'openai',
+        model: 'gpt-4o',
+      });
     });
 
     it('should emit timeout error when stream exceeds max duration after first chunk', async () => {
@@ -3185,9 +3218,10 @@ describe('ProviderClientService', () => {
         body: stream,
       }) as any;
 
+      const telemetry = makeStreamTelemetryMock();
       const svc = makeServiceWithNode({
         connection: { body_timeout_ms: 0, stream_max_duration_ms: 10 },
-      });
+      }, telemetry as any);
       const events = [];
       for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
         events.push(event);
@@ -3202,6 +3236,13 @@ describe('ProviderClientService', () => {
         },
       });
       expect(errorEvent?.type === 'error' ? errorEvent.error.message : '').toContain('exceeded max duration');
+      expect(telemetry.recordStreamLifecycle).toHaveBeenCalledWith({
+        event: 'timeout',
+        reason: 'max_duration',
+        phase: 'transmission',
+        node: 'openai',
+        model: 'gpt-4o',
+      });
     });
   });
 });

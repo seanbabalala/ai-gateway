@@ -30,6 +30,11 @@ import { MessagesStreamParser } from './stream/messages.stream';
 import { GeminiStreamParser } from './stream/gemini.stream';
 import { classifyStreamError } from './stream/stream-error-classifier';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import type {
+  StreamLifecycleMetricEvent,
+  StreamLifecycleMetricPhase,
+  StreamLifecycleMetricReason,
+} from '../telemetry/telemetry.service';
 import { UpstreamConnectionPoolService } from './upstream-connection-pool.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import {
@@ -443,7 +448,20 @@ export class ProviderClientService {
       return parsedEvents;
     };
     let forwardedStreamData = false;
+    let streamAbortMetricRecorded = false;
+    const recordClientAbort = () => {
+      if (streamAbortMetricRecorded) return;
+      streamAbortMetricRecorded = true;
+      this.recordStreamLifecycleMetric(
+        node.id,
+        targetModel,
+        'abort',
+        'client_aborted',
+        this.streamLifecyclePhase(forwardedStreamData),
+      );
+    };
     const cancelReader = () => {
+      recordClientAbort();
       void reader.cancel().catch(() => undefined);
     };
     if (options.signal?.aborted) {
@@ -463,6 +481,8 @@ export class ProviderClientService {
           streamBodyIdleTimeoutMs,
           streamMaxDurationMs,
           streamStartedAtMs,
+          targetModel,
+          this.streamLifecyclePhase(forwardedStreamData),
         );
         if (done) break;
 
@@ -613,18 +633,31 @@ export class ProviderClientService {
     idleTimeoutMs: number,
     maxDurationMs: number,
     streamStartedAtMs: number,
+    targetModel: string,
+    phase: StreamLifecycleMetricPhase,
   ): Promise<ReadableStreamReadResult<Uint8Array>> {
     const timers: ReturnType<typeof setTimeout>[] = [];
     const timeoutPromises: Promise<never>[] = [];
+    let timeoutTriggered = false;
 
     const addTimeout = (
       timeoutMs: number,
       errorMessage: string,
+      reason: StreamLifecycleMetricReason,
     ): void => {
       timeoutPromises.push(
         new Promise<never>((_resolve, reject) => {
           const timeout = setTimeout(() => {
+            if (timeoutTriggered) return;
+            timeoutTriggered = true;
             void reader.cancel().catch(() => undefined);
+            this.recordStreamLifecycleMetric(
+              nodeId,
+              targetModel,
+              'timeout',
+              reason,
+              phase,
+            );
             reject(new ProviderError(errorMessage, 504, nodeId, 'timeout'));
           }, timeoutMs);
           timers.push(timeout);
@@ -636,6 +669,13 @@ export class ProviderClientService {
       const remainingDurationMs = maxDurationMs - (Date.now() - streamStartedAtMs);
       if (remainingDurationMs <= 0) {
         void reader.cancel().catch(() => undefined);
+        this.recordStreamLifecycleMetric(
+          nodeId,
+          targetModel,
+          'timeout',
+          'max_duration',
+          phase,
+        );
         throw new ProviderError(
           `Provider ${nodeId} stream exceeded max duration ${maxDurationMs}ms`,
           504,
@@ -646,6 +686,7 @@ export class ProviderClientService {
       addTimeout(
         remainingDurationMs,
         `Provider ${nodeId} stream exceeded max duration ${maxDurationMs}ms`,
+        'max_duration',
       );
     }
 
@@ -653,6 +694,7 @@ export class ProviderClientService {
       addTimeout(
         idleTimeoutMs,
         `Provider ${nodeId} stream timed out after ${idleTimeoutMs}ms without receiving data`,
+        'idle_timeout',
       );
     }
 
@@ -665,6 +707,26 @@ export class ProviderClientService {
     } finally {
       for (const timeout of timers) clearTimeout(timeout);
     }
+  }
+
+  private recordStreamLifecycleMetric(
+    node: string,
+    model: string,
+    event: StreamLifecycleMetricEvent,
+    reason: StreamLifecycleMetricReason,
+    phase: StreamLifecycleMetricPhase,
+  ): void {
+    this.telemetry.recordStreamLifecycle?.({
+      event,
+      reason,
+      phase,
+      node,
+      model,
+    });
+  }
+
+  private streamLifecyclePhase(forwardedStreamData: boolean): StreamLifecycleMetricPhase {
+    return forwardedStreamData ? 'transmission' : 'pre_first_chunk';
   }
 
   private async resolveNodeApiKey(
