@@ -106,6 +106,44 @@ npm run docs:check
 npm run build
 ```
 
+## Production Hardening Gates
+
+For releases that touch auth, provider streaming, budgets, frontend loading, or
+release tooling, confirm the relevant hardening gates before merge:
+
+- Dashboard auth stays fail-closed:
+  - `/api/auth/status` failures keep protected routes blocked.
+  - `dashboard.auth_required=false` is ignored in production unless
+    `SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD=true` is explicitly set.
+  - Cookie-backed Dashboard sessions survive reload without requiring
+    `localStorage`.
+  - OIDC callbacks do not return Dashboard JWTs in URL hashes.
+  - Browser SSE paths authenticate with the HttpOnly session cookie first; any
+    legacy `?token=` fallback emits only a token-free deprecation warning.
+- Provider stream lifecycle remains bounded:
+  - header/connect timeout behavior still falls back correctly,
+  - idle stream body timeout emits a timeout error,
+  - `connection.stream_max_duration_ms` caps total stream wall-clock duration,
+  - downstream client cancellation aborts upstream provider fetches.
+- Budget and cost controls remain conservative:
+  - `BudgetService.reserve()` rejects concurrent reservations that would exceed
+    a shared rule,
+  - failed scoped reservations do not partially consume global budget,
+  - reservation `commit()` and `release()` keep counters consistent.
+- Frontend and tooling gates keep their ratchets:
+  - `npm run lint` fails on any warning,
+  - `cd frontend && npm run build` runs the bundle budget check,
+  - Dashboard string changes still pass the seven-locale check.
+
+Suggested targeted checks when these areas change:
+
+```bash
+npm test -- --runInBand test/unit/auth-controller.spec.ts test/unit/dashboard-guard.spec.ts test/unit/oidc-service.spec.ts
+npm test -- --runInBand test/unit/provider-client.spec.ts
+npm test -- --runInBand test/unit/budget*.spec.ts
+cd frontend && npm test && npm run build
+```
+
 ## Seven-Locale Check
 
 When Dashboard user-facing copy changes, update all existing locale folders:
