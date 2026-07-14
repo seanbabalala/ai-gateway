@@ -1,8 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import { ConfigService } from '../config/config.service';
+import { TelemetryService } from '../telemetry/telemetry.service';
 
 const ALLOW_UNAUTHENTICATED_DASHBOARD_ENV =
   'SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD';
@@ -11,7 +12,10 @@ const ALLOW_UNAUTHENTICATED_DASHBOARD_ENV =
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly telemetry?: TelemetryService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.ensurePasswordHashed();
@@ -102,12 +106,20 @@ export class AuthService implements OnModuleInit {
       this.config.dashboard?.auth_required === false &&
       !this.isUnauthenticatedDashboardAllowed()
     ) {
+      this.telemetry?.recordDashboardAuthEvent({
+        event: 'disabled_auth',
+        mode: 'production_ignored',
+      });
       this.logger.warn(
         `dashboard.auth_required=false is ignored in production unless ${ALLOW_UNAUTHENTICATED_DASHBOARD_ENV}=true is set. Dashboard auth will fail closed.`,
       );
     }
     if (!password) {
       if (!this.isAuthRequired) {
+        this.telemetry?.recordDashboardAuthEvent({
+          event: 'disabled_auth',
+          mode: this.disabledAuthMode(),
+        });
         this.logger.warn(
           'Dashboard authentication is explicitly disabled by dashboard.auth_required=false.',
         );
@@ -159,5 +171,11 @@ export class AuthService implements OnModuleInit {
       return true;
     }
     return process.env.NODE_ENV !== 'production';
+  }
+
+  private disabledAuthMode(): 'development_allowed' | 'production_allowed' {
+    return process.env.NODE_ENV === 'production'
+      ? 'production_allowed'
+      : 'development_allowed';
   }
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '../config/config.module';
+import { TelemetryModule } from '../telemetry/telemetry.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { DashboardGuard } from './dashboard.guard';
@@ -21,7 +22,7 @@ import { WorkspaceInvitationService } from './workspace-invitation.service';
 import { OidcService } from './oidc.service';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([GatewayApiKey, LocalTeam, BudgetRule, CallLog, WorkspaceMembership, WorkspaceInvitation, ManagementAuditEvent])],
+  imports: [ConfigModule, TelemetryModule, TypeOrmModule.forFeature([GatewayApiKey, LocalTeam, BudgetRule, CallLog, WorkspaceMembership, WorkspaceInvitation, ManagementAuditEvent])],
   controllers: [AuthController],
   providers: [AuthService, OidcService, GatewayApiKeyService, TeamService, WorkspaceMembershipService, WorkspaceInvitationService, DashboardGuard, DashboardRbacGuard, ApiKeyGuard, RateLimitGuard],
   exports: [AuthService, OidcService, GatewayApiKeyService, TeamService, WorkspaceMembershipService, WorkspaceInvitationService, DashboardGuard, DashboardRbacGuard, ApiKeyGuard, RateLimitGuard],

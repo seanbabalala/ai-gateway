@@ -55,6 +55,18 @@ export interface BudgetReservationMetricInput {
   budgetType: string;
 }
 
+export type DashboardAuthMetricEvent = 'status_failure' | 'disabled_auth';
+export type DashboardAuthMetricMode =
+  | 'development_allowed'
+  | 'production_allowed'
+  | 'production_ignored'
+  | 'unknown';
+
+export interface DashboardAuthMetricInput {
+  event: DashboardAuthMetricEvent;
+  mode?: DashboardAuthMetricMode;
+}
+
 export type StreamLifecycleMetricEvent = 'abort' | 'timeout';
 export type StreamLifecycleMetricReason = 'client_aborted' | 'idle_timeout' | 'max_duration';
 export type StreamLifecycleMetricPhase = 'pre_first_chunk' | 'transmission';
@@ -83,6 +95,7 @@ export class TelemetryService {
   readonly cacheMissesTotal: Counter;
   readonly budgetReservations: Counter;
   readonly streamLifecycleTotal: Counter;
+  readonly dashboardAuthEvents: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
@@ -134,6 +147,10 @@ export class TelemetryService {
     });
     this.streamLifecycleTotal = this.meter.createCounter('siftgate_stream_lifecycle_total', {
       description: 'Streaming lifecycle interruptions by bounded reason and phase',
+      unit: '{event}',
+    });
+    this.dashboardAuthEvents = this.meter.createCounter('siftgate_dashboard_auth_events_total', {
+      description: 'Dashboard authentication status failures and disabled-auth startup events',
       unit: '{event}',
     });
 
@@ -234,6 +251,13 @@ export class TelemetryService {
     });
   }
 
+  recordDashboardAuthEvent(input: DashboardAuthMetricInput): void {
+    this.dashboardAuthEvents.add(1, {
+      event: this.safeDashboardAuthEvent(input.event),
+      mode: this.safeDashboardAuthMode(input.mode ?? 'unknown'),
+    });
+  }
+
   private recordTokens(
     value: number,
     attrs: { node: string; model: string; direction: string },
@@ -303,6 +327,25 @@ export class TelemetryService {
   private safeStreamLifecyclePhase(value: unknown): string {
     const normalized = this.safeLabel(value, 'unknown');
     return ['pre_first_chunk', 'transmission'].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeDashboardAuthEvent(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['status_failure', 'disabled_auth'].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeDashboardAuthMode(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return [
+      'development_allowed',
+      'production_allowed',
+      'production_ignored',
+      'unknown',
+    ].includes(normalized)
       ? normalized
       : 'unknown';
   }

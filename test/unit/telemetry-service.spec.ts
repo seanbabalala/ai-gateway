@@ -27,6 +27,7 @@ describe('TelemetryService', () => {
     expect(service.cacheMissesTotal).toBeDefined();
     expect(service.budgetReservations).toBeDefined();
     expect(service.streamLifecycleTotal).toBeDefined();
+    expect(service.dashboardAuthEvents).toBeDefined();
   });
 
   it('should create all histogram instruments', () => {
@@ -51,6 +52,7 @@ describe('TelemetryService', () => {
     expect(() => service.cacheMissesTotal.add(1)).not.toThrow();
     expect(() => service.budgetReservations.add(1, { event: 'reserve' })).not.toThrow();
     expect(() => service.streamLifecycleTotal.add(1, { reason: 'client_aborted' })).not.toThrow();
+    expect(() => service.dashboardAuthEvents.add(1, { event: 'status_failure' })).not.toThrow();
   });
 
   it('should not throw when recording histograms (no-op)', () => {
@@ -166,6 +168,20 @@ describe('TelemetryService', () => {
       phase: 'pre_first_chunk',
       node: 'openai_us_east',
       model: 'gpt-4o_tenant-secret-key-that-should-not-be-a-label',
+    });
+  });
+
+  it('should record dashboard auth events with bounded labels', () => {
+    (service as any).dashboardAuthEvents = { add: jest.fn() };
+
+    service.recordDashboardAuthEvent({
+      event: 'disabled_auth',
+      mode: 'production_ignored',
+    });
+
+    expect(service.dashboardAuthEvents.add).toHaveBeenCalledWith(1, {
+      event: 'disabled_auth',
+      mode: 'production_ignored',
     });
   });
 

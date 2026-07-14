@@ -259,6 +259,32 @@ describe('AuthController', () => {
       }));
       expect(authService.verifyToken).toHaveBeenCalledWith('expired-token');
     });
+
+    it('should record telemetry when auth status cannot be built', () => {
+      const authService = mockAuthService();
+      const config = mockConfigService();
+      const oidc = {
+        getPublicStatus: jest.fn(() => {
+          throw new Error('OIDC status unavailable');
+        }),
+      };
+      const telemetry = { recordDashboardAuthEvent: jest.fn() };
+      const controller = new AuthController(
+        authService,
+        config,
+        undefined,
+        oidc as any,
+        undefined,
+        undefined,
+        telemetry as any,
+      );
+
+      expect(() => controller.getStatus()).toThrow('OIDC status unavailable');
+      expect(telemetry.recordDashboardAuthEvent).toHaveBeenCalledWith({
+        event: 'status_failure',
+        mode: 'unknown',
+      });
+    });
   });
 
   describe('login brute-force protection', () => {
