@@ -71,6 +71,7 @@ import {
   classifyStreamError,
   streamErrorMessage,
 } from '../providers/stream/stream-error-classifier';
+import { redactProviderErrorText } from '../providers/provider-error-redaction';
 import { CallLog, RouteDecisionLog } from '../database/entities';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { AlertService } from '../alerts/alert.service';
@@ -3094,7 +3095,8 @@ export class PipelineService {
 
             if (connected || streamConnected) {
               // Transmission phase — don't retry, send error event
-              this.logger.warn(`Stream interrupted from ${target.node}: ${lastError.message}`);
+              const sanitizedErrorMessage = redactProviderErrorText(lastError.message);
+              this.logger.warn(`Stream interrupted from ${target.node}: ${sanitizedErrorMessage}`);
               this.circuitBreaker.recordFailure(target.node, target.model);
               this.routingService.recordTargetResult?.(
                 target.node,
@@ -3141,7 +3143,7 @@ export class PipelineService {
               }
               const errorEvent: CanonicalStreamEvent = {
                 type: 'error',
-                error: { message: lastError.message, code: 'stream_error' },
+                error: { message: sanitizedErrorMessage, code: 'stream_error' },
               };
               ensureStreamHeaders();
               res.write(serializer.serialize(errorEvent));
@@ -3149,7 +3151,7 @@ export class PipelineService {
 
               await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
                 statusCode: 502, isFallback, latencyMs: Date.now() - startTime,
-                usage: { input_tokens: 0, output_tokens: 0 }, error: lastError.message,
+                usage: { input_tokens: 0, output_tokens: 0 }, error: sanitizedErrorMessage,
                 retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                 domainHint, modalityHints, fallbackReason,
                 fallbackFromNode, routeTrace: activeRouteTrace });

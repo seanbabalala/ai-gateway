@@ -1,4 +1,5 @@
 import { StreamErrorEvent } from '../../canonical/canonical.types';
+import { redactProviderErrorText } from '../provider-error-redaction';
 
 export interface StreamErrorClassification {
   statusCode: number;
@@ -53,9 +54,14 @@ export function classifyStreamError(
 }
 
 export function streamErrorMessage(event: StreamErrorEvent): string {
-  const code = event.error.code ? ` code=${event.error.code}` : '';
-  const type = event.error.type ? ` type=${event.error.type}` : '';
-  return `${event.error.message}${code}${type}`;
+  const message = redactProviderErrorText(event.error.message);
+  const code = event.error.code
+    ? ` code=${redactProviderErrorText(String(event.error.code))}`
+    : '';
+  const type = event.error.type
+    ? ` type=${redactProviderErrorText(String(event.error.type))}`
+    : '';
+  return `${message}${code}${type}`;
 }
 
 function numericField(value: unknown): number | null {

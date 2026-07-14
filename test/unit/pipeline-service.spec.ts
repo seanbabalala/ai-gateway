@@ -2911,6 +2911,39 @@ describe('PipelineService — processStream transmission-phase errors', () => {
     expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalled();
   });
 
+  it('redacts provider secrets from transmission-phase stream errors', async () => {
+    async function* breakingStream() {
+      yield { type: 'start' as const, id: 'break-redact', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Hello' } };
+      throw new Error(
+        'Connection reset Bearer sk-secret-provider-token api_key=sk-query-secret-token',
+      );
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(breakingStream()),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    const allChunks = res._chunks.join('');
+    const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
+
+    expect(allChunks).toContain('[REDACTED]');
+    expect(allChunks).not.toContain('sk-secret-provider-token');
+    expect(allChunks).not.toContain('sk-query-secret-token');
+    expect(savedLog.error).toContain('[REDACTED]');
+    expect(savedLog.error).not.toContain('sk-secret-provider-token');
+    expect(savedLog.error).not.toContain('sk-query-secret-token');
+  });
+
   it('should call circuitBreaker.recordFailure on transmission error', async () => {
     async function* breakingStream() {
       yield { type: 'start' as const, id: 'break-2', model: 'gpt-4o' };
