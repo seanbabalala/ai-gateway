@@ -3008,7 +3008,7 @@ describe('ProviderClientService', () => {
     it('should emit error event on stream read failure', async () => {
       const stream = new ReadableStream({
         start(controller) {
-          controller.error(new Error('Stream read failed'));
+          controller.error(new Error('Stream read failed Bearer sk-secret-provider-token'));
         },
       });
       global.fetch = jest.fn().mockResolvedValue({
@@ -3024,6 +3024,40 @@ describe('ProviderClientService', () => {
       expect(events.length).toBeGreaterThanOrEqual(1);
       const errorEvent = events.find(e => e.type === 'error');
       expect(errorEvent).toBeDefined();
+      expect(errorEvent?.type === 'error' ? errorEvent.error.message : '').toContain('[REDACTED]');
+      expect(errorEvent?.type === 'error' ? errorEvent.error.message : '').not.toContain('sk-secret-provider-token');
+    });
+
+    it('should emit timeout error when stream body stalls between chunks', async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"chatcmpl-stall","model":"gpt-4o","choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
+          ));
+        },
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true, status: 200,
+        body: stream,
+      }) as any;
+
+      const svc = makeServiceWithNode({
+        connection: { body_timeout_ms: 10 },
+      });
+      const events = [];
+      for await (const event of svc.forwardStream(makeCanonical({ stream: true }), 'openai', 'gpt-4o')) {
+        events.push(event);
+      }
+
+      const errorEvent = events.find(e => e.type === 'error');
+      expect(errorEvent).toMatchObject({
+        type: 'error',
+        error: {
+          code: 'timeout',
+          status_code: 504,
+        },
+      });
     });
   });
 });

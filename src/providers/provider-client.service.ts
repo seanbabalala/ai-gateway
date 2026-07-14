@@ -41,7 +41,10 @@ import {
   extractUsageByKnownFields,
   UsageSchema,
 } from './usage-schema-resolver';
-import { sanitizeProviderErrorBody } from './provider-error-redaction';
+import {
+  redactProviderErrorText,
+  sanitizeProviderErrorBody,
+} from './provider-error-redaction';
 import type { Dispatcher } from 'undici';
 
 type FetchOptionsWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
@@ -415,6 +418,10 @@ export class ProviderClientService {
     let latestUsage: TokenUsage | undefined;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const streamBodyIdleTimeoutMs = this.resolveStreamBodyIdleTimeoutMs(
+      node,
+      options.timeoutMs,
+    );
     const parseChunk = (chunk: string): CanonicalStreamEvent[] => {
       const parsedEvents = [...parser.parse(chunk)];
       for (const event of parsedEvents) {
@@ -445,7 +452,11 @@ export class ProviderClientService {
         if (options.signal?.aborted) {
           break;
         }
-        const { done, value } = await reader.read();
+        const { done, value } = await this.readStreamChunkWithIdleTimeout(
+          reader,
+          node.id,
+          streamBodyIdleTimeoutMs,
+        );
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
@@ -501,13 +512,26 @@ export class ProviderClientService {
       }
     } catch (err) {
       // Transmission phase error — emit as error event (don't throw)
-      yield {
+      const message = err instanceof Error ? err.message : String(err);
+      const providerError = err instanceof ProviderError ? err : null;
+      if (providerError) {
+        this.completeResponseCredential(response, {
+          statusCode: providerError.statusCode,
+          failureType: providerError.failureType,
+          error: providerError.message,
+        });
+      }
+      const errorEvent: CanonicalStreamEvent = {
         type: 'error',
         error: {
-          message: `Stream interrupted from ${node.id}: ${(err as Error).message}`,
-          code: 'stream_error',
+          message: `Stream interrupted from ${node.id}: ${redactProviderErrorText(message)}`,
+          code: providerError?.failureType === 'timeout' ? 'timeout' : 'stream_error',
         },
       };
+      if (providerError) {
+        errorEvent.error.status_code = providerError.statusCode;
+      }
+      yield errorEvent;
     } finally {
       this.recordResponseCredentialUsage(response, latestUsage, canonical.metadata);
       this.completeResponseCredential(response, {
@@ -521,6 +545,52 @@ export class ProviderClientService {
   // ══════════════════════════════════════════════════════
   // Shared HTTP Request Logic
   // ══════════════════════════════════════════════════════
+
+  private resolveStreamBodyIdleTimeoutMs(
+    node: NodeConfig,
+    requestTimeoutMs?: number,
+  ): number {
+    const configuredBodyTimeoutMs = node.connection?.body_timeout_ms;
+    if (
+      typeof configuredBodyTimeoutMs === 'number' &&
+      Number.isFinite(configuredBodyTimeoutMs) &&
+      configuredBodyTimeoutMs >= 0
+    ) {
+      return Math.floor(configuredBodyTimeoutMs);
+    }
+    return requestTimeoutMs ?? node.timeout_ms ?? 60000;
+  }
+
+  private async readStreamChunkWithIdleTimeout(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    nodeId: string,
+    timeoutMs: number,
+  ): Promise<ReadableStreamReadResult<Uint8Array>> {
+    if (timeoutMs <= 0) {
+      return reader.read();
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        void reader.cancel().catch(() => undefined);
+        reject(
+          new ProviderError(
+            `Provider ${nodeId} stream timed out after ${timeoutMs}ms without receiving data`,
+            504,
+            nodeId,
+            'timeout',
+          ),
+        );
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([reader.read(), timeoutPromise]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
 
   private async resolveNodeApiKey(
     node: NodeConfig,
