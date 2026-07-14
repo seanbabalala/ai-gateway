@@ -54,7 +54,11 @@ import {
   ConcurrencyLimitError,
   ConcurrencyLimiterService,
 } from '../routing/concurrency-limiter.service';
-import { BudgetService, BudgetExceededError } from '../budget/budget.service';
+import {
+  BudgetReservation,
+  BudgetService,
+  BudgetExceededError,
+} from '../budget/budget.service';
 import { PromptCacheService } from '../cache/prompt-cache.service';
 import { LogEventBus } from '../dashboard/log-event-bus';
 import { HookExecutorService } from '../plugins/hook-executor.service';
@@ -139,6 +143,7 @@ interface NodeAttemptResult {
   lastError: Error | null;
   retries: number;
   fallbackReason: FallbackReason | null;
+  reservation?: BudgetReservation | null;
 }
 
 interface EmbeddingAttemptResult {
@@ -146,6 +151,7 @@ interface EmbeddingAttemptResult {
   lastError: Error | null;
   retries: number;
   fallbackReason: FallbackReason | null;
+  reservation?: BudgetReservation | null;
 }
 
 interface RerankAttemptResult {
@@ -153,6 +159,7 @@ interface RerankAttemptResult {
   lastError: Error | null;
   retries: number;
   fallbackReason: FallbackReason | null;
+  reservation?: BudgetReservation | null;
 }
 
 interface MediaAttemptResult {
@@ -160,6 +167,7 @@ interface MediaAttemptResult {
   lastError: Error | null;
   retries: number;
   fallbackReason: FallbackReason | null;
+  reservation?: BudgetReservation | null;
 }
 
 interface PrimaryAttemptResult extends NodeAttemptResult {
@@ -268,6 +276,7 @@ export class PipelineService {
           ['trace_id', canonical.metadata.trace_id || null],
         ]);
         let currentPhase = 'preRequest';
+        let activeBudgetReservation: BudgetReservation | null = null;
 
         try {
           this.assertApiKeyRequestAllowed(canonical);
@@ -513,6 +522,7 @@ export class PipelineService {
 
           if (primaryResult.response) {
             canonicalResponse = primaryResult.response;
+            activeBudgetReservation = primaryResult.reservation || null;
             isFallback = isFallback || primaryResult.usedFallback;
             fallbackReason = primaryResult.fallbackReason || fallbackReason;
             fallbackFromNode = primaryResult.fallbackFromNode || fallbackFromNode;
@@ -544,6 +554,7 @@ export class PipelineService {
 
               if (fbResult.response) {
                 canonicalResponse = fbResult.response;
+                activeBudgetReservation = fbResult.reservation || null;
                 isFallback = true;
                 fallbackReason = fallbackReason || 'upstream_error';
                 break;
@@ -654,7 +665,9 @@ export class PipelineService {
               );
               totalRetries += fbResult.retries;
               if (fbResult.response) {
+                await this.releaseBudgetReservation(activeBudgetReservation);
                 canonicalResponse = fbResult.response;
+                activeBudgetReservation = fbResult.reservation || null;
                 isFallback = true;
                 fallbackReason = 'quality_gate_failed';
                 fallbackFromNode = usedNodeId;
@@ -689,7 +702,9 @@ export class PipelineService {
               );
               totalRetries += 1 + retryResult.retries;
               if (retryResult.response) {
+                await this.releaseBudgetReservation(activeBudgetReservation);
                 canonicalResponse = retryResult.response;
+                activeBudgetReservation = retryResult.reservation || null;
                 fallbackReason = 'quality_gate_failed';
               } else {
                 lastError = retryResult.lastError || lastError;
@@ -738,6 +753,7 @@ export class PipelineService {
             canonicalResponse.usage,
             usedModel,
             usedNodeId,
+            activeBudgetReservation,
           );
 
           // ── Telemetry Metrics ──
@@ -791,6 +807,7 @@ export class PipelineService {
 
           return { body: responseBody, statusCode: 200, requestId };
         } catch (err) {
+          await this.releaseBudgetReservation(activeBudgetReservation);
           const recovered = await this.runOnErrorHooks(
             canonical,
             err as Error,
@@ -810,6 +827,14 @@ export class PipelineService {
             return {
               body: this.denormalizeForClient(recovered, canonical.metadata.source_format),
               statusCode: 200,
+              requestId,
+            };
+          }
+          if (err instanceof BudgetExceededError) {
+            this.logger.warn(`Budget reservation exceeded: ${err.message}`);
+            return {
+              body: this.formatBudgetError(canonical.metadata.source_format, err),
+              statusCode: 429,
               requestId,
             };
           }
@@ -863,6 +888,7 @@ export class PipelineService {
         'gateway.stream': false,
       },
       async (rootSpan) => {
+        let activeBudgetReservation: BudgetReservation | null = null;
         try {
           this.assertApiKeyRequestAllowed(canonical);
 
@@ -933,6 +959,7 @@ export class PipelineService {
             totalRetries += attempt.retries;
             if (attempt.response) {
               response = attempt.response;
+              activeBudgetReservation = attempt.reservation || null;
               fallbackReason = isFallback
                 ? fallbackReason || attempt.fallbackReason || 'upstream_error'
                 : attempt.fallbackReason;
@@ -978,6 +1005,7 @@ export class PipelineService {
             response.usage,
             usedModel,
             usedNodeId,
+            activeBudgetReservation,
           );
           const durationMs = Date.now() - startTime;
           rootSpan.setAttributes({
@@ -1026,6 +1054,14 @@ export class PipelineService {
             statusCode: 200,
           };
         } catch (err) {
+          await this.releaseBudgetReservation(activeBudgetReservation);
+          if (err instanceof BudgetExceededError) {
+            this.logger.warn(`Budget exceeded (embeddings reservation): ${err.message}`);
+            return {
+              body: this.formatBudgetError('embeddings', err),
+              statusCode: 429,
+            };
+          }
           if (err instanceof GatewayRequestRejectedError) {
             return {
               body: this.formatError('embeddings', err.statusCode, err.message),
@@ -1066,6 +1102,7 @@ export class PipelineService {
         'gateway.stream': false,
       },
       async (rootSpan) => {
+        let activeBudgetReservation: BudgetReservation | null = null;
         try {
           this.assertApiKeyRequestAllowed(canonical);
 
@@ -1136,6 +1173,7 @@ export class PipelineService {
             totalRetries += attempt.retries;
             if (attempt.response) {
               response = attempt.response;
+              activeBudgetReservation = attempt.reservation || null;
               fallbackReason = isFallback
                 ? fallbackReason || attempt.fallbackReason || 'upstream_error'
                 : attempt.fallbackReason;
@@ -1181,6 +1219,7 @@ export class PipelineService {
             response.usage,
             usedModel,
             usedNodeId,
+            activeBudgetReservation,
           );
           const durationMs = Date.now() - startTime;
           rootSpan.setAttributes({
@@ -1222,6 +1261,14 @@ export class PipelineService {
             statusCode: 200,
           };
         } catch (err) {
+          await this.releaseBudgetReservation(activeBudgetReservation);
+          if (err instanceof BudgetExceededError) {
+            this.logger.warn(`Budget exceeded (rerank reservation): ${err.message}`);
+            return {
+              body: this.formatBudgetError('rerank', err),
+              statusCode: 429,
+            };
+          }
           if (err instanceof GatewayRequestRejectedError) {
             return {
               body: this.formatError('rerank', err.statusCode, err.message),
@@ -1266,6 +1313,7 @@ export class PipelineService {
         'gateway.media.byte_size': canonical.media.byte_size,
       },
       async (rootSpan) => {
+        let activeBudgetReservation: BudgetReservation | null = null;
         try {
           this.assertApiKeyRequestAllowed(canonical);
 
@@ -1337,6 +1385,7 @@ export class PipelineService {
             totalRetries += attempt.retries;
             if (attempt.response) {
               response = attempt.response;
+              activeBudgetReservation = attempt.reservation || null;
               fallbackReason = isFallback
                 ? fallbackReason || attempt.fallbackReason || 'upstream_error'
                 : attempt.fallbackReason;
@@ -1382,6 +1431,7 @@ export class PipelineService {
             response.usage,
             usedModel,
             usedNodeId,
+            activeBudgetReservation,
           );
           const durationMs = Date.now() - startTime;
           rootSpan.setAttributes({
@@ -1428,6 +1478,14 @@ export class PipelineService {
             model: usedModel,
           };
         } catch (err) {
+          await this.releaseBudgetReservation(activeBudgetReservation);
+          if (err instanceof BudgetExceededError) {
+            this.logger.warn(`Budget exceeded (${canonical.source_format} reservation): ${err.message}`);
+            return {
+              body: this.formatBudgetError(canonical.source_format, err),
+              statusCode: 429,
+            };
+          }
           if (err instanceof GatewayRequestRejectedError) {
             return {
               body: this.formatError(canonical.source_format, err.statusCode, err.message),
@@ -1534,11 +1592,21 @@ export class PipelineService {
       kind: 'fallback' as const,
       result,
     }));
-    const winner = await Promise.race([primaryWrapped, fallbackWrapped]);
+    let winner:
+      | { kind: 'primary'; result: NodeAttemptResult }
+      | { kind: 'fallback'; result: NodeAttemptResult };
+    try {
+      winner = await Promise.race([primaryWrapped, fallbackWrapped]);
+    } catch (err) {
+      this.releaseAttemptReservationWhenSettled(primaryPromise);
+      this.releaseAttemptReservationWhenSettled(fallbackPromise);
+      throw err;
+    }
     const remainingFallbacks = fallbacks.slice(1);
 
     if (winner.kind === 'fallback') {
       if (winner.result.response) {
+        this.releaseAttemptReservationWhenSettled(primaryPromise);
         return {
           ...winner.result,
           usedTarget: fallback,
@@ -1569,6 +1637,7 @@ export class PipelineService {
     }
 
     if (winner.result.response) {
+      this.releaseAttemptReservationWhenSettled(fallbackPromise);
       return {
         ...winner.result,
         usedTarget: primary,
@@ -1597,6 +1666,14 @@ export class PipelineService {
       fallbackFromNode: primary.node,
       remainingFallbacks,
     };
+  }
+
+  private releaseAttemptReservationWhenSettled(
+    attempt: Promise<NodeAttemptResult>,
+  ): void {
+    void attempt
+      .then((result) => this.releaseBudgetReservation(result.reservation))
+      .catch(() => undefined);
   }
 
   private async tryNodeWithRetry(
@@ -1630,10 +1707,18 @@ export class PipelineService {
           lastError: null,
           retries,
           fallbackReason: null,
+          reservation: null,
         };
       }
       requestForNode = preUpstreamResult.request;
     }
+
+    const reservation = await this.reserveBudgetUsage(
+      requestForNode,
+      model,
+      nodeId,
+      maxAttempts,
+    );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const attemptStart = Date.now();
@@ -1657,23 +1742,32 @@ export class PipelineService {
           response.routing.latency_ms,
           200,
         );
-        return { response, lastError: null, retries, fallbackReason: null };
+        return {
+          response,
+          lastError: null,
+          retries,
+          fallbackReason: null,
+          reservation,
+        };
       } catch (err) {
         lastError = err as Error;
         const fallbackReason = this.resolveFallbackReason(lastError);
         if (lastError instanceof ConcurrencyLimitError) {
           this.logger.warn(lastError.message);
           if (!lastError.fallbackAllowed) {
+            await this.releaseBudgetReservation(reservation);
             throw new GatewayRequestRejectedError(
               lastError.message,
               lastError.statusCode,
             );
           }
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason: 'concurrency_limited',
+            reservation: null,
           };
         }
         const statusCode = err instanceof ProviderError ? err.statusCode : 0;
@@ -1698,11 +1792,13 @@ export class PipelineService {
           if (!(lastError instanceof StructuredOutputValidationError)) {
             this.circuitBreaker.recordFailure(nodeId, model);
           }
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason,
+            reservation: null,
           };
         }
 
@@ -1717,11 +1813,13 @@ export class PipelineService {
       }
     }
 
+    await this.releaseBudgetReservation(reservation);
     return {
       response: null,
       lastError,
       retries,
       fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+      reservation: null,
     };
   }
 
@@ -1741,6 +1839,12 @@ export class PipelineService {
     const maxAttempts = 1 + retryConfig.max_retries;
     let lastError: Error | null = null;
     let retries = 0;
+    const reservation = await this.reserveBudgetUsage(
+      canonical,
+      model,
+      nodeId,
+      maxAttempts,
+    );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const attemptStart = Date.now();
@@ -1759,23 +1863,32 @@ export class PipelineService {
           response.routing.latency_ms,
           200,
         );
-        return { response, lastError: null, retries, fallbackReason: null };
+        return {
+          response,
+          lastError: null,
+          retries,
+          fallbackReason: null,
+          reservation,
+        };
       } catch (err) {
         lastError = err as Error;
         const fallbackReason = this.resolveFallbackReason(lastError);
         if (lastError instanceof ConcurrencyLimitError) {
           this.logger.warn(lastError.message);
           if (!lastError.fallbackAllowed) {
+            await this.releaseBudgetReservation(reservation);
             throw new GatewayRequestRejectedError(
               lastError.message,
               lastError.statusCode,
             );
           }
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason: 'concurrency_limited',
+            reservation: null,
           };
         }
 
@@ -1798,11 +1911,13 @@ export class PipelineService {
             (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
           );
           this.circuitBreaker.recordFailure(nodeId, model);
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason,
+            reservation: null,
           };
         }
 
@@ -1820,11 +1935,13 @@ export class PipelineService {
       }
     }
 
+    await this.releaseBudgetReservation(reservation);
     return {
       response: null,
       lastError,
       retries,
       fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+      reservation: null,
     };
   }
 
@@ -1844,6 +1961,12 @@ export class PipelineService {
     const maxAttempts = 1 + retryConfig.max_retries;
     let lastError: Error | null = null;
     let retries = 0;
+    const reservation = await this.reserveBudgetUsage(
+      canonical,
+      model,
+      nodeId,
+      maxAttempts,
+    );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const attemptStart = Date.now();
@@ -1864,23 +1987,32 @@ export class PipelineService {
           response.routing.latency_ms,
           200,
         );
-        return { response, lastError: null, retries, fallbackReason: null };
+        return {
+          response,
+          lastError: null,
+          retries,
+          fallbackReason: null,
+          reservation,
+        };
       } catch (err) {
         lastError = err as Error;
         const fallbackReason = this.resolveFallbackReason(lastError);
         if (lastError instanceof ConcurrencyLimitError) {
           this.logger.warn(lastError.message);
           if (!lastError.fallbackAllowed) {
+            await this.releaseBudgetReservation(reservation);
             throw new GatewayRequestRejectedError(
               lastError.message,
               lastError.statusCode,
             );
           }
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason: 'concurrency_limited',
+            reservation: null,
           };
         }
 
@@ -1903,11 +2035,13 @@ export class PipelineService {
             (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
           );
           this.circuitBreaker.recordFailure(nodeId, model);
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason,
+            reservation: null,
           };
         }
 
@@ -1925,11 +2059,13 @@ export class PipelineService {
       }
     }
 
+    await this.releaseBudgetReservation(reservation);
     return {
       response: null,
       lastError,
       retries,
       fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+      reservation: null,
     };
   }
 
@@ -1949,6 +2085,12 @@ export class PipelineService {
     const maxAttempts = 1 + retryConfig.max_retries;
     let lastError: Error | null = null;
     let retries = 0;
+    const reservation = await this.reserveBudgetUsage(
+      canonical,
+      model,
+      nodeId,
+      maxAttempts,
+    );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const attemptStart = Date.now();
@@ -1969,23 +2111,32 @@ export class PipelineService {
           response.routing.latency_ms,
           200,
         );
-        return { response, lastError: null, retries, fallbackReason: null };
+        return {
+          response,
+          lastError: null,
+          retries,
+          fallbackReason: null,
+          reservation,
+        };
       } catch (err) {
         lastError = err as Error;
         const fallbackReason = this.resolveFallbackReason(lastError);
         if (lastError instanceof ConcurrencyLimitError) {
           this.logger.warn(lastError.message);
           if (!lastError.fallbackAllowed) {
+            await this.releaseBudgetReservation(reservation);
             throw new GatewayRequestRejectedError(
               lastError.message,
               lastError.statusCode,
             );
           }
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason: 'concurrency_limited',
+            reservation: null,
           };
         }
 
@@ -2008,11 +2159,13 @@ export class PipelineService {
             (shouldImmediateFallback ? ' — immediate fallback policy' : ''),
           );
           this.circuitBreaker.recordFailure(nodeId, model);
+          await this.releaseBudgetReservation(reservation);
           return {
             response: null,
             lastError,
             retries,
             fallbackReason,
+            reservation: null,
           };
         }
 
@@ -2030,11 +2183,13 @@ export class PipelineService {
       }
     }
 
+    await this.releaseBudgetReservation(reservation);
     return {
       response: null,
       lastError,
       retries,
       fallbackReason: lastError ? this.resolveFallbackReason(lastError) : null,
+      reservation: null,
     };
   }
 
@@ -2792,6 +2947,12 @@ export class PipelineService {
           return;
         }
         const requestForTarget = preUpstreamResult.request;
+        const targetBudgetReservation = await this.reserveBudgetUsage(
+          requestForTarget,
+          target.model,
+          target.node,
+          1 + retryConfig.max_retries,
+        );
 
         // Connection-phase retry loop for this target
         const maxAttempts = 1 + retryConfig.max_retries;
@@ -2962,6 +3123,7 @@ export class PipelineService {
                 usage,
                 usedModel,
                 usedNodeId,
+                targetBudgetReservation,
               );
 
               const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
@@ -3048,6 +3210,7 @@ export class PipelineService {
             lastError = err as Error;
             const attemptFallbackReason = this.resolveFallbackReason(lastError);
             if (streamCanceled) {
+              await this.releaseBudgetReservation(targetBudgetReservation);
               this.logger.warn(`Client canceled stream from ${target.node}`);
               const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
                 experimentGroupsByTarget,
@@ -3067,6 +3230,7 @@ export class PipelineService {
             if (lastError instanceof ConcurrencyLimitError) {
               this.logger.warn(lastError.message);
               if (!lastError.fallbackAllowed) {
+                await this.releaseBudgetReservation(targetBudgetReservation);
                 if (!headersFlushed) {
                   res.status(lastError.statusCode).json(
                     this.formatError(
@@ -3088,6 +3252,7 @@ export class PipelineService {
                 rootSpan.end();
                 return;
               }
+              await this.releaseBudgetReservation(targetBudgetReservation);
               fallbackReason = 'concurrency_limited';
               fallbackFromNode = target.node;
               break;
@@ -3117,6 +3282,7 @@ export class PipelineService {
                 experimentGroup,
               );
               if (recovered && !headersFlushed) {
+                await this.releaseBudgetReservation(targetBudgetReservation);
                 await this.recordSyntheticSuccess({
                   requestId,
                   canonical,
@@ -3149,6 +3315,7 @@ export class PipelineService {
               res.write(serializer.serialize(errorEvent));
               res.end();
 
+              await this.releaseBudgetReservation(targetBudgetReservation);
               await this.logCall({ requestId, canonical, tier, score, nodeId: target.node, model: target.model,
                 statusCode: 502, isFallback, latencyMs: Date.now() - startTime,
                 usage: { input_tokens: 0, output_tokens: 0 }, error: sanitizedErrorMessage,
@@ -3194,6 +3361,7 @@ export class PipelineService {
             this.circuitBreaker.recordFailure(target.node, target.model);
             fallbackReason = attemptFallbackReason;
             fallbackFromNode = target.node;
+            await this.releaseBudgetReservation(targetBudgetReservation);
             break; // break retry loop, continue to next target
           }
         }
@@ -3272,6 +3440,15 @@ export class PipelineService {
           canonical.metadata.source_format,
           recovered,
           requestId,
+        );
+        rootSpan.end();
+        return;
+      }
+
+      if (err instanceof BudgetExceededError && !headersFlushed) {
+        this.logger.warn(`Budget exceeded (stream reservation): ${err.message}`);
+        res.status(429).json(
+          this.formatBudgetError(canonical.metadata.source_format, err),
         );
         rootSpan.end();
         return;
@@ -5607,15 +5784,131 @@ export class PipelineService {
     await this.budgetService.check(canonical.metadata.api_key_name || undefined);
   }
 
+  private async reserveBudgetUsage(
+    canonical: LoggableCanonicalRequest,
+    model: string,
+    nodeId?: string,
+    attemptMultiplier = 1,
+  ): Promise<BudgetReservation> {
+    const usage = this.estimateBudgetReservationUsage(canonical);
+    const multiplier = Math.max(1, attemptMultiplier);
+    const estimatedUsage: TokenUsage = {
+      input_tokens: usage.input_tokens * multiplier,
+      output_tokens: usage.output_tokens * multiplier,
+    };
+    const pricing = this.config.getModelPricing(model, nodeId);
+    const estimatedCostUsd = this.calculateCost(estimatedUsage, pricing);
+    const estimatedTokens =
+      estimatedUsage.input_tokens + estimatedUsage.output_tokens;
+
+    if (canonical.metadata.namespace_id) {
+      if (canonical.metadata.team_id) {
+        return this.budgetService.reserve(
+          estimatedTokens,
+          estimatedCostUsd,
+          canonical.metadata.api_key_name || undefined,
+          canonical.metadata.api_key_id || undefined,
+          canonical.metadata.namespace_id,
+          canonical.metadata.team_id,
+        );
+      }
+      return this.budgetService.reserve(
+        estimatedTokens,
+        estimatedCostUsd,
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id || undefined,
+        canonical.metadata.namespace_id,
+      );
+    }
+
+    if (canonical.metadata.team_id) {
+      return this.budgetService.reserve(
+        estimatedTokens,
+        estimatedCostUsd,
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id || undefined,
+        undefined,
+        canonical.metadata.team_id,
+      );
+    }
+
+    if (canonical.metadata.api_key_id) {
+      return this.budgetService.reserve(
+        estimatedTokens,
+        estimatedCostUsd,
+        canonical.metadata.api_key_name || undefined,
+        canonical.metadata.api_key_id,
+      );
+    }
+
+    return this.budgetService.reserve(
+      estimatedTokens,
+      estimatedCostUsd,
+      canonical.metadata.api_key_name || undefined,
+    );
+  }
+
+  private estimateBudgetReservationUsage(
+    canonical: LoggableCanonicalRequest,
+  ): TokenUsage {
+    switch (canonical.metadata.source_format) {
+      case 'embeddings':
+        return {
+          input_tokens: this.estimateEmbeddingInputTokens(
+            (canonical as CanonicalEmbeddingRequest).input,
+          ),
+          output_tokens: 0,
+        };
+      case 'rerank':
+        return {
+          input_tokens: this.estimateRerankInputTokens(
+            canonical as CanonicalRerankRequest,
+          ),
+          output_tokens: 0,
+        };
+      case 'image_generation':
+      case 'image_edit':
+      case 'image_variation':
+      case 'audio_speech':
+      case 'audio_transcription':
+      case 'audio_translation':
+      case 'video_generation':
+        return {
+          input_tokens: this.estimateMediaInputTokens(
+            canonical as CanonicalMediaRequest,
+          ),
+          output_tokens: 0,
+        };
+      default:
+        return {
+          input_tokens: this.estimateRequestTokens(canonical as CanonicalRequest),
+          output_tokens: (canonical as CanonicalRequest).max_tokens ?? 1024,
+        };
+    }
+  }
+
+  private async releaseBudgetReservation(
+    reservation?: BudgetReservation | null,
+  ): Promise<void> {
+    if (!reservation) return;
+    await reservation.release();
+  }
+
   private async recordBudgetUsage(
     canonical: LoggableCanonicalRequest,
     usage: TokenUsage,
     model: string,
     nodeId?: string,
+    reservation?: BudgetReservation | null,
   ): Promise<{ totalTokens: number; costUsd: number }> {
     const pricing = this.config.getModelPricing(model, nodeId);
     const costUsd = this.calculateCost(usage, pricing);
     const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+
+    if (reservation) {
+      await reservation.commit(totalTokens, costUsd);
+      return { totalTokens, costUsd };
+    }
 
     if (canonical.metadata.namespace_id) {
       if (canonical.metadata.team_id) {
