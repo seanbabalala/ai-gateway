@@ -20,11 +20,14 @@ dashboard:
     default_role: viewer
     default_workspace_id: default-workspace
     scopes: [openid, email, profile]
+    timeout_ms: 10000
 ```
 
 `dashboard.session_secret` is required when OIDC is enabled without
 `dashboard.password`. Keep client secrets in env, Vault, AWS Secrets Manager, or
 GCP Secret Manager references. Dashboard APIs never return the resolved secret.
+`dashboard.oidc.timeout_ms` controls discovery, token exchange, userinfo, and
+JWKS HTTP calls; it defaults to 10000 ms.
 
 ## Provider Templates
 

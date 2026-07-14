@@ -97,6 +97,7 @@ dashboard:
       - example.com
     default_role: viewer
     default_workspace_id: default-workspace
+    timeout_ms: 10000
 ```
 
 Provider notes:
