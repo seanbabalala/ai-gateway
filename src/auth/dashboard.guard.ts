@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -9,6 +10,9 @@ import { getDashboardSessionCookie } from './dashboard-session-cookie';
 
 @Injectable()
 export class DashboardGuard implements CanActivate {
+  private readonly logger = new Logger(DashboardGuard.name);
+  private legacyQueryTokenWarningEmitted = false;
+
   constructor(private readonly authService: AuthService) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -62,10 +66,19 @@ export class DashboardGuard implements CanActivate {
     // 3. Legacy query param ?token=<jwt> for older EventSource clients.
     const queryToken = this.headerValue(request.query?.token);
     if (queryToken) {
+      this.warnLegacyQueryToken();
       return queryToken;
     }
 
     return null;
+  }
+
+  private warnLegacyQueryToken(): void {
+    if (this.legacyQueryTokenWarningEmitted) return;
+    this.legacyQueryTokenWarningEmitted = true;
+    this.logger.warn(
+      'Dashboard query-token authentication is deprecated; use the HttpOnly dashboard session cookie for SSE clients.',
+    );
   }
 
   private headerValue(value: string | string[] | undefined): string | undefined {

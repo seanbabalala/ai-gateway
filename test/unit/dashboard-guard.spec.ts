@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { DashboardGuard } from '../../src/auth/dashboard.guard';
 import { DASHBOARD_SESSION_COOKIE } from '../../src/auth/dashboard-session-cookie';
 
@@ -64,6 +64,7 @@ describe('DashboardGuard', () => {
   });
 
   it('should accept token from query param (for SSE)', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const auth = makeAuthService({
       isAuthRequired: true,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
@@ -72,6 +73,11 @@ describe('DashboardGuard', () => {
     const result = guard.canActivate(makeContext({}, { token: 'query-jwt' }));
     expect(result).toBe(true);
     expect(auth.verifyToken).toHaveBeenCalledWith('query-jwt');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('query-token authentication is deprecated'),
+    );
+    expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('query-jwt');
+    warnSpy.mockRestore();
   });
 
   it('should accept token from dashboard session cookie', () => {
@@ -105,6 +111,7 @@ describe('DashboardGuard', () => {
   });
 
   it('should prefer dashboard session cookie over legacy query param', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const auth = makeAuthService({
       isAuthRequired: true,
       verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
@@ -118,5 +125,24 @@ describe('DashboardGuard', () => {
       ),
     );
     expect(auth.verifyToken).toHaveBeenCalledWith('cookie-token');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('should warn about legacy query-token fallback only once per guard', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const auth = makeAuthService({
+      isAuthRequired: true,
+      verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
+    });
+    const guard = new DashboardGuard(auth);
+
+    guard.canActivate(makeContext({}, { token: 'first-query-token' }));
+    guard.canActivate(makeContext({}, { token: 'second-query-token' }));
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('first-query-token');
+    expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('second-query-token');
+    warnSpy.mockRestore();
   });
 });
