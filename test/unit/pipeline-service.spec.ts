@@ -16,6 +16,19 @@ import { CanonicalMediaRequest } from '../../src/canonical/canonical.types';
 import { createNoOpHookExecutor } from '../../src/plugins/testing';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
 
+function makeBudgetReservation(tokens = 0, costUsd = 0) {
+  return {
+    tokens,
+    costUsd,
+    commit: jest.fn().mockResolvedValue(undefined),
+    release: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+async function reservedBudgetAt(mocks: Record<string, any>, index = 0) {
+  return mocks.budgetService.reserve.mock.results[index]?.value;
+}
+
 function makePipeline(overrides: Record<string, any> = {}): {
   pipeline: PipelineService;
   mocks: Record<string, any>;
@@ -203,6 +216,9 @@ function makePipeline(overrides: Record<string, any> = {}): {
 
   const budgetService = {
     check: jest.fn().mockResolvedValue(undefined),
+    reserve: jest.fn().mockImplementation((tokens: number, costUsd: number) =>
+      Promise.resolve(makeBudgetReservation(tokens, costUsd)),
+    ),
     record: jest.fn().mockResolvedValue(undefined),
     getStatus: jest.fn().mockResolvedValue([]),
     ...overrides.budgetService,
@@ -768,13 +784,16 @@ describe('PipelineService — namespace and shadow traffic', () => {
       undefined,
       'team-alpha',
     );
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      15,
+    expect(mocks.budgetService.reserve).toHaveBeenCalledWith(
+      expect.any(Number),
       expect.any(Number),
       undefined,
       undefined,
       'team-alpha',
     );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(15, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
     expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ namespace_id: 'team-alpha' }),
     );
@@ -853,12 +872,15 @@ describe('PipelineService — embeddings', () => {
       expect.objectContaining({ tier: 'standard', is_fallback: false }),
       {},
     );
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      8,
+    expect(mocks.budgetService.reserve).toHaveBeenCalledWith(
+      expect.any(Number),
       expect.any(Number),
       'test-key',
       'key_123',
     );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(8, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
     expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         source_format: 'embeddings',
@@ -1139,7 +1161,24 @@ describe('PipelineService — budget enforcement', () => {
     expect(result.body).toHaveProperty('error');
   });
 
-  it('should record usage after successful response', async () => {
+  it('should return 429 when budget reservation is exceeded before upstream dispatch', async () => {
+    const { pipeline, mocks } = makePipeline({
+      budgetService: {
+        reserve: jest.fn().mockRejectedValue(
+          new BudgetExceededError('tokens', 999, 500),
+        ),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(429);
+    expect(mocks.budgetService.reserve).toHaveBeenCalled();
+    expect(mocks.providerClient.forward).not.toHaveBeenCalled();
+  });
+
+  it('should commit reserved usage after successful response', async () => {
     const { pipeline, mocks } = makePipeline();
     const response = makeCanonicalResponse({
       usage: { input_tokens: 100, output_tokens: 50 },
@@ -1149,14 +1188,17 @@ describe('PipelineService — budget enforcement', () => {
     const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
     await pipeline.process(request);
 
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      150, // total tokens
-      expect.any(Number), // cost
-      undefined, // no api_key_name in default request
+    expect(mocks.budgetService.reserve).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      undefined,
     );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(150, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
   });
 
-  it('should pass api_key_name to budget check and record', async () => {
+  it('should pass api_key_name to budget check and reservation', async () => {
     const { pipeline, mocks } = makePipeline();
     const response = makeCanonicalResponse({
       usage: { input_tokens: 100, output_tokens: 50 },
@@ -1168,11 +1210,14 @@ describe('PipelineService — budget enforcement', () => {
     await pipeline.process(request);
 
     expect(mocks.budgetService.check).toHaveBeenCalledWith('sean');
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      150,
+    expect(mocks.budgetService.reserve).toHaveBeenCalledWith(
+      expect.any(Number),
       expect.any(Number),
       'sean',
     );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(150, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
   });
 
   it('should not pass apiKeyName when api_key_name is undefined', async () => {
@@ -1187,11 +1232,14 @@ describe('PipelineService — budget enforcement', () => {
     await pipeline.process(request);
 
     expect(mocks.budgetService.check).toHaveBeenCalledWith(undefined);
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      150,
+    expect(mocks.budgetService.reserve).toHaveBeenCalledWith(
+      expect.any(Number),
       expect.any(Number),
       undefined,
     );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(150, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
   });
 });
 
@@ -1409,6 +1457,41 @@ describe('PipelineService — fallback policies', () => {
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.is_fallback).toBe(true);
     expect(savedLog.fallback_reason).toBe('rate_limited');
+  });
+
+  it('should release a failed primary reservation and commit fallback usage', async () => {
+    const primaryReservation = makeBudgetReservation();
+    const fallbackReservation = makeBudgetReservation();
+    const fallbackResponse = makeCanonicalResponse({
+      model: 'claude-3-opus',
+      usage: { input_tokens: 11, output_tokens: 7 },
+    });
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        retry: { max_retries: 0, backoff_base_ms: 10, backoff_max_ms: 100, retryable_status: [429, 502, 503] },
+      },
+      budgetService: {
+        reserve: jest.fn()
+          .mockResolvedValueOnce(primaryReservation)
+          .mockResolvedValueOnce(fallbackReservation),
+      },
+      providerClient: {
+        forward: jest.fn()
+          .mockRejectedValueOnce(new ProviderError('Rate limited', 429, 'openai'))
+          .mockResolvedValueOnce(fallbackResponse),
+        forwardStream: jest.fn(),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(200);
+    expect(mocks.budgetService.reserve).toHaveBeenCalledTimes(2);
+    expect(primaryReservation.release).toHaveBeenCalled();
+    expect(primaryReservation.commit).not.toHaveBeenCalled();
+    expect(fallbackReservation.commit).toHaveBeenCalledWith(18, expect.any(Number));
+    expect(fallbackReservation.release).not.toHaveBeenCalled();
   });
 
   it('should fallback on policy timeout without retrying the timed-out node', async () => {
@@ -2247,7 +2330,9 @@ describe('PipelineService — processStream', () => {
     expect(res.write).toHaveBeenCalled();
     expect(res.end).toHaveBeenCalled();
     expect(mocks.circuitBreaker.recordSuccess).toHaveBeenCalled();
-    expect(mocks.budgetService.record).toHaveBeenCalled();
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(15, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
   });
 
   it('should write native Responses raw SSE without reconstructing function call events', async () => {
@@ -2307,11 +2392,9 @@ describe('PipelineService — processStream', () => {
       expect.anything(),
       expect.anything(),
     );
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      19,
-      expect.any(Number),
-      undefined,
-    );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(19, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.input_tokens).toBe(12);
     expect(savedLog.output_tokens).toBe(7);
@@ -2372,11 +2455,9 @@ describe('PipelineService — processStream', () => {
       expect.anything(),
       expect.anything(),
     );
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      4,
-      expect.any(Number),
-      undefined,
-    );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(4, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
   });
 
   it('should record native Responses stream failure events as upstream failures', async () => {
@@ -2500,11 +2581,9 @@ describe('PipelineService — processStream', () => {
       expect.anything(),
       expect.anything(),
     );
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      13,
-      expect.any(Number),
-      undefined,
-    );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(13, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(savedLog.input_tokens).toBe(8);
     expect(savedLog.output_tokens).toBe(5);
@@ -2749,6 +2828,9 @@ describe('PipelineService — processStream', () => {
     expect(mocks.callLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ status_code: 499 }),
     );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.release).toHaveBeenCalled();
+    expect(reservation.commit).not.toHaveBeenCalled();
   });
 
   it('should drain briefly and capture usage after a completed tool call disconnect', async () => {
@@ -2809,11 +2891,9 @@ describe('PipelineService — processStream', () => {
         output_tokens: 7,
       }),
     );
-    expect(mocks.budgetService.record).toHaveBeenCalledWith(
-      49,
-      expect.any(Number),
-      undefined,
-    );
+    const reservation = await reservedBudgetAt(mocks);
+    expect(reservation.commit).toHaveBeenCalledWith(49, expect.any(Number));
+    expect(mocks.budgetService.record).not.toHaveBeenCalled();
     expect(mocks.circuitBreaker.recordSuccess).toHaveBeenCalled();
     expect(res.end).not.toHaveBeenCalled();
   });

@@ -167,7 +167,7 @@ describe('Billing Loop (e2e)', () => {
   it('over-budget responses return 429 with the generated api_key_id and no upstream call', async () => {
     const created = await createGatewayKey(harness, {
       name: `tiny-budget-e2e-${Date.now()}`,
-      daily_token_limit: 1,
+      daily_token_limit: 20,
       daily_cost_limit: 1,
     });
 
@@ -176,6 +176,7 @@ describe('Billing Loop (e2e)', () => {
       .set('Authorization', `Bearer ${created.key}`)
       .send({
         model: 'gpt-4o',
+        max_tokens: 1,
         messages: [{ role: 'user', content: 'consume tiny budget' }],
       });
 
@@ -188,6 +189,7 @@ describe('Billing Loop (e2e)', () => {
       .set('Authorization', `Bearer ${created.key}`)
       .send({
         model: 'gpt-4o',
+        max_tokens: 1,
         messages: [{ role: 'user', content: 'should be blocked by budget' }],
       });
 
