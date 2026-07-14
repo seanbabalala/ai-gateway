@@ -1,12 +1,16 @@
 const SENSITIVE_PROVIDER_ERROR_FIELD =
   /^(authorization|x-api-key|api[_-]?key|apikey|access[_-]?token|accesstoken|refresh[_-]?token|refreshtoken|id[_-]?token|idtoken|auth[_-]?token|authtoken|bearer|secret|client[_-]?secret|clientsecret|password)$/i;
 
-export function sanitizeProviderErrorBody(body: string): string {
-  try {
-    return JSON.stringify(redactProviderErrorValue(JSON.parse(body)));
-  } catch {
-    return redactProviderErrorText(body);
+export function sanitizeProviderErrorBody(body: unknown): string {
+  if (typeof body === 'string') {
+    try {
+      return stringifyRedactedProviderErrorValue(JSON.parse(body));
+    } catch {
+      return redactProviderErrorText(body);
+    }
   }
+
+  return stringifyRedactedProviderErrorValue(body);
 }
 
 export function redactProviderErrorText(text: string): string {
@@ -47,4 +51,9 @@ function redactProviderErrorValue(value: unknown, fieldName?: string): unknown {
     );
   }
   return value;
+}
+
+function stringifyRedactedProviderErrorValue(value: unknown): string {
+  const serialized = JSON.stringify(redactProviderErrorValue(value));
+  return serialized === undefined ? String(value) : serialized;
 }
