@@ -979,7 +979,7 @@ describe('ProviderClientService', () => {
 
       (svc as any).applyNodeRequestCompatibility(
         {
-          id: 'ctrip-aigw',
+          id: 'public-aigw',
           protocol: 'responses',
         },
         body,
