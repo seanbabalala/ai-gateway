@@ -192,6 +192,32 @@ describe('GatewayApiKeyService', () => {
     await expect(service.findContextByPlainKey('gw_sk_live_wrong')).resolves.toBeNull();
   });
 
+  it('throttles repeated last-used metadata writes within the usage window', async () => {
+    const { service, apiKeyRepo } = makeService();
+    const created = await service.create({ name: 'Worker' });
+
+    await service.findContextByPlainKey(created.key, '10.0.0.1');
+    const writesAfterFirstUse = apiKeyRepo.save.mock.calls.length;
+
+    await service.findContextByPlainKey(created.key, '10.0.0.1');
+
+    expect(apiKeyRepo.save).toHaveBeenCalledTimes(writesAfterFirstUse);
+    expect(apiKeyRepo._store[0].last_used_ip).toBe('10.0.0.1');
+  });
+
+  it('updates last-used metadata immediately when caller IP changes', async () => {
+    const { service, apiKeyRepo } = makeService();
+    const created = await service.create({ name: 'Worker' });
+
+    await service.findContextByPlainKey(created.key, '10.0.0.1');
+    const writesAfterFirstUse = apiKeyRepo.save.mock.calls.length;
+
+    await service.findContextByPlainKey(created.key, '10.0.0.2');
+
+    expect(apiKeyRepo.save).toHaveBeenCalledTimes(writesAfterFirstUse + 1);
+    expect(apiKeyRepo._store[0].last_used_ip).toBe('10.0.0.2');
+  });
+
   it('applies local namespace restrictions and rate limit to API key context', async () => {
     const { service } = makeService([], {
       namespaces: [
