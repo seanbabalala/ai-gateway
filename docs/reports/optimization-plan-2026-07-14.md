@@ -30,19 +30,19 @@ Baseline commands run during this review and overnight loop:
 | --- | --- |
 | `npm test -- --runInBand` | Passed: 102 suites, 1442 tests |
 | `npm run build` | Passed for backend and runtime plugin types |
-| `npm run lint` | Passed after PR #48 cleared the warning baseline |
+| `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
 | `npm run docs:check` | Passed |
 | `npm test` in `frontend/` | Passed |
-| `npm run build` in `frontend/` | Passed; Vite warned about large chunks |
+| `npm run build` in `frontend/` | Passed with bundle budget gate enforced after PR #57 |
 
-Latest synchronized baseline after the current overnight PR loop:
+Latest implemented optimization baseline before this document-only refresh:
 
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `fa273157bc2475eaccb52bf372e56ab5b61f1b38` |
-| `origin/main` | `fa273157bc2475eaccb52bf372e56ab5b61f1b38` |
+| Local HEAD | `2962f60f3255172ebb2b605607ca647cb2b875eb` |
+| `origin/main` | `2962f60f3255172ebb2b605607ca647cb2b875eb` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -80,10 +80,20 @@ Frontend build size baseline:
 
 ## Overnight Execution Record
 
-Completed PRs in the current Goal loop:
+Completed PRs in this overnight hardening run:
 
 | PR | Commit merged to `main` | Slice | Result |
 | --- | --- | --- | --- |
+| #33 | `2b716352` | Establish first optimization plan | Added the first overnight optimization plan document |
+| #34 | `f4a247ec` | Fail closed on auth status failure | Protected dashboard routes no longer fail open when auth status is unavailable |
+| #35 | `21059115` | Add OIDC fetch timeouts | Discovery, token, userinfo, and JWKS fetches have explicit timeout behavior |
+| #36 | `060c6507` | Restrict MCP stdio env | MCP stdio servers no longer inherit the full gateway process environment by default |
+| #37 | `31eae25d` | Harden public error messages | Unexpected public 5xx responses avoid leaking internal exception text |
+| #38 | `2162efe1` | Throttle API key last-used writes | API key and team last-used metadata updates are debounced |
+| #39 | `51c2808d` | Redact provider error bodies | Provider error text is sanitized before public or diagnostic exposure |
+| #40 | `eed786f8` | Write config atomically | Gateway config saves use atomic file write semantics |
+| #41 | `16ec2542` | Split frontend vendor chunks | Dashboard vendor and chart-heavy dependencies are separated into manual chunks |
+| #42 | `d452dcbf` | Lazy-load locales | Dashboard locale payloads load lazily instead of inflating the initial bundle |
 | #43 | `cbb5aa98` | Redact streaming provider errors | Shared provider redaction helper and redacted stream interruption/error surfaces |
 | #44 | `645d546a` | Guard unauthenticated dashboard in production | `dashboard.auth_required=false` fails closed in production unless explicitly overridden |
 | #45 | `dc99d6f4` | Timeout stalled provider streams | Stream body idle timeout emits timeout errors after stream start |
@@ -92,6 +102,13 @@ Completed PRs in the current Goal loop:
 | #48 | `aac01e5b` | Clear lint warning baseline | Removed the existing lint warnings so quality gates can ratchet from zero |
 | #49 | `05e2231c` | Cap provider stream duration | Added optional stream max-duration enforcement in addition to idle chunk timeout |
 | #50 | `fa273157` | Prefer cookie dashboard sessions | Added HttpOnly dashboard session cookies and cookie-first SSE behavior with legacy token fallback |
+| #51 | `a67dd677` | Refresh overnight plan | Rebased the execution plan on the cookie-session baseline |
+| #52 | `e0513eaa` | Trust cookie sessions on reload | Protected routes accept verified cookie-backed session status without `localStorage` |
+| #53 | `bc1036a2` | Stop OIDC URL tokens | OIDC callback redirects without `#token=` after setting the HttpOnly session cookie |
+| #54 | `6ad34e81` | Warn on legacy SSE query tokens | Legacy `?token=` dashboard auth emits a one-time warning without logging token values |
+| #55 | `bd1eccb1` | Abort upstream fetch after stream cancel | Downstream stream cancellation aborts the upstream provider fetch signal |
+| #56 | `6030fe9e` | Enforce zero lint warnings | Root lint script now fails on any warning |
+| #57 | `2962f60f` | Add frontend bundle budget gate | Frontend build now runs a gzip bundle budget check for key chunks |
 
 Every merged PR followed this loop:
 
@@ -110,13 +127,12 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/cookie-session-route-auth` | Let dashboard protected routes trust verified cookie-backed session status after reload, without requiring `localStorage` token presence | `src/auth/auth.controller.ts`, `frontend/src/contexts/AuthContext.tsx`, `frontend/src/components/shared/ProtectedRoute.tsx` | `npm test -- --runInBand test/unit/auth-controller.spec.ts`; `cd frontend && npm test && npm run build` |
-| 2 | `codex/oidc-cookie-only-redirect` | Stop returning dashboard JWTs in OIDC callback URL hash once the session cookie is set | `src/auth/oidc.service.ts`, `frontend/src/pages/LoginPage.tsx`, auth tests | `npm test -- --runInBand test/unit/auth-controller.spec.ts`; `cd frontend && npm test` |
-| 3 | `codex/sse-query-token-deprecation` | Keep cookie-first SSE, but add compatibility telemetry or config fencing for legacy `?token=` fallback | `src/auth/dashboard.guard.ts`, `frontend/src/lib/sse.ts`, auth/frontend checks | `npm test -- --runInBand test/unit/dashboard-guard.spec.ts`; `cd frontend && npm test` |
-| 4 | `codex/provider-client-abort-propagation` | Ensure downstream client disconnect aborts all upstream provider stream readers and fetch controllers | `src/providers/provider-client.service.ts`, provider stream tests | `npm test -- --runInBand test/unit/provider-client*.spec.ts`; `npm run build` |
-| 5 | `codex/budget-reservation-proof` | Add a focused concurrency test and first atomic reservation path for budget enforcement | `src/budget/budget.service.ts`, budget tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
-| 6 | `codex/bundle-budget-gate` | Add dashboard bundle-size budget check now that manual chunks/lazy routes exist | `frontend/scripts/*`, `frontend/package.json`, `frontend/vite.config.ts` | `cd frontend && npm test && npm run build` |
-| 7 | `codex/release-checklist-hardening` | Update release checklist so new auth/session/stream controls are always validated before release | `docs/RELEASE_CHECKLIST.md`, `docs/SECURITY.md`, `docs/PRODUCTION.md` | `npm run docs:check && npm run public:check` |
+| 1 | `codex/budget-reservation-proof` | Add a focused concurrency proof and the smallest reservation path for budget enforcement | `src/budget/budget.service.ts`, budget tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
+| 2 | `codex/release-checklist-hardening` | Update release checklist so new auth/session/stream/lint/bundle controls are validated before release | `docs/RELEASE_CHECKLIST.md`, `docs/SECURITY.md`, `docs/PRODUCTION.md` | `npm run docs:check && npm run public:check` |
+| 3 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | `docs/PRODUCTION.md`, `docs/MIGRATION_V1_TO_V2.md`, scripts or config docs as needed | `npm run docs:check && npm run public:check` |
+| 4 | `codex/dashboard-legacy-token-fence` | Add a configurable compatibility fence for remaining dashboard bearer/query-token fallback paths | `src/auth/dashboard.guard.ts`, frontend auth/SSE helpers, auth tests | `npm test -- --runInBand test/unit/dashboard-guard.spec.ts`; `cd frontend && npm test` |
+| 5 | `codex/budget-reservation-metrics` | Emit operator-visible metrics or audit events for budget reservation denials/releases after the proof lands | `src/budget/*`, telemetry/audit tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
+| 6 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | `frontend/src/App.tsx`, route/page components | `cd frontend && npm test && npm run build` |
 
 ## Key Findings
 
@@ -152,9 +168,8 @@ Status:
 - Backend production guard completed in PR #44.
 - Frontend status failure now defaults to fail-closed behavior on current `main`.
 - Cookie session issuance and cookie-first SSE landed in PR #50.
-- Remaining follow-up: protected dashboard routes should accept a verified
-  cookie-backed session after reload even when no legacy `localStorage` token is
-  present.
+- Protected dashboard routes now accept verified cookie-backed session status
+  after reload without requiring legacy `localStorage` tokens as of PR #52.
 
 ### P0: Dashboard Tokens Appear In URL And Browser Storage
 
@@ -187,10 +202,11 @@ Status:
 
 - HttpOnly dashboard session cookie support and cookie-first SSE behavior landed
   in PR #50.
-- Legacy bearer, query-token SSE fallback, OIDC hash tokens, and `localStorage`
-  token compatibility remain for migration safety.
-- Next PR should make cookie-only reloads pass route protection; the following PR
-  can then remove OIDC hash token delivery.
+- Cookie-backed route authentication landed in PR #52.
+- OIDC callback token delivery through the URL hash was removed in PR #53.
+- Legacy bearer, query-token SSE fallback, and `localStorage` token compatibility
+  remain for migration safety; PR #54 added a one-time warning for legacy SSE
+  query-token use without logging token values.
 
 ### P1: OIDC Fetches Need Explicit Timeout And Error Classification
 
@@ -250,7 +266,10 @@ Status:
 - Pre-first-forwarded-data reader failures now throw connection-phase
   `ProviderError` and can trigger fallback as of PR #46.
 - Configurable max stream duration landed in PR #49.
-- Deeper downstream client-abort propagation remains a follow-up lifecycle PR.
+- Downstream stream cancellation now aborts the upstream provider fetch signal as
+  of PR #55.
+- Remaining follow-up: add observability around stream abort reasons and keep
+  lifecycle tests broad when provider stream handling changes.
 
 ### P1: Provider Error Bodies Need Stronger Redaction
 
@@ -437,9 +456,10 @@ Target outcome:
 
 Status:
 
-- Current `main` already has route lazy loading and manual chunking. The next
-  low-risk frontend performance PR is a bundle budget gate so size regressions
-  cannot silently return.
+- Current `main` has route lazy loading, manual chunks, lazy locale loading, and
+  a frontend bundle budget gate from PRs #41, #42, and #57.
+- Remaining follow-up: route-level loading states should keep first paint useful
+  as future lazy pages grow.
 
 ### P2: Lint Warnings Should Become A Quality Gate
 
@@ -461,8 +481,8 @@ Target outcome:
 
 Status:
 
-- The warning baseline was cleared in PR #48. The next ratchet is to enforce the
-  zero-warning expectation in CI/package scripts.
+- The warning baseline was cleared in PR #48 and `npm run lint` now enforces
+  `--max-warnings=0` as of PR #56.
 
 ## Overnight Merge Plan
 
@@ -491,11 +511,12 @@ Exit criteria:
 
 Deliverables:
 
-- Finish cookie-backed route authentication so dashboard reloads do not depend on
-  legacy `localStorage` tokens.
-- Remove OIDC URL-hash token delivery after cookie-only reload behavior is
-  covered.
-- Add focused tests around cookie session status, logout, and disabled-auth mode.
+- Keep cookie-backed route authentication green so dashboard reloads do not
+  depend on legacy `localStorage` tokens. Completed in PR #52.
+- Keep OIDC login cookie-only from the browser URL perspective. Completed in PR
+  #53.
+- Keep focused tests around cookie session status, logout, and disabled-auth mode
+  as regression coverage when auth code changes.
 
 Exit criteria:
 
@@ -507,22 +528,23 @@ Exit criteria:
 
 Deliverables:
 
-- Add telemetry, warnings, or config fencing for legacy bearer/query-token
-  dashboard compatibility.
+- Keep PR #54's one-time warning for legacy SSE query-token compatibility and
+  follow up with a config fence when operators are ready to make compatibility
+  explicit.
 - Keep compatibility only where required for older clients and SSE fallback.
 - Document the deprecation path.
 
 Exit criteria:
 
-- Operators can tell whether legacy token paths are still being used.
+- Operators can tell when legacy SSE query-token paths are still being used.
 - The PR is merged and local `main` is synchronized with `origin/main`.
 
 ### Block 3: Provider Client-Abort Propagation
 
 Deliverables:
 
-- Ensure downstream disconnects cancel upstream provider requests and readers.
-- Add regression tests for aborting before first chunk and after partial chunks.
+- Keep PR #55's downstream disconnect propagation covered by regression tests.
+- Add observability for abort reasons before expanding stream lifecycle behavior.
 
 Exit criteria:
 
@@ -547,8 +569,9 @@ Exit criteria:
 
 Deliverables:
 
-- Add a bundle budget gate now that route lazy loading and manual chunks exist.
-- Ratchet lint to zero-warning enforcement.
+- Keep PR #57's bundle budget gate green now that route lazy loading and manual
+  chunks exist.
+- Keep PR #56's zero-warning lint enforcement green.
 - Update release checklist entries for the new session and stream controls.
 
 Exit criteria:
@@ -602,8 +625,12 @@ Implementation steps:
 5. Replace SSE query tokens with cookie-first auth and retain only a legacy
    fallback. Completed in PR #50.
 6. Let protected routes trust verified cookie-backed session status after reload.
+   Completed in PR #52.
 7. Remove OIDC URL-hash token delivery after cookie-only reload is covered.
-8. Keep compatibility metrics for remaining query-token usage.
+   Completed in PR #53.
+8. Warn on remaining legacy SSE query-token usage without logging token values.
+   Completed in PR #54.
+9. Add an explicit compatibility fence for remaining legacy token paths.
 
 Tests:
 
@@ -620,10 +647,13 @@ Implementation steps:
    reason. Idle and max-duration controls are complete in PRs #45 and #49.
 2. Wrap provider streaming body readers with idle timers. Completed in PR #45.
 3. Ensure client disconnect cancels upstream requests and stream readers.
+   Completed in PR #55.
 4. Add provider error sanitizer with max length, secret patterns, and structured
-   failure types. Streaming/provider redaction started in PR #43.
+   failure types. Provider and streaming redaction landed across PRs #39 and #43.
 5. Preserve public error mapping so unexpected provider/internal errors return
    stable client messages.
+6. Emit stream abort reason metrics for connect, idle, max-duration, and client
+   disconnect paths.
 
 Tests:
 
@@ -690,7 +720,8 @@ Tests:
 Implementation steps:
 
 1. Keep route lazy loading and manual chunks intact.
-2. Add a lightweight bundle budget script for initial entry and chart chunks.
+2. Keep the lightweight bundle budget script for initial entry and chart chunks
+   green. Completed in PR #57.
 3. Add route-level loading states that keep first paint useful when future pages
    grow.
 
@@ -705,7 +736,7 @@ Targets:
 Implementation steps:
 
 1. Keep the warning baseline cleared by PR #48.
-2. Move lint to zero-warning CI mode.
+2. Move lint to zero-warning CI mode. Completed in PR #56.
 3. Add focused regression tests for every P0/P1 fix.
 4. Add a docs check step to the release checklist for changed production
    behavior.
@@ -724,23 +755,27 @@ Targets:
 | AGW-SEC-01 | Make dashboard auth status fail closed | P0 | Frontend/Auth | Done on current `main` |
 | AGW-SEC-02 | Add production guard for unauthenticated dashboard | P0 | Backend/Auth | Done in PR #44 |
 | AGW-SEC-03 | Move dashboard session to HttpOnly cookie | P0 | Backend/Auth | Done in PR #50 |
-| AGW-SEC-04 | Prefer cookie-authenticated SSE over query token auth | P0 | Frontend/Auth | Done in PR #50; deprecation follow-up next |
+| AGW-SEC-04 | Prefer cookie-authenticated SSE over query token auth | P0 | Frontend/Auth | Done in PR #50; legacy warning done in PR #54 |
 | AGW-SEC-05 | Add OIDC fetch timeout helper | P1 | Backend/Auth | Done on current `main` |
-| AGW-SEC-07 | Let protected routes accept verified cookie sessions after reload | P0 | Frontend/Auth | Next |
-| AGW-SEC-08 | Remove OIDC URL-hash token delivery | P0 | Backend/Auth | Next after AGW-SEC-07 |
+| AGW-SEC-07 | Let protected routes accept verified cookie sessions after reload | P0 | Frontend/Auth | Done in PR #52 |
+| AGW-SEC-08 | Remove OIDC URL-hash token delivery | P0 | Backend/Auth | Done in PR #53 |
+| AGW-SEC-09 | Add explicit compatibility fence for legacy dashboard token paths | P1 | Backend/Auth | Planned |
 | AGW-REL-01 | Add provider stream idle timeout | P1 | Provider | Done in PR #45 |
-| AGW-REL-02 | Propagate client disconnect to upstream provider | P1 | Provider | Planned |
+| AGW-REL-02 | Propagate client disconnect to upstream provider | P1 | Provider | Done in PR #55 |
 | AGW-REL-03 | Treat pre-first-event stream reader failures as fallbackable | P1 | Provider/Pipeline | Done in PR #46 |
 | AGW-REL-04 | Add provider stream max-duration cap | P1 | Provider | Done in PR #49 |
+| AGW-REL-05 | Add stream lifecycle abort reason metrics | P1 | Provider/Observability | Planned |
 | AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; keep regression coverage |
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
 | AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Planned |
+| AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Planned after AGW-COST-01 |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
 | AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Planned |
-| AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done; bundle budget next |
-| AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement next |
+| AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
+| AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Planned |
+| AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 
 ## Pull Request Discipline
 
@@ -795,14 +830,13 @@ Quality:
 
 ## Quick Wins
 
-- Make cookie-authenticated dashboard reloads pass protected routes without
-  relying on `localStorage`.
-- Remove the OIDC `#token=` redirect once cookie-only reload is covered.
-- Add telemetry or config fencing for legacy SSE `?token=` fallback.
-- Add downstream client-abort propagation tests for provider streams.
 - Add the first budget reservation concurrency proof.
-- Add a frontend bundle budget gate.
-- Ratchet lint to zero-warning enforcement.
+- Add a compatibility fence for remaining legacy dashboard bearer/query-token
+  paths.
+- Add provider stream abort reason metrics.
+- Add route-level dashboard loading states for lazy pages and locales.
+- Document the production database migration policy and schema patch
+  compatibility windows.
 - Update release/security docs for cookie sessions, stream max duration, and
   legacy token deprecation.
 
