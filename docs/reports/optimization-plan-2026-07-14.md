@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites and 1474 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 102 suites and 1475 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `e2769ba08f784602b5baa960a99648276e529794` |
-| `origin/main` | `e2769ba08f784602b5baa960a99648276e529794` |
+| Local HEAD | `7ec166069f0ac35c8ed5028a2308d63c4169753b` |
+| `origin/main` | `7ec166069f0ac35c8ed5028a2308d63c4169753b` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -128,6 +128,8 @@ Completed PRs in this overnight hardening run:
 | #73 | `2ba5b4ac` | Refresh optimization plan after auth telemetry | Updated this plan after PRs #71 and #72 |
 | #74 | `23c0c526` | Add Postgres budget lock smoke | Added an optional real-PostgreSQL row-lock smoke for competing budget reservations |
 | #75 | `e2769ba0` | Add dashboard first-paint smoke | Added a frontend first-paint smoke check and deterministic skeleton chart placeholders |
+| #76 | `cf1ad2d6` | Refresh optimization plan after FCP smoke | Updated this plan after the frontend first-paint smoke baseline |
+| #77 | `7ec16606` | Emit dashboard legacy token telemetry | Added low-cardinality telemetry for legacy bearer/query fallback usage and compatibility-disabled rejections |
 
 Every merged PR followed this loop:
 
@@ -155,6 +157,7 @@ PR, waited for GitHub checks, merged, deleted its branch, and returned local
 | 6 | `codex/auth-status-observability` | Count dashboard auth status failures and disabled-auth startup events as low-cardinality telemetry | Done in PR #72 | Focused auth/telemetry tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 7 | `codex/postgres-budget-lock-integration` | Add optional real-PostgreSQL smoke coverage for row-lock budget reservations | Done in PR #74 | Optional Postgres smoke spec, full unit with configured skip, build, lint, docs/public/diff checks, GitHub checks |
 | 8 | `codex/frontend-fcp-smoke` | Add lightweight dashboard first-paint smoke coverage for route skeletons and bundle budget wiring | Done in PR #75 | Frontend smoke, frontend test/build, public/diff checks, GitHub checks |
+| 9 | `codex/dashboard-legacy-token-telemetry` | Count legacy Dashboard bearer/query-token fallback and compatibility-disabled rejection paths with bounded telemetry labels | Done in PR #77 | Focused guard/telemetry tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Next Candidate PR Queue
 
@@ -163,9 +166,8 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/dashboard-legacy-token-telemetry` | Count legacy Dashboard bearer/query-token fallback and compatibility-disabled rejection paths with bounded telemetry labels | `src/auth/dashboard.guard.ts`, `src/telemetry/telemetry.service.ts`, guard/telemetry tests | `npm test -- --runInBand test/unit/dashboard-guard.spec.ts test/unit/telemetry-service.spec.ts`; `npm run build` |
-| 2 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | provider redaction helper/tests | focused provider redaction tests; `npm run lint` |
-| 3 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | control-plane/policy or telemetry timer tests | focused unit tests for timer cleanup |
+| 1 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | provider redaction helper/tests | focused provider redaction tests; `npm run lint` |
+| 2 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | control-plane/policy or telemetry timer tests | focused unit tests for timer cleanup |
 
 ## Key Findings
 
@@ -245,6 +247,9 @@ Status:
 - `dashboard.allow_legacy_token_auth=false` can now reject legacy Dashboard
   bearer tokens and SSE query tokens after clients move to cookie-only sessions
   as of PR #61.
+- PR #77 added bounded telemetry for legacy bearer/query-token fallback usage
+  and compatibility-disabled rejections, without recording token values or user
+  identifiers.
 
 ### P1: OIDC Fetches Need Explicit Timeout And Error Classification
 
@@ -595,12 +600,15 @@ Deliverables:
 - Keep PR #54's one-time warning for legacy SSE query-token compatibility and
   PR #61's `dashboard.allow_legacy_token_auth=false` fence when operators are
   ready to make compatibility explicit.
+- Keep PR #77's bounded legacy-token telemetry as the burn-down signal before
+  disabling compatibility in stricter deployments.
 - Keep compatibility only where required for older clients and SSE fallback.
 - Document the deprecation path.
 
 Exit criteria:
 
-- Operators can tell when legacy SSE query-token paths are still being used.
+- Operators can tell when legacy bearer/query-token paths are still being used
+  or rejected.
 - The PR is merged and local `main` is synchronized with `origin/main`.
 
 ### Block 3: Provider Client-Abort Propagation
@@ -839,7 +847,7 @@ Targets:
 | AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility done in PR #71 |
 | AGW-COST-04 | Add optional Postgres row-lock smoke | P1 | Budget/Data | Done in PR #74 |
 | AGW-SEC-10 | Add dashboard auth status telemetry | P1 | Auth/Observability | Done in PR #72 |
-| AGW-SEC-11 | Add legacy dashboard token telemetry | P1 | Auth/Observability | Next candidate |
+| AGW-SEC-11 | Add legacy dashboard token telemetry | P1 | Auth/Observability | Done in PR #77 |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
@@ -870,7 +878,7 @@ Security:
 
 - Count of dashboard auth status errors.
 - Count of disabled-auth startup events.
-- Count of query-token SSE attempts.
+- Count of legacy Dashboard bearer/query-token fallback and rejection events.
 - Count of redacted provider error fields.
 - Count of MCP env-policy denials.
 
@@ -919,11 +927,11 @@ Completed:
   PR #74.
 - Add a frontend first-paint smoke check and deterministic loading placeholders.
   Done in PR #75.
+- Add legacy Dashboard token fallback/rejection telemetry without recording
+  token values. Done in PR #77.
 
 Remaining:
 
-- Add telemetry for legacy Dashboard bearer/query-token fallback and
-  compatibility-disabled rejection paths.
 - Add a provider redaction regression matrix for nested and non-string error
   bodies.
 
