@@ -100,6 +100,7 @@ mkdir -p "${WORK_DIR}/data"
 
 cat > "${WORK_DIR}/.env" <<'ENV'
 NODE_ENV=production
+SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD=true
 ENV
 
 cat > "${WORK_DIR}/gateway.config.yaml" <<'YAML'

@@ -371,7 +371,9 @@ Connection state summaries are exposed through `/health` and `/api/dashboard/nod
 ## Dashboard API
 
 Dashboard routes are guarded by the dashboard auth layer by default. Set
-`dashboard.auth_required=false` only for trusted local development.
+`dashboard.auth_required=false` only for trusted local development. In
+`NODE_ENV=production`, that setting is ignored unless
+`SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD=true` is explicitly set.
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
