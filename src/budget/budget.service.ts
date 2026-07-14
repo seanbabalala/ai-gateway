@@ -8,7 +8,7 @@
 
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, type EntityManager } from 'typeorm';
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
@@ -62,6 +62,11 @@ interface BudgetRuleScope {
 interface BudgetReservationMetricDimension {
   scope: BudgetReservationMetricScope;
   budgetType: string;
+}
+
+interface BudgetMutationContext {
+  repo: Repository<BudgetRule>;
+  lockActiveRules: boolean;
 }
 
 export class BudgetExceededError extends Error {
@@ -447,10 +452,9 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Reserve estimated usage before dispatching a provider request.
    *
-   * This first reservation path is process-local: it serializes mutations in a
-   * single gateway instance and keeps all matching budget scopes all-or-nothing.
-   * Future storage backends can replace the internals with SQL/Redis conditional
-   * updates while preserving this call contract.
+   * PostgreSQL deployments run the mutation in a transaction and lock matching
+   * budget rows before evaluating projections. Other storage backends keep the
+   * process-local queue while preserving the same reservation contract.
    */
   async reserve(
     estimatedTokens: number,
@@ -472,21 +476,22 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     let metricDimensions: BudgetReservationMetricDimension[] = [];
 
     try {
-      await this.withBudgetMutation(async () => {
+      await this.withBudgetMutation(async (context) => {
         const scopes = await this.loadRuleScopes(
           identity.apiKeyName,
           identity.apiKeyId,
           identity.namespaceId,
           identity.teamId,
+          context,
         );
 
         for (const scope of scopes) {
-          await this.resetExpiredPeriods(scope.rules);
+          await this.resetExpiredPeriods(scope.rules, context.repo);
           this.evaluateRuleProjections(scope, safeTokens, safeCostUsd);
         }
 
         for (const scope of scopes) {
-          await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true);
+          await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true, context.repo);
         }
 
         metricDimensions = this.collectReservationMetricDimensions(
@@ -494,7 +499,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           safeTokens,
           safeCostUsd,
         );
-        await this.refreshBudgetMetricSnapshot();
+        await this.refreshBudgetMetricSnapshot(context.repo);
       });
     } catch (err) {
       if (err instanceof BudgetExceededError) {
@@ -541,20 +546,21 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   async record(tokens: number, costUsd: number, apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null, teamId?: string | null): Promise<void> {
     const safeTokens = this.sanitizeCounterValue(tokens);
     const safeCostUsd = this.sanitizeCounterValue(costUsd);
-    await this.withBudgetMutation(async () => {
+    await this.withBudgetMutation(async (context) => {
       const scopes = await this.loadRuleScopes(
         apiKeyName || null,
         apiKeyId || null,
         namespaceId || null,
         teamId || null,
+        context,
       );
 
       for (const scope of scopes) {
-        await this.resetExpiredPeriods(scope.rules);
-        await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true);
+        await this.resetExpiredPeriods(scope.rules, context.repo);
+        await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true, context.repo);
       }
 
-      await this.refreshBudgetMetricSnapshot();
+      await this.refreshBudgetMetricSnapshot(context.repo);
     });
   }
 
@@ -638,7 +644,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
   // ── Private helpers ───────────────────────────────────────
 
-  private async withBudgetMutation<T>(operation: () => Promise<T>): Promise<T> {
+  private async withBudgetMutation<T>(operation: (context: BudgetMutationContext) => Promise<T>): Promise<T> {
     const previous = this.mutationQueue;
     let release!: () => void;
     this.mutationQueue = new Promise<void>((resolve) => {
@@ -647,10 +653,31 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
     await previous;
     try {
-      return await operation();
+      const transactionManager = this.transactionManager(this.budgetRepo);
+      if (transactionManager) {
+        return await transactionManager.transaction('READ COMMITTED', async (manager) =>
+          operation({
+            repo: manager.getRepository(BudgetRule),
+            lockActiveRules: true,
+          }),
+        );
+      }
+
+      return await operation({
+        repo: this.budgetRepo,
+        lockActiveRules: false,
+      });
     } finally {
       release();
     }
+  }
+
+  private transactionManager(repo: Repository<BudgetRule>): EntityManager | null {
+    const manager = repo.manager;
+    const dataSource = manager?.connection;
+    if (dataSource?.options?.type !== 'postgres') return null;
+    if (typeof manager?.transaction !== 'function') return null;
+    return manager;
   }
 
   private async loadRuleScopes(
@@ -658,10 +685,14 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     apiKeyId?: string | null,
     namespaceId?: string | null,
     teamId?: string | null,
+    context: BudgetMutationContext = {
+      repo: this.budgetRepo,
+      lockActiveRules: false,
+    },
   ): Promise<BudgetRuleScope[]> {
     const scopes: BudgetRuleScope[] = [
       {
-        rules: await this.loadActiveRules(null),
+        rules: await this.loadActiveRules(null, null, null, null, context),
         apiKeyName: null,
         apiKeyId: null,
         namespaceId: null,
@@ -671,7 +702,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
     if (namespaceId) {
       scopes.push({
-        rules: await this.loadActiveRules(null, null, namespaceId, null),
+        rules: await this.loadActiveRules(null, null, namespaceId, null, context),
         apiKeyName: null,
         apiKeyId: null,
         namespaceId,
@@ -681,7 +712,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
     if (teamId) {
       scopes.push({
-        rules: await this.loadActiveRules(null, null, null, teamId),
+        rules: await this.loadActiveRules(null, null, null, teamId, context),
         apiKeyName: null,
         apiKeyId: null,
         namespaceId: null,
@@ -691,7 +722,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
     if (apiKeyName || apiKeyId) {
       scopes.push({
-        rules: await this.loadActiveRules(apiKeyName, apiKeyId),
+        rules: await this.loadActiveRules(apiKeyName, apiKeyId, null, null, context),
         apiKeyName,
         apiKeyId: apiKeyId || null,
         namespaceId: null,
@@ -705,18 +736,30 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Load active rules for a given scope (null = global, string = per-key).
    */
-  private async loadActiveRules(apiKeyName: string | null, apiKeyId?: string | null, namespaceId?: string | null, teamId?: string | null): Promise<BudgetRule[]> {
+  private async loadActiveRules(
+    apiKeyName: string | null,
+    apiKeyId?: string | null,
+    namespaceId?: string | null,
+    teamId?: string | null,
+    context: BudgetMutationContext = {
+      repo: this.budgetRepo,
+      lockActiveRules: false,
+    },
+  ): Promise<BudgetRule[]> {
+    const repo = context.repo;
+    let rules: BudgetRule[];
     if (namespaceId) {
-      return this.budgetRepo.find({
+      rules = await repo.find({
         where: workspaceFindWhere(this.workspaceId(), {
           namespace_id: namespaceId,
           team_id: IsNull(),
           is_active: true,
         }),
       });
+      return this.lockRulesForMutation(rules, context);
     }
     if (teamId) {
-      return this.budgetRepo.find({
+      rules = await repo.find({
         where: workspaceFindWhere(this.workspaceId(), {
           team_id: teamId,
           api_key_name: IsNull(),
@@ -725,17 +768,19 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           is_active: true,
         }),
       });
+      return this.lockRulesForMutation(rules, context);
     }
     if (apiKeyId) {
-      return this.budgetRepo.find({
+      rules = await repo.find({
         where: workspaceFindWhere(this.workspaceId(), {
           api_key_id: apiKeyId,
           team_id: IsNull(),
           is_active: true,
         }),
       });
+      return this.lockRulesForMutation(rules, context);
     }
-    return this.budgetRepo.find({
+    rules = await repo.find({
       where: workspaceFindWhere(this.workspaceId(), {
         api_key_name: apiKeyName === null ? IsNull() : apiKeyName,
         api_key_id: IsNull(),
@@ -744,6 +789,28 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         is_active: true,
       }),
     });
+    return this.lockRulesForMutation(rules, context);
+  }
+
+  private async lockRulesForMutation(
+    rules: BudgetRule[],
+    context: BudgetMutationContext,
+  ): Promise<BudgetRule[]> {
+    if (!context.lockActiveRules || rules.length === 0) return rules;
+
+    const lockedRules: BudgetRule[] = [];
+    for (const rule of [...rules].sort((a, b) => a.id - b.id)) {
+      const locked = await context.repo.findOne({
+        where: workspaceFindWhere(this.workspaceId(), {
+          id: rule.id,
+          is_active: true,
+        }),
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (locked) lockedRules.push(locked);
+    }
+
+    return lockedRules;
   }
 
   /**
@@ -812,20 +879,27 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     if (tokenDelta === 0 && costDelta === 0) return;
 
-    await this.withBudgetMutation(async () => {
+    await this.withBudgetMutation(async (context) => {
       const scopes = await this.loadRuleScopes(
         identity.apiKeyName,
         identity.apiKeyId,
         identity.namespaceId,
         identity.teamId,
+        context,
       );
 
       for (const scope of scopes) {
-        await this.resetExpiredPeriods(scope.rules);
-        await this.applyUsageToRules(scope, tokenDelta, costDelta, tokenDelta > 0 || costDelta > 0);
+        await this.resetExpiredPeriods(scope.rules, context.repo);
+        await this.applyUsageToRules(
+          scope,
+          tokenDelta,
+          costDelta,
+          tokenDelta > 0 || costDelta > 0,
+          context.repo,
+        );
       }
 
-      await this.refreshBudgetMetricSnapshot();
+      await this.refreshBudgetMetricSnapshot(context.repo);
     });
   }
 
@@ -834,6 +908,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     tokens: number,
     costUsd: number,
     emitThresholdAlerts: boolean,
+    repo: Repository<BudgetRule> = this.budgetRepo,
   ): Promise<void> {
     for (const rule of scope.rules) {
       const previousValue = rule.current_value;
@@ -863,7 +938,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      await this.budgetRepo.save(rule);
+      await repo.save(rule);
     }
   }
 
@@ -876,7 +951,10 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   /**
    * Reset counters for rules whose period has expired (new day).
    */
-  private async resetExpiredPeriods(rules: BudgetRule[]): Promise<void> {
+  private async resetExpiredPeriods(
+    rules: BudgetRule[],
+    repo: Repository<BudgetRule> = this.budgetRepo,
+  ): Promise<void> {
     const todayStart = this.startOfDay(new Date());
 
     for (const rule of rules) {
@@ -886,7 +964,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           this.logger.log(`Daily budget reset: ${rule.type} (was ${rule.current_value.toFixed(2)})`);
           rule.current_value = 0;
           rule.period_start = todayStart;
-          await this.budgetRepo.save(rule);
+          await repo.save(rule);
         }
       }
     }
@@ -918,9 +996,11 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async refreshBudgetMetricSnapshot(): Promise<void> {
+  private async refreshBudgetMetricSnapshot(
+    repo: Repository<BudgetRule> = this.budgetRepo,
+  ): Promise<void> {
     try {
-      const rules = await this.budgetRepo.find({
+      const rules = await repo.find({
         where: workspaceFindWhere(this.workspaceId(), { is_active: true }),
       });
       const statuses: BudgetStatus[] = rules.map((r) => ({
