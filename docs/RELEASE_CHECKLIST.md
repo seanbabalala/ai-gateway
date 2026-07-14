@@ -181,6 +181,11 @@ configuration:
   instances.
 - Treat startup schema patch services as compatibility windows; verify them in
   staging and watch startup logs for `Applied schema patch:` entries.
+- For budget reservation or transaction changes, run the optional PostgreSQL
+  row-lock smoke with `SIFTGATE_TEST_POSTGRES_URL` pointing at an isolated test
+  database. The test creates and drops a unique schema; set
+  `SIFTGATE_RUN_DATABASE_URL_INTEGRATION_TESTS=true` only when `DATABASE_URL` is
+  safe to use for integration tests.
 
 ## Documentation And Privacy Review
 
