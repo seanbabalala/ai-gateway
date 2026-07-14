@@ -76,6 +76,32 @@ future v2.x features:
 - management audit logs with redacted summaries and hash-chain fields,
 - repeatable benchmark evidence under `docs/PERFORMANCE.md`.
 
+## Runtime Hardening Controls
+
+Production releases should keep these controls enabled and covered by release
+checks:
+
+- Dashboard auth fails closed by default. Keep `dashboard.auth_required=true` in
+  production unless a controlled break-glass deployment explicitly sets
+  `SIFTGATE_ALLOW_UNAUTHENTICATED_DASHBOARD=true`.
+- Dashboard sessions use the HttpOnly `siftgate_dashboard_session` cookie. OIDC
+  callbacks should redirect without `#token=` fragments, and normal browser SSE
+  connections should not include session tokens in the URL.
+- Provider streams should have both idle-body and total-duration bounds. Set
+  `connection.body_timeout_ms` for idle time between stream chunks and
+  `connection.stream_max_duration_ms` for a total wall-clock cap on long-lived
+  streams.
+- Downstream client disconnects should abort upstream provider fetches so
+  abandoned streams do not keep provider or worker resources alive.
+- Budget rules remain the release gate for local cost controls. The
+  `BudgetService.reserve()` path provides a tested pre-dispatch reservation
+  contract for estimated token/cost usage; when request paths adopt it, failed
+  or aborted calls must release reservations and successful calls must commit
+  actual usage.
+- The frontend bundle budget and zero-warning lint gates should stay enabled so
+  release candidates cannot silently grow the Dashboard initial payload or hide
+  stale code behind warnings.
+
 ## Dashboard Login, OIDC, And Invites
 
 v2.0.0-beta.1 adds optional generic OIDC login for the open-source Dashboard.

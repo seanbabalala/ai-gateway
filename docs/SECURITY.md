@@ -52,6 +52,10 @@ Successful Dashboard login sets an HttpOnly, SameSite=Lax
 `siftgate_dashboard_session` cookie. Dashboard APIs still accept bearer tokens
 for compatibility, but browser Server-Sent Events use the cookie-first path so
 session tokens do not need to be placed in SSE URLs during normal operation.
+OIDC callbacks set the same cookie and redirect back to the Dashboard without
+placing a Dashboard JWT in the URL hash. The legacy SSE `?token=` path remains
+for older clients during the compatibility window; when it is used, SiftGate
+logs a one-time deprecation warning without including the token value.
 
 Store OIDC client secrets as secret references such as
 `${env:OIDC_CLIENT_SECRET}`. Dashboard auth status only exposes whether OIDC is
