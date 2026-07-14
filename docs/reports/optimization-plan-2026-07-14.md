@@ -28,33 +28,33 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites, 1474 tests |
+| `npm test -- --runInBand` | Passed: 102 suites and 1474 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
 | `npm run docs:check` | Passed |
 | `npm run test:e2e` | Passed: 13 suites, 113 tests |
 | `npm test` in `frontend/` | Passed |
-| `npm run build` in `frontend/` | Passed with bundle budget gate enforced after PR #57 |
+| `npm run build` in `frontend/` | Passed with bundle budget gate and first-paint smoke enforced after PR #75 |
 
 Latest implemented optimization baseline before this document-only refresh:
 
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `7ef790b2b9fd7296d5dcfd82299ab84a4eb47922` |
-| `origin/main` | `7ef790b2b9fd7296d5dcfd82299ab84a4eb47922` |
+| Local HEAD | `e2769ba08f784602b5baa960a99648276e529794` |
+| `origin/main` | `e2769ba08f784602b5baa960a99648276e529794` |
 | Worktree | Clean |
 
 Frontend build size baseline:
 
 | Asset | Minified | Gzip |
 | --- | ---: | ---: |
-| `dist/assets/index-BH5U_jv4.js` | 51.10 kB | 14.82 kB |
+| `dist/assets/index-CHIOQdb_.js` | 51.13 kB | 14.81 kB |
 | `dist/assets/react-vendor-DpaXkVd2.js` | 193.97 kB | 60.61 kB |
 | `dist/assets/vendor-8JS6qKYL.js` | 349.24 kB | 108.01 kB |
 | `dist/assets/charts-vendor-uXGeMExF.js` | 343.02 kB | 85.09 kB |
-| `dist/assets/NodesPage-DFJDA9Cf.js` | 102.81 kB | 22.44 kB |
+| `dist/assets/NodesPage-BuypeO-N.js` | 102.81 kB | 22.44 kB |
 
 ## Optimization Principles
 
@@ -125,6 +125,9 @@ Completed PRs in this overnight hardening run:
 | #70 | `79c2462f` | Refresh optimization plan after PR #69 | Updated this plan around the SQL-backed reservation locking baseline |
 | #71 | `31777be3` | Audit budget reservation events | Added management audit visibility for rejected reservations and manual budget resets without exposing key identifiers |
 | #72 | `7ef790b2` | Emit dashboard auth telemetry | Added low-cardinality dashboard auth status-failure and disabled-auth startup metrics |
+| #73 | `2ba5b4ac` | Refresh optimization plan after auth telemetry | Updated this plan after PRs #71 and #72 |
+| #74 | `23c0c526` | Add Postgres budget lock smoke | Added an optional real-PostgreSQL row-lock smoke for competing budget reservations |
+| #75 | `e2769ba0` | Add dashboard first-paint smoke | Added a frontend first-paint smoke check and deterministic skeleton chart placeholders |
 
 Every merged PR followed this loop:
 
@@ -150,6 +153,8 @@ PR, waited for GitHub checks, merged, deleted its branch, and returned local
 | 4 | `codex/budget-reservation-atomic-backend` | Add SQL-backed multi-instance safety for budget reservation mutations | Done in PR #69 | Focused budget tests, backend build, lint, full unit, billing-loop e2e, docs/public/diff checks, GitHub checks |
 | 5 | `codex/budget-audit-reservation-events` | Add management audit visibility for rejected budget reservations and manual budget resets without exposing key names or ids | Done in PR #71 | Focused budget tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 6 | `codex/auth-status-observability` | Count dashboard auth status failures and disabled-auth startup events as low-cardinality telemetry | Done in PR #72 | Focused auth/telemetry tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 7 | `codex/postgres-budget-lock-integration` | Add optional real-PostgreSQL smoke coverage for row-lock budget reservations | Done in PR #74 | Optional Postgres smoke spec, full unit with configured skip, build, lint, docs/public/diff checks, GitHub checks |
+| 8 | `codex/frontend-fcp-smoke` | Add lightweight dashboard first-paint smoke coverage for route skeletons and bundle budget wiring | Done in PR #75 | Frontend smoke, frontend test/build, public/diff checks, GitHub checks |
 
 ## Next Candidate PR Queue
 
@@ -158,8 +163,9 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/postgres-budget-lock-integration` | Add an optional Postgres-backed regression or smoke fixture for the budget row-lock path when `DATABASE_URL` is available | budget tests, CI docs | `npm test -- --runInBand test/unit/budget-service.spec.ts`; optional Postgres smoke when configured |
-| 2 | `codex/frontend-fcp-smoke` | Add a lightweight dashboard first-paint smoke script that validates the loading skeleton and bundle budget together | `frontend/scripts`, frontend package checks | `cd frontend && npm test && npm run build` |
+| 1 | `codex/dashboard-legacy-token-telemetry` | Count legacy Dashboard bearer/query-token fallback and compatibility-disabled rejection paths with bounded telemetry labels | `src/auth/dashboard.guard.ts`, `src/telemetry/telemetry.service.ts`, guard/telemetry tests | `npm test -- --runInBand test/unit/dashboard-guard.spec.ts test/unit/telemetry-service.spec.ts`; `npm run build` |
+| 2 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | provider redaction helper/tests | focused provider redaction tests; `npm run lint` |
+| 3 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | control-plane/policy or telemetry timer tests | focused unit tests for timer cleanup |
 
 ## Key Findings
 
@@ -403,9 +409,10 @@ Status:
 - PR #71 added management audit events for rejected reservations and manual
   budget rule resets, using bounded scope/type metadata and avoiding raw key
   names or key ids.
-- Remaining follow-up: add an optional real-PostgreSQL smoke fixture and decide
-  whether Redis-backed counters are needed for deployments that do not use
-  PostgreSQL as the shared budget source of truth.
+- PR #74 added an optional real-PostgreSQL smoke fixture that runs against an
+  isolated schema when a safe test database URL is configured.
+- Remaining follow-up: decide whether Redis-backed counters are needed for
+  deployments that do not use PostgreSQL as the shared budget source of truth.
 
 ### P1: API Key Last-Used Updates Can Cause Write Amplification
 
@@ -514,8 +521,9 @@ Status:
   a frontend bundle budget gate from PRs #41, #42, and #57.
 - PR #68 added dashboard-shaped route skeletons and a separate login-route
   loading skeleton so lazy pages keep first paint useful as they grow.
-- Remaining follow-up: add a lightweight first-paint smoke check if frontend
-  loading regressions become common.
+- PR #75 added a first-paint smoke check for route skeletons, login fallback,
+  dashboard data-loading skeletons, and bundle budget wiring. It also made chart
+  skeleton placeholder heights deterministic.
 
 ### P2: Lint Warnings Should Become A Quality Gate
 
@@ -829,13 +837,16 @@ Targets:
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
 | AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local proof done in PR #59; dispatch integration done in PR #63; PostgreSQL row-lock path done in PR #69 |
 | AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility done in PR #71 |
+| AGW-COST-04 | Add optional Postgres row-lock smoke | P1 | Budget/Data | Done in PR #74 |
 | AGW-SEC-10 | Add dashboard auth status telemetry | P1 | Auth/Observability | Done in PR #72 |
+| AGW-SEC-11 | Add legacy dashboard token telemetry | P1 | Auth/Observability | Next candidate |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
 | AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Done in PR #67 |
 | AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
 | AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Done in PR #68 |
+| AGW-FE-03 | Add dashboard first-paint smoke | P2 | Frontend | Done in PR #75 |
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 | AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
 
@@ -904,11 +915,17 @@ Completed:
 - Add budget reservation audit visibility for rejected requests and manual
   resets without leaking key identifiers. Done in PR #71.
 - Add auth status failure telemetry for management-plane health. Done in PR #72.
+- Add optional Postgres smoke coverage for row-lock budget reservations. Done in
+  PR #74.
+- Add a frontend first-paint smoke check and deterministic loading placeholders.
+  Done in PR #75.
 
 Remaining:
 
-- Add optional Postgres smoke coverage for row-lock budget reservations.
-- Add a frontend first-paint smoke check if loading regressions become frequent.
+- Add telemetry for legacy Dashboard bearer/query-token fallback and
+  compatibility-disabled rejection paths.
+- Add a provider redaction regression matrix for nested and non-string error
+  bodies.
 
 ## Non-Goals For This Plan
 
