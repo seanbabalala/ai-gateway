@@ -14,6 +14,10 @@ import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { AlertService } from '../alerts/alert.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import type {
+  BudgetReservationMetricEvent,
+  BudgetReservationMetricScope,
+} from '../telemetry/telemetry.service';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 import { DEFAULT_WORKSPACE_ID } from '../workspaces/workspace.constants';
 import {
@@ -53,6 +57,11 @@ interface BudgetRuleScope {
   apiKeyId: string | null;
   namespaceId: string | null;
   teamId: string | null;
+}
+
+interface BudgetReservationMetricDimension {
+  scope: BudgetReservationMetricScope;
+  budgetType: string;
 }
 
 export class BudgetExceededError extends Error {
@@ -460,25 +469,44 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       teamId: teamId || null,
     };
 
-    await this.withBudgetMutation(async () => {
-      const scopes = await this.loadRuleScopes(
-        identity.apiKeyName,
-        identity.apiKeyId,
-        identity.namespaceId,
-        identity.teamId,
-      );
+    let metricDimensions: BudgetReservationMetricDimension[] = [];
 
-      for (const scope of scopes) {
-        await this.resetExpiredPeriods(scope.rules);
-        this.evaluateRuleProjections(scope, safeTokens, safeCostUsd);
+    try {
+      await this.withBudgetMutation(async () => {
+        const scopes = await this.loadRuleScopes(
+          identity.apiKeyName,
+          identity.apiKeyId,
+          identity.namespaceId,
+          identity.teamId,
+        );
+
+        for (const scope of scopes) {
+          await this.resetExpiredPeriods(scope.rules);
+          this.evaluateRuleProjections(scope, safeTokens, safeCostUsd);
+        }
+
+        for (const scope of scopes) {
+          await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true);
+        }
+
+        metricDimensions = this.collectReservationMetricDimensions(
+          scopes,
+          safeTokens,
+          safeCostUsd,
+        );
+        await this.refreshBudgetMetricSnapshot();
+      });
+    } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        this.recordReservationMetrics('rejected', [{
+          scope: err.scope,
+          budgetType: err.budgetType,
+        }]);
       }
+      throw err;
+    }
 
-      for (const scope of scopes) {
-        await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true);
-      }
-
-      await this.refreshBudgetMetricSnapshot();
-    });
+    this.recordReservationMetrics('reserve', metricDimensions);
 
     let settlement: Promise<void> | null = null;
     const settle = (fn: () => Promise<void>): Promise<void> => {
@@ -496,10 +524,12 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           const tokenDelta = this.sanitizeCounterValue(actualTokens) - safeTokens;
           const costDelta = this.sanitizeCounterValue(actualCostUsd) - safeCostUsd;
           await this.adjustReservation(tokenDelta, costDelta, identity);
+          this.recordReservationMetrics('commit', metricDimensions);
         }),
       release: () =>
         settle(async () => {
           await this.adjustReservation(-safeTokens, -safeCostUsd, identity);
+          this.recordReservationMetrics('release', metricDimensions);
         }),
     };
   }
@@ -935,6 +965,44 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       }
     }
     this.budgetMetricSnapshot = [...aggregates.values()];
+  }
+
+  private collectReservationMetricDimensions(
+    scopes: BudgetRuleScope[],
+    tokens: number,
+    costUsd: number,
+  ): BudgetReservationMetricDimension[] {
+    const dimensions: BudgetReservationMetricDimension[] = [];
+    for (const scope of scopes) {
+      for (const rule of scope.rules) {
+        if (this.ruleIncrement(rule, tokens, costUsd) <= 0) continue;
+        dimensions.push({
+          scope: this.metricScope(scope),
+          budgetType: rule.type,
+        });
+      }
+    }
+    return dimensions;
+  }
+
+  private recordReservationMetrics(
+    event: BudgetReservationMetricEvent,
+    dimensions: BudgetReservationMetricDimension[],
+  ): void {
+    for (const dimension of dimensions) {
+      this.telemetry?.recordBudgetReservation?.({
+        event,
+        scope: dimension.scope,
+        budgetType: dimension.budgetType,
+      });
+    }
+  }
+
+  private metricScope(scope: BudgetRuleScope): BudgetReservationMetricScope {
+    if (scope.namespaceId) return 'namespace';
+    if (scope.teamId) return 'team';
+    if (scope.apiKeyName || scope.apiKeyId) return 'api_key';
+    return 'global';
   }
 
   private alertBudgetThreshold(

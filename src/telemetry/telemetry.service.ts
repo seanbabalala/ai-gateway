@@ -46,6 +46,15 @@ export interface CallMetricInput extends BusinessMetricLabels {
   fallbackFromNode?: string | null;
 }
 
+export type BudgetReservationMetricEvent = 'reserve' | 'commit' | 'release' | 'rejected';
+export type BudgetReservationMetricScope = 'global' | 'api_key' | 'namespace' | 'team';
+
+export interface BudgetReservationMetricInput {
+  event: BudgetReservationMetricEvent;
+  scope: BudgetReservationMetricScope;
+  budgetType: string;
+}
+
 @Injectable()
 export class TelemetryService {
   readonly tracer: Tracer;
@@ -60,6 +69,7 @@ export class TelemetryService {
   readonly fallbackTotal: Counter;
   readonly cacheHitsTotal: Counter;
   readonly cacheMissesTotal: Counter;
+  readonly budgetReservations: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
@@ -104,6 +114,10 @@ export class TelemetryService {
     this.cacheMissesTotal = this.meter.createCounter('siftgate_cache_misses_total', {
       description: 'Prompt cache misses',
       unit: '{miss}',
+    });
+    this.budgetReservations = this.meter.createCounter('siftgate_budget_reservations_total', {
+      description: 'Budget reservation lifecycle events by bounded scope and budget type',
+      unit: '{event}',
     });
 
     // Histograms
@@ -185,6 +199,14 @@ export class TelemetryService {
     this.cacheOperations.add(1, { operation: 'store' });
   }
 
+  recordBudgetReservation(input: BudgetReservationMetricInput): void {
+    this.budgetReservations.add(1, {
+      event: this.safeBudgetReservationEvent(input.event),
+      scope: this.safeBudgetScope(input.scope),
+      budget_type: this.safeLabel(input.budgetType, 'unknown'),
+    });
+  }
+
   private recordTokens(
     value: number,
     attrs: { node: string; model: string; direction: string },
@@ -223,6 +245,20 @@ export class TelemetryService {
     const normalized = String(value).trim();
     if (!normalized) return fallback;
     return normalized.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 80) || fallback;
+  }
+
+  private safeBudgetReservationEvent(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['reserve', 'commit', 'release', 'rejected'].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  private safeBudgetScope(value: unknown): string {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['global', 'api_key', 'namespace', 'team'].includes(normalized)
+      ? normalized
+      : 'unknown';
   }
 
   // ── Span Helpers ──────────────────────────────────────

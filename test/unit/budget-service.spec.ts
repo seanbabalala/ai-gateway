@@ -139,6 +139,15 @@ function makeService(overrides: Record<string, unknown> = {}) {
   return { svc, repo, config, alerts, workspaceContext };
 }
 
+function makeTelemetryMock() {
+  return {
+    budgetUsageRatio: {
+      addCallback: jest.fn(),
+    },
+    recordBudgetReservation: jest.fn(),
+  };
+}
+
 describe('BudgetService', () => {
   // ── ensureDefaultRules (via onModuleInit) ────────────────
 
@@ -626,6 +635,143 @@ describe('BudgetService', () => {
       await reservation.release();
 
       expect(repo._store[0].current_value).toBe(10);
+    });
+
+    it('should emit reservation and commit metrics without API key identifiers', async () => {
+      const telemetry = makeTelemetryMock();
+      const { svc, repo } = makeService({ telemetry });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_cost',
+        limit_value: 5,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 3,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'prod-key',
+        api_key_id: 'key_secret_123',
+      });
+
+      const reservation = await svc.reserve(25, 0.5, 'prod-key', 'key_secret_123');
+      await reservation.commit(20, 0.25);
+
+      expect(telemetry.recordBudgetReservation).toHaveBeenCalledWith({
+        event: 'reserve',
+        scope: 'global',
+        budgetType: 'daily_tokens',
+      });
+      expect(telemetry.recordBudgetReservation).toHaveBeenCalledWith({
+        event: 'reserve',
+        scope: 'global',
+        budgetType: 'daily_cost',
+      });
+      expect(telemetry.recordBudgetReservation).toHaveBeenCalledWith({
+        event: 'reserve',
+        scope: 'api_key',
+        budgetType: 'daily_tokens',
+      });
+      expect(telemetry.recordBudgetReservation).toHaveBeenCalledWith({
+        event: 'commit',
+        scope: 'api_key',
+        budgetType: 'daily_tokens',
+      });
+      expect(JSON.stringify(telemetry.recordBudgetReservation.mock.calls)).not.toContain('prod-key');
+      expect(JSON.stringify(telemetry.recordBudgetReservation.mock.calls)).not.toContain('key_secret_123');
+    });
+
+    it('should emit release reservation metrics idempotently', async () => {
+      const telemetry = makeTelemetryMock();
+      const { svc, repo } = makeService({ telemetry });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 10,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+
+      const reservation = await svc.reserve(25, 0);
+
+      await reservation.release();
+      await reservation.release();
+
+      const releaseCalls = telemetry.recordBudgetReservation.mock.calls.filter(
+        ([input]) => input.event === 'release',
+      );
+      expect(releaseCalls).toHaveLength(1);
+      expect(releaseCalls[0][0]).toEqual({
+        event: 'release',
+        scope: 'global',
+        budgetType: 'daily_tokens',
+      });
+    });
+
+    it('should emit rejected reservation metrics without applying usage', async () => {
+      const telemetry = makeTelemetryMock();
+      const { svc, repo } = makeService({ telemetry });
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 50,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'client',
+        api_key_id: null,
+      });
+
+      await expect(svc.reserve(60, 0, 'client')).rejects.toThrow(BudgetExceededError);
+
+      expect(telemetry.recordBudgetReservation).toHaveBeenCalledWith({
+        event: 'rejected',
+        scope: 'api_key',
+        budgetType: 'daily_tokens',
+      });
+      expect(telemetry.recordBudgetReservation.mock.calls).not.toEqual(
+        expect.arrayContaining([
+          [expect.objectContaining({ event: 'reserve' })],
+        ]),
+      );
+      expect(repo._store.find((r: any) => r.id === 1).current_value).toBe(0);
+      expect(repo._store.find((r: any) => r.id === 2).current_value).toBe(0);
     });
   });
 
