@@ -28,11 +28,12 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites, 1455 tests |
+| `npm test -- --runInBand` | Passed: 102 suites, 1467 tests |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
 | `npm run docs:check` | Passed |
+| `npm run test:e2e` | Passed: 13 suites, 113 tests |
 | `npm test` in `frontend/` | Passed |
 | `npm run build` in `frontend/` | Passed with bundle budget gate enforced after PR #57 |
 
@@ -41,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `1cebfb67b377faf29ed6de61be4ba5c48903e330` |
-| `origin/main` | `1cebfb67b377faf29ed6de61be4ba5c48903e330` |
+| Local HEAD | `f0b0dedf0437dfbddc243ad0d577f4854fd3eac4` |
+| `origin/main` | `f0b0dedf0437dfbddc243ad0d577f4854fd3eac4` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -113,6 +114,9 @@ Completed PRs in this overnight hardening run:
 | #59 | `0dddcadc` | Add budget reservation proof | Added process-local budget reservations with commit/release semantics and concurrency coverage |
 | #60 | `6a544652` | Harden release checklist | Added release/security/production checks for auth, stream, budget, lint, and bundle controls |
 | #61 | `1cebfb67` | Fence legacy dashboard token auth | Added `dashboard.allow_legacy_token_auth=false` to reject legacy bearer/query Dashboard tokens |
+| #62 | `ea778d95` | Refresh optimization plan after token fence | Updated this plan after the explicit legacy token compatibility fence |
+| #63 | `711236ad` | Reserve budget before pipeline dispatch | Connected budget reservations to chat, stream, embeddings, rerank, and media dispatch with commit/release handling |
+| #64 | `f0b0dedf` | Emit budget reservation metrics | Added low-cardinality reservation lifecycle metrics for reserve, commit, release, and rejected events |
 
 Every merged PR followed this loop:
 
@@ -131,11 +135,10 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/budget-reservation-pipeline-hook` | Connect the reservation contract to request dispatch with conservative estimates and release-on-failure behavior | `src/pipeline/pipeline.service.ts`, `src/budget/budget.service.ts`, pipeline/budget tests | `npm test -- --runInBand test/unit/pipeline-service.spec.ts test/unit/budget*.spec.ts`; `npm run build` |
-| 2 | `codex/budget-reservation-metrics` | Emit operator-visible metrics or audit events for budget reservation denials/releases | `src/budget/*`, telemetry/audit tests | `npm test -- --runInBand test/unit/budget*.spec.ts`; `npm run build` |
-| 3 | `codex/stream-abort-reason-metrics` | Add metrics for provider stream idle timeout, max-duration, and downstream client abort reasons | `src/providers/provider-client.service.ts`, telemetry/provider tests | `npm test -- --runInBand test/unit/provider-client.spec.ts`; `npm run build` |
-| 4 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | `docs/PRODUCTION.md`, `docs/MIGRATION_V1_TO_V2.md`, scripts or config docs as needed | `npm run docs:check && npm run public:check` |
-| 5 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | `frontend/src/App.tsx`, route/page components | `cd frontend && npm test && npm run build` |
+| 1 | `codex/stream-abort-reason-metrics` | Add metrics for provider stream idle timeout, max-duration, and downstream client abort reasons | `src/providers/provider-client.service.ts`, telemetry/provider tests | `npm test -- --runInBand test/unit/provider-client.spec.ts test/unit/telemetry-service.spec.ts`; `npm run build` |
+| 2 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | `docs/PRODUCTION.md`, `docs/MIGRATION_V1_TO_V2.md`, scripts or config docs as needed | `npm run docs:check && npm run public:check` |
+| 3 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | `frontend/src/App.tsx`, route/page components | `cd frontend && npm test && npm run build` |
+| 4 | `codex/budget-reservation-atomic-backend` | Replace the process-local reservation mutation queue with a SQL or Redis conditional-update path for multi-instance deployments | `src/budget/budget.service.ts`, state-backend/budget tests | `npm test -- --runInBand test/unit/budget-service.spec.ts test/unit/state-backend.spec.ts`; `npm run build` |
 
 ## Key Findings
 
@@ -364,8 +367,13 @@ Status:
 - PR #59 added a process-local reservation contract with all-or-nothing scope
   checks, concurrent reservation coverage, and idempotent commit/release
   settlement.
-- Remaining follow-up: wire reservations into request dispatch with conservative
-  estimates, release-on-failure behavior, and multi-instance SQL/Redis atomicity.
+- PR #63 wired reservations into chat, streaming, embeddings, rerank, and media
+  dispatch with conservative estimates, commit-on-success, and release-on-failure
+  behavior.
+- PR #64 added low-cardinality lifecycle metrics for reservation success,
+  settlement, release, and rejection events.
+- Remaining follow-up: replace the process-local mutation queue with
+  multi-instance SQL/Redis conditional reservation semantics.
 
 ### P1: API Key Last-Used Updates Can Cause Write Amplification
 
@@ -684,9 +692,9 @@ Implementation steps:
 1. Estimate request cost before dispatch using model pricing and requested
    limits.
 2. Reserve budget before provider call. Process-local reservation proof completed
-   in PR #59; request dispatch integration remains.
-3. Commit actual usage after provider completion.
-4. Release unused reservation on failure or client abort.
+   in PR #59 and request dispatch integration completed in PR #63.
+3. Commit actual usage after provider completion. Completed in PR #63.
+4. Release unused reservation on failure or client abort. Completed in PR #63.
 5. Add Redis or SQL conditional update path for multi-instance deployments.
 6. Throttle `last_used_at` writes with a per-key memory/Redis debounce.
 
@@ -694,7 +702,7 @@ Tests:
 
 - N concurrent expensive requests against a small budget only allow the expected
   number through.
-- Failed/aborted request releases reservation.
+- Failed/aborted request releases reservation. Covered by PR #63.
 - Last-used update writes at most once per debounce interval.
 
 ### D. Config And Migration Safety
@@ -783,8 +791,8 @@ Targets:
 | AGW-REL-05 | Add stream lifecycle abort reason metrics | P1 | Provider/Observability | Planned |
 | AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; keep regression coverage |
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
-| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local reservation proof done in PR #59; pipeline and multi-instance atomicity planned |
-| AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Planned after AGW-COST-01 |
+| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local proof done in PR #59; dispatch integration done in PR #63; multi-instance atomicity planned |
+| AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility optional follow-up |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
@@ -828,8 +836,8 @@ Reliability:
 
 Cost:
 
-- Budget reservation failures by workspace/team/key.
-- Reservation release count.
+- Budget reservation failures by bounded scope and budget type.
+- Reservation reserve, commit, release, and rejected event counts.
 - Budget overspend delta.
 - API key last-used write rate.
 
@@ -847,13 +855,12 @@ Quality:
 
 ## Quick Wins
 
-- Wire budget reservations into request dispatch with conservative estimates and
-  release-on-failure behavior.
-- Add budget reservation metrics and audit visibility.
 - Add provider stream abort reason metrics.
 - Add route-level dashboard loading states for lazy pages and locales.
 - Document the production database migration policy and schema patch
   compatibility windows.
+- Add SQL or Redis conditional reservation updates for multi-instance budget
+  enforcement.
 
 ## Non-Goals For This Plan
 
