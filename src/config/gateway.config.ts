@@ -560,6 +560,10 @@ export interface McpServerConfig {
   args?: string[];
   /** Optional stdio MCP process environment. Values may use runtime secret references. */
   env?: Record<string, string>;
+  /** Extra parent environment variable names to pass to stdio MCP processes. */
+  env_allowlist?: string[];
+  /** Legacy escape hatch to pass the full parent environment. Default: false. */
+  inherit_env?: boolean;
   /** Optional stdio MCP process working directory. */
   cwd?: string;
   /** Optional namespace allow-list. Empty/unset allows all namespaces. */

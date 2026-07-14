@@ -49,7 +49,12 @@ function makeService(overrides: Record<string, unknown> = {}) {
   }
   const secrets = {
     resolveString: jest.fn(async (value: string) => value),
-    resolveRecord: jest.fn().mockResolvedValue({ authorization: 'Bearer resolved' }),
+    resolveRecord: jest.fn(async (value?: Record<string, string>) => {
+      if (value && Object.prototype.hasOwnProperty.call(value, 'authorization')) {
+        return { authorization: 'Bearer resolved' }
+      }
+      return value ?? {}
+    }),
   }
   return {
     service: new McpGatewayService(
@@ -459,5 +464,93 @@ rl.on('line', (line) => {
     })
     expect(JSON.stringify(summary)).not.toContain('cat.png')
     expect(JSON.stringify(summary)).not.toContain('MINIMAX_TOKEN_PLAN_KEY')
+  })
+
+  it('does not pass the full parent environment to stdio MCP servers by default', async () => {
+    const originalSecret = process.env.SIFTGATE_PARENT_ONLY_SECRET
+    process.env.SIFTGATE_PARENT_ONLY_SECRET = 'should-not-leak'
+    const script = `
+const readline = require('readline')
+const rl = readline.createInterface({ input: process.stdin })
+rl.on('line', (line) => {
+  const msg = JSON.parse(line)
+  if (msg.method === 'initialize') {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: '2.0',
+      id: msg.id,
+      result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'env-check', version: '1.0.0' } },
+    }) + '\\n')
+    return
+  }
+  if (msg.method === 'notifications/initialized') return
+  process.stdout.write(JSON.stringify({
+    jsonrpc: '2.0',
+    id: msg.id,
+    result: {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          parentSecret: process.env.SIFTGATE_PARENT_ONLY_SECRET || null,
+          configured: process.env.CONFIGURED_ONLY || null,
+          allowlisted: process.env.SIFTGATE_ALLOWLISTED_FOR_MCP || null,
+          requestId: process.env.SIFTGATE_MCP_REQUEST_ID || null,
+        }),
+      }],
+    },
+  }) + '\\n')
+})
+`
+    try {
+      process.env.SIFTGATE_ALLOWLISTED_FOR_MCP = 'allowed'
+      const { service } = makeService({
+        servers: [
+          {
+            id: 'env-check',
+            name: 'Env Check MCP',
+            transport: 'stdio',
+            command: process.execPath,
+            args: ['-e', script],
+            env: {
+              CONFIGURED_ONLY: 'configured',
+            },
+            env_allowlist: ['SIFTGATE_ALLOWLISTED_FOR_MCP'],
+            tools: [{ name: 'env_check', description: 'Check env isolation' }],
+          },
+        ],
+      })
+
+      const result = await service.proxy({
+        serverId: 'env-check',
+        apiKey: {
+          ...apiKey,
+          allowed_endpoints: ['mcp:env-check:env_check'],
+          namespace_id: null,
+          namespace_name: null,
+        },
+        body: {
+          jsonrpc: '2.0',
+          id: 9,
+          method: 'tools/call',
+          params: { name: 'env_check', arguments: {} },
+        },
+      })
+
+      const body = JSON.parse(result.bodyText)
+      const payload = JSON.parse(body.result.content[0].text)
+      expect(payload).toMatchObject({
+        parentSecret: null,
+        configured: 'configured',
+        allowlisted: 'allowed',
+      })
+      expect(payload.requestId).toEqual(expect.any(String))
+      expect(JSON.stringify(body)).not.toContain('should-not-leak')
+    } finally {
+      if (originalSecret === undefined) {
+        delete process.env.SIFTGATE_PARENT_ONLY_SECRET
+      } else {
+        process.env.SIFTGATE_PARENT_ONLY_SECRET = originalSecret
+      }
+      delete process.env.SIFTGATE_ALLOWLISTED_FOR_MCP
+    }
   })
 })
