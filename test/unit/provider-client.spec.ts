@@ -2418,6 +2418,46 @@ describe('ProviderClientService', () => {
         .rejects.toThrow(ProviderError);
     });
 
+    it('redacts sensitive provider error bodies before logging and throwing', async () => {
+      const errorBody = JSON.stringify({
+        error: {
+          message: 'Authorization failed for Bearer sk-secret-provider-token',
+          api_key: 'sk-secret-provider-token',
+          access_token: 'access-token-secret',
+        },
+        url: 'https://provider.test/v1/chat?api_key=sk-query-secret-token',
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        headers: { get: jest.fn() },
+        text: jest.fn().mockResolvedValue(errorBody),
+      }) as any;
+
+      const svc = makeServiceWithNode();
+      const warnSpy = jest.spyOn((svc as any).logger, 'warn').mockImplementation();
+
+      try {
+        let thrown: unknown;
+        try {
+          await svc.forward(makeCanonical(), 'openai', 'gpt-4o', routingMeta);
+        } catch (err: unknown) {
+          thrown = err;
+        }
+
+        expect(thrown).toBeInstanceOf(ProviderError);
+        const message = (thrown as Error).message;
+        const logged = warnSpy.mock.calls.flat().join('\n');
+        expect(message).toContain('[REDACTED]');
+        expect(logged).toContain('[REDACTED]');
+        expect(`${message}\n${logged}`).not.toContain('sk-secret-provider-token');
+        expect(`${message}\n${logged}`).not.toContain('access-token-secret');
+        expect(`${message}\n${logged}`).not.toContain('sk-query-secret-token');
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
     it('should throw ProviderError for network errors', async () => {
       global.fetch = jest.fn().mockRejectedValue(new Error('fetch failed')) as any;
 
