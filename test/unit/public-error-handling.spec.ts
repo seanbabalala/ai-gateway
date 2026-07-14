@@ -1,6 +1,7 @@
 import { BudgetExceededError } from '../../src/budget/budget.service';
 import {
   mapPublicGatewayError,
+  PublicGatewayError,
   sendMappedPublicErrorResponse,
 } from '../../src/http/public-error-handling';
 
@@ -98,6 +99,38 @@ describe('public error handling', () => {
       protocol: 'openai',
       type: 'video_proxy_error',
       requestId: 'req_video_123',
+    });
+  });
+
+  it('does not expose arbitrary internal error messages for unknown 5xx errors', () => {
+    const mapped = mapPublicGatewayError(
+      new Error('database password leaked in stack context'),
+      mockReq('/v1/chat/completions'),
+    );
+
+    expect(mapped).toMatchObject({
+      statusCode: 500,
+      type: 'internal_error',
+      message: 'Gateway request failed.',
+    });
+    expect(mapped.message).not.toContain('database password');
+  });
+
+  it('preserves explicitly public gateway error messages', () => {
+    const mapped = mapPublicGatewayError(
+      new PublicGatewayError('Provider capacity exhausted.', {
+        statusCode: 503,
+        type: 'upstream_error',
+        code: 'provider_unavailable',
+      }),
+      mockReq('/v1/chat/completions'),
+    );
+
+    expect(mapped).toMatchObject({
+      statusCode: 503,
+      type: 'upstream_error',
+      code: 'provider_unavailable',
+      message: 'Provider capacity exhausted.',
     });
   });
 });

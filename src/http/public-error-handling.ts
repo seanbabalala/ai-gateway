@@ -172,8 +172,11 @@ function resolveMessage(
   if (exception instanceof BudgetExceededError) {
     return exception.message;
   }
+  if (exception instanceof PublicGatewayError) {
+    return exception.message;
+  }
   const bodyMessage = extractMessageFromBody(extractedBody);
-  if (bodyMessage) return bodyMessage;
+  if (bodyMessage && statusCode < 500) return bodyMessage;
   if (isPayloadTooLargeError(exception)) {
     return 'Request body is too large.';
   }
@@ -188,18 +191,24 @@ function resolveMessage(
   ) {
     return fallbackMessage;
   }
+  if (statusCode >= 500) {
+    return defaultFailureMessage(routeKind);
+  }
   if (exception instanceof Error && exception.message.trim()) {
     return exception.message;
-  }
-  if (routeKind === 'batch' && statusCode >= 500) {
-    return 'Batch proxy request failed.';
-  }
-  if (routeKind === 'mcp' && statusCode >= 500) {
-    return 'MCP proxy request failed.';
   }
   if (statusCode === 404) {
     return 'Resource not found.';
   }
+  return 'Gateway request failed.';
+}
+
+function defaultFailureMessage(
+  routeKind: ReturnType<typeof publicRouteKind>,
+): string {
+  if (routeKind === 'batch') return 'Batch proxy request failed.';
+  if (routeKind === 'mcp') return 'MCP proxy request failed.';
+  if (routeKind === 'video') return 'Video proxy request failed.';
   return 'Gateway request failed.';
 }
 
