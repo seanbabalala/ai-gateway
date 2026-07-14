@@ -20,6 +20,8 @@ import { hashInviteToken } from './workspace-invitation.service';
 import { WorkspaceMembershipService } from './workspace-membership.service';
 import type { WorkspaceMembershipRole } from '../database/entities';
 
+const DEFAULT_OIDC_TIMEOUT_MS = 10_000;
+
 interface OidcDiscovery {
   issuer: string;
   authorization_endpoint: string;
@@ -184,7 +186,7 @@ export class OidcService {
     const cached = this.discoveryCache;
     if (cached && cached.expiresAt > Date.now()) return cached.value;
     const issuer = trimTrailingSlash(this.config.dashboardOidc.issuer);
-    const response = await fetch(`${issuer}/.well-known/openid-configuration`);
+    const response = await this.fetchOidc(`${issuer}/.well-known/openid-configuration`, undefined, 'OIDC discovery');
     if (!response.ok) {
       throw new UnauthorizedException(`OIDC discovery failed with HTTP ${response.status}.`);
     }
@@ -214,11 +216,11 @@ export class OidcService {
     );
     if (clientSecret) body.set('client_secret', clientSecret);
 
-    const response = await fetch(discovery.token_endpoint, {
+    const response = await this.fetchOidc(discovery.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
-    });
+    }, 'OIDC token exchange');
     if (!response.ok) {
       throw new UnauthorizedException(`OIDC token exchange failed with HTTP ${response.status}.`);
     }
@@ -236,9 +238,9 @@ export class OidcService {
       typeof tokenSet.access_token === 'string' ? tokenSet.access_token : '';
     const discovery = await this.discovery();
     if (accessToken && discovery.userinfo_endpoint) {
-      const response = await fetch(discovery.userinfo_endpoint, {
+      const response = await this.fetchOidc(discovery.userinfo_endpoint, {
         headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      }, 'OIDC userinfo');
       if (response.ok) {
         userinfo = (await response.json()) as Record<string, unknown>;
       } else {
@@ -318,7 +320,7 @@ export class OidcService {
     if (cached && cached.expiresAt > Date.now()) {
       keys = cached.value;
     } else {
-      const response = await fetch(discovery.jwks_uri);
+      const response = await this.fetchOidc(discovery.jwks_uri, undefined, 'OIDC JWKS');
       if (!response.ok) return null;
       const body = (await response.json()) as { keys?: JsonWebKey[] };
       keys = Array.isArray(body.keys) ? body.keys : [];
@@ -372,6 +374,39 @@ export class OidcService {
     });
     if (!stored || Date.now() - stored.createdAt > 600_000) return null;
     return stored;
+  }
+
+  private async fetchOidc(
+    url: string,
+    init: RequestInit | undefined,
+    operation: string,
+  ): Promise<Response> {
+    const timeoutMs = this.oidcTimeoutMs();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    timeout.unref?.();
+
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        throw new UnauthorizedException(`${operation} timed out after ${timeoutMs}ms.`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private oidcTimeoutMs(): number {
+    const configured = this.config.dashboardOidc.timeout_ms;
+    if (Number.isFinite(configured) && configured > 0) {
+      return Math.max(1, Math.floor(configured));
+    }
+    return DEFAULT_OIDC_TIMEOUT_MS;
   }
 }
 

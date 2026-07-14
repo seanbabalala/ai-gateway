@@ -426,6 +426,8 @@ export interface DashboardOidcConfig {
   default_workspace_id?: string;
   /** Optional scope override. Defaults to "openid email profile". */
   scopes?: string[];
+  /** Timeout for OIDC discovery, token, userinfo, and JWKS calls. Defaults to 10000. */
+  timeout_ms?: number;
 }
 
 // ===== Server =====

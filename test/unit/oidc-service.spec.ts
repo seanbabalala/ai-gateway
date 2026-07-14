@@ -14,6 +14,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
         default_role: 'viewer',
         default_workspace_id: 'default-workspace',
         scopes: ['openid', 'email', 'profile'],
+        timeout_ms: 10000,
       },
     },
     dashboardOidc: {
@@ -26,6 +27,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
       default_role: 'viewer',
       default_workspace_id: 'default-workspace',
       scopes: ['openid', 'email', 'profile'],
+      timeout_ms: 10000,
     },
     ...overrides,
   });
@@ -62,7 +64,34 @@ describe('OidcService', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
+    jest.useRealTimers();
     global.fetch = originalFetch;
+  });
+
+  it('times out OIDC discovery requests', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    }) as any;
+    const { service } = makeService();
+    (service as any).config.dashboardOidc.timeout_ms = 5;
+
+    const redirect = service.createAuthorizationRedirect();
+    const expectation = expect(redirect).rejects.toThrow('OIDC discovery timed out after 5ms.');
+    await jest.advanceTimersByTimeAsync(5);
+
+    await expectation;
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://idp.example.com/.well-known/openid-configuration',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it('creates an authorization redirect and stores state without exposing invite payloads', async () => {

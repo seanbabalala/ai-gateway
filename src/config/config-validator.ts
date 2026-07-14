@@ -433,6 +433,12 @@ function validateDashboardOidc(
       issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.scopes must be an array of non-empty strings.', 'dashboard.oidc.scopes'));
     }
   }
+  if (
+    oidc.timeout_ms !== undefined &&
+    (!isNumberLike(oidc.timeout_ms) || Number(oidc.timeout_ms) <= 0)
+  ) {
+    issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.timeout_ms must be a positive number.', 'dashboard.oidc.timeout_ms'));
+  }
   if (oidc.default_role !== undefined && (!isNonEmptyString(oidc.default_role) || !WORKSPACE_ROLES.has(oidc.default_role))) {
     issues.push(issue('error', 'invalid_dashboard_oidc', 'dashboard.oidc.default_role must be admin, operator, or viewer.', 'dashboard.oidc.default_role'));
   }

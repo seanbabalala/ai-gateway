@@ -659,6 +659,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       default_role: oidc?.default_role ?? 'viewer',
       default_workspace_id: oidc?.default_workspace_id ?? 'default-workspace',
       scopes: oidc?.scopes ?? ['openid', 'email', 'profile'],
+      timeout_ms: oidc?.timeout_ms ?? 10_000,
     };
   }
 
