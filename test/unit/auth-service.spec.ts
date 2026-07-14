@@ -69,6 +69,22 @@ describe('AuthService', () => {
     });
   });
 
+  describe('allowsLegacyDashboardTokenAuth', () => {
+    it('should allow legacy dashboard token auth by default', () => {
+      const config = mockConfigService({ dashboard: {} });
+      const svc = new AuthService(config);
+      expect(svc.allowsLegacyDashboardTokenAuth).toBe(true);
+    });
+
+    it('should disable legacy dashboard token auth when configured', () => {
+      const config = mockConfigService({
+        dashboard: { allow_legacy_token_auth: false },
+      });
+      const svc = new AuthService(config);
+      expect(svc.allowsLegacyDashboardTokenAuth).toBe(false);
+    });
+  });
+
   // ── hashPassword + verifyPassword ────────────────────────
 
   describe('hash + verify roundtrip', () => {

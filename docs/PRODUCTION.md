@@ -87,6 +87,9 @@ checks:
 - Dashboard sessions use the HttpOnly `siftgate_dashboard_session` cookie. OIDC
   callbacks should redirect without `#token=` fragments, and normal browser SSE
   connections should not include session tokens in the URL.
+- Set `dashboard.allow_legacy_token_auth=false` once clients no longer need
+  Dashboard JWTs in `Authorization: Bearer` headers or SSE `?token=` query
+  parameters.
 - Provider streams should have both idle-body and total-duration bounds. Set
   `connection.body_timeout_ms` for idle time between stream chunks and
   `connection.stream_max_duration_ms` for a total wall-clock cap on long-lived

@@ -26,7 +26,7 @@ export class DashboardGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
 
-    // Extract token from Authorization header, session cookie, or legacy query param.
+    // Extract token from the HttpOnly session cookie or configured legacy fallbacks.
     const token = this.extractToken(request);
     if (!token) {
       throw new UnauthorizedException('Authentication required');
@@ -51,16 +51,20 @@ export class DashboardGuard implements CanActivate {
     headers?: Record<string, string | string[] | undefined>;
     query?: Record<string, string | string[] | undefined>;
   }): string | null {
-    // 1. Authorization: Bearer <token>
-    const authHeader = this.headerValue(request.headers?.authorization);
-    if (authHeader?.startsWith('Bearer ')) {
-      return authHeader.slice(7);
-    }
-
-    // 2. HttpOnly dashboard session cookie.
+    // 1. HttpOnly dashboard session cookie.
     const cookieToken = getDashboardSessionCookie(request);
     if (cookieToken) {
       return cookieToken;
+    }
+
+    if (!this.authService.allowsLegacyDashboardTokenAuth) {
+      return null;
+    }
+
+    // 2. Legacy Authorization: Bearer <token>.
+    const authHeader = this.headerValue(request.headers?.authorization);
+    if (authHeader?.startsWith('Bearer ')) {
+      return authHeader.slice(7);
     }
 
     // 3. Legacy query param ?token=<jwt> for older EventSource clients.

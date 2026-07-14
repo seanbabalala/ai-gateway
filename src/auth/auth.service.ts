@@ -31,6 +31,10 @@ export class AuthService implements OnModuleInit {
     return this.config.dashboardOidc?.enabled ?? false;
   }
 
+  get allowsLegacyDashboardTokenAuth(): boolean {
+    return this.config.dashboard?.allow_legacy_token_auth !== false;
+  }
+
   /** Hash a plain-text password with bcrypt (10 rounds) */
   async hashPassword(plain: string): Promise<string> {
     return bcrypt.hash(plain, 10);
