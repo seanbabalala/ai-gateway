@@ -1851,7 +1851,7 @@ describe('PipelineService — call logging', () => {
   });
 
   it('should not throw if logging fails', async () => {
-    const { pipeline, mocks } = makePipeline({
+    const { pipeline } = makePipeline({
       callLogRepo: {
         create: jest.fn().mockImplementation((data: any) => data),
         save: jest.fn().mockRejectedValue(new Error('DB write failed')),

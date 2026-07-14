@@ -1,5 +1,5 @@
 import { KeywordTrie } from '../../src/scoring/trie';
-import { ScoringService, ScoringResult } from '../../src/scoring/scoring.service';
+import { ScoringService } from '../../src/scoring/scoring.service';
 import {
   scoreSimpleIndicators,
   scoreCodeGeneration,

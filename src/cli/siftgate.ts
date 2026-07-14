@@ -24,7 +24,6 @@ import type {
   ProviderCatalog,
 } from "../catalog/catalog.types";
 import {
-  ConfigValidationIssue,
   ConfigValidationResult,
   validateConfigFile,
 } from "../config/config-validator";

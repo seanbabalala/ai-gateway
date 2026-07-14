@@ -184,16 +184,6 @@ const DASHBOARD_PROTOCOLS = [
   "messages",
   "gemini",
 ] as const;
-const DASHBOARD_PROVIDER_FAMILIES = [
-  "foundation",
-  "aggregators",
-  "cloud",
-  "china",
-  "self_hosted",
-  "image_video",
-  "speech_audio",
-  "embedding_rerank",
-] as const;
 const DASHBOARD_MODEL_BUCKETS = [
   "models",
   "embedding_models",
@@ -217,7 +207,15 @@ const DASHBOARD_RECOMMENDED_MODEL_LIMITS: Record<
   realtime_models: 2,
   batch_models: 2,
 };
-type DashboardProviderFamily = (typeof DASHBOARD_PROVIDER_FAMILIES)[number];
+type DashboardProviderFamily =
+  | "foundation"
+  | "aggregators"
+  | "cloud"
+  | "china"
+  | "self_hosted"
+  | "image_video"
+  | "speech_audio"
+  | "embedding_rerank";
 type DashboardProviderType =
   | "direct"
   | "aggregator"
@@ -3082,7 +3080,7 @@ export class DashboardController {
   })
   async getCostAnalytics(
     @Query("period") period: string = "7d",
-    @Query("groupBy") groupBy: string = "model",
+    @Query("groupBy") _groupBy: string = "model",
     @Query("api_key") apiKey?: string,
     @Query("api_key_id") apiKeyId?: string,
     @Query("namespace") namespaceId?: string,

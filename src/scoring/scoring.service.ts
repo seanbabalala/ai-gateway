@@ -30,7 +30,6 @@ import {
   scoreAnalyticalReasoning,
   detectCodeDomain,
   extractLastUserText,
-  extractAllText,
   resetTries,
   injectCustomKeywords,
 } from './dimensions/keyword.dimension';

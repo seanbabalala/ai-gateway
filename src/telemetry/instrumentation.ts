@@ -39,17 +39,11 @@ if (telemetryCfg?.enabled) {
   // Dynamic requires so the packages are only loaded when telemetry is enabled.
   // This also means if the packages are not installed, the gateway still boots.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { NodeSDK } = require('@opentelemetry/sdk-node');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { PrometheusExporter } = require('@opentelemetry/exporter-prometheus');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { resourceFromAttributes } = require('@opentelemetry/resources');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
     const traceEndpoint = telemetryCfg.traces?.endpoint || 'http://localhost:4318/v1/traces';
@@ -59,7 +53,6 @@ if (telemetryCfg?.enabled) {
     // Build optional sampler when sample_rate < 1
     const samplerOpts: Record<string, unknown> = {};
     if (sampleRate != null && sampleRate < 1) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
       samplerOpts.sampler = new TraceIdRatioBasedSampler(sampleRate);
     }
@@ -85,12 +78,10 @@ if (telemetryCfg?.enabled) {
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
 
-    // eslint-disable-next-line no-console
     console.log(
       `[Telemetry] SDK started — traces -> ${traceEndpoint}, metrics -> :${prometheusPort}/metrics`,
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn(
       `[Telemetry] Failed to initialize SDK: ${(err as Error).message}. Continuing without telemetry.`,
     );

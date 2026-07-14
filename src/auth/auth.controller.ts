@@ -228,9 +228,6 @@ export class AuthController {
     this.loginAttempts.set(ip, timestamps);
 
     if (timestamps.length >= limit) {
-      const retryAfterSec = Math.ceil(
-        (timestamps[0] + windowMs - now) / 1000,
-      );
       throw new HttpException(
         {
           error: {

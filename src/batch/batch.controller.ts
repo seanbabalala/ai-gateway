@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  HttpException,
   Logger,
   Param,
   Post,
@@ -27,7 +26,6 @@ import {
   sendMappedPublicErrorResponse,
 } from '../http/public-error-handling';
 import {
-  sendPublicErrorResponse,
   sendPublicResponse,
 } from '../http/public-contract';
 import { BatchCreateRequestDto, ErrorEnvelopeDto } from '../openapi/openapi.dto';
