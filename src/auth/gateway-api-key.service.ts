@@ -81,6 +81,8 @@ export interface CreatedGatewayApiKey {
   item: GatewayApiKeySummary;
 }
 
+const LAST_USED_WRITE_INTERVAL_MS = 5 * 60_000;
+
 @Injectable()
 export class GatewayApiKeyService {
   constructor(
@@ -168,16 +170,49 @@ export class GatewayApiKeyService {
       return null;
     }
 
-    const now = new Date();
-    entity.last_used_at = now;
-    entity.last_used_ip = ip || null;
-    await this.apiKeyRepo.save(entity);
-    if (team) {
+    await this.recordLastUsed(entity, team, ip || null, new Date());
+
+    return this.toContext(entity, team);
+  }
+
+  private async recordLastUsed(
+    entity: GatewayApiKey,
+    team: LocalTeam | null,
+    ip: string | null,
+    now: Date,
+  ): Promise<void> {
+    if (this.shouldUpdateApiKeyUsage(entity, ip, now)) {
+      entity.last_used_at = now;
+      entity.last_used_ip = ip;
+      await this.apiKeyRepo.save(entity);
+    }
+
+    if (team && this.isStaleLastUsed(team.last_used_at, now)) {
       team.last_used_at = now;
       await this.teamRepo.save(team);
     }
+  }
 
-    return this.toContext(entity, team);
+  private shouldUpdateApiKeyUsage(
+    entity: GatewayApiKey,
+    ip: string | null,
+    now: Date,
+  ): boolean {
+    if ((entity.last_used_ip ?? null) !== ip) {
+      return true;
+    }
+    return this.isStaleLastUsed(entity.last_used_at, now);
+  }
+
+  private isStaleLastUsed(lastUsedAt: Date | null | undefined, now: Date): boolean {
+    if (!lastUsedAt) {
+      return true;
+    }
+    const lastUsedMs = lastUsedAt.getTime();
+    if (!Number.isFinite(lastUsedMs)) {
+      return true;
+    }
+    return now.getTime() - lastUsedMs >= LAST_USED_WRITE_INTERVAL_MS;
   }
 
   async update(
