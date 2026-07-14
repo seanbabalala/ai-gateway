@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites and 1475 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 103 suites and 1479 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `7ec166069f0ac35c8ed5028a2308d63c4169753b` |
-| `origin/main` | `7ec166069f0ac35c8ed5028a2308d63c4169753b` |
+| Local HEAD | `f2198b05d1d48bf20c4ec2552d778923533f594b` |
+| `origin/main` | `f2198b05d1d48bf20c4ec2552d778923533f594b` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -130,6 +130,8 @@ Completed PRs in this overnight hardening run:
 | #75 | `e2769ba0` | Add dashboard first-paint smoke | Added a frontend first-paint smoke check and deterministic skeleton chart placeholders |
 | #76 | `cf1ad2d6` | Refresh optimization plan after FCP smoke | Updated this plan after the frontend first-paint smoke baseline |
 | #77 | `7ec16606` | Emit dashboard legacy token telemetry | Added low-cardinality telemetry for legacy bearer/query fallback usage and compatibility-disabled rejections |
+| #78 | `c03f6665` | Refresh optimization plan after legacy telemetry | Updated this plan after the legacy token telemetry baseline |
+| #79 | `f2198b05` | Add provider error redaction matrix | Added helper-level redaction coverage for nested JSON, arrays, and non-string provider error bodies |
 
 Every merged PR followed this loop:
 
@@ -158,6 +160,7 @@ PR, waited for GitHub checks, merged, deleted its branch, and returned local
 | 7 | `codex/postgres-budget-lock-integration` | Add optional real-PostgreSQL smoke coverage for row-lock budget reservations | Done in PR #74 | Optional Postgres smoke spec, full unit with configured skip, build, lint, docs/public/diff checks, GitHub checks |
 | 8 | `codex/frontend-fcp-smoke` | Add lightweight dashboard first-paint smoke coverage for route skeletons and bundle budget wiring | Done in PR #75 | Frontend smoke, frontend test/build, public/diff checks, GitHub checks |
 | 9 | `codex/dashboard-legacy-token-telemetry` | Count legacy Dashboard bearer/query-token fallback and compatibility-disabled rejection paths with bounded telemetry labels | Done in PR #77 | Focused guard/telemetry tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 10 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | Done in PR #79 | Focused provider redaction/client/stream tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Next Candidate PR Queue
 
@@ -166,8 +169,7 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | provider redaction helper/tests | focused provider redaction tests; `npm run lint` |
-| 2 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | control-plane/policy or telemetry timer tests | focused unit tests for timer cleanup |
+| 1 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | control-plane/policy or telemetry timer tests | focused unit tests for timer cleanup |
 
 ## Key Findings
 
@@ -343,6 +345,9 @@ Status:
 
 - Shared provider error text/body redaction and streaming error redaction landed
   in PR #43.
+- PR #79 added helper-level regression coverage for nested provider error JSON,
+  arrays, and non-string error bodies, and made the sanitizer accept unknown
+  input safely.
 - Current `main` already has generic public 5xx handling for unexpected errors;
   keep this as a regression-test area when touching API error surfaces.
 
@@ -841,7 +846,7 @@ Targets:
 | AGW-REL-03 | Treat pre-first-event stream reader failures as fallbackable | P1 | Provider/Pipeline | Done in PR #46 |
 | AGW-REL-04 | Add provider stream max-duration cap | P1 | Provider | Done in PR #49 |
 | AGW-REL-05 | Add stream lifecycle abort reason metrics | P1 | Provider/Observability | Done in PR #66 |
-| AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; keep regression coverage |
+| AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; regression matrix done in PR #79 |
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
 | AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local proof done in PR #59; dispatch integration done in PR #63; PostgreSQL row-lock path done in PR #69 |
 | AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility done in PR #71 |
@@ -929,11 +934,12 @@ Completed:
   Done in PR #75.
 - Add legacy Dashboard token fallback/rejection telemetry without recording
   token values. Done in PR #77.
+- Add a provider redaction regression matrix for nested and non-string error
+  bodies. Done in PR #79.
 
 Remaining:
 
-- Add a provider redaction regression matrix for nested and non-string error
-  bodies.
+- Add control-plane timer cleanup lifecycle tests.
 
 ## Non-Goals For This Plan
 
