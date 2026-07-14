@@ -4223,6 +4223,40 @@ function validateMcpGateway(
       }
     }
 
+    if (
+      server.env_allowlist !== undefined &&
+      (!Array.isArray(server.env_allowlist) || !server.env_allowlist.every(isNonEmptyString))
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].env_allowlist must be an array of non-empty environment variable names when set.',
+          `${basePath}.env_allowlist`,
+        ),
+      );
+    }
+
+    if (server.inherit_env !== undefined && typeof server.inherit_env !== 'boolean') {
+      issues.push(
+        issue(
+          'error',
+          'invalid_mcp_server',
+          'mcp.servers[].inherit_env must be a boolean when set.',
+          `${basePath}.inherit_env`,
+        ),
+      );
+    } else if (transport === 'stdio' && server.inherit_env === true) {
+      issues.push(
+        issue(
+          'warning',
+          'mcp_stdio_inherit_env',
+          'mcp.servers[].inherit_env=true passes the full gateway process environment to the stdio MCP server.',
+          `${basePath}.inherit_env`,
+        ),
+      );
+    }
+
     if (server.cwd !== undefined && !isNonEmptyString(server.cwd)) {
       issues.push(
         issue(

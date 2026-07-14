@@ -31,6 +31,7 @@ mcp:
       env:
         MINIMAX_API_KEY: "${env:MINIMAX_TOKEN_PLAN_KEY}"
         MINIMAX_API_HOST: "https://api.minimaxi.com"
+      env_allowlist: [PATH, HOME]
       tools:
         - name: web_search
         - name: understand_image

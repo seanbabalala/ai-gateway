@@ -68,7 +68,8 @@ MCP servers can use:
   endpoint; `message_url` can be set explicitly, or SiftGate waits for the
   upstream `endpoint` SSE event.
 - `transport: stdio` for local MCP processes with `command`, optional `args`,
-  optional `env`, and optional `cwd`.
+  optional `env`, optional `env_allowlist`, optional `inherit_env`, and optional
+  `cwd`.
 
 ```yaml
 mcp:
@@ -104,6 +105,7 @@ mcp:
       env:
         MINIMAX_API_KEY: "${env:MINIMAX_TOKEN_PLAN_KEY}"
         MINIMAX_API_HOST: "https://api.minimaxi.com"
+      env_allowlist: [PATH, HOME]
       tools:
         - name: web_search
           description: "Search the web through MiniMax Token Plan"
@@ -121,6 +123,13 @@ an initialize request, forwards the JSON-RPC message, and returns the matching
 JSON-RPC response. For legacy SSE servers, SiftGate opens the SSE stream,
 discovers or uses the configured message endpoint, posts the JSON-RPC request,
 and returns the matching SSE JSON-RPC response.
+
+Stdio MCP processes do not inherit the full SiftGate process environment by
+default. SiftGate passes a small baseline environment for process startup,
+`SIFTGATE_MCP_REQUEST_ID`, any explicit `env` values, and any parent variable
+names listed in `env_allowlist`. Set `inherit_env: true` only for legacy local
+setups that require full environment inheritance; production deployments should
+prefer explicit `env` values and runtime secret references.
 
 ## Proxy Endpoint
 

@@ -322,6 +322,8 @@ describe('config validator', () => {
                 MINIMAX_API_KEY: '${env:MINIMAX_TOKEN_PLAN_KEY:-test}',
                 MINIMAX_API_HOST: 'https://api.minimaxi.com',
               },
+              env_allowlist: ['PATH', 'HOME'],
+              inherit_env: false,
               tools: [
                 {
                   name: 'web_search',
@@ -343,6 +345,29 @@ describe('config validator', () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.errors)).not.toContain('invalid_mcp_server');
+    expect(codes(result.warnings)).not.toContain('mcp_stdio_inherit_env');
+  });
+
+  it('warns when stdio MCP servers inherit the full process environment', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        mcp: {
+          enabled: true,
+          servers: [
+            {
+              id: 'legacy-stdio',
+              transport: 'stdio',
+              command: 'node',
+              inherit_env: true,
+            },
+          ],
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).toContain('mcp_stdio_inherit_env');
   });
 
   it('accepts Streamable HTTP and legacy SSE MCP Tool Gateway registry config', () => {

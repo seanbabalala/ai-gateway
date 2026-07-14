@@ -103,6 +103,24 @@ interface SseEvent {
   data: string
 }
 
+const DEFAULT_MCP_STDIO_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'SystemRoot',
+  'WINDIR',
+  'ComSpec',
+  'PATHEXT',
+]
+
 @Injectable()
 export class McpGatewayService {
   private readonly auditEntries: McpGatewayAuditEntry[] = []
@@ -532,11 +550,7 @@ export class McpGatewayService {
     return new Promise<McpUpstreamResult>((resolve, reject) => {
       const child = spawn(command, args, {
         cwd,
-        env: {
-          ...process.env,
-          ...configuredEnv,
-          SIFTGATE_MCP_REQUEST_ID: requestId,
-        },
+        env: this.buildStdioEnv(server, configuredEnv, requestId),
         stdio: ['pipe', 'pipe', 'pipe'],
       })
       const expectedIds = requestIds(body)
@@ -643,6 +657,35 @@ export class McpGatewayService {
         sendBody()
       }
     })
+  }
+
+  private buildStdioEnv(
+    server: McpServerConfig,
+    configuredEnv: Record<string, string>,
+    requestId: string,
+  ): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {}
+    if (server.inherit_env === true) {
+      Object.assign(env, process.env)
+    } else {
+      for (const key of this.stdioEnvAllowlist(server)) {
+        const value = process.env[key]
+        if (value !== undefined) env[key] = value
+      }
+    }
+
+    Object.assign(env, configuredEnv)
+    env.SIFTGATE_MCP_REQUEST_ID = requestId
+    return env
+  }
+
+  private stdioEnvAllowlist(server: McpServerConfig): string[] {
+    return [
+      ...new Set([
+        ...DEFAULT_MCP_STDIO_ENV_ALLOWLIST,
+        ...(server.env_allowlist || []).map((key) => key.trim()).filter(Boolean),
+      ]),
+    ]
   }
 
   private safeResponseHeaders(headers: Headers): Record<string, string> {
