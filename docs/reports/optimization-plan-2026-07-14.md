@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 102 suites, 1469 tests |
+| `npm test -- --runInBand` | Passed: 102 suites, 1474 tests |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `324b0f86233b835e1932eeb564c1e5a73153d8a6` |
-| `origin/main` | `324b0f86233b835e1932eeb564c1e5a73153d8a6` |
+| Local HEAD | `7ef790b2b9fd7296d5dcfd82299ab84a4eb47922` |
+| `origin/main` | `7ef790b2b9fd7296d5dcfd82299ab84a4eb47922` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -122,6 +122,9 @@ Completed PRs in this overnight hardening run:
 | #67 | `9cd5701b` | Document production database migration policy | Documented migrations-first PostgreSQL operations and schema patch compatibility windows |
 | #68 | `ae72ab84` | Add dashboard route loading skeletons | Added route-level and login-route skeleton states for lazy page loading |
 | #69 | `324b0f86` | Lock budget reservations in PostgreSQL | Added PostgreSQL transaction and row-lock semantics for budget reservation, record, commit, and release mutations |
+| #70 | `79c2462f` | Refresh optimization plan after PR #69 | Updated this plan around the SQL-backed reservation locking baseline |
+| #71 | `31777be3` | Audit budget reservation events | Added management audit visibility for rejected reservations and manual budget resets without exposing key identifiers |
+| #72 | `7ef790b2` | Emit dashboard auth telemetry | Added low-cardinality dashboard auth status-failure and disabled-auth startup metrics |
 
 Every merged PR followed this loop:
 
@@ -145,6 +148,8 @@ PR, waited for GitHub checks, merged, deleted its branch, and returned local
 | 2 | `codex/db-migration-production-policy` | Document migrations-first production database policy and compatibility windows for schema patching | Done in PR #67 | Docs/public/diff checks and GitHub checks |
 | 3 | `codex/dashboard-route-loading-states` | Add route-level loading states that preserve first paint while lazy pages and locales load | Done in PR #68 | Frontend tests, frontend build, diff check, GitHub checks |
 | 4 | `codex/budget-reservation-atomic-backend` | Add SQL-backed multi-instance safety for budget reservation mutations | Done in PR #69 | Focused budget tests, backend build, lint, full unit, billing-loop e2e, docs/public/diff checks, GitHub checks |
+| 5 | `codex/budget-audit-reservation-events` | Add management audit visibility for rejected budget reservations and manual budget resets without exposing key names or ids | Done in PR #71 | Focused budget tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 6 | `codex/auth-status-observability` | Count dashboard auth status failures and disabled-auth startup events as low-cardinality telemetry | Done in PR #72 | Focused auth/telemetry tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Next Candidate PR Queue
 
@@ -153,10 +158,8 @@ testable code path forces two items to land together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/budget-audit-reservation-events` | Add management audit visibility for rejected budget reservations and manual budget resets without exposing key names or ids | `src/budget/budget.service.ts`, audit/dashboard tests | `npm test -- --runInBand test/unit/budget-service.spec.ts test/unit/management-audit-service.spec.ts`; `npm run build` |
-| 2 | `codex/auth-status-observability` | Count dashboard auth status failures and disabled-auth startup events as low-cardinality telemetry | auth guard/status controller, telemetry tests | `npm test -- --runInBand test/unit/auth-controller.spec.ts test/unit/telemetry-service.spec.ts`; `npm run build` |
-| 3 | `codex/postgres-budget-lock-integration` | Add an optional Postgres-backed regression or smoke fixture for the budget row-lock path when `DATABASE_URL` is available | budget tests, CI docs | `npm test -- --runInBand test/unit/budget-service.spec.ts`; optional Postgres smoke when configured |
-| 4 | `codex/frontend-fcp-smoke` | Add a lightweight dashboard first-paint smoke script that validates the loading skeleton and bundle budget together | `frontend/scripts`, frontend package checks | `cd frontend && npm test && npm run build` |
+| 1 | `codex/postgres-budget-lock-integration` | Add an optional Postgres-backed regression or smoke fixture for the budget row-lock path when `DATABASE_URL` is available | budget tests, CI docs | `npm test -- --runInBand test/unit/budget-service.spec.ts`; optional Postgres smoke when configured |
+| 2 | `codex/frontend-fcp-smoke` | Add a lightweight dashboard first-paint smoke script that validates the loading skeleton and bundle budget together | `frontend/scripts`, frontend package checks | `cd frontend && npm test && npm run build` |
 
 ## Key Findings
 
@@ -191,6 +194,8 @@ Status:
 
 - Backend production guard completed in PR #44.
 - Frontend status failure now defaults to fail-closed behavior on current `main`.
+- Auth status failures and disabled-auth startup paths now emit bounded telemetry
+  counters as of PR #72.
 - Cookie session issuance and cookie-first SSE landed in PR #50.
 - Protected dashboard routes now accept verified cookie-backed session status
   after reload without requiring legacy `localStorage` tokens as of PR #52.
@@ -395,6 +400,9 @@ Status:
   `pessimistic_write` row locks around reservation, record, commit, and release
   mutations, while retaining the process-local queue fallback for SQLite and
   in-memory test repositories.
+- PR #71 added management audit events for rejected reservations and manual
+  budget rule resets, using bounded scope/type metadata and avoiding raw key
+  names or key ids.
 - Remaining follow-up: add an optional real-PostgreSQL smoke fixture and decide
   whether Redis-backed counters are needed for deployments that do not use
   PostgreSQL as the shared budget source of truth.
@@ -820,7 +828,8 @@ Targets:
 | AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Done in PR #43; keep regression coverage |
 | AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Done on current `main` |
 | AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Process-local proof done in PR #59; dispatch integration done in PR #63; PostgreSQL row-lock path done in PR #69 |
-| AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility optional follow-up |
+| AGW-COST-03 | Add budget reservation metrics and audit visibility | P1 | Budget/Observability | Metrics done in PR #64; audit visibility done in PR #71 |
+| AGW-SEC-10 | Add dashboard auth status telemetry | P1 | Auth/Observability | Done in PR #72 |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
@@ -892,12 +901,12 @@ Completed:
   compatibility windows. Done in PR #67.
 - Add SQL-backed reservation locking for multi-instance budget enforcement. Done
   in PR #69 for PostgreSQL deployments.
+- Add budget reservation audit visibility for rejected requests and manual
+  resets without leaking key identifiers. Done in PR #71.
+- Add auth status failure telemetry for management-plane health. Done in PR #72.
 
 Remaining:
 
-- Add budget reservation audit visibility for rejected requests and manual
-  resets without leaking key identifiers.
-- Add auth status failure telemetry for management-plane health.
 - Add optional Postgres smoke coverage for row-lock budget reservations.
 - Add a frontend first-paint smoke check if loading regressions become frequent.
 
