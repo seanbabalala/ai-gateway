@@ -1,7 +1,9 @@
 import { lazy, Suspense, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Routes, Route } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ProtectedRoute } from '@/components/shared/ProtectedRoute'
+import { Skeleton, SkeletonCard, SkeletonTable } from '@/components/ui/skeleton'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const LogsPage = lazy(() => import('@/pages/LogsPage').then((m) => ({ default: m.LogsPage })))
@@ -31,27 +33,124 @@ const MembersPage = lazy(() => import('@/pages/MembersPage').then((m) => ({ defa
 const WorkspacesPage = lazy(() => import('@/pages/WorkspacesPage').then((m) => ({ default: m.WorkspacesPage })))
 const NamespacesPage = lazy(() => import('@/pages/NamespacesPage').then((m) => ({ default: m.NamespacesPage })))
 
+const routeChartBars = [42, 68, 54, 80, 46, 64, 58, 72] as const
+const routeListRows = ['w-24', 'w-32', 'w-28', 'w-36'] as const
+
 function RouteFallback() {
+  const { t } = useTranslation()
+  const loadingLabel = t('status.loading')
+
   return (
-    <div className="space-y-5 p-6">
-      <div className="h-4 w-36 animate-shimmer rounded-lg" />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <section
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={loadingLabel}
+      className="min-h-[calc(100vh-9rem)] space-y-6"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-2.5">
+          <Skeleton className="h-8 w-48 max-w-full" />
+          <Skeleton className="h-3 w-[min(28rem,80vw)]" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-9 w-24" />
+          <Skeleton className="h-9 w-9" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-28 animate-shimmer rounded-xl" />
+          <SkeletonCard key={i} className="min-h-32" />
         ))}
       </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="glass-card-static rounded-2xl p-5">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-8 w-20" />
+          </div>
+          <div className="flex h-56 items-end gap-2 px-2">
+            {routeChartBars.map((height, index) => (
+              <Skeleton
+                key={height}
+                className="flex-1 rounded-t-md"
+                style={{
+                  height: `${height}%`,
+                  animationDelay: `${index * 80}ms`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-card-static rounded-2xl p-5">
+          <Skeleton className="mb-5 h-4 w-32" />
+          <div className="space-y-3">
+            {routeListRows.map((width, index) => (
+              <div
+                key={width}
+                className="flex min-h-14 items-center justify-between gap-4 rounded-lg bg-[var(--background-tertiary)] px-3"
+              >
+                <div className="space-y-2">
+                  <Skeleton className={`h-3 ${width}`} />
+                  <Skeleton className="h-2.5 w-20" />
+                </div>
+                <Skeleton
+                  className="h-7 w-12 rounded-md"
+                  style={{ animationDelay: `${index * 80}ms` }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="glass-card-static overflow-hidden rounded-2xl">
+        <SkeletonTable rows={5} cols={5} />
+      </div>
+      <span className="sr-only">{loadingLabel}</span>
+    </section>
+  )
+}
+
+function LoginRouteFallback() {
+  const { t } = useTranslation()
+  const loadingLabel = t('status.loading')
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={loadingLabel}
+      className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6"
+    >
+      <div className="glass-card-static w-full max-w-sm rounded-2xl p-6">
+        <div className="mx-auto mb-6 h-11 w-11 animate-shimmer rounded-xl" />
+        <div className="space-y-3">
+          <Skeleton className="mx-auto h-7 w-36" />
+          <Skeleton className="mx-auto h-3 w-56 max-w-full" />
+        </div>
+        <div className="mt-8 space-y-4">
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+      <span className="sr-only">{loadingLabel}</span>
     </div>
   )
 }
 
-function page(element: ReactNode) {
-  return <Suspense fallback={<RouteFallback />}>{element}</Suspense>
+function page(element: ReactNode, fallback: ReactNode = <RouteFallback />) {
+  return <Suspense fallback={fallback}>{element}</Suspense>
 }
 
 export function App() {
   return (
     <Routes>
-      <Route path="/login" element={page(<LoginPage />)} />
+      <Route path="/login" element={page(<LoginPage />, <LoginRouteFallback />)} />
       <Route
         element={
           <ProtectedRoute>
