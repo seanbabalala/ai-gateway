@@ -13,6 +13,7 @@ import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { BudgetRule } from '../database/entities/budget-rule.entity';
 import { AlertService } from '../alerts/alert.service';
+import { ManagementAuditService } from '../audit/management-audit.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import type {
   BudgetReservationMetricEvent,
@@ -137,6 +138,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     private readonly budgetRepo: Repository<BudgetRule>,
     @Optional() private readonly alerts?: AlertService,
     @Optional() private readonly telemetry?: TelemetryService,
+    @Optional() private readonly managementAudit?: ManagementAuditService,
   ) {
     this.registerMetrics();
   }
@@ -507,6 +509,7 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
           scope: err.scope,
           budgetType: err.budgetType,
         }]);
+        await this.recordBudgetReservationRejectedAudit(err);
       }
       throw err;
     }
@@ -612,10 +615,12 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
       where: workspaceFindWhere(this.workspaceId(), { id: ruleId }),
     });
     if (rule) {
+      const beforeSummary = this.budgetRuleAuditSummary(rule);
       rule.current_value = 0;
       rule.period_start = this.startOfDay(new Date());
       await this.budgetRepo.save(rule);
       await this.refreshBudgetMetricSnapshot();
+      await this.recordBudgetRuleResetAudit(rule, beforeSummary);
       this.logger.log(`Budget rule ${rule.type} manually reset`);
     }
   }
@@ -1076,6 +1081,67 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
         budgetType: dimension.budgetType,
       });
     }
+  }
+
+  private async recordBudgetReservationRejectedAudit(err: BudgetExceededError): Promise<void> {
+    if (!this.managementAudit) return;
+    await this.managementAudit.record({
+      action: 'budget.reservation.rejected',
+      resourceType: 'budget_rule',
+      resourceId: null,
+      result: 'denied',
+      failureReason: `${err.budgetType} budget exceeded`,
+      afterSummary: {
+        rejected: true,
+        scope: err.scope,
+        budget_type: err.budgetType,
+        current: Number(err.current.toFixed(6)),
+        limit: Number(err.limit.toFixed(6)),
+        reset_at: err.resetAt?.toISOString() ?? null,
+      },
+      metadata: {
+        scope: err.scope,
+        budget_type: err.budgetType,
+      },
+      source: 'budget',
+    });
+  }
+
+  private async recordBudgetRuleResetAudit(
+    rule: BudgetRule,
+    beforeSummary: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.managementAudit) return;
+    await this.managementAudit.record({
+      action: 'budget.rule.reset',
+      resourceType: 'budget_rule',
+      resourceId: String(rule.id),
+      beforeSummary,
+      afterSummary: this.budgetRuleAuditSummary(rule),
+      metadata: {
+        scope: this.budgetRuleScope(rule),
+        budget_type: rule.type,
+      },
+      source: 'budget',
+    });
+  }
+
+  private budgetRuleAuditSummary(rule: BudgetRule): Record<string, unknown> {
+    return {
+      scope: this.budgetRuleScope(rule),
+      budget_type: rule.type,
+      current: Number(rule.current_value.toFixed(6)),
+      limit: Number(rule.limit_value.toFixed(6)),
+      alert_threshold: rule.alert_threshold,
+      reset_at: this.nextResetAt(rule)?.toISOString() ?? null,
+    };
+  }
+
+  private budgetRuleScope(rule: BudgetRule): BudgetReservationMetricScope {
+    if (rule.namespace_id) return 'namespace';
+    if (rule.team_id) return 'team';
+    if (rule.api_key_name || rule.api_key_id) return 'api_key';
+    return 'global';
   }
 
   private metricScope(scope: BudgetRuleScope): BudgetReservationMetricScope {
