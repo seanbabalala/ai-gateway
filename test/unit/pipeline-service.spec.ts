@@ -2565,6 +2565,42 @@ describe('PipelineService — processStream', () => {
     expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalled();
   });
 
+  it('should try fallback when primary stream generator fails before first event', async () => {
+    async function* failingBeforeFirstEvent() {
+      throw new ProviderError('Reader failed before first event', 502, 'openai');
+    }
+    async function* fallbackStream() {
+      yield { type: 'start' as const, id: 'fb-async-read', model: 'claude-3-opus' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Fallback live' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 5, output_tokens: 3 } };
+    }
+
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockImplementation((_canonical, nodeId: string) => {
+          if (nodeId === 'openai') return failingBeforeFirstEvent();
+          return fallbackStream();
+        }),
+      },
+    });
+
+    const request = makeRequest('Hello', { originalModel: 'auto' });
+    request.stream = true;
+    const res = mockResponse();
+
+    await pipeline.processStream(request, res);
+
+    expect(mocks.providerClient.forwardStream).toHaveBeenCalledWith(
+      expect.any(Object),
+      'claude',
+      'claude-3-opus',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(res._chunks.join('')).toContain('Fallback live');
+    expect(mocks.circuitBreaker.recordFailure).toHaveBeenCalledWith('openai', 'gpt-4o');
+  });
+
   it('should try fallback in stream mode when primary is saturated', async () => {
     async function* fallbackStream() {
       yield { type: 'start' as const, id: 'fb-limiter', model: 'claude-3-opus' };
