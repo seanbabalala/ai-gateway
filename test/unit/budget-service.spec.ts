@@ -148,6 +148,23 @@ function makeTelemetryMock() {
   };
 }
 
+function enablePostgresTransactions(repo: any) {
+  const getRepository = jest.fn(() => repo);
+  const transaction = jest.fn(async (_isolation: string, run: any) =>
+    run({ getRepository }),
+  );
+  repo.manager = {
+    connection: {
+      options: {
+        type: 'postgres',
+      },
+    },
+    transaction,
+  };
+
+  return { getRepository, transaction };
+}
+
 describe('BudgetService', () => {
   // ── ensureDefaultRules (via onModuleInit) ────────────────
 
@@ -542,6 +559,35 @@ describe('BudgetService', () => {
       await fulfilled[0].value.release();
       await fulfilled[0].value.release();
 
+      expect(repo._store[0].current_value).toBe(0);
+    });
+
+    it('should lock budget rows inside PostgreSQL reservation transactions', async () => {
+      const { svc, repo } = makeService();
+      const postgres = enablePostgresTransactions(repo);
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+
+      const reservation = await svc.reserve(40, 0);
+      await reservation.release();
+
+      expect(postgres.transaction).toHaveBeenCalledWith('READ COMMITTED', expect.any(Function));
+      expect(postgres.transaction).toHaveBeenCalledTimes(2);
+      expect(postgres.getRepository).toHaveBeenCalled();
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lock: { mode: 'pessimistic_write' },
+        }),
+      );
       expect(repo._store[0].current_value).toBe(0);
     });
 
