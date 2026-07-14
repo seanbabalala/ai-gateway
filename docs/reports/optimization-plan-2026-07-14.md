@@ -1,14 +1,21 @@
-# AI Gateway Optimization Plan
+# AI Gateway Overnight Optimization Plan
 
 Review date: 2026-07-14
+Execution mode: Goal-driven overnight merge loop
 
 Scope: production hardening review for the SiftGate / AI Gateway repository,
 focused on security boundaries, request lifecycle reliability, cost governance,
 configuration safety, MCP isolation, frontend performance, and release gates.
 
 This plan is intentionally action-oriented. It is not a full audit report; it is
-an overnight merge plan for turning the current healthy codebase into a stronger
-production platform through small, reviewable pull requests.
+an overnight execution plan for turning the current healthy codebase into a
+stronger production platform through small, reviewable pull requests.
+
+This is not a 90-day roadmap. Long-horizon themes are useful for prioritization,
+but execution must happen as a trunk-based loop: pick one small improvement,
+branch from a synchronized `main`, implement, validate, commit, push, open a PR,
+wait for checks, merge, delete the branch, and return local `main` to the exact
+`origin/main` baseline before taking the next item.
 
 ## Current Baseline
 
@@ -21,10 +28,20 @@ Baseline commands run during this review:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 101 suites, 1425 tests |
+| `npm test -- --runInBand` | Passed: 102 suites, 1442 tests |
 | `npm run build` | Passed for backend and runtime plugin types |
-| `npm run lint` | Passed with 34 warnings |
+| `npm run lint` | Passed with 34 existing warnings and 0 errors |
+| `npm run public:check` | Passed |
 | `npm run build` in `frontend/` | Passed; Vite warned about large chunks |
+
+Latest synchronized baseline after the first overnight PR loop:
+
+| Field | Value |
+| --- | --- |
+| Branch | `main` |
+| Local HEAD | `32867f63e948a49199888803d06caca000334ce2` |
+| `origin/main` | `32867f63e948a49199888803d06caca000334ce2` |
+| Worktree | Clean |
 
 Frontend build size baseline:
 
@@ -57,6 +74,43 @@ Frontend build size baseline:
 | P1 | Reliability, cost, or data-integrity issue with material production impact | Implement next if the change can be tested and merged safely |
 | P2 | Performance, maintainability, and quality-gate improvements | Pick low-risk quick wins after P0/P1 foundations |
 
+## Overnight Execution Record
+
+Completed PRs in the current Goal loop:
+
+| PR | Commit merged to `main` | Slice | Result |
+| --- | --- | --- | --- |
+| #43 | `cbb5aa98` | Redact streaming provider errors | Shared provider redaction helper and redacted stream interruption/error surfaces |
+| #44 | `645d546a` | Guard unauthenticated dashboard in production | `dashboard.auth_required=false` fails closed in production unless explicitly overridden |
+| #45 | `dc99d6f4` | Timeout stalled provider streams | Stream body idle timeout emits timeout errors after stream start |
+| #46 | `32867f63` | Fallback before stream chunks | Reader failures before any forwarded stream data now throw `ProviderError` so pipeline fallback can run |
+
+Every merged PR followed this loop:
+
+1. Start from clean `main` synchronized with `origin/main`.
+2. Create a `codex/<topic>` branch.
+3. Implement exactly one small optimization.
+4. Run focused tests, then required broader checks.
+5. Commit, push, open PR, wait for GitHub checks.
+6. Merge after checks pass and delete the remote branch.
+7. Return local `main` to the same SHA as `origin/main`.
+
+## Immediate PR Queue
+
+The next slices should stay intentionally narrow. Do not batch these unless a
+testable code path forces two items to land together.
+
+| Order | Branch | Slice | Main files | Required validation |
+| ---: | --- | --- | --- | --- |
+| 1 | `codex/auth-status-fail-closed` | Frontend auth status fetch failure blocks protected dashboard routes instead of assuming auth disabled | `frontend/src/contexts/AuthContext.tsx`, auth route tests | `cd frontend && npm test && npm run build`; auth unit tests if available |
+| 2 | `codex/oidc-fetch-timeouts` | Add explicit timeouts and stable errors for OIDC discovery, token, userinfo, and JWKS fetches | `src/auth/oidc.service.ts`, auth tests | `npm test -- --runInBand test/unit/auth-service.spec.ts test/unit/auth-controller.spec.ts`; `npm run build` |
+| 3 | `codex/mcp-env-allowlist` | Stop MCP stdio children from inheriting the full process environment by default | `src/mcp/mcp-gateway.service.ts`, MCP tests, config docs | `npm test -- --runInBand test/unit/mcp-gateway-service.spec.ts`; `npm run build`; `npm run public:check` |
+| 4 | `codex/public-5xx-errors` | Return generic public messages for unexpected 5xx errors while keeping logs diagnostic | `src/http/public-error-handling.ts`, controller tests | `npm test -- --runInBand test/unit/public-error-handling.spec.ts test/unit/ingest-controllers.spec.ts` |
+| 5 | `codex/atomic-config-writes` | Replace dashboard/config restore direct writes with atomic temp-file rename flow | `src/config/config.service.ts`, config tests | `npm test -- --runInBand test/unit/config-service.spec.ts test/unit/config-mutations.spec.ts`; `npm run build` |
+| 6 | `codex/api-key-last-used-debounce` | Debounce non-critical API key/team `last_used_at` writes | `src/auth/gateway-api-key.service.ts`, auth tests | `npm test -- --runInBand test/unit/gateway-api-key-service.spec.ts test/unit/api-key-guard.spec.ts` |
+| 7 | `codex/lint-warning-zero-baseline` | Clear current lint warnings and move toward zero-warning CI | files reported by `npm run lint` | `npm run lint`; `npm test -- --runInBand` if touched tests contain behavior |
+| 8 | `codex/frontend-manual-chunks` | Isolate chart-heavy frontend chunks and add a bundle budget baseline | `frontend/vite.config.ts`, chart pages | `cd frontend && npm test && npm run build` |
+
 ## Key Findings
 
 ### P0: Dashboard Auth Should Fail Closed
@@ -85,6 +139,13 @@ Target outcome:
 - Production startup warns loudly or fails when `dashboard.auth_required=false`
   unless an explicit development override is present.
 - Tests cover auth status network failure and disabled-auth development mode.
+
+Status:
+
+- Backend production guard completed in PR #44.
+- Frontend auth status failure behavior remains an immediate follow-up PR.
+- Cookie session and SSE query-token replacement remain separate session
+  hardening PRs.
 
 ### P0: Dashboard Tokens Appear In URL And Browser Storage
 
@@ -159,6 +220,14 @@ Target outcome:
 - Add stream tests for slow headers, no body progress, partial body, and client
   abort.
 
+Status:
+
+- Stream body idle timeout completed in PR #45.
+- Pre-first-forwarded-data reader failures now throw connection-phase
+  `ProviderError` and can trigger fallback as of PR #46.
+- Max stream duration and deeper client-abort propagation remain follow-up
+  lifecycle PRs.
+
 ### P1: Provider Error Bodies Need Stronger Redaction
 
 Evidence:
@@ -182,6 +251,13 @@ Target outcome:
 - Store stable error code, provider status, failure type, and a scrubbed
   diagnostic preview.
 - Keep raw provider error bodies out of normal logs and public API responses.
+
+Status:
+
+- Shared provider error text/body redaction and streaming error redaction landed
+  in PR #43.
+- Remaining work is to tighten public 5xx mapping and ensure every provider
+  diagnostic preview goes through the same policy.
 
 ### P1: Public Error Responses Can Expose Internal Messages
 
@@ -341,18 +417,17 @@ branch.
 
 Deliverables:
 
-- Create tracking issues for every P0/P1 item in this document.
-- Add owners and target releases for auth/session, provider lifecycle, budget,
-  MCP, config, and frontend performance.
-- Capture benchmark artifacts for current dashboard bundle and hot API paths.
-- Add a lightweight security regression checklist to release review.
+- Keep `main` synchronized with `origin/main` before every slice.
+- Keep the immediate PR queue in this document current as each PR lands.
+- Capture benchmark artifacts only when the slice needs performance evidence.
+- Add release checklist updates when a PR changes production defaults.
 
 Exit criteria:
 
-- P0 issues have named owners and implementation plans.
 - CI baseline is documented: tests, lint warnings, backend build, frontend
-  build, docs check.
-- No optimization work starts without a regression test plan.
+  build, docs/public checks.
+- Each new optimization starts with a regression test plan and a narrow branch.
+- After every merge, local `main` and `origin/main` point to the same SHA.
 
 ### Block 1: Management-Plane Auth Safety
 
@@ -600,24 +675,25 @@ Targets:
 
 ## Suggested Issue Breakdown
 
-| ID | Title | Priority | Owner area |
-| --- | --- | --- | --- |
-| AGW-SEC-01 | Make dashboard auth status fail closed | P0 | Frontend/Auth |
-| AGW-SEC-02 | Add production guard for unauthenticated dashboard | P0 | Backend/Auth |
-| AGW-SEC-03 | Move dashboard session to HttpOnly cookie | P0 | Backend/Auth |
-| AGW-SEC-04 | Replace SSE query token auth | P0 | Frontend/Auth |
-| AGW-SEC-05 | Add OIDC fetch timeout helper | P1 | Backend/Auth |
-| AGW-REL-01 | Add provider stream idle timeout | P1 | Provider |
-| AGW-REL-02 | Propagate client disconnect to upstream provider | P1 | Provider |
-| AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security |
-| AGW-API-01 | Harden public error response mapping | P1 | HTTP API |
-| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget |
-| AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data |
-| AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP |
-| AGW-CONF-01 | Add atomic config write helper | P1 | Config |
-| AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data |
-| AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend |
-| AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling |
+| ID | Title | Priority | Owner area | Status |
+| --- | --- | --- | --- | --- |
+| AGW-SEC-01 | Make dashboard auth status fail closed | P0 | Frontend/Auth | Next |
+| AGW-SEC-02 | Add production guard for unauthenticated dashboard | P0 | Backend/Auth | Done in PR #44 |
+| AGW-SEC-03 | Move dashboard session to HttpOnly cookie | P0 | Backend/Auth | Planned |
+| AGW-SEC-04 | Replace SSE query token auth | P0 | Frontend/Auth | Planned |
+| AGW-SEC-05 | Add OIDC fetch timeout helper | P1 | Backend/Auth | Next |
+| AGW-REL-01 | Add provider stream idle timeout | P1 | Provider | Done in PR #45 |
+| AGW-REL-02 | Propagate client disconnect to upstream provider | P1 | Provider | Planned |
+| AGW-REL-03 | Treat pre-first-event stream reader failures as fallbackable | P1 | Provider/Pipeline | Done in PR #46 |
+| AGW-SEC-06 | Centralize provider error redaction | P1 | Provider/Security | Partially done in PR #43 |
+| AGW-API-01 | Harden public error response mapping | P1 | HTTP API | Next |
+| AGW-COST-01 | Add atomic budget reservation model | P1 | Budget | Planned |
+| AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Next |
+| AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Next |
+| AGW-CONF-01 | Add atomic config write helper | P1 | Config | Next |
+| AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Planned |
+| AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Next |
+| AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Next |
 
 ## Pull Request Discipline
 
@@ -675,7 +751,9 @@ Quality:
 - Fix current lint warnings and unused eslint-disable directives.
 - Change frontend auth status failure to an explicit blocked/error state.
 - Add timeout wrappers for OIDC discovery, token exchange, userinfo, and JWKS.
-- Add provider error sanitizer before logging or embedding upstream error bodies.
+- Complete public/provider error mapping so unexpected 5xx messages are generic
+  and provider diagnostics stay scrubbed.
+- Restrict MCP stdio environment inheritance.
 - Debounce API key `last_used_at` writes.
 - Add Rollup `manualChunks` for chart libraries and large vendor dependencies.
 - Add tests for public 5xx generic error mapping.
@@ -691,7 +769,7 @@ Quality:
 
 ## Final Target State
 
-At the end of this roadmap, the gateway should have:
+At the end of this execution track, the gateway should have:
 
 - Management auth that fails closed by default.
 - Dashboard sessions that do not rely on URL tokens or `localStorage`.
