@@ -380,6 +380,19 @@ function validateDashboard(
       ),
     );
   }
+  if (
+    dashboard.allow_legacy_token_auth !== undefined &&
+    typeof dashboard.allow_legacy_token_auth !== 'boolean'
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_dashboard_legacy_token_auth',
+        'dashboard.allow_legacy_token_auth must be a boolean.',
+        'dashboard.allow_legacy_token_auth',
+      ),
+    );
+  }
   if (dashboard.oidc !== undefined) {
     validateDashboardOidc(dashboard.oidc, dashboard, issues);
   }

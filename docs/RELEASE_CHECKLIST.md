@@ -120,6 +120,9 @@ release tooling, confirm the relevant hardening gates before merge:
   - OIDC callbacks do not return Dashboard JWTs in URL hashes.
   - Browser SSE paths authenticate with the HttpOnly session cookie first; any
     legacy `?token=` fallback emits only a token-free deprecation warning.
+  - `dashboard.allow_legacy_token_auth=false` rejects both legacy bearer tokens
+    and legacy SSE query tokens when the deployment is ready for cookie-only
+    Dashboard auth.
 - Provider stream lifecycle remains bounded:
   - header/connect timeout behavior still falls back correctly,
   - idle stream body timeout emits a timeout error,

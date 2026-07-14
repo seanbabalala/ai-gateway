@@ -5,6 +5,7 @@ import { DASHBOARD_SESSION_COOKIE } from '../../src/auth/dashboard-session-cooki
 function makeAuthService(overrides: Record<string, unknown> = {}): any {
   return {
     isAuthRequired: false,
+    allowsLegacyDashboardTokenAuth: true,
     verifyToken: jest.fn().mockReturnValue(null),
     ...overrides,
   };
@@ -110,6 +111,23 @@ describe('DashboardGuard', () => {
     expect(auth.verifyToken).toHaveBeenCalledWith('header-token');
   });
 
+  it('should prefer dashboard session cookie over legacy Bearer header', () => {
+    const auth = makeAuthService({
+      isAuthRequired: true,
+      verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
+    });
+    const guard = new DashboardGuard(auth);
+    guard.canActivate(
+      makeContext(
+        {
+          authorization: 'Bearer header-token',
+          cookie: `other=value; ${DASHBOARD_SESSION_COOKIE}=cookie-token`,
+        },
+      ),
+    );
+    expect(auth.verifyToken).toHaveBeenCalledWith('cookie-token');
+  });
+
   it('should prefer dashboard session cookie over legacy query param', () => {
     const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const auth = makeAuthService({
@@ -143,6 +161,39 @@ describe('DashboardGuard', () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('first-query-token');
     expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('second-query-token');
+    warnSpy.mockRestore();
+  });
+
+  it('should reject legacy Bearer tokens when compatibility is disabled', () => {
+    const auth = makeAuthService({
+      isAuthRequired: true,
+      allowsLegacyDashboardTokenAuth: false,
+      verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
+    });
+    const guard = new DashboardGuard(auth);
+
+    expect(() =>
+      guard.canActivate(
+        makeContext({ authorization: 'Bearer header-token' }),
+      ),
+    ).toThrow(UnauthorizedException);
+    expect(auth.verifyToken).not.toHaveBeenCalled();
+  });
+
+  it('should reject legacy query tokens when compatibility is disabled', () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const auth = makeAuthService({
+      isAuthRequired: true,
+      allowsLegacyDashboardTokenAuth: false,
+      verifyToken: jest.fn().mockReturnValue({ sub: 'dashboard' }),
+    });
+    const guard = new DashboardGuard(auth);
+
+    expect(() =>
+      guard.canActivate(makeContext({}, { token: 'query-token' })),
+    ).toThrow(UnauthorizedException);
+    expect(auth.verifyToken).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 });

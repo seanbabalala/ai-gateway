@@ -43,6 +43,9 @@ hardening visible without blocking local development.
 - YAML parse errors and unreadable/missing files.
 - Required top-level sections: `server`, `database`, `auth`, `nodes`,
   `routing`, `budget`, and `models_pricing`.
+- Optional `dashboard` shape, including boolean `auth_required` and
+  `allow_legacy_token_auth`, plus OIDC issuer/client/redirect/role/timeouts
+  when `dashboard.oidc` is configured.
 - Database shape, including SQLite path, PostgreSQL URL, and boolean
   `database.synchronize` when set. PostgreSQL configs warn unless production
   schema synchronization is explicitly disabled.

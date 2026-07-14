@@ -56,6 +56,9 @@ OIDC callbacks set the same cookie and redirect back to the Dashboard without
 placing a Dashboard JWT in the URL hash. The legacy SSE `?token=` path remains
 for older clients during the compatibility window; when it is used, SiftGate
 logs a one-time deprecation warning without including the token value.
+Set `dashboard.allow_legacy_token_auth=false` after browser clients have moved
+to cookie-backed sessions to reject both legacy Dashboard bearer tokens and
+legacy SSE query tokens.
 
 Store OIDC client secrets as secret references such as
 `${env:OIDC_CLIENT_SECRET}`. Dashboard auth status only exposes whether OIDC is

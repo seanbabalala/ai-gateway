@@ -72,6 +72,20 @@ describe('config validator', () => {
     );
   });
 
+  it('rejects invalid dashboard legacy token auth config', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        dashboard: {
+          allow_legacy_token_auth: 'no',
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('invalid_dashboard_legacy_token_auth');
+  });
+
   it('reports YAML parser failures as errors', () => {
     const result = validateConfigFile({
       configPath: fixture('invalid-yaml.gateway.yaml'),

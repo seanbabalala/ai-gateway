@@ -400,6 +400,8 @@ export type LogSinkConfig =
 export interface DashboardConfig {
   /** Set false only for trusted local/dev networks. Default: true. */
   auth_required?: boolean;
+  /** Accept legacy Dashboard JWTs from Authorization Bearer and ?token=. Default: true during migration. */
+  allow_legacy_token_auth?: boolean;
   password?: string;
   /** Optional stable JWT secret for Dashboard sessions. May use ${env:SIFTGATE_DASHBOARD_SESSION_SECRET}. */
   session_secret?: string;
