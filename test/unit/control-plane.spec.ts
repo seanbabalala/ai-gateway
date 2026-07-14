@@ -1,5 +1,7 @@
 import { mockConfigService } from '../helpers';
 import { ControlPlaneClientService } from '../../src/control-plane/control-plane-client.service';
+import { GatewayRegistrationService } from '../../src/control-plane/gateway-registration.service';
+import { PolicySyncService } from '../../src/control-plane/policy-sync.service';
 import { TelemetryUploaderService } from '../../src/control-plane/telemetry-uploader.service';
 import { CallLog } from '../../src/database/entities/call-log.entity';
 
@@ -30,6 +32,28 @@ function makeCallLog(overrides: Partial<CallLog> = {}): CallLog {
     experiment_group: null,
     ...overrides,
   } as CallLog;
+}
+
+function mockEnabledControlPlaneConfig(
+  overrides: Record<string, unknown> = {},
+): { config: any; unsubscribe: jest.Mock } {
+  const unsubscribe = jest.fn();
+  const config = mockConfigService({
+    controlPlane: {
+      enabled: true,
+      url: 'https://cloud.example.com',
+      gateway_id: 'gw_prod',
+      registration_token: 'gw_reg_test',
+      telemetry: {
+        upload_interval_seconds: 5,
+        include_prompt: false,
+        include_response: false,
+      },
+    },
+    onReloadSuccess: jest.fn().mockReturnValue({ unsubscribe }),
+    ...overrides,
+  });
+  return { config, unsubscribe };
 }
 
 describe('ControlPlaneClientService', () => {
@@ -166,5 +190,82 @@ describe('TelemetryUploaderService', () => {
 
     expect(uploader.getQueueSize()).toBe(0);
     expect(client.uploadTelemetry).not.toHaveBeenCalled();
+  });
+});
+
+describe('Control-plane timer lifecycle', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('clears the gateway heartbeat interval on module destroy', () => {
+    const { config, unsubscribe } = mockEnabledControlPlaneConfig();
+    const client = {
+      enabled: true,
+      state: { workspaceId: 'ws_123', gatewayId: 'gw_prod', registered: true },
+      ensureRegistered: jest.fn().mockResolvedValue(true),
+      heartbeat: jest.fn().mockResolvedValue(true),
+    };
+    const service = new GatewayRegistrationService(config, client as never);
+
+    service.onModuleInit();
+    expect(client.ensureRegistered).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(30_000);
+    expect(client.heartbeat).toHaveBeenCalledTimes(1);
+
+    service.onModuleDestroy();
+    jest.advanceTimersByTime(90_000);
+
+    expect(client.heartbeat).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the policy sync interval on module destroy', () => {
+    const { config, unsubscribe } = mockEnabledControlPlaneConfig();
+    const client = {
+      enabled: true,
+      fetchLatestPolicy: jest.fn().mockResolvedValue({ version: 1 }),
+    };
+    const service = new PolicySyncService(config, client as never);
+    const refreshSpy = jest.spyOn(service, 'refresh');
+
+    service.onModuleInit();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(60_000);
+    expect(refreshSpy).toHaveBeenCalledTimes(2);
+
+    service.onModuleDestroy();
+    jest.advanceTimersByTime(180_000);
+
+    expect(refreshSpy).toHaveBeenCalledTimes(2);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the telemetry upload interval on module destroy', () => {
+    const { config, unsubscribe } = mockEnabledControlPlaneConfig();
+    const client = {
+      enabled: true,
+      state: { workspaceId: 'ws_123', gatewayId: 'gw_prod', registered: true },
+      uploadTelemetry: jest.fn().mockResolvedValue(true),
+    };
+    const uploader = new TelemetryUploaderService(config, client as never);
+    const flushSpy = jest.spyOn(uploader, 'flush');
+
+    uploader.onModuleInit();
+    jest.advanceTimersByTime(5_000);
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+
+    uploader.onModuleDestroy();
+    jest.advanceTimersByTime(15_000);
+
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });
