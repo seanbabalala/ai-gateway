@@ -1,4 +1,4 @@
-import { BudgetService, BudgetExceededError } from '../../src/budget/budget.service';
+import { BudgetService, BudgetExceededError, BudgetReservation } from '../../src/budget/budget.service';
 import { mockConfigService } from '../helpers';
 
 /**
@@ -494,6 +494,138 @@ describe('BudgetService', () => {
         apiKeyId: 'key_123',
         apiKeyName: 'renamed-client',
       });
+    });
+  });
+
+  // ── reserve ──────────────────────────────────────────────
+
+  describe('reserve', () => {
+    it('should reject concurrent reservations that exceed the global budget', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+
+      const results = await Promise.allSettled([
+        svc.reserve(60, 0),
+        svc.reserve(60, 0),
+      ]);
+
+      const fulfilled = results.filter(
+        (result): result is PromiseFulfilledResult<BudgetReservation> =>
+          result.status === 'fulfilled',
+      );
+      const rejected = results.filter((result) => result.status === 'rejected');
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(BudgetExceededError);
+      expect(repo._store[0].current_value).toBe(60);
+
+      await fulfilled[0].value.release();
+      await fulfilled[0].value.release();
+
+      expect(repo._store[0].current_value).toBe(0);
+    });
+
+    it('should not reserve global usage when a scoped rule would be exceeded', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_tokens',
+        limit_value: 50,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: 'client',
+        api_key_id: null,
+      });
+
+      await expect(svc.reserve(60, 0, 'client')).rejects.toThrow(BudgetExceededError);
+
+      expect(repo._store.find((r: any) => r.id === 1).current_value).toBe(0);
+      expect(repo._store.find((r: any) => r.id === 2).current_value).toBe(0);
+    });
+
+    it('should commit actual usage and release unused estimated usage', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+      repo._store.push({
+        id: 2,
+        type: 'daily_cost',
+        limit_value: 5,
+        alert_threshold: 0.8,
+        current_value: 0,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+
+      const reservation = await svc.reserve(80, 1.5);
+
+      expect(repo._store.find((r: any) => r.id === 1).current_value).toBe(80);
+      expect(repo._store.find((r: any) => r.id === 2).current_value).toBeCloseTo(1.5);
+
+      await reservation.commit(50, 1.25);
+      await reservation.release();
+
+      expect(repo._store.find((r: any) => r.id === 1).current_value).toBe(50);
+      expect(repo._store.find((r: any) => r.id === 2).current_value).toBeCloseTo(1.25);
+    });
+
+    it('should release reserved usage idempotently', async () => {
+      const { svc, repo } = makeService();
+      repo._store.push({
+        id: 1,
+        type: 'daily_tokens',
+        limit_value: 100,
+        alert_threshold: 0.8,
+        current_value: 10,
+        period_start: new Date(),
+        is_active: true,
+        api_key_name: null,
+        api_key_id: null,
+      });
+
+      const reservation = await svc.reserve(25, 0);
+
+      expect(repo._store[0].current_value).toBe(35);
+
+      await reservation.release();
+      await reservation.release();
+
+      expect(repo._store[0].current_value).toBe(10);
     });
   });
 

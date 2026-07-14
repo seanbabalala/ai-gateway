@@ -40,6 +40,21 @@ export interface BudgetStatus {
   resetAt: Date | null;
 }
 
+export interface BudgetReservation {
+  tokens: number;
+  costUsd: number;
+  commit(actualTokens: number, actualCostUsd: number): Promise<void>;
+  release(): Promise<void>;
+}
+
+interface BudgetRuleScope {
+  rules: BudgetRule[];
+  apiKeyName: string | null;
+  apiKeyId: string | null;
+  namespaceId: string | null;
+  teamId: string | null;
+}
+
 export class BudgetExceededError extends Error {
   public readonly scope: 'global' | 'api_key' | 'namespace' | 'team';
   public readonly resetAt: Date | null;
@@ -95,6 +110,7 @@ export class BudgetExceededError extends Error {
 export class BudgetService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BudgetService.name);
   private configReloadSub?: Subscription;
+  private mutationQueue: Promise<void> = Promise.resolve();
   private budgetMetricSnapshot: Array<{
     ratio: number;
     attrs: { scope: 'global' | 'api_key' | 'namespace' | 'team'; budget_type: string };
@@ -420,23 +436,96 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Reserve estimated usage before dispatching a provider request.
+   *
+   * This first reservation path is process-local: it serializes mutations in a
+   * single gateway instance and keeps all matching budget scopes all-or-nothing.
+   * Future storage backends can replace the internals with SQL/Redis conditional
+   * updates while preserving this call contract.
+   */
+  async reserve(
+    estimatedTokens: number,
+    estimatedCostUsd: number,
+    apiKeyName?: string,
+    apiKeyId?: string,
+    namespaceId?: string | null,
+    teamId?: string | null,
+  ): Promise<BudgetReservation> {
+    const safeTokens = this.sanitizeCounterValue(estimatedTokens);
+    const safeCostUsd = this.sanitizeCounterValue(estimatedCostUsd);
+    const identity = {
+      apiKeyName: apiKeyName || null,
+      apiKeyId: apiKeyId || null,
+      namespaceId: namespaceId || null,
+      teamId: teamId || null,
+    };
+
+    await this.withBudgetMutation(async () => {
+      const scopes = await this.loadRuleScopes(
+        identity.apiKeyName,
+        identity.apiKeyId,
+        identity.namespaceId,
+        identity.teamId,
+      );
+
+      for (const scope of scopes) {
+        await this.resetExpiredPeriods(scope.rules);
+        this.evaluateRuleProjections(scope, safeTokens, safeCostUsd);
+      }
+
+      for (const scope of scopes) {
+        await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true);
+      }
+
+      await this.refreshBudgetMetricSnapshot();
+    });
+
+    let settlement: Promise<void> | null = null;
+    const settle = (fn: () => Promise<void>): Promise<void> => {
+      if (!settlement) {
+        settlement = fn();
+      }
+      return settlement;
+    };
+
+    return {
+      tokens: safeTokens,
+      costUsd: safeCostUsd,
+      commit: (actualTokens: number, actualCostUsd: number) =>
+        settle(async () => {
+          const tokenDelta = this.sanitizeCounterValue(actualTokens) - safeTokens;
+          const costDelta = this.sanitizeCounterValue(actualCostUsd) - safeCostUsd;
+          await this.adjustReservation(tokenDelta, costDelta, identity);
+        }),
+      release: () =>
+        settle(async () => {
+          await this.adjustReservation(-safeTokens, -safeCostUsd, identity);
+        }),
+    };
+  }
+
+  /**
    * Record token and cost usage after a successful call.
    * Updates both global rules and per-key rules if apiKeyName is provided.
    */
   async record(tokens: number, costUsd: number, apiKeyName?: string, apiKeyId?: string, namespaceId?: string | null, teamId?: string | null): Promise<void> {
     const safeTokens = this.sanitizeCounterValue(tokens);
     const safeCostUsd = this.sanitizeCounterValue(costUsd);
-    await this.recordAgainst(null, safeTokens, safeCostUsd);
-    if (namespaceId) {
-      await this.recordAgainst(null, safeTokens, safeCostUsd, null, namespaceId, null);
-    }
-    if (teamId) {
-      await this.recordAgainst(null, safeTokens, safeCostUsd, null, null, teamId);
-    }
-    if (apiKeyName || apiKeyId) {
-      await this.recordAgainst(apiKeyName || null, safeTokens, safeCostUsd, apiKeyId);
-    }
-    await this.refreshBudgetMetricSnapshot();
+    await this.withBudgetMutation(async () => {
+      const scopes = await this.loadRuleScopes(
+        apiKeyName || null,
+        apiKeyId || null,
+        namespaceId || null,
+        teamId || null,
+      );
+
+      for (const scope of scopes) {
+        await this.resetExpiredPeriods(scope.rules);
+        await this.applyUsageToRules(scope, safeTokens, safeCostUsd, true);
+      }
+
+      await this.refreshBudgetMetricSnapshot();
+    });
   }
 
   /**
@@ -519,6 +608,70 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
 
   // ── Private helpers ───────────────────────────────────────
 
+  private async withBudgetMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.mutationQueue;
+    let release!: () => void;
+    this.mutationQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private async loadRuleScopes(
+    apiKeyName: string | null,
+    apiKeyId?: string | null,
+    namespaceId?: string | null,
+    teamId?: string | null,
+  ): Promise<BudgetRuleScope[]> {
+    const scopes: BudgetRuleScope[] = [
+      {
+        rules: await this.loadActiveRules(null),
+        apiKeyName: null,
+        apiKeyId: null,
+        namespaceId: null,
+        teamId: null,
+      },
+    ];
+
+    if (namespaceId) {
+      scopes.push({
+        rules: await this.loadActiveRules(null, null, namespaceId, null),
+        apiKeyName: null,
+        apiKeyId: null,
+        namespaceId,
+        teamId: null,
+      });
+    }
+
+    if (teamId) {
+      scopes.push({
+        rules: await this.loadActiveRules(null, null, null, teamId),
+        apiKeyName: null,
+        apiKeyId: null,
+        namespaceId: null,
+        teamId,
+      });
+    }
+
+    if (apiKeyName || apiKeyId) {
+      scopes.push({
+        rules: await this.loadActiveRules(apiKeyName, apiKeyId),
+        apiKeyName,
+        apiKeyId: apiKeyId || null,
+        namespaceId: null,
+        teamId: null,
+      });
+    }
+
+    return scopes;
+  }
+
   /**
    * Load active rules for a given scope (null = global, string = per-key).
    */
@@ -590,51 +743,104 @@ export class BudgetService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Record usage against rules for a specific scope.
-   */
-  private async recordAgainst(
-    apiKeyName: string | null,
-    tokens: number,
-    costUsd: number,
-    apiKeyId?: string | null,
-    namespaceId?: string | null,
-    teamId?: string | null,
+  private evaluateRuleProjections(scope: BudgetRuleScope, tokens: number, costUsd: number): void {
+    for (const rule of scope.rules) {
+      const increment = this.ruleIncrement(rule, tokens, costUsd);
+      const projectedValue = rule.current_value + increment;
+      if (projectedValue > rule.limit_value) {
+        const projectedRule: BudgetRule = { ...rule, current_value: projectedValue };
+        this.alertBudgetExceeded(
+          projectedRule,
+          scope.apiKeyName,
+          scope.apiKeyId || undefined,
+          scope.namespaceId,
+          scope.teamId,
+        );
+        throw new BudgetExceededError(
+          rule.type,
+          projectedValue,
+          rule.limit_value,
+          scope.apiKeyName || rule.api_key_name,
+          scope.apiKeyId || rule.api_key_id,
+          scope.namespaceId || rule.namespace_id,
+          scope.teamId || rule.team_id,
+          rule.period_start,
+        );
+      }
+    }
+  }
+
+  private async adjustReservation(
+    tokenDelta: number,
+    costDelta: number,
+    identity: {
+      apiKeyName: string | null;
+      apiKeyId: string | null;
+      namespaceId: string | null;
+      teamId: string | null;
+    },
   ): Promise<void> {
-    const rules = await this.loadActiveRules(apiKeyName, apiKeyId, namespaceId, teamId);
-    await this.resetExpiredPeriods(rules);
+    if (tokenDelta === 0 && costDelta === 0) return;
 
-    for (const rule of rules) {
-      const previousValue = rule.current_value;
-      let increment = 0;
+    await this.withBudgetMutation(async () => {
+      const scopes = await this.loadRuleScopes(
+        identity.apiKeyName,
+        identity.apiKeyId,
+        identity.namespaceId,
+        identity.teamId,
+      );
 
-      if (rule.type === 'daily_tokens') {
-        increment = tokens;
-      } else if (rule.type === 'daily_cost') {
-        increment = costUsd;
+      for (const scope of scopes) {
+        await this.resetExpiredPeriods(scope.rules);
+        await this.applyUsageToRules(scope, tokenDelta, costDelta, tokenDelta > 0 || costDelta > 0);
       }
 
-      rule.current_value += increment;
+      await this.refreshBudgetMetricSnapshot();
+    });
+  }
 
-      // Check alert threshold
+  private async applyUsageToRules(
+    scope: BudgetRuleScope,
+    tokens: number,
+    costUsd: number,
+    emitThresholdAlerts: boolean,
+  ): Promise<void> {
+    for (const rule of scope.rules) {
+      const previousValue = rule.current_value;
+      const increment = this.ruleIncrement(rule, tokens, costUsd);
+      rule.current_value = Math.max(0, rule.current_value + increment);
+
       const pct = rule.limit_value > 0 ? rule.current_value / rule.limit_value : 0;
       const previousPct = rule.limit_value > 0 ? previousValue / rule.limit_value : 0;
-      if (previousPct < rule.alert_threshold && pct >= rule.alert_threshold) {
-        const scope = namespaceId
-          ? `namespace "${namespaceId}"`
-          : teamId
-          ? `team "${teamId}"`
-          : apiKeyName || apiKeyId
-          ? `key "${apiKeyName || apiKeyId}"`
+      if (emitThresholdAlerts && increment > 0 && previousPct < rule.alert_threshold && pct >= rule.alert_threshold) {
+        const scopeLabel = scope.namespaceId
+          ? `namespace "${scope.namespaceId}"`
+          : scope.teamId
+          ? `team "${scope.teamId}"`
+          : scope.apiKeyName || scope.apiKeyId
+          ? `key "${scope.apiKeyName || scope.apiKeyId}"`
           : 'global';
         this.logger.warn(
-          `Budget alert (${scope}): ${rule.type} at ${(pct * 100).toFixed(1)}% (${rule.current_value.toFixed(2)} / ${rule.limit_value})`,
+          `Budget alert (${scopeLabel}): ${rule.type} at ${(pct * 100).toFixed(1)}% (${rule.current_value.toFixed(2)} / ${rule.limit_value})`,
         );
-        this.alertBudgetThreshold(rule, pct, apiKeyName, apiKeyId || undefined, namespaceId || undefined, teamId || undefined);
+        this.alertBudgetThreshold(
+          rule,
+          pct,
+          scope.apiKeyName || undefined,
+          scope.apiKeyId || undefined,
+          scope.namespaceId || undefined,
+          scope.teamId || undefined,
+        );
       }
 
       await this.budgetRepo.save(rule);
     }
+  }
+
+  private ruleIncrement(rule: BudgetRule, tokens: number, costUsd: number): number {
+    if (rule.type === 'daily_tokens') return tokens;
+    if (rule.type === 'daily_cost') return costUsd;
+    return 0;
   }
 
   /**
