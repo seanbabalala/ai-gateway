@@ -41,6 +41,7 @@ function makeResolver(overrides: Record<string, unknown> = {}) {
 const originalFetch = global.fetch;
 
 afterEach(() => {
+  jest.useRealTimers();
   global.fetch = originalFetch;
   delete process.env.SIFTGATE_TEST_SECRET;
   delete process.env.SIFTGATE_TEST_CHANGED;
@@ -144,6 +145,48 @@ describe('SecretReferenceResolverService', () => {
         headers: { 'X-Vault-Token': 'vault-token' },
       }),
     );
+  });
+
+  it('times out SDK-less secret backend requests without leaking backend tokens', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }),
+    ) as any;
+    const resolver = makeResolver({
+      backends: {
+        env: { enabled: true },
+        vault: {
+          enabled: true,
+          address: 'https://vault.example.com',
+          token: 'vault-token',
+          mount: 'secret',
+          kv_version: 2,
+          timeout_ms: 5,
+        },
+        aws_sm: { enabled: false, timeout_ms: 5000 },
+        gcp_sm: { enabled: false, timeout_ms: 5000, use_metadata: true },
+      },
+    });
+
+    const request = resolver.resolveString('${vault:secret/openai#api_key}');
+    const expectation = expect(request).rejects.toThrow(
+      'Secret manager request timed out after 5ms.',
+    );
+    await jest.advanceTimersByTimeAsync(5);
+
+    await expectation;
+    const error = await request.then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain('Secret manager request timed out after 5ms.');
+    expect(error?.message).not.toContain('vault-token');
   });
 
   it('resolves AWS Secrets Manager values through a signed HTTP request', async () => {

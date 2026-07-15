@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash, createHmac } from 'crypto';
 import { ConfigService } from './config.service';
+import { fetchWithTimeout } from '../http/fetch-with-timeout';
 import type {
   AwsSecretsManagerConfig,
   GcpSecretManagerConfig,
@@ -413,23 +414,19 @@ export class SecretReferenceResolverService {
     init: RequestInit,
     timeoutMs = 5000,
   ): Promise<Record<string, unknown>> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    timeout.unref?.();
-    try {
-      const response = await fetch(url, { ...init, signal: controller.signal });
-      const text = await response.text();
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
-      }
-      const parsed = JSON.parse(text) as unknown;
-      if (!isRecord(parsed)) {
-        throw new Error('Secret manager returned a non-object JSON response');
-      }
-      return parsed;
-    } finally {
-      clearTimeout(timeout);
+    const response = await fetchWithTimeout(url, init, {
+      timeoutMs,
+      timeoutMessage: `Secret manager request timed out after ${Math.max(1, Math.floor(timeoutMs))}ms.`,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
     }
+    const parsed = JSON.parse(text) as unknown;
+    if (!isRecord(parsed)) {
+      throw new Error('Secret manager returned a non-object JSON response');
+    }
+    return parsed;
   }
 
   private get secretManager(): Required<SecretManagerConfig> & {

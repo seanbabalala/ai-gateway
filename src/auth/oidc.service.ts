@@ -11,6 +11,11 @@ import { ConfigService } from '../config/config.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
 import { StateBackendService } from '../state/state-backend.service';
 import {
+  FetchTimeoutError,
+  fetchWithTimeout,
+  isFetchAbortError,
+} from '../http/fetch-with-timeout';
+import {
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_WORKSPACE_ID,
 } from '../workspaces/workspace.constants';
@@ -381,22 +386,16 @@ export class OidcService {
     operation: string,
   ): Promise<Response> {
     const timeoutMs = this.oidcTimeoutMs();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    timeout.unref?.();
-
     try {
-      return await fetch(url, {
-        ...init,
-        signal: controller.signal,
+      return await fetchWithTimeout(url, init, {
+        timeoutMs,
+        timeoutMessage: `${operation} timed out after ${timeoutMs}ms.`,
       });
     } catch (err) {
-      if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+      if (err instanceof FetchTimeoutError || isFetchAbortError(err)) {
         throw new UnauthorizedException(`${operation} timed out after ${timeoutMs}ms.`);
       }
       throw err;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 

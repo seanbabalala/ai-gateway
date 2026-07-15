@@ -21,6 +21,11 @@ import {
 import { TelemetryService } from '../telemetry/telemetry.service';
 import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import { redactErrorText } from '../security/error-redaction';
+import {
+  fetchErrorMessage,
+  fetchWithTimeout,
+  redactedFetchErrorMessage,
+} from '../http/fetch-with-timeout';
 
 const COMPATIBILITY_ERROR_REDACTION = {
   bearerReplacement: 'Bearer [redacted]',
@@ -363,11 +368,11 @@ export class ProviderCompatibilityService {
     const started = Date.now();
     const url = this.buildHttpUrl(node, plan.endpoint);
     try {
-      const response = await this.fetchWithTimeout(url, {
+      const response = await fetchWithTimeout(url, {
         method: 'POST',
         headers: await this.authHeaders(node),
         body: JSON.stringify(this.safeBodyFor(node, plan)),
-      }, this.timeoutMsForNode(node));
+      }, { timeoutMs: this.timeoutMsForNode(node) });
       const latencyMs = Date.now() - started;
       const classification = this.classifyResponse(response.status, plan.capability);
       await response.text().catch(() => '');
@@ -398,10 +403,10 @@ export class ProviderCompatibilityService {
     const started = Date.now();
     const url = this.buildHttpUrl(node, plan.endpoint);
     try {
-      const response = await this.fetchWithTimeout(url, {
+      const response = await fetchWithTimeout(url, {
         method: 'HEAD',
         headers: await this.authHeaders(node, false),
-      }, this.timeoutMsForNode(node));
+      }, { timeoutMs: this.timeoutMsForNode(node) });
       return this.persistResult(node, plan, {
         configured: true,
         tested: true,
@@ -458,24 +463,6 @@ export class ProviderCompatibilityService {
     });
     const saved = await this.repo.save(entity);
     return this.toMatrixItem(plan, saved);
-  }
-
-  private async fetchWithTimeout(
-    url: string,
-    init: RequestInit,
-    timeoutMs = 15_000,
-  ): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    timeout.unref?.();
-    try {
-      return await fetch(url, {
-        ...init,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 
   private async authHeaders(node: NodeConfig, json = true): Promise<Record<string, string>> {
@@ -651,13 +638,7 @@ export class ProviderCompatibilityService {
   }
 
   private classifyNetworkError(error: unknown): string {
-    const errMsg = error instanceof Error ? error.message : 'Unknown error';
-    const cause = (error as Record<string, unknown>)?.cause as
-      | Record<string, unknown>
-      | undefined;
-    const causeMsg = (cause?.message as string) || '';
-    const causeCode = (cause?.code as string) || '';
-    const full = `${errMsg} ${causeMsg} ${causeCode}`.toLowerCase();
+    const full = fetchErrorMessage(error).toLowerCase();
     if (full.includes('abort') || full.includes('timeout')) {
       return 'Connection timed out during compatibility test.';
     }
@@ -670,7 +651,10 @@ export class ProviderCompatibilityService {
     if (full.includes('ssl') || full.includes('cert') || full.includes('tls')) {
       return 'SSL/TLS error during compatibility test.';
     }
-    return `Connection error during compatibility test: ${this.sanitize(causeMsg || causeCode || errMsg)}`;
+    return `Connection error during compatibility test: ${redactedFetchErrorMessage(error, {
+      ...COMPATIBILITY_ERROR_REDACTION,
+      telemetry: this.compatibilityRedactionTelemetry(),
+    })}`;
   }
 
   private isUnsafeHeader(key: string): boolean {

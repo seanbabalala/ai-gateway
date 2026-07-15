@@ -1,6 +1,11 @@
 import { BadGatewayException, GatewayTimeoutException, Injectable } from '@nestjs/common';
 import type { NodeConfig } from '../config/gateway.config';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import {
+  FetchTimeoutError,
+  fetchWithTimeout,
+  isFetchAbortError,
+} from '../http/fetch-with-timeout';
 import type { BatchProviderResponse } from './batch.types';
 
 type BatchProviderMethod = 'GET' | 'POST';
@@ -91,22 +96,18 @@ export class BatchProviderAdapterService {
   }): Promise<BatchProviderResponse> {
     const url = this.buildUrl(input.node, input.endpoint, input.replacements);
     const headers = await this.providerHeaders(input.node, input.requestId);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), input.node.timeout_ms ?? 60_000);
-    const abortFromExternal = () => controller.abort();
-    if (input.signal?.aborted) {
-      controller.abort();
-    } else {
-      input.signal?.addEventListener('abort', abortFromExternal, { once: true });
-    }
+    const timeoutMs = input.node.timeout_ms ?? 60_000;
 
     const started = Date.now();
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: input.method,
         headers,
         body: input.body ? JSON.stringify(input.body) : undefined,
-        signal: controller.signal,
+        signal: input.signal,
+      }, {
+        timeoutMs,
+        timeoutMessage: 'Batch upstream request timed out.',
       });
       const contentType = response.headers.get('content-type') || (input.expectBinary ? 'application/octet-stream' : 'application/json');
       const body = await this.readBody(response, contentType, input.expectBinary);
@@ -118,14 +119,11 @@ export class BatchProviderAdapterService {
         latencyMs: Date.now() - started,
       };
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof FetchTimeoutError || isFetchAbortError(error)) {
         throw new GatewayTimeoutException('Batch upstream request timed out.');
       }
       if (error instanceof GatewayTimeoutException) throw error;
       throw new BadGatewayException('Batch upstream request failed.');
-    } finally {
-      clearTimeout(timeout);
-      input.signal?.removeEventListener('abort', abortFromExternal);
     }
   }
 

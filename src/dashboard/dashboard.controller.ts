@@ -131,6 +131,11 @@ import {
   ProviderSdkGeneratorDto,
 } from "./dto/provider-extensibility.dto";
 import { BatchJobStoreService } from "../batch/batch-job-store.service";
+import {
+  fetchErrorMessage,
+  fetchWithTimeout,
+  redactedFetchErrorMessage,
+} from "../http/fetch-with-timeout";
 import { WorkspaceContextService } from "../workspaces/workspace-context.service";
 import { WorkspaceService } from "../workspaces/workspace.service";
 import {
@@ -6188,20 +6193,16 @@ export class DashboardController {
     }
 
     const startTime = Date.now();
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutMs = 15_000;
     try {
-      const controller = new AbortController();
-      timeout = setTimeout(() => controller.abort(), 15_000);
-      timeout.unref?.();
-
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: controller.signal,
+      }, {
+        timeoutMs,
+        timeoutMessage: `Dashboard provider connectivity test timed out after ${timeoutMs}ms.`,
       });
-      clearTimeout(timeout);
-      timeout = undefined;
 
       const latencyMs = Date.now() - startTime;
       const responseText = await response.text().catch(() => "");
@@ -6273,13 +6274,7 @@ export class DashboardController {
       };
     } catch (err) {
       const latencyMs = Date.now() - startTime;
-      const errMsg = (err as Error).message || "Unknown error";
-      const cause = (err as Record<string, unknown>)?.cause as
-        | Record<string, unknown>
-        | undefined;
-      const causeMsg = (cause?.message as string) || "";
-      const causeCode = (cause?.code as string) || "";
-      const fullMsg = `${errMsg} ${causeMsg} ${causeCode}`.toLowerCase();
+      const fullMsg = fetchErrorMessage(err).toLowerCase();
 
       if (fullMsg.includes("abort") || fullMsg.includes("timeout")) {
         return {
@@ -6322,10 +6317,8 @@ export class DashboardController {
         success: false,
         status: 0,
         latency_ms: latencyMs,
-        message: `Connection error: ${causeMsg || causeCode || errMsg}`,
+        message: `Connection error: ${redactedFetchErrorMessage(err)}`,
       };
-    } finally {
-      if (timeout) clearTimeout(timeout);
     }
   }
 
