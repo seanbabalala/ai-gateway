@@ -4,8 +4,13 @@ const workspaceContext = {
   currentWorkspaceId: jest.fn(() => 'default-workspace'),
 };
 
-function makeService(repo: ReturnType<typeof makeRepo>) {
-  return new ProviderCompatibilityService(workspaceContext as any, repo as any);
+function makeService(repo: ReturnType<typeof makeRepo>, telemetry?: unknown) {
+  return new ProviderCompatibilityService(
+    workspaceContext as any,
+    repo as any,
+    undefined,
+    telemetry as any,
+  );
 }
 
 function makeRepo() {
@@ -144,7 +149,8 @@ describe('ProviderCompatibilityService', () => {
 
   it('redacts compatibility failure reasons before storing matrix metadata', async () => {
     const repo = makeRepo();
-    const service = makeService(repo);
+    const telemetry = { recordErrorRedaction: jest.fn() };
+    const service = makeService(repo, telemetry);
     const secretMessage =
       'provider rejected Bearer gw_sk_live_gateway_secret_123456 api_key=sk-query-secret-token gsk-provider-secret-token';
     global.fetch = jest.fn().mockRejectedValue(new Error(secretMessage));
@@ -160,6 +166,17 @@ describe('ProviderCompatibilityService', () => {
     expect(serialized).not.toContain('gw_sk_live_gateway_secret_123456');
     expect(serialized).not.toContain('sk-query-secret-token');
     expect(serialized).not.toContain('gsk-provider-secret-token');
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'compatibility',
+      reason: 'bearer_token',
+    });
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'compatibility',
+      reason: 'provider_key',
+    });
+    expect(JSON.stringify(telemetry.recordErrorRedaction.mock.calls)).not.toContain(
+      'gw_sk_live_gateway_secret_123456',
+    );
   });
 
   it('uses upstream model aliases for provider safe requests', async () => {

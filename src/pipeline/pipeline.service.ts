@@ -91,6 +91,7 @@ import {
   GATEWAY_REQUEST_ID_HEADER,
   LEGACY_REQUEST_ID_HEADER,
 } from '../http/public-contract';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import {
   RouteDecisionCandidateCapabilityEvidence,
   RouteDecisionCacheEvidence,
@@ -3260,7 +3261,10 @@ export class PipelineService {
 
             if (connected || streamConnected) {
               // Transmission phase — don't retry, send error event
-              const sanitizedErrorMessage = redactProviderErrorText(lastError.message);
+              const sanitizedErrorMessage = redactProviderErrorText(
+                lastError.message,
+                this.providerRedactionTelemetry(),
+              );
               this.logger.warn(`Stream interrupted from ${target.node}: ${sanitizedErrorMessage}`);
               this.circuitBreaker.recordFailure(target.node, target.model);
               this.routingService.recordTargetResult?.(
@@ -6634,6 +6638,13 @@ export class PipelineService {
       return 'client_canceled';
     }
     return 'upstream_error_redacted';
+  }
+
+  private providerRedactionTelemetry(): ErrorRedactionTelemetry {
+    return {
+      surface: 'provider',
+      record: (event) => this.telemetry.recordErrorRedaction(event),
+    };
   }
 
   private metricModelLabel(nodeId: string, model: string): string {

@@ -29,6 +29,7 @@ describe('TelemetryService', () => {
     expect(service.streamLifecycleTotal).toBeDefined();
     expect(service.dashboardAuthEvents).toBeDefined();
     expect(service.dashboardLegacyTokenEvents).toBeDefined();
+    expect(service.errorRedactionsTotal).toBeDefined();
   });
 
   it('should create all histogram instruments', () => {
@@ -56,6 +57,9 @@ describe('TelemetryService', () => {
     expect(() => service.dashboardAuthEvents.add(1, { event: 'status_failure' })).not.toThrow();
     expect(() =>
       service.dashboardLegacyTokenEvents.add(1, { event: 'legacy_bearer_used' }),
+    ).not.toThrow();
+    expect(() =>
+      service.errorRedactionsTotal.add(1, { surface: 'provider', reason: 'gateway_key' }),
     ).not.toThrow();
   });
 
@@ -201,6 +205,30 @@ describe('TelemetryService', () => {
       event: 'legacy_query_used',
       source: 'query',
     });
+  });
+
+  it('should record error redaction events with bounded labels', () => {
+    (service as any).errorRedactionsTotal = { add: jest.fn() };
+
+    service.recordErrorRedaction({
+      surface: 'provider',
+      reason: 'gateway_key',
+    });
+    service.recordErrorRedaction({
+      surface: 'provider/sk-secret-value' as any,
+      reason: 'api_key=sk-query-secret-token' as any,
+    });
+
+    expect(service.errorRedactionsTotal.add).toHaveBeenNthCalledWith(1, 1, {
+      surface: 'provider',
+      reason: 'gateway_key',
+    });
+    expect(service.errorRedactionsTotal.add).toHaveBeenNthCalledWith(2, 1, {
+      surface: 'unknown',
+      reason: 'unknown',
+    });
+    const add = service.errorRedactionsTotal.add as jest.Mock;
+    expect(JSON.stringify(add.mock.calls)).not.toContain('sk-query-secret-token');
   });
 
   // ── withSpan() ──────────────────────────────────────────────

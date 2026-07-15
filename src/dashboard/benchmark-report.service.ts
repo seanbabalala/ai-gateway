@@ -10,6 +10,8 @@ import {
   applyWorkspaceQueryScope,
   normalizeWorkspaceId,
 } from '../workspaces/workspace-scope';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import { redactErrorText } from '../security/error-redaction';
 
 const BENCHMARK_ERROR_REDACTION = {
@@ -231,6 +233,8 @@ export class BenchmarkReportService {
     private readonly config?: ConfigService,
     @Optional()
     private readonly workspaceContext?: WorkspaceContextService,
+    @Optional()
+    private readonly telemetry?: TelemetryService,
   ) {}
 
   async getReport(input: BenchmarkReportInput = {}): Promise<BenchmarkReport> {
@@ -686,7 +690,18 @@ export class BenchmarkReportService {
   }
 
   private sanitizeError(value: string): string {
-    return redactErrorText(value, BENCHMARK_ERROR_REDACTION);
+    return redactErrorText(value, {
+      ...BENCHMARK_ERROR_REDACTION,
+      telemetry: this.benchmarkRedactionTelemetry(),
+    });
+  }
+
+  private benchmarkRedactionTelemetry(): ErrorRedactionTelemetry | undefined {
+    if (!this.telemetry) return undefined;
+    return {
+      surface: 'benchmark',
+      record: (event) => this.telemetry?.recordErrorRedaction(event),
+    };
   }
 
   private buildChecks(metrics: BenchmarkMetrics): BenchmarkCheck[] {

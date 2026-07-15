@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BatchJob } from '../database/entities';
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 import {
   applyWorkspaceQueryScope,
@@ -18,6 +20,7 @@ export class BatchJobStoreService {
     private readonly workspaceContext: WorkspaceContextService,
     @InjectRepository(BatchJob)
     private readonly batchJobs: Repository<BatchJob>,
+    private readonly telemetry?: TelemetryService,
   ) {}
 
   async createFromProvider(input: {
@@ -178,8 +181,16 @@ export class BatchJobStoreService {
         failed: numberField(requestCounts.failed),
       },
       status: firstString(providerBody.status, providerBody.state) || 'validating',
-      error: extractBatchProviderError(providerBody.error),
+      error: extractBatchProviderError(providerBody.error, this.batchRedactionTelemetry()),
       expiresAt: epochOrString(providerBody.expires_at),
+    };
+  }
+
+  private batchRedactionTelemetry(): ErrorRedactionTelemetry | undefined {
+    if (!this.telemetry) return undefined;
+    return {
+      surface: 'batch',
+      record: (event) => this.telemetry?.recordErrorRedaction(event),
     };
   }
 }

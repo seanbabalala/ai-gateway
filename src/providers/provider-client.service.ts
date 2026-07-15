@@ -50,6 +50,7 @@ import {
   redactProviderErrorText,
   sanitizeProviderErrorBody,
 } from './provider-error-redaction';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import type { Dispatcher } from 'undici';
 
 type FetchOptionsWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
@@ -545,7 +546,10 @@ export class ProviderClientService {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const redactedMessage = redactProviderErrorText(message);
+      const redactedMessage = redactProviderErrorText(
+        message,
+        this.providerRedactionTelemetry(),
+      );
       const providerError = err instanceof ProviderError ? err : null;
       if (providerError) {
         this.completeResponseCredential(response, {
@@ -725,6 +729,13 @@ export class ProviderClientService {
     });
   }
 
+  private providerRedactionTelemetry(): ErrorRedactionTelemetry {
+    return {
+      surface: 'provider',
+      record: (event) => this.telemetry.recordErrorRedaction(event),
+    };
+  }
+
   private streamLifecyclePhase(forwardedStreamData: boolean): StreamLifecycleMetricPhase {
     return forwardedStreamData ? 'transmission' : 'pre_first_chunk';
   }
@@ -881,7 +892,10 @@ export class ProviderClientService {
           `Failed messages request body preview: ${JSON.stringify(requestBody).substring(0, 2000)}`,
         );
       }
-      const sanitizedErrorBody = sanitizeProviderErrorBody(errorBody);
+      const sanitizedErrorBody = sanitizeProviderErrorBody(
+        errorBody,
+        this.providerRedactionTelemetry(),
+      );
       this.logger.warn(`Provider ${node.id} returned ${response.status}: ${sanitizedErrorBody.substring(0, 200)}`);
       const retryAfter = response.headers?.get?.('retry-after');
       const providerError = new ProviderError(
@@ -969,7 +983,10 @@ export class ProviderClientService {
 
         let errorBody: string;
         try { errorBody = await response.text(); } catch { errorBody = 'Unable to read error body'; }
-        const sanitizedErrorBody = sanitizeProviderErrorBody(errorBody);
+        const sanitizedErrorBody = sanitizeProviderErrorBody(
+          errorBody,
+          this.providerRedactionTelemetry(),
+        );
         this.logger.warn(`Provider ${node.id} returned ${response.status}: ${sanitizedErrorBody.substring(0, 200)}`);
         const retryAfter = response.headers?.get?.('retry-after');
         const providerError = new ProviderError(
