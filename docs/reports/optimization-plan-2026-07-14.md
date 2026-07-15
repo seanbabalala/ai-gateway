@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 103 suites and 1482 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 104 suites and 1484 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `e9c0acd63e50d819fc470bd7672c9eb149b133b1` |
-| `origin/main` | `e9c0acd63e50d819fc470bd7672c9eb149b133b1` |
+| Local HEAD | `7a9869483bfd03e8efd33390fbec59d79d587661` |
+| `origin/main` | `7a9869483bfd03e8efd33390fbec59d79d587661` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -135,6 +135,8 @@ Completed PRs in this overnight hardening run:
 | #80 | `f765b0df` | Refresh optimization plan after redaction matrix | Updated this plan after the provider redaction matrix baseline |
 | #81 | `69cb4782` | Add control-plane timer cleanup coverage | Added fake-timer lifecycle tests for registration heartbeat, policy sync, and telemetry upload intervals |
 | #82 | `e9c0acd6` | Refresh optimization plan after control-plane tests | Updated this plan after the control-plane timer cleanup baseline |
+| #83 | `0f75548e` | Consolidate future optimization plan | Added the complete Future One-Pass PR Queue and release-loop rules |
+| #84 | `7a986948` | Add realtime error redaction regression | Added realtime close-metadata redaction coverage and provider-key prefix sanitization |
 
 Every merged PR followed this loop:
 
@@ -166,19 +168,29 @@ PR, waited for GitHub checks, merged, deleted its branch, and returned local
 | 10 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | Done in PR #79 | Focused provider redaction/client/stream tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 11 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | Done in PR #81 | Focused control-plane tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
+## Completed Future One-Pass PR Queue
+
+The Future One-Pass queue is now being consumed in the same clean-main PR loop.
+Completed rows stay here so the remaining queue below always starts at the next
+unmerged branch.
+
+| Order | Branch | Slice | Status | Validation evidence |
+| ---: | --- | --- | --- | --- |
+| 1 | `codex/realtime-error-redaction-regression` | Add regression coverage that realtime upstream/client error strings redact bearer, gateway, and provider keys before close reasons or recent-session metadata | Done in PR #84 | Focused realtime sanitization tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+
 ## Future One-Pass PR Queue
 
-The remaining work should be executed as one continuous trunk-based run: one
-branch, one small slice, focused validation, full required local checks, PR,
-green GitHub checks, merge, delete branch, and return local `main` to
-`origin/main` before taking the next row. Do not batch implementation rows unless
-the row explicitly says the same testable code path must land together.
+The remaining work after PR #84 should be executed as one continuous
+trunk-based run: one branch, one small slice, focused validation, full required
+local checks, PR, green GitHub checks, merge, delete branch, and return local
+`main` to `origin/main` before taking the next row. Do not batch implementation
+rows unless the row explicitly says the same testable code path must land
+together.
 
 ### Wave 1: Redaction And Public Error Contracts
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/realtime-error-redaction-regression` | Add regression coverage that realtime upstream/client error strings redact bearer, gateway, and provider keys before close reasons or recent-session metadata | `src/realtime/realtime-proxy.service.ts`, realtime tests | focused realtime sanitization tests; `npm run lint`; `npm run build` |
 | 2 | `codex/batch-error-redaction-regression` | Add batch provider error redaction tests for object/string provider error bodies and extracted failure messages | `src/batch/*`, batch tests | focused batch tests; `npm run lint`; `npm run build` |
 | 3 | `codex/shared-error-redaction-helper` | Consolidate provider, realtime, batch, benchmark, and compatibility error redaction onto one shared helper after the surface-specific tests exist | redaction helper, provider/realtime/batch/compatibility callers | focused redaction tests for every caller; `npm run lint`; `npm run build` |
 | 4 | `codex/redaction-telemetry` | Count redaction events by bounded surface/reason without recording original values, prompts, headers, or user identifiers | telemetry service and redaction helper/tests | focused telemetry/redaction tests; `npm run lint`; `npm run build` |
@@ -904,7 +916,7 @@ Targets:
 | AGW-COST-04 | Add optional Postgres row-lock smoke | P1 | Budget/Data | Done in PR #74 |
 | AGW-SEC-10 | Add dashboard auth status telemetry | P1 | Auth/Observability | Done in PR #72 |
 | AGW-SEC-11 | Add legacy dashboard token telemetry | P1 | Auth/Observability | Done in PR #77 |
-| AGW-SEC-12 | Add realtime error redaction regression coverage | P1 | Realtime/Security | Planned: `codex/realtime-error-redaction-regression` |
+| AGW-SEC-12 | Add realtime error redaction regression coverage | P1 | Realtime/Security | Done in PR #84 |
 | AGW-SEC-13 | Add batch provider error redaction regression coverage | P1 | Batch/Security | Planned: `codex/batch-error-redaction-regression` |
 | AGW-SEC-14 | Consolidate shared error redaction helper | P1 | Security/Platform | Planned after realtime and batch redaction tests |
 | AGW-SEC-15 | Add bounded redaction telemetry | P1 | Security/Observability | Planned after shared helper consolidation |
@@ -1006,11 +1018,13 @@ Completed:
 - Add a provider redaction regression matrix for nested and non-string error
   bodies. Done in PR #79.
 - Add control-plane timer cleanup lifecycle tests. Done in PR #81.
+- Add realtime error redaction regression coverage for close metadata, node
+  status, and persisted realtime summaries. Done in PR #84.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with realtime and
-  batch redaction regression coverage.
+- Complete the Future One-Pass PR Queue in order, starting with batch redaction
+  regression coverage.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
