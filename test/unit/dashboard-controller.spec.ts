@@ -3068,6 +3068,379 @@ describe("DashboardController — config", () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// Config Mutation Audit
+// ═══════════════════════════════════════════════════════════
+
+describe("DashboardController — config mutation audit", () => {
+  const reload = {
+    success: true,
+    message: "Configuration restored",
+    source: "dashboard",
+    current: { version: 2 },
+    previous: { version: 1 },
+    changed: {},
+    rolled_back: false,
+  };
+
+  const expectConfigAuditTrack = (
+    configAudit: any,
+    expected: Record<string, unknown>,
+  ) => {
+    expect(configAudit.trackChange).toHaveBeenCalledTimes(1);
+    expect(configAudit.trackChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "dashboard",
+        actor: { type: "dashboard", id: "dashboard" },
+        ...expected,
+      }),
+      expect.any(Function),
+    );
+  };
+
+  const namespaceConfig = () => ({
+    namespaces: [
+      {
+        id: "team-alpha",
+        name: "Team Alpha",
+        allowed_nodes: ["openai"],
+        allowed_models: ["gpt-4o"],
+        budget: { daily_token_limit: 1000 },
+        rate_limit: { requests_per_minute: 60 },
+      },
+      {
+        id: "team-delete",
+        name: "Team Delete",
+        allowed_nodes: ["claude"],
+      },
+    ],
+    auth: {
+      api_keys: [
+        {
+          name: "config-bound",
+          key: "gw_sk_dev_bound",
+          namespace_id: "team-delete",
+        },
+      ],
+    },
+    createNamespace: jest.fn().mockReturnValue(reload),
+    updateNamespace: jest.fn().mockReturnValue(reload),
+    deleteNamespace: jest.fn().mockReturnValue(reload),
+  });
+
+  const mutationCases = [
+    {
+      name: "node creation",
+      setup: () => {
+        const dashboard = makeDashboard();
+        const dto = {
+          id: "audit-node",
+          name: "Audit Node",
+          protocol: "chat_completions",
+          base_url: "https://audit.example.com",
+          endpoint: "/v1/chat/completions",
+          api_key: "sk-audit",
+          models: ["gpt-4o-mini"],
+          realtime_models: ["gpt-4o-realtime-preview"],
+          compatibility_profile: "openai",
+        } as any;
+        return {
+          ...dashboard,
+          run: () => dashboard.controller.createNode(dto),
+          expected: {
+            action: "config.node.create",
+            target: "node:audit-node",
+            metadata: expect.objectContaining({
+              protocol: "chat_completions",
+              models: ["gpt-4o-mini"],
+              realtime_models: ["gpt-4o-realtime-preview"],
+              compatibility_profile: "openai",
+            }),
+          },
+          verify: () => {
+            expect(dashboard.config.addNode).toHaveBeenCalledWith(
+              expect.objectContaining({
+                id: "audit-node",
+                realtime_models: ["gpt-4o-realtime-preview"],
+                compatibility_profile: "openai",
+              }),
+            );
+          },
+        };
+      },
+    },
+    {
+      name: "node update",
+      setup: () => {
+        const dashboard = makeDashboard();
+        return {
+          ...dashboard,
+          run: () =>
+            dashboard.controller.updateNode("openai", {
+              name: "OpenAI Audit",
+              api_key: "",
+              timeout_ms: 45000,
+            } as any),
+          expected: {
+            action: "config.node.update",
+            target: "node:openai",
+            metadata: { fields: ["name", "timeout_ms"] },
+          },
+          verify: () => {
+            expect(dashboard.config.updateNode).toHaveBeenCalledWith(
+              "openai",
+              { name: "OpenAI Audit", timeout_ms: 45000 },
+            );
+          },
+        };
+      },
+    },
+    {
+      name: "node deletion",
+      setup: () => {
+        const dashboard = makeDashboard();
+        return {
+          ...dashboard,
+          run: () => dashboard.controller.deleteNode("openai"),
+          expected: {
+            action: "config.node.delete",
+            target: "node:openai",
+          },
+          verify: () => {
+            expect(dashboard.circuitBreaker.reset).toHaveBeenCalledWith(
+              "openai",
+            );
+            expect(dashboard.config.deleteNode).toHaveBeenCalledWith("openai");
+          },
+        };
+      },
+    },
+    {
+      name: "routing update",
+      setup: () => {
+        const dashboard = makeDashboard();
+        const body = {
+          scoring: {
+            simple_max: 0.25,
+            standard_max: 0.6,
+            complex_max: 0.9,
+          },
+          domain_preferences: { code: ["openai"] },
+        };
+        return {
+          ...dashboard,
+          run: () => dashboard.controller.updateRouting(body),
+          expected: {
+            action: "config.routing.update",
+            target: "routing",
+            metadata: { fields: ["scoring", "domain_preferences"] },
+          },
+          verify: () => {
+            expect(dashboard.config.updateRouting).toHaveBeenCalledWith(body);
+          },
+        };
+      },
+    },
+    {
+      name: "namespace creation",
+      setup: () => {
+        const config = namespaceConfig();
+        const dashboard = makeDashboard({ config });
+        return {
+          ...dashboard,
+          run: () =>
+            dashboard.controller.createNamespace({
+              id: "team-beta",
+              name: "Team Beta",
+              allowed_nodes: ["openai", "claude", "openai", ""],
+              allowed_models: ["gpt-4o", ""],
+              budget: { daily_token_limit: 2000 },
+              rate_limit: { requests_per_minute: 120 },
+            }),
+          expected: {
+            action: "config.namespace.create",
+            target: "namespace:team-beta",
+            metadata: {
+              allowed_nodes_count: 2,
+              allowed_models_count: 1,
+              has_budget: true,
+              has_rate_limit: true,
+            },
+          },
+          verify: () => {
+            expect(config.createNamespace).toHaveBeenCalledWith(
+              expect.objectContaining({
+                id: "team-beta",
+                allowed_nodes: ["openai", "claude"],
+                allowed_models: ["gpt-4o"],
+              }),
+            );
+          },
+        };
+      },
+    },
+    {
+      name: "namespace update",
+      setup: () => {
+        const config = namespaceConfig();
+        const dashboard = makeDashboard({ config });
+        return {
+          ...dashboard,
+          run: () =>
+            dashboard.controller.updateNamespace("team-alpha", {
+              name: "Team Alpha Audit",
+              allowed_nodes: ["claude"],
+              budget: null,
+              rate_limit: { requests_per_minute: 30 },
+            }),
+          expected: {
+            action: "config.namespace.update",
+            target: "namespace:team-alpha",
+            metadata: expect.objectContaining({
+              fields: ["name", "allowed_nodes", "budget", "rate_limit"],
+              before: expect.objectContaining({
+                id: "team-alpha",
+                budget: { daily_token_limit: 1000 },
+                rate_limit: { requests_per_minute: 60 },
+              }),
+            }),
+          },
+          verify: () => {
+            expect(config.updateNamespace).toHaveBeenCalledWith("team-alpha", {
+              name: "Team Alpha Audit",
+              allowed_nodes: ["claude"],
+              budget: undefined,
+              rate_limit: { requests_per_minute: 30 },
+            });
+          },
+        };
+      },
+    },
+    {
+      name: "namespace deletion",
+      setup: () => {
+        const config = namespaceConfig();
+        const dashboard = makeDashboard({ config });
+        return {
+          ...dashboard,
+          run: () =>
+            dashboard.controller.deleteNamespace("team-delete", {
+              confirm_impact: true,
+            }),
+          expected: {
+            action: "config.namespace.delete",
+            target: "namespace:team-delete",
+            metadata: expect.objectContaining({
+              confirm_impact: true,
+              impact: expect.objectContaining({
+                counts: { api_keys: 1, teams: 0, total: 1 },
+              }),
+            }),
+          },
+          verify: () => {
+            expect(config.deleteNamespace).toHaveBeenCalledWith("team-delete");
+          },
+        };
+      },
+    },
+  ];
+
+  it.each(mutationCases)(
+    "tracks $name through configAudit.trackChange",
+    async ({ setup }) => {
+      const { configAudit, expected, run, verify } = setup();
+
+      await expect(run()).resolves.toEqual(
+        expect.objectContaining({ success: true }),
+      );
+
+      expectConfigAuditTrack(configAudit, expected);
+      verify();
+    },
+  );
+
+  it("keeps dashboard precondition failures outside configAudit.trackChange", async () => {
+    const config = namespaceConfig();
+    const { controller, configAudit } = makeDashboard({ config });
+
+    await expect(
+      controller.updateNamespace("missing", { name: "Missing" }),
+    ).rejects.toThrow(HttpException);
+    await expect(controller.deleteNamespace("missing", {})).rejects.toThrow(
+      HttpException,
+    );
+    await expect(controller.deleteNamespace("team-delete", {})).rejects.toThrow(
+      HttpException,
+    );
+
+    expect(configAudit.trackChange).not.toHaveBeenCalled();
+    expect(config.updateNamespace).not.toHaveBeenCalled();
+    expect(config.deleteNamespace).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "duplicate node creation",
+      setup: () => {
+        const dashboard = makeDashboard({
+          config: {
+            addNode: jest.fn().mockImplementation(() => {
+              throw new Error("Node already exists");
+            }),
+          },
+        });
+        return {
+          ...dashboard,
+          run: () =>
+            dashboard.controller.createNode({
+              id: "openai",
+              name: "Duplicate",
+              protocol: "chat_completions",
+              base_url: "https://api.example.com",
+              endpoint: "/v1/chat/completions",
+              api_key: "sk-dup",
+              models: ["gpt-4o-mini"],
+            } as any),
+          expected: {
+            action: "config.node.create",
+            target: "node:openai",
+          },
+        };
+      },
+    },
+    {
+      name: "invalid routing update",
+      setup: () => {
+        const dashboard = makeDashboard({
+          config: {
+            updateRouting: jest.fn().mockImplementation(() => {
+              throw new Error("Invalid node reference");
+            }),
+          },
+        });
+        return {
+          ...dashboard,
+          run: () => dashboard.controller.updateRouting({ tiers: {} as any }),
+          expected: {
+            action: "config.routing.update",
+            target: "routing",
+            metadata: { fields: ["tiers"] },
+          },
+        };
+      },
+    },
+  ])(
+    "wraps $name in configAudit.trackChange before surfacing failure",
+    async ({ setup }) => {
+      const { configAudit, expected, run } = setup();
+
+      await expect(run()).rejects.toThrow(HttpException);
+
+      expectConfigAuditTrack(configAudit, expected);
+    },
+  );
+});
+
+// ═══════════════════════════════════════════════════════════
 // Nodes
 // ═══════════════════════════════════════════════════════════
 
