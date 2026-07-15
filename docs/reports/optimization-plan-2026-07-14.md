@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `57135b8054e4d90af8d2663162efeccb80e7519a` |
-| `origin/main` | `57135b8054e4d90af8d2663162efeccb80e7519a` |
+| Local HEAD | `fbb105439f3b4c60389014040e9a9515c58257a7` |
+| `origin/main` | `fbb105439f3b4c60389014040e9a9515c58257a7` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -145,6 +145,8 @@ Completed PRs in this overnight hardening run:
 | #90 | `10ed9715` | Add bounded redaction telemetry | Counted redaction events by fixed surface and reason labels without recording secret values |
 | #91 | `3e19a26b` | Refresh optimization plan after redaction telemetry | Updated this plan after the redaction telemetry baseline |
 | #92 | `57135b80` | Add public error contract matrix | Covered stable public API error envelopes for provider, batch, realtime, validation, payload, budget, and unexpected failure paths |
+| #93 | `e9f6d5ef` | Refresh optimization plan after public error contract matrix | Updated this plan after the public error contract baseline |
+| #94 | `fbb10543` | Decide budget shared backend requirements | Documented PostgreSQL row locks as the supported shared budget backend and kept Redis budget counters conditional |
 
 Every merged PR followed this loop:
 
@@ -189,10 +191,21 @@ unmerged branch.
 | 3 | `codex/shared-error-redaction-helper` | Consolidate provider, realtime, batch, benchmark, and compatibility error redaction onto one shared helper after the surface-specific tests exist | Done in PR #88 | Focused redaction caller tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 4 | `codex/redaction-telemetry` | Count redaction events by bounded surface/reason without recording original values, prompts, headers, or user identifiers | Done in PR #90 | Focused telemetry/redaction tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 5 | `codex/public-error-contract-matrix` | Add table-driven public API error mapping coverage for provider, batch, realtime, validation, budget, and unexpected 5xx paths | Done in PR #92 | Focused public-error/realtime tests, ingest and batch redaction tests, batch e2e, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 6 | `codex/budget-shared-backend-decision` | Decide and document when PostgreSQL row locks are sufficient versus when a Redis atomic reservation backend is required | Done in PR #94 | Docs/public/diff checks, GitHub checks |
+
+## Deferred Conditional Future Items
+
+These rows are no longer in the active overnight queue because their decision
+gate did not require implementation. Keep them here so the choice remains
+auditable if deployment requirements change.
+
+| Original order | Branch | Slice | Decision |
+| ---: | --- | --- | --- |
+| 7 | `codex/budget-redis-reservation-backend` | Add Redis-backed budget reservation counters for non-PostgreSQL shared-budget deployments | Deferred after PR #94; implement only if strict shared-budget enforcement must be supported without PostgreSQL as the metadata source of truth |
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #92 should be executed as one continuous
+The remaining work after PR #94 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -201,15 +214,12 @@ together.
 
 ### Wave 1: Redaction And Public Error Contracts
 
-Wave 1 is complete. The next unmerged row is Wave 2, order 6:
-`codex/budget-shared-backend-decision`.
+Wave 1 is complete.
 
 ### Wave 2: Cost, Data, And Config Safety
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 6 | `codex/budget-shared-backend-decision` | Decide and document when PostgreSQL row locks are sufficient versus when a Redis atomic reservation backend is required | docs/reports, release checklist | `npm run docs:check`; `npm run public:check`; `git diff --check` |
-| 7 | `codex/budget-redis-reservation-backend` | Conditional implementation: add Redis-backed budget reservation counters only if the decision PR proves non-PostgreSQL shared-budget deployments need it | `src/budget/*`, state/redis helpers, budget tests | focused budget Redis tests; full unit; `npm run lint`; `npm run build` |
 | 8 | `codex/postgres-budget-smoke-ci` | Promote the optional Postgres row-lock smoke into an opt-in CI/service-container path or a documented release gate | Postgres smoke spec, CI/release docs | smoke command with safe test DB; docs/public/diff checks |
 | 9 | `codex/config-atomic-failure-tests` | Add failure-injection tests for atomic config writes, restore validation, and rollback after partial write errors | `src/config/*`, config mutation tests | focused config tests; `npm run lint`; `npm run build` |
 | 10 | `codex/config-mutation-audit-matrix` | Add audit regression coverage for dashboard config mutation paths that write or restore config snapshots | config audit/dashboard tests | focused config-audit tests; docs/public checks if release text changes |
@@ -496,11 +506,11 @@ Status:
   names or key ids.
 - PR #74 added an optional real-PostgreSQL smoke fixture that runs against an
   isolated schema when a safe test database URL is configured.
-- Current decision: PostgreSQL row locks are the supported shared budget
-  reservation backend for strict multi-instance enforcement. Redis shared state
-  is not a budget ledger and should not be promoted to a budget backend unless a
-  supported deployment target must enforce shared budgets without PostgreSQL as
-  the metadata source of truth.
+- PR #94 documented the shared backend decision: PostgreSQL row locks are the
+  supported shared budget reservation backend for strict multi-instance
+  enforcement. Redis shared state is not a budget ledger and should not be
+  promoted to a budget backend unless a supported deployment target must
+  enforce shared budgets without PostgreSQL as the metadata source of truth.
 
 ### P1: API Key Last-Used Updates Can Cause Write Amplification
 
@@ -943,8 +953,8 @@ Targets:
 | AGW-CONF-02 | Add atomic config write failure-injection tests | P1 | Config | Planned: `codex/config-atomic-failure-tests` |
 | AGW-CONF-03 | Add config mutation audit regression matrix | P1 | Config/Audit | Planned: `codex/config-mutation-audit-matrix` |
 | AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Done in PR #67 |
-| AGW-DATA-02 | Decide PostgreSQL vs Redis shared budget backend requirements | P1 | Data/Cost | Next: `codex/budget-shared-backend-decision` |
-| AGW-DATA-03 | Promote Postgres row-lock smoke into CI or release gate | P1 | Data/CI | Planned: `codex/postgres-budget-smoke-ci` |
+| AGW-DATA-02 | Decide PostgreSQL vs Redis shared budget backend requirements | P1 | Data/Cost | Done in PR #94 |
+| AGW-DATA-03 | Promote Postgres row-lock smoke into CI or release gate | P1 | Data/CI | Next: `codex/postgres-budget-smoke-ci` |
 | AGW-REL-06 | Add control-plane timer cleanup lifecycle tests | P1 | Control Plane | Done in PR #81 |
 | AGW-REL-07 | Sweep remaining timer lifecycle cleanup tests | P2 | Reliability | Planned: `codex/timer-lifecycle-sweep` |
 | AGW-REL-08 | Consolidate shared fetch timeout helper | P2 | Reliability/Auth/Control | Planned: `codex/shared-fetch-timeout-helper` |
@@ -1046,11 +1056,15 @@ Completed:
 - Add public error contract regression coverage for provider, batch, realtime,
   validation, payload-size, budget, unexpected 5xx, and realtime upgrade
   rejection paths. Done in PR #92.
+- Decide the shared budget backend requirement: PostgreSQL row locks are enough
+  for strict multi-instance budget enforcement when all gateway instances share
+  the same metadata database; Redis budget counters stay deferred. Done in
+  PR #94.
 
 Remaining:
 
 - Complete the Future One-Pass PR Queue in order, starting with the PostgreSQL
-  row-lock versus Redis shared budget backend decision.
+  row-lock smoke CI or release-gate promotion.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
