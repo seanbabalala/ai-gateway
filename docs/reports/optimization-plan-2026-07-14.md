@@ -34,27 +34,27 @@ Baseline commands run during this review and overnight loop:
 | `npm run public:check` | Passed |
 | `npm run docs:check` | Passed |
 | `npm run test:e2e` | Passed: 13 suites, 113 tests |
-| `npm test` in `frontend/` | Passed |
-| `npm run build` in `frontend/` | Passed with bundle budget gate and first-paint smoke enforced after PR #75 |
+| `npm test` in `frontend/` | Passed with first-paint and route accessibility smoke enforced after PR #110 |
+| `npm run build` in `frontend/` | Passed with bundle budget gate enforced after PR #75 |
 
 Latest implemented optimization baseline before this document-only refresh:
 
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `ede145ba756b3ef7a99cbd163a08ffbbc38064ad` |
-| `origin/main` | `ede145ba756b3ef7a99cbd163a08ffbbc38064ad` |
+| Local HEAD | `a7ea370def9fe342e5b6c4e0e6c4580f1bdb78ac` |
+| `origin/main` | `a7ea370def9fe342e5b6c4e0e6c4580f1bdb78ac` |
 | Worktree | Clean |
 
 Frontend build size baseline:
 
 | Asset | Minified | Gzip |
 | --- | ---: | ---: |
-| `dist/assets/index-CHIOQdb_.js` | 51.13 kB | 14.81 kB |
+| `dist/assets/index-D4CQYaeK.js` | 51.74 kB | 14.98 kB |
 | `dist/assets/react-vendor-DpaXkVd2.js` | 193.97 kB | 60.61 kB |
 | `dist/assets/vendor-8JS6qKYL.js` | 349.24 kB | 108.01 kB |
 | `dist/assets/charts-vendor-uXGeMExF.js` | 343.02 kB | 85.09 kB |
-| `dist/assets/NodesPage-BuypeO-N.js` | 102.81 kB | 22.44 kB |
+| `dist/assets/NodesPage-BYwsQAhj.js` | 102.81 kB | 22.44 kB |
 
 ## Optimization Principles
 
@@ -161,6 +161,8 @@ Completed PRs in this overnight hardening run:
 | #106 | `489a1430` | Share fetch timeout helper | Consolidated auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout handling |
 | #107 | `eaecf400` | Refresh plan after shared fetch timeout helper | Updated this plan after the shared fetch timeout helper baseline |
 | #108 | `ede145ba` | Redact control-plane failure logs | Redacted control-plane tokens and stable identifiers from registration, heartbeat, telemetry upload, and policy pull failure logs |
+| #109 | `61857d9f` | Refresh plan after control-plane log redaction | Updated this plan after the control-plane operational error redaction baseline |
+| #110 | `a7ea370d` | Add frontend route accessibility smoke | Added dashboard skip-link, main landmark, primary navigation, search semantics, and a frontend smoke gate |
 
 Every merged PR followed this loop:
 
@@ -213,6 +215,7 @@ unmerged branch.
 | 12 | `codex/timer-lifecycle-sweep` | Add lifecycle cleanup tests for remaining timer-owning services such as alerts, log sinks, catalog sync, state backend, circuit breaker, health probes, and batching | Done in PR #104 | Focused timer lifecycle tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 13 | `codex/shared-fetch-timeout-helper` | Consolidate auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout patterns into a small shared helper with redacted errors | Done in PR #106 | Focused auth/control-plane/secret/batch/helper tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | Done in PR #108 | Focused control-plane tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 15 | `codex/frontend-route-a11y-smoke` | Add a lightweight dashboard route accessibility/keyboard smoke around lazy route skeletons, login fallback, and primary navigation | Done in PR #110 | Frontend a11y/i18n smoke, frontend test/build, root lint/docs/public/diff checks, GitHub checks |
 
 ## Deferred Conditional Future Items
 
@@ -226,7 +229,7 @@ auditable if deployment requirements change.
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #108 should be executed as one continuous
+The remaining work after PR #110 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -249,7 +252,6 @@ Wave 3 is complete.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 15 | `codex/frontend-route-a11y-smoke` | Add a lightweight dashboard route accessibility/keyboard smoke around lazy route skeletons, login fallback, and primary navigation | `frontend/*`, frontend tests/scripts | `npm test` in `frontend/`; `npm run build` in `frontend` |
 | 16 | `codex/dashboard-legacy-token-burn-down-runbook` | Document how operators use PR #77 telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy bearer/query tokens | docs/release/security docs | docs/public/diff checks |
 | 17 | `codex/operator-observability-runbook` | Add a single operator runbook for auth, stream lifecycle, budget reservation, redaction, MCP, and frontend performance metrics | docs/troubleshooting or release docs | docs/public/diff checks |
 | 18 | `codex/release-hardening-command` | Add or document one repeatable release-hardening command/checklist that runs the required backend, frontend, docs, public, and optional integration gates | scripts/release docs | release script dry run or docs/public/diff checks |
@@ -980,7 +982,7 @@ Targets:
 | AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
 | AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Done in PR #68 |
 | AGW-FE-03 | Add dashboard first-paint smoke | P2 | Frontend | Done in PR #75 |
-| AGW-FE-04 | Add dashboard route accessibility/keyboard smoke | P2 | Frontend | Planned: `codex/frontend-route-a11y-smoke` |
+| AGW-FE-04 | Add dashboard route accessibility/keyboard smoke | P2 | Frontend | Done in PR #110 |
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 | AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
 | AGW-DOC-02 | Add legacy dashboard token burn-down runbook | P2 | Docs/Auth | Planned: `codex/dashboard-legacy-token-burn-down-runbook` |
@@ -1097,11 +1099,14 @@ Completed:
 - Redact control-plane registration, heartbeat, telemetry upload, and policy pull
   failure logs so tokens and stable control-plane identifiers do not leak. Done
   in PR #108.
+- Add a dashboard route accessibility and keyboard smoke gate around lazy route
+  skeletons, login fallback, primary navigation, skip-link/main landmark, and
+  header search semantics. Done in PR #110.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with the frontend
-  route accessibility and keyboard smoke.
+- Complete the Future One-Pass PR Queue in order, starting with the legacy
+  Dashboard token burn-down runbook.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
