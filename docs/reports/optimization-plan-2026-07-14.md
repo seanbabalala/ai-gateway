@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 108 suites and 1530 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 108 suites and 1534 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `489a1430f0b478e349cb84d1166bbd0b536f76b4` |
-| `origin/main` | `489a1430f0b478e349cb84d1166bbd0b536f76b4` |
+| Local HEAD | `ede145ba756b3ef7a99cbd163a08ffbbc38064ad` |
+| `origin/main` | `ede145ba756b3ef7a99cbd163a08ffbbc38064ad` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -159,6 +159,8 @@ Completed PRs in this overnight hardening run:
 | #104 | `fa371292` | Cover remaining timer lifecycle cleanup | Added lifecycle cleanup regression coverage for timer-owning services and cleared pending embedding batch timers on shutdown |
 | #105 | `99311c63` | Refresh plan after timer lifecycle sweep | Updated this plan after the timer lifecycle cleanup baseline |
 | #106 | `489a1430` | Share fetch timeout helper | Consolidated auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout handling |
+| #107 | `eaecf400` | Refresh plan after shared fetch timeout helper | Updated this plan after the shared fetch timeout helper baseline |
+| #108 | `ede145ba` | Redact control-plane failure logs | Redacted control-plane tokens and stable identifiers from registration, heartbeat, telemetry upload, and policy pull failure logs |
 
 Every merged PR followed this loop:
 
@@ -210,6 +212,7 @@ unmerged branch.
 | 11 | `codex/mcp-denial-audit-events` | Emit or persist bounded audit visibility when MCP tool/env policy denies access, without exposing blocked secret names or values | Done in PR #102 | Focused MCP/dashboard/agent-platform tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 12 | `codex/timer-lifecycle-sweep` | Add lifecycle cleanup tests for remaining timer-owning services such as alerts, log sinks, catalog sync, state backend, circuit breaker, health probes, and batching | Done in PR #104 | Focused timer lifecycle tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 13 | `codex/shared-fetch-timeout-helper` | Consolidate auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout patterns into a small shared helper with redacted errors | Done in PR #106 | Focused auth/control-plane/secret/batch/helper tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | Done in PR #108 | Focused control-plane tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Deferred Conditional Future Items
 
@@ -223,7 +226,7 @@ auditable if deployment requirements change.
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #106 should be executed as one continuous
+The remaining work after PR #108 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -240,9 +243,7 @@ Wave 2 is complete.
 
 ### Wave 3: Control, MCP, And Lifecycle Operations
 
-| Order | Branch | Slice | Main files | Required validation |
-| ---: | --- | --- | --- | --- |
-| 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | `src/control-plane/*`, control-plane tests | focused control-plane tests; `npm run lint`; `npm run build` |
+Wave 3 is complete.
 
 ### Wave 4: Frontend, Release Gates, And Operator Runbooks
 
@@ -975,7 +976,7 @@ Targets:
 | AGW-REL-06 | Add control-plane timer cleanup lifecycle tests | P1 | Control Plane | Done in PR #81 |
 | AGW-REL-07 | Sweep remaining timer lifecycle cleanup tests | P2 | Reliability | Done in PR #104 |
 | AGW-REL-08 | Consolidate shared fetch timeout helper | P2 | Reliability/Auth/Control | Done in PR #106 |
-| AGW-REL-09 | Redact control-plane operational error logs | P1 | Control Plane/Security | Planned: `codex/control-plane-error-redaction` |
+| AGW-REL-09 | Redact control-plane operational error logs | P1 | Control Plane/Security | Done in PR #108 |
 | AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
 | AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Done in PR #68 |
 | AGW-FE-03 | Add dashboard first-paint smoke | P2 | Frontend | Done in PR #75 |
@@ -1093,11 +1094,14 @@ Completed:
   compatibility, secret manager resolution, dashboard connectivity tests, and
   batch provider calls behind a shared helper with redacted fetch error messages.
   Done in PR #106.
+- Redact control-plane registration, heartbeat, telemetry upload, and policy pull
+  failure logs so tokens and stable control-plane identifiers do not leak. Done
+  in PR #108.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with control-plane
-  operational error redaction.
+- Complete the Future One-Pass PR Queue in order, starting with the frontend
+  route accessibility and keyboard smoke.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
