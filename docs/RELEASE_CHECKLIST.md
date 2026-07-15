@@ -78,25 +78,30 @@ tracked.
 Choose the full set that matches the release scope. For v2 platform releases,
 prefer the broadest reasonable gate.
 
+Dry-run the repeatable release hardening command before starting a long local
+run:
+
 ```bash
-npm run public:check
-npm run docs:check
-npm run lint
-npm run build
-npm test -- --runInBand
-npm run test:e2e
-npm run validate:config
-npm run validate:k8s
-npm run test:sdk
-npm run typecheck:sdk
-npm run test:python-sdk
-cd frontend && npm test && npm run build
+npm run release:hardening -- --dry-run
+```
+
+Then run the standard gate:
+
+```bash
+npm run release:hardening
 ```
 
 Optional when Docker is available:
 
 ```bash
-npm run smoke:docker
+npm run release:hardening -- --include-docker
+```
+
+Optional when a safe isolated PostgreSQL database is available:
+
+```bash
+SIFTGATE_TEST_POSTGRES_URL="$DATABASE_URL" \
+npm run release:hardening -- --include-postgres
 ```
 
 For docs-only releases, the minimum is:

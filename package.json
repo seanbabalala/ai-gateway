@@ -27,6 +27,7 @@
     "docs:check": "node scripts/check-docs.js",
     "public:check": "node scripts/check-public-release.js",
     "release:check": "node scripts/check-release-version.js",
+    "release:hardening": "node scripts/release-hardening-check.js",
     "provider-registry:check": "node scripts/validate-provider-registry.js",
     "catalog": "ts-node src/cli/siftgate.ts catalog",
     "migrate:db": "ts-node src/cli/siftgate.ts migrate-db",
