@@ -18,6 +18,16 @@ import {
   workspaceFindWhere,
   workspaceFindWhereStrict,
 } from '../workspaces/workspace-scope';
+import { redactErrorText } from '../security/error-redaction';
+
+const COMPATIBILITY_ERROR_REDACTION = {
+  bearerReplacement: 'Bearer [redacted]',
+  gatewayKeyReplacement: 'gw_sk_[redacted]',
+  skKeyReplacement: 'sk-[redacted]',
+  providerKeyReplacement: '[redacted-provider-key]',
+  sensitiveValueReplacement: '[redacted]',
+  maxLength: 300,
+};
 
 export interface ProviderCompatibilityMatrixItem {
   capability: ProviderCompatibilityCapability;
@@ -666,11 +676,7 @@ export class ProviderCompatibilityService {
   }
 
   private sanitize(value: string): string {
-    return value
-      .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
-      .replace(/gw_sk_[A-Za-z0-9._~+/-]+/gi, 'gw_sk_[redacted]')
-      .replace(/sk-[A-Za-z0-9._~+/-]+/gi, 'sk-[redacted]')
-      .slice(0, 300);
+    return redactErrorText(value, COMPATIBILITY_ERROR_REDACTION);
   }
 
   private workspaceId(): string {

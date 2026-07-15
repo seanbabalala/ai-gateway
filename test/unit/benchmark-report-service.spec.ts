@@ -87,7 +87,8 @@ describe('BenchmarkReportService', () => {
         latency_ms: 800,
         status_code: 429,
         is_fallback: true,
-        error: 'Bearer sk-secret123456 failed',
+        error:
+          'Bearer sk-secret123456 failed gateway=gw_sk_live_gateway_secret_123456 api_key=sk-query-secret-token gsk-provider-secret-token',
       }),
       makeLog({
         request_id: 'req-4',
@@ -171,6 +172,12 @@ describe('BenchmarkReportService', () => {
       coverage_rate: 57.1,
     });
     expect(report.top_errors[0].error).toContain('Bearer [redacted]');
+    expect(report.top_errors[0].error).toContain('gw_sk_[redacted]');
+    expect(report.top_errors[0].error).toContain('api_key=[redacted]');
+    expect(report.top_errors[0].error).toContain('[redacted-provider-key]');
+    expect(report.top_errors[0].error).not.toContain('gw_sk_live_gateway_secret_123456');
+    expect(report.top_errors[0].error).not.toContain('sk-query-secret-token');
+    expect(report.top_errors[0].error).not.toContain('gsk-provider-secret-token');
     expect(report.privacy.prompt_response_stored).toBe(false);
     expect(report.privacy.media_bytes_stored).toBe(false);
   });

@@ -18,6 +18,7 @@ import {
   GatewayApiKeyService,
 } from '../auth/gateway-api-key.service';
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
+import { redactErrorText } from '../security/error-redaction';
 
 type RealtimeCloseReason =
   | 'client_closed'
@@ -114,6 +115,14 @@ const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const MAX_PENDING_MESSAGES = 16;
 const MAX_PENDING_BYTES = 1_000_000;
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
+const REALTIME_ERROR_REDACTION = {
+  bearerReplacement: 'Bearer [redacted]',
+  gatewayKeyReplacement: 'gw_sk_[redacted]',
+  skKeyReplacement: 'sk-[redacted]',
+  providerKeyReplacement: '[redacted-provider-key]',
+  sensitiveValueReplacement: '[redacted]',
+  maxLength: 300,
+};
 
 @Injectable()
 export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
@@ -1010,12 +1019,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
 
   private sanitizeError(value: unknown): string {
     const raw = this.errorMessage(value);
-    return raw
-      .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
-      .replace(/gw_sk_[A-Za-z0-9._~+/-]+/gi, 'gw_sk_[redacted]')
-      .replace(/sk-[A-Za-z0-9._~+/-]+/gi, 'sk-[redacted]')
-      .replace(/\b(?:rk|gsk|xai)-[A-Za-z0-9._~+/-]+/gi, '[redacted-provider-key]')
-      .slice(0, 300);
+    return redactErrorText(raw, REALTIME_ERROR_REDACTION);
   }
 
   private errorMessage(value: unknown): string {
