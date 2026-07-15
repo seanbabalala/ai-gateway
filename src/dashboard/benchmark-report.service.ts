@@ -10,6 +10,16 @@ import {
   applyWorkspaceQueryScope,
   normalizeWorkspaceId,
 } from '../workspaces/workspace-scope';
+import { redactErrorText } from '../security/error-redaction';
+
+const BENCHMARK_ERROR_REDACTION = {
+  bearerReplacement: 'Bearer [redacted]',
+  gatewayKeyReplacement: 'gw_sk_[redacted]',
+  skKeyReplacement: 'sk-[redacted]',
+  providerKeyReplacement: '[redacted-provider-key]',
+  sensitiveValueReplacement: '[redacted]',
+  maxLength: 180,
+};
 
 export type BenchmarkPeriod = '1h' | '24h' | '7d' | '30d' | '90d';
 export type BenchmarkCheckStatus = 'pass' | 'warn' | 'fail';
@@ -676,12 +686,7 @@ export class BenchmarkReportService {
   }
 
   private sanitizeError(value: string): string {
-    return value
-      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
-      .replace(/gw_sk_[A-Za-z0-9._~+/=-]+/gi, 'gw_sk_[redacted]')
-      .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-[redacted]')
-      .replace(/(api[_-]?key=)[^&\s]+/gi, '$1[redacted]')
-      .slice(0, 180);
+    return redactErrorText(value, BENCHMARK_ERROR_REDACTION);
   }
 
   private buildChecks(metrics: BenchmarkMetrics): BenchmarkCheck[] {

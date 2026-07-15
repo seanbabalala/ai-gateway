@@ -142,6 +142,26 @@ describe('ProviderCompatibilityService', () => {
     expect(JSON.stringify(repo.rows)).not.toContain('{"ok":true}');
   });
 
+  it('redacts compatibility failure reasons before storing matrix metadata', async () => {
+    const repo = makeRepo();
+    const service = makeService(repo);
+    const secretMessage =
+      'provider rejected Bearer gw_sk_live_gateway_secret_123456 api_key=sk-query-secret-token gsk-provider-secret-token';
+    global.fetch = jest.fn().mockRejectedValue(new Error(secretMessage));
+
+    const result = await service.runNodeMatrix(node(), { capabilities: ['chat'] });
+    const item = result.matrix.find((entry) => entry.capability === 'chat');
+    const serialized = JSON.stringify({ item, rows: repo.rows });
+
+    expect(item?.last_status).toBe('fail');
+    expect(item?.failure_reason).toContain('Bearer [redacted]');
+    expect(item?.failure_reason).toContain('api_key=[redacted]');
+    expect(item?.failure_reason).toContain('[redacted-provider-key]');
+    expect(serialized).not.toContain('gw_sk_live_gateway_secret_123456');
+    expect(serialized).not.toContain('sk-query-secret-token');
+    expect(serialized).not.toContain('gsk-provider-secret-token');
+  });
+
   it('uses upstream model aliases for provider safe requests', async () => {
     const repo = makeRepo();
     const service = makeService(repo);
