@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `c801d914bf6c00864bc56f331d255562543ea79f` |
-| `origin/main` | `c801d914bf6c00864bc56f331d255562543ea79f` |
+| Local HEAD | `faa44cad3aa3c9e0a598c71d10feed5a7d890f51` |
+| `origin/main` | `faa44cad3aa3c9e0a598c71d10feed5a7d890f51` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -165,6 +165,8 @@ Completed PRs in this overnight hardening run:
 | #110 | `a7ea370d` | Add frontend route accessibility smoke | Added dashboard skip-link, main landmark, primary navigation, search semantics, and a frontend smoke gate |
 | #111 | `33d7c445` | Refresh plan after frontend a11y smoke | Updated this plan after the frontend route accessibility smoke baseline |
 | #112 | `c801d914` | Add legacy token burn-down runbook | Documented how operators use bounded telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy Dashboard tokens |
+| #113 | `775b5176` | Refresh plan after legacy token runbook | Updated this plan after the legacy Dashboard token burn-down runbook baseline |
+| #114 | `faa44cad` | Add operator observability runbook | Added one operator runbook for auth, stream lifecycle, budget, redaction, MCP, and frontend performance signals |
 
 Every merged PR followed this loop:
 
@@ -219,6 +221,7 @@ unmerged branch.
 | 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | Done in PR #108 | Focused control-plane tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 15 | `codex/frontend-route-a11y-smoke` | Add a lightweight dashboard route accessibility/keyboard smoke around lazy route skeletons, login fallback, and primary navigation | Done in PR #110 | Frontend a11y/i18n smoke, frontend test/build, root lint/docs/public/diff checks, GitHub checks |
 | 16 | `codex/dashboard-legacy-token-burn-down-runbook` | Document how operators use PR #77 telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy bearer/query tokens | Done in PR #112 | Docs/public/diff checks, GitHub checks |
+| 17 | `codex/operator-observability-runbook` | Add a single operator runbook for auth, stream lifecycle, budget reservation, redaction, MCP, and frontend performance metrics | Done in PR #114 | Docs/public/diff checks, GitHub checks |
 
 ## Deferred Conditional Future Items
 
@@ -232,7 +235,7 @@ auditable if deployment requirements change.
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #112 should be executed as one continuous
+The remaining work after PR #114 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -255,7 +258,6 @@ Wave 3 is complete.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 17 | `codex/operator-observability-runbook` | Add a single operator runbook for auth, stream lifecycle, budget reservation, redaction, MCP, and frontend performance metrics | docs/troubleshooting or release docs | docs/public/diff checks |
 | 18 | `codex/release-hardening-command` | Add or document one repeatable release-hardening command/checklist that runs the required backend, frontend, docs, public, and optional integration gates | scripts/release docs | release script dry run or docs/public/diff checks |
 
 ### Execution Stop Rules
@@ -988,7 +990,7 @@ Targets:
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 | AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
 | AGW-DOC-02 | Add legacy dashboard token burn-down runbook | P2 | Docs/Auth | Done in PR #112 |
-| AGW-DOC-03 | Add operator observability runbook | P2 | Docs/Ops | Planned: `codex/operator-observability-runbook` |
+| AGW-DOC-03 | Add operator observability runbook | P2 | Docs/Ops | Done in PR #114 |
 | AGW-QA-02 | Add repeatable release-hardening command or checklist | P2 | Tooling/Release | Planned: `codex/release-hardening-command` |
 
 ## Pull Request Discipline
@@ -1108,11 +1110,14 @@ Completed:
   `siftgate_dashboard_legacy_token_events_total`, canary validation, and
   `dashboard.allow_legacy_token_auth=false` rollout/rollback steps. Done in
   PR #112.
+- Add a single operator observability runbook for auth, stream lifecycle,
+  budget reservations, error redaction, MCP denial/env-policy metadata, and
+  frontend performance release gates. Done in PR #114.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with the operator
-  observability runbook.
+- Complete the Future One-Pass PR Queue in order, finishing with the
+  release-hardening command/checklist.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
