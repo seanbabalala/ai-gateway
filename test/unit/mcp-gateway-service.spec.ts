@@ -84,6 +84,7 @@ describe('McpGatewayService', () => {
       id: 'local-tools',
       endpoint: 'http://mcp.local/rpc',
       allowed_namespaces: ['team-a'],
+      stdio_env_policy: null,
       tools: [
         {
           name: 'search_docs',
@@ -91,6 +92,7 @@ describe('McpGatewayService', () => {
         },
       ],
     })
+    expect(summary.denial_summary).toEqual([])
     expect(JSON.stringify(summary)).not.toContain('token=secret')
   })
 
@@ -301,8 +303,16 @@ describe('McpGatewayService', () => {
     expect(service.getDashboardSummary().recent_calls[0]).toMatchObject({
       success: false,
       error_type: 'forbidden',
+      denial_reason: 'endpoint_policy',
       status_code: 403,
     })
+    expect(service.getDashboardSummary().denial_summary).toEqual([
+      expect.objectContaining({
+        server_id: 'local-tools',
+        denial_reason: 'endpoint_policy',
+        count: 1,
+      }),
+    ])
   })
 
   it('requires every tool in a JSON-RPC batch to be allowed by tool-level permissions', async () => {
@@ -340,7 +350,15 @@ describe('McpGatewayService', () => {
       tool_name: 'multiple',
       success: false,
       error_type: 'forbidden',
+      denial_reason: 'tool_policy',
     })
+    expect(summary.denial_summary).toEqual([
+      expect.objectContaining({
+        server_id: 'local-tools',
+        denial_reason: 'tool_policy',
+        count: 1,
+      }),
+    ])
     expect(JSON.stringify(summary)).not.toContain('allowed input')
     expect(JSON.stringify(summary)).not.toContain('blocked input')
   })
@@ -365,7 +383,41 @@ describe('McpGatewayService', () => {
     expect(service.getDashboardSummary().recent_calls[0]).toMatchObject({
       namespace_id: 'team-b',
       error_type: 'forbidden',
+      denial_reason: 'namespace_policy',
     })
+  })
+
+  it('records bounded namespace-required MCP denials without upstream forwarding', async () => {
+    const { service } = makeService()
+    global.fetch = jest.fn()
+
+    await expect(
+      service.proxy({
+        serverId: 'local-tools',
+        apiKey: {
+          ...apiKey,
+          namespace_id: null,
+          namespace_name: null,
+        },
+        body: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException)
+
+    expect(global.fetch).not.toHaveBeenCalled()
+    const summary = service.getDashboardSummary()
+    expect(summary.recent_calls[0]).toMatchObject({
+      namespace_id: null,
+      success: false,
+      error_type: 'forbidden',
+      denial_reason: 'namespace_required',
+    })
+    expect(summary.denial_summary).toEqual([
+      expect.objectContaining({
+        server_id: 'local-tools',
+        denial_reason: 'namespace_required',
+        count: 1,
+      }),
+    ])
   })
 
   it('launches stdio MCP servers with initialization and records MiniMax tool metadata', async () => {
@@ -451,6 +503,12 @@ rl.on('line', (line) => {
       id: 'minimax-token-plan',
       transport: 'stdio',
       endpoint: `stdio:${process.execPath}`,
+      stdio_env_policy: expect.objectContaining({
+        inherit_env: false,
+        parent_env_mode: 'allowlist',
+        configured_env_count: 2,
+        configured_secret_reference_count: 1,
+      }),
       tools: [
         { name: 'web_search' },
         { name: 'understand_image' },
@@ -544,6 +602,25 @@ rl.on('line', (line) => {
       })
       expect(payload.requestId).toEqual(expect.any(String))
       expect(JSON.stringify(body)).not.toContain('should-not-leak')
+
+      const summary = service.getDashboardSummary()
+      expect(summary.servers[0].stdio_env_policy).toMatchObject({
+        inherit_env: false,
+        parent_env_mode: 'allowlist',
+        configured_env_count: 1,
+        configured_secret_reference_count: 0,
+      })
+      expect(summary.servers[0].stdio_env_policy?.blocked_parent_env_count).toBeGreaterThan(0)
+      expect(summary.recent_calls[0].stdio_env_policy).toMatchObject({
+        inherit_env: false,
+        parent_env_mode: 'allowlist',
+        configured_env_count: 1,
+        configured_secret_reference_count: 0,
+      })
+      expect(JSON.stringify(summary)).not.toContain('SIFTGATE_PARENT_ONLY_SECRET')
+      expect(JSON.stringify(summary)).not.toContain('SIFTGATE_ALLOWLISTED_FOR_MCP')
+      expect(JSON.stringify(summary)).not.toContain('CONFIGURED_ONLY')
+      expect(JSON.stringify(summary)).not.toContain('should-not-leak')
     } finally {
       if (originalSecret === undefined) {
         delete process.env.SIFTGATE_PARENT_ONLY_SECRET

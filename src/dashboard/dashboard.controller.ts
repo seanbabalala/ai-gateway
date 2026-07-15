@@ -2232,6 +2232,7 @@ export class DashboardController {
         servers: [],
         recent_calls: [],
         error_summary: [],
+        denial_summary: [],
         totals: {
           servers: 0,
           enabled_servers: 0,
