@@ -1014,6 +1014,7 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
       .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
       .replace(/gw_sk_[A-Za-z0-9._~+/-]+/gi, 'gw_sk_[redacted]')
       .replace(/sk-[A-Za-z0-9._~+/-]+/gi, 'sk-[redacted]')
+      .replace(/\b(?:rk|gsk|xai)-[A-Za-z0-9._~+/-]+/gi, '[redacted-provider-key]')
       .slice(0, 300);
   }
 
