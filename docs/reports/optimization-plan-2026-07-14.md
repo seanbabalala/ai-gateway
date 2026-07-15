@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `69cb4782330d01e21b4575f8d0252c04f0517f29` |
-| `origin/main` | `69cb4782330d01e21b4575f8d0252c04f0517f29` |
+| Local HEAD | `e9c0acd63e50d819fc470bd7672c9eb149b133b1` |
+| `origin/main` | `e9c0acd63e50d819fc470bd7672c9eb149b133b1` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -134,6 +134,7 @@ Completed PRs in this overnight hardening run:
 | #79 | `f2198b05` | Add provider error redaction matrix | Added helper-level redaction coverage for nested JSON, arrays, and non-string provider error bodies |
 | #80 | `f765b0df` | Refresh optimization plan after redaction matrix | Updated this plan after the provider redaction matrix baseline |
 | #81 | `69cb4782` | Add control-plane timer cleanup coverage | Added fake-timer lifecycle tests for registration heartbeat, policy sync, and telemetry upload intervals |
+| #82 | `e9c0acd6` | Refresh optimization plan after control-plane tests | Updated this plan after the control-plane timer cleanup baseline |
 
 Every merged PR followed this loop:
 
@@ -165,15 +166,61 @@ PR, waited for GitHub checks, merged, deleted its branch, and returned local
 | 10 | `codex/provider-redaction-regression-matrix` | Add table-driven redaction coverage for nested provider error fields and non-string error bodies | Done in PR #79 | Focused provider redaction/client/stream tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 11 | `codex/control-plane-timer-destroy-tests` | Add lifecycle tests that recurring control-plane timers are cleared on module destroy | Done in PR #81 | Focused control-plane tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
-## Next Candidate PR Queue
+## Future One-Pass PR Queue
 
-The next slices should stay intentionally narrow. Do not batch these unless a
-testable code path forces two items to land together.
+The remaining work should be executed as one continuous trunk-based run: one
+branch, one small slice, focused validation, full required local checks, PR,
+green GitHub checks, merge, delete branch, and return local `main` to
+`origin/main` before taking the next row. Do not batch implementation rows unless
+the row explicitly says the same testable code path must land together.
+
+### Wave 1: Redaction And Public Error Contracts
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 1 | `codex/realtime-error-redaction-regression` | Add regression coverage that realtime upstream/client error strings redact bearer, gateway, and provider keys before close reasons or recent-session metadata | `src/realtime/realtime-proxy.service.ts`, realtime tests | focused realtime sanitization tests; `npm run lint` |
-| 2 | `codex/batch-error-redaction-regression` | Add batch provider error redaction tests for object/string provider error bodies and extracted failure messages | `src/batch/*`, batch tests | focused batch tests; `npm run lint` |
+| 1 | `codex/realtime-error-redaction-regression` | Add regression coverage that realtime upstream/client error strings redact bearer, gateway, and provider keys before close reasons or recent-session metadata | `src/realtime/realtime-proxy.service.ts`, realtime tests | focused realtime sanitization tests; `npm run lint`; `npm run build` |
+| 2 | `codex/batch-error-redaction-regression` | Add batch provider error redaction tests for object/string provider error bodies and extracted failure messages | `src/batch/*`, batch tests | focused batch tests; `npm run lint`; `npm run build` |
+| 3 | `codex/shared-error-redaction-helper` | Consolidate provider, realtime, batch, benchmark, and compatibility error redaction onto one shared helper after the surface-specific tests exist | redaction helper, provider/realtime/batch/compatibility callers | focused redaction tests for every caller; `npm run lint`; `npm run build` |
+| 4 | `codex/redaction-telemetry` | Count redaction events by bounded surface/reason without recording original values, prompts, headers, or user identifiers | telemetry service and redaction helper/tests | focused telemetry/redaction tests; `npm run lint`; `npm run build` |
+| 5 | `codex/public-error-contract-matrix` | Add table-driven public API error mapping coverage for provider, batch, realtime, validation, budget, and unexpected 5xx paths | `src/http/public-error-handling.ts`, ingest/batch/realtime tests | focused public-error tests; `npm run lint`; `npm run build` |
+
+### Wave 2: Cost, Data, And Config Safety
+
+| Order | Branch | Slice | Main files | Required validation |
+| ---: | --- | --- | --- | --- |
+| 6 | `codex/budget-shared-backend-decision` | Decide and document when PostgreSQL row locks are sufficient versus when a Redis atomic reservation backend is required | docs/reports, release checklist | `npm run docs:check`; `npm run public:check`; `git diff --check` |
+| 7 | `codex/budget-redis-reservation-backend` | Conditional implementation: add Redis-backed budget reservation counters only if the decision PR proves non-PostgreSQL shared-budget deployments need it | `src/budget/*`, state/redis helpers, budget tests | focused budget Redis tests; full unit; `npm run lint`; `npm run build` |
+| 8 | `codex/postgres-budget-smoke-ci` | Promote the optional Postgres row-lock smoke into an opt-in CI/service-container path or a documented release gate | Postgres smoke spec, CI/release docs | smoke command with safe test DB; docs/public/diff checks |
+| 9 | `codex/config-atomic-failure-tests` | Add failure-injection tests for atomic config writes, restore validation, and rollback after partial write errors | `src/config/*`, config mutation tests | focused config tests; `npm run lint`; `npm run build` |
+| 10 | `codex/config-mutation-audit-matrix` | Add audit regression coverage for dashboard config mutation paths that write or restore config snapshots | config audit/dashboard tests | focused config-audit tests; docs/public checks if release text changes |
+
+### Wave 3: Control, MCP, And Lifecycle Operations
+
+| Order | Branch | Slice | Main files | Required validation |
+| ---: | --- | --- | --- | --- |
+| 11 | `codex/mcp-denial-audit-events` | Emit or persist bounded audit visibility when MCP tool/env policy denies access, without exposing blocked secret names or values | `src/mcp/*`, audit/telemetry tests | focused MCP tests; `npm run lint`; `npm run build` |
+| 12 | `codex/timer-lifecycle-sweep` | Add lifecycle cleanup tests for remaining timer-owning services such as alerts, log sinks, catalog sync, state backend, circuit breaker, health probes, and batching | service unit tests | focused timer tests; full unit if multiple services touched |
+| 13 | `codex/shared-fetch-timeout-helper` | Consolidate auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout patterns into a small shared helper with redacted errors | timeout helper and caller tests | focused auth/control-plane/secret/batch tests; `npm run lint`; `npm run build` |
+| 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | `src/control-plane/*`, control-plane tests | focused control-plane tests; `npm run lint`; `npm run build` |
+
+### Wave 4: Frontend, Release Gates, And Operator Runbooks
+
+| Order | Branch | Slice | Main files | Required validation |
+| ---: | --- | --- | --- | --- |
+| 15 | `codex/frontend-route-a11y-smoke` | Add a lightweight dashboard route accessibility/keyboard smoke around lazy route skeletons, login fallback, and primary navigation | `frontend/*`, frontend tests/scripts | `npm test` in `frontend/`; `npm run build` in `frontend` |
+| 16 | `codex/dashboard-legacy-token-burn-down-runbook` | Document how operators use PR #77 telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy bearer/query tokens | docs/release/security docs | docs/public/diff checks |
+| 17 | `codex/operator-observability-runbook` | Add a single operator runbook for auth, stream lifecycle, budget reservation, redaction, MCP, and frontend performance metrics | docs/troubleshooting or release docs | docs/public/diff checks |
+| 18 | `codex/release-hardening-command` | Add or document one repeatable release-hardening command/checklist that runs the required backend, frontend, docs, public, and optional integration gates | scripts/release docs | release script dry run or docs/public/diff checks |
+
+### Execution Stop Rules
+
+- Stop and update this plan before continuing if a row reveals a broader design
+  decision, requires a public compatibility break, or needs external
+  infrastructure that is not available locally.
+- Conditional rows must first land the decision/documentation PR; only implement
+  the conditional code PR when the decision PR says it is needed.
+- After every implementation row, land a document-only refresh PR so the queue,
+  baseline SHA, and completed evidence stay truthful.
 
 ## Key Findings
 
@@ -857,16 +904,33 @@ Targets:
 | AGW-COST-04 | Add optional Postgres row-lock smoke | P1 | Budget/Data | Done in PR #74 |
 | AGW-SEC-10 | Add dashboard auth status telemetry | P1 | Auth/Observability | Done in PR #72 |
 | AGW-SEC-11 | Add legacy dashboard token telemetry | P1 | Auth/Observability | Done in PR #77 |
+| AGW-SEC-12 | Add realtime error redaction regression coverage | P1 | Realtime/Security | Planned: `codex/realtime-error-redaction-regression` |
+| AGW-SEC-13 | Add batch provider error redaction regression coverage | P1 | Batch/Security | Planned: `codex/batch-error-redaction-regression` |
+| AGW-SEC-14 | Consolidate shared error redaction helper | P1 | Security/Platform | Planned after realtime and batch redaction tests |
+| AGW-SEC-15 | Add bounded redaction telemetry | P1 | Security/Observability | Planned after shared helper consolidation |
+| AGW-API-02 | Add public error contract regression matrix | P1 | HTTP API | Planned: `codex/public-error-contract-matrix` |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
+| AGW-MCP-02 | Add MCP denial audit or telemetry visibility | P1 | MCP/Audit | Planned: `codex/mcp-denial-audit-events` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
+| AGW-CONF-02 | Add atomic config write failure-injection tests | P1 | Config | Planned: `codex/config-atomic-failure-tests` |
+| AGW-CONF-03 | Add config mutation audit regression matrix | P1 | Config/Audit | Planned: `codex/config-mutation-audit-matrix` |
 | AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Done in PR #67 |
+| AGW-DATA-02 | Decide PostgreSQL vs Redis shared budget backend requirements | P1 | Data/Cost | Planned: `codex/budget-shared-backend-decision` |
+| AGW-DATA-03 | Promote Postgres row-lock smoke into CI or release gate | P1 | Data/CI | Planned: `codex/postgres-budget-smoke-ci` |
 | AGW-REL-06 | Add control-plane timer cleanup lifecycle tests | P1 | Control Plane | Done in PR #81 |
+| AGW-REL-07 | Sweep remaining timer lifecycle cleanup tests | P2 | Reliability | Planned: `codex/timer-lifecycle-sweep` |
+| AGW-REL-08 | Consolidate shared fetch timeout helper | P2 | Reliability/Auth/Control | Planned: `codex/shared-fetch-timeout-helper` |
+| AGW-REL-09 | Redact control-plane operational error logs | P1 | Control Plane/Security | Planned: `codex/control-plane-error-redaction` |
 | AGW-FE-01 | Add manual chunks and bundle budget | P2 | Frontend | Manual chunks done in PR #41; budget gate done in PR #57 |
 | AGW-FE-02 | Add route-level lazy loading states | P2 | Frontend | Done in PR #68 |
 | AGW-FE-03 | Add dashboard first-paint smoke | P2 | Frontend | Done in PR #75 |
+| AGW-FE-04 | Add dashboard route accessibility/keyboard smoke | P2 | Frontend | Planned: `codex/frontend-route-a11y-smoke` |
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 | AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
+| AGW-DOC-02 | Add legacy dashboard token burn-down runbook | P2 | Docs/Auth | Planned: `codex/dashboard-legacy-token-burn-down-runbook` |
+| AGW-DOC-03 | Add operator observability runbook | P2 | Docs/Ops | Planned: `codex/operator-observability-runbook` |
+| AGW-QA-02 | Add repeatable release-hardening command or checklist | P2 | Tooling/Release | Planned: `codex/release-hardening-command` |
 
 ## Pull Request Discipline
 
@@ -945,8 +1009,11 @@ Completed:
 
 Remaining:
 
-- Add realtime error redaction regression coverage.
-- Add batch provider error redaction regression coverage.
+- Complete the Future One-Pass PR Queue in order, starting with realtime and
+  batch redaction regression coverage.
+- Keep conditional implementation rows behind their decision/documentation PRs.
+- Refresh this plan after every merged implementation PR so baseline SHA,
+  evidence, and remaining queue stay current.
 
 ## Non-Goals For This Plan
 
