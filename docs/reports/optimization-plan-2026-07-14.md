@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 106 suites and 1493 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 106 suites and 1502 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `10ed971524931a8cd924bbb92890185a07f25693` |
-| `origin/main` | `10ed971524931a8cd924bbb92890185a07f25693` |
+| Local HEAD | `57135b8054e4d90af8d2663162efeccb80e7519a` |
+| `origin/main` | `57135b8054e4d90af8d2663162efeccb80e7519a` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -143,6 +143,8 @@ Completed PRs in this overnight hardening run:
 | #88 | `ecd2a277` | Share error redaction helper | Consolidated provider, realtime, batch, benchmark, and compatibility redaction onto a shared helper |
 | #89 | `7bfe384c` | Refresh optimization plan after shared redaction helper | Updated this plan after the shared redaction helper baseline |
 | #90 | `10ed9715` | Add bounded redaction telemetry | Counted redaction events by fixed surface and reason labels without recording secret values |
+| #91 | `3e19a26b` | Refresh optimization plan after redaction telemetry | Updated this plan after the redaction telemetry baseline |
+| #92 | `57135b80` | Add public error contract matrix | Covered stable public API error envelopes for provider, batch, realtime, validation, payload, budget, and unexpected failure paths |
 
 Every merged PR followed this loop:
 
@@ -186,10 +188,11 @@ unmerged branch.
 | 2 | `codex/batch-error-redaction-regression` | Add batch provider error redaction tests for object/string provider error bodies and extracted failure messages | Done in PR #86 | Focused batch redaction unit tests, batch e2e, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 3 | `codex/shared-error-redaction-helper` | Consolidate provider, realtime, batch, benchmark, and compatibility error redaction onto one shared helper after the surface-specific tests exist | Done in PR #88 | Focused redaction caller tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 4 | `codex/redaction-telemetry` | Count redaction events by bounded surface/reason without recording original values, prompts, headers, or user identifiers | Done in PR #90 | Focused telemetry/redaction tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 5 | `codex/public-error-contract-matrix` | Add table-driven public API error mapping coverage for provider, batch, realtime, validation, budget, and unexpected 5xx paths | Done in PR #92 | Focused public-error/realtime tests, ingest and batch redaction tests, batch e2e, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #90 should be executed as one continuous
+The remaining work after PR #92 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -198,9 +201,8 @@ together.
 
 ### Wave 1: Redaction And Public Error Contracts
 
-| Order | Branch | Slice | Main files | Required validation |
-| ---: | --- | --- | --- | --- |
-| 5 | `codex/public-error-contract-matrix` | Add table-driven public API error mapping coverage for provider, batch, realtime, validation, budget, and unexpected 5xx paths | `src/http/public-error-handling.ts`, ingest/batch/realtime tests | focused public-error tests; `npm run lint`; `npm run build` |
+Wave 1 is complete. The next unmerged row is Wave 2, order 6:
+`codex/budget-shared-backend-decision`.
 
 ### Wave 2: Cost, Data, And Config Safety
 
@@ -443,8 +445,12 @@ Target outcome:
 Status:
 
 - Current `main` already implements generic public messages for unexpected 5xx
-  responses; future work should focus on preserving that contract when adding
-  new controllers or provider error categories.
+  responses.
+- PR #92 added a table-driven public error contract matrix for provider, batch,
+  realtime, validation, payload-size, budget, and unexpected failure paths, plus
+  realtime upgrade rejection JSON coverage.
+- Future work should preserve this contract when adding new controllers or
+  provider error categories.
 
 ### P1: Budget Enforcement Is Not Concurrency-Safe
 
@@ -926,7 +932,7 @@ Targets:
 | AGW-SEC-13 | Add batch provider error redaction regression coverage | P1 | Batch/Security | Done in PR #86 |
 | AGW-SEC-14 | Consolidate shared error redaction helper | P1 | Security/Platform | Done in PR #88 |
 | AGW-SEC-15 | Add bounded redaction telemetry | P1 | Security/Observability | Done in PR #90 |
-| AGW-API-02 | Add public error contract regression matrix | P1 | HTTP API | Next: `codex/public-error-contract-matrix` |
+| AGW-API-02 | Add public error contract regression matrix | P1 | HTTP API | Done in PR #92 |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-MCP-02 | Add MCP denial audit or telemetry visibility | P1 | MCP/Audit | Planned: `codex/mcp-denial-audit-events` |
@@ -934,7 +940,7 @@ Targets:
 | AGW-CONF-02 | Add atomic config write failure-injection tests | P1 | Config | Planned: `codex/config-atomic-failure-tests` |
 | AGW-CONF-03 | Add config mutation audit regression matrix | P1 | Config/Audit | Planned: `codex/config-mutation-audit-matrix` |
 | AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Done in PR #67 |
-| AGW-DATA-02 | Decide PostgreSQL vs Redis shared budget backend requirements | P1 | Data/Cost | Planned: `codex/budget-shared-backend-decision` |
+| AGW-DATA-02 | Decide PostgreSQL vs Redis shared budget backend requirements | P1 | Data/Cost | Next: `codex/budget-shared-backend-decision` |
 | AGW-DATA-03 | Promote Postgres row-lock smoke into CI or release gate | P1 | Data/CI | Planned: `codex/postgres-budget-smoke-ci` |
 | AGW-REL-06 | Add control-plane timer cleanup lifecycle tests | P1 | Control Plane | Done in PR #81 |
 | AGW-REL-07 | Sweep remaining timer lifecycle cleanup tests | P2 | Reliability | Planned: `codex/timer-lifecycle-sweep` |
@@ -1034,11 +1040,14 @@ Completed:
 - Add bounded redaction telemetry for provider, batch, realtime, benchmark, and
   compatibility error sanitization without recording original values. Done in
   PR #90.
+- Add public error contract regression coverage for provider, batch, realtime,
+  validation, payload-size, budget, unexpected 5xx, and realtime upgrade
+  rejection paths. Done in PR #92.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with the public error
-  contract regression matrix.
+- Complete the Future One-Pass PR Queue in order, starting with the PostgreSQL
+  row-lock versus Redis shared budget backend decision.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
