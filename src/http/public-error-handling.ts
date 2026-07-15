@@ -133,10 +133,13 @@ export function sendMappedPublicErrorResponse(
   });
 }
 
-function publicRouteKind(path: string | undefined): 'openai' | 'anthropic' | 'batch' | 'mcp' | 'video' {
+function publicRouteKind(
+  path: string | undefined,
+): 'openai' | 'anthropic' | 'batch' | 'mcp' | 'video' | 'realtime' {
   if (path?.startsWith('/mcp')) return 'mcp';
   if (path?.startsWith('/v1/batches')) return 'batch';
   if (path?.startsWith('/v1/videos')) return 'video';
+  if (path?.startsWith('/v1/realtime')) return 'realtime';
   if (path?.startsWith('/v1/messages')) return 'anthropic';
   return 'openai';
 }
@@ -209,6 +212,7 @@ function defaultFailureMessage(
   if (routeKind === 'batch') return 'Batch proxy request failed.';
   if (routeKind === 'mcp') return 'MCP proxy request failed.';
   if (routeKind === 'video') return 'Video proxy request failed.';
+  if (routeKind === 'realtime') return 'Realtime proxy request failed.';
   return 'Gateway request failed.';
 }
 
@@ -256,6 +260,7 @@ function resolveType(
       if (routeKind === 'batch') return 'batch_proxy_error';
       if (routeKind === 'mcp') return 'mcp_proxy_error';
       if (routeKind === 'video') return 'video_proxy_error';
+      if (routeKind === 'realtime') return 'realtime_error';
       return 'upstream_error';
     default:
       break;
@@ -265,6 +270,7 @@ function resolveType(
     if (routeKind === 'batch') return 'batch_proxy_error';
     if (routeKind === 'mcp') return 'mcp_proxy_error';
     if (routeKind === 'video') return 'video_proxy_error';
+    if (routeKind === 'realtime') return 'realtime_error';
     return 'internal_error';
   }
 
