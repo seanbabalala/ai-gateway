@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 106 suites and 1515 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 106 suites and 1516 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `498425c9c0b779af9dc1788d43297967e681affa` |
-| `origin/main` | `498425c9c0b779af9dc1788d43297967e681affa` |
+| Local HEAD | `322d6a1b71f48938606b516a4aaa1e8ae9cac5e9` |
+| `origin/main` | `322d6a1b71f48938606b516a4aaa1e8ae9cac5e9` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -153,6 +153,8 @@ Completed PRs in this overnight hardening run:
 | #98 | `f2857eaf` | Cover config atomic write failures | Added failure-injection coverage for restore validation, partial temp-write cleanup, and rename failure rollback |
 | #99 | `61b28217` | Refresh plan after config atomic failure tests | Updated this plan after the config atomic failure test baseline |
 | #100 | `498425c9` | Cover dashboard config mutation audit matrix | Added table-driven audit contract coverage for dashboard node, routing, and namespace config mutations |
+| #101 | `d59a962a` | Refresh plan after config mutation audit matrix | Updated this plan after the dashboard config mutation audit matrix baseline |
+| #102 | `322d6a1b` | Add bounded MCP denial audit visibility | Added fixed MCP denial reasons and stdio env-policy counts without storing tool inputs, env names, or secret values |
 
 Every merged PR followed this loop:
 
@@ -201,6 +203,7 @@ unmerged branch.
 | 8 | `codex/postgres-budget-smoke-ci` | Promote the optional Postgres row-lock smoke into an opt-in CI/service-container path or a documented release gate | Done in PR #96 | Local smoke command path, docs/public/diff checks, path-scoped `postgres-budget-smoke` service-container GitHub check, full GitHub checks |
 | 9 | `codex/config-atomic-failure-tests` | Add failure-injection tests for atomic config writes, restore validation, and rollback after partial write errors | Done in PR #98 | Focused config tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 10 | `codex/config-mutation-audit-matrix` | Add audit regression coverage for dashboard config mutation paths that write or restore config snapshots | Done in PR #100 | Focused dashboard controller tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 11 | `codex/mcp-denial-audit-events` | Emit or persist bounded audit visibility when MCP tool/env policy denies access, without exposing blocked secret names or values | Done in PR #102 | Focused MCP/dashboard/agent-platform tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Deferred Conditional Future Items
 
@@ -214,7 +217,7 @@ auditable if deployment requirements change.
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #100 should be executed as one continuous
+The remaining work after PR #102 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -233,7 +236,6 @@ Wave 2 is complete.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 11 | `codex/mcp-denial-audit-events` | Emit or persist bounded audit visibility when MCP tool/env policy denies access, without exposing blocked secret names or values | `src/mcp/*`, audit/telemetry tests | focused MCP tests; `npm run lint`; `npm run build` |
 | 12 | `codex/timer-lifecycle-sweep` | Add lifecycle cleanup tests for remaining timer-owning services such as alerts, log sinks, catalog sync, state backend, circuit breaker, health probes, and batching | service unit tests | focused timer tests; full unit if multiple services touched |
 | 13 | `codex/shared-fetch-timeout-helper` | Consolidate auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout patterns into a small shared helper with redacted errors | timeout helper and caller tests | focused auth/control-plane/secret/batch tests; `npm run lint`; `npm run build` |
 | 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | `src/control-plane/*`, control-plane tests | focused control-plane tests; `npm run lint`; `npm run build` |
@@ -959,7 +961,7 @@ Targets:
 | AGW-API-02 | Add public error contract regression matrix | P1 | HTTP API | Done in PR #92 |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
-| AGW-MCP-02 | Add MCP denial audit or telemetry visibility | P1 | MCP/Audit | Planned: `codex/mcp-denial-audit-events` |
+| AGW-MCP-02 | Add MCP denial audit or telemetry visibility | P1 | MCP/Audit | Done in PR #102 |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
 | AGW-CONF-02 | Add atomic config write failure-injection tests | P1 | Config | Done in PR #98 |
 | AGW-CONF-03 | Add config mutation audit regression matrix | P1 | Config/Audit | Done in PR #100 |
@@ -1077,11 +1079,14 @@ Completed:
   partial temp-write cleanup, and rename failure rollback. Done in PR #98.
 - Add dashboard config mutation audit regression coverage for node, routing,
   and namespace write paths. Done in PR #100.
+- Add bounded MCP denial audit visibility for endpoint, tool, namespace, and
+  stdio env-policy surfaces without tool inputs, env names, or secret values.
+  Done in PR #102.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with MCP denial
-  audit visibility.
+- Complete the Future One-Pass PR Queue in order, starting with the timer
+  lifecycle sweep.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
