@@ -82,6 +82,14 @@ function makeMinimalNodes(openAiApiKey: string) {
   ];
 }
 
+function listAtomicTempFiles(configPath: string): string[] {
+  const dir = path.dirname(configPath);
+  const base = path.basename(configPath);
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.startsWith(`.${base}.`) && name.endsWith('.tmp'));
+}
+
 function loadConfigService(overrides: Record<string, unknown> = {}): { svc: ConfigService; configPath: string } {
   const configPath = createTempConfig(makeMinimalConfig(overrides));
   const isolatedCatalogDir = path.join(path.dirname(configPath), '.siftgate');
@@ -93,6 +101,7 @@ function loadConfigService(overrides: Record<string, unknown> = {}): { svc: Conf
 }
 
 afterEach(() => {
+  jest.restoreAllMocks();
   delete process.env.GATEWAY_CONFIG_PATH;
   delete process.env.SIFTGATE_CATALOG_OVERRIDE;
   delete process.env.SIFTGATE_CATALOG_SYNC_CACHE;
@@ -392,6 +401,109 @@ describe('ConfigService — reload', () => {
     } finally {
       svc.onModuleDestroy();
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// restoreFromYaml atomic failure handling
+// ═══════════════════════════════════════════════════════════
+
+describe('ConfigService — restoreFromYaml atomic failure handling', () => {
+  it('validates restore YAML before opening an atomic temp file', () => {
+    const { svc, configPath } = loadConfigService();
+    const before = fs.readFileSync(configPath, 'utf8');
+    const renameSpy = jest.spyOn(fs, 'renameSync');
+
+    const result = svc.restoreFromYaml('nodes: [', {
+      source: 'rollback',
+      throwOnError: false,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.rolled_back).toBe(true);
+    expect(result.error?.message).toContain('unexpected end');
+    expect(renameSpy).not.toHaveBeenCalled();
+    expect(fs.readFileSync(configPath, 'utf8')).toBe(before);
+    expect(svc.getNode('openai')).toBeDefined();
+    expect(listAtomicTempFiles(configPath)).toEqual([]);
+  });
+
+  it('cleans up partial temp writes and keeps the active config when fsync fails', () => {
+    const { svc, configPath } = loadConfigService();
+    const before = fs.readFileSync(configPath, 'utf8');
+    const beforeVersion = svc.getSnapshot().version;
+    const fsyncSpy = jest.spyOn(fs, 'fsyncSync').mockImplementation(() => {
+      throw new Error('simulated fsync failure');
+    });
+
+    const result = svc.restoreFromYaml(
+      yaml.dump(
+        makeMinimalConfig({
+          nodes: [
+            ...makeMinimalNodes('sk-test'),
+            {
+              id: 'gemini',
+              name: 'Gemini',
+              protocol: 'chat_completions',
+              base_url: 'https://api.google.com',
+              endpoint: '/v1/chat/completions',
+              api_key: 'gk-test',
+              models: ['gemini-2.0-flash'],
+            },
+          ],
+        }),
+      ),
+      { source: 'rollback', throwOnError: false },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rolled_back).toBe(true);
+    expect(result.previous.version).toBe(beforeVersion);
+    expect(result.current.version).toBe(beforeVersion);
+    expect(result.error?.message).toContain('simulated fsync failure');
+    expect(fsyncSpy).toHaveBeenCalled();
+    expect(fs.readFileSync(configPath, 'utf8')).toBe(before);
+    expect(svc.getNode('gemini')).toBeUndefined();
+    expect(listAtomicTempFiles(configPath)).toEqual([]);
+  });
+
+  it('does not replace the config file or commit memory state when rename fails', () => {
+    const { svc, configPath } = loadConfigService();
+    const before = fs.readFileSync(configPath, 'utf8');
+    const beforeVersion = svc.getSnapshot().version;
+    const renameSpy = jest.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('simulated rename failure');
+    });
+
+    const result = svc.restoreFromYaml(
+      yaml.dump(
+        makeMinimalConfig({
+          nodes: [
+            ...makeMinimalNodes('sk-test'),
+            {
+              id: 'gemini',
+              name: 'Gemini',
+              protocol: 'chat_completions',
+              base_url: 'https://api.google.com',
+              endpoint: '/v1/chat/completions',
+              api_key: 'gk-test',
+              models: ['gemini-2.0-flash'],
+            },
+          ],
+        }),
+      ),
+      { source: 'rollback', throwOnError: false },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rolled_back).toBe(true);
+    expect(result.previous.version).toBe(beforeVersion);
+    expect(result.current.version).toBe(beforeVersion);
+    expect(result.error?.message).toContain('simulated rename failure');
+    expect(renameSpy).toHaveBeenCalled();
+    expect(fs.readFileSync(configPath, 'utf8')).toBe(before);
+    expect(svc.getNode('gemini')).toBeUndefined();
+    expect(listAtomicTempFiles(configPath)).toEqual([]);
   });
 });
 
