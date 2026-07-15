@@ -139,6 +139,117 @@ describe('ControlPlaneClientService', () => {
     }
   });
 
+  it.each([
+    {
+      label: 'registration',
+      run: (client: ControlPlaneClientService) => client.register(),
+      expectedPrefix: 'Control plane registration failed:',
+      registered: false,
+    },
+    {
+      label: 'heartbeat',
+      run: (client: ControlPlaneClientService) => client.heartbeat(),
+      expectedPrefix: 'Control plane heartbeat failed:',
+      registered: true,
+    },
+    {
+      label: 'telemetry upload',
+      run: (client: ControlPlaneClientService) =>
+        client.uploadTelemetry([{
+          workspace_id: 'ws_secret',
+          gateway_id: 'gw_secret',
+          request_id: 'req_secret',
+          api_key_id: 'key_secret',
+          node_id: 'node_secret',
+          model: 'gpt-4o-mini',
+          tier: 'standard',
+          score: 0.5,
+          domain_hint: null,
+          modality: ['text'],
+          latency_ms: 120,
+          status_code: 500,
+          input_tokens: 1,
+          output_tokens: 0,
+          cost_usd: 0,
+          fallback_used: false,
+          fallback_reason: null,
+          retry_count: 0,
+          cache_hit: false,
+          policy_hits: [],
+          timestamp: new Date('2026-07-15T00:00:00.000Z').toISOString(),
+        }]),
+      expectedPrefix: 'Control plane telemetry upload failed:',
+      registered: true,
+    },
+    {
+      label: 'policy pull',
+      run: (client: ControlPlaneClientService) => client.fetchLatestPolicy(),
+      expectedPrefix: 'Control plane policy pull failed:',
+      registered: true,
+    },
+  ])('redacts control-plane $label failure logs', async ({
+    run,
+    expectedPrefix,
+    registered,
+  }) => {
+    const originalFetch = global.fetch;
+    const leakedBody = JSON.stringify({
+      error: 'control plane failure',
+      workspace_id: 'ws_secret',
+      gateway_id: 'gw_secret',
+      request_id: 'req_secret',
+      api_key_id: 'key_secret',
+      node_id: 'node_secret',
+      registration_token: 'gw_reg_secret',
+      access_token: 'cp_access_secret',
+      detail: 'Bearer cp_access_secret gateway=gw_secret workspace=ws_secret',
+    });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => leakedBody,
+    }) as never;
+
+    try {
+      const client = new ControlPlaneClientService(mockConfigService({
+        controlPlane: {
+          enabled: true,
+          url: 'https://cloud.example.com',
+          gateway_id: 'gw_secret',
+          registration_token: 'gw_reg_secret',
+          telemetry: {
+            upload_interval_seconds: 30,
+            include_prompt: false,
+            include_response: false,
+          },
+        },
+      }));
+      if (registered) {
+        (client as any).workspaceId = 'ws_secret';
+        (client as any).gatewayId = 'gw_secret';
+        (client as any).accessToken = 'cp_access_secret';
+      }
+      const warn = jest.fn();
+      (client as any).logger.warn = warn;
+
+      await run(client);
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(expectedPrefix));
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged).toContain('[redacted]');
+      expect(logged).toContain('[redacted-control-plane-id]');
+      expect(logged).not.toContain('ws_secret');
+      expect(logged).not.toContain('gw_secret');
+      expect(logged).not.toContain('req_secret');
+      expect(logged).not.toContain('key_secret');
+      expect(logged).not.toContain('node_secret');
+      expect(logged).not.toContain('gw_reg_secret');
+      expect(logged).not.toContain('cp_access_secret');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('clears registration state after a successful config reload', async () => {
     let reloadHandler: (() => void) | undefined;
     const config = mockConfigService({

@@ -2,12 +2,42 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@ne
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
-import { fetchWithTimeout } from '../http/fetch-with-timeout';
+import {
+  fetchWithTimeout,
+  redactedFetchErrorMessage,
+} from '../http/fetch-with-timeout';
+import type { ErrorRedactionOptions } from '../security/error-redaction';
 import type {
   ControlPlaneRegistrationResponse,
   ControlPlaneTelemetryEvent,
   PolicyBundle,
 } from './types';
+
+const CONTROL_PLANE_ERROR_REDACTION: ErrorRedactionOptions = {
+  bearerReplacement: 'Bearer [redacted]',
+  gatewayKeyReplacement: 'gw_sk_[redacted]',
+  skKeyReplacement: 'sk-[redacted]',
+  providerKeyReplacement: '[redacted-provider-key]',
+  sensitiveValueReplacement: '[redacted]',
+  maxLength: 500,
+};
+
+const CONTROL_PLANE_ID_KEYS = new Set([
+  'api_key_id',
+  'gateway',
+  'gateway_id',
+  'node_id',
+  'request_id',
+  'workspace',
+  'workspace_id',
+]);
+
+const CONTROL_PLANE_TOKEN_KEYS = new Set([
+  'access_token',
+  'auth_token',
+  'registration_token',
+  'token',
+]);
 
 @Injectable()
 export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy {
@@ -115,7 +145,9 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
       );
       return true;
     } catch (err) {
-      this.logger.warn(`Control plane registration failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `Control plane registration failed: ${this.redactedErrorMessage(err)}`,
+      );
       return false;
     }
   }
@@ -136,7 +168,9 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
       );
       return true;
     } catch (err) {
-      this.logger.warn(`Control plane heartbeat failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `Control plane heartbeat failed: ${this.redactedErrorMessage(err)}`,
+      );
       return false;
     }
   }
@@ -157,7 +191,9 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
       );
       return true;
     } catch (err) {
-      this.logger.warn(`Control plane telemetry upload failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `Control plane telemetry upload failed: ${this.redactedErrorMessage(err)}`,
+      );
       return false;
     }
   }
@@ -175,7 +211,9 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
         this.accessToken || undefined,
       );
     } catch (err) {
-      this.logger.warn(`Control plane policy pull failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `Control plane policy pull failed: ${this.redactedErrorMessage(err)}`,
+      );
       return null;
     }
   }
@@ -212,4 +250,53 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
     }
     return (await response.json()) as T;
   }
+
+  private redactedErrorMessage(error: unknown): string {
+    return redactControlPlaneOperationalError(
+      redactedFetchErrorMessage(error, CONTROL_PLANE_ERROR_REDACTION),
+    );
+  }
+}
+
+function redactControlPlaneOperationalError(message: string): string {
+  return message
+    .replace(
+      /(["']?([A-Za-z0-9_-]+)["']?\s*:\s*)("[^"]*"|'[^']*'|[^\s,}]+)/g,
+      (_match: string, prefix: string, key: string, value: string) =>
+        redactControlPlaneKeyValue(prefix, key, value),
+    )
+    .replace(
+      /([?&]([A-Za-z0-9_-]+)=)([^&\s]+)/g,
+      (_match: string, prefix: string, key: string, value: string) =>
+        `${prefix}${redactedControlPlaneValue(key, value)}`,
+    )
+    .replace(
+      /\b(([A-Za-z0-9_-]+)\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s,;&]+)/g,
+      (_match: string, prefix: string, key: string, value: string) =>
+        redactControlPlaneKeyValue(prefix, key, value),
+    )
+    .replace(/\bws_[A-Za-z0-9._~+/-]+/g, 'ws_[redacted]')
+    .replace(/\bgw_(?!sk_)[A-Za-z0-9._~+/-]+/g, 'gw_[redacted]');
+}
+
+function redactControlPlaneKeyValue(
+  prefix: string,
+  key: string,
+  value: string,
+): string {
+  const replacement = redactedControlPlaneValue(key, value);
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return `${prefix}"${replacement}"`;
+  }
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return `${prefix}'${replacement}'`;
+  }
+  return `${prefix}${replacement}`;
+}
+
+function redactedControlPlaneValue(key: string, fallback: string): string {
+  const normalized = key.toLowerCase();
+  if (CONTROL_PLANE_TOKEN_KEYS.has(normalized)) return '[redacted]';
+  if (CONTROL_PLANE_ID_KEYS.has(normalized)) return '[redacted-control-plane-id]';
+  return fallback;
 }
