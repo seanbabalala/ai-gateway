@@ -1255,6 +1255,7 @@ describe("DashboardController — guardrails status", () => {
           },
         ],
         error_summary: [],
+        denial_summary: [],
         totals: {
           servers: 1,
           enabled_servers: 1,

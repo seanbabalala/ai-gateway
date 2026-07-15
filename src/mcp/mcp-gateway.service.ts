@@ -24,7 +24,20 @@ export interface McpGatewayAuditEntry {
   success: boolean
   latency_ms: number
   error_type: string | null
+  denial_reason: McpGatewayDenialReason | null
+  stdio_env_policy: McpGatewayStdioEnvPolicy | null
   request_bytes: number
+}
+
+export type McpGatewayDenialReason = 'endpoint_policy' | 'tool_policy' | 'namespace_required' | 'namespace_policy'
+
+export interface McpGatewayStdioEnvPolicy {
+  inherit_env: boolean
+  parent_env_mode: 'inherit_all' | 'allowlist'
+  allowed_parent_env_count: number
+  blocked_parent_env_count: number
+  configured_env_count: number
+  configured_secret_reference_count: number
 }
 
 export interface McpGatewayServerSummary {
@@ -35,6 +48,7 @@ export interface McpGatewayServerSummary {
   transport: string
   endpoint: string
   allowed_namespaces: string[]
+  stdio_env_policy: McpGatewayStdioEnvPolicy | null
   tools: Array<{
     name: string
     description: string | null
@@ -55,6 +69,12 @@ export interface McpGatewayDashboardSummary {
   error_summary: Array<{
     server_id: string
     error_type: string
+    count: number
+    last_seen_at: string
+  }>
+  denial_summary: Array<{
+    server_id: string
+    denial_reason: McpGatewayDenialReason
     count: number
     last_seen_at: string
   }>
@@ -121,6 +141,15 @@ const DEFAULT_MCP_STDIO_ENV_ALLOWLIST = [
   'PATHEXT',
 ]
 
+class McpPolicyDeniedException extends ForbiddenException {
+  constructor(
+    message: string,
+    readonly denialReason: McpGatewayDenialReason,
+  ) {
+    super(message)
+  }
+}
+
 @Injectable()
 export class McpGatewayService {
   private readonly auditEntries: McpGatewayAuditEntry[] = []
@@ -146,6 +175,7 @@ export class McpGatewayService {
       servers,
       recent_calls: recentCalls.slice(0, mcp.max_recent_calls),
       error_summary: this.buildErrorSummary(recentErrors),
+      denial_summary: this.buildDenialSummary(recentErrors),
       totals: {
         servers: servers.length,
         enabled_servers: servers.filter((server) => server.enabled).length,
@@ -191,6 +221,7 @@ export class McpGatewayService {
         success: upstream.ok,
         latencyMs: Date.now() - started,
         errorType: upstream.ok ? null : `upstream_${upstream.statusCode}`,
+        denialReason: null,
       })
 
       return {
@@ -211,6 +242,7 @@ export class McpGatewayService {
         success: false,
         latencyMs: Date.now() - started,
         errorType,
+        denialReason: this.denialReason(error),
       })
       if (error instanceof PayloadTooLargeException || error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error
@@ -234,6 +266,7 @@ export class McpGatewayService {
       transport: server.transport || 'http_json_rpc',
       endpoint: safeEndpoint(server),
       allowed_namespaces: server.allowed_namespaces || [],
+      stdio_env_policy: this.stdioEnvPolicy(server),
       tools: (server.tools || []).map((tool) => this.toolSummary(tool)),
       tags: server.tags || [],
       recent_calls: entries.length,
@@ -268,6 +301,35 @@ export class McpGatewayService {
         groups.set(key, {
           server_id: entry.server_id,
           error_type: errorType,
+          count: 1,
+          last_seen_at: entry.timestamp,
+        })
+      } else {
+        current.count += 1
+        current.last_seen_at = entry.timestamp
+      }
+    }
+    return [...groups.values()].sort((a, b) => b.last_seen_at.localeCompare(a.last_seen_at))
+  }
+
+  private buildDenialSummary(entries: McpGatewayAuditEntry[]) {
+    const groups = new Map<
+      string,
+      {
+        server_id: string
+        denial_reason: McpGatewayDenialReason
+        count: number
+        last_seen_at: string
+      }
+    >()
+    for (const entry of entries) {
+      if (!entry.denial_reason) continue
+      const key = `${entry.server_id}:${entry.denial_reason}`
+      const current = groups.get(key)
+      if (!current) {
+        groups.set(key, {
+          server_id: entry.server_id,
+          denial_reason: entry.denial_reason,
           count: 1,
           last_seen_at: entry.timestamp,
         })
@@ -319,17 +381,32 @@ export class McpGatewayService {
         metadata.toolNames.length > 0 &&
         metadata.toolNames.every((toolName) => allowedEndpoints.includes(`mcp:${server.id}:${toolName}`))
       if (!hasServerAccess && !hasToolAccess) {
-        throw new ForbiddenException(`This API key is not allowed to use MCP server ${server.id}.`)
+        const reason =
+          metadata.allRequestsAreNamedToolCalls && metadata.toolNames.length > 0
+            ? 'tool_policy'
+            : 'endpoint_policy'
+        throw new McpPolicyDeniedException(
+          reason === 'tool_policy'
+            ? `This API key is not allowed to use the requested MCP tool(s) on server ${server.id}.`
+            : `This API key is not allowed to use MCP server ${server.id}.`,
+          reason,
+        )
       }
     }
 
     const namespaceId = apiKey?.namespace_id || null
     const allowedNamespaces = server.allowed_namespaces || []
     if (allowedNamespaces.length > 0 && !namespaceId) {
-      throw new ForbiddenException(`MCP server ${server.id} requires an allowed namespace.`)
+      throw new McpPolicyDeniedException(
+        `MCP server ${server.id} requires an allowed namespace.`,
+        'namespace_required',
+      )
     }
     if (namespaceId && allowedNamespaces.length > 0 && !allowedNamespaces.includes(namespaceId)) {
-      throw new ForbiddenException(`Namespace ${namespaceId} is not allowed to use MCP server ${server.id}.`)
+      throw new McpPolicyDeniedException(
+        `Namespace ${namespaceId} is not allowed to use MCP server ${server.id}.`,
+        'namespace_policy',
+      )
     }
   }
 
@@ -679,6 +756,27 @@ export class McpGatewayService {
     return env
   }
 
+  private stdioEnvPolicy(server: McpServerConfig): McpGatewayStdioEnvPolicy | null {
+    if (this.resolveTransport(server) !== 'stdio') return null
+    const configuredEnv = server.env || {}
+    const parentKeys = Object.keys(process.env)
+    const inheritAll = server.inherit_env === true
+    const allowlist = new Set(this.stdioEnvAllowlist(server))
+    const allowedParentEnvCount = inheritAll
+      ? parentKeys.length
+      : parentKeys.filter((key) => allowlist.has(key)).length
+    return {
+      inherit_env: inheritAll,
+      parent_env_mode: inheritAll ? 'inherit_all' : 'allowlist',
+      allowed_parent_env_count: allowedParentEnvCount,
+      blocked_parent_env_count: inheritAll ? 0 : Math.max(0, parentKeys.length - allowedParentEnvCount),
+      configured_env_count: Object.keys(configuredEnv).length,
+      configured_secret_reference_count: Object.values(configuredEnv).filter((value) =>
+        containsSecretReference(value),
+      ).length,
+    }
+  }
+
   private stdioEnvAllowlist(server: McpServerConfig): string[] {
     return [
       ...new Set([
@@ -709,6 +807,7 @@ export class McpGatewayService {
     success: boolean
     latencyMs: number
     errorType: string | null
+    denialReason: McpGatewayDenialReason | null
   }): void {
     const method = input.metadata.methods.length === 1 ? input.metadata.methods[0] : 'batch'
     this.auditEntries.push({
@@ -729,6 +828,8 @@ export class McpGatewayService {
       success: input.success,
       latency_ms: Math.max(0, input.latencyMs),
       error_type: input.errorType,
+      denial_reason: input.denialReason,
+      stdio_env_policy: this.stdioEnvPolicy(input.server),
       request_bytes: input.metadata.requestBytes,
     })
 
@@ -744,6 +845,10 @@ export class McpGatewayService {
     if (error instanceof NotFoundException) return 'not_found'
     if (error instanceof Error && error.name === 'AbortError') return 'upstream_timeout'
     return 'upstream_error'
+  }
+
+  private denialReason(error: unknown): McpGatewayDenialReason | null {
+    return error instanceof McpPolicyDeniedException ? error.denialReason : null
   }
 
   private statusCodeForError(errorType: string): number {
@@ -880,6 +985,10 @@ function parseJsonLine(line: string): unknown | undefined {
 function limitBuffer(value: string): string {
   const max = 4000
   return value.length > max ? value.slice(value.length - max) : value
+}
+
+function containsSecretReference(value: unknown): boolean {
+  return typeof value === 'string' && /\$\{[^}]+}/.test(value)
 }
 
 function sanitizeStdioError(value: string): string {

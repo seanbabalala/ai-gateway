@@ -104,6 +104,7 @@ function makeService({
         transport: 'http_json_rpc',
         endpoint: 'http://mcp.local/rpc',
         allowed_namespaces: ['team-a'],
+        stdio_env_policy: null,
         tools: [
           {
             name: 'search_docs',
@@ -124,6 +125,7 @@ function makeService({
     ],
     recent_calls: [],
     error_summary: [],
+    denial_summary: [],
     totals: {
       servers: 1,
       enabled_servers: 1,
