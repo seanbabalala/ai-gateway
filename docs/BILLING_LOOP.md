@@ -22,11 +22,16 @@ For every proxy request:
 1. `ApiKeyGuard` validates `Authorization: Bearer <gateway_key>`.
 2. The request metadata receives `api_key_id`, `api_key_name`, and permissions.
 3. `RateLimitGuard` uses `api_key_id` when present, otherwise legacy key name or IP.
-4. `BudgetService.check()` checks global rules first, then per-key rules.
-5. Routing resolves either `auto` or direct model routing according to key permissions.
+4. `BudgetService.reserve()` reserves estimated token and cost usage against
+   global, namespace, team, and per-key rules before provider dispatch.
+5. Routing resolves either `auto` or direct model routing according to key
+   permissions.
 6. The gateway serves a prompt-cache hit or calls an upstream node.
-7. Successful responses record token and cost usage against global and per-key budgets.
-8. `call_logs` stores the same `api_key_id`, key name, route, usage, cost, status, and latency.
+7. Successful responses commit actual token and cost usage against global,
+   namespace, team, and per-key budgets.
+8. Failed or aborted responses release unused reservation amounts.
+9. `call_logs` stores the same `api_key_id`, key name, route, usage, cost,
+   status, and latency.
 
 Dashboard views that filter generated Gateway API keys use `api_key_id`. The older `api_key` name filter is retained only as a compatibility path for legacy YAML-defined keys.
 
@@ -41,6 +46,29 @@ Legacy YAML per-key budget rules have `api_key_id = NULL` and `api_key_name = YA
 Generated-key budget rules are owned by `GatewayApiKeyService`. YAML cleanup must not deactivate them.
 
 Budget reset uses `budget_rule.id`. It must not use rule type, because `daily_tokens` and `daily_cost` can exist in both global and per-key scopes.
+
+## Shared Budget Backend Decision
+
+PostgreSQL is the supported shared backend for strict multi-instance budget
+reservation semantics. When every gateway instance points at the same
+PostgreSQL metadata database, `BudgetService.reserve()`, `commit()`, `release()`,
+and `record()` run their mutations inside database transactions and lock active
+budget rows before evaluating projected usage. This keeps concurrent gateways
+from admitting reservations that would exceed the same global, namespace, team,
+or per-key rule.
+
+SQLite and in-memory repositories remain supported for local development,
+tests, and small single-process deployments. They serialize budget mutations
+inside one gateway process, but they are not a cross-process coordination
+mechanism. Do not advertise strict shared-budget enforcement for multiple
+gateway instances unless they share PostgreSQL as the budget source of truth.
+
+Redis shared state is intentionally not a budget ledger today. Redis is useful
+for runtime coordination such as rate limits, circuit breaker state, affinity,
+and realtime metadata, but budget counters remain durable database records. A
+Redis atomic reservation backend should be added only if a future deployment
+requirement needs strict shared-budget enforcement across multiple gateway
+instances without using PostgreSQL as the shared metadata database.
 
 ## Cache Hits
 

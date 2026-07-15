@@ -496,8 +496,11 @@ Status:
   names or key ids.
 - PR #74 added an optional real-PostgreSQL smoke fixture that runs against an
   isolated schema when a safe test database URL is configured.
-- Remaining follow-up: decide whether Redis-backed counters are needed for
-  deployments that do not use PostgreSQL as the shared budget source of truth.
+- Current decision: PostgreSQL row locks are the supported shared budget
+  reservation backend for strict multi-instance enforcement. Redis shared state
+  is not a budget ledger and should not be promoted to a budget backend unless a
+  supported deployment target must enforce shared budgets without PostgreSQL as
+  the metadata source of truth.
 
 ### P1: API Key Last-Used Updates Can Cause Write Amplification
 

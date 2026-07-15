@@ -31,6 +31,13 @@ the production metadata database for durable workspace/RBAC/API-key/budget/log
 state, while Redis remains the optional shared runtime state backend for
 multi-instance coordination.
 
+Budget reservations are not stored in Redis. Strict multi-instance budget
+enforcement depends on all gateway instances sharing the same PostgreSQL
+metadata database, where reservation, commit, release, and record mutations can
+lock the relevant budget rows transactionally. SQLite, memory, and other
+single-process storage modes keep local behavior working but do not provide a
+cross-instance budget ledger.
+
 ## What Uses Shared State
 
 | Category | Memory Default | Redis Mode | Default TTL |
@@ -43,6 +50,10 @@ multi-instance coordination.
 | `concurrency` | Local active/queued counters | Metadata-only local node summaries | 120s |
 | `health_probe` | Local probe result cache | Metadata-only active probe summaries | 120s |
 | `realtime_session` | Local WebSocket map | Metadata-only connection summaries | 1800s |
+
+Budget counters are deliberately absent from this table. Adding Redis-backed
+budget counters would be a separate budget-ledger feature, not a side effect of
+enabling the shared state backend.
 
 Circuit breaker and momentum still keep a local mirror so the existing routing
 path stays fast and synchronous. Redis writes happen on state changes, and
