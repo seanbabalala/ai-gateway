@@ -133,6 +133,9 @@ release tooling, confirm the relevant hardening gates before merge:
     a shared rule,
   - failed scoped reservations do not partially consume global budget,
   - reservation `commit()` and `release()` keep counters consistent.
+  - strict multi-instance budget enforcement uses one shared PostgreSQL
+    metadata database for all gateway instances; Redis shared state does not
+    make budget counters atomic.
 - Frontend and tooling gates keep their ratchets:
   - `npm run lint` fails on any warning,
   - `cd frontend && npm run build` runs the bundle budget check,
@@ -145,6 +148,40 @@ npm test -- --runInBand test/unit/auth-controller.spec.ts test/unit/dashboard-gu
 npm test -- --runInBand test/unit/provider-client.spec.ts
 npm test -- --runInBand test/unit/budget*.spec.ts
 cd frontend && npm test && npm run build
+```
+
+## Budget Backend Decision Gate
+
+Before claiming strict shared-budget enforcement in a release or deployment,
+identify the authoritative budget backend:
+
+- PostgreSQL shared by every gateway instance is sufficient and preferred. It
+  stores the budget ledger and supports transaction-scoped row locks for
+  reservation, commit, release, and record mutations.
+- SQLite and in-memory repositories are acceptable for local development,
+  tests, and one-process deployments. They are not a multi-instance budget
+  coordination mechanism.
+- Redis shared state does not currently store budget counters. It may be used
+  for rate limits, circuit breaker state, affinity, prompt cache, concurrency
+  summaries, health probes, or realtime session metadata, but it is not a
+  replacement for the PostgreSQL budget ledger.
+- A Redis atomic budget reservation backend is only required if a supported
+  deployment target must enforce strict shared budgets across multiple gateway
+  instances without using PostgreSQL as the shared metadata database.
+
+For budget reservation, transaction, or backend decision changes, run:
+
+```bash
+npm test -- --runInBand test/unit/budget*.spec.ts
+```
+
+When PostgreSQL is the release target and a safe isolated database is
+available, also run the optional row-lock smoke:
+
+```bash
+SIFTGATE_TEST_POSTGRES_URL="$DATABASE_URL" \
+SIFTGATE_RUN_DATABASE_URL_INTEGRATION_TESTS=true \
+npm test -- --runInBand test/unit/budget-postgres-lock.spec.ts
 ```
 
 ## Seven-Locale Check
