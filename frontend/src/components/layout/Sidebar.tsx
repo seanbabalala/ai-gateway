@@ -192,6 +192,7 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
       <div className="relative z-10 min-h-0 flex-1">
         <nav
           ref={navRef}
+          aria-label={t('nav.primaryNavigation')}
           className={cn('sidebar-nav-scroll h-full min-h-0 space-y-6 overflow-y-auto overscroll-contain py-5', collapsed ? 'px-2' : 'px-4')}
         >
           {navGroups.map((group) => (
@@ -211,6 +212,8 @@ export function Sidebar({ collapsed = false, isMobile = false, mobileOpen = fals
                       key={item.to}
                       to={item.to}
                       onClick={() => isMobile && onCloseMobile?.()}
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={collapsed ? label : undefined}
                       className={cn(
                         'group flex items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
                         collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
