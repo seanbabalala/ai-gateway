@@ -4,6 +4,7 @@ import {
   PublicGatewayError,
   sendMappedPublicErrorResponse,
 } from '../../src/http/public-error-handling';
+import { ProviderError } from '../../src/providers/provider-client.service';
 
 function mockReq(
   path = '/v1/chat/completions',
@@ -26,6 +27,136 @@ function mockRes(): any {
 }
 
 describe('public error handling', () => {
+  it.each([
+    {
+      name: 'provider upstream 502',
+      exception: new ProviderError(
+        'Provider openai returned 502: sk-provider-secret-token',
+        502,
+        'openai',
+        'http_error',
+      ),
+      path: '/v1/chat/completions',
+      expected: {
+        statusCode: 502,
+        protocol: 'openai',
+        type: 'upstream_error',
+        message: 'Gateway request failed.',
+      },
+      forbidden: ['sk-provider-secret-token'],
+    },
+    {
+      name: 'batch upstream 502',
+      exception: Object.assign(new Error('batch provider leaked gw_sk_live_secret_123456'), {
+        statusCode: 502,
+      }),
+      path: '/v1/batches/batch_123',
+      expected: {
+        statusCode: 502,
+        protocol: 'openai',
+        type: 'batch_proxy_error',
+        message: 'Batch proxy request failed.',
+      },
+      forbidden: ['gw_sk_live_secret_123456'],
+    },
+    {
+      name: 'realtime upstream 502',
+      exception: Object.assign(new Error('realtime upstream leaked xai-provider-secret-123456'), {
+        statusCode: 502,
+      }),
+      path: '/v1/realtime',
+      expected: {
+        statusCode: 502,
+        protocol: 'openai',
+        type: 'realtime_error',
+        message: 'Realtime proxy request failed.',
+      },
+      forbidden: ['xai-provider-secret-123456'],
+    },
+    {
+      name: 'validation JSON parse 400',
+      exception: Object.assign(new SyntaxError('Unexpected token with sk-json-secret-token'), {
+        status: 400,
+        type: 'entity.parse.failed',
+      }),
+      path: '/v1/messages',
+      expected: {
+        statusCode: 400,
+        protocol: 'anthropic',
+        type: 'invalid_request_error',
+        message: 'Request body is not valid JSON.',
+      },
+      forbidden: ['sk-json-secret-token'],
+    },
+    {
+      name: 'payload too large 413',
+      exception: {
+        statusCode: 413,
+        type: 'entity.too.large',
+        message: 'payload included password=secret-value',
+        limit: 1024,
+        length: 2048,
+      },
+      path: '/v1/chat/completions',
+      expected: {
+        statusCode: 413,
+        protocol: 'openai',
+        type: 'payload_too_large',
+        message: 'Request body is too large.',
+      },
+      expectedDetails: {
+        source_type: 'entity.too.large',
+        limit: 1024,
+        length: 2048,
+      },
+      forbidden: ['password=secret-value'],
+    },
+    {
+      name: 'budget 429',
+      exception: new BudgetExceededError('tokens', 1200, 1000),
+      path: '/v1/chat/completions',
+      expected: {
+        statusCode: 429,
+        protocol: 'openai',
+        type: 'budget_exceeded',
+        code: 'tokens',
+      },
+      expectedDetails: {
+        budget_type: 'tokens',
+      },
+      forbidden: [],
+    },
+    {
+      name: 'unexpected messages 500',
+      exception: new Error('database password leaked in stack context'),
+      path: '/v1/messages',
+      expected: {
+        statusCode: 500,
+        protocol: 'anthropic',
+        type: 'internal_error',
+        message: 'Gateway request failed.',
+      },
+      forbidden: ['database password'],
+    },
+  ])('maps $name into the stable public error contract', (testCase) => {
+    const mapped = mapPublicGatewayError(
+      testCase.exception,
+      mockReq(testCase.path, { 'x-request-id': 'req_public_matrix' }),
+    );
+
+    expect(mapped).toMatchObject({
+      ...testCase.expected,
+      requestId: 'req_public_matrix',
+    });
+    if (testCase.expectedDetails) {
+      expect(mapped.details).toMatchObject(testCase.expectedDetails);
+    }
+    const serialized = JSON.stringify(mapped);
+    for (const forbidden of testCase.forbidden) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   it('maps budget exceeded errors into a stable 429 public contract', () => {
     const mapped = mapPublicGatewayError(
       new BudgetExceededError('tokens', 1200, 1000),

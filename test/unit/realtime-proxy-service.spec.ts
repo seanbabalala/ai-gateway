@@ -77,6 +77,43 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 }
 
 describe('RealtimeProxyService', () => {
+  it.each([
+    {
+      statusCode: 429,
+      message: 'Realtime connection limit exceeded',
+      expectedType: 'rate_limit_exceeded',
+    },
+    {
+      statusCode: 500,
+      message: 'Realtime upgrade failed',
+      expectedType: 'realtime_error',
+    },
+  ])(
+    'writes stable JSON upgrade errors for HTTP $statusCode',
+    ({ statusCode, message, expectedType }) => {
+      const service = makeService();
+      const socket = {
+        destroyed: false,
+        write: jest.fn(),
+        destroy: jest.fn(),
+      };
+
+      (service as any).rejectUpgrade(socket, statusCode, message);
+
+      const raw = socket.write.mock.calls[0][0] as string;
+      const body = JSON.parse(raw.slice(raw.indexOf('\r\n\r\n') + 4));
+      expect(raw).toContain(`HTTP/1.1 ${statusCode}`);
+      expect(raw).toContain('Content-Type: application/json');
+      expect(body).toEqual({
+        error: {
+          message,
+          type: expectedType,
+        },
+      });
+      expect(socket.destroy).toHaveBeenCalled();
+    },
+  );
+
   it.each(['client_error', 'upstream_error'] as const)(
     'redacts secret-bearing %s strings before recording close metadata',
     (reason) => {
