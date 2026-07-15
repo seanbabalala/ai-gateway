@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 105 suites and 1489 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 106 suites and 1493 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `ecd2a277909d506f8d8c6dfcfa4045eceb07a6e4` |
-| `origin/main` | `ecd2a277909d506f8d8c6dfcfa4045eceb07a6e4` |
+| Local HEAD | `10ed971524931a8cd924bbb92890185a07f25693` |
+| `origin/main` | `10ed971524931a8cd924bbb92890185a07f25693` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -141,6 +141,8 @@ Completed PRs in this overnight hardening run:
 | #86 | `7745f00d` | Add batch error redaction regression | Added batch provider error redaction across public responses, call logs, and stored job metadata |
 | #87 | `af7b00d6` | Refresh optimization plan after batch redaction | Updated this plan after the batch redaction regression baseline |
 | #88 | `ecd2a277` | Share error redaction helper | Consolidated provider, realtime, batch, benchmark, and compatibility redaction onto a shared helper |
+| #89 | `7bfe384c` | Refresh optimization plan after shared redaction helper | Updated this plan after the shared redaction helper baseline |
+| #90 | `10ed9715` | Add bounded redaction telemetry | Counted redaction events by fixed surface and reason labels without recording secret values |
 
 Every merged PR followed this loop:
 
@@ -183,10 +185,11 @@ unmerged branch.
 | 1 | `codex/realtime-error-redaction-regression` | Add regression coverage that realtime upstream/client error strings redact bearer, gateway, and provider keys before close reasons or recent-session metadata | Done in PR #84 | Focused realtime sanitization tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 2 | `codex/batch-error-redaction-regression` | Add batch provider error redaction tests for object/string provider error bodies and extracted failure messages | Done in PR #86 | Focused batch redaction unit tests, batch e2e, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 3 | `codex/shared-error-redaction-helper` | Consolidate provider, realtime, batch, benchmark, and compatibility error redaction onto one shared helper after the surface-specific tests exist | Done in PR #88 | Focused redaction caller tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 4 | `codex/redaction-telemetry` | Count redaction events by bounded surface/reason without recording original values, prompts, headers, or user identifiers | Done in PR #90 | Focused telemetry/redaction tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #88 should be executed as one continuous
+The remaining work after PR #90 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -197,7 +200,6 @@ together.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 4 | `codex/redaction-telemetry` | Count redaction events by bounded surface/reason without recording original values, prompts, headers, or user identifiers | telemetry service and redaction helper/tests | focused telemetry/redaction tests; `npm run lint`; `npm run build` |
 | 5 | `codex/public-error-contract-matrix` | Add table-driven public API error mapping coverage for provider, batch, realtime, validation, budget, and unexpected 5xx paths | `src/http/public-error-handling.ts`, ingest/batch/realtime tests | focused public-error tests; `npm run lint`; `npm run build` |
 
 ### Wave 2: Cost, Data, And Config Safety
@@ -923,8 +925,8 @@ Targets:
 | AGW-SEC-12 | Add realtime error redaction regression coverage | P1 | Realtime/Security | Done in PR #84 |
 | AGW-SEC-13 | Add batch provider error redaction regression coverage | P1 | Batch/Security | Done in PR #86 |
 | AGW-SEC-14 | Consolidate shared error redaction helper | P1 | Security/Platform | Done in PR #88 |
-| AGW-SEC-15 | Add bounded redaction telemetry | P1 | Security/Observability | Next: `codex/redaction-telemetry` |
-| AGW-API-02 | Add public error contract regression matrix | P1 | HTTP API | Planned: `codex/public-error-contract-matrix` |
+| AGW-SEC-15 | Add bounded redaction telemetry | P1 | Security/Observability | Done in PR #90 |
+| AGW-API-02 | Add public error contract regression matrix | P1 | HTTP API | Next: `codex/public-error-contract-matrix` |
 | AGW-COST-02 | Debounce API key last-used writes | P1 | Auth/Data | Done on current `main` |
 | AGW-MCP-01 | Restrict MCP stdio environment inheritance | P1 | MCP | Done on current `main` |
 | AGW-MCP-02 | Add MCP denial audit or telemetry visibility | P1 | MCP/Audit | Planned: `codex/mcp-denial-audit-events` |
@@ -969,7 +971,7 @@ Security:
 - Count of dashboard auth status errors.
 - Count of disabled-auth startup events.
 - Count of legacy Dashboard bearer/query-token fallback and rejection events.
-- Count of redacted provider error fields.
+- Count of redaction events by bounded surface and reason.
 - Count of MCP env-policy denials.
 
 Reliability:
@@ -1029,11 +1031,14 @@ Completed:
   PR #86.
 - Consolidate provider, realtime, batch, benchmark, and compatibility error
   redaction onto one shared helper. Done in PR #88.
+- Add bounded redaction telemetry for provider, batch, realtime, benchmark, and
+  compatibility error sanitization without recording original values. Done in
+  PR #90.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with bounded
-  redaction telemetry.
+- Complete the Future One-Pass PR Queue in order, starting with the public error
+  contract regression matrix.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
