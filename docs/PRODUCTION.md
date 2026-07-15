@@ -106,6 +106,9 @@ checks:
 - The frontend bundle budget and zero-warning lint gates should stay enabled so
   release candidates cannot silently grow the Dashboard initial payload or hide
   stale code behind warnings.
+- Use the [operator observability runbook](OPERATOR_OBSERVABILITY.md) as the
+  shared triage map for auth, streaming, budget, redaction, MCP, and frontend
+  performance signals.
 
 ## Dashboard Login, OIDC, And Invites
 

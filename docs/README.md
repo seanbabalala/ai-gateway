@@ -28,7 +28,7 @@ self-hosters.
 | Govern teams and apps | [Dashboard](DASHBOARD.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md), [Cost and chargeback platform](COST_CHARGEBACK_PLATFORM.md) |
 | Connect coding agents | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent + MCP Demo](AGENT_MCP_DEMO.md), [Agent integrations](AGENT_INTEGRATIONS.md) |
 | Operate advanced controls | [Semantic Controls](SEMANTIC_PLATFORM.md), [Evaluation framework](EVALUATION_FRAMEWORK.md), [Caching](CACHING.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
-| Deploy to production | [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [Security](SECURITY.md), [Secret management](SECRET_MANAGEMENT.md) |
+| Deploy to production | [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [Security](SECURITY.md), [Operator observability](OPERATOR_OBSERVABILITY.md), [Secret management](SECRET_MANAGEMENT.md) |
 | Extend or contribute | [Architecture](ARCHITECTURE.md), [API reference](API_REFERENCE.md), [Plugins](PLUGINS.md), [Release checklist](RELEASE_CHECKLIST.md) |
 
 ## Feature Coverage Matrix
@@ -43,7 +43,7 @@ self-hosters.
 | Routing recommendations, route explanation, performance evidence | [Routing recommendations](ROUTING_RECOMMENDATIONS.md), [Architecture](ARCHITECTURE.md), [Performance](PERFORMANCE.md) |
 | Cache, Semantic Controls, Intelligence Loop, evals, experiments, shadow traffic | [Caching](CACHING.md), [Semantic Controls](SEMANTIC_PLATFORM.md), [Intelligence Loop](INTELLIGENCE_LOOP.md), [Evaluation framework](EVALUATION_FRAMEWORK.md), [Policy Namespaces and Shadow Traffic](NAMESPACES_AND_SHADOW.md) |
 | Coding agents, Agent Profiles, integrations, Agent Platform, MCP tools | [Coding Agent Gateway](CODING_AGENT_GATEWAY.md), [Agent Gateway profiles](AGENT_GATEWAY.md), [Agent + MCP Demo](AGENT_MCP_DEMO.md), [Agent integrations](AGENT_INTEGRATIONS.md), [Agent Platform preview](AGENT_PLATFORM_PREVIEW.md), [MCP Tool Gateway](MCP_GATEWAY.md) |
-| Deployment, state, secrets, config audit, logs, alerts, optional control plane | [Docker quickstart](DOCKER_QUICKSTART.md), [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [State backends](STATE_BACKEND.md), [Secret management](SECRET_MANAGEMENT.md), [Config validation](CONFIG_VALIDATION.md), [Config audit and rollback](CONFIG_AUDIT_ROLLBACK.md), [Log sinks](LOG_SINKS.md), [Webhook alerts](WEBHOOK_ALERTS.md), [Optional Control Plane Contract](CONTROL_PLANE.md) |
+| Deployment, state, secrets, observability, config audit, logs, alerts, optional control plane | [Docker quickstart](DOCKER_QUICKSTART.md), [Production](PRODUCTION.md), [Kubernetes and Helm](KUBERNETES.md), [State backends](STATE_BACKEND.md), [Operator observability](OPERATOR_OBSERVABILITY.md), [Secret management](SECRET_MANAGEMENT.md), [Config validation](CONFIG_VALIDATION.md), [Config audit and rollback](CONFIG_AUDIT_ROLLBACK.md), [Log sinks](LOG_SINKS.md), [Webhook alerts](WEBHOOK_ALERTS.md), [Optional Control Plane Contract](CONTROL_PLANE.md) |
 | SDKs, plugins, migrations, release process | [SDKs](SDKS.md), [Python SDK design](PYTHON_SDK_DESIGN.md), [Plugins](PLUGINS.md), [Official plugins](plugins/OFFICIAL_PLUGINS.md), [Migration compatibility](MIGRATION_COMPAT.md), [Migration from LiteLLM](MIGRATION_LITELLM.md), [Release checklist](RELEASE_CHECKLIST.md) |
 
 ## Start
@@ -69,6 +69,7 @@ self-hosters.
 | Secret management | [SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) |
 | Config validation | [CONFIG_VALIDATION.md](CONFIG_VALIDATION.md) |
 | Config audit and rollback | [CONFIG_AUDIT_ROLLBACK.md](CONFIG_AUDIT_ROLLBACK.md) |
+| Operator observability | [OPERATOR_OBSERVABILITY.md](OPERATOR_OBSERVABILITY.md) |
 | OIDC and invites | [OIDC_AND_INVITES.md](OIDC_AND_INVITES.md) |
 | Security | [SECURITY.md](SECURITY.md) |
 | Performance | [PERFORMANCE.md](PERFORMANCE.md) |
