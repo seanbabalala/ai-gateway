@@ -1,0 +1,61 @@
+name: Postgres Budget Smoke
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - .github/workflows/postgres-budget-smoke.yml
+      - package.json
+      - package-lock.json
+      - src/budget/**
+      - src/database/entities/budget-rule.entity.ts
+      - test/unit/budget-postgres-lock.integration.spec.ts
+  pull_request:
+    paths:
+      - .github/workflows/postgres-budget-smoke.yml
+      - package.json
+      - package-lock.json
+      - src/budget/**
+      - src/database/entities/budget-rule.entity.ts
+      - test/unit/budget-postgres-lock.integration.spec.ts
+  workflow_dispatch:
+
+jobs:
+  postgres-budget-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: siftgate
+          POSTGRES_PASSWORD: siftgate
+          POSTGRES_DB: siftgate_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U siftgate -d siftgate_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run PostgreSQL budget row-lock smoke
+        env:
+          SIFTGATE_TEST_POSTGRES_URL: postgres://siftgate:siftgate@localhost:5432/siftgate_ci
+          SIFTGATE_RUN_DATABASE_URL_INTEGRATION_TESTS: "true"
+        run: npm run test:postgres-budget-smoke

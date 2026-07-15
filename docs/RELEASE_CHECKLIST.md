@@ -181,8 +181,12 @@ available, also run the optional row-lock smoke:
 ```bash
 SIFTGATE_TEST_POSTGRES_URL="$DATABASE_URL" \
 SIFTGATE_RUN_DATABASE_URL_INTEGRATION_TESTS=true \
-npm test -- --runInBand test/unit/budget-postgres-lock.spec.ts
+npm run test:postgres-budget-smoke
 ```
+
+For CI evidence, run the `Postgres Budget Smoke` GitHub Actions workflow
+manually. It provisions a PostgreSQL service container and runs the same script
+against an isolated test database.
 
 ## Seven-Locale Check
 
@@ -222,7 +226,9 @@ configuration:
   row-lock smoke with `SIFTGATE_TEST_POSTGRES_URL` pointing at an isolated test
   database. The test creates and drops a unique schema; set
   `SIFTGATE_RUN_DATABASE_URL_INTEGRATION_TESTS=true` only when `DATABASE_URL` is
-  safe to use for integration tests.
+  safe to use for integration tests. The repeatable command is
+  `npm run test:postgres-budget-smoke`; maintainers can also trigger the
+  `Postgres Budget Smoke` workflow for service-container evidence.
 
 ## Documentation And Privacy Review
 
