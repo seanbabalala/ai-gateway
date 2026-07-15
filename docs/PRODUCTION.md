@@ -89,7 +89,9 @@ checks:
   connections should not include session tokens in the URL.
 - Set `dashboard.allow_legacy_token_auth=false` once clients no longer need
   Dashboard JWTs in `Authorization: Bearer` headers or SSE `?token=` query
-  parameters.
+  parameters. Use the
+  [legacy token burn-down runbook](SECURITY.md#legacy-dashboard-token-burn-down)
+  to verify the compatibility metric is quiet before flipping the fence.
 - Provider streams should have both idle-body and total-duration bounds. Set
   `connection.body_timeout_ms` for idle time between stream chunks and
   `connection.stream_max_duration_ms` for a total wall-clock cap on long-lived

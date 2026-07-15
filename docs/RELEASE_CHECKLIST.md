@@ -122,7 +122,11 @@ release tooling, confirm the relevant hardening gates before merge:
     legacy `?token=` fallback emits only a token-free deprecation warning.
   - `dashboard.allow_legacy_token_auth=false` rejects both legacy bearer tokens
     and legacy SSE query tokens when the deployment is ready for cookie-only
-    Dashboard auth.
+    Dashboard auth. Before flipping it, follow the
+    [legacy token burn-down runbook](SECURITY.md#legacy-dashboard-token-burn-down)
+    and verify `siftgate_dashboard_legacy_token_events_total` has no
+    `legacy_bearer_used` or `legacy_query_used` events for the deployment's
+    normal Dashboard traffic pattern.
 - Provider stream lifecycle remains bounded:
   - header/connect timeout behavior still falls back correctly,
   - idle stream body timeout emits a timeout error,
