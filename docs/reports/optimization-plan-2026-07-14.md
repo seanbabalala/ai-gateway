@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `a7ea370def9fe342e5b6c4e0e6c4580f1bdb78ac` |
-| `origin/main` | `a7ea370def9fe342e5b6c4e0e6c4580f1bdb78ac` |
+| Local HEAD | `c801d914bf6c00864bc56f331d255562543ea79f` |
+| `origin/main` | `c801d914bf6c00864bc56f331d255562543ea79f` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -163,6 +163,8 @@ Completed PRs in this overnight hardening run:
 | #108 | `ede145ba` | Redact control-plane failure logs | Redacted control-plane tokens and stable identifiers from registration, heartbeat, telemetry upload, and policy pull failure logs |
 | #109 | `61857d9f` | Refresh plan after control-plane log redaction | Updated this plan after the control-plane operational error redaction baseline |
 | #110 | `a7ea370d` | Add frontend route accessibility smoke | Added dashboard skip-link, main landmark, primary navigation, search semantics, and a frontend smoke gate |
+| #111 | `33d7c445` | Refresh plan after frontend a11y smoke | Updated this plan after the frontend route accessibility smoke baseline |
+| #112 | `c801d914` | Add legacy token burn-down runbook | Documented how operators use bounded telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy Dashboard tokens |
 
 Every merged PR followed this loop:
 
@@ -216,6 +218,7 @@ unmerged branch.
 | 13 | `codex/shared-fetch-timeout-helper` | Consolidate auth, control-plane, dashboard compatibility, secret resolver, and batch fetch timeout patterns into a small shared helper with redacted errors | Done in PR #106 | Focused auth/control-plane/secret/batch/helper tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 14 | `codex/control-plane-error-redaction` | Ensure control-plane registration, heartbeat, telemetry upload, and policy pull errors redact tokens and stable identifiers in logs | Done in PR #108 | Focused control-plane tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 | 15 | `codex/frontend-route-a11y-smoke` | Add a lightweight dashboard route accessibility/keyboard smoke around lazy route skeletons, login fallback, and primary navigation | Done in PR #110 | Frontend a11y/i18n smoke, frontend test/build, root lint/docs/public/diff checks, GitHub checks |
+| 16 | `codex/dashboard-legacy-token-burn-down-runbook` | Document how operators use PR #77 telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy bearer/query tokens | Done in PR #112 | Docs/public/diff checks, GitHub checks |
 
 ## Deferred Conditional Future Items
 
@@ -229,7 +232,7 @@ auditable if deployment requirements change.
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #110 should be executed as one continuous
+The remaining work after PR #112 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -252,7 +255,6 @@ Wave 3 is complete.
 
 | Order | Branch | Slice | Main files | Required validation |
 | ---: | --- | --- | --- | --- |
-| 16 | `codex/dashboard-legacy-token-burn-down-runbook` | Document how operators use PR #77 telemetry and `dashboard.allow_legacy_token_auth=false` to burn down legacy bearer/query tokens | docs/release/security docs | docs/public/diff checks |
 | 17 | `codex/operator-observability-runbook` | Add a single operator runbook for auth, stream lifecycle, budget reservation, redaction, MCP, and frontend performance metrics | docs/troubleshooting or release docs | docs/public/diff checks |
 | 18 | `codex/release-hardening-command` | Add or document one repeatable release-hardening command/checklist that runs the required backend, frontend, docs, public, and optional integration gates | scripts/release docs | release script dry run or docs/public/diff checks |
 
@@ -985,7 +987,7 @@ Targets:
 | AGW-FE-04 | Add dashboard route accessibility/keyboard smoke | P2 | Frontend | Done in PR #110 |
 | AGW-QA-01 | Fix lint warnings and enforce zero-warning CI | P2 | Tooling | Warnings done in PR #48; enforcement done in PR #56 |
 | AGW-DOC-01 | Add release hardening gates for auth, streams, budgets, lint, and bundle budgets | P2 | Docs/Release | Done in PR #60 |
-| AGW-DOC-02 | Add legacy dashboard token burn-down runbook | P2 | Docs/Auth | Planned: `codex/dashboard-legacy-token-burn-down-runbook` |
+| AGW-DOC-02 | Add legacy dashboard token burn-down runbook | P2 | Docs/Auth | Done in PR #112 |
 | AGW-DOC-03 | Add operator observability runbook | P2 | Docs/Ops | Planned: `codex/operator-observability-runbook` |
 | AGW-QA-02 | Add repeatable release-hardening command or checklist | P2 | Tooling/Release | Planned: `codex/release-hardening-command` |
 
@@ -1102,11 +1104,15 @@ Completed:
 - Add a dashboard route accessibility and keyboard smoke gate around lazy route
   skeletons, login fallback, primary navigation, skip-link/main landmark, and
   header search semantics. Done in PR #110.
+- Add a legacy Dashboard token burn-down runbook that uses
+  `siftgate_dashboard_legacy_token_events_total`, canary validation, and
+  `dashboard.allow_legacy_token_auth=false` rollout/rollback steps. Done in
+  PR #112.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with the legacy
-  Dashboard token burn-down runbook.
+- Complete the Future One-Pass PR Queue in order, starting with the operator
+  observability runbook.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
