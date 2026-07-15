@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import {
   CanonicalEmbeddingRequest,
@@ -53,12 +53,33 @@ interface BatchQueue {
 }
 
 @Injectable()
-export class EmbeddingBatchingService {
+export class EmbeddingBatchingService implements OnModuleDestroy {
   private readonly logger = new Logger(EmbeddingBatchingService.name);
   private readonly queues = new Map<string, BatchQueue>();
   private queuedRequests = 0;
 
   constructor(private readonly config: ConfigService) {}
+
+  onModuleDestroy(): void {
+    const pending: BatchEntry[] = [];
+    for (const queue of this.queues.values()) {
+      if (queue.timer) {
+        clearTimeout(queue.timer);
+        queue.timer = undefined;
+      }
+      pending.push(...queue.entries);
+    }
+    this.queues.clear();
+    this.queuedRequests = 0;
+
+    for (const entry of pending) {
+      this.settleEntry(
+        entry,
+        'reject',
+        new Error('Embedding batching service is shutting down.'),
+      );
+    }
+  }
 
   enqueue(
     canonical: CanonicalEmbeddingRequest,

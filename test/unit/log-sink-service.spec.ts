@@ -38,6 +38,7 @@ describe('LogSinkService', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
@@ -206,6 +207,42 @@ describe('LogSinkService', () => {
     expect(service.getStatus()[0]).toMatchObject({
       delivered: 1,
       dropped: 1,
+    });
+  });
+
+  it('clears delayed flush timers on module destroy after draining queued logs', async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '',
+    });
+    global.fetch = fetchMock as typeof fetch;
+    const service = new LogSinkService(
+      mockConfigService({
+        logSinks: {
+          enabled: true,
+          sinks: [
+            {
+              type: 'webhook',
+              name: 'destroy-hook',
+              url: 'https://hooks.example.test/logs',
+              batch_size: 10,
+              flush_interval_ms: 60_000,
+              retry: { attempts: 1, timeout_ms: 1000, backoff_ms: 0 },
+            },
+          ],
+        },
+      }),
+    );
+
+    service.enqueue(makeLog({ request_id: 'req_destroy' }));
+    await service.onModuleDestroy();
+    await jest.advanceTimersByTimeAsync(60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(service.getStatus()[0]).toMatchObject({
+      delivered: 1,
+      queued: 0,
     });
   });
 });
