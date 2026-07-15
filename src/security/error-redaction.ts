@@ -1,6 +1,30 @@
 const SENSITIVE_ERROR_FIELD =
   /^(authorization|x-api-key|api[_-]?key|apikey|access[_-]?token|accesstoken|refresh[_-]?token|refreshtoken|id[_-]?token|idtoken|auth[_-]?token|authtoken|bearer|secret|client[_-]?secret|clientsecret|password)$/i;
 
+export type ErrorRedactionSurface =
+  | 'provider'
+  | 'batch'
+  | 'realtime'
+  | 'benchmark'
+  | 'compatibility';
+
+export type ErrorRedactionReason =
+  | 'bearer_token'
+  | 'gateway_key'
+  | 'provider_key'
+  | 'sensitive_value'
+  | 'sensitive_field';
+
+export interface ErrorRedactionMetricInput {
+  surface: ErrorRedactionSurface;
+  reason: ErrorRedactionReason;
+}
+
+export interface ErrorRedactionTelemetry {
+  surface: ErrorRedactionSurface;
+  record: (input: ErrorRedactionMetricInput) => void;
+}
+
 export interface ErrorRedactionOptions {
   bearerReplacement?: string;
   gatewayKeyReplacement?: string;
@@ -8,9 +32,16 @@ export interface ErrorRedactionOptions {
   providerKeyReplacement?: string;
   sensitiveValueReplacement?: string;
   maxLength?: number;
+  telemetry?: ErrorRedactionTelemetry;
 }
 
 export type RedactableErrorBody = Record<string, unknown> | Buffer | string;
+
+type NormalizedErrorRedactionOptions = Required<
+  Omit<ErrorRedactionOptions, 'telemetry'>
+> & {
+  telemetry?: ErrorRedactionTelemetry;
+};
 
 export function redactErrorText(
   text: string,
@@ -18,21 +49,47 @@ export function redactErrorText(
 ): string {
   const replacement = normalizedOptions(options);
   const redacted = text
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, replacement.bearerReplacement)
-    .replace(/\bgw_sk_[A-Za-z0-9._~+/-]+/gi, replacement.gatewayKeyReplacement)
-    .replace(/\b(?:sk-ant|sk)-[A-Za-z0-9._~+/-]+/gi, replacement.skKeyReplacement)
-    .replace(/\b(?:rk|gsk|xai)-[A-Za-z0-9._~+/-]+/gi, replacement.providerKeyReplacement)
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, () =>
+      replacementForReason(replacement, 'bearer_token', replacement.bearerReplacement),
+    )
+    .replace(/\bgw_sk_[A-Za-z0-9._~+/-]+/gi, () =>
+      replacementForReason(replacement, 'gateway_key', replacement.gatewayKeyReplacement),
+    )
     .replace(
-      /([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|client[_-]?secret|secret|password)=)[^&\s]+/gi,
-      `$1${replacement.sensitiveValueReplacement}`,
+      /([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|client[_-]?secret|secret|password)=)([^&\s]+)/gi,
+      (_match: string, prefix: string, value: string) => {
+        if (isAlreadyRedactedValue(value, replacement.sensitiveValueReplacement)) {
+          return `${prefix}${value}`;
+        }
+        return `${prefix}${replacementForReason(
+          replacement,
+          'sensitive_value',
+          replacement.sensitiveValueReplacement,
+        )}`;
+      },
     )
     .replace(
       /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|client[_-]?secret|secret|password)\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s,;]+)/gi,
       (_match: string, prefix: string, value: string) => {
-        if (value.startsWith('"')) return `${prefix}"${replacement.sensitiveValueReplacement}"`;
-        if (value.startsWith("'")) return `${prefix}'${replacement.sensitiveValueReplacement}'`;
-        return `${prefix}${replacement.sensitiveValueReplacement}`;
+        const quote = value.startsWith('"') ? '"' : value.startsWith("'") ? "'" : '';
+        const rawValue = quote ? value.slice(1, -1) : value;
+        if (isAlreadyRedactedValue(rawValue, replacement.sensitiveValueReplacement)) {
+          return `${prefix}${value}`;
+        }
+        const redacted = replacementForReason(
+          replacement,
+          'sensitive_value',
+          replacement.sensitiveValueReplacement,
+        );
+        if (quote) return `${prefix}${quote}${redacted}${quote}`;
+        return `${prefix}${redacted}`;
       },
+    )
+    .replace(/\b(?:sk-ant|sk)-[A-Za-z0-9._~+/-]+/gi, () =>
+      replacementForReason(replacement, 'provider_key', replacement.skKeyReplacement),
+    )
+    .replace(/\b(?:rk|gsk|xai)-[A-Za-z0-9._~+/-]+/gi, () =>
+      replacementForReason(replacement, 'provider_key', replacement.providerKeyReplacement),
     );
   return replacement.maxLength ? redacted.slice(0, replacement.maxLength) : redacted;
 }
@@ -44,6 +101,7 @@ export function redactErrorValue(
 ): unknown {
   const replacement = normalizedOptions(options);
   if (fieldName && SENSITIVE_ERROR_FIELD.test(fieldName)) {
+    reportRedaction(replacement, 'sensitive_field');
     return replacement.sensitiveValueReplacement;
   }
   if (typeof value === 'string') return redactErrorText(value, options);
@@ -105,7 +163,9 @@ export function extractErrorMessage(
   return fallback;
 }
 
-function normalizedOptions(options: ErrorRedactionOptions): Required<ErrorRedactionOptions> {
+function normalizedOptions(
+  options: ErrorRedactionOptions,
+): NormalizedErrorRedactionOptions {
   const sensitiveValue = options.sensitiveValueReplacement ?? '[redacted]';
   return {
     bearerReplacement: options.bearerReplacement ?? `Bearer ${sensitiveValue}`,
@@ -114,9 +174,35 @@ function normalizedOptions(options: ErrorRedactionOptions): Required<ErrorRedact
     providerKeyReplacement: options.providerKeyReplacement ?? sensitiveValue,
     sensitiveValueReplacement: sensitiveValue,
     maxLength: options.maxLength ?? 0,
+    telemetry: options.telemetry,
   };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && !Buffer.isBuffer(value);
+}
+
+function replacementForReason(
+  options: NormalizedErrorRedactionOptions,
+  reason: ErrorRedactionReason,
+  replacement: string,
+): string {
+  reportRedaction(options, reason);
+  return replacement;
+}
+
+function reportRedaction(
+  options: NormalizedErrorRedactionOptions,
+  reason: ErrorRedactionReason,
+): void {
+  try {
+    options.telemetry?.record({ surface: options.telemetry.surface, reason });
+  } catch {
+    // Redaction must never fail because observability is unavailable.
+  }
+}
+
+function isAlreadyRedactedValue(value: string, replacement: string): boolean {
+  const normalized = value.trim();
+  return normalized === replacement;
 }

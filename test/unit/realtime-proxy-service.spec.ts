@@ -23,7 +23,7 @@ const realtimeNode = {
   realtime_models: ['gpt-4o-realtime-preview'],
 };
 
-function makeService(stateBackend?: unknown): RealtimeProxyService {
+function makeService(stateBackend?: unknown, telemetry?: unknown): RealtimeProxyService {
   return new RealtimeProxyService(
     {
       realtime: realtimeConfig,
@@ -37,6 +37,7 @@ function makeService(stateBackend?: unknown): RealtimeProxyService {
     {} as any,
     {} as any,
     stateBackend as any,
+    telemetry as any,
   );
 }
 
@@ -83,7 +84,8 @@ describe('RealtimeProxyService', () => {
         isRedisConfigured: jest.fn().mockReturnValue(true),
         setHashJson: jest.fn().mockResolvedValue(undefined),
       };
-      const service = makeService(stateBackend);
+      const telemetry = { recordErrorRedaction: jest.fn() };
+      const service = makeService(stateBackend, telemetry);
       const session = makeSession({ id: `rt-${reason}` });
       const secretError = [
         'Authorization failed for Bearer gw_sk_live_bearer_secret_123456',
@@ -115,6 +117,17 @@ describe('RealtimeProxyService', () => {
       expect(serializedMetadata).not.toContain('sk-provider-secret-123456');
       expect(serializedMetadata).not.toContain('gsk-provider-secret-123456');
       expect(serializedMetadata).not.toContain('xai-provider-secret-123456');
+      expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+        surface: 'realtime',
+        reason: 'bearer_token',
+      });
+      expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+        surface: 'realtime',
+        reason: 'provider_key',
+      });
+      expect(JSON.stringify(telemetry.recordErrorRedaction.mock.calls)).not.toContain(
+        'gw_sk_live_gateway_secret_123456',
+      );
     },
   );
 });

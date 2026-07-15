@@ -24,7 +24,7 @@ function makeLog(overrides: Record<string, any> = {}) {
   };
 }
 
-function makeService(rows: any[], traceCount = 0, config?: any) {
+function makeService(rows: any[], traceCount = 0, config?: any, telemetry?: any) {
   const callQb = {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
@@ -64,6 +64,7 @@ function makeService(rows: any[], traceCount = 0, config?: any) {
       catalog as any,
       config,
       workspaceContext as any,
+      telemetry as any,
     ),
     callQb,
     traceQb,
@@ -124,7 +125,8 @@ describe('BenchmarkReportService', () => {
         source_format: 'video_generation',
       }),
     ];
-    const { service } = makeService(rows, 4);
+    const telemetry = { recordErrorRedaction: jest.fn() };
+    const { service } = makeService(rows, 4, undefined, telemetry);
 
     const report = await service.getReport({ period: '24h' });
 
@@ -178,6 +180,21 @@ describe('BenchmarkReportService', () => {
     expect(report.top_errors[0].error).not.toContain('gw_sk_live_gateway_secret_123456');
     expect(report.top_errors[0].error).not.toContain('sk-query-secret-token');
     expect(report.top_errors[0].error).not.toContain('gsk-provider-secret-token');
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'benchmark',
+      reason: 'bearer_token',
+    });
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'benchmark',
+      reason: 'gateway_key',
+    });
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'benchmark',
+      reason: 'provider_key',
+    });
+    expect(JSON.stringify(telemetry.recordErrorRedaction.mock.calls)).not.toContain(
+      'sk-query-secret-token',
+    );
     expect(report.privacy.prompt_response_stored).toBe(false);
     expect(report.privacy.media_bytes_stored).toBe(false);
   });

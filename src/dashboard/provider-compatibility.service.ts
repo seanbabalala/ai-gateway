@@ -18,6 +18,8 @@ import {
   workspaceFindWhere,
   workspaceFindWhereStrict,
 } from '../workspaces/workspace-scope';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import { redactErrorText } from '../security/error-redaction';
 
 const COMPATIBILITY_ERROR_REDACTION = {
@@ -89,6 +91,8 @@ export class ProviderCompatibilityService {
     private readonly repo: Repository<ProviderCompatibilityResult>,
     @Optional()
     private readonly secretResolver?: SecretReferenceResolverService,
+    @Optional()
+    private readonly telemetry?: TelemetryService,
   ) {}
 
   async matrixForNodes(
@@ -676,7 +680,18 @@ export class ProviderCompatibilityService {
   }
 
   private sanitize(value: string): string {
-    return redactErrorText(value, COMPATIBILITY_ERROR_REDACTION);
+    return redactErrorText(value, {
+      ...COMPATIBILITY_ERROR_REDACTION,
+      telemetry: this.compatibilityRedactionTelemetry(),
+    });
+  }
+
+  private compatibilityRedactionTelemetry(): ErrorRedactionTelemetry | undefined {
+    if (!this.telemetry) return undefined;
+    return {
+      surface: 'compatibility',
+      record: (event) => this.telemetry?.recordErrorRedaction(event),
+    };
   }
 
   private workspaceId(): string {

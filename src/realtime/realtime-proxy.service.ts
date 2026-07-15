@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { randomUUID, createHash } from 'crypto';
@@ -18,6 +19,8 @@ import {
   GatewayApiKeyService,
 } from '../auth/gateway-api-key.service';
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import { redactErrorText } from '../security/error-redaction';
 
 type RealtimeCloseReason =
@@ -150,6 +153,8 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
     private readonly adapterHost: HttpAdapterHost,
     private readonly secretResolver: SecretReferenceResolverService,
     private readonly stateBackend?: StateBackendService,
+    @Optional()
+    private readonly telemetry?: TelemetryService,
   ) {}
 
   onModuleInit(): void {
@@ -1019,7 +1024,18 @@ export class RealtimeProxyService implements OnModuleInit, OnModuleDestroy {
 
   private sanitizeError(value: unknown): string {
     const raw = this.errorMessage(value);
-    return redactErrorText(raw, REALTIME_ERROR_REDACTION);
+    return redactErrorText(raw, {
+      ...REALTIME_ERROR_REDACTION,
+      telemetry: this.realtimeRedactionTelemetry(),
+    });
+  }
+
+  private realtimeRedactionTelemetry(): ErrorRedactionTelemetry | undefined {
+    if (!this.telemetry) return undefined;
+    return {
+      surface: 'realtime',
+      record: (event) => this.telemetry?.recordErrorRedaction(event),
+    };
   }
 
   private errorMessage(value: unknown): string {

@@ -1,3 +1,7 @@
+import type {
+  ErrorRedactionOptions,
+  ErrorRedactionTelemetry,
+} from '../security/error-redaction';
 import {
   extractErrorMessage,
   redactErrorBody,
@@ -14,23 +18,27 @@ const BATCH_ERROR_REDACTION = {
   sensitiveValueReplacement: '[redacted]',
 };
 
-export function extractBatchProviderError(value: unknown): string | null {
+export function extractBatchProviderError(
+  value: unknown,
+  telemetry?: ErrorRedactionTelemetry,
+): string | null {
   return extractErrorMessage(
     value,
-    { ...BATCH_ERROR_REDACTION, maxLength: 500 },
+    { ...BATCH_ERROR_REDACTION, maxLength: 500, telemetry },
     'provider_batch_error',
   );
 }
 
 export function sanitizeBatchProviderErrorBody<T extends BatchProviderErrorBody>(
   body: T,
+  telemetry?: ErrorRedactionTelemetry,
 ): T {
-  return redactErrorBody(body, BATCH_ERROR_REDACTION);
+  return redactErrorBody(body, { ...BATCH_ERROR_REDACTION, telemetry });
 }
 
 export function redactBatchProviderErrorText(
   text: string,
-  options: { maxLength?: number } = {},
+  options: ErrorRedactionOptions = {},
 ): string {
   return redactErrorText(text, { ...BATCH_ERROR_REDACTION, ...options });
 }

@@ -77,4 +77,31 @@ describe('provider error redaction', () => {
     expect(sanitized).not.toContain('sk-plain-secret-token');
     expect(sanitized).not.toContain('sk-bearer-secret-token');
   });
+
+  it('records provider redaction telemetry with bounded labels only', () => {
+    const telemetry = {
+      surface: 'provider' as const,
+      record: jest.fn(),
+    };
+
+    redactProviderErrorText(
+      'upstream rejected gw_sk_live_gateway_secret_123456 and gsk-provider-secret-token',
+      telemetry,
+    );
+
+    expect(telemetry.record).toHaveBeenCalledWith({
+      surface: 'provider',
+      reason: 'gateway_key',
+    });
+    expect(telemetry.record).toHaveBeenCalledWith({
+      surface: 'provider',
+      reason: 'provider_key',
+    });
+    expect(JSON.stringify(telemetry.record.mock.calls)).not.toContain(
+      'gw_sk_live_gateway_secret_123456',
+    );
+    expect(JSON.stringify(telemetry.record.mock.calls)).not.toContain(
+      'gsk-provider-secret-token',
+    );
+  });
 });

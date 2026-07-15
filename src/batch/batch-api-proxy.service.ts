@@ -17,6 +17,7 @@ import { normalizeRequestIdentityHeaders } from '../canonical/normalizers/reques
 import { gatewayApiKeyFromRequest } from '../auth/gateway-api-key-metadata';
 import type { GatewayApiKeyContext } from '../auth/gateway-api-key.service';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
+import type { ErrorRedactionTelemetry } from '../security/error-redaction';
 import { normalizeWorkspaceId } from '../workspaces/workspace-scope';
 import { BatchJobStoreService } from './batch-job-store.service';
 import { BatchProviderAdapterService } from './batch-provider-adapter.service';
@@ -81,7 +82,7 @@ export class BatchApiProxyService {
     if (this.isRecord(body)) {
       providerBatchId = this.firstString(body.id, body.batch_id, body.name);
       status = this.firstString(body.status, body.state);
-      error = extractBatchProviderError(body.error);
+      error = extractBatchProviderError(body.error, this.batchRedactionTelemetry());
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await this.jobs.createFromProvider({
           requestId: input.context.requestId,
@@ -93,7 +94,10 @@ export class BatchApiProxyService {
         });
       }
     } else if (response.statusCode >= 400) {
-      error = redactBatchProviderErrorText(String(body), { maxLength: 500 });
+      error = redactBatchProviderErrorText(String(body), {
+        maxLength: 500,
+        telemetry: this.batchRedactionTelemetry(),
+      });
     }
 
     await this.recordZeroUsage(input.context.apiKey);
@@ -136,9 +140,12 @@ export class BatchApiProxyService {
     let error: string | null = null;
     if (this.isRecord(body)) {
       await this.jobs.updateFromProvider(job, body);
-      error = extractBatchProviderError(body.error);
+      error = extractBatchProviderError(body.error, this.batchRedactionTelemetry());
     } else if (response.statusCode >= 400) {
-      error = redactBatchProviderErrorText(String(body), { maxLength: 500 });
+      error = redactBatchProviderErrorText(String(body), {
+        maxLength: 500,
+        telemetry: this.batchRedactionTelemetry(),
+      });
     }
 
     await this.recordZeroUsage(input.context.apiKey);
@@ -181,9 +188,12 @@ export class BatchApiProxyService {
     let error: string | null = null;
     if (this.isRecord(body)) {
       await this.jobs.updateFromProvider(job, body);
-      error = extractBatchProviderError(body.error);
+      error = extractBatchProviderError(body.error, this.batchRedactionTelemetry());
     } else if (response.statusCode >= 400) {
-      error = redactBatchProviderErrorText(String(body), { maxLength: 500 });
+      error = redactBatchProviderErrorText(String(body), {
+        maxLength: 500,
+        telemetry: this.batchRedactionTelemetry(),
+      });
     } else {
       job.status = 'cancelled';
       await this.jobs.save(job);
@@ -234,11 +244,14 @@ export class BatchApiProxyService {
     );
     const error =
       response.statusCode >= 400
-        ? redactBatchProviderErrorText(String(response.body), { maxLength: 500 })
+        ? redactBatchProviderErrorText(String(response.body), {
+          maxLength: 500,
+          telemetry: this.batchRedactionTelemetry(),
+        })
         : null;
     const publicBody =
       response.statusCode >= 400
-        ? sanitizeBatchProviderErrorBody(response.body)
+        ? sanitizeBatchProviderErrorBody(response.body, this.batchRedactionTelemetry())
         : response.body;
 
     await this.recordZeroUsage(input.context.apiKey);
@@ -532,9 +545,20 @@ export class BatchApiProxyService {
     body: Record<string, unknown> | Buffer | string,
     statusCode: number,
   ): Record<string, unknown> | Buffer | string {
-    if (statusCode >= 400) return sanitizeBatchProviderErrorBody(body);
-    if (this.isRecord(body) && body.error) return sanitizeBatchProviderErrorBody(body);
+    if (statusCode >= 400) {
+      return sanitizeBatchProviderErrorBody(body, this.batchRedactionTelemetry());
+    }
+    if (this.isRecord(body) && body.error) {
+      return sanitizeBatchProviderErrorBody(body, this.batchRedactionTelemetry());
+    }
     return body;
+  }
+
+  private batchRedactionTelemetry(): ErrorRedactionTelemetry {
+    return {
+      surface: 'batch',
+      record: (event) => this.telemetry.recordErrorRedaction(event),
+    };
   }
 
   private extractHeaders(req: Request): Record<string, string> {

@@ -26,6 +26,11 @@ import {
   type Span,
   type Attributes,
 } from '@opentelemetry/api';
+import type {
+  ErrorRedactionMetricInput,
+  ErrorRedactionReason,
+  ErrorRedactionSurface,
+} from '../security/error-redaction';
 
 export interface BusinessMetricLabels {
   tier: string;
@@ -108,6 +113,7 @@ export class TelemetryService {
   readonly streamLifecycleTotal: Counter;
   readonly dashboardAuthEvents: Counter;
   readonly dashboardLegacyTokenEvents: Counter;
+  readonly errorRedactionsTotal: Counter;
 
   // ── Histograms ────────────────────────────────────────
   readonly requestDuration: Histogram;
@@ -172,6 +178,10 @@ export class TelemetryService {
         unit: '{event}',
       },
     );
+    this.errorRedactionsTotal = this.meter.createCounter('siftgate_error_redactions_total', {
+      description: 'Error redaction events by bounded gateway surface and reason',
+      unit: '{event}',
+    });
 
     // Histograms
     this.requestDuration = this.meter.createHistogram('siftgate_request_duration_seconds', {
@@ -284,6 +294,13 @@ export class TelemetryService {
     });
   }
 
+  recordErrorRedaction(input: ErrorRedactionMetricInput): void {
+    this.errorRedactionsTotal.add(1, {
+      surface: this.safeErrorRedactionSurface(input.surface),
+      reason: this.safeErrorRedactionReason(input.reason),
+    });
+  }
+
   private recordTokens(
     value: number,
     attrs: { node: string; model: string; direction: string },
@@ -391,6 +408,28 @@ export class TelemetryService {
     const normalized = this.safeLabel(value, 'unknown');
     return ['bearer', 'query', 'unknown'].includes(normalized)
       ? normalized
+      : 'unknown';
+  }
+
+  private safeErrorRedactionSurface(value: unknown): ErrorRedactionSurface | 'unknown' {
+    const normalized = this.safeLabel(value, 'unknown');
+    return ['provider', 'batch', 'realtime', 'benchmark', 'compatibility'].includes(
+      normalized,
+    )
+      ? (normalized as ErrorRedactionSurface)
+      : 'unknown';
+  }
+
+  private safeErrorRedactionReason(value: unknown): ErrorRedactionReason | 'unknown' {
+    const normalized = this.safeLabel(value, 'unknown');
+    return [
+      'bearer_token',
+      'gateway_key',
+      'provider_key',
+      'sensitive_value',
+      'sensitive_field',
+    ].includes(normalized)
+      ? (normalized as ErrorRedactionReason)
       : 'unknown';
   }
 

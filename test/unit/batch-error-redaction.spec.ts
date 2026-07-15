@@ -55,6 +55,10 @@ function makeBatchProxy() {
     create: jest.fn((entity) => entity),
     save: jest.fn(async (entity) => entity),
   };
+  const telemetry = {
+    recordCallMetrics: jest.fn(),
+    recordErrorRedaction: jest.fn(),
+  };
   const service = new BatchApiProxyService(
     {
       nodes: [node],
@@ -66,12 +70,12 @@ function makeBatchProxy() {
     } as any,
     adapter as any,
     jobs as any,
-    { recordCallMetrics: jest.fn() } as any,
+    telemetry as any,
     { currentWorkspaceId: jest.fn().mockReturnValue('workspace-a') } as any,
     callLogs as any,
   );
 
-  return { adapter, callLogs, jobs, service };
+  return { adapter, callLogs, jobs, service, telemetry };
 }
 
 function batchContext(operation = 'create') {
@@ -95,7 +99,7 @@ function batchContext(operation = 'create') {
 
 describe('batch provider error redaction', () => {
   it('redacts object provider error bodies before public response and call-log metadata', async () => {
-    const { adapter, callLogs, service } = makeBatchProxy();
+    const { adapter, callLogs, service, telemetry } = makeBatchProxy();
     adapter.create.mockResolvedValue({
       statusCode: 400,
       contentType: 'application/json',
@@ -129,6 +133,21 @@ describe('batch provider error redaction', () => {
     expect(result.error).toContain('access_token=[redacted]');
     expect(callLogs.save).toHaveBeenCalledWith(
       expect.objectContaining({ error: result.error }),
+    );
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'batch',
+      reason: 'bearer_token',
+    });
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'batch',
+      reason: 'gateway_key',
+    });
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'batch',
+      reason: 'provider_key',
+    });
+    expect(JSON.stringify(telemetry.recordErrorRedaction.mock.calls)).not.toContain(
+      'gw_sk_live_gateway_secret_123456',
     );
     expectNoSecrets(result.body);
     expectNoSecrets(callLogs.save.mock.calls[0][0]);
@@ -178,9 +197,11 @@ describe('batch provider error redaction', () => {
       create: jest.fn((entity) => entity),
       save: jest.fn(async (entity) => entity),
     };
+    const telemetry = { recordErrorRedaction: jest.fn() };
     const store = new BatchJobStoreService(
       { currentWorkspaceId: jest.fn().mockReturnValue('workspace-a') } as any,
       batchJobs as any,
+      telemetry as any,
     );
 
     await store.createFromProvider({
@@ -206,6 +227,13 @@ describe('batch provider error redaction', () => {
     );
     const saved = batchJobs.save.mock.calls[0][0];
     expect(saved.error).toContain('[redacted-provider-key]');
+    expect(telemetry.recordErrorRedaction).toHaveBeenCalledWith({
+      surface: 'batch',
+      reason: 'bearer_token',
+    });
+    expect(JSON.stringify(telemetry.recordErrorRedaction.mock.calls)).not.toContain(
+      'gsk-provider-secret-123456',
+    );
     expectNoSecrets(saved);
   });
 
