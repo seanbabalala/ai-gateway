@@ -96,6 +96,49 @@ describe('ControlPlaneClientService', () => {
     global.fetch = originalFetch;
   });
 
+  it('times out control plane requests with the shared fetch helper', async () => {
+    jest.useFakeTimers();
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }),
+    );
+    global.fetch = fetchMock as never;
+
+    try {
+      const client = new ControlPlaneClientService(mockConfigService({
+        controlPlane: {
+          enabled: true,
+          url: 'https://cloud.example.com',
+          gateway_id: 'gw_prod',
+          registration_token: 'gw_reg_test',
+          telemetry: {
+            upload_interval_seconds: 30,
+            include_prompt: false,
+            include_response: false,
+          },
+        },
+      }));
+
+      const result = client.register();
+      await jest.advanceTimersByTimeAsync(10_000);
+
+      await expect(result).resolves.toBe(false);
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init).toEqual(expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }));
+    } finally {
+      global.fetch = originalFetch;
+      jest.useRealTimers();
+    }
+  });
+
   it('clears registration state after a successful config reload', async () => {
     let reloadHandler: (() => void) | undefined;
     const config = mockConfigService({

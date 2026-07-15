@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@ne
 import { Subscription } from 'rxjs';
 import { ConfigService } from '../config/config.service';
 import { SecretReferenceResolverService } from '../config/secret-reference-resolver.service';
+import { fetchWithTimeout } from '../http/fetch-with-timeout';
 import type {
   ControlPlaneRegistrationResponse,
   ControlPlaneTelemetryEvent,
@@ -188,31 +189,27 @@ export class ControlPlaneClientService implements OnModuleInit, OnModuleDestroy 
     const cp = this.config.controlPlane;
     const base = cp.url.replace(/\/+$/, '');
     const url = `${base}${path}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
 
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
-      });
+    const response = await fetchWithTimeout(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }, {
+      timeoutMs: 10_000,
+      timeoutMessage: 'Control plane request timed out after 10000ms.',
+    });
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
-      }
-
-      if (response.status === 204) {
-        return {} as T;
-      }
-      return (await response.json()) as T;
-    } finally {
-      clearTimeout(timeout);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
     }
+
+    if (response.status === 204) {
+      return {} as T;
+    }
+    return (await response.json()) as T;
   }
 }
