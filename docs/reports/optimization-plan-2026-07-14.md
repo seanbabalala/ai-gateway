@@ -28,7 +28,7 @@ Baseline commands run during this review and overnight loop:
 
 | Command | Result |
 | --- | --- |
-| `npm test -- --runInBand` | Passed: 106 suites and 1505 tests; optional Postgres row-lock suite skips without a test database |
+| `npm test -- --runInBand` | Passed: 106 suites and 1515 tests; optional Postgres row-lock suite skips without a test database |
 | `npm run build` | Passed for backend and runtime plugin types |
 | `npm run lint` | Passed with `--max-warnings=0` enforced after PR #56 |
 | `npm run public:check` | Passed |
@@ -42,8 +42,8 @@ Latest implemented optimization baseline before this document-only refresh:
 | Field | Value |
 | --- | --- |
 | Branch | `main` |
-| Local HEAD | `f2857eaf6eb960f72d6a38f25521e19eba619cc7` |
-| `origin/main` | `f2857eaf6eb960f72d6a38f25521e19eba619cc7` |
+| Local HEAD | `498425c9c0b779af9dc1788d43297967e681affa` |
+| `origin/main` | `498425c9c0b779af9dc1788d43297967e681affa` |
 | Worktree | Clean |
 
 Frontend build size baseline:
@@ -151,6 +151,8 @@ Completed PRs in this overnight hardening run:
 | #96 | `1356301d` | Add Postgres budget smoke workflow | Added a repeatable PostgreSQL row-lock smoke script and path-scoped service-container GitHub Actions workflow |
 | #97 | `fdab8182` | Refresh optimization plan after Postgres budget smoke CI | Updated this plan after the Postgres budget smoke CI baseline |
 | #98 | `f2857eaf` | Cover config atomic write failures | Added failure-injection coverage for restore validation, partial temp-write cleanup, and rename failure rollback |
+| #99 | `61b28217` | Refresh plan after config atomic failure tests | Updated this plan after the config atomic failure test baseline |
+| #100 | `498425c9` | Cover dashboard config mutation audit matrix | Added table-driven audit contract coverage for dashboard node, routing, and namespace config mutations |
 
 Every merged PR followed this loop:
 
@@ -198,6 +200,7 @@ unmerged branch.
 | 6 | `codex/budget-shared-backend-decision` | Decide and document when PostgreSQL row locks are sufficient versus when a Redis atomic reservation backend is required | Done in PR #94 | Docs/public/diff checks, GitHub checks |
 | 8 | `codex/postgres-budget-smoke-ci` | Promote the optional Postgres row-lock smoke into an opt-in CI/service-container path or a documented release gate | Done in PR #96 | Local smoke command path, docs/public/diff checks, path-scoped `postgres-budget-smoke` service-container GitHub check, full GitHub checks |
 | 9 | `codex/config-atomic-failure-tests` | Add failure-injection tests for atomic config writes, restore validation, and rollback after partial write errors | Done in PR #98 | Focused config tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
+| 10 | `codex/config-mutation-audit-matrix` | Add audit regression coverage for dashboard config mutation paths that write or restore config snapshots | Done in PR #100 | Focused dashboard controller tests, backend build, lint, full unit, docs/public/diff checks, GitHub checks |
 
 ## Deferred Conditional Future Items
 
@@ -211,7 +214,7 @@ auditable if deployment requirements change.
 
 ## Future One-Pass PR Queue
 
-The remaining work after PR #98 should be executed as one continuous
+The remaining work after PR #100 should be executed as one continuous
 trunk-based run: one branch, one small slice, focused validation, full required
 local checks, PR, green GitHub checks, merge, delete branch, and return local
 `main` to `origin/main` before taking the next row. Do not batch implementation
@@ -224,9 +227,7 @@ Wave 1 is complete.
 
 ### Wave 2: Cost, Data, And Config Safety
 
-| Order | Branch | Slice | Main files | Required validation |
-| ---: | --- | --- | --- | --- |
-| 10 | `codex/config-mutation-audit-matrix` | Add audit regression coverage for dashboard config mutation paths that write or restore config snapshots | config audit/dashboard tests | focused config-audit tests; docs/public checks if release text changes |
+Wave 2 is complete.
 
 ### Wave 3: Control, MCP, And Lifecycle Operations
 
@@ -961,7 +962,7 @@ Targets:
 | AGW-MCP-02 | Add MCP denial audit or telemetry visibility | P1 | MCP/Audit | Planned: `codex/mcp-denial-audit-events` |
 | AGW-CONF-01 | Add atomic config write helper | P1 | Config | Done on current `main` |
 | AGW-CONF-02 | Add atomic config write failure-injection tests | P1 | Config | Done in PR #98 |
-| AGW-CONF-03 | Add config mutation audit regression matrix | P1 | Config/Audit | Next: `codex/config-mutation-audit-matrix` |
+| AGW-CONF-03 | Add config mutation audit regression matrix | P1 | Config/Audit | Done in PR #100 |
 | AGW-DATA-01 | Document migrations-first production DB policy | P1 | Data | Done in PR #67 |
 | AGW-DATA-02 | Decide PostgreSQL vs Redis shared budget backend requirements | P1 | Data/Cost | Done in PR #94 |
 | AGW-DATA-03 | Promote Postgres row-lock smoke into CI or release gate | P1 | Data/CI | Done in PR #96 |
@@ -1074,11 +1075,13 @@ Completed:
   service-container CI workflow. Done in PR #96.
 - Add config restore failure-injection tests for validation-before-write,
   partial temp-write cleanup, and rename failure rollback. Done in PR #98.
+- Add dashboard config mutation audit regression coverage for node, routing,
+  and namespace write paths. Done in PR #100.
 
 Remaining:
 
-- Complete the Future One-Pass PR Queue in order, starting with the config
-  mutation audit regression matrix.
+- Complete the Future One-Pass PR Queue in order, starting with MCP denial
+  audit visibility.
 - Keep conditional implementation rows behind their decision/documentation PRs.
 - Refresh this plan after every merged implementation PR so baseline SHA,
   evidence, and remaining queue stay current.
