@@ -8,6 +8,7 @@ import {
   applyWorkspaceQueryScope,
   normalizeWorkspaceId,
 } from '../workspaces/workspace-scope';
+import { extractBatchProviderError } from './batch-error-redaction';
 import { batchDashboardItem } from './batch.types';
 import type { BatchDashboardResponse } from './batch.types';
 
@@ -177,7 +178,7 @@ export class BatchJobStoreService {
         failed: numberField(requestCounts.failed),
       },
       status: firstString(providerBody.status, providerBody.state) || 'validating',
-      error: sanitizeBatchError(providerBody.error),
+      error: extractBatchProviderError(providerBody.error),
       expiresAt: epochOrString(providerBody.expires_at),
     };
   }
@@ -200,22 +201,6 @@ function epochOrString(value: unknown): string | null {
     return new Date(value * 1000).toISOString();
   }
   return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-function sanitizeBatchError(value: unknown): string | null {
-  if (!value) return null;
-  const message =
-    typeof value === 'string'
-      ? value
-      : isRecord(value) && typeof value.message === 'string'
-        ? value.message
-        : isRecord(value) && typeof value.type === 'string'
-          ? value.type
-          : 'provider_batch_error';
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]')
-    .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-[redacted]')
-    .slice(0, 500);
 }
 
 function periodStart(period: string): Date | null {

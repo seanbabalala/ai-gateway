@@ -28,6 +28,11 @@ import type {
   BatchRequestContext,
   BatchTarget,
 } from './batch.types';
+import {
+  extractBatchProviderError,
+  redactBatchProviderErrorText,
+  sanitizeBatchProviderErrorBody,
+} from './batch-error-redaction';
 
 @Injectable()
 export class BatchApiProxyService {
@@ -68,6 +73,7 @@ export class BatchApiProxyService {
 
     const response = await this.adapter.create(node, input.body, input.context.requestId);
     const body = this.responseBody(response.body);
+    const publicBody = this.publicResponseBody(response.body, response.statusCode);
     let providerBatchId: string | null = null;
     let status: string | null = null;
     let error: string | null = null;
@@ -75,7 +81,7 @@ export class BatchApiProxyService {
     if (this.isRecord(body)) {
       providerBatchId = this.firstString(body.id, body.batch_id, body.name);
       status = this.firstString(body.status, body.state);
-      error = this.extractProviderError(body);
+      error = extractBatchProviderError(body.error);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await this.jobs.createFromProvider({
           requestId: input.context.requestId,
@@ -87,7 +93,7 @@ export class BatchApiProxyService {
         });
       }
     } else if (response.statusCode >= 400) {
-      error = this.sanitizeError(String(body));
+      error = redactBatchProviderErrorText(String(body), { maxLength: 500 });
     }
 
     await this.recordZeroUsage(input.context.apiKey);
@@ -102,7 +108,7 @@ export class BatchApiProxyService {
     return {
       statusCode: response.statusCode,
       contentType: response.contentType,
-      body: response.body,
+      body: publicBody,
       headers: response.headers,
       requestId: input.context.requestId,
       nodeId: target.nodeId,
@@ -126,12 +132,13 @@ export class BatchApiProxyService {
       input.context.requestId,
     );
     const body = this.responseBody(response.body);
+    const publicBody = this.publicResponseBody(response.body, response.statusCode);
     let error: string | null = null;
     if (this.isRecord(body)) {
       await this.jobs.updateFromProvider(job, body);
-      error = this.extractProviderError(body);
+      error = extractBatchProviderError(body.error);
     } else if (response.statusCode >= 400) {
-      error = this.sanitizeError(String(body));
+      error = redactBatchProviderErrorText(String(body), { maxLength: 500 });
     }
 
     await this.recordZeroUsage(input.context.apiKey);
@@ -146,7 +153,7 @@ export class BatchApiProxyService {
     return {
       statusCode: response.statusCode,
       contentType: response.contentType,
-      body: response.body,
+      body: publicBody,
       headers: response.headers,
       requestId: input.context.requestId,
       nodeId: job.node_id,
@@ -170,12 +177,13 @@ export class BatchApiProxyService {
       input.context.requestId,
     );
     const body = this.responseBody(response.body);
+    const publicBody = this.publicResponseBody(response.body, response.statusCode);
     let error: string | null = null;
     if (this.isRecord(body)) {
       await this.jobs.updateFromProvider(job, body);
-      error = this.extractProviderError(body);
+      error = extractBatchProviderError(body.error);
     } else if (response.statusCode >= 400) {
-      error = this.sanitizeError(String(body));
+      error = redactBatchProviderErrorText(String(body), { maxLength: 500 });
     } else {
       job.status = 'cancelled';
       await this.jobs.save(job);
@@ -193,7 +201,7 @@ export class BatchApiProxyService {
     return {
       statusCode: response.statusCode,
       contentType: response.contentType,
-      body: response.body,
+      body: publicBody,
       headers: response.headers,
       requestId: input.context.requestId,
       nodeId: job.node_id,
@@ -224,7 +232,14 @@ export class BatchApiProxyService {
       { batchId: job.provider_batch_id || job.request_id, fileId },
       input.context.requestId,
     );
-    const error = response.statusCode >= 400 ? this.sanitizeError(String(response.body)) : null;
+    const error =
+      response.statusCode >= 400
+        ? redactBatchProviderErrorText(String(response.body), { maxLength: 500 })
+        : null;
+    const publicBody =
+      response.statusCode >= 400
+        ? sanitizeBatchProviderErrorBody(response.body)
+        : response.body;
 
     await this.recordZeroUsage(input.context.apiKey);
     await this.logBatchCall({
@@ -238,7 +253,7 @@ export class BatchApiProxyService {
     return {
       statusCode: response.statusCode,
       contentType: response.contentType,
-      body: response.body,
+      body: publicBody,
       headers: response.headers,
       requestId: input.context.requestId,
       nodeId: job.node_id,
@@ -513,6 +528,15 @@ export class BatchApiProxyService {
     return body;
   }
 
+  private publicResponseBody(
+    body: Record<string, unknown> | Buffer | string,
+    statusCode: number,
+  ): Record<string, unknown> | Buffer | string {
+    if (statusCode >= 400) return sanitizeBatchProviderErrorBody(body);
+    if (this.isRecord(body) && body.error) return sanitizeBatchProviderErrorBody(body);
+    return body;
+  }
+
   private extractHeaders(req: Request): Record<string, string> {
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
@@ -535,22 +559,6 @@ export class BatchApiProxyService {
     if (!this.firstString(body.endpoint)) {
       throw new BadRequestException('Batch create requires endpoint.');
     }
-  }
-
-  private extractProviderError(body: Record<string, unknown>): string | null {
-    if (!body.error) return null;
-    if (typeof body.error === 'string') return this.sanitizeError(body.error);
-    if (this.isRecord(body.error) && typeof body.error.message === 'string') {
-      return this.sanitizeError(body.error.message);
-    }
-    return 'provider_batch_error';
-  }
-
-  private sanitizeError(value: string): string {
-    return value
-      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]')
-      .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-[redacted]')
-      .slice(0, 500);
   }
 
   private firstString(...values: unknown[]): string | null {
