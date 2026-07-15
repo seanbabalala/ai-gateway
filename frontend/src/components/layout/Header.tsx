@@ -71,7 +71,12 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
         )}
 
         {/* Search input */}
-        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2.5 rounded-lg bg-[var(--background-secondary)] px-3.5 py-2 shadow-[0_1px_2px_rgba(5,46,36,0.05)] transition-all duration-200 focus-within:-translate-y-0.5 focus-within:shadow-[0_14px_32px_rgba(5,46,36,0.1)]">
+        <form
+          role="search"
+          aria-label={t('header.searchLabel')}
+          onSubmit={handleSearchSubmit}
+          className="flex items-center gap-2.5 rounded-lg bg-[var(--background-secondary)] px-3.5 py-2 shadow-[0_1px_2px_rgba(5,46,36,0.05)] transition-all duration-200 focus-within:-translate-y-0.5 focus-within:shadow-[0_14px_32px_rgba(5,46,36,0.1)]"
+        >
           <Search className="h-3.5 w-3.5 text-[var(--foreground-dim)]" />
           <input
             ref={searchRef}
@@ -79,6 +84,7 @@ export function Header({ onToggleSidebar, showHamburger }: HeaderProps) {
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
             placeholder={t('header.searchPlaceholder')}
+            aria-label={t('header.searchLabel')}
             className="w-40 sm:w-56 bg-transparent text-[13px] text-[var(--foreground)] placeholder:text-[var(--foreground-dim)] outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center rounded-md bg-[var(--background-tertiary)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--foreground-dim)]">

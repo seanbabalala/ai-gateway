@@ -12,6 +12,7 @@
     "auth:check": "node scripts/check-auth-fail-closed.mjs",
     "sse:check": "node scripts/check-sse-cookie-first.mjs",
     "fcp:check": "node scripts/check-first-paint-smoke.mjs",
+    "a11y:check": "node scripts/check-route-a11y-smoke.mjs",
     "route-explanation:check": "node scripts/check-route-explanation.mjs",
     "traffic-experiments:check": "node scripts/check-traffic-experiments.mjs",
     "shadow-report:check": "node scripts/check-shadow-report.mjs",
@@ -33,7 +34,7 @@
     "budget-scopes:check": "node scripts/check-budget-scopes.mjs",
     "onboarding:check": "node scripts/check-onboarding.mjs",
     "sidebar:check": "node scripts/check-sidebar-scroll.mjs",
-    "test": "npm run i18n:check && npm run routing:check && npm run auth:check && npm run sse:check && npm run fcp:check && npm run route-explanation:check && npm run traffic-experiments:check && npm run shadow-report:check && npm run benchmark:check && npm run guardrails:check && npm run provider-catalog:check && npm run provider-logos:check && npm run api-keys:check && npm run playground:check && npm run sessions:check && npm run mcp:check && npm run agent-profiles:check && npm run agent-platform:check && npm run cost-platform:check && npm run semantic-platform:check && npm run batches:check && npm run evals:check && npm run namespaces:check && npm run budget-scopes:check && npm run onboarding:check && npm run sidebar:check",
+    "test": "npm run i18n:check && npm run routing:check && npm run auth:check && npm run sse:check && npm run fcp:check && npm run a11y:check && npm run route-explanation:check && npm run traffic-experiments:check && npm run shadow-report:check && npm run benchmark:check && npm run guardrails:check && npm run provider-catalog:check && npm run provider-logos:check && npm run api-keys:check && npm run playground:check && npm run sessions:check && npm run mcp:check && npm run agent-profiles:check && npm run agent-platform:check && npm run cost-platform:check && npm run semantic-platform:check && npm run batches:check && npm run evals:check && npm run namespaces:check && npm run budget-scopes:check && npm run onboarding:check && npm run sidebar:check",
     "preview": "vite preview",
     "batches:check": "node scripts/check-batches.mjs"
   },
