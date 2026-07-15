@@ -5,6 +5,7 @@ import * as yaml from 'js-yaml';
 import {
   buildCatalogSyncStatus,
   catalogSyncConfig,
+  CatalogSyncService,
   enabledCatalogSyncAdapters,
   syncCatalogProvider,
   supportedCatalogSyncAdapters,
@@ -13,8 +14,14 @@ import type {
   CatalogInternalMaterialization,
   ProviderCatalog,
 } from '../../src/catalog/catalog.types';
+import { mockConfigService } from '../helpers';
 
 describe('catalog sync', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
   const catalog: ProviderCatalog = {
     version: 1,
     generated_at: '2026-05-05T00:00:00.000Z',
@@ -211,6 +218,39 @@ describe('catalog sync', () => {
       stale: false,
       canonical_model_count: 1,
     });
+  });
+
+  it('clears scheduled sync timers and reload subscriptions on module destroy', async () => {
+    jest.useFakeTimers();
+    const unsubscribe = jest.fn();
+    const config = mockConfigService({
+      catalog: {
+        sync: {
+          enabled: true,
+          interval_minutes: 1,
+          run_on_startup: false,
+          adapters: { openrouter: { enabled: true } },
+        },
+      },
+    });
+    config.getFullConfig = jest.fn().mockReturnValue({
+      catalog: config.catalog,
+    });
+    config.onReload = jest.fn().mockReturnValue({ unsubscribe });
+    const service = new CatalogSyncService(config as any);
+    const syncSpy = jest
+      .spyOn(service, 'syncEnabledProviders')
+      .mockResolvedValue([]);
+
+    service.onModuleInit();
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+
+    service.onModuleDestroy();
+    await jest.advanceTimersByTimeAsync(180_000);
+
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces stale warnings when automatic pricing has not synced recently', () => {

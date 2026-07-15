@@ -70,6 +70,37 @@ describe('CircuitBreakerService — CLOSED → OPEN', () => {
   });
 });
 
+describe('CircuitBreakerService — lifecycle', () => {
+  it('clears Redis state sync intervals on module destroy', async () => {
+    jest.useFakeTimers();
+    const stateBackend = {
+      isRedisConfigured: jest.fn().mockReturnValue(true),
+      getHashAllJson: jest.fn().mockResolvedValue(new Map()),
+    };
+    const config = {
+      state: { redis: { sync_interval_ms: 1000 } },
+    };
+    const cb = new CircuitBreakerService(
+      undefined as any,
+      undefined as any,
+      stateBackend as any,
+      config as any,
+    );
+
+    try {
+      await cb.onModuleInit();
+      expect(stateBackend.getHashAllJson).toHaveBeenCalledTimes(1);
+
+      cb.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(3_000);
+
+      expect(stateBackend.getHashAllJson).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 // ═══════════════════════════════════════════════════════════
 // OPEN → HALF_OPEN (cooldown)
 // ═══════════════════════════════════════════════════════════

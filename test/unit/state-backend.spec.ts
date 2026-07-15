@@ -20,6 +20,10 @@ function redisConfig(policy: 'fail_open' | 'fail_closed' = 'fail_open') {
 }
 
 describe('StateBackendService', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('uses memory backend by default for JSON state and rate limits', async () => {
     const state = new StateBackendService(mockConfigService());
 
@@ -162,5 +166,20 @@ describe('StateBackendService', () => {
       ttl_seconds: 45,
       shared: true,
     });
+  });
+
+  it('clears Redis recovery probes on module destroy', async () => {
+    jest.useFakeTimers();
+    const state = new StateBackendService(redisConfig());
+    const redis = { ping: jest.fn().mockResolvedValue('PONG') };
+    (state as any).redis = redis;
+
+    await state.onModuleInit();
+    expect(redis.ping).toHaveBeenCalledTimes(1);
+
+    state.onModuleDestroy();
+    await jest.advanceTimersByTimeAsync(3_000);
+
+    expect(redis.ping).toHaveBeenCalledTimes(1);
   });
 });

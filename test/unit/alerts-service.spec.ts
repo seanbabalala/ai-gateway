@@ -157,4 +157,24 @@ describe('AlertService', () => {
     const events = alerts.getDashboardSnapshot().recent.map((item) => item.event);
     expect(events).toEqual(expect.arrayContaining(['error_spike', 'latency_spike']));
   });
+
+  it('clears pending drain timers on module destroy', async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as any;
+    const alerts = makeAlerts();
+
+    alerts.emit({
+      type: 'node_down',
+      severity: 'critical',
+      message: 'Node down: openai',
+      dedupeKey: 'openai',
+      details: { node_id: 'openai' },
+    });
+
+    alerts.onModuleDestroy();
+    await jest.advanceTimersByTimeAsync(1);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

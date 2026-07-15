@@ -318,4 +318,31 @@ describe('EmbeddingBatchingService', () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain('missing item index 1');
   });
+
+  it('clears queued batch timers and rejects pending entries on module destroy', async () => {
+    const service = makeService({ window_ms: 50, timeout_ms: 1000 });
+    const dispatch = jest.fn();
+
+    const pending: Promise<Error> = service.enqueue(
+      makeRequest('hello'),
+      'openai',
+      'text-embedding-3-small',
+      routingMeta,
+      dispatch,
+    ).then(
+      () => {
+        throw new Error('Expected embedding batch request to reject.');
+      },
+      (error) => error as Error,
+    );
+
+    service.onModuleDestroy();
+
+    const error = await pending;
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toContain('shutting down');
+
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });

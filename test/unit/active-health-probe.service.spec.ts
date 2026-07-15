@@ -62,6 +62,31 @@ describe('ActiveHealthProbeService', () => {
     expect(status.last_checked_at).toBeNull();
   });
 
+  it('clears scheduled probe intervals on module destroy', async () => {
+    jest.useFakeTimers();
+    const { service } = makeService([
+      makeNode({
+        health_check: {
+          enabled: true,
+          method: 'GET',
+          path: '/ready',
+          interval_seconds: 1,
+        },
+      }),
+    ]);
+    const probeSpy = jest
+      .spyOn(service, 'probeNode')
+      .mockResolvedValue(service.getNodeStatus('openai'));
+
+    service.onModuleInit();
+    expect(probeSpy).toHaveBeenCalledTimes(1);
+
+    service.onModuleDestroy();
+    await jest.advanceTimersByTimeAsync(3_000);
+
+    expect(probeSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('records a successful HEAD probe without sending a body', async () => {
     const fetchMock = mockFetchResponse(204);
     global.fetch = fetchMock as any;
