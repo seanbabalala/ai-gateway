@@ -204,7 +204,7 @@ export const BUILTIN_COMPATIBILITY_PROFILES: ProviderCompatibilityProfile[] = [
     streaming_strategy: 'openai_compatible',
     multipart_strategy: 'unsupported',
     async_job_strategy: 'unsupported',
-    supported_source_formats: ['chat_completions', 'realtime', 'batch'],
+    supported_source_formats: [...TEXT_SOURCES, 'realtime', 'batch'],
     supported_modalities: ['text', 'vision', 'realtime', 'batch'],
     passthrough_fields: OPENAI_FIELDS,
     downgraded_fields: ['reasoning', 'thinking_config'],

@@ -148,10 +148,13 @@ export interface CanonicalStructuredOutput {
 
 // ===== Reasoning / Thinking =====
 export type CanonicalReasoningEffort =
+  | 'none'
   | 'minimal'
   | 'low'
   | 'medium'
   | 'high'
+  | 'xhigh'
+  | 'max'
   | 'unknown';
 
 export type ReasoningSource =

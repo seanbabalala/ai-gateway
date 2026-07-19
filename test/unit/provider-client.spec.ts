@@ -1416,6 +1416,7 @@ describe('ProviderClientService', () => {
         parallel_tool_calls: true,
         truncation: 'auto',
         include: ['reasoning.encrypted_content'],
+        reasoning: { effort: 'ultra' },
         metadata: { codex: 'true' },
         extra_native_field: { preserved: true },
       };
@@ -1446,6 +1447,37 @@ describe('ProviderClientService', () => {
   });
 
   describe('denormalizeRequest — native chat completions passthrough', () => {
+    it('should preserve provider-specific reasoning efforts on native Chat routes', () => {
+      const svc = makeService();
+      const canonical = makeCanonical({
+        reasoning_effort: 'unknown',
+        reasoning: {
+          requested: true,
+          source: 'chat_completions.reasoning_effort',
+          effort: 'unknown',
+          raw: 'ultra',
+        },
+        metadata: {
+          source_format: 'chat_completions',
+          original_model: 'gpt-5.6',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.6',
+            messages: [{ role: 'user', content: 'Solve carefully' }],
+            reasoning_effort: 'ultra',
+          },
+        },
+      });
+
+      const body = (svc as any).denormalizeRequest(
+        canonical,
+        'chat_completions',
+        'gpt-5.6',
+      );
+
+      expect(body.reasoning_effort).toBe('ultra');
+    });
+
     it('should preserve Chat-specific top-level fields for chat → chat forwarding', () => {
       const svc = makeService();
       const canonical = makeCanonical({

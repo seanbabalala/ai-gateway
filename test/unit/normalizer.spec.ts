@@ -297,6 +297,27 @@ describe('ChatCompletionsNormalizer', () => {
     });
   });
 
+  it.each(['none', 'xhigh', 'max'] as const)(
+    'should normalize GPT-5.6 Chat reasoning effort %s',
+    (effort) => {
+      const result = normalizer.normalize(
+        {
+          model: 'gpt-5.6',
+          messages: [{ role: 'user', content: 'Solve carefully' }],
+          reasoning_effort: effort,
+        },
+        headers,
+      );
+
+      expect(result.reasoning_effort).toBe(effort);
+      expect(result.reasoning).toMatchObject({
+        requested: true,
+        source: 'chat_completions.reasoning_effort',
+        effort,
+      });
+    },
+  );
+
   it('should preserve Gemini thinking_config as canonical thinking intent', () => {
     const result = normalizer.normalize(
       {
@@ -453,6 +474,27 @@ describe('ResponsesNormalizer', () => {
       effort: 'medium',
     });
   });
+
+  it.each(['none', 'xhigh', 'max'] as const)(
+    'should normalize GPT-5.6 Responses reasoning effort %s',
+    (effort) => {
+      const result = normalizer.normalize(
+        {
+          model: 'gpt-5.6',
+          input: 'Plan a migration',
+          reasoning: { effort },
+        },
+        headers,
+      );
+
+      expect(result.reasoning_effort).toBe(effort);
+      expect(result.reasoning).toMatchObject({
+        requested: true,
+        source: 'responses.reasoning',
+        effort,
+      });
+    },
+  );
 
   it('should normalize array input with message items', () => {
     const body = {

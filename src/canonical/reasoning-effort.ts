@@ -25,7 +25,18 @@ export interface ReasoningForwarding {
   reason: string | null;
 }
 
-const OPENAI_EFFORTS = new Set(['minimal', 'low', 'medium', 'high']);
+// The union spans currently supported OpenAI model families. Individual models
+// may support only a subset (for example, GPT-5.6 supports none, low, medium,
+// high, xhigh, and max, while older GPT-5 models may expose minimal).
+const OPENAI_EFFORTS = new Set([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+]);
 
 export function normalizeReasoningFromBody(
   sourceFormat: SourceFormat,
@@ -48,7 +59,12 @@ export function toOpenAiChatReasoning(
   if (!intent?.requested) return {};
 
   if (intent.source === 'chat_completions.reasoning_effort') {
-    const effort = normalizeEffort(intent.raw) || intent.effort;
+    // Native Chat forwarding must remain transparent for provider extensions.
+    // Unknown values are deliberately not mapped across protocols below.
+    const rawEffort = rawStringEffort(intent.raw);
+    if (rawEffort) return { reasoning_effort: rawEffort };
+
+    const effort = intent.effort;
     return effort && effort !== 'unknown' ? { reasoning_effort: effort } : {};
   }
 
@@ -186,10 +202,11 @@ export function resolveReasoningForwarding(
   }
 
   if (targetProtocol === 'messages') {
+    const mappedBudget = budgetTokensForEffort(intent.effort);
     const canMap = Boolean(
       intent.budget_tokens ||
         intent.source === 'messages.thinking' ||
-        (intent.effort && intent.effort !== 'unknown'),
+        (mappedBudget !== undefined && mappedBudget > 0),
     );
     return {
       ...base,
@@ -202,10 +219,11 @@ export function resolveReasoningForwarding(
   }
 
   if (targetProtocol === 'gemini') {
+    const mappedBudget = budgetTokensForEffort(intent.effort);
     const canMap = Boolean(
-      intent.budget_tokens ||
+      intent.budget_tokens !== undefined ||
         intent.source === 'gemini.thinking_config' ||
-        (intent.effort && intent.effort !== 'unknown'),
+        mappedBudget !== undefined,
     );
     return {
       ...base,
@@ -235,6 +253,8 @@ export function budgetTokensForEffort(
   effort?: CanonicalReasoningEffort,
 ): number | undefined {
   switch (effort) {
+    case 'none':
+      return 0;
     case 'minimal':
     case 'low':
       return 1024;
@@ -392,6 +412,12 @@ function normalizeEffort(value: unknown): CanonicalReasoningEffort | undefined {
   const normalized = value.trim().toLowerCase();
   if (!OPENAI_EFFORTS.has(normalized)) return 'unknown';
   return normalized as CanonicalReasoningEffort;
+}
+
+function rawStringEffort(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
