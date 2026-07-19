@@ -75,6 +75,14 @@ describe('OpenAPI documentation endpoints', () => {
     expect(res.body.components.schemas.ErrorDetailDto.properties.request_id).toMatchObject({
       type: 'string',
     });
+    expect(
+      res.body.components.schemas.ChatCompletionsRequestDto.properties
+        .reasoning_effort.enum,
+    ).toEqual(expect.arrayContaining(['none', 'xhigh', 'max']));
+    expect(
+      res.body.components.schemas.ResponsesRequestDto.properties.reasoning
+        .properties.effort.enum,
+    ).toEqual(expect.arrayContaining(['none', 'xhigh', 'max']));
 
     const spec = JSON.stringify(res.body);
     expect(spec).not.toContain('mock-openai-key');

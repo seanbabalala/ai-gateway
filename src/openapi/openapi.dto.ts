@@ -352,6 +352,14 @@ export class ChatCompletionsRequestDto {
   top_p?: number;
 
   @ApiPropertyOptional({
+    enum: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+    example: 'max',
+    description:
+      'OpenAI reasoning effort. Supported values are model-specific; GPT-5.6 supports none, low, medium, high, xhigh, and max.',
+  })
+  reasoning_effort?: string;
+
+  @ApiPropertyOptional({
     oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
     example: ['END'],
   })
@@ -407,6 +415,21 @@ export class ResponsesRequestDto {
 
   @ApiPropertyOptional({ example: 0.7 })
   temperature?: number;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    properties: {
+      effort: {
+        type: 'string',
+        enum: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+      },
+    },
+    example: { effort: 'max' },
+    description:
+      'OpenAI Responses reasoning controls. Supported effort values are model-specific; GPT-5.6 supports none, low, medium, high, xhigh, and max.',
+  })
+  reasoning?: Record<string, unknown>;
 
   @ApiPropertyOptional({
     type: 'array',

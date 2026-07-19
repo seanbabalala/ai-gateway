@@ -216,6 +216,25 @@ describe('ChatCompletionsDenormalizer', () => {
       expect(result.reasoning_effort).toBe('high');
     });
 
+    it.each(['none', 'xhigh', 'max'] as const)(
+      'should map GPT-5.6 Responses effort %s to Chat reasoning_effort',
+      (effort) => {
+        const canonical = makeCanonicalRequest({
+          reasoning_effort: effort,
+          reasoning: {
+            requested: true,
+            source: 'responses.reasoning',
+            effort,
+            raw: { effort },
+          },
+        });
+
+        const result = denorm.denormalize(canonical, 'gpt-5.6');
+
+        expect(result.reasoning_effort).toBe(effort);
+      },
+    );
+
     it('should preserve Gemini thinking_config for compatible chat forwarding', () => {
       const raw = { thinking_budget: 1024, include_thoughts: false };
       const canonical = makeCanonicalRequest({
@@ -420,6 +439,25 @@ describe('ResponsesDenormalizer', () => {
 
       expect(result.reasoning).toEqual({ effort: 'medium' });
     });
+
+    it.each(['none', 'xhigh', 'max'] as const)(
+      'should map GPT-5.6 Chat effort %s to Responses reasoning',
+      (effort) => {
+        const canonical = makeCanonicalRequest({
+          reasoning_effort: effort,
+          reasoning: {
+            requested: true,
+            source: 'chat_completions.reasoning_effort',
+            effort,
+            raw: effort,
+          },
+        });
+
+        const result = denorm.denormalize(canonical, 'gpt-5.6');
+
+        expect(result.reasoning).toEqual({ effort });
+      },
+    );
 
     it('should convert tools to function type', () => {
       const canonical = makeCanonicalRequest({

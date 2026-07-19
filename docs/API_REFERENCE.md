@@ -177,6 +177,12 @@ v1.0 adds privacy-safe canonical reasoning intent so production clients can ask 
 | `/v1/messages` | `thinking.type=enabled`, `thinking.budget_tokens` | Passed through for native Messages targets; cross-protocol forwarding keeps the original intent in canonical metadata and marks downgraded when no safe effort mapping exists |
 | OpenAI-compatible Gemini-style Chat | `thinking_config` | Preserved for compatible Chat targets as `thinking_config`; other protocols record the downgrade instead of inventing provider-specific values |
 
+Canonical OpenAI effort levels include `none`, `minimal`, `low`, `medium`,
+`high`, `xhigh`, and `max`; actual support remains model-specific. GPT-5.6 uses
+`none`, `low`, `medium`, `high`, `xhigh`, and `max`. Provider-specific values
+are preserved only on native same-protocol routes and are not guessed across
+protocols.
+
 Example Chat request:
 
 ```json
