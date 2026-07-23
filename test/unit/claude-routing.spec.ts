@@ -99,6 +99,110 @@ describe('Claude routing compatibility', () => {
     expect(route.tier).toBe('direct');
   });
 
+  it('prefers a duplicate Messages-native model without changing Chat routing', async () => {
+    const config = new ConfigService();
+    const duplicateModel = 'kiro/claude-opus-4.8';
+    config.getFullConfig().nodes.unshift({
+      id: 'kiro-chat',
+      name: 'KIRO Chat',
+      protocol: 'chat_completions',
+      base_url: 'http://127.0.0.1:2101',
+      endpoint: '/v1/chat/completions',
+      api_key: 'test-key',
+      models: [duplicateModel],
+      timeout_ms: 1000,
+    });
+    config.getFullConfig().nodes.push({
+      id: 'kiro-anthropic',
+      name: 'KIRO Anthropic',
+      protocol: 'messages',
+      base_url: 'http://127.0.0.1:2101',
+      endpoint: '/v1/messages',
+      api_key: 'test-key',
+      models: [duplicateModel],
+      timeout_ms: 1000,
+      model_aliases: {
+        'kiro-opus-4.8': duplicateModel,
+      },
+    });
+
+    const capabilityService = {
+      resolveModelRoutingCapabilities: jest.fn().mockReturnValue({
+        max_context_tokens: undefined,
+        structured_output: null,
+      }),
+    };
+    const service = new PipelineService(
+      config,
+      capabilityService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      createNoOpHookExecutor() as never,
+      new TelemetryService(),
+      { enqueue: jest.fn() } as never,
+      {} as never,
+      { create: jest.fn(), save: jest.fn() } as never,
+      { currentWorkspaceId: jest.fn(() => 'default-workspace') } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(config.resolveModel(duplicateModel)).toEqual({
+      nodeId: 'kiro-chat',
+      model: duplicateModel,
+    });
+
+    const messagesRoute = await (service as any).resolveSmartRoute(
+      makeMessagesRequest({
+        metadata: {
+          source_format: 'messages',
+          original_model: duplicateModel,
+          raw_headers: {
+            'user-agent': 'ai-sdk/anthropic',
+            'anthropic-beta': 'fast-mode-2026-02-01',
+          },
+          raw_body: {
+            model: duplicateModel,
+            messages: [{ role: 'user', content: 'Hello!' }],
+          },
+        },
+      }),
+    );
+
+    expect(messagesRoute.route.primary).toEqual({
+      node: 'kiro-anthropic',
+      model: duplicateModel,
+    });
+
+    const chatRoute = await (service as any).resolveSmartRoute({
+      messages: [{ role: 'user', content: 'Hello!' }],
+      stream: false,
+      metadata: {
+        source_format: 'chat_completions',
+        original_model: duplicateModel,
+        raw_headers: {},
+        raw_body: {
+          model: duplicateModel,
+          messages: [{ role: 'user', content: 'Hello!' }],
+        },
+      },
+    });
+
+    expect(chatRoute.route.primary).toEqual({
+      node: 'kiro-chat',
+      model: duplicateModel,
+    });
+  });
+
   it('does not pin the profile-scoped Claude Code virtual model to direct Claude routing', async () => {
     const config = new ConfigService();
     const capabilityService = {

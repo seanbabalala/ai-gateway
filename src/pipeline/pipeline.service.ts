@@ -5407,12 +5407,19 @@ export class PipelineService {
     }
 
     if (requestedModel && requestedModel !== 'auto') {
+      // A provider may expose the same public model through multiple protocols.
+      // Prefer an exact Messages-native registration for Messages ingress while
+      // leaving the default resolver order unchanged for Chat/Responses clients.
+      if (this.findExactMessagesNode(requestedModel)) {
+        return true;
+      }
+
       const resolved = this.config.resolveModel(requestedModel);
       const resolvedNode = resolved
         ? this.config.getNode(resolved.nodeId)
         : undefined;
-      if (resolvedNode && resolvedNode.protocol !== 'messages') {
-        return false;
+      if (resolvedNode) {
+        return resolvedNode.protocol === 'messages';
       }
     }
 
@@ -5432,8 +5439,22 @@ export class PipelineService {
     return ['claude', 'opus', 'sonnet', 'haiku'].includes(model) || model.startsWith('claude-');
   }
 
+  private findExactMessagesNode(requestedModel: string): NodeConfig | undefined {
+    return this.config.nodes.find((node) => {
+      if (node.protocol !== 'messages') return false;
+      if (node.models.includes(requestedModel)) return true;
+      const aliasTarget = node.model_aliases?.[requestedModel];
+      return Boolean(aliasTarget && node.models.includes(aliasTarget));
+    });
+  }
+
   private findPinnedMessagesNode(requestedModel?: string): NodeConfig | undefined {
     if (requestedModel && requestedModel !== 'auto') {
+      const exactNode = this.findExactMessagesNode(requestedModel);
+      if (exactNode) {
+        return exactNode;
+      }
+
       const resolved = this.config.resolveModel(requestedModel);
       const resolvedNode = resolved ? this.config.getNode(resolved.nodeId) : undefined;
       if (resolvedNode?.protocol === 'messages') {
@@ -5445,6 +5466,15 @@ export class PipelineService {
   }
 
   private resolvePinnedMessagesModel(requestedModel: string, nodeId: string): string {
+    const node = this.config.getNode(nodeId);
+    if (node?.models.includes(requestedModel)) {
+      return requestedModel;
+    }
+    const nodeAlias = node?.model_aliases?.[requestedModel];
+    if (nodeAlias && node?.models.includes(nodeAlias)) {
+      return nodeAlias;
+    }
+
     const resolved = this.config.resolveModel(requestedModel);
     if (resolved?.nodeId === nodeId) {
       return resolved.model;
