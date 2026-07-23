@@ -84,6 +84,7 @@ export class ProviderClientService {
     'interleaved-thinking-2025-05-14',
     'context-management-2025-06-27',
     'context-1m-2025-08-07',
+    'fast-mode-2026-02-01',
   ]);
 
   private readonly chatDenorm = new ChatCompletionsDenormalizer();

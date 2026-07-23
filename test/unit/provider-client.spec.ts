@@ -1570,12 +1570,12 @@ describe('ProviderClientService', () => {
         metadata: {
           source_format: 'messages' as const,
           raw_headers: {
-            'anthropic-beta': 'claude-code-20250219,some-unknown-beta,context-management-2025-06-27',
+            'anthropic-beta': 'claude-code-20250219,some-unknown-beta,context-management-2025-06-27,fast-mode-2026-02-01',
           },
         },
       };
       const headers = (svc as any).extractNativeMessageHeaders(canonical);
-      expect(headers['anthropic-beta']).toBe('claude-code-20250219,context-management-2025-06-27');
+      expect(headers['anthropic-beta']).toBe('claude-code-20250219,context-management-2025-06-27,fast-mode-2026-02-01');
     });
 
     it('should not set anthropic-beta if all betas are filtered out', () => {
