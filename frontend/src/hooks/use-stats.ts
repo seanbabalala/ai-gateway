@@ -17,10 +17,12 @@ export function useStats(scope?: ApiKeyFilterScope) {
     queryKey: ['stats', key],
     queryFn: () =>
       apiGet<StatsResponse>('/api/dashboard/stats', {
+        period: '1d',
         api_key_id: scope?.id,
         api_key: scope?.id ? undefined : scope?.name,
         namespace: scope?.namespaceId,
       }),
-    refetchInterval: 10_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }

@@ -658,6 +658,8 @@ function makeDashboard(overrides: Record<string, any> = {}) {
     overrides.mcp as any,
     memberships as any,
     invitations as any,
+    overrides.credentialPool as any,
+    overrides.sqliteAnalytics as any,
   );
 
   return {
@@ -707,16 +709,20 @@ describe("DashboardController — getStats", () => {
   it("should return aggregated stats", async () => {
     const qb = mockQueryBuilder(
       {
+        totalCalls: "10",
+        successCalls: "8",
         totalInputTokens: "1000",
         totalOutputTokens: "500",
         totalCost: "0.5",
         avgLatency: "200",
         uniqueSessions: "3",
+        recentCalls: "4",
+        recentCost: "0.2",
+        recentTokens: "600",
       },
       [{ tier: "standard", count: "5" }],
     );
     const repo = mockRepo(qb);
-    repo.count.mockResolvedValueOnce(10).mockResolvedValueOnce(8);
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const result = await controller.getStats();
@@ -731,14 +737,18 @@ describe("DashboardController — getStats", () => {
 
   it("should handle zero calls gracefully", async () => {
     const qb = mockQueryBuilder({
+      totalCalls: "0",
+      successCalls: "0",
       totalInputTokens: null,
       totalOutputTokens: null,
       totalCost: null,
       avgLatency: null,
       uniqueSessions: null,
+      recentCalls: null,
+      recentCost: null,
+      recentTokens: null,
     });
     const repo = mockRepo(qb);
-    repo.count.mockResolvedValue(0);
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const result = await controller.getStats();
@@ -746,6 +756,51 @@ describe("DashboardController — getStats", () => {
     expect(result.total.calls).toBe(0);
     expect(result.total.successRate).toBe(0);
     expect(result.total.inputTokens).toBe(0);
+  });
+
+  it("runs SQLite stats in the analytics worker and caches the result", async () => {
+    const sqliteAnalytics = {
+      available: true,
+      queryAll: jest.fn().mockResolvedValue([
+        {
+          kind: "total",
+          groupKey: "",
+          totalCalls: 10,
+          successCalls: 9,
+          totalInputTokens: 100,
+          totalOutputTokens: 50,
+          totalCost: 0.25,
+          avgLatency: 120,
+          uniqueSessions: 3,
+          cacheCreationTokens: 5,
+          cacheReadTokens: 20,
+          recentCalls: 10,
+          recentCost: 0.25,
+          recentTokens: 150,
+        },
+        { kind: "tier", groupKey: "standard", totalCalls: 10 },
+        {
+          kind: "node",
+          groupKey: "openai",
+          totalCalls: 10,
+          avgLatency: 120,
+        },
+      ]),
+    };
+    const { controller, callLogRepo } = makeDashboard({ sqliteAnalytics });
+
+    const first = await controller.getStats();
+    const second = await controller.getStats();
+
+    expect(first.period).toBe(1);
+    expect(first.total.calls).toBe(10);
+    expect(first.tierDistribution).toEqual([{ tier: "standard", count: 10 }]);
+    expect(first.nodeDistribution).toEqual([
+      { nodeId: "openai", count: 10, avgLatencyMs: 120 },
+    ]);
+    expect(second).toBe(first);
+    expect(sqliteAnalytics.queryAll).toHaveBeenCalledTimes(1);
+    expect(callLogRepo.createQueryBuilder).not.toHaveBeenCalled();
   });
 });
 
@@ -1131,22 +1186,28 @@ describe("DashboardController — intelligence summary", () => {
       },
     ];
     const qb = mockQueryBuilder([logs, logs.length]);
-    qb.getMany.mockResolvedValue(logs);
-    const repo = mockRepo(qb);
+    const repo: any = mockRepo(qb);
+    repo.find = jest.fn().mockResolvedValue(logs);
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
 
     const result = await controller.getIntelligenceSummary(
-      "30d",
+      "1d",
       undefined,
       undefined,
       undefined,
     );
 
-    expect(qb.where).toHaveBeenCalledWith(
-      "log.timestamp >= :since",
-      expect.objectContaining({ since: expect.any(Date) }),
+    expect(repo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          intelligence_optimizer_applied: true,
+          quality_gate_status: true,
+        }),
+        take: 5000,
+        where: expect.objectContaining({ timestamp: expect.anything() }),
+      }),
     );
-    expect(result.period).toBe("30d");
+    expect(result.period).toBe("1d");
     expect(result.summary).toEqual(
       expect.objectContaining({
         total_requests: 3,
@@ -1695,10 +1756,13 @@ describe("DashboardController — route decisions", () => {
       request_id: "req-1",
       selected: { node: "openai", model: "gpt-4o" },
       summary: {
-        reason: "balanced local cost and latency score",
+        reason: "balanced",
       },
     });
     expect(result.data[0]).not.toHaveProperty("trace");
+    expect(qb.select).toHaveBeenCalledWith(
+      expect.not.arrayContaining(["decision.trace_json"]),
+    );
     expect(qb.andWhere).toHaveBeenCalledWith("decision.tier = :tier", {
       tier: "standard",
     });
@@ -4714,16 +4778,20 @@ describe("DashboardController — api_key filtering on stats", () => {
   it("should accept api_key param on getStats", async () => {
     const qb = mockQueryBuilder(
       {
+        totalCalls: "5",
+        successCalls: "4",
         totalInputTokens: "500",
         totalOutputTokens: "200",
         totalCost: "0.1",
         avgLatency: "100",
         uniqueSessions: "1",
+        recentCalls: "2",
+        recentCost: "0.05",
+        recentTokens: "200",
       },
       [{ tier: "simple", count: "2" }],
     );
     const repo = mockRepo(qb);
-    repo.count.mockResolvedValueOnce(5).mockResolvedValueOnce(4);
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     const result = await controller.getStats("sean");
@@ -4734,31 +4802,25 @@ describe("DashboardController — api_key filtering on stats", () => {
   it("should prefer api_key_id param on getStats", async () => {
     const qb = mockQueryBuilder(
       {
+        totalCalls: "5",
+        successCalls: "4",
         totalInputTokens: "500",
         totalOutputTokens: "200",
         totalCost: "0.1",
         avgLatency: "100",
         uniqueSessions: "1",
+        recentCalls: "2",
+        recentCost: "0.05",
+        recentTokens: "200",
       },
       [{ tier: "simple", count: "2" }],
     );
     const repo = mockRepo(qb);
-    repo.count.mockResolvedValueOnce(5).mockResolvedValueOnce(4);
 
     const { controller } = makeDashboard({ callLogRepo: repo, qb });
     await controller.getStats("renamed-key", "key_123");
 
-    expect(repo.count).toHaveBeenNthCalledWith(1, {
-      where: { api_key_id: "key_123", workspace_id: "default-workspace" },
-    });
-    expect(repo.count).toHaveBeenNthCalledWith(2, {
-      where: {
-        status_code: 200,
-        api_key_id: "key_123",
-        workspace_id: "default-workspace",
-      },
-    });
-    expect(qb.where).toHaveBeenCalledWith(
+    expect(qb.andWhere).toHaveBeenCalledWith(
       "(log.workspace_id = :workspaceId OR log.workspace_id IS NULL)",
       { workspaceId: "default-workspace" },
     );

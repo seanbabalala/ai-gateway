@@ -638,6 +638,33 @@ function validateDatabase(
     );
   }
   if (
+    database.route_trace_write_behind !== undefined &&
+    !isBoolean(database.route_trace_write_behind)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_route_trace_write_behind',
+        'database.route_trace_write_behind must be a boolean when set.',
+        'database.route_trace_write_behind',
+      ),
+    );
+  }
+  if (
+    database.sqlite_synchronous !== undefined &&
+    (typeof database.sqlite_synchronous !== 'string' ||
+      !['OFF', 'NORMAL', 'FULL', 'EXTRA'].includes(database.sqlite_synchronous))
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_sqlite_synchronous',
+        'database.sqlite_synchronous must be OFF, NORMAL, FULL, or EXTRA when set.',
+        'database.sqlite_synchronous',
+      ),
+    );
+  }
+  if (
     database.type === 'postgres' &&
     database.synchronize !== false
   ) {
@@ -660,6 +687,16 @@ function validateDatabase(
         'sqlite_ignores_postgres_options',
         'database.pool and database.ssl apply only when database.type is postgres.',
         'database',
+      ),
+    );
+  }
+  if (database.type === 'postgres' && database.sqlite_synchronous !== undefined) {
+    issues.push(
+      issue(
+        'warning',
+        'postgres_ignores_sqlite_synchronous',
+        'database.sqlite_synchronous applies only when database.type is sqlite.',
+        'database.sqlite_synchronous',
       ),
     );
   }

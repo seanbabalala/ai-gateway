@@ -29,6 +29,7 @@ import {
 @Index(['agent_project'])
 @Index(['intelligence_optimizer_applied'])
 @Index(['quality_gate_status'])
+@Index('IDX_call_logs_workspace_timestamp', ['workspace_id', 'timestamp'])
 export class CallLog {
   @PrimaryGeneratedColumn()
   id!: number;

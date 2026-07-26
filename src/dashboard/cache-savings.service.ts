@@ -100,6 +100,21 @@ export class CacheSavingsService {
     const window = resolvePeriod(period);
     const rows = await this.callLogRepo.find({
       where: this.buildWhere(window.since, scope),
+      select: {
+        timestamp: true,
+        node_id: true,
+        model: true,
+        input_tokens: true,
+        output_tokens: true,
+        cost_usd: true,
+        cost_without_cache_usd: true,
+        cache_creation_input_tokens: true,
+        cache_read_input_tokens: true,
+        namespace_id: true,
+        team_id: true,
+        api_key_id: true,
+        api_key_name: true,
+      },
       order: { timestamp: 'ASC' },
     });
 

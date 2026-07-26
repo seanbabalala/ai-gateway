@@ -4,6 +4,7 @@ import {
   applyCallLogCostWithoutCacheSchemaPatch,
   applyCallLogStreamSchemaPatch,
   applyAgentMetadataSchemaPatches,
+  ensureCallLogPerformanceIndexes,
   hasCallLogCostWithoutCacheColumn,
   hasCallLogAgentMetadataColumn,
   hasCallLogClientSourceColumn,
@@ -92,6 +93,23 @@ describe('CallLog schema patch', () => {
     );
   });
 
+  it('waits to create performance indexes until workspace columns exist', async () => {
+    const dataSource = {
+      options: { type: 'better-sqlite3' },
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes('sqlite_master')) return [{ name: 'call_logs' }];
+        if (sql.startsWith('PRAGMA table_info')) return [{ name: 'timestamp' }];
+        return undefined;
+      }),
+    } as any;
+
+    await ensureCallLogPerformanceIndexes(dataSource);
+
+    expect(dataSource.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('CREATE INDEX'),
+    );
+  });
+
   it('applies the PostgreSQL stream column patch when stream is missing', async () => {
     const dataSource = {
       options: { type: 'postgres' },
@@ -126,7 +144,9 @@ describe('CallLog schema patch', () => {
           ? [{ name: table }]
           : [];
       }
-      if (sql.startsWith('PRAGMA table_info')) return [];
+      if (sql.startsWith('PRAGMA table_info')) {
+        return [{ name: 'workspace_id' }, { name: 'timestamp' }];
+      }
       return undefined;
     });
     const dataSource = {
@@ -176,6 +196,12 @@ describe('CallLog schema patch', () => {
     );
     expect(dataSource.query).toHaveBeenCalledWith(
       'ALTER TABLE route_decisions ADD COLUMN quality_gate_status varchar',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'CREATE INDEX IF NOT EXISTS "IDX_call_logs_workspace_timestamp" ON "call_logs" ("workspace_id", "timestamp")',
+    );
+    expect(dataSource.query).toHaveBeenCalledWith(
+      'CREATE INDEX IF NOT EXISTS "IDX_route_decisions_workspace_timestamp" ON "route_decisions" ("workspace_id", "timestamp")',
     );
   });
 

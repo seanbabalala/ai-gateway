@@ -2,10 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { ClusterStatusResponse } from '@/types/api'
 
-export function useClusterStatus() {
+export function useClusterStatus(enabled: boolean = true) {
   return useQuery<ClusterStatusResponse>({
     queryKey: ['cluster-status'],
     queryFn: () => apiGet<ClusterStatusResponse>('/api/dashboard/cluster'),
-    refetchInterval: 30_000,
+    enabled,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }

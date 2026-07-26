@@ -25,6 +25,7 @@ export interface NodeDistribution {
 }
 
 export interface StatsResponse {
+  period: number;
   total: StatsTotal;
   last24h: {
     calls: number;

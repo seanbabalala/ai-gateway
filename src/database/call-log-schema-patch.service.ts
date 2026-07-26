@@ -3,6 +3,9 @@ import { DataSource } from 'typeorm';
 
 const CALL_LOGS_TABLE = 'call_logs';
 const ROUTE_DECISIONS_TABLE = 'route_decisions';
+const CALL_LOGS_WORKSPACE_TIMESTAMP_INDEX = 'IDX_call_logs_workspace_timestamp';
+const ROUTE_DECISIONS_WORKSPACE_TIMESTAMP_INDEX =
+  'IDX_route_decisions_workspace_timestamp';
 const COST_WITHOUT_CACHE_COLUMN = 'cost_without_cache_usd';
 const STREAM_COLUMN = 'stream';
 const CLIENT_SOURCE_COLUMNS = ['client_source'] as const;
@@ -140,6 +143,7 @@ export async function applyCallLogSchemaPatches(
       ROUTE_DECISION_INTELLIGENCE_TEXT_COLUMNS,
     )).map((column) => `${ROUTE_DECISIONS_TABLE}.${column}`),
   );
+  await ensureCallLogPerformanceIndexes(dataSource);
   return applied;
 }
 
@@ -411,6 +415,45 @@ async function hasTableColumnInternal(
 
 async function hasCallLogsTable(dataSource: DataSource): Promise<boolean> {
   return hasTable(dataSource, CALL_LOGS_TABLE);
+}
+
+export async function ensureCallLogPerformanceIndexes(
+  dataSource: DataSource,
+): Promise<void> {
+  if (!supportsSchemaPatch(dataSource)) return;
+  if (
+    (await hasTable(dataSource, CALL_LOGS_TABLE)) &&
+    (await hasTableColumnInternal(
+      dataSource,
+      CALL_LOGS_TABLE,
+      'workspace_id',
+      true,
+    )) &&
+    (await hasTableColumnInternal(dataSource, CALL_LOGS_TABLE, 'timestamp', true))
+  ) {
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS "${CALL_LOGS_WORKSPACE_TIMESTAMP_INDEX}" ON "${CALL_LOGS_TABLE}" ("workspace_id", "timestamp")`,
+    );
+  }
+  if (
+    (await hasTable(dataSource, ROUTE_DECISIONS_TABLE)) &&
+    (await hasTableColumnInternal(
+      dataSource,
+      ROUTE_DECISIONS_TABLE,
+      'workspace_id',
+      true,
+    )) &&
+    (await hasTableColumnInternal(
+      dataSource,
+      ROUTE_DECISIONS_TABLE,
+      'timestamp',
+      true,
+    ))
+  ) {
+    await dataSource.query(
+      `CREATE INDEX IF NOT EXISTS "${ROUTE_DECISIONS_WORKSPACE_TIMESTAMP_INDEX}" ON "${ROUTE_DECISIONS_TABLE}" ("workspace_id", "timestamp")`,
+    );
+  }
 }
 
 async function hasTable(dataSource: DataSource, table: string): Promise<boolean> {

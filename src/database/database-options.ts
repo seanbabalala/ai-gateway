@@ -58,6 +58,14 @@ export function buildTypeOrmDatabaseOptions(
     database: database.path || './data/gateway.db',
     ...shared,
     synchronize: database.synchronize ?? true,
+    prepareDatabase: (db: { pragma: (statement: string) => unknown }) => {
+      db.pragma('journal_mode = WAL');
+      db.pragma(`synchronous = ${database.sqlite_synchronous ?? 'FULL'}`);
+      db.pragma('busy_timeout = 5000');
+      db.pragma('temp_store = MEMORY');
+      db.pragma('mmap_size = 268435456');
+      db.pragma('journal_size_limit = 67108864');
+    },
   };
 }
 

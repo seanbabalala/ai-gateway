@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { ensureCallLogPerformanceIndexes } from './call-log-schema-patch.service';
 import {
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_ORGANIZATION_NAME,
@@ -104,6 +105,7 @@ export async function applyWorkspaceSchemaPatches(
       result.backfilledTables.push(table);
     }
   }
+  await ensureCallLogPerformanceIndexes(dataSource);
 
   return result;
 }

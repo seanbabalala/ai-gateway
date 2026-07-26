@@ -27,11 +27,13 @@ function budgetQuery(scope?: BudgetScope): Promise<BudgetResponse> {
   return apiGet<BudgetResponse>('/api/dashboard/budget')
 }
 
-export function useBudget(scope?: BudgetScope) {
+export function useBudget(scope?: BudgetScope, enabled: boolean = true) {
   return useQuery<BudgetResponse>({
     queryKey: ['budget', budgetScopeKey(scope || { kind: 'global' })],
     queryFn: () => budgetQuery(scope),
-    refetchInterval: 15_000,
+    enabled,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }
 
@@ -47,7 +49,8 @@ export function useBudgetSnapshots(scopes: BudgetScope[]) {
       return Object.fromEntries(entries)
     },
     enabled: scopes.length > 0,
-    refetchInterval: 15_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }
 
