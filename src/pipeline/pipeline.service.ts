@@ -1,4 +1,9 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  BeforeApplicationShutdown,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -105,6 +110,10 @@ import { compatibilityEvidence } from '../catalog/compatibility-profiles';
 
 const CLIENT_CLOSED_AFTER_TOOL_CALL = 'client_closed_after_tool_call';
 const CLIENT_CLOSE_TOOL_CALL_DRAIN_MS = 1_500;
+const STREAM_BACKPRESSURE_TIMEOUT_MS = 30_000;
+const ROUTE_TRACE_WRITE_QUEUE_MAX = 1_000;
+const CALL_LOG_WRITE_QUEUE_MAX = 2_000;
+const CALL_LOG_WRITE_BATCH_SIZE = 50;
 
 export interface PipelineResult {
   body: Record<string, unknown> | Buffer | string;
@@ -207,8 +216,12 @@ type LoggableCanonicalRequest =
   | CanonicalMediaRequest;
 
 @Injectable()
-export class PipelineService {
+export class PipelineService implements BeforeApplicationShutdown {
   private readonly logger = new Logger(PipelineService.name);
+  private readonly routeTraceWriteQueue: RouteDecisionLog[] = [];
+  private routeTraceWritePromise: Promise<void> | null = null;
+  private readonly callLogWriteQueue: CallLog[] = [];
+  private callLogWritePromise: Promise<void> | null = null;
 
   private readonly chatDenorm = new ChatCompletionsDenormalizer();
   private readonly respDenorm = new ResponsesDenormalizer();
@@ -3021,7 +3034,11 @@ export class PipelineService {
                   }
                   if (event.text && !clientClosed) {
                     ensureStreamHeaders();
-                    res.write(event.text);
+                    if (!(await this.writeStreamChunk(res, event.text))) {
+                      streamCanceled = true;
+                      streamAbort.abort();
+                      throw new Error('Client canceled stream.');
+                    }
                   }
                   continue;
                 }
@@ -3049,7 +3066,11 @@ export class PipelineService {
                 const sseText = serializer.serialize(outputEvent);
                 if (sseText) {
                   ensureStreamHeaders();
-                  res.write(sseText);
+                  if (!(await this.writeStreamChunk(res, sseText))) {
+                    streamCanceled = true;
+                    streamAbort.abort();
+                    throw new Error('Client canceled stream.');
+                  }
                 }
               }
               if (streamCanceled) {
@@ -3070,91 +3091,45 @@ export class PipelineService {
                 : streamFailureEvent
                   ? streamErrorMessage(streamFailureEvent)
                   : null;
-              if (clientClosedAfterToolCall) {
-                this.logger.log(
-                  `Client closed stream after completed tool call from ${target.node}; ` +
-                  `usage=${streamStopReceived ? 'captured' : 'unavailable'}`,
-                );
-                if (streamStopReceived) {
+              streamCompleted = true;
+              if (!clientClosed) {
+                res.end();
+              }
+              let costUsd = 0;
+              let budgetFinalized = false;
+              try {
+                if (clientClosedAfterToolCall) {
+                  this.logger.log(
+                    `Client closed stream after completed tool call from ${target.node}; ` +
+                    `usage=${streamStopReceived ? 'captured' : 'unavailable'}`,
+                  );
+                  if (streamStopReceived) {
+                    this.circuitBreaker.recordSuccess(target.node, target.model);
+                  }
+                } else if (streamFailureEvent) {
+                  this.logger.warn(
+                    `Stream ${target.node} ended with upstream error (${streamStatusCode}): ${streamError}`,
+                  );
+                  this.circuitBreaker.recordFailure(target.node, target.model);
+                  this.routingService.recordTargetResult?.(
+                    target.node,
+                    target.model,
+                    latencyMs,
+                    streamStatusCode,
+                  );
+                } else {
                   this.circuitBreaker.recordSuccess(target.node, target.model);
                 }
-              } else if (streamFailureEvent) {
-                this.logger.warn(
-                  `Stream ${target.node} ended with upstream error (${streamStatusCode}): ${streamError}`,
-                );
-                this.circuitBreaker.recordFailure(target.node, target.model);
-                this.routingService.recordTargetResult?.(
-                  target.node,
-                  target.model,
-                  latencyMs,
-                  streamStatusCode,
-                );
-              } else {
-                this.circuitBreaker.recordSuccess(target.node, target.model);
-              }
 
-              // ── Cache Store (from stream accumulation) ──
-              if (
-                !streamFailureEvent &&
-                !streamCanceled &&
-                !clientClosed &&
-                this.shouldUseStreamCache(canonical) &&
-                accumulatedText.length > 0
-              ) {
-                const assembledResponse: CanonicalResponse = {
-                  id: streamId || `cache-${requestId}`,
-                  content: [{ type: 'text', text: accumulatedText.join('') }],
-                  stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
-                  usage: { ...usage },
-                  model: streamModel || usedModel,
-                  routing: {
-                    tier,
-                    node: usedNodeId,
-                    latency_ms: latencyMs,
-                    score,
-                    is_fallback: isFallback,
-                    fallback_reason: fallbackReason,
-                  },
-                };
-                await this.storeCachedResponse(canonical, assembledResponse);
-              }
-
-              const { costUsd } = await this.recordBudgetUsage(
-                canonical,
-                usage,
-                usedModel,
-                usedNodeId,
-                targetBudgetReservation,
-              );
-
-              const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
-                experimentGroupsByTarget,
-                usedNodeId,
-                usedModel,
-                experimentGroup,
-              );
-              if (this.intelligenceLoop) {
-                activeRouteTrace = this.intelligenceLoop.withIntelligence(activeRouteTrace, {
-                  async_eval: this.intelligenceLoop.enqueueAsyncEval({
-                    canonical,
-                    target: { node: usedNodeId, model: usedModel },
-                    requestId,
-                    statusCode: streamStatusCode,
-                    latencyMs,
-                  }),
-                });
-              }
-              await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
-                statusCode: streamStatusCode, isFallback, latencyMs, usage, error: streamError,
-                retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
-                domainHint, modalityHints, fallbackReason,
-                fallbackFromNode, routeTrace: activeRouteTrace });
-              if (!streamFailureEvent && !clientClosed && accumulatedText.length > 0) {
-                this.shadowTraffic?.enqueueChat(
-                  requestId,
-                  canonical,
-                  {
-                    id: streamId || `stream-${requestId}`,
+                if (
+                  !streamFailureEvent &&
+                  !streamCanceled &&
+                  !clientClosed &&
+                  this.shouldUseStreamCache(canonical) &&
+                  accumulatedText.length > 0
+                ) {
+                  const assembledResponse: CanonicalResponse = {
+                    id: streamId || `cache-${requestId}`,
                     content: [{ type: 'text', text: accumulatedText.join('') }],
                     stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
                     usage: { ...usage },
@@ -3167,42 +3142,104 @@ export class PipelineService {
                       is_fallback: isFallback,
                       fallback_reason: fallbackReason,
                     },
-                  },
+                  };
+                  await this.storeCachedResponse(canonical, assembledResponse);
+                }
+
+                ({ costUsd } = await this.recordBudgetUsage(
+                  canonical,
+                  usage,
+                  usedModel,
+                  usedNodeId,
+                  targetBudgetReservation,
+                ));
+                budgetFinalized = true;
+
+                const resolvedExperimentGroup = this.resolveExperimentGroupForTarget(
+                  experimentGroupsByTarget,
                   usedNodeId,
                   usedModel,
+                  experimentGroup,
                 );
-              }
+                if (this.intelligenceLoop) {
+                  activeRouteTrace = this.intelligenceLoop.withIntelligence(activeRouteTrace, {
+                    async_eval: this.intelligenceLoop.enqueueAsyncEval({
+                      canonical,
+                      target: { node: usedNodeId, model: usedModel },
+                      requestId,
+                      statusCode: streamStatusCode,
+                      latencyMs,
+                    }),
+                  });
+                }
+                await this.logCall({ requestId, canonical, tier, score, nodeId: usedNodeId, model: usedModel,
+                  statusCode: streamStatusCode, isFallback, latencyMs, usage, error: streamError,
+                  retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
+                  domainHint, modalityHints, fallbackReason,
+                  fallbackFromNode, routeTrace: activeRouteTrace });
+                if (!streamFailureEvent && !clientClosed && accumulatedText.length > 0) {
+                  this.shadowTraffic?.enqueueChat(
+                    requestId,
+                    canonical,
+                    {
+                      id: streamId || `stream-${requestId}`,
+                      content: [{ type: 'text', text: accumulatedText.join('') }],
+                      stop_reason: (streamStopReason || 'end_turn') as CanonicalResponse['stop_reason'],
+                      usage: { ...usage },
+                      model: streamModel || usedModel,
+                      routing: {
+                        tier,
+                        node: usedNodeId,
+                        latency_ms: latencyMs,
+                        score,
+                        is_fallback: isFallback,
+                        fallback_reason: fallbackReason,
+                      },
+                    },
+                    usedNodeId,
+                    usedModel,
+                  );
+                }
 
-              // ── Telemetry Metrics (stream success) ──
-              const streamTotalTokens = usage.input_tokens + usage.output_tokens;
-              rootSpan.setAttributes({
-                'gateway.tier': tier,
-                'gateway.node': usedNodeId,
-                'gateway.model': usedModel,
-                'gateway.is_fallback': isFallback,
-                'gateway.fallback_reason': fallbackReason || '',
-                'gen_ai.request.model': usedModel,
-                'gen_ai.usage.input_tokens': usage.input_tokens,
-                'gen_ai.usage.output_tokens': usage.output_tokens,
-              });
-              this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: streamStatusCode });
-              this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
-              this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
-              if (costUsd > 0) {
-                this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
-              }
-              if (streamFailureEvent && !clientClosedAfterToolCall) {
-                this.telemetry.upstreamErrors.add(1, {
-                  node: usedNodeId,
-                  reason: streamFailure?.failureType || 'stream_error',
+                const streamTotalTokens = usage.input_tokens + usage.output_tokens;
+                rootSpan.setAttributes({
+                  'gateway.tier': tier,
+                  'gateway.node': usedNodeId,
+                  'gateway.model': usedModel,
+                  'gateway.is_fallback': isFallback,
+                  'gateway.fallback_reason': fallbackReason || '',
+                  'gen_ai.request.model': usedModel,
+                  'gen_ai.usage.input_tokens': usage.input_tokens,
+                  'gen_ai.usage.output_tokens': usage.output_tokens,
                 });
+                this.telemetry.requestTotal.add(1, { tier, node: usedNodeId, model: usedModel, status: streamStatusCode });
+                this.telemetry.requestDuration.record(latencyMs, { tier, node: usedNodeId });
+                this.telemetry.tokensUsage.add(streamTotalTokens, { node: usedNodeId, model: usedModel, direction: 'total' });
+                if (costUsd > 0) {
+                  this.telemetry.costTotal.add(costUsd, { node: usedNodeId, model: usedModel });
+                }
+                if (streamFailureEvent && !clientClosedAfterToolCall) {
+                  this.telemetry.upstreamErrors.add(1, {
+                    node: usedNodeId,
+                    reason: streamFailure?.failureType || 'stream_error',
+                  });
+                }
+              } catch (postResponseError) {
+                this.logger.error(
+                  `Stream post-response accounting failed for ${target.node}: ${(postResponseError as Error).message}`,
+                );
+              } finally {
+                if (!budgetFinalized) {
+                  await this.releaseBudgetReservation(targetBudgetReservation).catch(
+                    (releaseError) => {
+                      this.logger.warn(
+                        `Failed to release stream budget reservation: ${(releaseError as Error).message}`,
+                      );
+                    },
+                  );
+                }
+                rootSpan.end();
               }
-
-              streamCompleted = true;
-              if (!clientClosed) {
-                res.end();
-              }
-              rootSpan.end();
               return;
             } finally {
               lease.release();
@@ -5673,6 +5710,44 @@ export class PipelineService {
     return null;
   }
 
+  private async writeStreamChunk(
+    res: ExpressResponse,
+    chunk: string | Buffer,
+  ): Promise<boolean> {
+    if (res.destroyed || res.writableEnded) return false;
+    if (res.write(chunk)) return true;
+
+    return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        this.logger.warn('Stream response backpressure timed out; canceling client stream.');
+        resolve(false);
+      }, STREAM_BACKPRESSURE_TIMEOUT_MS);
+      timeout.unref();
+      const cleanup = () => {
+        clearTimeout(timeout);
+        res.off('drain', onDrain);
+        res.off('close', onClose);
+        res.off('error', onError);
+      };
+      const onDrain = () => {
+        cleanup();
+        resolve(true);
+      };
+      const onClose = () => {
+        cleanup();
+        resolve(false);
+      };
+      const onError = () => {
+        cleanup();
+        resolve(false);
+      };
+      res.once('drain', onDrain);
+      res.once('close', onClose);
+      res.once('error', onError);
+    });
+  }
+
   private writeSyntheticStreamResponse(
     res: ExpressResponse,
     sourceFormat: SourceFormat,
@@ -6224,32 +6299,95 @@ export class PipelineService {
           this.workspaceIdForCanonical(params.canonical),
         );
       }
-      const saved = await this.callLogRepo.save(log);
-
-      try {
-        await this.saveRouteDecisionTrace(params);
-      } catch (err) {
-        this.logger.warn(`Failed to save route decision trace: ${(err as Error).message}`);
+      if (this.config.database.route_trace_write_behind) {
+        this.enqueueRouteDecisionTrace(this.createRouteDecisionTraceLog(params));
+      } else {
+        try {
+          await this.saveRouteDecisionTrace(params);
+        } catch (err) {
+          this.logger.warn(`Failed to save route decision trace: ${(err as Error).message}`);
+        }
       }
 
-      // Push to SSE stream for real-time dashboard
-      this.logEventBus.emit(saved);
-      this.alerts?.recordCall(saved);
-      try {
-        this.logSinks?.enqueue(saved);
-      } catch (err) {
-        this.logger.warn(`Failed to enqueue external log sinks: ${(err as Error).message}`);
+      const modalities = params.modalityHints || this.modalitiesForLog(params.canonical);
+      if (this.shouldWriteCallLogsBehind()) {
+        if (!log.timestamp) log.timestamp = new Date();
+        this.enqueueCallLogWrite(log);
+        this.publishCallLog(log, params.domainHint, modalities);
+      } else {
+        const saved = await this.callLogRepo.save(log);
+        this.publishCallLog(saved, params.domainHint, modalities);
       }
-
-      // Optional hosted control-plane metadata upload. This is privacy-preserving:
-      // it derives metadata only from CallLog and never includes prompt/response bodies.
-      this.telemetryUploader.enqueue(saved, {
-        domainHint: params.domainHint,
-        modalities: params.modalityHints || this.modalitiesForLog(params.canonical),
-      });
     } catch (err) {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
     }
+  }
+
+  private shouldWriteCallLogsBehind(): boolean {
+    return (
+      this.config.database.type === 'sqlite' &&
+      Boolean(this.config.database.path) &&
+      this.config.database.path !== ':memory:'
+    );
+  }
+
+  private enqueueCallLogWrite(log: CallLog): void {
+    if (this.callLogWriteQueue.length >= CALL_LOG_WRITE_QUEUE_MAX) {
+      this.callLogWriteQueue.shift();
+      this.logger.warn(
+        `Call log write queue full; dropped oldest log (max=${CALL_LOG_WRITE_QUEUE_MAX})`,
+      );
+    }
+    this.callLogWriteQueue.push(log);
+    this.startCallLogWriteDrain();
+  }
+
+  private startCallLogWriteDrain(): void {
+    if (this.callLogWritePromise) return;
+    this.callLogWritePromise = new Promise<void>((resolve) => setImmediate(resolve))
+      .then(() => this.drainCallLogWriteQueue())
+      .finally(() => {
+        this.callLogWritePromise = null;
+        if (this.callLogWriteQueue.length > 0) {
+          this.startCallLogWriteDrain();
+        }
+      });
+  }
+
+  private async drainCallLogWriteQueue(): Promise<void> {
+    while (this.callLogWriteQueue.length > 0) {
+      const batch = this.callLogWriteQueue.splice(0, CALL_LOG_WRITE_BATCH_SIZE);
+      try {
+        await this.callLogRepo.save(batch);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to save call log batch (${batch.length}): ${(error as Error).message}`,
+        );
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+
+  private publishCallLog(
+    saved: CallLog,
+    domainHint: string | null | undefined,
+    modalities: string[],
+  ): void {
+    // Push to SSE stream for real-time dashboard
+    this.logEventBus.emit(saved);
+    this.alerts?.recordCall(saved);
+    try {
+      this.logSinks?.enqueue(saved);
+    } catch (err) {
+      this.logger.warn(`Failed to enqueue external log sinks: ${(err as Error).message}`);
+    }
+
+    // Optional hosted control-plane metadata upload. This is privacy-preserving:
+    // it derives metadata only from CallLog and never includes prompt/response bodies.
+    this.telemetryUploader.enqueue(saved, {
+      domainHint,
+      modalities,
+    });
   }
 
   private resolveStructuredOutputLogFields(
@@ -6502,10 +6640,27 @@ export class PipelineService {
       routeTrace?: RouteDecisionTrace;
     },
   ): Promise<void> {
+    await this.routeDecisionRepo.save(this.createRouteDecisionTraceLog(params));
+  }
+
+  private createRouteDecisionTraceLog(
+    params: {
+      requestId: string; canonical: LoggableCanonicalRequest; tier: Tier; score: number;
+      nodeId: string; model: string; statusCode: number; isFallback: boolean;
+      latencyMs: number; usage: TokenUsage; error: string | null;
+      retryCount?: number;
+      experimentGroup?: string | null;
+      domainHint?: string | null;
+      modalityHints?: string[];
+      fallbackReason?: FallbackReason | null;
+      fallbackFromNode?: string | null;
+      routeTrace?: RouteDecisionTrace;
+    },
+  ): RouteDecisionLog {
     const trace = this.finalizeRouteTrace(params);
     const agentMetadata = this.resolveAgentLogFields(params.canonical);
     const intelligenceMetadata = this.resolveIntelligenceLogFields(trace);
-    const log = this.routeDecisionRepo.create({
+    return this.routeDecisionRepo.create({
       request_id: params.requestId,
       source_format: params.canonical.metadata.source_format,
       workspace_id: this.workspaceIdForCanonical(params.canonical),
@@ -6537,7 +6692,55 @@ export class PipelineService {
       async_eval_queued: intelligenceMetadata.async_eval_queued,
       trace_json: JSON.stringify(trace),
     });
-    await this.routeDecisionRepo.save(log);
+  }
+
+  private enqueueRouteDecisionTrace(log: RouteDecisionLog): void {
+    if (this.routeTraceWriteQueue.length >= ROUTE_TRACE_WRITE_QUEUE_MAX) {
+      this.routeTraceWriteQueue.shift();
+      this.logger.warn(
+        `Route trace write queue full; dropped oldest trace (max=${ROUTE_TRACE_WRITE_QUEUE_MAX})`,
+      );
+    }
+    this.routeTraceWriteQueue.push(log);
+    this.startRouteDecisionTraceDrain();
+  }
+
+  private startRouteDecisionTraceDrain(): void {
+    if (this.routeTraceWritePromise) return;
+    this.routeTraceWritePromise = new Promise<void>((resolve) => setImmediate(resolve))
+      .then(() => this.drainRouteDecisionTraceQueue())
+      .finally(() => {
+        this.routeTraceWritePromise = null;
+        if (this.routeTraceWriteQueue.length > 0) {
+          this.startRouteDecisionTraceDrain();
+        }
+      });
+  }
+
+  private async drainRouteDecisionTraceQueue(): Promise<void> {
+    while (this.routeTraceWriteQueue.length > 0) {
+      const log = this.routeTraceWriteQueue.shift();
+      if (!log) continue;
+      try {
+        await this.routeDecisionRepo.save(log);
+      } catch (err) {
+        this.logger.warn(`Failed to save route decision trace: ${(err as Error).message}`);
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
+    while (this.callLogWriteQueue.length > 0 || this.callLogWritePromise) {
+      this.startCallLogWriteDrain();
+      const currentDrain = this.callLogWritePromise;
+      if (currentDrain) await currentDrain;
+    }
+    while (this.routeTraceWriteQueue.length > 0 || this.routeTraceWritePromise) {
+      this.startRouteDecisionTraceDrain();
+      const currentDrain = this.routeTraceWritePromise;
+      if (currentDrain) await currentDrain;
+    }
   }
 
   private workspaceIdForCanonical(canonical: LoggableCanonicalRequest): string {

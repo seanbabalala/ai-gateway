@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { i18n } from '@/i18n'
 
 interface AuthContextValue {
@@ -42,6 +43,7 @@ export function clearAuthToken(): void {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [token, setToken] = useState<string | null>(() => getAuthToken())
   const [authRequired, setAuthRequired] = useState(true)
   const [sessionAuthenticated, setSessionAuthenticated] = useState(false)
@@ -112,26 +114,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = (await res.json()) as { token: string }
+    queryClient.clear()
     setAuthToken(data.token)
     setToken(data.token)
     setSessionAuthenticated(true)
-  }, [])
+  }, [queryClient])
 
   const completeLogin = useCallback((nextToken: string) => {
+    queryClient.clear()
     setAuthToken(nextToken)
     setToken(nextToken)
     setSessionAuthenticated(true)
-  }, [])
+  }, [queryClient])
 
   const logout = useCallback(() => {
+    queryClient.clear()
     clearAuthToken()
+    try {
+      localStorage.removeItem('siftgate-active-workspace-id')
+    } catch {
+      // localStorage may be unavailable in hardened browsers.
+    }
     setToken(null)
     setSessionAuthenticated(false)
     void fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'same-origin',
     }).catch(() => undefined)
-  }, [])
+  }, [queryClient])
 
   const authenticated = !authRequired || sessionAuthenticated || Boolean(token)
 

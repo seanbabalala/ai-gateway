@@ -1,15 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createSSEConnection } from '@/lib/sse'
 import type { CallLog, SSEEvent } from '@/types/api'
+import { useWorkspaces } from './use-workspaces'
 
-export function useSSELogs(maxItems: number = 50) {
+export function useSSELogs(maxItems: number = 50, enabled: boolean = true) {
   const [logs, setLogs] = useState<CallLog[]>([])
   const [connected, setConnected] = useState(false)
   const [newCount, setNewCount] = useState(0)
+  const { data: workspaceState } = useWorkspaces()
+  const workspaceId = workspaceState?.active_workspace.id ?? ''
   const logsRef = useRef(logs)
   logsRef.current = logs
 
   useEffect(() => {
+    if (!enabled) return
+    setLogs([])
+    setNewCount(0)
+    setConnected(false)
     const cleanup = createSSEConnection(
       '/api/dashboard/logs/sse',
       (event: SSEEvent) => {
@@ -30,7 +37,7 @@ export function useSSELogs(maxItems: number = 50) {
     )
 
     return cleanup
-  }, [maxItems])
+  }, [enabled, maxItems, workspaceId])
 
   const clearNewCount = useCallback(() => {
     setNewCount(0)

@@ -26,6 +26,7 @@ import {
   Param,
   Query,
   Body,
+  BeforeApplicationShutdown,
   Sse,
   Logger,
   Res,
@@ -51,7 +52,7 @@ import {
 } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, FindOptionsWhere, In, Repository } from "typeorm";
+import { DataSource, FindOptionsWhere, In, MoreThanOrEqual, Repository } from "typeorm";
 import { Observable, filter, interval, map, merge } from "rxjs";
 import { ConfigService } from "../config/config.service";
 import { CapabilityService } from "../config/capability.service";
@@ -140,8 +141,10 @@ import { WorkspaceContextService } from "../workspaces/workspace-context.service
 import { WorkspaceService } from "../workspaces/workspace.service";
 import {
   applyWorkspaceQueryScope,
+  normalizeWorkspaceId,
   workspaceFindWhereStrict,
 } from "../workspaces/workspace-scope";
+import { SqliteAnalyticsService } from "./sqlite-analytics.service";
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
@@ -246,6 +249,35 @@ type DashboardPricingTrustStatus =
   | "missing";
 
 type BudgetScopeKind = "global" | "namespace" | "team" | "api_key";
+
+interface DashboardStatsResponse {
+  period: number;
+  total: {
+    calls: number;
+    success: number;
+    failed: number;
+    successRate: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    costUsd: number;
+    avgLatencyMs: number;
+    uniqueSessions: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+  };
+  last24h: {
+    calls: number;
+    costUsd: number;
+    tokens: number;
+  };
+  tierDistribution: Array<{ tier: string; count: number }>;
+  nodeDistribution: Array<{
+    nodeId: string;
+    count: number;
+    avgLatencyMs: number;
+  }>;
+}
 
 const BUDGET_SCOPE_ORDER: BudgetScopeKind[] = [
   "global",
@@ -1585,8 +1617,18 @@ function baseUrlMatchers(baseUrl: string): string[] {
 @ApiTags("Dashboard")
 @ApiBearerAuth("dashboardSession")
 @ApiUnauthorizedResponse({ type: ErrorEnvelopeDto })
-export class DashboardController {
+export class DashboardController implements BeforeApplicationShutdown {
   private readonly logger = new Logger(DashboardController.name);
+  private readonly statsCache = new Map<
+    string,
+    { expiresAt: number; value: DashboardStatsResponse }
+  >();
+  private readonly statsInFlight = new Map<
+    string,
+    Promise<DashboardStatsResponse>
+  >();
+  private cleanupTimer: NodeJS.Timeout | null = null;
+  private cleanupStopped = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -1646,9 +1688,29 @@ export class DashboardController {
     @Optional()
     @Inject(CredentialPoolService)
     private readonly credentialPool?: CredentialPoolService,
+    @Optional()
+    private readonly sqliteAnalytics?: SqliteAnalyticsService,
   ) {
-    // Run log cleanup on startup
-    this.cleanupOldLogs().catch(() => {});
+    this.scheduleCleanup(60_000);
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
+    this.cleanupStopped = true;
+    if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
+  }
+
+  private scheduleCleanup(delayMs: number): void {
+    this.cleanupTimer = setTimeout(() => {
+      if (this.cleanupStopped) return;
+      void this.cleanupOldLogs()
+        .catch((error) => {
+          this.logger.warn(`Log cleanup failed: ${(error as Error).message}`);
+        })
+        .finally(() => {
+          if (!this.cleanupStopped) this.scheduleCleanup(6 * 60 * 60_000);
+        });
+    }, delayMs);
+    this.cleanupTimer.unref();
   }
 
   @Get("workspaces")
@@ -2199,23 +2261,44 @@ export class DashboardController {
     if (retentionDays <= 0) return;
 
     const cutoff = new Date(Date.now() - retentionDays * 86_400_000);
-    const result = await this.callLogRepo
-      .createQueryBuilder()
-      .delete()
-      .where("timestamp < :cutoff", { cutoff })
-      .execute();
+    let deletedCallLogs = 0;
+    let deletedRouteDecisions = 0;
 
-    if (result.affected && result.affected > 0) {
-      this.logger.log(
-        `Log cleanup: deleted ${result.affected} logs older than ${retentionDays} days`,
-      );
+    while (true) {
+      const rows = await this.callLogRepo
+        .createQueryBuilder("log")
+        .select("log.id", "id")
+        .where("log.timestamp < :cutoff", { cutoff })
+        .orderBy("log.timestamp", "ASC")
+        .take(500)
+        .getRawMany<{ id: number }>();
+      if (rows.length === 0) break;
+      const result = await this.callLogRepo.delete(rows.map((row) => Number(row.id)));
+      deletedCallLogs += result.affected || 0;
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
-    await this.routeDecisionRepo
-      .createQueryBuilder()
-      .delete()
-      .where("timestamp < :cutoff", { cutoff })
-      .execute();
+    while (true) {
+      const rows = await this.routeDecisionRepo
+        .createQueryBuilder("decision")
+        .select("decision.id", "id")
+        .where("decision.timestamp < :cutoff", { cutoff })
+        .orderBy("decision.timestamp", "ASC")
+        .take(500)
+        .getRawMany<{ id: number }>();
+      if (rows.length === 0) break;
+      const result = await this.routeDecisionRepo.delete(
+        rows.map((row) => Number(row.id)),
+      );
+      deletedRouteDecisions += result.affected || 0;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    if (deletedCallLogs > 0 || deletedRouteDecisions > 0) {
+      this.logger.log(
+        `Log cleanup: deleted ${deletedCallLogs} call logs and ${deletedRouteDecisions} route decisions older than ${retentionDays} days`,
+      );
+    }
   }
 
   // ══════════════════════════════════════════════════════
@@ -2491,11 +2574,14 @@ export class DashboardController {
     decision: RouteDecisionLog,
     includeTrace: boolean,
   ) {
-    const trace = this.parseRouteDecisionTrace(decision.trace_json);
+    const trace = includeTrace
+      ? this.parseRouteDecisionTrace(decision.trace_json)
+      : null;
     const finalSelection = trace?.final_selection || {
       node: decision.selected_node_id,
       model: decision.selected_model,
-      reason: null,
+      reason:
+        decision.fallback_reason || decision.strategy || decision.route_mode || null,
       is_fallback: decision.is_fallback,
       fallback_reason: decision.fallback_reason,
     };
@@ -2898,15 +2984,27 @@ export class DashboardController {
     @Query("api_key_id") apiKeyId?: string,
     @Query("namespace") namespaceId?: string,
   ) {
-    const periodDays = period === "90d" ? 90 : period === "30d" ? 30 : 7;
+    const periodDays =
+      period === "90d" ? 90 : period === "30d" ? 30 : period === "1d" ? 1 : 7;
     const since = new Date(Date.now() - periodDays * 86_400_000);
-    const qb = this.callLogRepo
-      .createQueryBuilder("log")
-      .where("log.timestamp >= :since", { since })
-      .orderBy("log.timestamp", "DESC")
-      .take(5000);
-    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
-    const logs = await qb.getMany();
+    const where = this.logWhere(apiKey, apiKeyId, namespaceId);
+    where.timestamp = MoreThanOrEqual(since);
+    const logs = await this.callLogRepo.find({
+      where,
+      select: {
+        node_id: true,
+        model: true,
+        agent_virtual_model: true,
+        agent_connector: true,
+        intelligence_optimizer_applied: true,
+        intelligence_estimated_savings_usd: true,
+        async_eval_queued: true,
+        token_prediction_risk: true,
+        quality_gate_status: true,
+      },
+      order: { timestamp: "DESC" },
+      take: 5000,
+    });
 
     const optimizerApplied = logs.filter(
       (log) => Boolean((log as CallLog & { intelligence_optimizer_applied?: boolean }).intelligence_optimizer_applied),
@@ -3369,6 +3467,7 @@ export class DashboardController {
 
   @Get("stats")
   @ApiOperation({ summary: "Get Dashboard aggregate stats" })
+  @ApiQuery({ name: "period", required: false, example: "1d" })
   @ApiQuery({ name: "api_key", required: false })
   @ApiQuery({ name: "api_key_id", required: false })
   @ApiQuery({ name: "namespace", required: false })
@@ -3380,18 +3479,93 @@ export class DashboardController {
     @Query("api_key") apiKey?: string,
     @Query("api_key_id") apiKeyId?: string,
     @Query("namespace") namespaceId?: string,
-  ) {
-    const keyWhere = this.logWhere(apiKey, apiKeyId, namespaceId);
-    const totalCalls = await this.callLogRepo.count({ where: keyWhere });
-    const successCalls = await this.callLogRepo.count({
-      where: { status_code: 200, ...keyWhere },
-    });
-    const failedCalls = totalCalls - successCalls;
+    @Query("period") period: string = "1d",
+  ): Promise<DashboardStatsResponse> {
+    const normalizedPeriod = this.normalizeStatsPeriod(period);
+    const now = Date.now();
+    for (const [key, value] of this.statsCache) {
+      if (value.expiresAt <= now) this.statsCache.delete(key);
+    }
+    const cacheKey = JSON.stringify([
+      normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId()),
+      normalizedPeriod,
+      apiKeyId || "",
+      apiKeyId ? "" : apiKey || "",
+      namespaceId || "",
+    ]);
+    const cached = this.statsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+    const existing = this.statsInFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const refresh = this.computeStats(
+      apiKey,
+      apiKeyId,
+      namespaceId,
+      normalizedPeriod,
+    )
+      .then((value) => {
+        if (this.statsCache.size >= 64) {
+          const oldestKey = this.statsCache.keys().next().value;
+          if (oldestKey) this.statsCache.delete(oldestKey);
+        }
+        this.statsCache.set(cacheKey, {
+          expiresAt: Date.now() + 120_000,
+          value,
+        });
+        return value;
+      })
+      .finally(() => {
+        this.statsInFlight.delete(cacheKey);
+      });
+    this.statsInFlight.set(cacheKey, refresh);
+
+    if (cached) {
+      void refresh.catch((error) => {
+        this.logger.warn(`Failed to refresh Dashboard stats: ${(error as Error).message}`);
+      });
+      return cached.value;
+    }
+    return refresh;
+  }
+
+  private normalizeStatsPeriod(period: string): string {
+    return ['1d', '7d', '30d', '90d'].includes(period) ? period : '1d';
+  }
+
+  private async computeStats(
+    apiKey?: string,
+    apiKeyId?: string,
+    namespaceId?: string,
+    period: string = "1d",
+  ): Promise<DashboardStatsResponse> {
+    const periodDays =
+      period === "90d" ? 90 : period === "30d" ? 30 : period === "7d" ? 7 : 1;
+    const since = new Date(Date.now() - periodDays * 86_400_000);
+    const oneDayAgo = new Date(Date.now() - 86_400_000);
+
+    if (this.sqliteAnalytics?.available) {
+      return this.computeSqliteStats(
+        apiKey,
+        apiKeyId,
+        namespaceId,
+        periodDays,
+        since,
+        oneDayAgo,
+      );
+    }
 
     // Aggregations via raw query (works for both SQLite and Postgres)
     const aggQb = this.callLogRepo
       .createQueryBuilder("log")
-      .select("SUM(log.input_tokens)", "totalInputTokens")
+      .where("log.timestamp >= :since", { since, oneDayAgo })
+      .select("COUNT(*)", "totalCalls")
+      .addSelect(
+        "SUM(CASE WHEN log.status_code = 200 THEN 1 ELSE 0 END)",
+        "successCalls",
+      )
+      .addSelect("SUM(log.input_tokens)", "totalInputTokens")
       .addSelect("SUM(log.output_tokens)", "totalOutputTokens")
       .addSelect("SUM(log.cost_usd)", "totalCost")
       .addSelect("AVG(log.latency_ms)", "avgLatency")
@@ -3400,41 +3574,48 @@ export class DashboardController {
         "uniqueSessions",
       )
       .addSelect("SUM(log.cache_creation_input_tokens)", "cacheCreationTokens")
-      .addSelect("SUM(log.cache_read_input_tokens)", "cacheReadTokens");
-    this.applyLogScopeFilter(aggQb, apiKey, apiKeyId, namespaceId, "where");
-    const agg = await aggQb.getRawOne();
-
+      .addSelect("SUM(log.cache_read_input_tokens)", "cacheReadTokens")
+      .addSelect(
+        "SUM(CASE WHEN log.timestamp >= :oneDayAgo THEN 1 ELSE 0 END)",
+        "recentCalls",
+      )
+      .addSelect(
+        "SUM(CASE WHEN log.timestamp >= :oneDayAgo THEN log.cost_usd ELSE 0 END)",
+        "recentCost",
+      )
+      .addSelect(
+        "SUM(CASE WHEN log.timestamp >= :oneDayAgo THEN log.input_tokens + log.output_tokens ELSE 0 END)",
+        "recentTokens",
+      );
+    this.applyLogScopeFilter(aggQb, apiKey, apiKeyId, namespaceId);
     // Tier distribution
     const tierQb = this.callLogRepo
       .createQueryBuilder("log")
+      .where("log.timestamp >= :since", { since })
       .select("log.tier", "tier")
       .addSelect("COUNT(*)", "count")
       .groupBy("log.tier");
-    this.applyLogScopeFilter(tierQb, apiKey, apiKeyId, namespaceId, "where");
-    const tierDist = await tierQb.getRawMany();
-
+    this.applyLogScopeFilter(tierQb, apiKey, apiKeyId, namespaceId);
     // Node distribution
     const nodeQb = this.callLogRepo
       .createQueryBuilder("log")
+      .where("log.timestamp >= :since", { since })
       .select("log.node_id", "nodeId")
       .addSelect("COUNT(*)", "count")
       .addSelect("AVG(log.latency_ms)", "avgLatency")
       .groupBy("log.node_id");
-    this.applyLogScopeFilter(nodeQb, apiKey, apiKeyId, namespaceId, "where");
-    const nodeDist = await nodeQb.getRawMany();
-
-    // Last 24h stats
-    const oneDayAgo = new Date(Date.now() - 86_400_000);
-    const recentQb = this.callLogRepo
-      .createQueryBuilder("log")
-      .where("log.timestamp >= :since", { since: oneDayAgo })
-      .select("COUNT(*)", "calls")
-      .addSelect("SUM(log.cost_usd)", "cost")
-      .addSelect("SUM(log.input_tokens + log.output_tokens)", "tokens");
-    this.applyLogScopeFilter(recentQb, apiKey, apiKeyId, namespaceId);
-    const recentAgg = await recentQb.getRawOne();
+    this.applyLogScopeFilter(nodeQb, apiKey, apiKeyId, namespaceId);
+    const [agg, tierDist, nodeDist] = await Promise.all([
+      aggQb.getRawOne(),
+      tierQb.getRawMany(),
+      nodeQb.getRawMany(),
+    ]);
+    const totalCalls = Number(agg?.totalCalls || 0);
+    const successCalls = Number(agg?.successCalls || 0);
+    const failedCalls = totalCalls - successCalls;
 
     return {
+      period: periodDays,
       total: {
         calls: totalCalls,
         success: successCalls,
@@ -3455,9 +3636,9 @@ export class DashboardController {
         cacheReadTokens: Number(agg?.cacheReadTokens || 0),
       },
       last24h: {
-        calls: Number(recentAgg?.calls || 0),
-        costUsd: Number(Number(recentAgg?.cost || 0).toFixed(6)),
-        tokens: Number(recentAgg?.tokens || 0),
+        calls: Number(agg?.recentCalls || 0),
+        costUsd: Number(Number(agg?.recentCost || 0).toFixed(6)),
+        tokens: Number(agg?.recentTokens || 0),
       },
       tierDistribution: tierDist.map((t) => ({
         tier: t.tier,
@@ -3469,6 +3650,149 @@ export class DashboardController {
         avgLatencyMs: Number(Number(n.avgLatency || 0).toFixed(0)),
       })),
     };
+  }
+
+  private async computeSqliteStats(
+    apiKey: string | undefined,
+    apiKeyId: string | undefined,
+    namespaceId: string | undefined,
+    periodDays: number,
+    since: Date,
+    oneDayAgo: Date,
+  ): Promise<DashboardStatsResponse> {
+    const where = ["workspace_id = ?", "timestamp >= ?"];
+    const params: unknown[] = [
+      normalizeWorkspaceId(this.workspaceContext.currentWorkspaceId()),
+      this.sqliteDateTime(since),
+    ];
+    if (apiKeyId) {
+      where.push("api_key_id = ?");
+      params.push(apiKeyId);
+    } else if (apiKey) {
+      where.push("api_key_name = ?");
+      params.push(apiKey);
+    }
+    if (namespaceId) {
+      where.push("namespace_id = ?");
+      params.push(namespaceId);
+    }
+    const whereSql = where.join(" AND ");
+    const oneDay = this.sqliteDateTime(oneDayAgo);
+    const rows = await this.sqliteAnalytics!.queryAll<Record<string, unknown>>(
+      `WITH filtered AS MATERIALIZED (
+        SELECT
+          tier,
+          node_id,
+          status_code,
+          input_tokens,
+          output_tokens,
+          cost_usd,
+          latency_ms,
+          session_id,
+          session_key,
+          cache_creation_input_tokens,
+          cache_read_input_tokens,
+          timestamp
+        FROM call_logs
+        WHERE ${whereSql}
+      )
+      SELECT
+        'total' AS kind,
+        '' AS groupKey,
+        COUNT(*) AS totalCalls,
+        SUM(CASE WHEN status_code = 200 THEN 1 ELSE 0 END) AS successCalls,
+        SUM(input_tokens) AS totalInputTokens,
+        SUM(output_tokens) AS totalOutputTokens,
+        SUM(cost_usd) AS totalCost,
+        AVG(latency_ms) AS avgLatency,
+        COUNT(DISTINCT COALESCE(session_id, session_key)) AS uniqueSessions,
+        SUM(cache_creation_input_tokens) AS cacheCreationTokens,
+        SUM(cache_read_input_tokens) AS cacheReadTokens,
+        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS recentCalls,
+        SUM(CASE WHEN timestamp >= ? THEN cost_usd ELSE 0 END) AS recentCost,
+        SUM(CASE WHEN timestamp >= ? THEN input_tokens + output_tokens ELSE 0 END) AS recentTokens
+      FROM filtered
+      UNION ALL
+      SELECT
+        'tier', tier, COUNT(*), NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL, NULL
+      FROM filtered
+      GROUP BY tier
+      UNION ALL
+      SELECT
+        'node', node_id, COUNT(*), NULL, NULL, NULL, NULL, AVG(latency_ms),
+        NULL, NULL, NULL, NULL, NULL, NULL
+      FROM filtered
+      GROUP BY node_id`,
+      [...params, oneDay, oneDay, oneDay],
+    );
+    const aggregate = rows.find((row) => row.kind === "total");
+    const tierRows = rows
+      .filter((row) => row.kind === "tier")
+      .map((row) => ({ tier: row.groupKey, count: row.totalCalls }));
+    const nodeRows = rows
+      .filter((row) => row.kind === "node")
+      .map((row) => ({
+        nodeId: row.groupKey,
+        count: row.totalCalls,
+        avgLatency: row.avgLatency,
+      }));
+    return this.serializeStats(
+      aggregate,
+      tierRows,
+      nodeRows,
+      periodDays,
+    );
+  }
+
+  private serializeStats(
+    agg: Record<string, unknown> | undefined,
+    tierDist: Record<string, unknown>[],
+    nodeDist: Record<string, unknown>[],
+    periodDays: number,
+  ): DashboardStatsResponse {
+    const totalCalls = Number(agg?.totalCalls || 0);
+    const successCalls = Number(agg?.successCalls || 0);
+    return {
+      period: periodDays,
+      total: {
+        calls: totalCalls,
+        success: successCalls,
+        failed: totalCalls - successCalls,
+        successRate:
+          totalCalls > 0
+            ? Number(((successCalls / totalCalls) * 100).toFixed(1))
+            : 0,
+        inputTokens: Number(agg?.totalInputTokens || 0),
+        outputTokens: Number(agg?.totalOutputTokens || 0),
+        totalTokens:
+          Number(agg?.totalInputTokens || 0) +
+          Number(agg?.totalOutputTokens || 0),
+        costUsd: Number(Number(agg?.totalCost || 0).toFixed(6)),
+        avgLatencyMs: Number(Number(agg?.avgLatency || 0).toFixed(0)),
+        uniqueSessions: Number(agg?.uniqueSessions || 0),
+        cacheCreationTokens: Number(agg?.cacheCreationTokens || 0),
+        cacheReadTokens: Number(agg?.cacheReadTokens || 0),
+      },
+      last24h: {
+        calls: Number(agg?.recentCalls || 0),
+        costUsd: Number(Number(agg?.recentCost || 0).toFixed(6)),
+        tokens: Number(agg?.recentTokens || 0),
+      },
+      tierDistribution: tierDist.map((row) => ({
+        tier: String(row.tier || "unknown"),
+        count: Number(row.count || 0),
+      })),
+      nodeDistribution: nodeDist.map((row) => ({
+        nodeId: String(row.nodeId || "unknown"),
+        count: Number(row.count || 0),
+        avgLatencyMs: Number(Number(row.avgLatency || 0).toFixed(0)),
+      })),
+    };
+  }
+
+  private sqliteDateTime(value: Date): string {
+    return value.toISOString().slice(0, 23).replace("T", " ");
   }
 
   // ══════════════════════════════════════════════════════
@@ -3786,6 +4110,40 @@ export class DashboardController {
   ) {
     const qb = this.routeDecisionRepo
       .createQueryBuilder("decision")
+      // The trace payload can be several KB per decision. Fetch it only from
+      // the detail endpoint so listing a large history stays responsive.
+      .select([
+        "decision.id",
+        "decision.request_id",
+        "decision.timestamp",
+        "decision.source_format",
+        "decision.tier",
+        "decision.score",
+        "decision.route_mode",
+        "decision.strategy",
+        "decision.selected_node_id",
+        "decision.selected_model",
+        "decision.domain_hint",
+        "decision.candidate_count",
+        "decision.filtered_count",
+        "decision.status_code",
+        "decision.is_fallback",
+        "decision.fallback_reason",
+        "decision.session_id",
+        "decision.trace_id",
+        "decision.api_key_name",
+        "decision.api_key_id",
+        "decision.namespace_id",
+        "decision.agent_connector",
+        "decision.agent_profile_id",
+        "decision.agent_profile_name",
+        "decision.agent_virtual_model",
+        "decision.agent_requested_model",
+        "decision.agent_session_id",
+        "decision.agent_turn_id",
+        "decision.agent_repo",
+        "decision.agent_project",
+      ])
       .orderBy("decision.timestamp", "DESC")
       .addOrderBy("decision.id", "DESC");
 

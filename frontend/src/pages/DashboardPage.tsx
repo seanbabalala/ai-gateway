@@ -183,25 +183,26 @@ export function DashboardPage() {
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
   })
-  const { logs: recentLogs } = useSSELogs(5)
-  const { data: cacheStats } = useCacheStats()
+  const secondaryQueriesEnabled = !isLoading && !isError
+  const { logs: recentLogs } = useSSELogs(5, secondaryQueriesEnabled)
+  const { data: cacheStats } = useCacheStats(secondaryQueriesEnabled)
   const clearCache = useClearCache()
-  const { data: apiKeysData } = useApiKeys()
-  const { data: namespacesData } = useNamespaces()
-  const { data: budgetData } = useBudget({ kind: 'global' })
-  const { data: configData } = useConfig()
-  const { data: alertsData } = useAlerts()
-  const { data: guardrailsData } = useGuardrails()
-  const { data: clusterStatus } = useClusterStatus()
+  const { data: apiKeysData } = useApiKeys(secondaryQueriesEnabled)
+  const { data: namespacesData } = useNamespaces(secondaryQueriesEnabled)
+  const { data: budgetData } = useBudget({ kind: 'global' }, secondaryQueriesEnabled)
+  const { data: configData } = useConfig(secondaryQueriesEnabled)
+  const { data: alertsData } = useAlerts(secondaryQueriesEnabled)
+  const { data: guardrailsData } = useGuardrails(secondaryQueriesEnabled)
+  const { data: clusterStatus } = useClusterStatus(secondaryQueriesEnabled)
   const { data: workspaceState } = useWorkspaces()
   const { data: cacheSavings } = useCacheSavings('1d', 'node', {
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
-  })
+  }, secondaryQueriesEnabled)
   const { data: intelligenceSummary } = useIntelligenceSummary('1d', {
     id: apiKeyFilter || undefined,
     namespaceId: namespaceFilter || undefined,
-  })
+  }, secondaryQueriesEnabled)
   const colors = useThemeColors()
 
   const apiKeyOptions = [
@@ -364,10 +365,6 @@ export function DashboardPage() {
       : []),
     ...configDiagnostics.map((diagnostic) => diagnostic.message),
   ]
-
-  // Calculate trends from last24h data
-  const callsTrend = total.calls > 0 ? ((stats.last24h.calls / total.calls) * 100) : 0
-  const costTrend = total.costUsd > 0 ? ((stats.last24h.costUsd / total.costUsd) * 100) : 0
 
   return (
     <div className="space-y-8">
@@ -854,14 +851,13 @@ export function DashboardPage() {
       {/* Metric Cards */}
       <div className="stagger-children grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
         <MetricCard
-          label={t('metrics.totalCalls')}
+          label={`${t('metrics.totalCalls')} (24h)`}
           value={formatNumber(total.calls)}
           subtitle={t('metrics.successRate', { value: total.successRate.toFixed(1) })}
           icon={Activity}
-          trend={stats.last24h.calls > 0 ? { value: callsTrend, label: t('metrics.last24h') } : undefined}
         />
         <MetricCard
-          label={t('metrics.totalTokens')}
+          label={`${t('metrics.totalTokens')} (24h)`}
           value={formatTokens(total.totalTokens)}
           subtitle={t('metrics.tokensInOut', {
             input: formatTokens(total.inputTokens),
@@ -870,11 +866,10 @@ export function DashboardPage() {
           icon={Coins}
         />
         <MetricCard
-          label={t('metrics.totalCost')}
+          label={`${t('metrics.totalCost')} (24h)`}
           value={formatCost(total.costUsd)}
           subtitle={t('metrics.last24hCost', { cost: formatCost(stats.last24h.costUsd) })}
           icon={DollarSign}
-          trend={stats.last24h.costUsd > 0 ? { value: costTrend, label: t('metrics.last24h') } : undefined}
         />
         <Card className="animate-fade-up relative overflow-hidden p-5">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.16),transparent_55%)]" />

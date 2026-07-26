@@ -472,8 +472,10 @@ export interface DatabaseConfig {
         cert?: string;
         key?: string;
         servername?: string;
-      };
+  };
   log_retention_days?: number; // Auto-delete logs older than N days (default: 30)
+  sqlite_synchronous?: 'OFF' | 'NORMAL' | 'FULL' | 'EXTRA'; // SQLite durability mode (default: FULL)
+  route_trace_write_behind?: boolean; // Queue full route traces after the response path (default: false)
 }
 
 // ===== Auth =====

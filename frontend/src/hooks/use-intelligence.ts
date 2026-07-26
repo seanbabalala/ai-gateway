@@ -6,6 +6,7 @@ import type { ApiKeyFilterScope } from './use-stats'
 export function useIntelligenceSummary(
   period: string = '7d',
   scope?: ApiKeyFilterScope,
+  enabled: boolean = true,
 ) {
   const key = [
     period,
@@ -22,6 +23,8 @@ export function useIntelligenceSummary(
         api_key: scope?.id ? undefined : scope?.name,
         namespace: scope?.namespaceId,
       }),
-    refetchInterval: 30_000,
+    enabled,
+    staleTime: 120_000,
+    refetchInterval: 300_000,
   })
 }

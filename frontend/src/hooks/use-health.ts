@@ -6,6 +6,7 @@ export function useHealth() {
   return useQuery<HealthResponse>({
     queryKey: ['health'],
     queryFn: () => apiGet<HealthResponse>('/health'),
-    refetchInterval: 30_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }

@@ -8,10 +8,12 @@ import type {
   UpdateNamespaceRequest,
 } from '@/types/api'
 
-export function useNamespaces() {
+export function useNamespaces(enabled: boolean = true) {
   return useQuery<NamespacesResponse>({
     queryKey: ['namespaces'],
     queryFn: () => apiGet<NamespacesResponse>('/api/dashboard/namespaces'),
+    enabled,
+    staleTime: 60_000,
   })
 }
 

@@ -2,11 +2,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/lib/api'
 import type { CacheStats, ActionResponse } from '@/types/api'
 
-export function useCacheStats() {
+export function useCacheStats(enabled: boolean = true) {
   return useQuery<CacheStats>({
     queryKey: ['cache'],
     queryFn: () => apiGet<CacheStats>('/api/dashboard/cache'),
-    refetchInterval: 10_000,
+    enabled,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 }
 

@@ -47,6 +47,8 @@ database:
   path: ./data/gateway.db
   # synchronize: true       # TypeORM schema sync; fine for local SQLite/dev
   # log_retention_days: 30    # Auto-delete logs older than N days (default: 30, 0 = keep forever)
+  # sqlite_synchronous: FULL  # FULL is durable by default; NORMAL trades some crash durability for throughput
+  # route_trace_write_behind: true # Keep full trace writes out of the client response path
   # For PostgreSQL:
   # type: postgres
   # url: "${DATABASE_URL}"

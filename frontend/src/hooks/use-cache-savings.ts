@@ -11,6 +11,7 @@ export function useCacheSavings(
   period: string = '7d',
   groupBy: CacheSavingsResponse['group_by'] = 'node',
   scope?: CacheSavingsScope,
+  enabled: boolean = true,
 ) {
   const key = [
     period,
@@ -31,6 +32,8 @@ export function useCacheSavings(
         namespace: scope?.namespaceId,
         team_id: scope?.teamId,
       }),
-    refetchInterval: 30_000,
+    enabled,
+    staleTime: 120_000,
+    refetchInterval: 300_000,
   })
 }

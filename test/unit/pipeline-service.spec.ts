@@ -769,6 +769,45 @@ describe('PipelineService — direct routing', () => {
       provider_keys: false,
     });
   });
+
+  it('should write full route traces behind the response path when configured', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        database: {
+          type: 'sqlite',
+          path: ':memory:',
+          route_trace_write_behind: true,
+        },
+      },
+    });
+
+    await pipeline.process(makeRequest('Hello', { originalModel: 'gpt-4o' }));
+
+    expect(mocks.routeDecisionRepo.create).toHaveBeenCalled();
+    expect(mocks.routeDecisionRepo.save).not.toHaveBeenCalled();
+    await pipeline.beforeApplicationShutdown();
+    expect(mocks.routeDecisionRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('batches disk-backed SQLite call logs behind the response path', async () => {
+    const { pipeline, mocks } = makePipeline({
+      config: {
+        database: {
+          type: 'sqlite',
+          path: './data/gateway.db',
+          route_trace_write_behind: true,
+        },
+      },
+    });
+
+    await pipeline.process(makeRequest('Hello', { originalModel: 'gpt-4o' }));
+
+    expect(mocks.callLogRepo.save).not.toHaveBeenCalled();
+    await pipeline.beforeApplicationShutdown();
+    expect(mocks.callLogRepo.save).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ request_id: expect.any(String) })]),
+    );
+  });
 });
 
 describe('PipelineService — namespace and shadow traffic', () => {
@@ -2188,13 +2227,24 @@ function mockResponse(): any {
     json: jest.fn(),
     setHeader: jest.fn(),
     flushHeaders: jest.fn(),
-    write: jest.fn((chunk: string) => chunks.push(chunk)),
+    write: jest.fn((chunk: string) => {
+      chunks.push(chunk);
+      return true;
+    }),
     end: jest.fn(() => {
       response.writableEnded = true;
       response.emit('close');
     }),
     on: jest.fn((event: string, listener: Function) => {
       listeners.set(event, [...(listeners.get(event) || []), listener]);
+      return response;
+    }),
+    once: jest.fn((event: string, listener: Function) => {
+      const onceListener = (...args: unknown[]) => {
+        response.off(event, onceListener);
+        listener(...args);
+      };
+      listeners.set(event, [...(listeners.get(event) || []), onceListener]);
       return response;
     }),
     off: jest.fn((event: string, listener: Function) => {
@@ -2333,6 +2383,73 @@ describe('PipelineService — processStream', () => {
     const reservation = await reservedBudgetAt(mocks);
     expect(reservation.commit).toHaveBeenCalledWith(15, expect.any(Number));
     expect(mocks.budgetService.record).not.toHaveBeenCalled();
+  });
+
+  it('should wait for response drain when stream backpressure is applied', async () => {
+    async function* mockStream() {
+      yield { type: 'start' as const, id: 'stream-1', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Hello' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } };
+    }
+    const { pipeline } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+    });
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+    let writes = 0;
+    res.write.mockImplementation((chunk: string) => {
+      res._chunks.push(chunk);
+      writes += 1;
+      if (writes === 1) {
+        setImmediate(() => res.emit('drain'));
+        return false;
+      }
+      return true;
+    });
+
+    await pipeline.processStream(request, res);
+
+    expect(res.once).toHaveBeenCalledWith('drain', expect.any(Function));
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it('does not write another stream event when post-response budget accounting fails', async () => {
+    async function* mockStream() {
+      yield { type: 'start' as const, id: 'stream-1', model: 'gpt-4o' };
+      yield { type: 'delta' as const, content: { type: 'text' as const, text: 'Hello' } };
+      yield { type: 'stop' as const, stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } };
+    }
+    const reservation = makeBudgetReservation();
+    reservation.commit.mockRejectedValueOnce(new Error('budget store unavailable'));
+    const { pipeline, mocks } = makePipeline({
+      providerClient: {
+        forward: jest.fn(),
+        forwardStream: jest.fn().mockReturnValue(mockStream()),
+      },
+      budgetService: {
+        reserve: jest.fn().mockResolvedValue(reservation),
+      },
+    });
+    const request = makeRequest('Hello', { originalModel: 'gpt-4o' });
+    request.stream = true;
+    const res = mockResponse();
+    let wroteAfterEnd = false;
+    res.write.mockImplementation((chunk: string) => {
+      if (res.writableEnded) wroteAfterEnd = true;
+      res._chunks.push(chunk);
+      return true;
+    });
+
+    await pipeline.processStream(request, res);
+
+    expect(res.end).toHaveBeenCalledTimes(1);
+    expect(wroteAfterEnd).toBe(false);
+    expect(mocks.circuitBreaker.recordFailure).not.toHaveBeenCalled();
+    expect(reservation.release).toHaveBeenCalledTimes(1);
   });
 
   it('should write native Responses raw SSE without reconstructing function call events', async () => {

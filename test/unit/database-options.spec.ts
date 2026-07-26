@@ -18,6 +18,27 @@ describe('database options', () => {
       database: ':memory:',
       synchronize: true,
     });
+
+    const pragma = jest.fn();
+    (options as { prepareDatabase?: (db: { pragma: jest.Mock }) => void })
+      .prepareDatabase?.({ pragma });
+    expect(pragma).toHaveBeenCalledWith('journal_mode = WAL');
+    expect(pragma).toHaveBeenCalledWith('synchronous = FULL');
+    expect(pragma).toHaveBeenCalledWith('busy_timeout = 5000');
+  });
+
+  it('allows explicitly opting into SQLite NORMAL synchronous mode', () => {
+    const options = buildTypeOrmDatabaseOptions({
+      type: 'sqlite',
+      path: ':memory:',
+      sqlite_synchronous: 'NORMAL',
+    }, shared);
+    const pragma = jest.fn();
+
+    (options as { prepareDatabase?: (db: { pragma: jest.Mock }) => void })
+      .prepareDatabase?.({ pragma });
+
+    expect(pragma).toHaveBeenCalledWith('synchronous = NORMAL');
   });
 
   it('builds PostgreSQL production pool and SSL options', () => {

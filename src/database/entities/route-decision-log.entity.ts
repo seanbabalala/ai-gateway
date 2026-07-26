@@ -22,6 +22,7 @@ import {
 @Index(['agent_session_id'])
 @Index(['intelligence_optimizer_applied'])
 @Index(['quality_gate_status'])
+@Index('IDX_route_decisions_workspace_timestamp', ['workspace_id', 'timestamp'])
 export class RouteDecisionLog {
   @PrimaryGeneratedColumn()
   id!: number;
