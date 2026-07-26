@@ -1723,6 +1723,88 @@ describe('ProviderClientService', () => {
       expect(result.model).toBe('claude-opus-4-7');
     });
 
+    it('should preserve reserved tool schemas when forwarding native Responses requests', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          id: 'resp_reserved_tool',
+          model: 'gpt-5.6-sol-2026-07-09',
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              content: [{ type: 'output_text', text: 'Delegated' }],
+            },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }),
+      });
+      global.fetch = fetchMock as any;
+      const reservedTool = {
+        type: 'function',
+        name: 'collaboration.spawn_agent',
+        description: 'Spawn a collaborating agent',
+        parameters: {
+          type: 'object',
+          properties: {
+            task_name: { type: 'string' },
+            message: { type: 'string' },
+          },
+          required: ['task_name', 'message'],
+          oneOf: [
+            { required: ['task_name', 'message'] },
+            { required: ['task_name', 'message', 'fork_turns'] },
+          ],
+          additionalProperties: false,
+        },
+        strict: true,
+      };
+      const malformedTool = {
+        type: 'function',
+        name: 'legacy_tool',
+        parameters: {
+          type: 'None',
+          anyOf: [{ type: 'object' }, { type: 'null' }],
+        },
+      };
+      const canonical = makeCanonical({
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.6-sol',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.6-sol',
+            stream: false,
+            input: 'Delegate this task',
+            tools: [reservedTool, malformedTool],
+          },
+        },
+      });
+      const svc = makeServiceWithNode({
+        id: 'gpt-5.6-responses',
+        protocol: 'responses',
+        endpoint: '/v1/responses',
+        models: ['gpt-5.6-sol-2026-07-09'],
+        request_compatibility: { drop_parameters: ['top_p'] },
+      });
+
+      await svc.forward(
+        canonical,
+        'gpt-5.6-responses',
+        'gpt-5.6-sol-2026-07-09',
+        routingMeta,
+      );
+
+      const [, options] = fetchMock.mock.calls[0];
+      const upstreamBody = JSON.parse(options.body as string);
+      expect(upstreamBody.tools[0]).toEqual(reservedTool);
+      expect(upstreamBody.tools[1].parameters).toEqual({
+        type: 'object',
+        properties: {},
+      });
+    });
+
     it('should stringify Anthropic tool result content blocks when the node requests compatibility mode', async () => {
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
