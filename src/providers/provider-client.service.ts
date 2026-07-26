@@ -138,7 +138,11 @@ export class ProviderClientService {
         const startTime = Date.now();
         const upstreamModel = this.resolveUpstreamModel(node, targetModel);
         const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
-        this.applyNodeRequestCompatibility(node, requestBody);
+        this.applyNodeRequestCompatibility(
+          node,
+          requestBody,
+          this.shouldPassthroughNativeResponses(canonical, node.protocol),
+        );
         this.applyStreamFlag(node, requestBody, false);
 
         const response = await this.sendRequest(
@@ -402,7 +406,11 @@ export class ProviderClientService {
       node.protocol,
     );
     const requestBody = this.denormalizeRequest(canonical, node.protocol, upstreamModel);
-    this.applyNodeRequestCompatibility(node, requestBody);
+    this.applyNodeRequestCompatibility(
+      node,
+      requestBody,
+      this.shouldPassthroughNativeResponses(canonical, node.protocol),
+    );
     this.applyStreamFlag(node, requestBody, true);
 
     const response = await this.sendRequest(
@@ -1460,6 +1468,7 @@ export class ProviderClientService {
   private applyNodeRequestCompatibility(
     node: NodeConfig,
     requestBody: Record<string, unknown>,
+    preserveNativeResponsesToolSchemas = false,
   ): void {
     for (const parameter of node.request_compatibility?.drop_parameters || []) {
       delete requestBody[parameter];
@@ -1478,7 +1487,17 @@ export class ProviderClientService {
       }
     }
 
-    this.sanitizeFunctionToolSchemas(requestBody);
+    // Responses -> Responses requests are cloned from the original client body.
+    // Keep already-valid function schemas semantically unchanged: newer models
+    // can reserve tool names and require the submitted schema to exactly match
+    // the model's configured schema. Malformed schemas still receive the
+    // provider-compatibility fallback used by translated requests.
+    this.sanitizeFunctionToolSchemas(
+      requestBody,
+      new WeakSet<object>(),
+      false,
+      preserveNativeResponsesToolSchemas,
+    );
 
     if (node.protocol === 'chat_completions') {
       this.applyChatToolMessageCompatibility(
@@ -1501,10 +1520,16 @@ export class ProviderClientService {
     value: unknown,
     seen = new WeakSet<object>(),
     inToolContainer = false,
+    preserveValidSchemas = false,
   ): void {
     if (Array.isArray(value)) {
       for (const item of value) {
-        this.sanitizeFunctionToolSchemas(item, seen, inToolContainer);
+        this.sanitizeFunctionToolSchemas(
+          item,
+          seen,
+          inToolContainer,
+          preserveValidSchemas,
+        );
       }
       return;
     }
@@ -1513,13 +1538,18 @@ export class ProviderClientService {
     if (seen.has(value)) return;
     seen.add(value);
 
-    this.sanitizeFunctionToolRecord(value, inToolContainer);
+    this.sanitizeFunctionToolRecord(
+      value,
+      inToolContainer,
+      preserveValidSchemas,
+    );
 
     for (const [key, child] of Object.entries(value)) {
       this.sanitizeFunctionToolSchemas(
         child,
         seen,
         key === 'tools' && Array.isArray(child),
+        preserveValidSchemas,
       );
     }
   }
@@ -1527,17 +1557,20 @@ export class ProviderClientService {
   private sanitizeFunctionToolRecord(
     record: Record<string, unknown>,
     inToolContainer: boolean,
+    preserveValidSchemas: boolean,
   ): void {
     if (record.type === 'function') {
       if (this.isPlainRecord(record.function)) {
         record.function.parameters = this.normalizeFunctionParametersSchema(
           record.function.parameters,
+          preserveValidSchemas,
         );
         return;
       }
 
       record.parameters = this.normalizeFunctionParametersSchema(
         record.parameters,
+        preserveValidSchemas,
       );
       return;
     }
@@ -1549,6 +1582,7 @@ export class ProviderClientService {
     ) {
       record.parameters = this.normalizeFunctionParametersSchema(
         record.parameters,
+        preserveValidSchemas,
       );
       return;
     }
@@ -1559,15 +1593,21 @@ export class ProviderClientService {
     ) {
       record.input_schema = this.normalizeFunctionParametersSchema(
         record.input_schema,
+        preserveValidSchemas,
       );
     }
   }
 
   private normalizeFunctionParametersSchema(
     schema: unknown,
+    preserveValidSchema = false,
   ): Record<string, unknown> {
     if (!this.isPlainRecord(schema)) {
       return { type: 'object', properties: {} };
+    }
+
+    if (preserveValidSchema && schema.type === 'object') {
+      return schema;
     }
 
     const normalized = this.cloneJson(schema) as Record<string, unknown>;
