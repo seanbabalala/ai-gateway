@@ -783,6 +783,7 @@ export class ProviderClientService {
     signal?: AbortSignal,
     endpointOverride?: string,
     preserveAbortAfterResponse = false,
+    reservedToolSchemaRetryCount = 0,
   ): Promise<Response> {
     const url = `${node.base_url}${endpointOverride || node.endpoint}`;
     const nodeHeaders = await this.resolveNodeHeaders(node);
@@ -906,6 +907,39 @@ export class ProviderClientService {
         this.providerRedactionTelemetry(),
       );
       this.logger.warn(`Provider ${node.id} returned ${response.status}: ${sanitizedErrorBody.substring(0, 200)}`);
+      // Some load-balanced Responses backends intermittently disagree about
+      // the configured schema for reserved collaboration tools. This exact
+      // 400 occurs before model execution, so replay the unchanged request
+      // once without making unrelated client-shape errors retryable.
+      if (
+        reservedToolSchemaRetryCount < 1 &&
+        !signal?.aborted &&
+        this.isReservedCollaborationToolSchemaMismatch(
+          node,
+          requestBody,
+          response.status,
+          errorBody,
+        )
+      ) {
+        this.logger.warn(
+          `Retrying ${node.id} once after an intermittent reserved collaboration tool schema mismatch`,
+        );
+        this.completeCredential(credential, {
+          statusCode: response.status,
+          failureType: 'http_error',
+          error: `Intermittent reserved collaboration tool schema mismatch from ${node.id}`,
+        });
+        return this.sendRequest(
+          node,
+          requestBody,
+          canonical,
+          timeoutMs,
+          signal,
+          endpointOverride,
+          preserveAbortAfterResponse,
+          reservedToolSchemaRetryCount + 1,
+        );
+      }
       const retryAfter = response.headers?.get?.('retry-after');
       const providerError = new ProviderError(
         `Provider ${node.id} returned ${response.status}: ${sanitizedErrorBody.substring(0, 500)}` +
@@ -934,6 +968,29 @@ export class ProviderClientService {
     }
 
     throw lastError || new ProviderError(`Provider ${node.id} has no credential attempts`, 503, node.id);
+  }
+
+  private isReservedCollaborationToolSchemaMismatch(
+    node: NodeConfig,
+    requestBody: Record<string, unknown>,
+    statusCode: number,
+    errorBody: string,
+  ): boolean {
+    if (node.protocol !== 'responses' || statusCode !== 400) return false;
+    const tools = Array.isArray(requestBody.tools) ? requestBody.tools : [];
+    const includesReservedTool = tools.some(
+      (tool) =>
+        this.isPlainRecord(tool) &&
+        tool.type === 'function' &&
+        tool.name === 'collaboration.spawn_agent',
+    );
+    if (!includesReservedTool) return false;
+
+    return (
+      errorBody.includes(
+        "Function 'collaboration.spawn_agent' is reserved for use by this model",
+      ) && errorBody.includes('must match the configured schema')
+    );
   }
 
   private async sendMediaRequest(
