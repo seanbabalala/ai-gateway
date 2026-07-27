@@ -979,10 +979,28 @@ export class ProviderClientService {
     if (node.protocol !== 'responses' || statusCode !== 400) return false;
     const tools = Array.isArray(requestBody.tools) ? requestBody.tools : [];
     const includesReservedTool = tools.some(
-      (tool) =>
-        this.isPlainRecord(tool) &&
-        tool.type === 'function' &&
-        tool.name === 'collaboration.spawn_agent',
+      (tool) => {
+        if (!this.isPlainRecord(tool)) return false;
+        if (
+          tool.type === 'function' &&
+          tool.name === 'collaboration.spawn_agent'
+        ) {
+          return true;
+        }
+        if (
+          tool.type !== 'namespace' ||
+          tool.name !== 'collaboration' ||
+          !Array.isArray(tool.tools)
+        ) {
+          return false;
+        }
+        return tool.tools.some(
+          (child) =>
+            this.isPlainRecord(child) &&
+            child.type === 'function' &&
+            child.name === 'spawn_agent',
+        );
+      },
     );
     if (!includesReservedTool) return false;
 
