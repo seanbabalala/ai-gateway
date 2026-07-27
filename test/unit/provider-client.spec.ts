@@ -1838,21 +1838,28 @@ describe('ProviderClientService', () => {
         );
       global.fetch = fetchMock as any;
       const reservedTool = {
-        type: 'function',
-        name: 'collaboration.spawn_agent',
-        description: 'Spawn a collaborating agent',
-        parameters: {
-          type: 'object',
-          properties: {
-            task_name: { type: 'string' },
-            message: { type: 'string' },
-            model: { type: 'string' },
-            reasoning_effort: { type: 'string' },
+        type: 'namespace',
+        name: 'collaboration',
+        description: 'Tools for spawning and managing sub-agents.',
+        tools: [
+          {
+            type: 'function',
+            name: 'spawn_agent',
+            description: 'Spawn a collaborating agent',
+            parameters: {
+              type: 'object',
+              properties: {
+                task_name: { type: 'string' },
+                message: { type: 'string' },
+                model: { type: 'string' },
+                reasoning_effort: { type: 'string' },
+              },
+              required: ['task_name', 'message'],
+              additionalProperties: false,
+            },
+            strict: false,
           },
-          required: ['task_name', 'message'],
-          additionalProperties: false,
-        },
-        strict: false,
+        ],
       };
       const canonical = makeCanonical({
         metadata: {
