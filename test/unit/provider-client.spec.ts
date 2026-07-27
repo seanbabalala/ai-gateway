@@ -1805,6 +1805,136 @@ describe('ProviderClientService', () => {
       });
     });
 
+    it('should retry an intermittent reserved collaboration tool schema mismatch once', async () => {
+      const schemaMismatch = {
+        error: {
+          message:
+            "Invalid Value: 'tools'. Function 'collaboration.spawn_agent' is reserved for use by this model and must match the configured schema.",
+          type: 'invalid_request_error',
+          param: 'tools',
+        },
+      };
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(schemaMismatch), { status: 400 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              id: 'resp_reserved_tool_retry',
+              model: 'gpt-5.6-sol-2026-07-09',
+              status: 'completed',
+              output: [
+                {
+                  type: 'message',
+                  content: [{ type: 'output_text', text: 'Recovered' }],
+                },
+              ],
+              usage: { input_tokens: 10, output_tokens: 2 },
+            }),
+            { status: 200 },
+          ),
+        );
+      global.fetch = fetchMock as any;
+      const reservedTool = {
+        type: 'function',
+        name: 'collaboration.spawn_agent',
+        description: 'Spawn a collaborating agent',
+        parameters: {
+          type: 'object',
+          properties: {
+            task_name: { type: 'string' },
+            message: { type: 'string' },
+            model: { type: 'string' },
+            reasoning_effort: { type: 'string' },
+          },
+          required: ['task_name', 'message'],
+          additionalProperties: false,
+        },
+        strict: false,
+      };
+      const canonical = makeCanonical({
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.6-sol',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.6-sol',
+            stream: false,
+            input: 'Delegate this task',
+            tools: [reservedTool],
+          },
+        },
+      });
+      const svc = makeServiceWithNode({
+        id: 'gpt-5.6-responses',
+        protocol: 'responses',
+        endpoint: '/v1/responses',
+      });
+
+      const result = await svc.forward(
+        canonical,
+        'gpt-5.6-responses',
+        'gpt-5.6-sol-2026-07-09',
+        routingMeta,
+      );
+
+      expect(result.content[0]).toEqual({ type: 'text', text: 'Recovered' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      const retryBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+      expect(retryBody).toEqual(firstBody);
+      expect(retryBody.tools[0]).toEqual(reservedTool);
+    });
+
+    it('should stop after one reserved collaboration tool schema retry', async () => {
+      const errorBody = JSON.stringify({
+        error: {
+          message:
+            "Invalid Value: 'tools'. Function 'collaboration.spawn_agent' is reserved for use by this model and must match the configured schema.",
+        },
+      });
+      const fetchMock = jest.fn().mockImplementation(() =>
+        Promise.resolve(new Response(errorBody, { status: 400 })),
+      );
+      global.fetch = fetchMock as any;
+      const canonical = makeCanonical({
+        metadata: {
+          source_format: 'responses',
+          original_model: 'gpt-5.6-sol',
+          raw_headers: {},
+          raw_body: {
+            model: 'gpt-5.6-sol',
+            stream: false,
+            input: 'Delegate this task',
+            tools: [
+              {
+                type: 'function',
+                name: 'collaboration.spawn_agent',
+                parameters: { type: 'object', properties: {} },
+              },
+            ],
+          },
+        },
+      });
+      const svc = makeServiceWithNode({
+        id: 'gpt-5.6-responses',
+        protocol: 'responses',
+        endpoint: '/v1/responses',
+      });
+
+      await expect(
+        svc.forward(
+          canonical,
+          'gpt-5.6-responses',
+          'gpt-5.6-sol-2026-07-09',
+          routingMeta,
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it('should stringify Anthropic tool result content blocks when the node requests compatibility mode', async () => {
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
