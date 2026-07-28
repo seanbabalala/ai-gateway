@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
@@ -22,6 +27,7 @@ import {
   PromptTemplate,
   RouteDecisionLog,
 } from '../database/entities';
+import { SqliteAnalyticsService } from '../database/sqlite-analytics.service';
 import { WorkspaceContextService } from '../workspaces/workspace-context.service';
 import {
   applyWorkspaceQueryScope,
@@ -116,6 +122,21 @@ export interface PromptRegistryRouteEvidence {
   reason: string;
 }
 
+interface SemanticDashboardAnalytics {
+  recentRequests: number;
+  recentHits: number;
+  recentMetadataMatches: number;
+  intentCounts: Record<string, number>;
+  contextActions: Record<string, number>;
+  guardrailKinds: Record<string, number>;
+}
+
+interface SemanticDashboardMetricRow extends Record<string, unknown> {
+  metric: string;
+  dimension: string;
+  count: number;
+}
+
 @Injectable()
 export class SemanticPlatformService {
   constructor(
@@ -129,39 +150,18 @@ export class SemanticPlatformService {
     private readonly callLogRepo: Repository<CallLog>,
     @InjectRepository(RouteDecisionLog)
     private readonly routeDecisionRepo: Repository<RouteDecisionLog>,
+    @Optional() private readonly sqliteAnalytics?: SqliteAnalyticsService,
   ) {}
 
   async getDashboardSummary(period = '7d') {
     const workspaceId = this.workspaceId();
     const periodDays = period === '90d' ? 90 : period === '30d' ? 30 : 7;
     const since = new Date(Date.now() - periodDays * 86_400_000);
-    const [templates, logs, decisions] = await Promise.all([
+    const [templates, analytics] = await Promise.all([
       this.listPromptTemplates({ limit: 50 }),
-      this.loadLogs(since, workspaceId),
-      this.loadDecisions(since, workspaceId),
+      this.loadDashboardAnalytics(since, workspaceId),
     ]);
     const semanticStats = this.cacheService.getSemanticStats();
-    const semanticLogs = logs.filter((log) => log.semantic_cache_hit || log.semantic_cache_score !== null);
-    const traces = decisions
-      .map((decision) => parseJson<Record<string, unknown>>(decision.trace_json))
-      .filter((trace): trace is Record<string, unknown> => Boolean(trace));
-    const semanticEvidence = traces.map((trace) => trace.semantic_platform as Record<string, unknown> | undefined).filter(Boolean);
-    const intentCounts = countBy(
-      semanticEvidence.map((evidence) =>
-        String((evidence?.intent as Record<string, unknown> | undefined)?.category || 'unknown'),
-      ),
-    );
-    const contextActions = countBy(
-      semanticEvidence.map((evidence) =>
-        String((evidence?.context_optimizer as Record<string, unknown> | undefined)?.action || 'unknown'),
-      ),
-    );
-    const guardrailKinds = countBy(
-      semanticEvidence.flatMap((evidence) =>
-        ((evidence?.guardrails_v2 as Record<string, unknown> | undefined)?.findings as Array<Record<string, unknown>> | undefined || [])
-          .map((finding) => String(finding.kind || 'unknown')),
-      ),
-    );
 
     return {
       version: 'v1',
@@ -196,11 +196,9 @@ export class SemanticPlatformService {
         explicit_response_storage_opt_in:
           this.config.semanticCache.store_responses &&
           this.config.semanticCache.response_storage_requires_header,
-        recent_requests: semanticLogs.length,
-        recent_hits: semanticLogs.filter((log) => log.semantic_cache_hit).length,
-        recent_metadata_matches: semanticLogs.filter(
-          (log) => !log.semantic_cache_hit && log.semantic_cache_score !== null,
-        ).length,
+        recent_requests: analytics.recentRequests,
+        recent_hits: analytics.recentHits,
+        recent_metadata_matches: analytics.recentMetadataMatches,
       },
       prompt_registry: {
         enabled: this.config.semanticPlatform.prompt_registry.enabled,
@@ -215,18 +213,18 @@ export class SemanticPlatformService {
         strategy: this.config.semanticPlatform.context_optimizer.strategy,
         mutation_allowed:
           this.config.semanticPlatform.context_optimizer.allow_content_mutation,
-        actions: contextActions,
+        actions: analytics.contextActions,
         content_persistence: false,
       },
       intent_classification: {
         enabled: this.config.semanticPlatform.intent_classification.enabled,
         categories: this.config.semanticPlatform.intent_classification.categories,
-        observed: intentCounts,
+        observed: analytics.intentCounts,
       },
       guardrails_v2: {
         enabled: this.config.semanticPlatform.guardrails_v2.enabled,
         metadata_only: this.config.semanticPlatform.guardrails_v2.metadata_only,
-        findings: guardrailKinds,
+        findings: analytics.guardrailKinds,
         blocked_by_default: false,
       },
       privacy: this.privacyContract(),
@@ -591,6 +589,156 @@ export class SemanticPlatformService {
       created_at: row.created_at.toISOString(),
       updated_at: row.updated_at.toISOString(),
     };
+  }
+
+  private async loadDashboardAnalytics(
+    since: Date,
+    workspaceId: string,
+  ): Promise<SemanticDashboardAnalytics> {
+    if (this.sqliteAnalytics?.available) {
+      const rows = await this.sqliteAnalytics.queryAll<SemanticDashboardMetricRow>(
+        `WITH recent_logs AS MATERIALIZED (
+          SELECT semantic_cache_hit, semantic_cache_score
+          FROM call_logs
+          WHERE timestamp >= ? AND (workspace_id = ? OR workspace_id IS NULL)
+          ORDER BY timestamp DESC
+          LIMIT 5000
+        ),
+        recent_decisions AS MATERIALIZED (
+          SELECT trace_json
+          FROM route_decisions
+          WHERE timestamp >= ? AND (workspace_id = ? OR workspace_id IS NULL)
+          ORDER BY timestamp DESC
+          LIMIT 5000
+        ),
+        semantic_evidence AS MATERIALIZED (
+          SELECT trace_json
+          FROM recent_decisions
+          WHERE json_valid(trace_json)
+            AND json_type(trace_json, '$.semantic_platform') = 'object'
+        )
+        SELECT 'semantic_recent' AS metric, '' AS dimension, COUNT(*) AS count
+        FROM recent_logs
+        WHERE semantic_cache_hit = 1 OR semantic_cache_score IS NOT NULL
+        UNION ALL
+        SELECT 'semantic_hits', '', COUNT(*)
+        FROM recent_logs
+        WHERE semantic_cache_hit = 1
+        UNION ALL
+        SELECT 'semantic_metadata_matches', '', COUNT(*)
+        FROM recent_logs
+        WHERE semantic_cache_hit = 0 AND semantic_cache_score IS NOT NULL
+        UNION ALL
+        SELECT
+          'intent',
+          COALESCE(json_extract(trace_json, '$.semantic_platform.intent.category'), 'unknown'),
+          COUNT(*)
+        FROM semantic_evidence
+        GROUP BY 2
+        UNION ALL
+        SELECT
+          'context_action',
+          COALESCE(json_extract(trace_json, '$.semantic_platform.context_optimizer.action'), 'unknown'),
+          COUNT(*)
+        FROM semantic_evidence
+        GROUP BY 2
+        UNION ALL
+        SELECT
+          'guardrail',
+          COALESCE(json_extract(finding.value, '$.kind'), 'unknown'),
+          COUNT(*)
+        FROM semantic_evidence,
+          json_each(semantic_evidence.trace_json, '$.semantic_platform.guardrails_v2.findings') AS finding
+        GROUP BY 2`,
+        [
+          this.sqliteDateTime(since),
+          workspaceId,
+          this.sqliteDateTime(since),
+          workspaceId,
+        ],
+      );
+      return {
+        recentRequests: this.metricCount(rows, 'semantic_recent'),
+        recentHits: this.metricCount(rows, 'semantic_hits'),
+        recentMetadataMatches: this.metricCount(
+          rows,
+          'semantic_metadata_matches',
+        ),
+        intentCounts: this.metricBreakdown(rows, 'intent'),
+        contextActions: this.metricBreakdown(rows, 'context_action'),
+        guardrailKinds: this.metricBreakdown(rows, 'guardrail'),
+      };
+    }
+
+    const [logs, decisions] = await Promise.all([
+      this.loadLogs(since, workspaceId),
+      this.loadDecisions(since, workspaceId),
+    ]);
+    const semanticLogs = logs.filter(
+      (log) => log.semantic_cache_hit || log.semantic_cache_score !== null,
+    );
+    const semanticEvidence = decisions
+      .map((decision) => parseJson<Record<string, unknown>>(decision.trace_json))
+      .filter((trace): trace is Record<string, unknown> => Boolean(trace))
+      .map(
+        (trace) =>
+          trace.semantic_platform as Record<string, unknown> | undefined,
+      )
+      .filter((evidence): evidence is Record<string, unknown> => Boolean(evidence));
+
+    return {
+      recentRequests: semanticLogs.length,
+      recentHits: semanticLogs.filter((log) => log.semantic_cache_hit).length,
+      recentMetadataMatches: semanticLogs.filter(
+        (log) => !log.semantic_cache_hit && log.semantic_cache_score !== null,
+      ).length,
+      intentCounts: countBy(
+        semanticEvidence.map((evidence) =>
+          String(
+            (evidence.intent as Record<string, unknown> | undefined)?.category ||
+              'unknown',
+          ),
+        ),
+      ),
+      contextActions: countBy(
+        semanticEvidence.map((evidence) =>
+          String(
+            (evidence.context_optimizer as Record<string, unknown> | undefined)
+              ?.action || 'unknown',
+          ),
+        ),
+      ),
+      guardrailKinds: countBy(
+        semanticEvidence.flatMap((evidence) =>
+          ((evidence.guardrails_v2 as Record<string, unknown> | undefined)
+            ?.findings as Array<Record<string, unknown>> | undefined || []).map(
+            (finding) => String(finding.kind || 'unknown'),
+          ),
+        ),
+      ),
+    };
+  }
+
+  private metricCount(
+    rows: SemanticDashboardMetricRow[],
+    metric: string,
+  ): number {
+    return Number(rows.find((row) => row.metric === metric)?.count || 0);
+  }
+
+  private metricBreakdown(
+    rows: SemanticDashboardMetricRow[],
+    metric: string,
+  ): Record<string, number> {
+    return Object.fromEntries(
+      rows
+        .filter((row) => row.metric === metric)
+        .map((row) => [String(row.dimension || 'unknown'), Number(row.count || 0)]),
+    );
+  }
+
+  private sqliteDateTime(value: Date): string {
+    return value.toISOString().slice(0, 23).replace('T', ' ');
   }
 
   private async loadLogs(since: Date, workspaceId: string) {

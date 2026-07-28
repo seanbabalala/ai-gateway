@@ -32,7 +32,6 @@ import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
 import { AgentPlatformModule } from '../agent-platform/agent-platform.module';
 import { ClusterModule } from '../cluster/cluster.module';
 import { ProvidersModule } from '../providers/providers.module';
-import { SqliteAnalyticsService } from './sqlite-analytics.service';
 
 @Module({
   imports: [
@@ -69,7 +68,6 @@ import { SqliteAnalyticsService } from './sqlite-analytics.service';
     BenchmarkReportService,
     CacheSavingsService,
     ProviderExtensibilityService,
-    SqliteAnalyticsService,
   ],
   exports: [LogEventBus],
 })

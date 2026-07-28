@@ -144,7 +144,7 @@ import {
   normalizeWorkspaceId,
   workspaceFindWhereStrict,
 } from "../workspaces/workspace-scope";
-import { SqliteAnalyticsService } from "./sqlite-analytics.service";
+import { SqliteAnalyticsService } from "../database/sqlite-analytics.service";
 import {
   CreateGatewayApiKeyDto,
   UpdateGatewayApiKeyDto,
