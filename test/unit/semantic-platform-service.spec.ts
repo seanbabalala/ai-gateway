@@ -99,7 +99,10 @@ function sortRows<T extends Record<string, any>>(rows: T[], order?: Record<strin
   });
 }
 
-function makeService(overrides: Record<string, unknown> = {}) {
+function makeService(
+  overrides: Record<string, unknown> = {},
+  sqliteAnalytics?: { available: boolean; queryAll: jest.Mock },
+) {
   const promptTemplates = new MemoryRepo<any>();
   const callLogs = new MemoryRepo<any>();
   const routeDecisions = new MemoryRepo<any>();
@@ -154,6 +157,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     promptTemplates as any,
     callLogs as any,
     routeDecisions as any,
+    sqliteAnalytics as any,
   );
   return { service, promptTemplates, callLogs, routeDecisions, config };
 }
@@ -302,6 +306,35 @@ describe('SemanticPlatformService', () => {
         stores_prompts: false,
         stores_responses: false,
       },
+    });
+  });
+
+  it('uses the SQLite analytics worker for dashboard aggregation', async () => {
+    const sqliteAnalytics = {
+      available: true,
+      queryAll: jest.fn().mockResolvedValue([
+        { metric: 'semantic_recent', dimension: '', count: 4 },
+        { metric: 'semantic_hits', dimension: '', count: 2 },
+        { metric: 'semantic_metadata_matches', dimension: '', count: 1 },
+        { metric: 'intent', dimension: 'coding', count: 3 },
+        { metric: 'context_action', dimension: 'metadata_only', count: 4 },
+        { metric: 'guardrail', dimension: 'pii', count: 2 },
+      ]),
+    };
+    const { service } = makeService({}, sqliteAnalytics);
+
+    const summary = await service.getDashboardSummary('7d');
+
+    expect(sqliteAnalytics.queryAll).toHaveBeenCalledTimes(1);
+    expect(summary).toMatchObject({
+      semantic_cache: {
+        recent_requests: 4,
+        recent_hits: 2,
+        recent_metadata_matches: 1,
+      },
+      intent_classification: { observed: { coding: 3 } },
+      context_optimizer: { actions: { metadata_only: 4 } },
+      guardrails_v2: { findings: { pii: 2 } },
     });
   });
 });

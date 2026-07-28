@@ -57,6 +57,26 @@ async function bootstrap() {
   app.use(json({ limit: bodyLimit }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
+  app.use(
+    (
+      req: { method: string; originalUrl?: string; url: string },
+      res: { once: (event: string, listener: () => void) => void },
+      next: () => void,
+    ) => {
+      const startedAt = Date.now();
+      res.once('finish', () => {
+        const durationMs = Date.now() - startedAt;
+        const path = req.originalUrl || req.url;
+        if (durationMs >= 1000 && path.startsWith('/api/dashboard')) {
+          logger.warn(
+            `Slow request: ${req.method} ${path} ${durationMs}ms`,
+          );
+        }
+      });
+      next();
+    },
+  );
+
   // Trust proxy — required to get real client IP behind reverse proxies
   if (config.server.trust_proxy) {
     const expressApp = app.getHttpAdapter().getInstance();

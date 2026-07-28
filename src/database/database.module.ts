@@ -10,6 +10,7 @@ import {
   databaseConnectionSummary,
 } from './database-options';
 import { DatabaseHealthService } from './database-health.service';
+import { SqliteAnalyticsService } from './sqlite-analytics.service';
 import {
   BudgetRule,
   CallLog,
@@ -121,7 +122,8 @@ import {
     RouteFeedbackSchemaPatchService,
     WorkspaceSchemaPatchService,
     DatabaseHealthService,
+    SqliteAnalyticsService,
   ],
-  exports: [TypeOrmModule, DatabaseHealthService],
+  exports: [TypeOrmModule, DatabaseHealthService, SqliteAnalyticsService],
 })
 export class DatabaseModule {}
