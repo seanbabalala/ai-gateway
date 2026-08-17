@@ -469,6 +469,23 @@ describe('ResponsesDenormalizer', () => {
       expect((result.tools as any[])[0].name).toBe('fn1');
     });
 
+    it.each(['', '   '])(
+      'should omit an empty tool description (%j)',
+      (description) => {
+        const canonical = makeCanonicalRequest({
+          tools: [{ name: 'fn1', description, parameters: {} }],
+        });
+
+        const result = denorm.denormalize(canonical, 'gpt-4.1');
+
+        expect((result.tools as any[])[0]).toEqual({
+          type: 'function',
+          name: 'fn1',
+          parameters: {},
+        });
+      },
+    );
+
     it('should use max_output_tokens', () => {
       const canonical = makeCanonicalRequest({ max_tokens: 500 });
       const result = denorm.denormalize(canonical, 'gpt-4.1');

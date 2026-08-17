@@ -51,7 +51,9 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
       body.tools = canonical.tools.map((tool) => ({
         type: 'function',
         name: tool.name,
-        description: tool.description,
+        ...(tool.description.trim().length > 0
+          ? { description: tool.description }
+          : {}),
         parameters: tool.parameters,
       }));
     }

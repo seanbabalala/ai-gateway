@@ -1013,6 +1013,62 @@ describe('ProviderClientService', () => {
         properties: {},
       });
     });
+
+    it('fills empty descriptions in native Responses tool containers', () => {
+      const svc = makeService();
+      const body: Record<string, unknown> = {
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Run the task' }],
+            tools: [
+              {
+                name: 'nested_tool',
+                description: '',
+                parameters: { type: 'object', properties: {} },
+              },
+              {
+                type: 'custom',
+                name: 'nested_custom_tool',
+                description: '   ',
+                format: { type: 'text' },
+              },
+            ],
+          },
+        ],
+        tools: [
+          {
+            type: 'function',
+            name: 'top_level_tool',
+            description: '   ',
+            parameters: { type: 'object', properties: {} },
+          },
+          {
+            type: 'custom',
+            name: 'top_level_custom_tool',
+            description: '',
+            format: { type: 'text' },
+          },
+        ],
+      };
+
+      (svc as any).applyNodeRequestCompatibility(
+        {
+          id: 'public-aigw',
+          protocol: 'responses',
+        },
+        body,
+        true,
+      );
+
+      const input = body.input as any[];
+      const topLevelTools = body.tools as any[];
+      expect(input[0].tools[0].description).toBe('Tool nested_tool');
+      expect(input[0].tools[1].description).toBe('Tool nested_custom_tool');
+      expect(topLevelTools[0].description).toBe('Tool top_level_tool');
+      expect(topLevelTools[1].description).toBe('Tool top_level_custom_tool');
+    });
   });
 
   // ── Native Messages Passthrough (via private methods accessed indirectly) ──
