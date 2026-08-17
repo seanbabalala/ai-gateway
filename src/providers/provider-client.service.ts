@@ -1613,6 +1613,9 @@ export class ProviderClientService {
     if (seen.has(value)) return;
     seen.add(value);
 
+    if (inToolContainer) {
+      this.ensureNonEmptyToolDescription(value);
+    }
     this.sanitizeFunctionToolRecord(
       value,
       inToolContainer,
@@ -1636,6 +1639,7 @@ export class ProviderClientService {
   ): void {
     if (record.type === 'function') {
       if (this.isPlainRecord(record.function)) {
+        this.ensureNonEmptyToolDescription(record.function);
         record.function.parameters = this.normalizeFunctionParametersSchema(
           record.function.parameters,
           preserveValidSchemas,
@@ -1643,6 +1647,7 @@ export class ProviderClientService {
         return;
       }
 
+      this.ensureNonEmptyToolDescription(record);
       record.parameters = this.normalizeFunctionParametersSchema(
         record.parameters,
         preserveValidSchemas,
@@ -1655,6 +1660,7 @@ export class ProviderClientService {
       typeof record.name === 'string' &&
       Object.prototype.hasOwnProperty.call(record, 'parameters')
     ) {
+      this.ensureNonEmptyToolDescription(record);
       record.parameters = this.normalizeFunctionParametersSchema(
         record.parameters,
         preserveValidSchemas,
@@ -1671,6 +1677,18 @@ export class ProviderClientService {
         preserveValidSchemas,
       );
     }
+  }
+
+  private ensureNonEmptyToolDescription(record: Record<string, unknown>): void {
+    if (
+      typeof record.description !== 'string' ||
+      record.description.trim().length > 0
+    ) {
+      return;
+    }
+
+    const name = typeof record.name === 'string' ? record.name.trim() : '';
+    record.description = name ? `Tool ${name}` : 'Tool';
   }
 
   private normalizeFunctionParametersSchema(
