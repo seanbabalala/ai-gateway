@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Radio, Download, ScrollText, Route, Database, Terminal, Monitor, Code2 } from 'lucide-react'
+import { Activity, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CircleDollarSign, Gauge, KeyRound, Radio, Download, ScrollText, Route, Database, Terminal, Monitor, Code2, Braces } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NodeIcon } from '@/components/shared/NodeIcon'
 import { TierBadge } from '@/components/shared/TierBadge'
@@ -11,7 +11,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Tooltip } from '@/components/ui/tooltip'
-import { SkeletonTable } from '@/components/ui/skeleton'
+import { Skeleton, SkeletonTable } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import {
@@ -22,7 +22,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
-import { useLogs } from '@/hooks/use-logs'
+import { useLogs, useLogsSummary } from '@/hooks/use-logs'
 import { useSSELogs } from '@/hooks/use-sse-logs'
 import { useApiKeys } from '@/hooks/use-api-keys'
 import { useNamespaces } from '@/hooks/use-namespaces'
@@ -37,10 +37,139 @@ import {
   sourceFormatLabel,
 } from '@/lib/call-log-display'
 import { getAuthToken } from '@/contexts/AuthContext'
-import type { CallLog } from '@/types/api'
+import type { CallLog, LogsSummaryResponse } from '@/types/api'
 
 const LIMIT = 20
 const TABLE_COLUMNS = 13
+
+function SummaryMetric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Activity }) {
+  return (
+    <div className="flex min-h-24 items-start justify-between gap-4 border-b border-[var(--border)] p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold text-[var(--foreground-dim)]">{label}</div>
+        <div className="mt-2 truncate font-mono text-[24px] font-bold leading-none text-[var(--foreground)]">
+          {value}
+        </div>
+      </div>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]">
+        <Icon className="h-4 w-4" />
+      </div>
+    </div>
+  )
+}
+
+function LogsSummaryPanel({
+  data,
+  isLoading,
+  isError,
+  periodLabel,
+}: {
+  data?: LogsSummaryResponse
+  isLoading: boolean
+  isError: boolean
+  periodLabel: string
+}) {
+  const { t } = useTranslation('logs')
+
+  if (isLoading) {
+    return (
+      <CardStatic className="animate-fade-up overflow-hidden">
+        <div className="border-b border-[var(--border)] p-4">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="mt-2 h-3 w-52" />
+        </div>
+        <div className="grid sm:grid-cols-3 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="border-b border-[var(--border)] p-4 sm:border-b-0 sm:border-r">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="mt-3 h-7 w-28" />
+            </div>
+          ))}
+        </div>
+      </CardStatic>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <CardStatic className="animate-fade-up p-5 text-[12px] text-[var(--foreground-dim)]">
+        {t('summary.unavailable')}
+      </CardStatic>
+    )
+  }
+
+  const total = data.total
+
+  return (
+    <CardStatic className="animate-fade-up overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3.5">
+        <div>
+          <h2 className="text-[14px] font-bold text-[var(--foreground)]">{t('summary.title')}</h2>
+          <p className="mt-1 text-[11px] text-[var(--foreground-dim)]">
+            {t('summary.description', { period: periodLabel })}
+          </p>
+        </div>
+        <Badge variant="zinc">{periodLabel}</Badge>
+      </div>
+
+      <div className="grid sm:grid-cols-3 xl:grid-cols-5">
+        <SummaryMetric label={t('summary.requests')} value={total.requests.toLocaleString()} icon={Activity} />
+        <SummaryMetric label={t('summary.tokens')} value={formatTokens(total.tokens)} icon={Braces} />
+        <SummaryMetric label={t('summary.cost')} value={formatCost(total.cost_usd)} icon={CircleDollarSign} />
+        <SummaryMetric label={t('summary.successRate')} value={`${total.success_rate.toFixed(1)}%`} icon={Gauge} />
+        <SummaryMetric label={t('summary.cacheRate')} value={`${total.cache_rate.toFixed(1)}%`} icon={Database} />
+      </div>
+
+      <div className="border-t border-[var(--border)]">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <KeyRound className="h-4 w-4 text-[var(--foreground-dim)]" />
+          <h3 className="text-[12px] font-bold text-[var(--foreground)]">{t('summary.byKey')}</h3>
+          <span className="font-mono text-[10px] text-[var(--foreground-dim)]">{data.by_key.length}</span>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('summary.key')}</TableHead>
+              <TableHead className="text-right">{t('summary.requests')}</TableHead>
+              <TableHead className="text-right">{t('summary.tokens')}</TableHead>
+              <TableHead className="text-right">{t('summary.cost')}</TableHead>
+              <TableHead className="text-right">{t('summary.successRate')}</TableHead>
+              <TableHead className="text-right">{t('summary.cacheRate')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.by_key.map((row, index) => (
+              <TableRow key={row.api_key_id || row.api_key_name || `unassigned-${index}`}>
+                <TableCell className="min-w-48">
+                  <div className="font-medium text-[var(--foreground)]">
+                    {row.api_key_name || t('summary.unassignedKey')}
+                  </div>
+                  {row.api_key_id && (
+                    <div className="mt-0.5 max-w-56 truncate font-mono text-[10px] text-[var(--foreground-dim)]">
+                      {row.api_key_id}
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell className="text-right font-mono text-[11px]">{row.requests.toLocaleString()}</TableCell>
+                <TableCell className="text-right font-mono text-[11px]">{formatTokens(row.tokens)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px]">{formatCost(row.cost_usd)}</TableCell>
+                <TableCell className="text-right font-mono text-[11px]">{row.success_rate.toFixed(1)}%</TableCell>
+                <TableCell className="text-right font-mono text-[11px]">{row.cache_rate.toFixed(1)}%</TableCell>
+              </TableRow>
+            ))}
+            {data.by_key.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-8 text-center text-[12px] text-[var(--foreground-dim)]">
+                  {t('summary.noData')}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </CardStatic>
+  )
+}
 
 function formatBytes(value?: number | null) {
   if (value === null || value === undefined) return null
@@ -574,7 +703,7 @@ export function LogsPage() {
   const [namespaceFilter, setNamespaceFilter] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [exportFormat, setExportFormat] = useState('csv')
-  const [timeRange, setTimeRange] = useState('7d')
+  const [timeRange, setTimeRange] = useState('today')
 
   const { data: apiKeysData } = useApiKeys()
   const { data: namespacesData } = useNamespaces()
@@ -622,20 +751,29 @@ export function LogsPage() {
     })),
   ]
 
-  const { data: logsData, isLoading, isError, error, refetch } = useLogs(page, LIMIT, {
+  const logFilters = {
     tier: tierFilter || undefined,
     node: nodeFilter || undefined,
     status: statusFilter || undefined,
     api_key_id: apiKeyFilter || undefined,
     namespace: namespaceFilter || undefined,
     period: timeRange,
-  })
+  }
+
+  const { data: logsData, isLoading, isError, error, refetch } = useLogs(page, LIMIT, logFilters)
+  const {
+    data: summaryData,
+    isLoading: isSummaryLoading,
+    isError: isSummaryError,
+    refetch: refetchSummary,
+  } = useLogsSummary(logFilters)
 
   const { newCount, clearNewCount } = useSSELogs(100)
 
   const handleRefresh = () => {
     clearNewCount()
     refetch()
+    refetchSummary()
   }
 
   const handleTimeRangeChange = (value: string) => {
@@ -702,6 +840,13 @@ export function LogsPage() {
           {t('sse.newLogsReceived', { count: newCount })}
         </button>
       )}
+
+      <LogsSummaryPanel
+        data={summaryData}
+        isLoading={isSummaryLoading}
+        isError={isSummaryError}
+        periodLabel={timeRangeOptions.find((option) => option.value === timeRange)?.label || timeRange}
+      />
 
       {/* Filters */}
       <CardStatic className="animate-fade-up p-4">

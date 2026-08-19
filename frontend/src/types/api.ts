@@ -759,6 +759,29 @@ export interface LogsResponse {
   pagination: LogsPagination;
 }
 
+export interface LogSummaryMetrics {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  tokens: number;
+  cost_usd: number;
+  successes: number;
+  success_rate: number;
+  cache_hits: number;
+  cache_rate: number;
+}
+
+export interface LogKeySummary extends LogSummaryMetrics {
+  api_key_id: string | null;
+  api_key_name: string | null;
+}
+
+export interface LogsSummaryResponse {
+  period: string | null;
+  total: LogSummaryMetrics;
+  by_key: LogKeySummary[];
+}
+
 // ── Route Decisions ──
 
 export interface RouteDecisionTarget {

@@ -31,6 +31,7 @@ function mockQueryBuilder(
   const qb: any = {
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
+    setParameters: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
@@ -1568,6 +1569,77 @@ describe("DashboardController — sessions", () => {
 // ═══════════════════════════════════════════════════════════
 
 describe("DashboardController — getLogs", () => {
+  it("should aggregate filtered log metrics and per-key usage", async () => {
+    const qb = mockQueryBuilder({}, [
+      {
+        apiKeyId: "key_alpha",
+        apiKeyName: "Alpha",
+        requestCount: "4",
+        inputTokens: "100",
+        outputTokens: "50",
+        costUsd: "1.2345678",
+        successCount: "3",
+        cacheHitCount: "2",
+      },
+      {
+        apiKeyId: null,
+        apiKeyName: null,
+        requestCount: "1",
+        inputTokens: "10",
+        outputTokens: "10",
+        costUsd: "0.1",
+        successCount: "1",
+        cacheHitCount: "0",
+      },
+    ]);
+    const repo = mockRepo(qb);
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+
+    const result = await controller.getLogsSummary(
+      "standard",
+      "openai",
+      "200",
+      undefined,
+      undefined,
+      undefined,
+      "today",
+    );
+
+    expect(result.total).toEqual({
+      requests: 5,
+      input_tokens: 110,
+      output_tokens: 60,
+      tokens: 170,
+      cost_usd: 1.334568,
+      successes: 4,
+      success_rate: 80,
+      cache_hits: 2,
+      cache_rate: 40,
+    });
+    expect(result.by_key[0]).toMatchObject({
+      api_key_id: "key_alpha",
+      api_key_name: "Alpha",
+      requests: 4,
+      tokens: 150,
+      cost_usd: 1.234568,
+      success_rate: 75,
+      cache_rate: 50,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith("log.tier = :tier", {
+      tier: "standard",
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith("log.node_id = :node", {
+      node: "openai",
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith("log.status_code = :status", {
+      status: 200,
+    });
+    expect(qb.addSelect).toHaveBeenCalledWith(
+      expect.stringContaining("client_closed_after_tool_call"),
+      "successCount",
+    );
+  });
+
   it("should return paginated logs", async () => {
     const logs = [
       {

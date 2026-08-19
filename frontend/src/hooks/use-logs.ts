@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
-import type { LogsResponse } from '@/types/api'
+import type { LogsResponse, LogsSummaryResponse } from '@/types/api'
 
 export interface LogFilters {
   tier?: string
@@ -27,5 +27,22 @@ export function useLogs(page: number, limit: number, filters: LogFilters = {}) {
         namespace: filters.namespace,
         period: filters.period,
       }),
+  })
+}
+
+export function useLogsSummary(filters: LogFilters = {}) {
+  return useQuery<LogsSummaryResponse>({
+    queryKey: ['logs-summary', filters],
+    queryFn: () =>
+      apiGet<LogsSummaryResponse>('/api/dashboard/logs/summary', {
+        tier: filters.tier,
+        node: filters.node,
+        status: filters.status,
+        api_key_id: filters.api_key_id,
+        api_key: filters.api_key,
+        namespace: filters.namespace,
+        period: filters.period,
+      }),
+    staleTime: 15_000,
   })
 }
