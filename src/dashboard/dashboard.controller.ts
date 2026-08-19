@@ -4028,6 +4028,148 @@ export class DashboardController implements BeforeApplicationShutdown {
   // Call Logs (paginated)
   // ══════════════════════════════════════════════════════
 
+  @Get("logs/summary")
+  @ApiOperation({ summary: "Get aggregate call-log metrics and per-key usage" })
+  @ApiQuery({ name: "tier", required: false })
+  @ApiQuery({ name: "node", required: false })
+  @ApiQuery({ name: "status", required: false })
+  @ApiQuery({ name: "api_key", required: false })
+  @ApiQuery({ name: "api_key_id", required: false })
+  @ApiQuery({ name: "namespace", required: false })
+  @ApiQuery({ name: "period", required: false, example: "today" })
+  @ApiOkResponse({
+    description:
+      "Request, token, cost, success-rate, and cache-hit metrics for the selected log filters, including a per-key breakdown.",
+  })
+  async getLogsSummary(
+    @Query("tier") tier?: string,
+    @Query("node") node?: string,
+    @Query("status") status?: string,
+    @Query("api_key") apiKey?: string,
+    @Query("api_key_id") apiKeyId?: string,
+    @Query("namespace") namespaceId?: string,
+    @Query("period") period?: string,
+  ) {
+    const keyGroupExpression =
+      "COALESCE(log.api_key_id, log.api_key_name, '__unassigned__')";
+    const cacheHitExpression = `CASE WHEN
+      log.cache_read_input_tokens > 0
+      OR log.semantic_cache_hit = :semanticCacheHit
+      OR log.node_id IN (:...cacheNodeIds)
+      OR log.tier = :cacheTier
+      THEN 1 ELSE 0 END`;
+    const qb = this.callLogRepo
+      .createQueryBuilder("log")
+      .select(keyGroupExpression, "keyGroup")
+      .addSelect("MAX(log.api_key_id)", "apiKeyId")
+      .addSelect("MAX(log.api_key_name)", "apiKeyName")
+      .addSelect("COUNT(*)", "requestCount")
+      .addSelect("SUM(log.input_tokens)", "inputTokens")
+      .addSelect("SUM(log.output_tokens)", "outputTokens")
+      .addSelect("SUM(log.cost_usd)", "costUsd")
+      .addSelect(
+        `SUM(CASE WHEN
+          log.status_code = 200
+          OR (log.status_code = 499 AND log.error = 'client_closed_after_tool_call')
+          THEN 1 ELSE 0 END)`,
+        "successCount",
+      )
+      .addSelect(`SUM(${cacheHitExpression})`, "cacheHitCount")
+      .setParameters({
+        semanticCacheHit: true,
+        cacheNodeIds: ["cache", "semantic_cache"],
+        cacheTier: "cached",
+      })
+      .groupBy(keyGroupExpression)
+      .orderBy("requestCount", "DESC");
+
+    const since = this.logSinceFromPeriod(period);
+    if (since) qb.andWhere("log.timestamp >= :since", { since });
+    if (tier) qb.andWhere("log.tier = :tier", { tier });
+    if (node) qb.andWhere("log.node_id = :node", { node });
+    if (status) {
+      qb.andWhere("log.status_code = :status", { status: Number(status) });
+    }
+    this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
+
+    const rows = await qb.getRawMany<{
+      apiKeyId: string | null;
+      apiKeyName: string | null;
+      requestCount: string | number | null;
+      inputTokens: string | number | null;
+      outputTokens: string | number | null;
+      costUsd: string | number | null;
+      successCount: string | number | null;
+      cacheHitCount: string | number | null;
+    }>();
+
+    const byKey = rows.map((row) => {
+      const requests = Number(row.requestCount || 0);
+      const inputTokens = Number(row.inputTokens || 0);
+      const outputTokens = Number(row.outputTokens || 0);
+      const successes = Number(row.successCount || 0);
+      const cacheHits = Number(row.cacheHitCount || 0);
+      return {
+        api_key_id: row.apiKeyId || null,
+        api_key_name: row.apiKeyName || null,
+        requests,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        tokens: inputTokens + outputTokens,
+        cost_usd: Number(Number(row.costUsd || 0).toFixed(6)),
+        successes,
+        success_rate:
+          requests > 0
+            ? Number(((successes / requests) * 100).toFixed(1))
+            : 0,
+        cache_hits: cacheHits,
+        cache_rate:
+          requests > 0
+            ? Number(((cacheHits / requests) * 100).toFixed(1))
+            : 0,
+      };
+    });
+
+    const total = byKey.reduce(
+      (summary, row) => {
+        summary.requests += row.requests;
+        summary.input_tokens += row.input_tokens;
+        summary.output_tokens += row.output_tokens;
+        summary.tokens += row.tokens;
+        summary.cost_usd += row.cost_usd;
+        summary.successes += row.successes;
+        summary.cache_hits += row.cache_hits;
+        return summary;
+      },
+      {
+        requests: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        tokens: 0,
+        cost_usd: 0,
+        successes: 0,
+        success_rate: 0,
+        cache_hits: 0,
+        cache_rate: 0,
+      },
+    );
+    total.cost_usd = Number(total.cost_usd.toFixed(6));
+    total.success_rate =
+      total.requests > 0
+        ? Number(((total.successes / total.requests) * 100).toFixed(1))
+        : 0;
+    total.cache_rate =
+      total.requests > 0
+        ? Number(((total.cache_hits / total.requests) * 100).toFixed(1))
+        : 0;
+
+    return {
+      period: this.normalizeLogPeriod(period),
+      total,
+      by_key: byKey,
+    };
+  }
+
   @Get("logs")
   @ApiOperation({ summary: "List paginated call logs" })
   @ApiQuery({ name: "page", required: false, example: 1 })
