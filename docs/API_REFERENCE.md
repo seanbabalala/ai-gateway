@@ -17,14 +17,18 @@ The generated spec covers the OSS Data Plane only. It does not require SiftGate 
 
 ## Authentication
 
-SiftGate uses two bearer-token contexts:
+SiftGate uses two client authentication contexts:
 
 | Context | Used by | Header |
 | --- | --- | --- |
-| Gateway API key | AI proxy endpoints under `/v1/*` | `Authorization: Bearer gw_sk_live_...` |
+| Gateway API key | AI proxy endpoints under `/v1/*` | `Authorization: Bearer gw_sk_live_...`, or `x-api-key: gw_sk_live_...` for native Anthropic clients |
 | Dashboard session JWT | Dashboard API under `/api/dashboard/*` when dashboard auth is enabled | HttpOnly `siftgate_dashboard_session` cookie, or `Authorization: Bearer <dashboard_jwt>` when legacy token compatibility is enabled |
 
 Provider API keys are never client credentials. They stay in `gateway.config.yaml`, `.env`, or another local secret source and are used only by the gateway when it calls upstream providers.
+
+When both Gateway API key headers are present, a non-empty `Authorization: Bearer`
+credential takes precedence. SiftGate never forwards either client credential as
+an upstream provider credential.
 
 ## AI Proxy Endpoints
 
