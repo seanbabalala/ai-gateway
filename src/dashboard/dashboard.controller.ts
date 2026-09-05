@@ -4039,7 +4039,7 @@ export class DashboardController implements BeforeApplicationShutdown {
   @ApiQuery({ name: "period", required: false, example: "today" })
   @ApiOkResponse({
     description:
-      "Request, token, cost, success-rate, and cache-hit metrics for the selected log filters, including a per-key breakdown.",
+      "Request, token, cost, success-rate, and cache-hit metrics for the selected log filters, including a per-key breakdown and a zero-filled 24-hour trend when period=today.",
   })
   async getLogsSummary(
     @Query("tier") tier?: string,
@@ -4083,8 +4083,14 @@ export class DashboardController implements BeforeApplicationShutdown {
       .groupBy(keyGroupExpression)
       .orderBy("requestCount", "DESC");
 
+    const normalizedPeriod = this.normalizeLogPeriod(period);
     const since = this.logSinceFromPeriod(period);
     if (since) qb.andWhere("log.timestamp >= :since", { since });
+    if (normalizedPeriod === "today" && since) {
+      const until = new Date(since);
+      until.setDate(until.getDate() + 1);
+      qb.andWhere("log.timestamp < :until", { until });
+    }
     if (tier) qb.andWhere("log.tier = :tier", { tier });
     if (node) qb.andWhere("log.node_id = :node", { node });
     if (status) {
@@ -4092,16 +4098,30 @@ export class DashboardController implements BeforeApplicationShutdown {
     }
     this.applyLogScopeFilter(qb, apiKey, apiKeyId, namespaceId);
 
-    const rows = await qb.getRawMany<{
-      apiKeyId: string | null;
-      apiKeyName: string | null;
-      requestCount: string | number | null;
-      inputTokens: string | number | null;
-      outputTokens: string | number | null;
-      costUsd: string | number | null;
-      successCount: string | number | null;
-      cacheHitCount: string | number | null;
-    }>();
+    const hourlyTrendPromise =
+      normalizedPeriod === "today"
+        ? this.getTodayHourlyLogTrend({
+            tier,
+            node,
+            status,
+            apiKey,
+            apiKeyId,
+            namespaceId,
+          })
+        : Promise.resolve([]);
+    const [rows, hourlyTrend] = await Promise.all([
+      qb.getRawMany<{
+        apiKeyId: string | null;
+        apiKeyName: string | null;
+        requestCount: string | number | null;
+        inputTokens: string | number | null;
+        outputTokens: string | number | null;
+        costUsd: string | number | null;
+        successCount: string | number | null;
+        cacheHitCount: string | number | null;
+      }>(),
+      hourlyTrendPromise,
+    ]);
 
     const byKey = rows.map((row) => {
       const requests = Number(row.requestCount || 0);
@@ -4164,10 +4184,98 @@ export class DashboardController implements BeforeApplicationShutdown {
         : 0;
 
     return {
-      period: this.normalizeLogPeriod(period),
+      period: normalizedPeriod,
       total,
       by_key: byKey,
+      hourly_trend: hourlyTrend,
     };
+  }
+
+  private async getTodayHourlyLogTrend(filters: {
+    tier?: string;
+    node?: string;
+    status?: string;
+    apiKey?: string;
+    apiKeyId?: string;
+    namespaceId?: string;
+  }) {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const boundaries = Array.from({ length: 25 }, (_, hour) => {
+      const boundary = new Date(dayStart);
+      boundary.setHours(hour, 0, 0, 0);
+      return boundary;
+    });
+    const parameters: Record<string, Date> = {};
+    const bucketCases = Array.from({ length: 24 }, (_, hour) => {
+      parameters[`hourStart${hour}`] = boundaries[hour];
+      parameters[`hourEnd${hour}`] = boundaries[hour + 1];
+      return `WHEN log.timestamp >= :hourStart${hour} AND log.timestamp < :hourEnd${hour} THEN ${hour}`;
+    });
+    const hourExpression = `CASE ${bucketCases.join(" ")} ELSE NULL END`;
+    const qb = this.callLogRepo
+      .createQueryBuilder("log")
+      .select(hourExpression, "hour")
+      .addSelect("COUNT(*)", "requestCount")
+      .addSelect("SUM(log.input_tokens)", "inputTokens")
+      .addSelect("SUM(log.output_tokens)", "outputTokens")
+      .addSelect("SUM(log.cost_usd)", "costUsd")
+      .where("log.timestamp >= :trendStart AND log.timestamp < :trendEnd", {
+        trendStart: boundaries[0],
+        trendEnd: boundaries[24],
+      })
+      .setParameters(parameters)
+      // Group by the selected alias rather than repeating the parameterized
+      // CASE expression. PostgreSQL assigns positional placeholders per
+      // occurrence, so repeating it can make SELECT and GROUP BY appear
+      // different even though they use the same named parameters.
+      .groupBy("hour")
+      .orderBy("hour", "ASC");
+
+    if (filters.tier) {
+      qb.andWhere("log.tier = :tier", { tier: filters.tier });
+    }
+    if (filters.node) {
+      qb.andWhere("log.node_id = :node", { node: filters.node });
+    }
+    if (filters.status) {
+      qb.andWhere("log.status_code = :status", {
+        status: Number(filters.status),
+      });
+    }
+    this.applyLogScopeFilter(
+      qb,
+      filters.apiKey,
+      filters.apiKeyId,
+      filters.namespaceId,
+    );
+
+    const rows = await qb.getRawMany<{
+      hour: string | number | null;
+      requestCount: string | number | null;
+      inputTokens: string | number | null;
+      outputTokens: string | number | null;
+      costUsd: string | number | null;
+    }>();
+    const rowsByHour = new Map(
+      rows
+        .map((row) => [Number(row.hour), row] as const)
+        .filter(([hour]) => Number.isInteger(hour) && hour >= 0 && hour <= 23),
+    );
+
+    return Array.from({ length: 24 }, (_, hour) => {
+      const row = rowsByHour.get(hour);
+      const inputTokens = Number(row?.inputTokens || 0);
+      const outputTokens = Number(row?.outputTokens || 0);
+      return {
+        hour,
+        requests: Number(row?.requestCount || 0),
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        tokens: inputTokens + outputTokens,
+        cost_usd: Number(Number(row?.costUsd || 0).toFixed(6)),
+      };
+    });
   }
 
   @Get("logs")
@@ -4527,7 +4635,7 @@ export class DashboardController implements BeforeApplicationShutdown {
   @ApiOperation({ summary: "Stream call log events for the Dashboard" })
   @ApiOkResponse({
     description:
-      "Server-Sent Events with connected, log, and heartbeat events.",
+      "Server-Sent Events with connected, activity, log, and heartbeat events.",
   })
   streamLogs(): Observable<MessageEvent> {
     // Heartbeat every 30s to keep connection alive
@@ -4547,6 +4655,13 @@ export class DashboardController implements BeforeApplicationShutdown {
       map((log) => ({ data: { type: "log", log } }) as MessageEvent),
     );
 
+    const activity$ = this.logEventBus.activityEvents$.pipe(
+      filter((activity) => activity.workspace_id === workspaceId),
+      map((activity) => ({
+        data: { type: "activity", activity },
+      }) as MessageEvent),
+    );
+
     // Send an initial connected event
     const connected$ = new Observable<MessageEvent>((subscriber) => {
       subscriber.next({
@@ -4554,7 +4669,7 @@ export class DashboardController implements BeforeApplicationShutdown {
       } as MessageEvent);
     });
 
-    return merge(connected$, logs$, heartbeat$);
+    return merge(connected$, activity$, logs$, heartbeat$);
   }
 
   // ══════════════════════════════════════════════════════

@@ -65,7 +65,7 @@ import {
   BudgetExceededError,
 } from '../budget/budget.service';
 import { PromptCacheService } from '../cache/prompt-cache.service';
-import { LogEventBus } from '../dashboard/log-event-bus';
+import { LogEventBus, RequestActivityPhase } from '../dashboard/log-event-bus';
 import { HookExecutorService } from '../plugins/hook-executor.service';
 import { TelemetryUploaderService } from '../control-plane/telemetry-uploader.service';
 import { ChatCompletionsDenormalizer } from '../canonical/denormalizers/chat-completions.denormalizer';
@@ -521,6 +521,14 @@ export class PipelineService implements BeforeApplicationShutdown {
 
           // Try primary with retries
           currentPhase = 'preUpstream';
+          this.emitRequestActivity(
+            requestId,
+            canonical,
+            'routed',
+            false,
+            activeRoute.primary.node,
+            activeRoute.primary.model,
+          );
           const primaryResult = await this.tryPrimaryWithOptionalTimeoutRace(
             canonical,
             activeRoute.primary,
@@ -553,6 +561,14 @@ export class PipelineService implements BeforeApplicationShutdown {
               usedNodeId = fb.node;
               usedModel = fb.model;
               currentPhase = 'preUpstream';
+              this.emitRequestActivity(
+                requestId,
+                canonical,
+                'routed',
+                false,
+                fb.node,
+                fb.model,
+              );
               const fbResult = await this.tryNodeWithRetry(
                 canonical, fb.node, fb.model,
                 {
@@ -957,6 +973,15 @@ export class PipelineService implements BeforeApplicationShutdown {
               this.logger.log(`Trying embedding fallback: ${target.node} (${target.model})`);
             }
 
+            this.emitRequestActivity(
+              requestId,
+              canonical,
+              'routed',
+              false,
+              target.node,
+              target.model,
+            );
+
             const attempt = await this.tryEmbeddingNodeWithRetry(
               canonical,
               target.node,
@@ -1171,6 +1196,15 @@ export class PipelineService implements BeforeApplicationShutdown {
               this.logger.log(`Trying rerank fallback: ${target.node} (${target.model})`);
             }
 
+            this.emitRequestActivity(
+              requestId,
+              canonical,
+              'routed',
+              false,
+              target.node,
+              target.model,
+            );
+
             const attempt = await this.tryRerankNodeWithRetry(
               canonical,
               target.node,
@@ -1382,6 +1416,15 @@ export class PipelineService implements BeforeApplicationShutdown {
               fallbackFromNode = route.primary.node;
               this.logger.log(`Trying ${canonical.source_format} fallback: ${target.node} (${target.model})`);
             }
+
+            this.emitRequestActivity(
+              requestId,
+              canonical,
+              'routed',
+              false,
+              target.node,
+              target.model,
+            );
 
             const attempt = await this.tryMediaNodeWithRetry(
               canonical,
@@ -2896,6 +2939,8 @@ export class PipelineService implements BeforeApplicationShutdown {
       let streamConnected = false;
       let usedNodeId = activeRoute.primary.node;
       let usedModel = activeRoute.primary.model;
+      let firstOutputAt: number | null = null;
+      let firstTokenLatencyMs: number | null = null;
       let isFallback =
         costDowngrade.reason !== null ||
         intelligenceDecision?.fallbackReason !== null &&
@@ -2914,6 +2959,33 @@ export class PipelineService implements BeforeApplicationShutdown {
         usedNodeId = target.node;
         usedModel = target.model;
         isFallback = !isFirstTarget || costDowngrade.reason !== null;
+
+        const routedInputEstimate = Math.max(
+          0,
+          this.estimateRequestTokens(canonical),
+        );
+        const routedUsageEstimate = {
+          input_tokens: routedInputEstimate,
+          output_tokens: 0,
+        };
+
+        this.emitRequestActivity(
+          requestId,
+          canonical,
+          'routed',
+          true,
+          target.node,
+          target.model,
+          {
+            inputTokens: routedInputEstimate,
+            outputTokens: 0,
+            costUsd: this.calculateCost(
+              routedUsageEstimate,
+              this.config.getModelPricing(target.model, target.node),
+            ),
+            estimatedUsage: true,
+          },
+        );
 
         currentPhase = 'preUpstream';
         const preUpstreamResult = await this.runPreUpstreamHooks(
@@ -2993,15 +3065,43 @@ export class PipelineService implements BeforeApplicationShutdown {
               let streamId = '';
               let streamStopReason = '';
               let streamStopReceived = false;
+              const estimatedStreamInputTokens = Math.max(
+                0,
+                this.estimateRequestTokens(requestForTarget),
+              );
+              let estimatedStreamOutputTokens = 0;
+              let lastUsageActivityAt = 0;
               let streamFailureEvent:
                 | Extract<CanonicalStreamEvent, { type: 'error' }>
                 | null = null;
+              const recordFirstOutput = () => {
+                if (firstOutputAt !== null) return;
+                firstOutputAt = Date.now();
+                firstTokenLatencyMs = Math.max(0, firstOutputAt - startTime);
+              };
               const accumulateStreamEvent = (event: CanonicalStreamEvent) => {
                 if (event.type === 'start') {
                   streamModel = event.model;
                   streamId = event.id;
                 } else if (event.type === 'delta' && event.content.type === 'text') {
+                  if (event.content.text.length > 0) recordFirstOutput();
                   accumulatedText.push(event.content.text);
+                  estimatedStreamOutputTokens += Math.max(
+                    1,
+                    Math.ceil(Array.from(event.content.text).length / 4),
+                  );
+                  emitEstimatedUsageActivity();
+                } else if (
+                  event.type === 'delta' &&
+                  event.content.type === 'tool_use' &&
+                  event.content.input_delta
+                ) {
+                  recordFirstOutput();
+                  estimatedStreamOutputTokens += Math.max(
+                    1,
+                    Math.ceil(Array.from(event.content.input_delta).length / 4),
+                  );
+                  emitEstimatedUsageActivity();
                 } else if (event.type === 'tool_call_complete') {
                   completedToolCallSeen = true;
                 } else if (event.type === 'stop') {
@@ -3015,11 +3115,71 @@ export class PipelineService implements BeforeApplicationShutdown {
                   streamFailureEvent = event;
                 }
               };
+              const emitEstimatedUsageActivity = () => {
+                const now = Date.now();
+                if (now - lastUsageActivityAt >= 250) {
+                  const estimatedUsage = {
+                    input_tokens: estimatedStreamInputTokens,
+                    output_tokens: estimatedStreamOutputTokens,
+                  };
+                  this.emitRequestActivity(
+                    requestId,
+                    canonical,
+                    'streaming',
+                    true,
+                    target.node,
+                    target.model,
+                    {
+                      inputTokens: estimatedStreamInputTokens,
+                      outputTokens: estimatedStreamOutputTokens,
+                      costUsd: this.calculateCost(
+                        estimatedUsage,
+                        this.config.getModelPricing(target.model, target.node),
+                      ),
+                      estimatedUsage: true,
+                      firstTokenLatencyMs,
+                      tokensPerSecond:
+                        estimatedStreamOutputTokens > 0 && firstOutputAt !== null
+                          ? Number(
+                              (
+                                estimatedStreamOutputTokens /
+                                Math.max((now - firstOutputAt) / 1000, 0.25)
+                              ).toFixed(1),
+                            )
+                          : null,
+                    },
+                  );
+                  lastUsageActivityAt = now;
+                }
+              };
 
               currentPhase = 'upstreamStream';
               for await (const event of stream) {
                 if (streamCanceled) {
                   throw new Error('Client canceled stream.');
+                }
+                if (!streamConnected) {
+                  const initialEstimatedUsage = {
+                    input_tokens: estimatedStreamInputTokens,
+                    output_tokens: estimatedStreamOutputTokens,
+                  };
+                  this.emitRequestActivity(
+                    requestId,
+                    canonical,
+                    'streaming',
+                    true,
+                    target.node,
+                    target.model,
+                    {
+                      inputTokens: estimatedStreamInputTokens,
+                      outputTokens: estimatedStreamOutputTokens,
+                      costUsd: this.calculateCost(
+                        initialEstimatedUsage,
+                        this.config.getModelPricing(target.model, target.node),
+                      ),
+                      estimatedUsage: true,
+                    },
+                  );
                 }
                 streamConnected = true;
                 connected = true;
@@ -3080,6 +3240,17 @@ export class PipelineService implements BeforeApplicationShutdown {
 
               // Stream completed successfully
               const latencyMs = Date.now() - startTime;
+              const generationLatencyMs = firstTokenLatencyMs === null
+                ? 0
+                : Math.max(0, latencyMs - firstTokenLatencyMs);
+              const tokensPerSecond = usage.output_tokens > 0 && generationLatencyMs > 0
+                ? Number(
+                    (
+                      usage.output_tokens /
+                      (generationLatencyMs / 1000)
+                    ).toFixed(1),
+                  )
+                : null;
               const streamFailure = streamFailureEvent
                 ? classifyStreamError(streamFailureEvent)
                 : null;
@@ -3176,7 +3347,8 @@ export class PipelineService implements BeforeApplicationShutdown {
                   statusCode: streamStatusCode, isFallback, latencyMs, usage, error: streamError,
                   retryCount: totalRetries, experimentGroup: resolvedExperimentGroup,
                   domainHint, modalityHints, fallbackReason,
-                  fallbackFromNode, routeTrace: activeRouteTrace });
+                  fallbackFromNode, routeTrace: activeRouteTrace,
+                  firstTokenLatencyMs, tokensPerSecond });
                 if (!streamFailureEvent && !clientClosed && accumulatedText.length > 0) {
                   this.shadowTraffic?.enqueueChat(
                     requestId,
@@ -6166,6 +6338,8 @@ export class PipelineService implements BeforeApplicationShutdown {
     fallbackFromNode?: string | null;
     routeTrace?: RouteDecisionTrace;
     mediaProviderResponseType?: string | null;
+    firstTokenLatencyMs?: number | null;
+    tokensPerSecond?: number | null;
   }): Promise<void> {
     try {
       const pricing = this.config.getModelPricing(params.model, params.nodeId);
@@ -6313,10 +6487,16 @@ export class PipelineService implements BeforeApplicationShutdown {
       if (this.shouldWriteCallLogsBehind()) {
         if (!log.timestamp) log.timestamp = new Date();
         this.enqueueCallLogWrite(log);
-        this.publishCallLog(log, params.domainHint, modalities);
+        this.publishCallLog(log, params.domainHint, modalities, {
+          firstTokenLatencyMs: params.firstTokenLatencyMs,
+          tokensPerSecond: params.tokensPerSecond,
+        });
       } else {
         const saved = await this.callLogRepo.save(log);
-        this.publishCallLog(saved, params.domainHint, modalities);
+        this.publishCallLog(saved, params.domainHint, modalities, {
+          firstTokenLatencyMs: params.firstTokenLatencyMs,
+          tokensPerSecond: params.tokensPerSecond,
+        });
       }
     } catch (err) {
       this.logger.error(`Failed to log call: ${(err as Error).message}`);
@@ -6372,9 +6552,13 @@ export class PipelineService implements BeforeApplicationShutdown {
     saved: CallLog,
     domainHint: string | null | undefined,
     modalities: string[],
+    performance: {
+      firstTokenLatencyMs?: number | null;
+      tokensPerSecond?: number | null;
+    } = {},
   ): void {
     // Push to SSE stream for real-time dashboard
-    this.logEventBus.emit(saved);
+    this.logEventBus.emit(saved, performance);
     this.alerts?.recordCall(saved);
     try {
       this.logSinks?.enqueue(saved);
@@ -6747,6 +6931,42 @@ export class PipelineService implements BeforeApplicationShutdown {
     return normalizeWorkspaceId(
       canonical.metadata.workspace_id || this.workspaceContext.currentWorkspaceId(),
     );
+  }
+
+  private emitRequestActivity(
+    requestId: string,
+    canonical: LoggableCanonicalRequest,
+    phase: RequestActivityPhase,
+    stream: boolean,
+    nodeId: string,
+    model: string,
+    usage?: {
+      inputTokens?: number | null;
+      outputTokens?: number | null;
+      costUsd?: number | null;
+      estimatedUsage?: boolean;
+      firstTokenLatencyMs?: number | null;
+      tokensPerSecond?: number | null;
+    },
+  ): void {
+    this.logEventBus.emitActivity?.({
+      request_id: requestId,
+      phase,
+      timestamp: new Date().toISOString(),
+      workspace_id: this.workspaceIdForCanonical(canonical),
+      source_format: canonical.metadata.source_format,
+      stream,
+      node_id: nodeId,
+      model,
+      input_tokens: usage?.inputTokens ?? null,
+      output_tokens: usage?.outputTokens ?? null,
+      cost_usd: usage?.costUsd ?? null,
+      latency_ms: null,
+      status_code: null,
+      estimated_usage: usage?.estimatedUsage,
+      first_token_latency_ms: usage?.firstTokenLatencyMs ?? null,
+      tokens_per_second: usage?.tokensPerSecond ?? null,
+    });
   }
 
   private finalizeRouteTrace(params: {

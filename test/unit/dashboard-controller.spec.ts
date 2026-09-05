@@ -1570,7 +1570,7 @@ describe("DashboardController — sessions", () => {
 
 describe("DashboardController — getLogs", () => {
   it("should aggregate filtered log metrics and per-key usage", async () => {
-    const qb = mockQueryBuilder({}, [
+    const summaryQb = mockQueryBuilder({}, [
       {
         apiKeyId: "key_alpha",
         apiKeyName: "Alpha",
@@ -1592,8 +1592,30 @@ describe("DashboardController — getLogs", () => {
         cacheHitCount: "0",
       },
     ]);
-    const repo = mockRepo(qb);
-    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+    const trendQb = mockQueryBuilder({}, [
+      {
+        hour: "0",
+        requestCount: "2",
+        inputTokens: "40",
+        outputTokens: "10",
+        costUsd: "0.1234567",
+      },
+      {
+        hour: "13",
+        requestCount: "3",
+        inputTokens: "70",
+        outputTokens: "50",
+        costUsd: "1.2111111",
+      },
+    ]);
+    const repo = {
+      count: jest.fn().mockResolvedValue(0),
+      createQueryBuilder: jest
+        .fn()
+        .mockReturnValueOnce(summaryQb)
+        .mockReturnValueOnce(trendQb),
+    };
+    const { controller } = makeDashboard({ callLogRepo: repo });
 
     const result = await controller.getLogsSummary(
       "standard",
@@ -1625,19 +1647,89 @@ describe("DashboardController — getLogs", () => {
       success_rate: 75,
       cache_rate: 50,
     });
-    expect(qb.andWhere).toHaveBeenCalledWith("log.tier = :tier", {
+    expect(result.hourly_trend).toHaveLength(24);
+    expect(result.hourly_trend.map((bucket) => bucket.hour)).toEqual(
+      Array.from({ length: 24 }, (_, hour) => hour),
+    );
+    expect(result.hourly_trend[0]).toEqual({
+      hour: 0,
+      requests: 2,
+      input_tokens: 40,
+      output_tokens: 10,
+      tokens: 50,
+      cost_usd: 0.123457,
+    });
+    expect(result.hourly_trend[1]).toEqual({
+      hour: 1,
+      requests: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      tokens: 0,
+      cost_usd: 0,
+    });
+    expect(result.hourly_trend[13]).toMatchObject({
+      requests: 3,
+      tokens: 120,
+      cost_usd: 1.211111,
+    });
+    expect(summaryQb.andWhere).toHaveBeenCalledWith("log.tier = :tier", {
       tier: "standard",
     });
-    expect(qb.andWhere).toHaveBeenCalledWith("log.node_id = :node", {
+    expect(summaryQb.andWhere).toHaveBeenCalledWith("log.timestamp < :until", {
+      until: expect.any(Date),
+    });
+    expect(summaryQb.andWhere).toHaveBeenCalledWith("log.node_id = :node", {
       node: "openai",
     });
-    expect(qb.andWhere).toHaveBeenCalledWith("log.status_code = :status", {
+    expect(summaryQb.andWhere).toHaveBeenCalledWith("log.status_code = :status", {
       status: 200,
     });
-    expect(qb.addSelect).toHaveBeenCalledWith(
+    expect(summaryQb.addSelect).toHaveBeenCalledWith(
       expect.stringContaining("client_closed_after_tool_call"),
       "successCount",
     );
+    expect(trendQb.where).toHaveBeenCalledWith(
+      "log.timestamp >= :trendStart AND log.timestamp < :trendEnd",
+      { trendStart: expect.any(Date), trendEnd: expect.any(Date) },
+    );
+    expect(trendQb.select).toHaveBeenCalledWith(
+      expect.stringContaining("WHEN log.timestamp >= :hourStart0"),
+      "hour",
+    );
+    expect(trendQb.groupBy).toHaveBeenCalledWith("hour");
+    expect(trendQb.andWhere).toHaveBeenCalledWith("log.tier = :tier", {
+      tier: "standard",
+    });
+    expect(trendQb.andWhere).toHaveBeenCalledWith("log.node_id = :node", {
+      node: "openai",
+    });
+    expect(trendQb.andWhere).toHaveBeenCalledWith(
+      "log.status_code = :status",
+      { status: 200 },
+    );
+    expect(trendQb.andWhere).toHaveBeenCalledWith(
+      "(log.workspace_id = :workspaceId OR log.workspace_id IS NULL)",
+      { workspaceId: "default-workspace" },
+    );
+  });
+
+  it("should only query and return hourly trend buckets for today", async () => {
+    const qb = mockQueryBuilder({}, []);
+    const repo = mockRepo(qb);
+    const { controller } = makeDashboard({ callLogRepo: repo, qb });
+
+    const result = await controller.getLogsSummary(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "7d",
+    );
+
+    expect(result.hourly_trend).toEqual([]);
+    expect(repo.createQueryBuilder).toHaveBeenCalledTimes(1);
   });
 
   it("should return paginated logs", async () => {
