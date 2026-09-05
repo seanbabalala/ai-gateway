@@ -233,6 +233,7 @@ function makePipeline(overrides: Record<string, any> = {}): {
 
   const logEventBus = {
     emit: jest.fn(),
+    emitActivity: jest.fn(),
     ...overrides.logEventBus,
   };
 
@@ -361,6 +362,16 @@ describe('PipelineService — direct routing', () => {
     expect(mocks.providerClient.forward).toHaveBeenCalledWith(
       request, 'openai', 'gpt-4o',
       expect.objectContaining({ tier: 'direct', is_fallback: false }),
+    );
+    expect(mocks.logEventBus.emitActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'routed',
+        workspace_id: 'default-workspace',
+        source_format: 'chat_completions',
+        stream: false,
+        node_id: 'openai',
+        model: 'gpt-4o',
+      }),
     );
     const savedLog = mocks.callLogRepo.create.mock.calls[0][0];
     expect(result.requestId).toBe(savedLog.request_id);
@@ -2380,6 +2391,27 @@ describe('PipelineService — processStream', () => {
     expect(res.write).toHaveBeenCalled();
     expect(res.end).toHaveBeenCalled();
     expect(mocks.circuitBreaker.recordSuccess).toHaveBeenCalled();
+    expect(mocks.logEventBus.emitActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'streaming',
+        estimated_usage: true,
+        input_tokens: expect.any(Number),
+        output_tokens: expect.any(Number),
+      }),
+    );
+    expect(mocks.logEventBus.emitActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'streaming',
+        first_token_latency_ms: expect.any(Number),
+        tokens_per_second: expect.any(Number),
+      }),
+    );
+    expect(mocks.logEventBus.emit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        firstTokenLatencyMs: expect.any(Number),
+      }),
+    );
     const reservation = await reservedBudgetAt(mocks);
     expect(reservation.commit).toHaveBeenCalledWith(15, expect.any(Number));
     expect(mocks.budgetService.record).not.toHaveBeenCalled();

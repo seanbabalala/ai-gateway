@@ -776,10 +776,20 @@ export interface LogKeySummary extends LogSummaryMetrics {
   api_key_name: string | null;
 }
 
+export interface LogHourlyTrendBucket {
+  hour: number;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  tokens: number;
+  cost_usd: number;
+}
+
 export interface LogsSummaryResponse {
   period: string | null;
   total: LogSummaryMetrics;
   by_key: LogKeySummary[];
+  hourly_trend: LogHourlyTrendBucket[];
 }
 
 // ── Route Decisions ──
@@ -2097,6 +2107,29 @@ export interface ManagementAuditEventsResponse {
 
 export type SSEEvent =
   | { type: "connected"; timestamp: string }
+  | {
+      type: "activity";
+      activity: {
+        request_id: string;
+        phase: "routed" | "streaming" | "completed" | "failed";
+        timestamp: string;
+        workspace_id: string;
+        source_format: string;
+        stream: boolean;
+        node_id: string | null;
+        model: string | null;
+        input_tokens: number | null;
+        output_tokens: number | null;
+        cost_usd: number | null;
+        latency_ms: number | null;
+        status_code: number | null;
+        estimated_usage?: boolean;
+        is_fallback?: boolean;
+        fallback_reason?: string | null;
+        first_token_latency_ms?: number | null;
+        tokens_per_second?: number | null;
+      };
+    }
   | { type: "log"; log: CallLog }
   | { type: "heartbeat"; timestamp: string };
 
