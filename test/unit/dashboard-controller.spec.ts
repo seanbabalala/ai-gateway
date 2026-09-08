@@ -3882,6 +3882,91 @@ describe("DashboardController — Node CRUD", () => {
     expect(updateArgs.api_key).toBeUndefined();
   });
 
+  it.each([undefined, "", "   "])("preserves an existing pool secret when the edit sends %p", async (apiKey) => {
+    const existing = {
+      id: "openai",
+      credentials: [{ id: "primary", api_key: "${env:EXISTING_KEY}", weight: 1 }],
+    };
+    const { controller, config } = makeDashboard({
+      config: { getNode: jest.fn().mockReturnValue(existing) },
+    });
+
+    await controller.updateNode("openai", {
+      models: ["claude-kr-claude-sonnet-5[1M]"],
+      credentials: [{ id: "primary", api_key: apiKey, weight: 2, enabled: true }],
+    });
+
+    expect(config.updateNode).toHaveBeenCalledWith("openai", {
+      models: ["claude-kr-claude-sonnet-5[1M]"],
+      credentials: [{ id: "primary", api_key: "${env:EXISTING_KEY}", weight: 2, enabled: true }],
+    });
+    expect(existing.credentials[0].weight).toBe(1);
+  });
+
+  it("accepts explicit replacement secrets and new credentials", async () => {
+    const { controller, config } = makeDashboard({
+      config: { getNode: jest.fn().mockReturnValue({
+        credentials: [{ id: "primary", api_key: "original-key" }],
+      }) },
+    });
+
+    await controller.updateNode("openai", {
+      credentials: [
+        { id: "primary", api_key: "replacement-key" },
+        { id: "secondary", api_key: "second-key" },
+      ],
+    });
+
+    expect(config.updateNode.mock.calls[0][1].credentials).toEqual([
+      { id: "primary", api_key: "replacement-key" },
+      { id: "secondary", api_key: "second-key" },
+    ]);
+  });
+
+  it.each([undefined, "", "   "])("rejects a new pool credential without a usable secret (%p) before mutation", async (apiKey) => {
+    const { controller, config, configAudit } = makeDashboard({
+      config: { getNode: jest.fn().mockReturnValue({
+        api_key: "node-level-key-must-not-be-inherited",
+        credentials: [{ id: "primary", api_key: "original-key" }],
+      }) },
+    });
+
+    await expect(controller.updateNode("openai", {
+      credentials: [
+        { id: "primary", api_key: "" },
+        { id: "unknown", api_key: apiKey },
+      ],
+    })).rejects.toMatchObject({ status: 400 });
+    expect(config.updateNode).not.toHaveBeenCalled();
+    expect(configAudit.trackChange).not.toHaveBeenCalled();
+  });
+
+  it("does not borrow a matching credential ID from a different node", async () => {
+    const { controller, config } = makeDashboard({
+      config: { getNode: jest.fn().mockImplementation((id: string) => ({
+        id,
+        credentials: id === "other" ? [{ id: "primary", api_key: "other-node-secret" }] : [],
+      })) },
+    });
+
+    await expect(controller.updateNode("openai", {
+      credentials: [{ id: "primary", api_key: "" }],
+    })).rejects.toMatchObject({ status: 400 });
+    expect(config.getNode).toHaveBeenCalledWith("openai");
+    expect(config.updateNode).not.toHaveBeenCalled();
+  });
+
+  it("preserves not-found status for credential edits on an unknown node", async () => {
+    const { controller, config } = makeDashboard({
+      config: { getNode: jest.fn().mockReturnValue(undefined) },
+    });
+
+    await expect(controller.updateNode("missing", {
+      credentials: [{ id: "primary", api_key: "" }],
+    })).rejects.toMatchObject({ status: 404 });
+    expect(config.updateNode).not.toHaveBeenCalled();
+  });
+
   it("should delete a node", async () => {
     const { controller, config, circuitBreaker } = makeDashboard();
     const result = await controller.deleteNode("openai");

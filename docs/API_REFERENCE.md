@@ -461,6 +461,18 @@ and SSE `?token=` query parameters.
 | `POST` | `/api/dashboard/cache/clear` | Clear prompt-cache entries |
 | `GET` | `/api/dashboard/telemetry-status` | Optional connected-gateway telemetry status |
 
+### Editing provider credential pools
+
+When updating a node through `PUT /api/dashboard/nodes/:id`, a credential row
+may omit `api_key` or send a blank value to keep the secret already stored for
+that credential ID on the same node. This lets Dashboard users edit models,
+weights, or other settings without re-entering a redacted provider key.
+An explicit non-blank value replaces the secret. A new credential ID always
+requires a non-blank key; otherwise the update returns HTTP 400 before changing
+the node. Node creation still requires keys for every supplied credential row.
+Keep credential IDs stable when preserving secrets, and never submit a masked
+display value as a replacement key.
+
 ### Agent Gateway Profiles API
 
 Agent Gateway Profiles are local Dashboard-managed records for coding agents

@@ -1317,6 +1317,43 @@ describe('config validator', () => {
     expect(codes(result.errors)).toContain('realtime_no_models');
   });
 
+  it('accepts a model in general and specialized buckets on the same provider without a cross-provider warning', () => {
+    const config = secretReferenceConfig('${OPENAI_API_KEY:-test}');
+    const result = validateConfigObject(
+      {
+        ...config,
+        nodes: [{
+          ...config.nodes[0],
+          embedding_models: ['embedding-test'],
+          image_models: ['image-test'],
+          models: [...config.nodes[0].models, 'embedding-test', 'image-test'],
+        }],
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.warnings)).not.toContain('duplicate_model_id');
+  });
+
+  it('still rejects repeated entries within a model bucket without mislabeling them as cross-provider conflicts', () => {
+    const config = secretReferenceConfig('${OPENAI_API_KEY:-test}');
+    const result = validateConfigObject(
+      {
+        ...config,
+        nodes: [{
+          ...config.nodes[0],
+          models: ['gpt-4o-mini', 'gpt-4o-mini'],
+        }],
+      },
+      { env: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.errors)).toContain('duplicate_model_id_in_node');
+    expect(codes(result.warnings)).not.toContain('duplicate_model_id');
+  });
+
   it('reports structural, routing, env, and control-plane issues', () => {
     const result = validateConfigFile({
       configPath: fixture('invalid.gateway.yaml'),
@@ -1336,7 +1373,6 @@ describe('config validator', () => {
     );
     expect(codes(result.warnings)).toEqual(
       expect.arrayContaining([
-        'duplicate_model_id',
         'catalog_pricing_review_required',
         'literal_provider_api_key',
         'literal_control_plane_token',
@@ -1345,6 +1381,8 @@ describe('config validator', () => {
         'control_plane_response_upload_enabled',
       ]),
     );
+    // The fixture repeats a node ID (already an error), not two distinct owners.
+    expect(codes(result.warnings)).not.toContain('duplicate_model_id');
   });
 
   it('warns when node models are missing from the merged provider catalog', () => {

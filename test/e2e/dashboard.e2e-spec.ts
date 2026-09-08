@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import { createE2EHarness, E2EHarness, API_KEY, FIXTURE_PATH } from './setup';
 import { DEFAULT_WORKSPACE_ID } from '../../src/workspaces/workspace.constants';
+import { ConfigService } from '../../src/config/config.service';
 
 describe('Dashboard (e2e)', () => {
   let harness: E2EHarness;
@@ -1136,6 +1137,114 @@ describe('Dashboard (e2e)', () => {
     const auditRes = await harness.agent.get('/api/dashboard/audit?action=config.node.update&resource_type=node&resource_id=mock-openai');
     expect(auditRes.status).toBe(200);
     expect(auditRes.body.data.length).toBeGreaterThan(0);
+  });
+
+  it('PUT pooled node preserves blank or omitted secrets and exact bracketed model IDs', async () => {
+    const id = 'test-pooled-provider';
+    const secret = 'test-preserved-pool-secret';
+    const config = harness.app.get(ConfigService);
+    const create = await harness.agent.post('/api/dashboard/nodes').send({
+      id,
+      name: 'Pooled Provider',
+      protocol: 'messages',
+      base_url: 'http://test.example',
+      endpoint: '/v1/messages',
+      auth_type: 'bearer',
+      headers: { 'anthropic-version': '2023-06-01' },
+      models: ['old-model'],
+      model_aliases: { old: 'old-model' },
+      upstream_model_aliases: { 'old-model': 'old-upstream-model' },
+      model_prefixes: ['old-model'],
+      credentials: [{ id: 'primary', api_key: secret, weight: 1, enabled: true }],
+      timeout_ms: 30000,
+    });
+    expect(create.status).toBe(201);
+    try {
+      const models = ['claude-kr-claude-opus-5[1M]', 'claude-kr-claude-sonnet-5[1M]'];
+      for (const apiKey of ['', undefined]) {
+        const update = await harness.agent.put(`/api/dashboard/nodes/${id}`).send({
+          models,
+          endpoint: '/coding-plan/v1/messages',
+          model_aliases: {},
+          upstream_model_aliases: {},
+          model_prefixes: [],
+          credentials: [{ id: 'primary', api_key: apiKey, weight: 2, enabled: true }],
+        });
+        expect(update.status).toBe(200);
+        expect(update.body.success).toBe(true);
+        expect(config.getNode(id)?.credentials).toEqual([
+          { id: 'primary', api_key: secret, weight: 2, enabled: true },
+        ]);
+      }
+      const nodes = await harness.agent.get('/api/dashboard/nodes');
+      const displayed = nodes.body.nodes.find((node: { id: string }) => node.id === id);
+      expect(displayed.models).toEqual(models);
+      expect(JSON.stringify(nodes.body)).not.toContain(secret);
+      expect(config.getNode(id)?.model_aliases).toEqual({});
+      expect(config.getNode(id)?.upstream_model_aliases).toEqual({});
+      expect(config.getNode(id)?.model_prefixes).toEqual([]);
+
+      for (const model of models) {
+        const completion = await harness.agent.post('/v1/messages')
+          .set('Authorization', `Bearer ${API_KEY}`)
+          .send({ model, max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] });
+        expect(completion.status).toBe(200);
+        const upstream = harness.fetchMock.calls[harness.fetchMock.calls.length - 1];
+        expect(upstream.url).toBe('http://test.example/coding-plan/v1/messages');
+        expect(upstream.body.model).toBe(model);
+        expect(upstream.headers.Authorization).toBe(`Bearer ${secret}`);
+        expect(upstream.headers['anthropic-version']).toBe('2023-06-01');
+      }
+      const audit = await harness.agent.get(`/api/dashboard/audit?action=config.node.update&resource_type=node&resource_id=${id}`);
+      expect(audit.status).toBe(200);
+      expect(audit.body.data.length).toBeGreaterThan(0);
+      expect(JSON.stringify(audit.body)).not.toContain(secret);
+
+      // Both in-memory and on-disk state must remain intact after a bad update.
+      const before = JSON.stringify(config.getNode(id));
+      const fileBefore = fs.readFileSync(FIXTURE_PATH, 'utf8');
+      for (const apiKey of ['', undefined, '   ']) {
+        const rejected = await harness.agent.put(`/api/dashboard/nodes/${id}`).send({
+          name: 'Must not persist',
+          credentials: [
+            { id: 'primary', api_key: 'would-replace-secret' },
+            { id: 'new-credential', api_key: apiKey },
+          ],
+        });
+        expect(rejected.status).toBe(400);
+        expect(JSON.stringify(rejected.body)).not.toContain(secret);
+        expect(JSON.stringify(rejected.body)).not.toContain('would-replace-secret');
+        expect(JSON.stringify(config.getNode(id))).toBe(before);
+        expect(fs.readFileSync(FIXTURE_PATH, 'utf8')).toBe(fileBefore);
+      }
+
+      const replacement = await harness.agent.put(`/api/dashboard/nodes/${id}`).send({
+        credentials: [
+          { id: 'primary', api_key: 'updated-pool-secret', weight: 3 },
+          { id: 'secondary', api_key: 'new-pool-secret', weight: 1 },
+        ],
+      });
+      expect(replacement.status).toBe(200);
+      expect(config.getNode(id)?.credentials?.map((credential) => credential.api_key))
+        .toEqual(['updated-pool-secret', 'new-pool-secret']);
+    } finally {
+      await harness.agent.delete(`/api/dashboard/nodes/${id}`);
+    }
+  });
+
+  it('POST node creation continues rejecting blank pooled secrets', async () => {
+    const response = await harness.agent.post('/api/dashboard/nodes').send({
+      id: 'test-invalid-pool',
+      name: 'Invalid Pool',
+      protocol: 'messages',
+      base_url: 'http://test.example',
+      endpoint: '/v1/messages',
+      models: ['test-model'],
+      credentials: [{ id: 'primary', api_key: '' }],
+      timeout_ms: 30000,
+    });
+    expect(response.status).toBe(400);
+    expect(harness.app.get(ConfigService).getNode('test-invalid-pool')).toBeUndefined();
   });
 
   it('POST /api/dashboard/nodes/:id/reset → reset circuit breaker', async () => {

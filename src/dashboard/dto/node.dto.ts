@@ -44,20 +44,11 @@ export class HealthCheckDto {
   lightweight_model?: string;
 }
 
-export class NodeCredentialDto {
+class NodeCredentialFieldsDto {
   @ApiProperty({ example: 'primary' })
   @IsString()
   @IsNotEmpty()
   id!: string;
-
-  @ApiProperty({
-    example: '${OPENAI_API_KEY_PRIMARY}',
-    format: 'password',
-    writeOnly: true,
-  })
-  @IsString()
-  @IsNotEmpty()
-  api_key!: string;
 
   @ApiPropertyOptional({ example: 1, minimum: 1 })
   @IsOptional()
@@ -70,6 +61,29 @@ export class NodeCredentialDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+}
+
+export class NodeCredentialDto extends NodeCredentialFieldsDto {
+  @ApiProperty({
+    example: '${OPENAI_API_KEY_PRIMARY}',
+    format: 'password',
+    writeOnly: true,
+  })
+  @IsString()
+  @IsNotEmpty()
+  api_key!: string;
+}
+
+export class UpdateNodeCredentialDto extends NodeCredentialFieldsDto {
+  @ApiPropertyOptional({
+    example: '${OPENAI_API_KEY_PRIMARY}',
+    format: 'password',
+    writeOnly: true,
+    description: 'Omit or leave blank to retain the secret for the same credential ID on this node. New credential IDs require a non-blank secret.',
+  })
+  @IsOptional()
+  @IsString()
+  api_key?: string;
 }
 
 export class CredentialPoolDto {
@@ -565,12 +579,12 @@ export class UpdateNodeDto {
   @IsString()
   api_key?: string;
 
-  @ApiPropertyOptional({ type: [NodeCredentialDto] })
+  @ApiPropertyOptional({ type: [UpdateNodeCredentialDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => NodeCredentialDto)
-  credentials?: NodeCredentialDto[];
+  @Type(() => UpdateNodeCredentialDto)
+  credentials?: UpdateNodeCredentialDto[];
 
   @ApiPropertyOptional({ type: CredentialPoolDto })
   @IsOptional()

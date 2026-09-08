@@ -292,7 +292,19 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       ) {
         throw new Error(`Invalid configuration: node "${node.id}" must define api_key or credentials`);
       }
-      if (!Array.isArray(node.models) || node.models.length === 0) {
+      const hasSpecializedModels = [
+        node.embedding_models,
+        node.rerank_models,
+        node.image_models,
+        node.audio_models,
+        node.video_models,
+        node.realtime_models,
+      ].some((models) =>
+        Array.isArray(models) && models.some(
+          (model) => typeof model === 'string' && model.trim().length > 0,
+        ),
+      );
+      if (!Array.isArray(node.models) || (node.models.length === 0 && !hasSpecializedModels)) {
         throw new Error(`Invalid configuration: node "${node.id}" must define at least one model`);
       }
     }
