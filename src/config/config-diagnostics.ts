@@ -100,45 +100,11 @@ export function buildNodeModelDiagnostics(
     nodeIds.add(node.id);
     nodeById.set(node.id, node);
 
-    for (const model of stringArray(node.models)) {
+    // One provider may declare a model in both the general and modality buckets.
+    // Ownership is per node ID, not per declaration.
+    for (const model of nodeModelIds(node)) {
       const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
-      modelOwners.set(model, owners);
-    }
-
-    for (const model of stringArray(node.embedding_models)) {
-      const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
-      modelOwners.set(model, owners);
-    }
-
-    for (const model of stringArray(node.rerank_models)) {
-      const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
-      modelOwners.set(model, owners);
-    }
-
-    for (const model of stringArray(node.image_models)) {
-      const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
-      modelOwners.set(model, owners);
-    }
-
-    for (const model of stringArray(node.audio_models)) {
-      const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
-      modelOwners.set(model, owners);
-    }
-
-    for (const model of stringArray(node.video_models)) {
-      const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
-      modelOwners.set(model, owners);
-    }
-
-    for (const model of stringArray(node.realtime_models)) {
-      const owners = modelOwners.get(model) || [];
-      owners.push(node.id);
+      if (!owners.includes(node.id)) owners.push(node.id);
       modelOwners.set(model, owners);
     }
 

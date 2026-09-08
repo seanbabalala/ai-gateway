@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 2.11.4 - 2026-09-08
+
+### Fixed
+
+- Dashboard edits to pooled provider credentials now preserve an existing key
+  when its field is omitted or blank. New credential IDs still require a
+  non-blank key and invalid updates return HTTP 400 without changing config.
+- Model ownership diagnostics deduplicate each provider across general and
+  specialized model buckets, eliminating false cross-provider duplicate
+  warnings while preserving real conflicts.
+- Runtime startup and reload accept specialized-only providers with an empty
+  `models` array, matching the config validator and Dashboard-generated config.
+
+### Validation
+
+- Regression coverage for credential DTO validation, secret preservation,
+  replacement, missing-secret rejection, metadata-only audit, and exact model
+  IDs containing brackets through the Messages endpoint.
+- Regression coverage for specialized-only startup/reload and duplicate-model
+  diagnostics across provider model buckets.
+
+### Boundaries
+
+- Provider credentials, local model selections, and live gateway config are not
+  included in the release. No live process restart or config reload is required
+  to publish this release; deployed processes must be restarted separately to
+  load the new backend code.
+
 ## 2.11.3 - 2026-05-14
 
 ### Added

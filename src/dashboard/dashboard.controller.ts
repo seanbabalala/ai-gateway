@@ -7049,14 +7049,24 @@ export class DashboardController implements BeforeApplicationShutdown {
       }
       if (Array.isArray(updates.credentials)) {
         const existing = this.config.getNode(nodeId);
+        if (!existing) {
+          throw new HttpException(
+            { success: false, message: "Node not found" },
+            HttpStatus.NOT_FOUND,
+          );
+        }
         updates.credentials = updates.credentials.map((credential) => {
           const current = existing?.credentials?.find(
             (entry) => entry.id === credential.id,
           );
-          return {
-            ...credential,
-            api_key: credential.api_key || current?.api_key,
-          };
+          const apiKey = credential.api_key?.trim() || current?.api_key;
+          if (!apiKey?.trim()) {
+            throw new HttpException(
+              { success: false, message: "A new credential requires a non-blank api_key." },
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+          return { ...credential, api_key: apiKey };
         }) as typeof updates.credentials;
       }
       await this.configAudit.trackChange(
@@ -7076,6 +7086,7 @@ export class DashboardController implements BeforeApplicationShutdown {
       this.activeHealth.refreshSchedules();
       return { success: true, message: `Node "${nodeId}" updated` };
     } catch (err) {
+      if (err instanceof HttpException) throw err;
       throw new HttpException(
         { success: false, message: (err as Error).message },
         HttpStatus.NOT_FOUND,

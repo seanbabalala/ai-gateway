@@ -115,6 +115,50 @@ afterEach(() => {
   delete process.env.SIFTGATE_ENV_FILE;
 });
 
+describe('ConfigService — specialized-only node startup', () => {
+  it.each([
+    'embedding_models', 'rerank_models', 'image_models',
+    'audio_models', 'video_models', 'realtime_models',
+  ])('loads and reloads a node with an empty models array and %s', (bucket) => {
+    const base = makeMinimalConfig();
+    const { svc } = loadConfigService({
+      nodes: [
+        ...base.nodes,
+        {
+          id: 'specialized', name: 'Specialized provider', protocol: 'chat_completions',
+          base_url: 'https://provider.example', endpoint: '/v1/chat/completions',
+          api_key: 'test-key', timeout_ms: 30000, models: [], [bucket]: ['special-model'],
+        },
+      ],
+    });
+
+    expect(svc.getNode('specialized')?.models).toEqual([]);
+    expect(svc.reload().success).toBe(true);
+    expect(svc.getNodeModelDiagnostics().filter((item) => item.code === 'duplicate_model_id'))
+      .toEqual([]);
+  });
+
+  it.each([[], [''], ['   '], undefined])('still rejects a node without a usable model (%p)', (imageModels) => {
+    expect(() => loadConfigService({
+      nodes: [{
+        id: 'empty', name: 'Empty', protocol: 'chat_completions',
+        base_url: 'https://provider.example', endpoint: '/v1/chat/completions',
+        api_key: 'test-key', timeout_ms: 30000, models: [], image_models: imageModels,
+      }],
+    })).toThrow('must define at least one model');
+  });
+
+  it('still requires the general models array to exist for specialized-only nodes', () => {
+    expect(() => loadConfigService({
+      nodes: [{
+        id: 'missing-models', name: 'Missing', protocol: 'chat_completions',
+        base_url: 'https://provider.example', endpoint: '/v1/chat/completions',
+        api_key: 'test-key', timeout_ms: 30000, image_models: ['image-model'],
+      }],
+    })).toThrow('must define at least one model');
+  });
+});
+
 describe('ConfigService — required env interpolation', () => {
   it('fails fast on startup when a required ${VAR} reference is missing', () => {
     expect(() =>
