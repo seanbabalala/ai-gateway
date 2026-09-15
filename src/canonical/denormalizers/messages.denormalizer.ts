@@ -285,9 +285,15 @@ export class MessagesDenormalizer implements RequestDenormalizer {
   // ===== Response: CanonicalResponse → messages API response body =====
 
   denormalizeResponse(canonical: CanonicalResponse): Record<string, unknown> {
-    const content: Record<string, unknown>[] = [];
+    const content: Record<string, unknown>[] = canonical.native_messages_content
+      ? (JSON.parse(
+          JSON.stringify(canonical.native_messages_content),
+        ) as Record<string, unknown>[])
+      : [];
 
-    for (const block of canonical.content) {
+    for (const block of canonical.native_messages_content
+      ? []
+      : canonical.content) {
       switch (block.type) {
         case 'text':
           content.push({ type: 'text', text: block.text });

@@ -277,6 +277,8 @@ export type Tier = 'simple' | 'standard' | 'complex' | 'reasoning' | 'direct' | 
 
 // ===== Response =====
 export interface CanonicalResponse {
+  /** Original Messages content, used only when serializing back to Messages. */
+  native_messages_content?: Record<string, unknown>[];
   id: string;
   content: CanonicalContentBlock[];
   stop_reason: StopReason;

@@ -2726,7 +2726,12 @@ export class ProviderClientService {
     };
 
     return {
-      id: (body.id as string) || `gen_${Date.now()}`, content,
+      id: (body.id as string) || `gen_${Date.now()}`,
+      content,
+      native_messages_content: this.cloneJson(rawContent) as Record<
+        string,
+        unknown
+      >[],
       stop_reason: (body.stop_reason as StopReason) || 'end_turn',
       stop_sequence: typeof body.stop_sequence === 'string' ? body.stop_sequence : null,
       usage: this.resolveNormalizedUsage(body, usageSchema, fallbackUsage),
