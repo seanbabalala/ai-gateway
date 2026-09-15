@@ -1129,7 +1129,7 @@ describe('ProviderClientService', () => {
       expect(body.messages[0].content[0].type).toBe('tool_use');
     });
 
-    it('should strip thinking blocks in native passthrough', () => {
+    it('should preserve signed thinking blocks in native passthrough', () => {
       const svc = makeService();
       const canonical = {
         messages: [{ role: 'user' as const, content: 'Hi' }],
@@ -1164,7 +1164,7 @@ describe('ProviderClientService', () => {
 
       const body = (svc as any).denormalizeRequest(canonical, 'messages', 'claude-3-opus');
 
-      expect(body.messages[0].content).toEqual([{ type: 'text', text: 'hello' }]);
+      expect(body.messages[0].content).toEqual(canonical.metadata.raw_body.messages[0].content);
     });
 
     it('should coerce invalid native content fields to Anthropic-compatible values', () => {
@@ -1254,8 +1254,11 @@ describe('ProviderClientService', () => {
         { type: 'text', text: '7' },
         { type: 'text', text: '{}' },
         { type: 'text', text: '123' },
+        { type: 'thinking', thinking: 'hidden', signature: 'sig' },
       ]);
-      expect(body.messages[1].content).toBe('');
+      expect(body.messages[1].content).toEqual([
+        { type: 'thinking', thinking: 'hidden', signature: 'sig' },
+      ]);
     });
 
     it('should drop invalid native messages before passthrough', () => {

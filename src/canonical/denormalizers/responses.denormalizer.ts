@@ -159,7 +159,7 @@ export class ResponsesDenormalizer implements RequestDenormalizer {
       return [{ type: textType, text: content }];
     }
 
-    return content.map((block) => {
+    return content.filter((block) => block.type !== 'thinking' && block.type !== 'redacted_thinking').map((block) => {
       switch (block.type) {
         case 'text':
           return { type: textType, text: block.text };

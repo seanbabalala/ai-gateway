@@ -548,10 +548,10 @@ describe('MessagesDenormalizer — edge cases', () => {
     expect(msgs[0].content.length).toBe(2);
   });
 
-  it('should denormalize tool_choice "none" as auto (Anthropic fallback)', () => {
+  it('should preserve tool_choice "none" rather than enabling tools', () => {
     const canonical = makeCanonicalRequest({ tool_choice: 'none' });
     const result = denorm.denormalize(canonical, 'claude-3-opus');
-    expect(result.tool_choice).toEqual({ type: 'auto' });
+    expect(result.tool_choice).toEqual({ type: 'none' });
   });
 
   it('should denormalize assistant with string content as text block array', () => {

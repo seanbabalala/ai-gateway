@@ -68,7 +68,15 @@ export class MessagesDenormalizer implements RequestDenormalizer {
       canonical.reasoning,
       canonical.max_tokens || 4096,
     );
-    if (thinking) body.thinking = thinking;
+    if (thinking) {
+      body.thinking = thinking;
+    } else if (
+      !canonical.reasoning?.requested &&
+      (canonical.tool_choice === 'required' ||
+        (canonical.tool_choice && typeof canonical.tool_choice === 'object'))
+    ) {
+      body.thinking = { type: 'disabled' };
+    }
 
     const outputFormat = toAnthropicMessagesOutputFormat(
       canonical.response_format,
@@ -219,6 +227,15 @@ export class MessagesDenormalizer implements RequestDenormalizer {
             ...(block.cache_control ? { cache_control: block.cache_control } : {}),
           };
 
+        case 'thinking':
+          return {
+            type: 'thinking',
+            thinking: block.thinking,
+            ...(block.signature !== undefined ? { signature: block.signature } : {}),
+          };
+        case 'redacted_thinking':
+          return { type: 'redacted_thinking', data: block.data };
+
         case 'tool_use':
           return {
             type: 'tool_use',
@@ -255,7 +272,7 @@ export class MessagesDenormalizer implements RequestDenormalizer {
         case 'auto':
           return { type: 'auto' };
         case 'none':
-          return { type: 'auto' }; // Anthropic doesn't have 'none', use auto
+          return { type: 'none' };
         case 'required':
           return { type: 'any' };
         default:
@@ -275,6 +292,16 @@ export class MessagesDenormalizer implements RequestDenormalizer {
         case 'text':
           content.push({ type: 'text', text: block.text });
           break;
+        case 'thinking':
+          content.push({
+            type: 'thinking',
+            thinking: block.thinking,
+            ...(block.signature !== undefined ? { signature: block.signature } : {}),
+          });
+          break;
+        case 'redacted_thinking':
+          content.push({ type: 'redacted_thinking', data: block.data });
+          break;
         case 'tool_use':
           content.push({
             type: 'tool_use',
@@ -287,19 +314,26 @@ export class MessagesDenormalizer implements RequestDenormalizer {
     }
 
     return {
-      id: `msg_${canonical.id}`,
+      id: canonical.id.startsWith('msg_') ? canonical.id : `msg_${canonical.id}`,
       type: 'message',
       role: 'assistant',
       model: canonical.model,
       content,
       stop_reason: this.mapStopReason(canonical.stop_reason),
+      ...(canonical.stop_sequence !== undefined ? { stop_sequence: canonical.stop_sequence } : {}),
       usage: {
-        input_tokens: canonical.usage.input_tokens,
+        // Canonical usage is total input; Messages reports uncached input here.
+        input_tokens: Math.max(
+          0,
+          canonical.usage.input_tokens -
+            (canonical.usage.cache_read_input_tokens ?? 0) -
+            (canonical.usage.cache_creation_input_tokens ?? 0),
+        ),
         output_tokens: canonical.usage.output_tokens,
-        ...(canonical.usage.cache_creation_input_tokens
+        ...(canonical.usage.cache_creation_input_tokens !== undefined
           ? { cache_creation_input_tokens: canonical.usage.cache_creation_input_tokens }
           : {}),
-        ...(canonical.usage.cache_read_input_tokens
+        ...(canonical.usage.cache_read_input_tokens !== undefined
           ? { cache_read_input_tokens: canonical.usage.cache_read_input_tokens }
           : {}),
       },

@@ -166,6 +166,18 @@ export class MessagesNormalizer implements Normalizer {
           } satisfies ImageBlock, b);
         }
 
+        case 'thinking':
+          return {
+            type: 'thinking',
+            thinking: typeof b.thinking === 'string' ? b.thinking : '',
+            ...(typeof b.signature === 'string' ? { signature: b.signature } : {}),
+          };
+        case 'redacted_thinking':
+          return {
+            type: 'redacted_thinking',
+            data: typeof b.data === 'string' ? b.data : '',
+          };
+
         case 'tool_use':
           return this.withCacheControl({
             type: 'tool_use',
