@@ -57,7 +57,7 @@ describe('native Messages response and history fidelity', () => {
       const canonical = provider.normalizeMessagesResponse(
         body,
         routing,
-        'ada-coding-plan',
+        'example-messages-provider',
         'claude',
         10,
       );
@@ -72,7 +72,7 @@ describe('native Messages response and history fidelity', () => {
       const again = provider.normalizeMessagesResponse(
         wire,
         routing,
-        'ada-coding-plan',
+        'example-messages-provider',
         'claude',
         10,
       );
@@ -116,7 +116,7 @@ describe('native Messages response and history fidelity', () => {
         provider.normalizeMessagesResponse(
           upstream,
           routing,
-          'ada',
+          'example-provider',
           'claude',
           10,
         ),
@@ -153,7 +153,7 @@ describe('native Messages response and history fidelity', () => {
         usage: {},
       },
       routing,
-      'ada',
+      'example-provider',
       'claude',
       10,
     );
@@ -166,7 +166,7 @@ describe('native Messages response and history fidelity', () => {
     const canonical = provider.normalizeMessagesResponse(
       { id: 'original', content: [], usage: {} },
       routing,
-      'ada',
+      'example-provider',
       'claude',
       10,
     );
