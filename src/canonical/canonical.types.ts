@@ -40,11 +40,25 @@ export interface ToolResultBlock {
   cache_control?: Record<string, unknown>;
 }
 
+/** Native Anthropic state. Preserve opaque signatures; never stringify as text. */
+export interface ThinkingBlock {
+  type: 'thinking';
+  thinking: string;
+  signature?: string;
+}
+
+export interface RedactedThinkingBlock {
+  type: 'redacted_thinking';
+  data: string;
+}
+
 export type CanonicalContentBlock =
   | TextBlock
   | ImageBlock
   | ToolUseBlock
-  | ToolResultBlock;
+  | ToolResultBlock
+  | ThinkingBlock
+  | RedactedThinkingBlock;
 
 // ===== Messages =====
 export interface CanonicalMessage {
@@ -263,9 +277,12 @@ export type Tier = 'simple' | 'standard' | 'complex' | 'reasoning' | 'direct' | 
 
 // ===== Response =====
 export interface CanonicalResponse {
+  /** Original Messages content, used only when serializing back to Messages. */
+  native_messages_content?: Record<string, unknown>[];
   id: string;
   content: CanonicalContentBlock[];
   stop_reason: StopReason;
+  stop_sequence?: string | null;
   usage: TokenUsage;
   model: string;
 

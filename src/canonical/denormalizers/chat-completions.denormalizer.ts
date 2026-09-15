@@ -134,7 +134,9 @@ export class ChatCompletionsDenormalizer implements RequestDenormalizer {
     if (msg.role === 'user' && Array.isArray(msg.content)) {
       return {
         role: 'user',
-        content: msg.content.map((block) => this.denormalizeContentBlock(block)),
+        content: msg.content
+          .filter((block) => block.type !== 'thinking' && block.type !== 'redacted_thinking')
+          .map((block) => this.denormalizeContentBlock(block)),
       };
     }
 

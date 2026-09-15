@@ -5782,7 +5782,7 @@ export class PipelineService implements BeforeApplicationShutdown {
       case 'audio_translation':
       case 'audio_speech':
         return { error: { message, type: 'server_error', code: String(statusCode) } };
-      case 'messages': return { type: 'error', error: { type: 'api_error', message } };
+      case 'messages': return { type: 'error', error: { type: statusCode === 400 ? 'invalid_request_error' : 'api_error', message } };
       default: return { error: { message } };
     }
   }

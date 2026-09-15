@@ -24,6 +24,7 @@ import { ResponsesDenormalizer } from '../canonical/denormalizers/responses.deno
 import { MessagesDenormalizer } from '../canonical/denormalizers/messages.denormalizer';
 import { GeminiDenormalizer } from '../canonical/denormalizers/gemini.denormalizer';
 import { toAnthropicMessagesOutputFormat } from '../canonical/structured-output';
+import { toAnthropicThinking } from '../canonical/reasoning-effort';
 import { ChatCompletionsStreamParser } from './stream/chat-completions.stream';
 import { ResponsesStreamParser } from './stream/responses.stream';
 import { MessagesStreamParser } from './stream/messages.stream';
@@ -2153,6 +2154,18 @@ export class ProviderClientService {
       delete cloned.response_format;
       delete cloned.text;
     }
+    const choice = this.isPlainRecord(cloned.tool_choice) ? cloned.tool_choice : null;
+    if (cloned.thinking === undefined) {
+      // Respect mapped caller intent before suppressing a provider's default.
+      const thinking = toAnthropicThinking(canonical.reasoning, canonical.max_tokens);
+      if (thinking) cloned.thinking = thinking;
+      else if (
+        !canonical.reasoning?.requested &&
+        (choice?.type === 'tool' || choice?.type === 'any')
+      ) {
+        cloned.thinking = { type: 'disabled' };
+      }
+    }
     return this.sanitizeNativeMessagesRequest(cloned);
   }
 
@@ -2236,6 +2249,9 @@ export class ProviderClientService {
           typedBlock.type === 'thinking' ||
           typedBlock.type === 'redacted_thinking'
         ) {
+          // Signed native history must be replayed verbatim, including empty
+          // thinking and opaque redacted data. The provider validates it.
+          sanitized.push(block);
           continue;
         }
 
@@ -2682,7 +2698,15 @@ export class ProviderClientService {
 
     for (const block of rawContent) {
       if (block.type === 'text') content.push({ type: 'text', text: (block.text as string) || '' });
-      else if (block.type === 'tool_use') {
+      else if (block.type === 'thinking') {
+        content.push({
+          type: 'thinking',
+          thinking: typeof block.thinking === 'string' ? block.thinking : '',
+          ...(typeof block.signature === 'string' ? { signature: block.signature } : {}),
+        });
+      } else if (block.type === 'redacted_thinking' && typeof block.data === 'string') {
+        content.push({ type: 'redacted_thinking', data: block.data });
+      } else if (block.type === 'tool_use') {
         content.push({
           type: 'tool_use', id: (block.id as string) || '', name: (block.name as string) || '',
           input: (block.input as Record<string, unknown>) || {},
@@ -2702,8 +2726,14 @@ export class ProviderClientService {
     };
 
     return {
-      id: (body.id as string) || `gen_${Date.now()}`, content,
+      id: (body.id as string) || `gen_${Date.now()}`,
+      content,
+      native_messages_content: this.cloneJson(rawContent) as Record<
+        string,
+        unknown
+      >[],
       stop_reason: (body.stop_reason as StopReason) || 'end_turn',
+      stop_sequence: typeof body.stop_sequence === 'string' ? body.stop_sequence : null,
       usage: this.resolveNormalizedUsage(body, usageSchema, fallbackUsage),
       model: (body.model as string) || model,
       routing: { ...routingMeta, node: nodeId, latency_ms: latencyMs },

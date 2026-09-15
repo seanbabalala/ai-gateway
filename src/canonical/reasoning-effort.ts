@@ -105,6 +105,8 @@ export function toAnthropicThinking(
     return clone(intent.thinking.raw) as Record<string, unknown>;
   }
 
+  if (intent.effort === 'none') return { type: 'disabled' };
+
   const budget = intent.budget_tokens || budgetTokensForEffort(intent.effort);
   if (!budget) return undefined;
   if (maxTokens && maxTokens <= budget) return undefined;
@@ -205,6 +207,7 @@ export function resolveReasoningForwarding(
     const mappedBudget = budgetTokensForEffort(intent.effort);
     const canMap = Boolean(
       intent.budget_tokens ||
+        intent.effort === 'none' ||
         intent.source === 'messages.thinking' ||
         (mappedBudget !== undefined && mappedBudget > 0),
     );
@@ -348,11 +351,11 @@ function normalizeAnthropicThinking(
   if (!thinking) return undefined;
   const budget = numberOrUndefined(thinking.budget_tokens);
   const effort = normalizeEffort(thinking.effort) || (budget ? 'unknown' : undefined);
-  const enabled =
-    thinking.type === 'enabled' ||
+  const requested =
+    typeof thinking.type === 'string' ||
     budget !== undefined ||
     thinking.enabled === true;
-  if (!enabled && !effort) return undefined;
+  if (!requested && !effort) return undefined;
 
   const config: CanonicalThinkingConfig = {
     source: 'messages.thinking',

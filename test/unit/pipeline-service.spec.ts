@@ -15,6 +15,7 @@ import { makeRequest, makeCanonicalResponse, mockConfigService } from '../helper
 import { CanonicalMediaRequest } from '../../src/canonical/canonical.types';
 import { createNoOpHookExecutor } from '../../src/plugins/testing';
 import { TelemetryService } from '../../src/telemetry/telemetry.service';
+import { MessagesNormalizer } from '../../src/canonical/normalizers/messages.normalizer';
 
 function makeBudgetReservation(tokens = 0, costUsd = 0) {
   return {
@@ -440,6 +441,25 @@ describe('PipelineService — direct routing', () => {
       'gpt-4o',
       expect.objectContaining({ tier: 'direct', is_fallback: false }),
     );
+  });
+
+  it('preserves a clear Messages 400 for explicitly incompatible thinking and forced tools', async () => {
+    const { pipeline, mocks } = makePipeline();
+    const message = 'Thinking mode does not support this tool_choice.';
+    mocks.providerClient.forward.mockRejectedValue(new ProviderError(message, 400, 'claude'));
+    const request = new MessagesNormalizer().normalize({
+      model: 'claude-3-opus', max_tokens: 4096,
+      messages: [{ role: 'user', content: 'Probe' }],
+      thinking: { type: 'enabled', budget_tokens: 2048 },
+      tool_choice: { type: 'any' },
+    }, {});
+
+    const result = await pipeline.process(request);
+
+    expect(result.statusCode).toBe(400);
+    expect(result.body).toEqual({ type: 'error', error: { type: 'invalid_request_error', message } });
+    expect(mocks.providerClient.forward).toHaveBeenCalledTimes(1);
+    expect(request.thinking?.raw).toEqual({ type: 'enabled', budget_tokens: 2048 });
   });
 
   it('should fall through to auto routing for unknown models', async () => {
