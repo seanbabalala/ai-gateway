@@ -34,6 +34,7 @@ expectFileIncludes('README.md', `Current release: **v${releaseVersion}`);
 expectFileIncludes('README.md', `img.shields.io/badge/release-v${releaseVersion}-`);
 expectFileIncludes('README.md', `/releases/tag/v${releaseVersion}`);
 expectFileIncludes('CHANGELOG.md', `## ${releaseVersion} -`);
+expectFileIncludes('docs/BASELINE.md', `Release: **v${releaseVersion}**`);
 
 if (failures.length > 0) {
   console.error('Release version check failed:');

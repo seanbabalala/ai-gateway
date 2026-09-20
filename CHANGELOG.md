@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## 2.11.5 - 2026-09-20
+
+### Fixed
+
+- Retained the Messages protocol fixes merged in PR #130: native server tools
+  and citations, signed thinking history, tool choice, and cache usage metadata.
+- Promoted deployed transport error-cause diagnostics and configurable
+  `routing.circuit_breaker` settings into the maintained release source,
+  including configuration validation and regression coverage.
+- Restricted Jest discovery to maintained source/test/SDK roots so generated
+  worktrees, foreign test frameworks, and local package caches cannot pollute
+  unit or E2E results. Dedicated SDK discovery remains covered.
+
+### Maintenance
+
+- Tracked the existing macOS 2099 watchdog helper without auto-installing or
+  invoking it during builds, tests, or release checks.
+- Established `docs/BASELINE.md` as the current engineering baseline and added
+  it to release-version validation. Marked the July optimization plan historical.
+- Clarified that the one-request v2.0.0 benchmark is smoke evidence, not a
+  current performance or tail-latency baseline.
+
+### Upgrade Boundaries
+
+- No database migration, Dashboard translation change, or live configuration
+  rewrite. Existing breaker defaults and explicitly configured overrides remain
+  intact. Provider and Gateway credentials are not part of this release.
+- Publishing this version does not restart a running gateway. Prepare a
+  separate verified release directory and switch it only at the planned restart.
+
 ## 2.11.4 - 2026-09-08
 
 ### Fixed

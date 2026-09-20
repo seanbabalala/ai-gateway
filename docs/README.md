@@ -20,6 +20,9 @@ self-hosters.
 
 ## Recommended Reading Paths
 
+For current source, verification, deployment, and performance-evidence boundaries,
+start with the [engineering baseline](BASELINE.md).
+
 | Goal | Read these first |
 | --- | --- |
 | Try SiftGate locally | [Quickstart](QUICKSTART.md), [Dashboard](DASHBOARD.md), [OSS concepts](OSS_CONCEPTS.md) |

@@ -801,6 +801,15 @@ routing:
   #   backoff_max_ms: 5000               # Max backoff delay (default: 5000)
   #   retryable_status: [429, 502, 503]  # HTTP codes to retry (default: [429, 502, 503])
 
+  # Circuit breaker tuning (optional)
+  # Per node+model health tracking. A circuit opens after N consecutive
+  # failures, skips that target while OPEN, then allows probes after the cooldown.
+  # circuit_breaker:
+  #   enabled: true           # Set false to never gate routing (default: true)
+  #   failure_threshold: 3    # Consecutive failures before OPEN (default: 3)
+  #   cooldown_ms: 30000      # Time a circuit stays OPEN (default: 30000)
+  #   half_open_max: 1        # Probes allowed while HALF_OPEN (default: 1)
+
   # Fallback policy controls (optional, v0.3)
   # Existing primary/fallback behavior is preserved when this section is omitted.
   # fallback_policy:

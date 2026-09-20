@@ -2549,6 +2549,72 @@ function validateRouting(
   validateFallbackPolicy(routing.fallback_policy, issues);
   validateCacheAffinityRouting(routing.cache_affinity, issues);
   validateDomainPreferences(routing.domain_preferences, nodes, issues);
+  validateCircuitBreakerRouting(routing.circuit_breaker, issues);
+}
+
+function validateCircuitBreakerRouting(
+  circuitBreaker: unknown,
+  issues: ConfigValidationIssue[],
+): void {
+  if (circuitBreaker === undefined) return;
+  const basePath = 'routing.circuit_breaker';
+  if (!isRecord(circuitBreaker)) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_circuit_breaker_config',
+        'routing.circuit_breaker must be an object when configured.',
+        basePath,
+      ),
+    );
+    return;
+  }
+
+  if (
+    circuitBreaker.enabled !== undefined &&
+    !isBoolean(circuitBreaker.enabled)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_circuit_breaker_config',
+        `${basePath}.enabled must be a boolean.`,
+        `${basePath}.enabled`,
+      ),
+    );
+  }
+
+  for (const key of ['failure_threshold', 'half_open_max']) {
+    const value = circuitBreaker[key];
+    if (
+      value !== undefined &&
+      (!isFiniteNumber(value) || !Number.isInteger(value) || value < 1)
+    ) {
+      issues.push(
+        issue(
+          'error',
+          'invalid_circuit_breaker_config',
+          `${basePath}.${key} must be a positive integer.`,
+          `${basePath}.${key}`,
+        ),
+      );
+    }
+  }
+
+  const cooldownMs = circuitBreaker.cooldown_ms;
+  if (
+    cooldownMs !== undefined &&
+    (!isFiniteNumber(cooldownMs) || cooldownMs < 0)
+  ) {
+    issues.push(
+      issue(
+        'error',
+        'invalid_circuit_breaker_config',
+        `${basePath}.cooldown_ms must be a non-negative number.`,
+        `${basePath}.cooldown_ms`,
+      ),
+    );
+  }
 }
 
 function validateCacheAffinityRouting(

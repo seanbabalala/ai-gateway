@@ -938,6 +938,8 @@ export interface RoutingConfig {
   fallback_policy?: FallbackPolicyConfig;
   /** Optional provider-cache session affinity bonus for cache-aware routing. */
   cache_affinity?: CacheAffinityRoutingConfig;
+  /** Optional per-model circuit breaker tuning. */
+  circuit_breaker?: CircuitBreakerRoutingConfig;
 
   /**
    * Domain-based node preference.
@@ -956,6 +958,20 @@ export interface RoutingConfig {
    * If not configured, nodes with matching tags are auto-preferred.
    */
   domain_preferences?: Record<string, string[]>;
+}
+
+export interface CircuitBreakerRoutingConfig {
+  /**
+   * Set false to keep every target routable regardless of its failure history.
+   * Defaults to true.
+   */
+  enabled?: boolean;
+  /** Consecutive failures before a node+model circuit opens. Defaults to 3. */
+  failure_threshold?: number;
+  /** Time a circuit stays OPEN before allowing a probe. Defaults to 30000. */
+  cooldown_ms?: number;
+  /** Probe requests allowed while HALF_OPEN. Defaults to 1. */
+  half_open_max?: number;
 }
 
 export interface CacheAffinityRoutingConfig {

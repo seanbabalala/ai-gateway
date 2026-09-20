@@ -1,5 +1,11 @@
 # AI Gateway Overnight Optimization Plan
 
+> Historical execution record, superseded on 2026-09-20 by the
+> [current engineering baseline](../BASELINE.md). Commit IDs, test counts,
+> clean-worktree claims, and completed queues below describe the July run,
+> not the current checkout or deployed runtime. Do not resume this queue
+> without reviewing the current baseline.
+
 Review date: 2026-07-14
 Execution mode: Goal-driven overnight merge loop
 

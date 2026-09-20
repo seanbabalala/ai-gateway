@@ -67,6 +67,34 @@ function isUndiciTimeoutError(error: unknown): boolean {
   );
 }
 
+/**
+ * `fetch` collapses every transport failure into "fetch failed" and keeps the
+ * real reason on `err.cause`. Surface it, otherwise a tunnel/route problem and
+ * a dead upstream are indistinguishable in the logs.
+ */
+function describeFetchError(error: unknown): string {
+  if (!(error instanceof Error)) return 'Unknown fetch error';
+  const cause = (error as { cause?: unknown }).cause;
+  if (!cause) return error.message;
+
+  if (cause instanceof AggregateError) {
+    const detail = Array.from(cause.errors as unknown[])
+      .map(describeErrorCause)
+      .filter((part) => part.length > 0)
+      .join('; ');
+    return detail ? `${error.message} (${detail})` : error.message;
+  }
+
+  const detail = describeErrorCause(cause);
+  return detail ? `${error.message} (${detail})` : error.message;
+}
+
+function describeErrorCause(cause: unknown): string {
+  if (!(cause instanceof Error)) return '';
+  const code = (cause as { code?: unknown }).code;
+  return typeof code === 'string' && code ? `${code}: ${cause.message}` : cause.message;
+}
+
 interface ProviderRequestOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -839,7 +867,7 @@ export class ProviderClientService {
       } catch (err: unknown) {
         clearTimeout(timeout);
         signal?.removeEventListener('abort', abortFromExternal);
-        const message = err instanceof Error ? err.message : 'Unknown fetch error';
+        const message = describeFetchError(err);
         const errorName = err instanceof Error ? err.name : '';
         const providerError =
           errorName === 'AbortError' || isUndiciTimeoutError(err)
@@ -1100,7 +1128,7 @@ export class ProviderClientService {
         throw providerError;
       } catch (err: unknown) {
         if (err instanceof ProviderError) throw err;
-        const message = err instanceof Error ? err.message : 'Unknown fetch error';
+        const message = describeFetchError(err);
         const errorName = err instanceof Error ? err.name : '';
         const providerError =
           errorName === 'AbortError' || isUndiciTimeoutError(err)

@@ -411,6 +411,85 @@ describe('CircuitBreakerService — reset', () => {
   });
 });
 
+describe('CircuitBreakerService — configured thresholds', () => {
+  function makeConfiguredBreaker(
+    circuitBreaker: Record<string, unknown> | undefined,
+  ): CircuitBreakerService {
+    return new CircuitBreakerService(
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      { routing: { circuit_breaker: circuitBreaker } } as any,
+    );
+  }
+
+  it('should open only after the configured failure threshold', () => {
+    const cb = makeConfiguredBreaker({ failure_threshold: 8 });
+    for (let i = 0; i < 7; i++) {
+      cb.recordFailure('node1', 'gpt-4');
+    }
+    expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.CLOSED);
+
+    cb.recordFailure('node1', 'gpt-4');
+    expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.OPEN);
+  });
+
+  it('should honour a configured cooldown', () => {
+    const cb = makeConfiguredBreaker({ failure_threshold: 1, cooldown_ms: 120_000 });
+    cb.recordFailure('node1', 'gpt-4');
+
+    const realNow = Date.now;
+    Date.now = jest.fn().mockReturnValue(realNow() + 31_000);
+    try {
+      // The default 30s cooldown would have elapsed by now
+      expect(cb.isAvailable('node1', 'gpt-4')).toBe(false);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('should honour a configured half_open_max', () => {
+    const cb = makeConfiguredBreaker({ failure_threshold: 1, cooldown_ms: 0, half_open_max: 2 });
+    cb.recordFailure('node1', 'gpt-4');
+
+    expect(cb.isAvailable('node1', 'gpt-4')).toBe(true); // OPEN → HALF_OPEN transition
+    expect(cb.isAvailable('node1', 'gpt-4')).toBe(true); // probe 1
+    expect(cb.isAvailable('node1', 'gpt-4')).toBe(true); // probe 2
+    expect(cb.isAvailable('node1', 'gpt-4')).toBe(false);
+    expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.HALF_OPEN);
+  });
+
+  it('should fall back to defaults when the section is absent', () => {
+    const cb = makeConfiguredBreaker(undefined);
+    forceCircuitOpen(cb, 'node1', 'gpt-4');
+    expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.OPEN);
+  });
+
+  it('should keep every target routable when disabled', () => {
+    const alerts = { emit: jest.fn() };
+    const cb = new CircuitBreakerService(
+      alerts as any,
+      undefined as any,
+      undefined as any,
+      { routing: { circuit_breaker: { enabled: false } } } as any,
+    );
+
+    for (let i = 0; i < 20; i++) {
+      cb.recordFailure('node1', 'gpt-4');
+    }
+
+    expect(cb.isAvailable('node1', 'gpt-4')).toBe(true);
+    expect(cb.getCircuitState('node1', 'gpt-4')).toBe(CircuitState.CLOSED);
+    expect(alerts.emit).not.toHaveBeenCalled();
+  });
+
+  it('should still gate routing when explicitly re-enabled', () => {
+    const cb = makeConfiguredBreaker({ enabled: true, failure_threshold: 3 });
+    forceCircuitOpen(cb, 'node1', 'gpt-4');
+    expect(cb.isAvailable('node1', 'gpt-4')).toBe(false);
+  });
+});
+
 describe('CircuitBreakerService — shared state backend', () => {
   it('should persist circuit state to shared backend when configured', () => {
     const state = {

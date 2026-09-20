@@ -32,6 +32,7 @@ For a normal release, confirm the version is aligned in every applicable file:
 - `test/unit/release-version-sync.spec.ts`
 - `README.md`
 - `CHANGELOG.md`
+- `docs/BASELINE.md`
 
 Additional release docs may also mention the new version when the release
 changes those surfaces.
@@ -258,6 +259,13 @@ npm run docs:check
 ```
 
 ## PR, Merge, Tag, And Release
+
+Publishing source is separate from deploying it. Follow the
+[runtime alignment procedure](BASELINE.md#runtime-alignment-without-an-early-restart)
+when a live gateway must keep serving during release preparation. Build in an
+isolated directory, preserve deployed patches, and do not replace shared
+dependencies/frontend assets or switch the active release before the scheduled
+restart. Record both the published tag and the actually deployed commit.
 
 After tests pass:
 
