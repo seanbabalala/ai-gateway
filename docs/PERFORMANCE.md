@@ -6,6 +6,12 @@ latency and to publish evidence with enough context for operators to rerun it.
 
 ## v2.0.0 Platform Benchmark
 
+The committed v2.0.0 report is historical smoke evidence: it measured only one
+request per scenario. Its identical p50/p95/p99 values do not establish tail
+latency, sustainable throughput, or a current-version performance baseline.
+Re-run with adequate samples and repeated warm runs before drawing conclusions.
+See the [current engineering baseline](BASELINE.md).
+
 v2.0.0 ships a deterministic platform benchmark harness for the Platform Trust
 GA. It starts a local mock upstream plus real SiftGate AppModule instances,
 seeds a temporary Gateway API key, and measures the public HTTP path without

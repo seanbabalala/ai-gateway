@@ -12,6 +12,7 @@ const requiredFiles = [
   'SECURITY.md',
   'CODE_OF_CONDUCT.md',
   'docs/README.md',
+  'docs/BASELINE.md',
   'docs/assets/brand/siftgate-logo.svg',
   'docs/assets/brand/siftgate-mark.svg',
   'docs/QUICKSTART.md',

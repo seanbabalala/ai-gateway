@@ -622,6 +622,49 @@ describe('ProviderClientService', () => {
     });
   });
 
+  // ── Transport failure reporting ─────────────────────────
+  describe('transport failure reporting', () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    function rejectWithCause(cause: unknown): void {
+      global.fetch = jest.fn().mockRejectedValue(
+        Object.assign(new TypeError('fetch failed'), { cause }),
+      ) as any;
+    }
+
+    it('should surface the underlying cause code instead of a bare "fetch failed"', async () => {
+      rejectWithCause(Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }));
+      const svc = makeServiceWithNode({ id: 'aigw', timeout_ms: 5000 });
+
+      await expect(
+        svc.forward(makeCanonical(), 'aigw', 'gpt-4o', routingMeta),
+      ).rejects.toThrow('Failed to connect to aigw: fetch failed (ECONNRESET: read ECONNRESET)');
+    });
+
+    it('should list every address family failure from an AggregateError cause', async () => {
+      rejectWithCause(
+        new AggregateError(
+          [
+            Object.assign(new Error('connect ENETUNREACH 198.18.0.6:80'), { code: 'ENETUNREACH' }),
+            Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:80'), { code: 'ECONNREFUSED' }),
+          ],
+          'all addresses failed',
+        ),
+      );
+      const svc = makeServiceWithNode({ id: 'aigw', timeout_ms: 5000 });
+
+      await expect(
+        svc.forward(makeCanonical(), 'aigw', 'gpt-4o', routingMeta),
+      ).rejects.toThrow(
+        'Failed to connect to aigw: fetch failed (ENETUNREACH: connect ENETUNREACH 198.18.0.6:80; ECONNREFUSED: connect ECONNREFUSED 127.0.0.1:80)',
+      );
+    });
+  });
+
   // ── ProviderError ───────────────────────────────────────
 
   describe('ProviderError', () => {

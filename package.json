@@ -1,6 +1,6 @@
 {
   "name": "siftgate",
-  "version": "2.11.4",
+  "version": "2.11.5",
   "description": "SiftGate self-hosted AI traffic gateway with smart routing",
   "license": "MIT",
   "private": true,
@@ -134,7 +134,12 @@
     "testEnvironment": "node",
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
-    }
+    },
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/test",
+      "<rootDir>/packages/client"
+    ]
   },
   "overrides": {
     "@opentelemetry/otlp-transformer": {

@@ -10,16 +10,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/seanbabalala/ai-gateway/releases/tag/v2.11.4"><img alt="Release" src="https://img.shields.io/badge/release-v2.11.4-22d7a8"></a>
+  <a href="https://github.com/seanbabalala/ai-gateway/releases/tag/v2.11.5"><img alt="Release" src="https://img.shields.io/badge/release-v2.11.5-22d7a8"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-062f25"></a>
   <a href="docs/SECURITY.md"><img alt="Privacy default" src="https://img.shields.io/badge/privacy-metadata--only%20by%20default-22d7a8"></a>
   <a href="docs/README.md"><img alt="Docs" src="https://img.shields.io/badge/docs-7%20languages-062f25"></a>
 </p>
 
 <p align="center">
-  Current release: <strong>v2.11.4</strong>
+  Current release: <strong>v2.11.5</strong>
 </p>
-<!-- Current release: **v2.11.4** -->
+<!-- Current release: **v2.11.5** -->
 
 <table>
   <tr>
@@ -276,12 +276,12 @@ metadata-only audit, and production rollout in one self-hosted data plane. If
 the job is public API resale, prepaid wallets, or the lightest possible
 provider proxy, One API, New API, Manifest, or LiteLLM may be a better fit.
 
-The committed v2.0.0 benchmark reports also give operators a repeatable
-baseline for local gateway overhead: on an Apple M4 mock-upstream run,
-non-streaming direct proxy overhead measured +8 ms p50/p95/p99, streaming total
-overhead measured +10 ms p50/p95/p99, streaming first-byte overhead measured
-+3 ms, and metadata-only Dashboard log writes measured 1 ms p50/p95/p99. See
-[Performance](docs/PERFORMANCE.md) for methodology and limitations.
+The committed v2.0.0 benchmark reports provide historical mock-upstream harness
+smoke evidence. They measured only one request per scenario, so their reported
+p50/p95/p99 values are not a statistically useful tail-latency or current-version
+capacity baseline. Re-run with sufficient samples and repeated warm runs before
+making performance claims. See [Performance](docs/PERFORMANCE.md) for methodology
+and the [current engineering baseline](docs/BASELINE.md) for verification scope.
 The smart-routing benchmark prompt corpus is tracked separately with 500
 prompts from WildBench v2, IFEval, MT-Bench, GSM8K, and HumanEval; see the
 [prompt corpus summary](docs/reports/smart-routing-prompt-corpus.md).

@@ -40,12 +40,14 @@ interface CircuitStatus {
 }
 
 interface CircuitBreakerConfig {
+  enabled: boolean;         // false = never gate routing on failure history
   failureThreshold: number; // consecutive failures to trigger OPEN
   cooldownMs: number;       // time in OPEN before moving to HALF_OPEN
   halfOpenMax: number;      // max probe requests in HALF_OPEN
 }
 
 const DEFAULT_CONFIG: CircuitBreakerConfig = {
+  enabled: true,
   failureThreshold: 3,
   cooldownMs: 30_000,   // 30 seconds
   halfOpenMax: 1,
@@ -55,7 +57,6 @@ const DEFAULT_CONFIG: CircuitBreakerConfig = {
 export class CircuitBreakerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CircuitBreakerService.name);
   private readonly circuits = new Map<string, CircuitStatus>();
-  private readonly config: CircuitBreakerConfig;
   private syncInterval?: ReturnType<typeof setInterval>;
   private lastFailClosedLogAt = 0;
 
@@ -65,8 +66,21 @@ export class CircuitBreakerService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly stateBackend?: StateBackendService,
     @Optional() private readonly configService?: ConfigService,
   ) {
-    this.config = { ...DEFAULT_CONFIG };
     this.registerMetrics();
+  }
+
+  /**
+   * Resolve thresholds on every read so `routing.circuit_breaker` edits take
+   * effect on config reload instead of requiring a restart.
+   */
+  private get config(): CircuitBreakerConfig {
+    const configured = this.configService?.routing?.circuit_breaker;
+    return {
+      enabled: configured?.enabled ?? DEFAULT_CONFIG.enabled,
+      failureThreshold: configured?.failure_threshold ?? DEFAULT_CONFIG.failureThreshold,
+      cooldownMs: configured?.cooldown_ms ?? DEFAULT_CONFIG.cooldownMs,
+      halfOpenMax: configured?.half_open_max ?? DEFAULT_CONFIG.halfOpenMax,
+    };
   }
 
   async onModuleInit(): Promise<void> {
@@ -94,6 +108,9 @@ export class CircuitBreakerService implements OnModuleInit, OnModuleDestroy {
    * Returns true if requests should be forwarded.
    */
   isAvailable(nodeId: string, model?: string): boolean {
+    if (!this.config.enabled) {
+      return true;
+    }
     if (this.stateBackend?.shouldFailClosed()) {
       const now = Date.now();
       if (now - this.lastFailClosedLogAt > 30_000) {
@@ -194,6 +211,16 @@ export class CircuitBreakerService implements OnModuleInit, OnModuleDestroy {
   recordFailure(nodeId: string, model?: string): void {
     const key = this.buildKey(nodeId, model);
     const status = this.getStatus(key);
+
+    if (!this.config.enabled) {
+      // Keep the counters for observability, but never open a circuit that
+      // would gate routing or raise a circuit_open alert.
+      status.consecutiveFailures++;
+      status.lastFailureAt = Date.now();
+      this.persistStatus(key, status);
+      return;
+    }
+
     const previousState = status.state;
     status.consecutiveFailures++;
     status.lastFailureAt = Date.now();
@@ -237,6 +264,7 @@ export class CircuitBreakerService implements OnModuleInit, OnModuleDestroy {
    * and should prevent routing to a known-unhealthy upstream.
    */
   markUnavailable(nodeId: string, model?: string, reason = 'active probe failed'): void {
+    if (!this.config.enabled) return;
     const key = this.buildKey(nodeId, model);
     const status = this.getStatus(key);
     const previousState = status.state;

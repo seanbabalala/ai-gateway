@@ -3393,6 +3393,58 @@ describe('config validator', () => {
     expect(codes(result.errors)).toContain('invalid_cache_affinity_config');
   });
 
+  it('accepts valid routing.circuit_breaker settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+          circuit_breaker: {
+            enabled: false,
+            failure_threshold: 8,
+            cooldown_ms: 30000,
+            half_open_max: 1,
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(codes(result.errors)).not.toContain('invalid_circuit_breaker_config');
+  });
+
+  it('rejects invalid routing.circuit_breaker settings', () => {
+    const result = validateConfigObject(
+      secretReferenceConfig('${OPENAI_API_KEY:-test}', {
+        routing: {
+          tiers: {
+            standard: {
+              primary: { node: 'openai', model: 'gpt-4o-mini' },
+              fallbacks: [],
+            },
+          },
+          scoring: { simple_max: -0.1, standard_max: 0.08, complex_max: 0.35 },
+          circuit_breaker: {
+            enabled: 'yes',
+            failure_threshold: 0,
+            cooldown_ms: -1,
+            half_open_max: 1.5,
+          },
+        },
+      }),
+      { env: {} },
+    );
+
+    expect(codes(result.errors)).toEqual(
+      expect.arrayContaining(['invalid_circuit_breaker_config']),
+    );
+  });
+
   it('accepts provider credential pools without a legacy node api_key', () => {
     const config = secretReferenceConfig('${OPENAI_API_KEY:-test}');
     (config.nodes[0] as Record<string, unknown>).api_key = undefined;

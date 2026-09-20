@@ -1,0 +1,110 @@
+# Current Engineering Baseline
+
+Reviewed: 2026-09-20
+Release: **v2.11.5**
+
+This is the current engineering baseline for the open-source data plane. The
+[July optimization plan](reports/optimization-plan-2026-07-14.md) is historical
+execution evidence, not the current work queue.
+
+## Source And Release Identity
+
+- The annotated `v2.11.5` tag is the release source of truth. Compare full commit
+  IDs, not just package versions: earlier deployment fixes shared v2.11.4.
+- This release starts from main commit `8f12730c` (PR #130), retaining native
+  Messages server tools, citations, signed thinking history, tool intent, and
+  usage metadata.
+- Previously deployed transport-cause diagnostics and configurable per-model
+  circuit breakers are now part of the maintained source and regression tests.
+- Default breaker behavior is unchanged: enabled, three consecutive failures,
+  30-second cooldown, and one configured half-open probe slot. Existing local
+  configuration is not rewritten by the release.
+- The macOS 2099 watchdog helper is tracked. It is not installed, started, or
+  invoked by builds or release checks; deployments must review its launchd
+  label and local paths before adopting it.
+
+## Repeatable Quality Gates
+
+Local verification on 2026-09-20 completed the 17-step release-hardening gate:
+
+| Check | Result |
+| --- | --- |
+| Backend/SDK unit discovery | 114 suites, 1,669 tests passed; one optional PostgreSQL suite/test skipped |
+| Backend E2E | 13 suites, 115 tests passed |
+| Dedicated TypeScript SDK | 2 suites, 6 tests passed; build and typecheck passed |
+| Python SDK | 7 tests passed |
+| Backend/runtime-plugin build, lint, config, Kubernetes, registry | Passed |
+| Docs, public-boundary scan, version sync | Passed |
+| Frontend static checks, build, bundle budgets | Passed |
+| Production dependency audit | Passed the configured critical-severity gate; lower-severity advisories remain |
+
+Cloud CI results belong to the release commit's GitHub checks. Runtime health
+and deployment evidence must be recorded separately after the planned restart.
+
+Run `npm run release:hardening` from the repository root. It includes backend
+build/unit/E2E checks, configuration and Kubernetes validation, zero-warning
+lint, documentation/public-boundary/version checks, provider registry checks,
+SDK checks, dependency auditing, and frontend checks/build/bundle budgets.
+
+Jest now has explicit discovery roots:
+
+| Command | Maintained test scope |
+| --- | --- |
+| `npm test -- --runInBand` | `src`, `test` (excluding E2E), and `packages/client` |
+| `npm run test:e2e` | `test/e2e` only |
+| `npm run test:sdk` | TypeScript client tests only |
+
+Generated worktrees under `output` and caches under `.local-dev` are not test
+roots. Regression tests exercise real Jest discovery against both types of
+artifacts, including duplicate package names. Frontend `npm test` consists of
+static source/i18n/contract checks; it is not a browser-rendering or interaction
+test suite.
+
+Real PostgreSQL row-lock coverage is conditional locally. The separate
+Postgres Budget Smoke CI workflow provisions an isolated service database.
+Docker smoke is likewise a separate CI gate. Do not report skipped local
+integration checks as passed.
+
+The dependency audit gate retains the existing `--audit-level=critical`
+threshold. Passing it does not mean there are no lower-severity advisories;
+dependency upgrades require separate review and are not bundled into this
+source/runtime alignment release.
+
+## Runtime Alignment Without An Early Restart
+
+A checkout, a published tag, and a running process are distinct identities.
+The process command and active release manifest identify what is actually
+serving requests; a repository-local `dist` directory does not establish that.
+
+1. Record the active PID, resolved release directory, config checksum, and
+   release-manifest checksums. Keep machine paths and configuration private.
+2. Preserve local changes before synchronizing source. Review deployed patches
+   against the release branch rather than overwriting them with an older build.
+3. Build and validate in an isolated worktree. Do not run dependency installs
+   or replace frontend assets through links used by the live process.
+4. Merge passing changes, publish the annotated tag and GitHub release, and
+   prepare an immutable candidate with commit/version and file checksums.
+5. Leave the active runtime untouched until the scheduled restart. Verify
+   in-flight work, preserve a rollback release, then switch and restart once.
+6. Verify the new PID, readiness, release checksums, and unchanged config.
+   Record the deployed release separately from the GitHub release.
+
+Never store provider credentials, Gateway keys, request/response bodies, or
+resolved secrets in public provenance or release notes.
+
+## Evidence Limits And Next Optimization Work
+
+- The committed v2.0.0 performance report uses one measured request per
+  scenario. It is historical harness smoke evidence, not a statistically
+  useful p95/p99 or current-version capacity baseline. No new latency,
+  throughput, or SLA claim is made by v2.11.5.
+- Before performance optimization, capture repeated warm runs with sufficient
+  samples, fixed concurrency, hardware, config, commit, and upstream behavior.
+  Separate gateway overhead from upstream latency and first non-empty content
+  from the first SSE byte. See [Performance](PERFORMANCE.md).
+- A healthy HTTP endpoint establishes only the checks it actually performs.
+  If circuit breaking and active probes are disabled, it does not demonstrate
+  that every upstream can currently complete model requests.
+- Continue with protocol/stream/tool/usage regression coverage and measured
+  bottlenecks rather than reopening completed July work or adding features
+  without a reproducible baseline.
