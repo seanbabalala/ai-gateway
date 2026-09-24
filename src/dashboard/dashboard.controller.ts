@@ -1691,6 +1691,9 @@ export class DashboardController implements BeforeApplicationShutdown {
     @Optional()
     private readonly sqliteAnalytics?: SqliteAnalyticsService,
   ) {
+    if ((this.config.database.log_retention_days ?? 30) <= 0) {
+      this.logger.warn('Automatic call-log retention is disabled; monitor database growth and configure verified backups.');
+    }
     this.scheduleCleanup(60_000);
   }
 
@@ -2264,7 +2267,7 @@ export class DashboardController implements BeforeApplicationShutdown {
     let deletedCallLogs = 0;
     let deletedRouteDecisions = 0;
 
-    while (true) {
+    while (!this.cleanupStopped) {
       const rows = await this.callLogRepo
         .createQueryBuilder("log")
         .select("log.id", "id")
@@ -2278,7 +2281,7 @@ export class DashboardController implements BeforeApplicationShutdown {
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
-    while (true) {
+    while (!this.cleanupStopped) {
       const rows = await this.routeDecisionRepo
         .createQueryBuilder("decision")
         .select("decision.id", "id")

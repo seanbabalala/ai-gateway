@@ -77,7 +77,7 @@ start with the [engineering baseline](BASELINE.md).
 | Security | [SECURITY.md](SECURITY.md) |
 | Performance | [PERFORMANCE.md](PERFORMANCE.md) |
 | Billing loop | [BILLING_LOOP.md](BILLING_LOOP.md) |
-| Webhook alerts | [WEBHOOK_ALERTS.md](WEBHOOK_ALERTS.md) |
+| Alert connectors: Feishu, WeCom, Telegram, webhook | [WEBHOOK_ALERTS.md](WEBHOOK_ALERTS.md) |
 | Log sinks | [LOG_SINKS.md](LOG_SINKS.md) |
 | Optional Control Plane Contract | [CONTROL_PLANE.md](CONTROL_PLANE.md) |
 

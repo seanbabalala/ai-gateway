@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 import { setupOpenApi } from './openapi/setup-openapi';
+import { HttpListenerWatchdogService } from './http/http-listener-watchdog.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -87,7 +88,7 @@ async function bootstrap() {
   // serve index.html so client-side routing works on page refresh
   const expressApp = app.getHttpAdapter().getInstance();
   const indexPath = join(__dirname, '..', 'frontend', 'dist', 'index.html');
-  const apiPrefixes = ['/api', '/v1', '/health', '/ready', '/cluster'];
+  const apiPrefixes = ['/api', '/v1', '/live', '/health', '/ready', '/cluster'];
 
   expressApp.use(
     (
@@ -109,6 +110,10 @@ async function bootstrap() {
   const { port, host } = config.server;
 
   // Graceful shutdown
+  const listenerWatchdog = app.get(HttpListenerWatchdogService);
+  // Mark an intentional stop before Nest's signal handlers can close the socket.
+  process.once('SIGTERM', () => listenerWatchdog.stop());
+  process.once('SIGINT', () => listenerWatchdog.stop());
   app.enableShutdownHooks();
   const shutdownTimeout = config.server.shutdown_timeout_ms ?? 5000;
   process.on('SIGTERM', async () => {
@@ -119,6 +124,7 @@ async function bootstrap() {
   });
 
   await app.listen(port, host);
+  listenerWatchdog.start(app.getHttpServer());
 
   logger.log(`SiftGate running on http://${host}:${port}`);
   logger.log(`Nodes configured: ${config.nodes.map((n) => n.id).join(', ')}`);

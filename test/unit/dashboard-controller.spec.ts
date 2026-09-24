@@ -706,6 +706,54 @@ function controllerMethod(name: keyof DashboardController): Function {
 // Stats
 // ═══════════════════════════════════════════════════════════
 
+describe("DashboardController — automatic log retention", () => {
+  beforeEach(() => jest.useFakeTimers({ doNotFake: ['setImmediate'] }));
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it('runs after one minute, repeats six hours later, and stops on shutdown', async () => {
+    const { controller, callLogRepo } = makeDashboard();
+    await jest.advanceTimersByTimeAsync(59_999);
+    expect(callLogRepo.createQueryBuilder).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+    expect(callLogRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(6 * 60 * 60_000);
+    expect(callLogRepo.createQueryBuilder).toHaveBeenCalledTimes(2);
+    await controller.beforeApplicationShutdown();
+    await jest.advanceTimersByTimeAsync(6 * 60 * 60_000);
+    expect(callLogRepo.createQueryBuilder).toHaveBeenCalledTimes(2);
+  });
+
+  it('honors explicit keep-forever instead of silently enabling deletion', async () => {
+    const { controller, callLogRepo, routeDecisionRepo } = makeDashboard({
+      config: { database: { type: 'sqlite', log_retention_days: 0 } },
+    });
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(callLogRepo.createQueryBuilder).not.toHaveBeenCalled();
+    expect(routeDecisionRepo.createQueryBuilder).not.toHaveBeenCalled();
+    await controller.beforeApplicationShutdown();
+  });
+
+  it('defaults to thirty days and stops additional batches when shutting down', async () => {
+    const qb = mockQueryBuilder({}, [{ id: 1 }]);
+    const repo = { ...mockRepo(qb), delete: jest.fn() };
+    const { controller, routeDecisionRepo } = makeDashboard({
+      config: { database: { type: 'sqlite' } }, callLogRepo: repo,
+    });
+    repo.delete.mockImplementation(async () => {
+      await controller.beforeApplicationShutdown();
+      return { affected: 1 };
+    });
+    const before = Date.now();
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(qb.take).toHaveBeenCalledWith(500);
+    expect(qb.where).toHaveBeenCalledWith('log.timestamp < :cutoff', {
+      cutoff: new Date(before + 60_000 - 30 * 86_400_000),
+    });
+    expect(repo.delete).toHaveBeenCalledTimes(1);
+    expect(routeDecisionRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+});
+
 describe("DashboardController — getStats", () => {
   it("should return aggregated stats", async () => {
     const qb = mockQueryBuilder(

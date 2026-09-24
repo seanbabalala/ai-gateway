@@ -1754,7 +1754,11 @@ export type AlertEventType =
   | "circuit_open"
   | "circuit_close"
   | "error_spike"
-  | "latency_spike";
+  | "latency_spike"
+  | "quality_gate_failed" | "cost_anomaly" | "gateway_unavailable" | "gateway_recovered"
+  | "gateway_restart_attempt" | "gateway_restart_failed" | "gateway_restart_unhealthy"
+  | "restart_rate_limited" | "disk_space_low" | "database_size_high"
+  | "disk_check_failed" | "database_size_check_failed" | "test";
 
 export type AlertDeliveryState = "queued" | "sent" | "failed" | "debounced";
 
@@ -1774,7 +1778,7 @@ export interface AlertDeliveryStatus {
 
 export interface AlertChannelStatus {
   name: string;
-  type: "webhook";
+  type: "webhook" | "feishu" | "wecom" | "telegram";
   events: AlertEventType[];
   last_status: AlertDeliveryState | null;
   last_error: string | null;

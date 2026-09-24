@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { GatewayConfig } from './gateway.config';
+import { ALERT_EVENTS as CONNECTOR_EVENTS, CONNECTOR_TYPES, validateChannel } from '../alerts/alert-connector-runtime';
 import { buildNodeModelDiagnostics } from './config-diagnostics';
 import {
   assessCatalogPricing,
@@ -70,6 +71,7 @@ const CREDENTIAL_STICKY_MODES = new Set(['none', 'agent_session', 'api_key', 'te
 const LOAD_BALANCING_STRATEGIES = new Set(['weighted', 'round_robin', 'least_latency', 'random']);
 const ROUTING_OPTIMIZATIONS = new Set(['cost', 'latency', 'balanced', 'quality']);
 const ALERT_EVENTS = new Set([
+  ...CONNECTOR_EVENTS,
   'budget_threshold',
   'budget_exceeded',
   'node_down',
@@ -4910,17 +4912,17 @@ function validateAlertChannels(
       );
       return;
     }
-    if (channel.type !== 'webhook') {
+    if (!CONNECTOR_TYPES.includes(channel.type as never)) {
       issues.push(
         issue(
           'error',
           'invalid_alert_channel_type',
-          'Open-source alert channels currently support only type "webhook".',
+          'Supported alert connectors: webhook, feishu, wecom, telegram.',
           `${channelPath}.type`,
         ),
       );
     }
-    if (!isNonEmptyString(channel.url)) {
+    if (channel.type !== 'telegram' && !isNonEmptyString(channel.url)) {
       issues.push(
         issue(
           'error',
@@ -4929,7 +4931,7 @@ function validateAlertChannels(
           `${channelPath}.url`,
         ),
       );
-    } else if (!containsEnvReference(channel.url)) {
+    } else if (isNonEmptyString(channel.url) && !containsEnvReference(channel.url)) {
       validateHttpUrl(
         channel.url,
         `${channelPath}.url`,
@@ -4963,6 +4965,9 @@ function validateAlertChannels(
     validateAlertChannelHeaders(channel.headers, channelPath, issues);
     validateAlertChannelEvents(channel.events, channelPath, issues);
     validateAlertChannelRetry(channel.retry, channelPath, issues);
+    try { validateChannel(channel, { allowReferences: true }); } catch (error) {
+      issues.push(issue('error', 'invalid_alert_channel', (error as Error).message, channelPath));
+    }
   });
 }
 

@@ -24,6 +24,7 @@ import {
   EmbeddingBatchingConfig,
   ClusterConfig,
   AlertsConfig,
+  AlertChannelConfig,
   AlertSpikeRuleConfig,
   AlertLatencySpikeRuleConfig,
   NamespaceConfig,
@@ -57,6 +58,7 @@ import type { ConfigDiagnostic } from './config-diagnostics';
 import type { EventBusService } from '../plugins/event-bus.service';
 import { containsSecretReference, isTypedSecretReferenceExpression } from './secret-references';
 import { loadLocalEnvFiles } from './local-env';
+import { validateChannel } from '../alerts/alert-connector-runtime';
 import type { ProviderCatalog } from '../catalog/catalog.types';
 
 export type { ConfigDiagnostic, ConfigDiagnosticSeverity } from './config-diagnostics';
@@ -1729,6 +1731,22 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
     return this.config;
   }
 
+  /** Preserve raw secret references while editing/reordering connector entries. */
+  getAlertSettingsForEditing(): AlertsConfig {
+    return this.cloneConfig(this.prepareConfigForPersistence().alerts || {});
+  }
+
+  updateAlertSettings(enabled: boolean, channels: AlertChannelConfig[]): void {
+    if (typeof enabled !== 'boolean' || channels.length > 20) throw new Error('Invalid alert configuration');
+    channels.forEach((channel) => validateChannel(channel, { allowReferences: true }));
+    const previous = this.config.alerts;
+    this.config.alerts = { ...previous, enabled, channels: this.cloneConfig(channels) };
+    try { this.saveConfig(true); } catch {
+      this.config.alerts = previous;
+      throw new Error('Unable to persist alert settings; the previous configuration remains active.');
+    }
+  }
+
   /** Get structured node/model naming diagnostics for dashboard and tests. */
   getNodeModelDiagnostics(): ConfigDiagnostic[] {
     return buildNodeModelDiagnostics(this.config);
@@ -1871,7 +1889,7 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
    * Startup-time ${VAR} references are resolved in memory, so we overlay the
    * last loaded raw references when the user did not edit that value.
    */
-  private saveConfig(): void {
+  private saveConfig(privateFile = false): void {
     const configToPersist = this.prepareConfigForPersistence();
     const yamlStr = yaml.dump(configToPersist, {
       indent: 2,
@@ -1879,20 +1897,20 @@ export class ConfigService implements OnModuleInit, OnModuleDestroy {
       noRefs: true,
       sortKeys: false,
     });
-    this.writeConfigFileAtomic(yamlStr);
+    this.writeConfigFileAtomic(yamlStr, privateFile ? 0o600 : undefined);
     this.originalConfigForPersistence = this.cloneConfig(configToPersist);
     this.resolvedConfigForPersistence = this.cloneConfig(this.config);
     this.logger.log(`Configuration saved to ${this.configPath}`);
   }
 
-  private writeConfigFileAtomic(contents: string): void {
+  private writeConfigFileAtomic(contents: string, modeOverride?: number): void {
     const dir = path.dirname(this.configPath);
     const base = path.basename(this.configPath);
     const tempPath = path.join(
       dir,
       `.${base}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
     );
-    const mode = this.configFileMode();
+    const mode = modeOverride ?? this.configFileMode();
     let wroteTemp = false;
 
     try {

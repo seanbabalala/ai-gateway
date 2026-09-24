@@ -2,6 +2,7 @@
 import * as fs from "fs";
 import * as yaml from "js-yaml";
 import * as path from "path";
+import { runBackupDbCommand } from "./backup-db";
 import {
   DEFAULT_CATALOG_OVERRIDE_FILE,
   collectCatalogPricingHygieneIssues,
@@ -169,6 +170,10 @@ export async function runCli(
 
   if (command === "migrate-db") {
     return runMigrateDbCommand(args, cli);
+  }
+
+  if (command === "backup-db") {
+    return runBackupDbCommand(args, cli);
   }
 
   if (command === "migrate-v2") {
@@ -1679,6 +1684,7 @@ function formatUsage(): string {
     "  plugin     Manage plugin declarations and npm/local installs",
     "  migrate    Migrate third-party gateway configs into SiftGate format",
     "  migrate-db Move local SQLite runtime data into PostgreSQL",
+    "  backup-db  Create a verified WAL-aware SQLite backup (optional managed rotation)",
     "  migrate-v2 Preview the future v1.x single-tenant to v2 workspace assignment",
   ].join("\n");
 }
@@ -1771,7 +1777,7 @@ function formatMigrateDbUsage(): string {
     "      --sqlite <path>       Alias for --sqlite-path",
     "      --postgres-url <url>  PostgreSQL connection URL (or DATABASE_URL / POSTGRES_URL)",
     "      --postgres <url>      Alias for --postgres-url",
-    "      --backup             Copy the SQLite file before importing",
+    "      --backup             Create a verified WAL-aware SQLite snapshot before importing",
     "      --backup-path <path>  Backup destination; implies --backup",
     "      --force              Allow importing into non-empty target tables",
     "      --dry-run            Inspect SQLite and validate arguments without writing PostgreSQL",

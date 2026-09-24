@@ -465,9 +465,9 @@ export interface E2EHarness {
   close: () => Promise<void>;
 }
 
-export async function createE2EHarness(): Promise<E2EHarness> {
+export async function createE2EHarness(configPath = FIXTURE_PATH): Promise<E2EHarness> {
   // Set config path BEFORE module resolution
-  process.env.GATEWAY_CONFIG_PATH = FIXTURE_PATH;
+  process.env.GATEWAY_CONFIG_PATH = configPath;
 
   // Lazy-import AppModule so the config path is read at require time
   const { AppModule } = await import('../../src/app.module');

@@ -702,8 +702,10 @@ export class ConfigAuditService implements OnModuleInit {
     }
 
     const result: Record<string, unknown> = {};
+    const connector = ['webhook', 'feishu', 'wecom', 'telegram'].includes(String((value as Record<string, unknown>).type));
     for (const [key, child] of Object.entries(value)) {
-      result[key] = this.sanitizeValue(child, key);
+      result[key] = connector && ['url', 'headers', 'bot_token', 'signing_secret', 'chat_id'].includes(key)
+        ? REDACTED : this.sanitizeValue(child, key);
     }
     return result;
   }

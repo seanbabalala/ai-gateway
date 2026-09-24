@@ -770,6 +770,7 @@ export function DashboardPage() {
             <div className="flex items-center gap-2">
               <BellRing className="h-4 w-4 text-[var(--accent)]" />
               <CardTitle>{t('alerts.title')}</CardTitle>
+              <Link to="/alerts" className="ml-2 text-xs font-semibold text-[var(--accent)] underline-offset-4 hover:underline">{t('alerts.configure')}</Link>
             </div>
             <span
               className={

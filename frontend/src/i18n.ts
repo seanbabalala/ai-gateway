@@ -7,6 +7,7 @@ export const localeStorageKey = 'siftgate-dashboard-locale'
 export const localeNamespaces = [
   'common',
   'dashboard',
+  'alerts',
   'logs',
   'nodes',
   'routing',

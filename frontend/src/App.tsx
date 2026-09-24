@@ -6,6 +6,7 @@ import { ProtectedRoute } from '@/components/shared/ProtectedRoute'
 import { Skeleton, SkeletonCard, SkeletonTable } from '@/components/ui/skeleton'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
+const AlertConnectorsPage = lazy(() => import('@/pages/AlertConnectorsPage').then((m) => ({ default: m.AlertConnectorsPage })))
 const LogsPage = lazy(() => import('@/pages/LogsPage').then((m) => ({ default: m.LogsPage })))
 const NodesPage = lazy(() => import('@/pages/NodesPage').then((m) => ({ default: m.NodesPage })))
 const RoutingPage = lazy(() => import('@/pages/RoutingPage').then((m) => ({ default: m.RoutingPage })))
@@ -160,6 +161,7 @@ export function App() {
       >
         <Route path="/" element={page(<DashboardPage />)} />
         <Route path="/dashboard" element={page(<DashboardPage />)} />
+        <Route path="/alerts" element={page(<AlertConnectorsPage />)} />
         <Route path="/logs" element={page(<LogsPage />)} />
         <Route path="/nodes" element={page(<NodesPage />)} />
         <Route path="/catalog" element={page(<ProviderCatalogPage />)} />

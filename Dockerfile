@@ -25,6 +25,7 @@ COPY tsconfig.json nest-cli.json ./
 COPY src/ ./src/
 COPY plugins/ ./plugins/
 COPY tsconfig.plugins.json ./
+COPY scripts/copy-runtime-assets.js ./scripts/copy-runtime-assets.js
 RUN npm run build
 
 # ── Stage 3: Production image ──
@@ -52,6 +53,6 @@ EXPOSE 2099
 
 # Health check. Use Node's built-in fetch so the image does not rely on curl/wget.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:2099/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:2099/live',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "dist/main.js"]

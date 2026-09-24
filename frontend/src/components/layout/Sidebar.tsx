@@ -28,6 +28,7 @@ import {
   FileSearch,
   BrainCircuit,
   ReceiptText,
+  BellRing,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useHealth } from '@/hooks/use-health'
@@ -42,6 +43,7 @@ const navGroups = [
     items: [
       { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
       { to: '/logs', icon: ScrollText, labelKey: 'nav.logs' },
+      { to: '/alerts', icon: BellRing, labelKey: 'nav.alertConnectors' },
       { to: '/sessions', icon: Network, labelKey: 'nav.sessions' },
       { to: '/route-decisions', icon: GitFork, labelKey: 'nav.routeExplanation' },
       { to: '/analytics', icon: BarChart3, labelKey: 'nav.analytics' },

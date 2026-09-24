@@ -11,6 +11,7 @@ const allLocales = [baseLocale, ...translatedLocales]
 const namespaces = [
   'common',
   'dashboard',
+  'alerts',
   'logs',
   'nodes',
   'routing',

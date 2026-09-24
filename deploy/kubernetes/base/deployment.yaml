@@ -49,7 +49,7 @@ spec:
               mountPath: /app/data
           livenessProbe:
             httpGet:
-              path: /health
+              path: /live
               port: http
             initialDelaySeconds: 20
             periodSeconds: 30

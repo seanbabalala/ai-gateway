@@ -260,13 +260,19 @@ export type AlertEventType =
   | 'error_spike'
   | 'latency_spike'
   | 'quality_gate_failed'
-  | 'cost_anomaly';
+  | 'cost_anomaly'
+  | 'gateway_unavailable' | 'gateway_recovered' | 'gateway_restart_attempt'
+  | 'gateway_restart_failed' | 'gateway_restart_unhealthy' | 'restart_rate_limited'
+  | 'disk_space_low' | 'database_size_high' | 'disk_check_failed' | 'database_size_check_failed'
+  | 'test';
+
+export type AlertConnectorType = 'webhook' | 'feishu' | 'wecom' | 'telegram';
 
 export interface AlertsConfig {
   /** Master switch for local alert dispatch (default: false) */
   enabled?: boolean;
-  /** Webhook-only OSS channel list. Empty by default. */
-  channels?: WebhookAlertChannelConfig[];
+  /** Operator-configured outbound connectors. Empty by default. */
+  channels?: AlertChannelConfig[];
   /** Recent alert delivery records retained for Dashboard (default: 50) */
   history_size?: number;
   /** Local sliding-window rule for error spikes. */
@@ -275,11 +281,17 @@ export interface AlertsConfig {
   latency_spike?: AlertLatencySpikeRuleConfig;
 }
 
-export interface WebhookAlertChannelConfig {
-  type: 'webhook';
+export interface AlertChannelConfig {
+  type: AlertConnectorType;
+  id?: string;
+  /** Legacy YAML channels are enabled unless explicitly disabled. */
+  enabled?: boolean;
   /** Stable display name used in Dashboard and debounce keys. */
   name?: string;
-  url: string;
+  url?: string;
+  signing_secret?: string;
+  bot_token?: string;
+  chat_id?: string;
   /** Optional outbound headers. Values may use environment references. */
   headers?: Record<string, string>;
   /** Events delivered by this channel. Unset means all supported events. */
@@ -288,6 +300,12 @@ export interface WebhookAlertChannelConfig {
   debounce_seconds?: number;
   /** Webhook retry and timeout controls. */
   retry?: AlertWebhookRetryConfig;
+}
+
+/** Backward-compatible public type for existing generic webhook integrations. */
+export interface WebhookAlertChannelConfig extends AlertChannelConfig {
+  type: 'webhook';
+  url: string;
 }
 
 export interface AlertWebhookRetryConfig {

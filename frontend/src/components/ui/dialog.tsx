@@ -78,9 +78,10 @@ function useDialogContext() {
 interface DialogContentProps {
   children: ReactNode
   className?: string
+  ariaLabel?: string
 }
 
-export function DialogContent({ children, className }: DialogContentProps) {
+export function DialogContent({ children, className, ariaLabel }: DialogContentProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const { onOpenChange } = useDialogContext()
 
@@ -135,6 +136,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
       ref={contentRef}
       role="dialog"
       aria-modal="true"
+      aria-label={ariaLabel}
       initial={{ opacity: 0, scale: 0.95, y: 8 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 8 }}
